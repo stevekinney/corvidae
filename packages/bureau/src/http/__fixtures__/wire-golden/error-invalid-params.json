@@ -12,6 +12,7 @@
           ]
         }
       ],
+      "retryable": false,
       "weftCode": "InvalidParams"
     },
     "message": "invalid params"

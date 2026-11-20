@@ -164,6 +164,29 @@ export const taskViewSchema = z.object({
   wakeAt: z.string().nullable(),
   /** The workflow the task ran on (COR-2423); see {@link taskWorkflowSchema}. */
   workflow: taskWorkflowSchema,
+  /**
+   * What the run has used and cost so far, or in total once it ended (COR-2524), or `null` for a
+   * task whose run has recorded none (it has not taken a step, or its record predates the field).
+   * `costUsd` is in US dollars, priced from the model catalog, and `null`, never `0`, when no
+   * request was priced: an unpriced model is unknown, not free.
+   */
+  usage: z
+    .object({
+      promptTokens: z.number(),
+      completionTokens: z.number(),
+      totalTokens: z.number(),
+      costUsd: z.number().nullable(),
+    })
+    .nullable(),
+  /**
+   * What asks for attention (COR-2526): `stalled` while the run is alive but making no progress
+   * outside a declared wait, which is Operative's own `alive-but-stalled` assessment recorded when
+   * it changes, and `looping` once the run's toolbox reported a loop until the run settles. Empty
+   * for a task that has ended, and `stalled` is empty while a person is asked something.
+   */
+  attention: z.array(z.enum(['stalled', 'looping'])),
+  /** The instant, as ISO 8601 on the Bureau's clock, the run was seen to stall; `null` unless `attention` holds `stalled`. */
+  stalledSince: z.string().nullable(),
 });
 
 /** The paging fields the list operations share. */

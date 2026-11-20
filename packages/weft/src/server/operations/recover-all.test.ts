@@ -82,7 +82,7 @@ describe('weft.recover.all', () => {
       });
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
       expect(response.headers.get('Content-Type')).toContain('application/json');
     } finally {
       engine.recoverAll = originalRecoverAll;
@@ -118,6 +118,7 @@ describe('weft.recover.all', () => {
           missingWorkflowCount: 2,
           samplesTruncated: false,
         },
+        retryable: false,
       });
       // Belt-and-suspenders against future renames of the test fixture IDs:
       // assert each specific workflow ID is absent from the serialized body.

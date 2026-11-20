@@ -120,6 +120,16 @@
             "description": "Human-readable error description",
             "type": "string"
           },
+          "remediation": {
+            "description": "One line of plain text saying what to do next; omitted when none is known",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryable": {
+            "description": "Whether repeating the identical call later can succeed; present on every operation fault",
+            "type": "boolean"
+          },
           "weftCode": {
             "description": "Fine-grained public Weft error code when one is available",
             "type": "string"

@@ -33,7 +33,7 @@ import {
   createAgentScheduler,
   isScheduledAgentRunInput,
 } from '@lostgradient/operative';
-import { KEYS, decode } from '@lostgradient/weft';
+import { KEYS, ScheduleStaleRevisionError, decode } from '@lostgradient/weft';
 import {
   type PendingScheduleTransition,
   SCHEDULE_TRANSITION_KEY_PREFIX,
@@ -619,11 +619,23 @@ export function createScheduleOperations<D extends AgentDefinitions>(
 
   async function cancelSchedule(
     scheduleId: string,
-    guard?: ScheduleRevisionGuard,
+    guard?: ScheduleRevisionGuard & { readonly dryRun?: boolean | undefined },
   ): Promise<true | undefined> {
     const durable = runtime.durable;
     if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
+    if (guard?.dryRun === true) {
+      // What Weft's serialized write checks before it changes anything, read without a write: the
+      // schedule is there and is at the revision the caller expected.
+      const state = await durable.engine.getSchedule(scheduleId);
+      if (state === null || state === undefined) {
+        throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+      }
+      if (guard.expectedRevision !== undefined && guard.expectedRevision !== state.revision) {
+        throw new ScheduleStaleRevisionError(scheduleId, guard.expectedRevision, state.revision);
+      }
+      return true;
+    }
     await transitionSchedule('schedule.cancelled', scheduleId, guard, (transition) =>
       durable.engine.cancelSchedule(scheduleId, transition),
     );

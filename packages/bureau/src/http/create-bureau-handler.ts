@@ -118,6 +118,7 @@ import {
   agentsReferencesOperation,
 } from './management/agent-references-operation.ts';
 import { findAgentReferences } from '../agent-references.ts';
+import { type BureauDryRunHost, dryRunEffectsOf } from './management/dry-run-references.ts';
 import {
   type BureauContextsInputOperationHost,
   contextsInputOperation,
@@ -410,6 +411,7 @@ export type BureauHandlerSource = Pick<
     | 'duplicate'
     | 'try'
     | 'disable'
+    | 'canDisable'
     | 'enable'
   >;
 };
@@ -461,7 +463,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAssetsOperationHost &
   BureauDecisionsOperationHost &
   BureauSettingsOperationHost &
-  BureauSkillsOperationHost;
+  BureauSkillsOperationHost &
+  BureauDryRunHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -1410,6 +1413,7 @@ export function buildBureauHandlerHost(
       tools: () => bureau.agents.tools(),
       loadArtifact: skills?.loadArtifact ?? createSkillArtifactLoader({}),
     },
+    dryRun: dryRunEffectsOf(bureau),
     workflows: bureau.workflows,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);

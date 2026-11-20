@@ -70,6 +70,7 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { dryRunField, dryRunResult, effect, orDryRun } from './dry-run.ts';
 
 /** What the schedule operations read from the handler's `host`. */
 export type BureauSchedulesOperationHost = BureauOwnershipHost &
@@ -743,7 +744,7 @@ export const schedulesCreateOperation = defineOperation<
 const guardedInput = z.object({ scheduleId: scheduleIdentifier, expectedRevision });
 
 function defineGuardedWrite(
-  name: 'bureau.schedules.pause' | 'bureau.schedules.resume' | 'bureau.schedules.cancel',
+  name: 'bureau.schedules.pause' | 'bureau.schedules.resume',
   summary: string,
   description: string,
   run: (
@@ -807,12 +808,70 @@ export const schedulesResumeOperation = defineGuardedWrite(
   (schedules, id, guard) => schedules.resume(id, guard),
 );
 
-export const schedulesCancelOperation = defineGuardedWrite(
-  'bureau.schedules.cancel',
-  'Cancel a schedule',
-  `Cancels a schedule for good: its record stays, as \`cancelled\`, and it starts no new fire. Cancelling a cancelled schedule changes nothing. ${STALE_NOTE}`,
-  (schedules, id, guard) => schedules.cancel(id, guard),
-);
+const cancelInput = guardedInput.extend({ dryRun: dryRunField });
+const cancelAnswer = orDryRun(receiptSchema);
+
+export const schedulesCancelOperation = defineOperation<
+  typeof cancelInput,
+  typeof cancelAnswer,
+  BureauSchedulesOperationHost
+>({
+  name: 'bureau.schedules.cancel',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.cancel'),
+  mcpExposable: false,
+  supportsDryRun: true,
+  summary: 'Cancel a schedule',
+  description: `Cancels a schedule for good: its record stays, as \`cancelled\`, and it starts no new fire. Cancelling a cancelled schedule changes nothing. With \`dryRun: true\` nothing is cancelled: the answer is \`{ dryRun: true, target, effects }\`, whose \`queued-runs\` effect counts the occurrences waiting behind the fire in flight, which the cancel drops (the fire in flight finishes), and a schedule that is missing, not the caller’s or at another \`revision\` than \`expectedRevision\` answers the fault the real call answers. ${STALE_NOTE}`,
+  destructive: true,
+  tags: ['Schedules'],
+  inputSchema: cancelInput,
+  outputSchema: cancelAnswer,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'Conflict',
+    'StaleRevision',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
+    if (input.dryRun === true) {
+      try {
+        // The checks of the cancel (a workflow file's schedule, a missing one, a stale revision),
+        // made by the same method with nothing written.
+        const checked = await host.schedules.cancel(input.scheduleId, {
+          expectedRevision: input.expectedRevision,
+          dryRun: true,
+        });
+        if (checked === undefined) throw unsupported();
+      } catch (error) {
+        return faultOf(error, input.scheduleId);
+      }
+      const summary = await host.schedules.get(input.scheduleId);
+      if (summary === null || summary === undefined) {
+        throw resourceNotFound('schedule', input.scheduleId);
+      }
+      return dryRunResult({ kind: 'schedule', id: input.scheduleId }, [
+        effect('queued-runs', summary.queuedRuns.length),
+      ]);
+    }
+    try {
+      const done = await host.schedules.cancel(input.scheduleId, {
+        expectedRevision: input.expectedRevision,
+      });
+      if (done === undefined) throw unsupported();
+    } catch (error) {
+      return faultOf(error, input.scheduleId);
+    }
+    // The write scope does not imply the read scope: the receipt names the status and the
+    // revision the caller needs to go on, and nothing else of the schedule.
+    return receiptOf(host, input.scheduleId);
+  },
+});
 
 /** An ISO 8601 `occurrence` as milliseconds since the epoch, or `InvalidParams` before 1970. */
 function occurrenceOf(occurrence: string): number {

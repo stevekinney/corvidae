@@ -57,7 +57,7 @@ import {
   SkillRejectedEvent,
 } from './skills';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { type Engine, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
+import { type Engine, KEYS, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
 import { type Tool, type ToolRequestContext } from 'armorer';
 import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
@@ -2610,6 +2610,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     interruptedFields,
     dropPendingApprovalOverride,
     recordTaskWakeup,
+    recordTaskUsage,
+    recordTaskLoop,
+    watchRunAttention,
+    unwatchRunAttention,
     recordTaskSettlement,
   } = createRunBookkeeping<D>(core, peers);
   const { scanApprovedToolResult, scannedApprovedOutcome } = createApprovedToolScan<D>(core, peers);
@@ -3770,6 +3774,19 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-2423: the schedule tick and the instances of workflow files, which have no task record.
       engineRuns: () => engineRunTasks.list(),
       holdsEngineRun: (runId) => engineRunTasks.holds(runId),
+      // COR-2526: a live claim another process holds is the same read recovery makes of a run
+      // "preparing elsewhere"; a lapsed or absent claim leaves the writer the holder. The holder
+      // record is read first, from the store the engine claims in, so a write can require it
+      // unchanged: Weft rewrites it at a takeover, a renewal and a release.
+      claimFence: async (runId) => {
+        const key = KEYS.workflowOwnerHolder(runId);
+        const observed = (await runtime.kv?.get(key)) ?? null;
+        const claim = await runtime.durable?.engine.claimHolder(runId);
+        return {
+          elsewhere: claim?.heldByAnyProcess === true && !claim.heldByThisProcess,
+          holder: { key, expectedValue: observed },
+        };
+      },
     },
   });
   taskRegistryHolder.current = tasks;
@@ -3928,6 +3945,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           }
           break;
         }
+        recordTaskUsage(storeActionEvent.action);
+        recordTaskLoop(storeActionEvent.action);
         recordTaskSettlement(storeActionEvent.action);
         recordTaskWakeup(storeActionEvent.action);
         // COR-2096: a guardrail, a budget threshold and a tool's failure or refusal are published
@@ -3953,6 +3972,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       case 'run.registered': {
         const registeredRunId = (event as StoreRunRegisteredEvent).runId;
+        // COR-2526: whether a run is stalled is recorded for every run this process holds, a
+        // `bureau.run()` run included, since its task record is what a reader in another process
+        // sees.
+        watchRunAttention(registeredRunId);
         // COR-1302: see the `'action'` case above.
         if (catalogRunIds.has(registeredRunId)) break;
         emitter.dispatch(new RunRegisteredEvent(registeredRunId));
@@ -3960,6 +3983,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       case 'run.removed': {
         const removedRunId = (event as StoreRunRemovedEvent).runId;
+        unwatchRunAttention(removedRunId);
         // COR-1302: a `bureau.run()` run's release is not a deletion, so it
         // is not announced as one. Durable event history records
         // `run.removed` as the evidence that a run's record was deleted,

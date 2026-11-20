@@ -64,6 +64,7 @@ describe('submit-review-decision — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Missing required fields: decision, reviewer',
+      retryable: false,
     });
   });
 
@@ -77,6 +78,7 @@ describe('submit-review-decision — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Missing required fields: decision, reviewer',
+      retryable: false,
     });
   });
 
@@ -91,6 +93,7 @@ describe('submit-review-decision — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Missing required fields: decision, reviewer',
+      retryable: false,
     });
   });
 
@@ -106,6 +109,7 @@ describe('submit-review-decision — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Invalid decision "maybe". Must be one of: approved, rejected, needs-changes',
+      retryable: false,
     });
   });
 
@@ -120,6 +124,7 @@ describe('submit-review-decision — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "feedback" must be a string when provided',
+      retryable: false,
     });
   });
 
@@ -134,6 +139,7 @@ describe('submit-review-decision — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Missing required fields: decision, reviewer',
+      retryable: false,
     });
   });
 });

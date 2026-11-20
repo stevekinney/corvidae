@@ -38,7 +38,9 @@
  *   run, COR-1580) is ended by the canceller, which writes the session's `aborted` status. The
  *   canceller holds no cost estimate (the run's pricing and checkpoint are the holder's), and the
  *   holder, seeing another engine's terminal commit, writes nothing (COR-1614), so no one records
- *   what that run had spent. The chat's total falls short by it.
+ *   what that run had spent. The chat's total falls short by it. The run's task record still
+ *   holds the cost of the steps it completed (`TaskView.usage`, COR-2524), written after each step,
+ *   but the ledger does not read it.
  * - A run that never reaches its terminal event, such as a non-durable run in a process that
  *   dies, has no estimate to record. A durable run is recovered and records its spend when it ends.
  *

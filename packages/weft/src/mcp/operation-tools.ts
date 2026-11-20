@@ -14,7 +14,11 @@ import type {
   OperationHandlerMountContext,
   OperationHandlerMountOperation,
 } from '@lostgradient/backchannel';
-import { isAuthenticated, type DispatchResult } from '@lostgradient/backchannel/internals';
+import {
+  faultWireAdvice,
+  isAuthenticated,
+  type DispatchResult,
+} from '@lostgradient/backchannel/internals';
 import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
 import { VERSION } from '../version.ts';
 import { DEFAULT_MCP_MAX_BODY_BYTES } from './protocol.ts';
@@ -316,15 +320,19 @@ function toolResult(result: DispatchResult<unknown>): CallToolResult {
 
 /**
  * A fault is the tool's error result, carrying the catalog's fault (`code`, `message`, `data`) as
- * structured content the model reads and can act on. A refused caller is one too: the SDK answers
- * any `tools/call` handler failure as an error result, so a refusal is the `Unauthorized` or
- * `Forbidden` fault, as every other catalog transport names it.
+ * structured content the model reads and can act on, with the same `retryable` (always) and
+ * `remediation` (when set) the REST and JSON-RPC envelopes carry. A refused caller is one too: the
+ * SDK answers any `tools/call` handler failure as an error result, so a refusal is the
+ * `Unauthorized` or `Forbidden` fault, as every other catalog transport names it.
  */
 function faultResult(fault: OperationFault): CallToolResult {
+  const { retryable, remediation } = faultWireAdvice(fault);
   const payload = {
     code: fault.code,
     message: fault.message,
     ...('data' in fault ? { data: fault.data } : {}),
+    retryable,
+    ...(remediation === undefined ? {} : { remediation }),
   };
   return {
     content: [{ type: 'text', text: JSON.stringify(payload) }],

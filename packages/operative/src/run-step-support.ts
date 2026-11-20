@@ -4,10 +4,13 @@ import type { ToolCall } from 'armorer/protocol';
 import { type AppendBatchOptions, Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
+import { totalAccumulatedCost } from './cost-budget';
 import {
   accumulateRequestCost,
+  accumulateUnpricedRequest,
   getModelPricing,
   providerModelPricingKey,
+  reportedAccumulatedCost,
   seedAccumulatedCost,
 } from './cost-estimation';
 import { AgentRunError } from './errors';
@@ -258,18 +261,6 @@ export function switchedPricingKey(
   return getModelPricing(key, costEstimation.pricing) === undefined ? undefined : key;
 }
 
-/**
- * The key a step's request is priced at: {@link switchedPricingKey}, and the run's own
- * `costEstimation.model` when the switched model has no price, which only a run with no cost
- * budget reaches: a run with one stops before such a step ({@link checkSwitchedModelPriced}).
- */
-export function costModelOfStep(
-  costEstimation: NonNullable<RunOptions['costEstimation']>,
-  steered: SteeredModel | undefined,
-): string {
-  return switchedPricingKey(costEstimation, steered) ?? costEstimation.model;
-}
-
 /** The model name a step's cost is reported under: the switched model when it is priced, else the run's own. */
 export function pricedModelNameOfStep(
   costEstimation: NonNullable<RunOptions['costEstimation']>,
@@ -299,7 +290,10 @@ export function accumulateUsage(
   if (usage) {
     // Priced per request here, where the request's own usage is still separate from the sum.
     if (costEstimation) {
-      const model = costModelOfStep(costEstimation, steered);
+      // A step on a switched model with no price adds no cost: it is unknown, and counting it at the
+      // run's own model would report a spend the run never made. A run with a cost budget stops
+      // before such a step ({@link checkSwitchedModelPriced}), so only a run without one gets here.
+      const model = switchedPricingKey(costEstimation, steered);
       // The accumulator must always cover all of `totalUsage`. Usage that arrived with no cost
       // (a checkpoint from before costs were accumulated) is seeded at the base tier first, or
       // the terminal estimate would count only the requests made after the resume.
@@ -308,7 +302,10 @@ export function accumulateUsage(
         costEstimation.model,
         costEstimation.pricing,
       );
-      runState.cost = accumulateRequestCost(runState.cost, usage, model, costEstimation.pricing);
+      runState.cost =
+        model === undefined
+          ? accumulateUnpricedRequest(runState.cost)
+          : accumulateRequestCost(runState.cost, usage, model, costEstimation.pricing);
     }
     runState.totalUsage.prompt += usage.prompt;
     runState.totalUsage.completion += usage.completion;
@@ -326,5 +323,15 @@ export function accumulateUsage(
         (runState.totalUsage.cacheReadTokens ?? 0) + usage.cacheReadTokens;
     }
   }
-  emitter?.dispatch(new UsageAccumulatedEvent(step, { ...runState.totalUsage }, usage));
+  emitter?.dispatch(
+    new UsageAccumulatedEvent(
+      step,
+      { ...runState.totalUsage },
+      usage,
+      // Absent, never `0`, until a request has been priced: an unpriced run is not a free one.
+      reportedAccumulatedCost(runState.cost) === undefined
+        ? undefined
+        : totalAccumulatedCost(runState.cost),
+    ),
+  );
 }

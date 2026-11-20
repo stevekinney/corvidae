@@ -16895,12 +16895,18 @@ describe('bureau.maintain prunes stale run ownership (AB-363)', () => {
           // unrelated marker supplies a sequence for the floor to pass.
           await retainThrough(database, await appendFloorMarker(database));
 
+          // The run's own writes read its claim too (COR-2526's holder fence), so the read this test
+          // is about is the first one the pruning pass makes.
+          const callsBeforePruning = claimHolderSpy.mock.calls.length;
           await bureauB.maintain();
 
           const whileClaimed = await bureauA.contexts.get(run.contextId);
           expect(whileClaimed?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
-          const claimCall = claimHolderSpy.mock.calls.findIndex(([id]) => id === run.id);
-          expect(claimCall).toBeGreaterThanOrEqual(0);
+          const prunedCall = claimHolderSpy.mock.calls
+            .slice(callsBeforePruning)
+            .findIndex(([id]) => id === run.id);
+          expect(prunedCall).toBeGreaterThanOrEqual(0);
+          const claimCall = callsBeforePruning + prunedCall;
           expect(await claimHolderSpy.mock.results[claimCall]?.value).toEqual(
             expect.objectContaining({ heldByAnyProcess: true }),
           );

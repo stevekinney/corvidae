@@ -15,6 +15,7 @@
 import type { Page, Route } from '@playwright/test';
 
 import { AGENTS_COPY } from '../../src/app/copy/agents.ts';
+import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { GOALS_COPY } from '../../src/app/copy/goals.ts';
 import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
 import { TASK_COPY } from '../../src/app/copy/tasks.ts';
@@ -60,6 +61,7 @@ import {
 import { bureauCall, expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
+// 1920 is not listed: every 1280 capture is repeated there (`design-review-capture.ts`).
 const WIDTHS = [375, 1280] as const;
 
 /** The hook the hooks list's ready state is shown with; the spec deletes every hook of this name. */
@@ -1989,3 +1991,104 @@ test.describe('trigger state', () => {
     });
   }
 });
+
+/**
+ * What a list with an owned tab says with nothing in it, and when its read fails, captured at
+ * every width for the design review: the Goals list and each Capabilities tab own these states
+ * (`goals` and `capabilities` hold no frame-level empty state, `VIEWS.goals.ownsStatesOnPatterns`
+ * and `VIEWS.capabilities.canBeEmpty`), so the frame cases above never reach them. Each is made by
+ * answering the page's own read with what a world with nothing in it, or a host that broke, answers.
+ * The Checks page's own are `checks-states.spec.ts`'s. Each title names its address, so a route
+ * filter (`--grep '/capabilities'`) reaches it.
+ */
+const OWNED_STATES = [
+  {
+    address: '/goals',
+    label: 'goals (/goals)',
+    method: 'bureau.goals.list',
+    empty: { goals: [], nextOffset: null },
+    emptyTitle: GOALS_COPY.empty.title,
+    failedTitle: GOALS_COPY.failed.title,
+  },
+  {
+    address: '/capabilities',
+    tab: 'tools',
+    label: 'capabilities Tools tab (/capabilities)',
+    method: 'bureau.agents.catalog',
+    empty: { models: [], tools: [] },
+    emptyTitle: CAPABILITIES_COPY.tool.empty.title,
+    failedTitle: undefined,
+  },
+  {
+    address: '/capabilities?tab=skills',
+    tab: 'skills',
+    label: 'capabilities Skills tab (/capabilities)',
+    method: 'bureau.skills.list',
+    empty: { skills: [], sources: [] },
+    // No source configured either (`sources: []`), which is the tab's first use, not "sources with no skills".
+    emptyTitle: CAPABILITIES_COPY.skill.empty.title,
+    failedTitle: CAPABILITIES_COPY.skill.loadFailed.title,
+  },
+  {
+    address: '/capabilities?tab=sources',
+    tab: 'sources',
+    label: 'capabilities Sources tab (/capabilities)',
+    // The Sources tab reads the host's own route, not the Bureau.
+    path: /\/host\/tool-sources/,
+    empty: { configurationRevision: null, sources: [] },
+    emptyTitle: CAPABILITIES_COPY.source.empty.title,
+    failedTitle: CAPABILITIES_COPY.source.loadFailed.title,
+  },
+] as const;
+
+for (const owned of OWNED_STATES) {
+  for (const outcome of ['empty', 'error'] as const) {
+    for (const width of WIDTHS) {
+      test(`${owned.label} is ${outcome} at ${width} pixels`, async ({ page, pageErrors }) => {
+        await page.setViewportSize({ width, height: 900 });
+        const url = 'path' in owned ? owned.path : /\/jsonrpc/;
+        if (outcome === 'error') {
+          await holdBureauFeed(page);
+          pageErrors.expectEvery({
+            pattern: loggedFailedResponse(500, url),
+            reason: `the test answers the ${owned.label} read with a 500`,
+          });
+        }
+        await page.route('**/*', async (route: Route) => {
+          const request = route.request();
+          const body = request.postData() ?? '';
+          const asked =
+            'method' in owned
+              ? new URL(request.url()).pathname.endsWith('/jsonrpc') &&
+                body.includes(`"${owned.method}"`)
+              : url.test(request.url());
+          if (!asked) {
+            await route.fallback();
+            return;
+          }
+          if (outcome === 'error') {
+            await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
+          } else {
+            await route.fulfill({
+              json: 'method' in owned ? jsonRpcBody(body, owned.empty) : owned.empty,
+            });
+          }
+        });
+        await page.goto(owned.address);
+        const title = outcome === 'empty' ? owned.emptyTitle : owned.failedTitle;
+        if (title === undefined) {
+          // The Tools tab's failure is the frame's, or the tab's alert: either offers Retry.
+          await expect(page.getByRole('button', { name: RETRY_LABEL }).first()).toBeVisible();
+        } else {
+          await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
+        }
+        await captureForDesignReview(page, {
+          route: owned.address.split('?')[0] ?? owned.address,
+          ...('tab' in owned ? { tab: owned.tab } : {}),
+          state: outcome,
+          source: '15-view-states.spec.ts',
+        });
+      });
+    }
+  }
+}

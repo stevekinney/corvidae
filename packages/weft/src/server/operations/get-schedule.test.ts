@@ -150,6 +150,7 @@ describe('weft.schedules.get', () => {
     expect(await response.json()).toEqual({
       error: 'Schedule "does-not-exist" not found',
       data: { resource: 'schedule', identifier: 'does-not-exist' },
+      retryable: false,
     });
   });
 
@@ -218,7 +219,7 @@ describe('weft.schedules.get', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 
   it('shapes Unauthorized faults as 401', async () => {
@@ -246,7 +247,7 @@ describe('weft.schedules.get', () => {
     );
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: 'missing credentials' });
+    expect(await response.json()).toEqual({ error: 'missing credentials', retryable: false });
   });
 
   it('uses the fallback HTTP mapper for non-special-cased faults', async () => {
@@ -274,6 +275,6 @@ describe('weft.schedules.get', () => {
     );
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: 'schedule conflict' });
+    expect(await response.json()).toEqual({ error: 'schedule conflict', retryable: false });
   });
 });

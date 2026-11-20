@@ -84,7 +84,12 @@ import {
 import { allowedDescriptorsOfFileAgent, resolveModelDescriptor } from './agent-file-catalog';
 import { describeAgentModels } from './agent-models';
 import type { AgentOverrides } from './agent-override-store';
-import { costBudgetOptions, runCostBudgetOf, toolboxBudgetOf } from './file-agent-cost-budget';
+import {
+  costBudgetOptions,
+  costEstimationOptions,
+  runCostBudgetOf,
+  toolboxBudgetOf,
+} from './file-agent-cost-budget';
 import { createFileAgentGenerate, type FileAgentGenerateOptions } from './file-agent-generate';
 import { type BureauModelPolicyOptions, modelPolicyDenialOf } from './model-policy';
 import { createToolApprovalHooks } from './tool-approval';
@@ -412,9 +417,17 @@ export function effectiveCodeAgent(
     return hooks;
   }
 
-  function costOf(): Pick<RunOptions, 'costBudget' | 'costEstimation'> | Record<string, never> {
+  function costOf(
+    own: Pick<RunOptions, 'costEstimation'>,
+  ): Pick<RunOptions, 'costBudget' | 'costEstimation'> | Record<string, never> {
     const budget = overrides.limits?.cost;
-    if (budget === undefined) return {};
+    if (budget === undefined) {
+      // COR-2524: a run reports its cost whether or not a budget is declared, priced from the
+      // catalog's row for the agent's default model, unless the agent prices its own runs.
+      return own.costEstimation !== undefined || models.defaultRow === undefined
+        ? {}
+        : costEstimationOptions(models.defaultRow, models.allowed);
+    }
     return models.defaultRow === undefined
       ? { costBudget: runCostBudgetOf(budget) }
       : costBudgetOptions(budget, models.defaultRow, models.allowed);
@@ -429,7 +442,7 @@ export function effectiveCodeAgent(
       toolbox: toolboxOf(own.toolbox),
       conversation: conversationOf(input, own.conversation),
       ...(hooks === undefined ? {} : { hooks }),
-      ...costOf(),
+      ...costOf(own),
       ...(overrides.limits?.steps === undefined ? {} : { maximumSteps: overrides.limits.steps }),
     };
   }

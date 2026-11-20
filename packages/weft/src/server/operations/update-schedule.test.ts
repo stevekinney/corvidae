@@ -155,6 +155,7 @@ describe('weft.schedules.update', () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
         error: 'Field "metadata" must be a plain JSON object',
+        retryable: false,
       });
     }
     expect(await metadataNow()).toEqual({ owner: 'grace' });
@@ -281,6 +282,7 @@ describe('weft.schedules.update', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "description" must be a string',
+      retryable: false,
     });
     expect(await engine.getSchedule('schedule-update-null-description')).toEqual(
       expect.objectContaining({
@@ -349,7 +351,7 @@ describe('weft.schedules.update', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: invalidOption.error });
+      expect(await response.json()).toEqual({ error: invalidOption.error, retryable: false });
     }
 
     expect(await engine.getSchedule('schedule-update-invalid-options')).toEqual(
@@ -475,7 +477,7 @@ describe('weft.schedules.update', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid JSON body' });
+    expect(await response.json()).toEqual({ error: 'Invalid JSON body', retryable: false });
   });
 
   it('returns 400 when the request body is JSON null', async () => {
@@ -490,7 +492,10 @@ describe('weft.schedules.update', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await response.json()).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
   });
 
   it('returns 400 with "Missing required field: cronExpression or every" when body is a JSON array', async () => {
@@ -507,6 +512,7 @@ describe('weft.schedules.update', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Missing required field: cronExpression or every',
+      retryable: false,
     });
   });
 
@@ -523,6 +529,7 @@ describe('weft.schedules.update', () => {
     expect(await response.json()).toEqual({
       error: 'Schedule "missing-schedule" not found',
       data: { resource: 'schedule', identifier: 'missing-schedule' },
+      retryable: false,
     });
   });
 
@@ -542,7 +549,7 @@ describe('weft.schedules.update', () => {
       );
 
       expect(response.status).toBe(409);
-      expect(await response.json()).toEqual({ error: 'Schedule already exists' });
+      expect(await response.json()).toEqual({ error: 'Schedule already exists', retryable: false });
     } finally {
       engine.updateSchedule = originalUpdateSchedule;
     }
@@ -570,6 +577,7 @@ describe('weft.schedules.update', () => {
       expect(await response.json()).toEqual({
         error: expect.stringContaining('revision-gone'),
         weftCode: 'WorkflowRevisionUnavailableError',
+        retryable: false,
       });
     } finally {
       engine.updateSchedule = originalUpdateSchedule;
@@ -632,7 +640,7 @@ describe('weft.schedules.update', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.updateSchedule = originalUpdateSchedule;
     }
@@ -691,6 +699,7 @@ describe('weft.schedules.update DynamicWorkflowSourceUnavailableError wire mappi
       expect(JSON.parse(text)).toEqual({
         error: expectedMessage,
         weftCode: 'DynamicWorkflowSourceUnavailableError',
+        retryable: false,
       });
       expect(text).not.toContain('/etc/secrets/token=abc123');
     });
@@ -727,7 +736,12 @@ describe('weft.schedules.update DynamicWorkflowSourceUnavailableError wire mappi
         error: {
           code: -32021,
           message: expectedMessage,
-          data: { reason: testCase.reason, weftCode: 'Conflict', httpStatus: 409 },
+          data: {
+            reason: testCase.reason,
+            weftCode: 'Conflict',
+            httpStatus: 409,
+            retryable: false,
+          },
         },
       });
       expect(text).not.toContain('/etc/secrets/token=abc123');

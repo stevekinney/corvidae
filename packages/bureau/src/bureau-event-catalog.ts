@@ -255,6 +255,27 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     ],
     EVERY_SCOPE,
   ),
+  'run.stalled': entry(
+    'run.stalled',
+    'run',
+    'A run that is alive stopped making progress outside a declared wait: Operative’s own `alive-but-stalled` assessment of it, which the Bureau recorded on the task (`attention` holds `stalled`). It is published once each time a run enters the state, so a stall that clears and begins again is announced again. `since` is the instant, on the Bureau’s clock, the stall was seen. A run waiting on a person, a signal, a wakeup or a child run it dispatched is never stalled.',
+    [
+      ['runId', 'string'],
+      ['since', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  'run.looping': entry(
+    'run.looping',
+    'run',
+    'A run’s toolbox reported a loop: the same call repeated, or two calls alternating, past its warning or its block threshold. The run is `looping` (`attention` holds it) until it settles, so the event is published once for a run, with the first report: `level` is `warning` or `blocked`. `since` is the instant, on the Bureau’s clock, the report was recorded. Each report is also in the audit trail as `toolbox.loop-warning` or `toolbox.loop-blocked`.',
+    [
+      ['runId', 'string'],
+      ['since', 'string'],
+      ['level', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
   'tool.policy-denied': entry(
     'tool.policy-denied',
     'run',

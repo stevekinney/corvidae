@@ -110,8 +110,14 @@ export interface BureauSchedules {
   /**
    * Cancel and permanently delete a durable schedule. Returns `true` on success,
    * `undefined` when no durable engine is composed. `guard` as for {@link BureauSchedules.pause}.
+   * With `guard.dryRun` it makes the checks the cancel makes (a workflow file's schedule, a
+   * missing one, a stale `expectedRevision`) and refuses as the cancel refuses, then cancels
+   * nothing and writes and records nothing.
    */
-  cancel(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+  cancel(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard & { readonly dryRun?: boolean | undefined },
+  ): Promise<true | undefined>;
 
   /**
    * Change a durable schedule's cadence, description, and overlap policy (COR-1482), and the agent,

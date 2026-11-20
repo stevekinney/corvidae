@@ -69,6 +69,7 @@ describe('weft.schedules.pause', () => {
     expect(await response.json()).toEqual({
       error: 'Schedule "does-not-exist" not found',
       data: { resource: 'schedule', identifier: 'does-not-exist' },
+      retryable: false,
     });
   });
 
@@ -90,7 +91,10 @@ describe('weft.schedules.pause', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: 'No workflow registered for schedule' });
+      expect(await response.json()).toEqual({
+        error: 'No workflow registered for schedule',
+        retryable: false,
+      });
     } finally {
       engine.pauseSchedule = originalPauseSchedule;
     }
@@ -114,7 +118,7 @@ describe('weft.schedules.pause', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.pauseSchedule = originalPauseSchedule;
     }
