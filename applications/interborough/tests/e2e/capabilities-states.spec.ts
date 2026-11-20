@@ -364,14 +364,14 @@ for (const width of WIDTHS) {
       ).toBeVisible();
       const connect = page
         .getByRole('main')
-        .getByRole('link', { name: copy.source.connect.action });
+        .getByRole('button', { name: copy.source.connect.action });
       await expect(connect).toHaveCount(2);
       await expect(
         page.locator('main .cinder-page-header [data-cinder-variant="primary"]'),
       ).toHaveText(copy.source.connect.action);
       const emptyConnect = page
         .locator('main .cinder-empty-state')
-        .getByRole('link', { name: copy.source.connect.action });
+        .getByRole('button', { name: copy.source.connect.action });
       await expect(emptyConnect).toHaveAttribute('data-cinder-variant', 'primary');
       await captureForDesignReview(page, {
         route: '/capabilities',
