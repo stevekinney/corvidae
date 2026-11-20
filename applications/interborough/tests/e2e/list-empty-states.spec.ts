@@ -16,6 +16,7 @@
 import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { designReviewColorScheme } from '../../scripts/environment-configuration.ts';
 import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -80,7 +81,8 @@ function emptied(result: JsonRecord, method: string): JsonRecord {
     if (method === 'bureau.workflows.list' && key === 'workflows' && Array.isArray(value)) {
       // The code workflows plugins contributed stay: the page leaves them out of its rows.
       next[key] = value.filter(
-        (entry) => typeof entry === 'object' && entry !== null && 'kind' in entry,
+        (entry) =>
+          typeof entry === 'object' && entry !== null && Reflect.get(entry, 'kind') === 'code',
       );
     } else if (method === 'bureau.agents.catalog') {
       next[key] = key === 'tools' ? [] : value;
@@ -126,7 +128,7 @@ async function openEmpty(
   theme: 'light' | 'dark',
 ): Promise<void> {
   await page.emulateMedia({ colorScheme: theme });
-  await page.setViewportSize({ width, height: 900 });
+  await page.setViewportSize({ width, height: width === 1920 ? 1080 : 900 });
   await emptyEveryList(page);
   await page.goto(new URL(list.path, list.host).toString());
   await expect(page.locator(`main [data-list-empty="${list.view}"]`)).toBeVisible();
@@ -149,6 +151,11 @@ for (const list of LIST_PAGES) {
         page,
         checkA11y,
       }) => {
+        const captureScheme = designReviewColorScheme();
+        test.skip(
+          captureScheme !== undefined && captureScheme !== theme,
+          'Captured in the other theme run',
+        );
         await openEmpty(page, list, width, theme);
         const main = page.locator('main');
         const state = main.locator(`[data-list-empty="${list.view}"]`);
@@ -216,7 +223,7 @@ for (const list of LIST_PAGES) {
 
         await captureForDesignReview(page, {
           route: list.path,
-          state: `empty (${theme})`,
+          state: 'first-use list',
           source: SOURCE,
         });
         await checkA11y(`${list.path} empty at ${String(width)}px, ${theme}`);
