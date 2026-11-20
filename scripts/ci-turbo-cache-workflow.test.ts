@@ -128,7 +128,8 @@ describe('Turborepo cache in the workflows', () => {
     expect(restore).toContain('RUNNER_OS');
     expect(save).toContain('path: .turbo/cache');
     expect(save).toContain('key: ${{ env.TURBO_CACHE_PREFIX }}${{ github.sha }}');
-    // Pinned by full commit SHA, as every action is, and with no remote cache or token.
+    // Pinned by full commit SHA, as every action is. The remote cache credentials belong to the
+    // workflows (below), never to the action.
     for (const text of [restore, save]) {
       expect(text).toMatch(/uses: actions\/cache\/(restore|save)@[0-9a-f]{40} # v\d/u);
       expect(text).not.toMatch(/TURBO_TOKEN|TURBO_TEAM|TURBO_API/u);
@@ -261,27 +262,20 @@ describe('the remote cache shared with the owner', () => {
     expect(missing).toEqual([]);
   });
 
-  // A macOS pass through the shared cache must never stand in for a Linux CI test run.
-  test('every test task hashes the platform, and lint, type-check and generation do not', () => {
-    const isTest = (name: string) => /^(test|ci:browser)/u.test(name.replace(/^.*#/u, ''));
-    const isShared = (name: string) =>
-      /^(lint|typecheck|metadata|types|transit)$/u.test(name.replace(/^.*#/u, ''));
-    const unkeyed: string[] = [];
-    const keyed: string[] = [];
-    for (const [name, task] of Object.entries(turbo.tasks)) {
-      const hashes = task.env?.includes('CORVIDAE_TEST_PLATFORM') ?? false;
-      if (isTest(name) && task.cache !== false && !hashes) unkeyed.push(name);
-      if (isShared(name) && hashes) keyed.push(name);
-    }
-    expect(unkeyed).toEqual([]);
-    expect(keyed).toEqual([]);
+  // `turbo.json` names the team too, so a machine that ran `turbo login` reaches the same cache
+  // with no environment of its own. CI's `TURBO_TEAM` must name the same team, since an empty or
+  // different value wins over the file.
+  test('turbo.json names the team every machine shares', () => {
+    const configuration = turbo as { remoteCache?: { teamSlug?: string } };
+    expect(configuration.remoteCache?.teamSlug).toBe('kinney');
   });
 
-  test('the cache restore step sets the platform every test task hashes', () => {
-    const action = readFileSync(
-      resolve(root, '.github/actions/turbo-cache/restore/action.yml'),
-      'utf8',
-    );
-    expect(action).toContain('CORVIDAE_TEST_PLATFORM=${RUNNER_OS}-${RUNNER_ARCH}');
+  // Shared across platforms on purpose (owner decision, 2026-11-19): no task hashes the platform,
+  // so a macOS run and a Linux CI run replay each other's results.
+  test('no task hashes a platform discriminator', () => {
+    const keyed = Object.entries(turbo.tasks)
+      .filter(([, task]) => task.env?.some((name) => /PLATFORM/u.test(name)) ?? false)
+      .map(([name]) => name);
+    expect(keyed).toEqual([]);
   });
 });
