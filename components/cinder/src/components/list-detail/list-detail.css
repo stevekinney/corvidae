@@ -17,9 +17,13 @@
     min-block-size: 0;
   }
 
+  /* The panes are the content surface (white in light mode, the 18.5% surface in dark) against the
+     page canvas around them (owner, 2026-11-19: the list, the detail and the page read as one pale
+     grey). */
   .cinder-list-detail__panels {
     flex: 1 1 auto;
     min-block-size: 0;
+    background: var(--cinder-surface);
   }
 
   .cinder-list-detail__list,

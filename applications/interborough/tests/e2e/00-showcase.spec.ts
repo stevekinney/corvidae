@@ -18,6 +18,7 @@
 import type { Page } from '@playwright/test';
 
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { routes } from '../../src/app/routes.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -30,7 +31,13 @@ import {
   showcaseVariants,
 } from './showcase-routes.ts';
 
-const WIDTHS = [375, 768, 1280] as const;
+/**
+ * The widths each route is held at, widest first (owner, 2026-11-19: review leads with 1280 and
+ * 1920, then 768 and 375). A design-review capture adds 1920, the wide desktop the owner reads
+ * first; the suite itself keeps its three.
+ */
+const WIDTHS: readonly number[] =
+  designReviewCaptureDirectory() === undefined ? [1280, 768, 375] : [1280, 1920, 768, 375];
 const HEIGHT = 900;
 
 /**
@@ -83,7 +90,7 @@ const NAMES = [
 ].filter((name) => !SHOWCASE_ROUTES_WITHOUT_CONTENT.includes(name));
 
 for (const name of NAMES) {
-  test(`${name} holds believable content at 375, 768 and 1280 pixels`, async ({ page }) => {
+  test(`${name} holds believable content at ${WIDTHS.join(', ')} pixels`, async ({ page }) => {
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: HEIGHT });
       await page.goto(`${E2E_SHOWCASE_URL}${addresses[name]}`);
@@ -224,11 +231,12 @@ for (const name of OFFLINE_ROUTES) {
 async function expectOfflineBanner(page: Page, label: string) {
   const banner = page.getByRole('region', { name: 'Connection problem' });
   await expect(banner, label).toBeVisible();
-  // The browser, not the server, is the cause, so the banner leads with that and offers Retry now.
+  // The browser, not the server, is the cause, so the banner leads with that and offers Try again,
+  // the app's one word for asking again (COR-2489).
   await expect(banner).toContainText('You’re offline.');
   await expect(banner).toContainText('Showing what loaded as of');
   await expect(banner).toContainText('Changes are off until you’re back.');
-  await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+  await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
   return banner;
 }
 

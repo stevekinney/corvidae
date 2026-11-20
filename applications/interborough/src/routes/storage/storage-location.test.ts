@@ -1,34 +1,21 @@
 /**
- * The storage line under Health's heading (rows 76b, 80c): "Running on SQLite in ~/.interborough",
- * which writes a home directory as `~`, the way a person says it.
+ * The storage line under Health's heading (rows 76b, 80c): the storage in plain words ("Running on
+ * SQLite"), and the facts Storage details lists, where the full location lives.
  */
 import { describe, expect, test } from 'bun:test';
 
 import { stubHostPaths, stubRemoteHostPaths } from '../../lib/bureau-stub.test-support.ts';
-import { abbreviateHome, runningOnLine, storageFacts } from './storage-location.ts';
+import { runningOnLine, storageFacts } from './storage-location.ts';
 
-describe('abbreviateHome', () => {
-  test('writes a macOS or Linux home directory as ~', () => {
-    expect(abbreviateHome('/Users/steve/.interborough')).toBe('~/.interborough');
-    expect(abbreviateHome('/home/me/.interborough')).toBe('~/.interborough');
-    expect(abbreviateHome('/home/me')).toBe('~');
-  });
-
-  test('leaves a directory that is not under a home as it is', () => {
-    expect(abbreviateHome('/var/lib/interborough')).toBe('/var/lib/interborough');
-    expect(abbreviateHome('/Users')).toBe('/Users');
-  });
-});
-
+// Owner, 2026-11-19: the header read "Running on SQLite in /var/folders/.../interborough-desktop-…"
+// with the Storage details button laid over the cut-off path. A header shows no path.
 describe('runningOnLine', () => {
-  test('names SQLite and the directory the file is in', () => {
-    expect(runningOnLine(stubHostPaths('/a', '/b'))).toBe('Running on SQLite in ~/.interborough');
+  test('names SQLite in plain words and no path', () => {
+    expect(runningOnLine(stubHostPaths('/a', '/b'))).toBe('Running on SQLite');
   });
 
-  test('names Postgres and S3 and the server for a remote installation', () => {
-    expect(runningOnLine(stubRemoteHostPaths())).toBe(
-      'Running on Postgres and S3 in db.example.test:5432/interborough',
-    );
+  test('names Postgres and S3 and no server for a remote installation', () => {
+    expect(runningOnLine(stubRemoteHostPaths())).toBe('Running on Postgres and S3');
   });
 
   test('says only that this is the storage when the host cannot say', () => {
@@ -37,10 +24,10 @@ describe('runningOnLine', () => {
 });
 
 describe('storageFacts', () => {
-  test('names the backend and where it is, for the facts Storage details lists', () => {
+  test('names the backend and the full location, for the facts Storage details lists', () => {
     expect(storageFacts(stubHostPaths('/a', '/b'))).toEqual({
       backend: 'SQLite',
-      location: '~/.interborough',
+      location: '/home/me/.interborough',
     });
     expect(storageFacts(stubRemoteHostPaths())).toEqual({
       backend: 'Postgres and S3',

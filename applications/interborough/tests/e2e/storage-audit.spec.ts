@@ -69,7 +69,7 @@ test.describe('storage', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/health/storage');
     const backend = page.getByTestId('storage-backend');
-    await expect(backend).toContainText('Running on SQLite in');
+    await expect(backend).toContainText('Running on SQLite');
     await backend.getByRole('button', { name: 'Storage details' }).click();
     const details = page.getByTestId('storage-details');
     await expect(details.getByText('Backend', { exact: true })).toBeVisible();

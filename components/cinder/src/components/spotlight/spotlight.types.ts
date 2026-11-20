@@ -4,7 +4,7 @@ import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 
 /** Props for the Spotlight component. */
 export type SpotlightProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
-  /** The one focal value of the screen, such as "Ends in 45 min" or "2 need you". It is set at display size in the default text colour, never the accent. */
+  /** The one focal value of the screen, such as "Ends in 45 min" or "2 need you". It is set at display size in the accent's text colour, so the screen's focus carries Cinder's colour. */
   value: string;
   /** Liveness of the value, drawn as a status dot with its word above the value. Set `statusLabel` to word it. Omit both for a value with no liveness. */
   status?: StatusDotStatus;

@@ -120,15 +120,28 @@ describe('mergeShards', () => {
       shardCount: 1,
     });
 
-  test('writes one manifest from every shard and finds nothing wrong with a whole run', async () => {
-    await shard('c-light-1', [entry()]);
-    await shard('c-dark-1', [dark()]);
+  test('writes one manifest and a wide-first review order from every shard', async () => {
+    const wideLight = entry({ width: 1920, viewport: 'screens/home-1920-light.png' });
+    const wideDark = entry({
+      width: 1920,
+      colorScheme: 'dark',
+      viewport: 'screens/home-1920-dark.png',
+    });
+    await shard('c-light-1', [entry(), wideLight]);
+    await shard('c-dark-1', [dark(), wideDark]);
     const result = await merge();
     expect(result.problems).toEqual([]);
-    expect(result.captures).toBe(2);
+    expect(result.captures).toBe(4);
     const manifest = await readFile(join(root, 'merged', 'manifest.jsonl'), 'utf8');
     const lines = manifest.trim().split('\n');
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(4);
+    const reviewOrder = await readFile(join(root, 'merged', 'review-order.jsonl'), 'utf8');
+    expect(
+      reviewOrder
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    ).toEqual([wideLight, wideDark, entry(), dark()]);
     expect(
       await readFile(
         join(root, 'merged', 'screens', dark().viewport.slice('screens/'.length)),

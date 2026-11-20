@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { rejectionOf } from '@lostgradient/testing';
 import {
   captureForDesignReview,
+  DESIGN_REVIEW_PHONE,
   designReviewSlug,
   designReviewWorld,
   nextFrame,
@@ -22,18 +23,56 @@ import {
   captureCount,
   captureDesignReview,
   capturedRoutes,
+  HOME_STATES_CAPTURED_ON_A_PHONE,
   hostEnvironment,
   parseArguments,
   portIsFree,
   probeSocketHandlers,
+  REVIEW_WIDTH_ORDER,
   routesMissingFromTitles,
   SHOWCASE_SPECIFICATION_PATHS,
   specificationsThatRanNothing,
+  writeReviewOrder,
   type CaptureEnvironment,
 } from './design-review-capture.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
 const NOW = new Date('2026-11-02T08:30:00.000Z');
+
+// COR-2489: Home's states were recorded only at 1280.
+describe('Home’s states on a phone', () => {
+  test('lists the five states captured at 320 and 375 as well as 1280', () => {
+    expect([...HOME_STATES_CAPTURED_ON_A_PHONE]).toEqual([
+      'loading',
+      'still loading',
+      'one card fails',
+      'nothing waiting',
+      'something needs you',
+    ]);
+    const options = parseArguments([], NOW);
+    if (typeof options === 'string') throw new Error(options);
+    expect(options.specifications.some((path) => path.endsWith('tests/e2e/home.spec.ts'))).toBe(
+      true,
+    );
+  });
+
+  test('home.spec.ts captures each of them with the phone as well, and the phone is 375 wide', async () => {
+    const specification = await readFile(
+      new URL('../tests/e2e/home.spec.ts', import.meta.url),
+      'utf8',
+    );
+    const source = specification.replaceAll(/\s+/g, ' ');
+    for (const state of HOME_STATES_CAPTURED_ON_A_PHONE) {
+      expect(source, state).toContain(
+        `captureForDesignReviewWithPhone(page, { route: '/', state: '${state}',`,
+      );
+      expect(source, state).not.toContain(
+        `captureForDesignReview(page, { route: '/', state: '${state}',`,
+      );
+    }
+    expect(DESIGN_REVIEW_PHONE.width).toBe(375);
+  });
+});
 
 describe('parseArguments', () => {
   test('captures every specification in both schemes into a time-stamped directory by default', () => {
@@ -436,6 +475,44 @@ describe('captureCount', () => {
     expect(await captureCount(directory)).toBe(0);
     await writeFile(join(directory, 'manifest.jsonl'), '{"a":1}\n\n  \n{"a":2}\n');
     expect(await captureCount(directory)).toBe(2);
+  });
+
+  // Owner, 2026-11-19: review leads with 1920 and 1280, then 768 and 375, in both themes.
+  test('writes the review order: 1920 and 1280 first, then 768 and 375, light before dark', async () => {
+    const line = (route: string, width: number, colorScheme: 'light' | 'dark') =>
+      JSON.stringify({ route, width, colorScheme });
+    await writeFile(
+      join(directory, 'manifest.jsonl'),
+      [
+        line('/', 375, 'light'),
+        line('/', 768, 'dark'),
+        line('/', 1280, 'dark'),
+        line('/', 320, 'light'),
+        line('/', 1920, 'light'),
+        line('/', 1280, 'light'),
+        line('/health', 1280, 'light'),
+        line('/', 768, 'light'),
+        line('/', 375, 'dark'),
+      ].join('\n'),
+    );
+    expect(await writeReviewOrder(directory)).toBe(9);
+    const written = await readFile(join(directory, 'review-order.jsonl'), 'utf8');
+    const order = written
+      .trim()
+      .split('\n')
+      .map((text) => JSON.parse(text) as { route: string; width: number; colorScheme: string });
+    expect(order.map((entry) => `${entry.route}@${entry.width}/${entry.colorScheme}`)).toEqual([
+      '/@1920/light',
+      '/@1280/light',
+      '/health@1280/light',
+      '/@1280/dark',
+      '/@768/light',
+      '/@768/dark',
+      '/@375/light',
+      '/@375/dark',
+      '/@320/light',
+    ]);
+    expect(REVIEW_WIDTH_ORDER).toEqual([1920, 1280, 768, 375]);
   });
 });
 

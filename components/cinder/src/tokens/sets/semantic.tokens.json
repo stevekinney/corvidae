@@ -2,7 +2,7 @@
   "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
   "surface": {
     "$type": "color",
-    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode is a white sheet on a grey page (owner decision, 2026-11-15): `inset 0.955 -> canvas 0.976 -> surface 1.000 = raised 1.000`, so a white panel separates from the page by fill and a well recedes inside it, with elevation still carried by border + shadow. A `data-density=\"comfortable\"` subtree switches the light arm to the deeper consumer ladder (foundation.css). Dark mode is a neutral ladder (hue 265, chroma at most 0.014) built up from near-black: `canvas 0.145 -> surface 0.185 -> inset 0.210 -> raised 0.235`. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
+    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode is a white sheet on a grey page (owner decision, 2026-11-15): `inset 0.955 -> canvas 0.971 -> surface 1.000 = raised 1.000`, so a white panel separates from the page by fill and a well recedes inside it, with elevation still carried by border + shadow. A `data-density=\"comfortable\"` subtree switches the light arm to the deeper consumer ladder (foundation.css). Dark mode is an indigo-tinted ladder (hue 265, chroma 0.022 to 0.028, so a dark page carries colour rather than reading grey, owner decision 2026-11-16, COR-2489) built up from near-black: `canvas 0.145 -> surface 0.185 -> inset 0.210 -> raised 0.235`. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
     "base": {
       "$value": {
         "colorSpace": "oklch",
@@ -15,7 +15,7 @@
           "public": true,
           "category": "color",
           "contrastPairs": ["text.default"],
-          "cssRecipe": "light-dark(oklch(100% 0 255), oklch(18.5% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(100% 0 255), oklch(18.5% 0.024 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-base"
@@ -36,7 +36,7 @@
             "public": true,
             "category": "color",
             "contrastPairs": ["text.default"],
-            "cssRecipe": "light-dark(oklch(100% 0 255), oklch(23.5% 0.014 265))",
+            "cssRecipe": "light-dark(oklch(100% 0 255), oklch(23.5% 0.028 265))",
             "palette": {
               "family": "neutral",
               "role": "surface-raised"
@@ -86,7 +86,7 @@
           "cssProperty": "--cinder-surface-inset",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(95.5% 0.002 265), oklch(21% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(95.5% 0.002 265), oklch(21% 0.026 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-inset"
@@ -97,7 +97,7 @@
     "hover": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.9712, 0.0144, 256.02]
+        "components": [0.9664, 0.0168, 256.19]
       },
       "$description": "Hover state of the default surface. Light mode washes toward the accent rather than darkening toward black: once the light ramp is anchored at white, its four resting tiers occupy only 0.040 lightness points, so a proportional lightness-only mix would be wider than the whole ramp it has to stay clear of. A light-mode hover that washes toward the brand accent separates by chroma and hue as well, staying legible at a lightness step small enough to fit the ramp.",
       "$extensions": {
@@ -105,7 +105,7 @@
           "cssProperty": "--cinder-surface-hover",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 8%) )"
+          "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 7%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 8%) )"
         }
       }
     },
@@ -127,7 +127,7 @@
     "inverse": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.2, 0.018, 245]
+        "components": [0.17, 0.018, 245]
       },
       "$description": "Inverse surface, used by Tooltip. Light arm is the default text ink (a dark chip); dark arm is the same ink at its dark value, a light chip, so a tooltip separates from the raised popovers it opens over instead of blending into them.",
       "$extensions": {
@@ -158,15 +158,15 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.004, 265]
+        "components": [0.971, 0.006, 265]
       },
-      "$description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).",
+      "$description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decisions, 2026-11-15 and 2026-11-19: the panes and the page read as one pale grey): the canvas (0.971) sits below the white surface and raised (1.000) and above the inset well (0.955), with the light focus ring tuned to clear 3.5:1 against it; the panels part from it by their 16% edge (`border`). Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-surface-canvas",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(97.1% 0.006 265), oklch(14.5% 0.022 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-canvas"
@@ -178,7 +178,7 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.004, 265],
+        "components": [0.971, 0.006, 265],
         "alpha": 0.9
       },
       "$description": "The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (`.cinder-translucent-surface`; AppBar keeps its own 82% mix), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`).",
@@ -251,15 +251,15 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.2, 0.02, 255],
-        "alpha": 0.09
+        "alpha": 0.16
       },
-      "$description": "Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink` in light mode and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.",
+      "$description": "Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 16% alpha step over `border.ink` in light mode (owner, 2026-11-19: at 9% the panels and the page read as one pale grey) and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-border",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 91%), color-mix(in oklch, var(--cinder-border-ink), transparent 88%))"
+          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 84%), color-mix(in oklch, var(--cinder-border-ink), transparent 88%))"
         }
       }
     },
@@ -268,15 +268,15 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.2, 0.02, 255],
-          "alpha": 0.32
+          "alpha": 0.5
         },
-        "$description": "Control boundary: the resting edge of every text-entry control and bordered button. A 32% alpha step over `border.ink` in light (owner decision, 2026-11-11): quiet by default, heavier than every structural tier so a control still reads as the interactive thing, and deliberately under WCAG 1.4.11's 3:1, because a control is also identified by its fill, its label, and its focus ring. In dark it is a 38% step (owner decision, 2026-11-17: controls only), which reads 3.4:1 or better on the raised surface a control paints, resting and hovered, so a dark input, composer or secondary button has an edge that clears 3:1 while structural borders stay quiet. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`.",
+        "$description": "Control boundary: the resting edge of every text-entry control and bordered button. A 50% alpha step over `border.ink` in light (owner decision, 2026-11-19, light mode read faded; it was 32%): heavier than every structural tier so a control reads as the interactive thing, and at or above WCAG 1.4.11's 3:1 on the canvas and every panel (`text-on-surface-contrast.test.ts`). In dark it is a 38% step (owner decision, 2026-11-17: controls only), which reads 3.4:1 or better on the raised surface a control paints, resting and hovered, so a dark input, composer or secondary button has an edge that clears 3:1 while structural borders stay quiet. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-control",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 68%), color-mix(in oklch, var(--cinder-border-ink), transparent 62%))"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 50%), color-mix(in oklch, var(--cinder-border-ink), transparent 62%))"
           }
         }
       },
@@ -284,15 +284,15 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.2, 0.02, 255],
-          "alpha": 0.42
+          "alpha": 0.6
         },
-        "$description": "Hovered control boundary, one step heavier than `border.control`. A 42% alpha step over `border.ink`; becomes `border.contrast.hover` under `prefers-contrast: more`.",
+        "$description": "Hovered control boundary, one step heavier than `border.control`. A 60% alpha step over `border.ink` in light, 44% in dark; becomes `border.contrast.hover` under `prefers-contrast: more`.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-control-hover",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 58%), color-mix(in oklch, var(--cinder-border-ink), transparent 56%))"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 40%), color-mix(in oklch, var(--cinder-border-ink), transparent 56%))"
           }
         }
       }
@@ -302,16 +302,16 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.2, 0.02, 255],
-          "alpha": 0.48
+          "alpha": 0.66
         },
-        "$description": "The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(64% .03 265), which reads about 5.5:1 on the surfaces; it sits above the 38% dark control edge so `prefers-contrast: more` still means a heavier edge, and the contrast pairs hold it above the 3:1 floor on `surface.raised`.",
+        "$description": "The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 66% alpha step over `border.ink` (the ink at 34% transparency), above the 50% light control edge so `prefers-contrast: more` still means a heavier edge. Dark arm: the opaque oklch(64% .03 265), which reads about 5.5:1 on the surfaces; it sits above the 38% dark control edge so `prefers-contrast: more` still means a heavier edge, and the contrast pairs hold it above the 3:1 floor on `surface.raised`.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-contrast",
             "public": true,
             "category": "color",
             "contrastPairs": ["surface.base", "surface.raised"],
-            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 52%), oklch(64% 0.03 265))"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 34%), oklch(64% 0.03 265))"
           }
         }
       },
@@ -319,16 +319,16 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.2, 0.02, 255],
-          "alpha": 0.58
+          "alpha": 0.76
         },
-        "$description": "Hovered form of `border.contrast`, one step heavier. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface.",
+        "$description": "Hovered form of `border.contrast`, one step heavier. A 76% alpha step over `border.ink` in light, 58% in dark; clears 3:1 against every supported surface.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-contrast-hover",
             "public": true,
             "category": "color",
             "contrastPairs": ["surface.base", "surface.raised"],
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 42%)"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 24%), color-mix(in oklch, var(--cinder-border-ink), transparent 42%))"
           }
         }
       }
@@ -344,7 +344,7 @@
           "cssProperty": "--cinder-border-faint",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(92% 0.003 255), oklch(33% 0.03 265))",
+          "cssRecipe": "light-dark(oklch(88.5% 0.004 255), oklch(33% 0.03 265))",
           "palette": {
             "family": "neutral",
             "role": "border-faint"
@@ -356,15 +356,15 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.2, 0.02, 255],
-        "alpha": 0.05
+        "alpha": 0.09
       },
-      "$description": "Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink` in light mode and 8% in dark mode; structural, so exempt from 3:1, and always lighter than `border`.",
+      "$description": "Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 9% alpha step over `border.ink` in light mode and 8% in dark mode; structural, so exempt from 3:1, and always lighter than `border`.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-border-muted",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 95%), color-mix(in oklch, var(--cinder-border-ink), transparent 92%))"
+          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 91%), color-mix(in oklch, var(--cinder-border-ink), transparent 92%))"
         }
       }
     },
@@ -372,15 +372,15 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.2, 0.02, 255],
-        "alpha": 0.15
+        "alpha": 0.24
       },
-      "$description": "Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead.",
+      "$description": "Emphasized structural edge for containers and dividers that need more weight than `border`. A 24% alpha step over `border.ink` in light (15% in dark): heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-border-strong",
           "public": true,
           "category": "color",
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 85%)"
+          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 76%), color-mix(in oklch, var(--cinder-border-ink), transparent 85%))"
         }
       }
     },
@@ -523,15 +523,15 @@
     "subtle": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.5, 0.01, 265]
+        "components": [0.47, 0.01, 265]
       },
-      "$description": "Subtle (tertiary) text color.",
+      "$description": "Subtle (tertiary) text color. It holds 4.5:1 on every surface it is drawn on, the selected row's fill included, in both themes (`text-on-surface-contrast.test.ts`).",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-text-subtle",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(50% 0.01 265), oklch(68% 0.01 265))",
+          "cssRecipe": "light-dark(oklch(47% 0.01 265), oklch(68% 0.01 265))",
           "palette": {
             "family": "neutral",
             "role": "text-subtle"
@@ -577,15 +577,15 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.2, 0.018, 245]
+        "components": [0.17, 0.018, 245]
       },
-      "$description": "Default body text color.",
+      "$description": "Default body text color: near-black in light mode (owner, 2026-11-19).",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-text-default",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(20% 0.018 245), oklch(95% 0.01 265))",
+          "cssRecipe": "light-dark(oklch(17% 0.018 245), oklch(95% 0.01 265))",
           "palette": {
             "family": "neutral",
             "role": "text-default",
@@ -813,15 +813,15 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.62, 0.16, 272]
+        "components": [0.612, 0.16, 272]
       },
-      "$description": "Focus ring color: the accent hue at 62% lightness in both themes, one quiet ring for every control, relative to `accent.solid` so a consumer override re-derives the ring hue. The 2px width and zero offset are `ring.width` and `ring.offset`; `h` tracks the accent hue.",
+      "$description": "Focus ring color: the accent hue at 61.2% lightness in light mode and 62% in dark mode, one quiet ring for every control, relative to `accent.solid` so a consumer override re-derives the ring hue. The 2px width and zero offset are `ring.width` and `ring.offset`; `h` tracks the accent hue.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-ring-color",
           "public": true,
           "category": "color",
-          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.62 0.16 h)"
+          "cssRecipe": "light-dark(oklch(from var(--cinder-accent-solid) 0.612 0.16 h), oklch(from var(--cinder-accent-solid) 0.62 0.16 h))"
         }
       }
     },
@@ -1250,14 +1250,17 @@
   "selected": {
     "background": {
       "$type": "color",
-      "$value": "{accent.background}",
-      "$description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links.",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.8944, 0.0528, 258.74]
+      },
+      "$description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). Its label stays the default text colour, because accent text is for actions and links. In light mode it is the accent mixed 22% into the surface, a real filled state a clear step from the white panel (owner, 2026-11-19: the soft 12% tint read as a thin outline on a faded page); in dark mode it is the soft accent background.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-selected-background",
           "public": true,
           "category": "color",
-          "cssRecipe": "var(--cinder-accent-background)"
+          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-accent-solid), var(--cinder-surface) 78%), var(--cinder-accent-background))"
         }
       }
     }

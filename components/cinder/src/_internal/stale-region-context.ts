@@ -6,7 +6,7 @@
  * A `<StaleRegion>` publishes whether the data under it is old. A control that opts in with its
  * `mutating` prop goes inert while the region is stale: `aria-disabled`, still focusable, ignoring
  * the press, and described by the region's reason. A control that does not opt in (a link, a
- * filter, Retry now, a tab) is untouched, and so is a control outside any region.
+ * filter, Try again, a tab) is untouched, and so is a control outside any region.
  */
 
 import { createContext } from 'svelte';

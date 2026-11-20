@@ -12,6 +12,7 @@ import { describe, expect, test } from 'bun:test';
 import { HttpClientError } from '@lostgradient/weft';
 
 import type { FaultTreatment } from '../lib/faults.ts';
+import { RETRY_LABEL } from './copy/views.ts';
 import FaultBoundaryHarness from './fault-boundary.test-harness.svelte';
 
 async function renderHarness(props: {
@@ -147,7 +148,7 @@ describe('FaultBoundary', () => {
     // (which would be named after `error.name`, `'HttpClientError'`) exists.
     const buttons = getAllByRole('button');
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.textContent?.trim()).toBe('Retry');
+    expect(buttons[0]?.textContent?.trim()).toBe(RETRY_LABEL);
   });
 
   test('onFault reports the classified treatment and the raw error exactly once, before the banner is interactive', async () => {
@@ -176,7 +177,7 @@ describe('FaultBoundary', () => {
     // the boundary only re-renders children when `reset()` runs.
     expect(await findByRole('alert')).not.toBeNull();
 
-    await fireEventClick(await findByRole('button', { name: 'Retry' }));
+    await fireEventClick(await findByRole('button', { name: RETRY_LABEL }));
 
     expect(await findByTestId('recovered')).not.toBeNull();
     expect(queryByRole('alert')).toBeNull();

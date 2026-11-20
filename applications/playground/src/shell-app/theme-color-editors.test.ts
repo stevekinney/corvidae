@@ -366,15 +366,16 @@ describe('the border-ink editor previews every tier it drives', () => {
   // The skeleton fill is a 12% step of the same ink (light sweep L#2), so the ink editor
   // previews it with the border tiers.
   test('alphaStepsOf finds the seven border tiers and the skeleton fill, lightest first', () => {
+    // The light tiers Cinder ships since light mode stopped reading faded (owner, 2026-11-19).
     expect(alphaStepsOf(summaryEnvelope, 'border.ink')).toEqual([
-      { path: 'border.muted', alpha: 0.05 },
-      { path: 'border', alpha: 0.09 },
+      { path: 'border.muted', alpha: 0.09 },
       { path: 'skeleton.background', alpha: 0.12 },
-      { path: 'border.strong', alpha: 0.15 },
-      { path: 'border.control', alpha: 0.32 },
-      { path: 'border.control.hover', alpha: 0.42 },
-      { path: 'border.contrast', alpha: 0.48 },
-      { path: 'border.contrast.hover', alpha: 0.58 },
+      { path: 'border', alpha: 0.16 },
+      { path: 'border.strong', alpha: 0.24 },
+      { path: 'border.control', alpha: 0.5 },
+      { path: 'border.control.hover', alpha: 0.6 },
+      { path: 'border.contrast', alpha: 0.66 },
+      { path: 'border.contrast.hover', alpha: 0.76 },
     ]);
     // Not border-specific: any alpha step over the edited color is previewed.
     expect(alphaStepsOf(summaryEnvelope, 'accent.solid')).toEqual([
@@ -425,16 +426,16 @@ describe('the border-ink editor previews every tier it drives', () => {
     const shipped = render([0.2, 0.02, 255]);
     expect(shipped.map((step) => step.path)).toEqual([
       'border.muted',
-      'border',
       'skeleton.background',
+      'border',
       'border.strong',
       'border.control',
       'border.control.hover',
       'border.contrast',
       'border.contrast.hover',
     ]);
-    // The ladder reads heavier at every step, and only the contrast tiers clear 3:1: a control's
-    // resting edge is quiet by owner decision.
+    // The ladder reads heavier at every step, and a control's edge and the contrast tiers clear
+    // 3:1 (owner, 2026-11-19: light mode read faded).
     const ratios = shipped.map((step) => step.ratio);
     expect(ratios).toEqual(ratios.toSorted((left, right) => left - right));
     expect(ratios.map((ratio) => ratio >= 3)).toEqual([
@@ -442,8 +443,8 @@ describe('the border-ink editor previews every tier it drives', () => {
       false,
       false,
       false,
-      false,
-      false,
+      true,
+      true,
       true,
       true,
     ]);
@@ -511,7 +512,7 @@ describe('the color model keeps the source', () => {
     await controller.start();
     const envelope = controller.draft!.envelope;
     const modes = colorsByMode(envelope, 'text.default');
-    expect(modes.light?.components[0]).toBe(0.2);
+    expect(modes.light?.components[0]).toBe(0.17);
     expect(modes.dark?.components[0]).toBe(0.95);
     const row = catalogueRowByPath('text.default')!;
     const background = effectiveBackground(row, envelope, workbench.context);

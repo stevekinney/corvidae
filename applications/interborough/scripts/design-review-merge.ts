@@ -20,6 +20,7 @@
 import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
+import { writeReviewOrder } from './design-review-capture.ts';
 import { auditGeometry } from './design-review-geometry.ts';
 
 /** The manifest fields the merge reads; every other field travels with the line untouched. */
@@ -180,6 +181,7 @@ export async function mergeShards(options: {
     }
   }
   await writeFile(join(options.out, 'manifest.jsonl'), lines.map((line) => `${line}\n`).join(''));
+  await writeReviewOrder(options.out);
   if (entries.length === 0) problems.push('no capture was written by any shard');
   for (const [path, count] of duplicatePaths(entries)) {
     problems.push(`${path} is claimed by ${String(count)} captures`);

@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * Health (`/health`), the Overview tab: what is wrong and what just happened. Four counts, then
-   * Needs attention, the system problems that need a person now (the page's status, so no banner
+   * Health (`/health`), the Overview tab: what is wrong and what just happened. The counts that are
+   * not zero (none on a healthy page, `lib/worth-showing.ts`), then Needs attention, the system problems that need a person now (the page's status, so no banner
    * sits above it), Recent activity under it, and three metric cards beside them; Advanced at the
    * foot holds the diagnostics (metrics, alerts and checks). The Health frame (`health-frame.svelte`)
    * carries the heading, the storage line, the Live indicator and the tabs. Each band reads on its
@@ -256,7 +256,6 @@
         needsYou={needsYouCount}
         failed={failedCount}
         missed={missedCount}
-        {loading}
       />
 
       <div class="ib-health-overview__grid">

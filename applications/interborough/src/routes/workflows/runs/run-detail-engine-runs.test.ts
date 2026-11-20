@@ -233,6 +233,12 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     });
     expect(header).toContain('Release notes');
     const block = await view.findByTestId('run-step-failure');
+    // COR-2489: why it failed leads, above Input and output.
+    const inputOutput = view.container.querySelector('[data-section="input-output"]');
+    expect(inputOutput).not.toBeNull();
+    expect(
+      block.compareDocumentPosition(inputOutput as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 2 tries');
     expect(block.textContent).toContain('Why it failed');
     expect(block.textContent).toContain('GitHub did not answer (HTTP 503)');
@@ -243,6 +249,12 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     const actions = block.querySelector('[data-run-failure-actions]');
     expect(actions?.textContent).toContain('Retry from step 2');
     expect(actions?.textContent).toContain('runs on 1.2.0');
+    // COR-2489 design round: the block says the version once, beside its button (14t); the
+    // header's caption says it once more (54z), and nothing in the block says it a third time.
+    expect(block.textContent?.split('1.2.0').length).toBe(2);
+    expect(block.querySelector('[data-run-retry-sentence]')?.textContent).toContain(
+      'Retry from this step keeps step 1’s result and runs step 2 again.',
+    );
     expect(actions?.textContent).toContain('Run again');
     expect(actions?.textContent).toContain('Open step 2');
     expect(block.textContent).not.toContain('Show full stack trace');

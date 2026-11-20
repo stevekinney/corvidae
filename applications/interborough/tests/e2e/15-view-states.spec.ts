@@ -519,6 +519,18 @@ function healthCount(page: Page, label: string) {
   });
 }
 
+/**
+ * A count that could be read: a number above zero, or no tile at all, since a count is a tile only
+ * when it is not zero (owner, 2026-11-19). Read once the Bureau's own list has answered.
+ */
+async function expectReadCount(page: Page, label: string): Promise<void> {
+  await expect(
+    page.getByTestId('needs-attention').or(page.getByTestId('needs-attention-clear')),
+  ).toBeVisible();
+  const tile = healthCount(page, label);
+  if ((await tile.count()) > 0) await expect(tile).toHaveText(/[1-9]/);
+}
+
 for (const width of WIDTHS) {
   test(`health (/health) reads each band on its own: a read the engine refuses shows a dash in the counts and the cards at ${width} pixels`, async ({
     page,
@@ -552,9 +564,11 @@ for (const width of WIDTHS) {
     await expect(healthCount(page, HEALTH_COUNTS_COPY.failedIn24Hours)).toContainText(
       HEALTH_COUNTS_COPY.unavailable,
     );
-    await expect(healthCount(page, HEALTH_COUNTS_COPY.missedRuns)).toHaveText(/\d/);
+    await expectReadCount(page, HEALTH_COUNTS_COPY.missedRuns);
     // The Bureau's list still says what needs attention, and the cards that came from the engine say they could not be read.
-    await expect(frame.getByTestId('needs-attention')).toBeVisible();
+    await expect(
+      frame.getByTestId('needs-attention').or(frame.getByTestId('needs-attention-clear')),
+    ).toBeVisible();
     await expect(frame.getByTestId('metric-cards')).toContainText('Couldn’t be read');
     await captureForDesignReview(page, {
       route: '/health',
@@ -576,8 +590,8 @@ for (const width of WIDTHS) {
 
     const frame = page.locator('[data-view="health"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
-    await expect(healthCount(page, HEALTH_COUNTS_COPY.runningNow)).toHaveText(/\d/);
-    await expect(healthCount(page, HEALTH_COUNTS_COPY.needsYou)).toHaveText(/\d/);
+    await expectReadCount(page, HEALTH_COUNTS_COPY.runningNow);
+    await expectReadCount(page, HEALTH_COUNTS_COPY.needsYou);
     await expect(frame.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
     await captureForDesignReview(page, {
       route: '/health',
@@ -1644,7 +1658,7 @@ test.describe('trigger state', () => {
           await expect(status(page).getByTestId('workflow-trigger-code')).toHaveText(
             'start-failed',
           );
-          await expect(status(page).getByRole('button', { name: 'Retry now' })).toBeVisible();
+          await expect(status(page).getByRole('button', { name: 'Try again' })).toBeVisible();
         }
         await captureForDesignReview(page, {
           route: '/workflows/:workflow',

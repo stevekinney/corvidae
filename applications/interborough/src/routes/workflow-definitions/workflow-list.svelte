@@ -21,6 +21,7 @@
   import {
     Button,
     Card,
+    CopyableValue,
     DataList,
     EmptyState,
     ErrorState,
@@ -217,7 +218,12 @@
       </EmptyState>
       <p class="ib-workflows__hint" data-testid="workflows-empty-hint">
         {copy.empty.hintBefore}
-        <code class="ib-identifier" data-testid="workflow-directory">{directory}</code>
+        <!-- A host path is shown only inside a copy control (owner, 2026-11-19). -->
+        <CopyableValue
+          value={directory}
+          label={copy.empty.copyDirectory}
+          data-testid="workflow-directory"
+        />
       </p>
     {:else}
       <FilterBar

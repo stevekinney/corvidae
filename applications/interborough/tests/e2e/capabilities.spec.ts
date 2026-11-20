@@ -144,8 +144,8 @@ test.describe('the Skills tab', () => {
     await page.locator(`[data-skill-row="${E2E_SKILLS.deploy.name}"]`).click();
     const detail = page.getByTestId('skill-detail');
     await expect(detail).toHaveAttribute('data-skill', E2E_SKILLS.deploy.name);
-    // The identifier sits beside the name for a person, and the muted line says what the skill holds.
-    await expect(detail.getByTestId('skill-identifier')).toHaveText(E2E_SKILLS.deploy.name);
+    // The muted line says what the skill holds without restating its identifier.
+    await expect(detail.getByTestId('skill-identifier')).toHaveCount(0);
     await expect(detail.getByTestId('skill-meta')).toContainText(copy.skill.meta.instructionsOnly);
     await expect(detail.getByTestId('skill-meta')).toContainText(
       copy.skill.meta.loadedWhenRelevant,

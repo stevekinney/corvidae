@@ -19,8 +19,9 @@ export const HOME_COPY = {
   /** The words of a row's link to where the rest lives, such as "Open Reviews". */
   needsYou: {
     /** The Spotlight that leads Home: how many reviews wait on you, from the list under it. */
-    spotlight: (count: number): string =>
-      count === 0 ? 'Nothing needs you' : `${String(count)} ${count === 1 ? 'needs' : 'need'} you`,
+    spotlight: (count: number): string => `${String(count)} ${count === 1 ? 'needs' : 'need'} you`,
+    /** The one quiet line that stands for the Spotlight when nothing waits (owner, 2026-11-19). */
+    nothing: 'Nothing needs you.',
     /** The list's heading, drawn only when no Spotlight stands over it (the read failed). */
     title: 'Needs you',
     /** The link beside the Spotlight to the page that holds the rest. */
@@ -38,11 +39,6 @@ export const HOME_COPY = {
     title: 'Needs attention',
     link: 'Open Health',
     listLabel: 'System problems',
-    /** The one line that stands for the card when nothing needs attention. */
-    clear: {
-      title: 'Nothing needs attention',
-      description: 'Storage, schedules, providers and hooks are fine.',
-    },
     storage: {
       title: 'Storage is over its warning level',
       detail: (size: string): string => `${size} used`,
@@ -100,11 +96,6 @@ export const HOME_COPY = {
     title: 'Recent chats',
     link: 'All chats',
     listLabel: 'Recent chats',
-    /** What the card says before the person has sent a first message. */
-    empty: {
-      title: 'No chats yet',
-      description: 'Your chats appear here once you send a first message.',
-    },
   },
   /**
    * The two activity bands, Home's last region (COR-2227): what the workflow engine and the agents
@@ -232,18 +223,14 @@ export const HOME_COPY = {
   },
   /**
    * The checklist a new installation shows in place of the overview (rows 01y to 02b), until the
-   * person has had a chat. The words lead the page in place of the date line.
+   * person has had a chat. It is the whole page: one heading at the page title's size, one short
+   * sentence under it, and the steps (owner, 2026-11-19).
    */
   firstRun: {
-    /** The accessible name of the checklist, and its title. */
-    title: 'Get started',
-    /** The line that leads the page, from how many of the three steps are still open. */
-    lead: (stepsLeft: number): string =>
-      stepsLeft >= 3
-        ? 'Welcome. Three steps to your first chat.'
-        : stepsLeft === 2
-          ? 'Welcome. Two steps left.'
-          : 'Welcome. One step left.',
+    /** The page's one heading while the checklist shows, and the checklist's accessible name. */
+    title: 'Set up Interborough',
+    /** The one sentence under the heading. */
+    lead: 'Connect a model, choose an agent, then say hello.',
     provider: {
       title: 'Connect a provider',
       description: 'Agents need a model provider before they can answer.',
@@ -271,6 +258,14 @@ export const HOME_COPY = {
     chat: {
       title: 'Say hello',
       description: 'Send a first message to see a chat run end to end.',
+      /**
+       * What the step says while a chat cannot work yet: the earlier step it waits on, which the
+       * shared readiness rule names (`chatReadiness`).
+       */
+      waiting: {
+        'needs-provider': 'Waits for step 1: connect a provider first.',
+        'needs-agent': 'Waits for step 2: create an agent first.',
+      },
       action: 'Start a chat',
     },
   },

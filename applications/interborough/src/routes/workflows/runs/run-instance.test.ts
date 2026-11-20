@@ -331,12 +331,13 @@ describe('the tries of a failed step (COR-2424, row 55b)', () => {
   test('says how often it was tried, and what a retry keeps and runs again', () => {
     const copy = RUN_DETAIL_COPY.instance;
     expect(copy.triedIn(3, '3.4 s')).toBe('Interborough tried 3 times in 3.4 s.');
-    expect(copy.retryKeeps(2, '1.2.0')).toBe(
-      'Retry from this step keeps step 1’s result and runs step 2 again on version 1.2.0, the version this run used.',
+    // COR-2489 design round: the version is said beside the block's button (14t) and in the
+    // header's caption (54z), not a third time in this sentence.
+    expect(copy.retryKeeps(2)).toBe(
+      'Retry from this step keeps step 1’s result and runs step 2 again.',
     );
-    expect(copy.retryKeeps(1, '1.2.0')).toBe(
-      'Retry from this step runs step 1 again on version 1.2.0, the version this run used.',
-    );
+    expect(copy.retryKeeps(1)).toBe('Retry from this step runs step 1 again.');
+    expect(copy.retryKeeps(3)).not.toContain('version');
     expect(copy.besideButtons('1.2.0', '1.3.0')).toBe(
       'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
     );

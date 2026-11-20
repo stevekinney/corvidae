@@ -19,7 +19,7 @@
       "id": "with-actions",
       "title": "Retry status and a second action",
       "description": "The retry is the page’s only primary action; a secondary action, a progress line and the fault code behind a disclosure sit with it.",
-      "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"Couldn’t load runs\"\n  description=\"Interborough didn’t answer. Your runs are safe; they’re stored on this machine.\"\n  retryStatus=\"Retrying in 8 s (attempt 3 of 8)\"\n  retryLabel=\"Retry now\"\n  detail=\"HTTP 500 from /api/runs\"\n  onRetry={() => {}}\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" label=\"Open Health\" />\n  {/snippet}\n</ErrorState>\n"
+      "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"Couldn’t load runs\"\n  description=\"Interborough didn’t answer. Your runs are safe; they’re stored on this machine.\"\n  retryStatus=\"Retrying in 8 s (attempt 3 of 8)\"\n  retryLabel=\"Try again\"\n  detail=\"HTTP 500 from /api/runs\"\n  onRetry={() => {}}\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" label=\"Open Health\" />\n  {/snippet}\n</ErrorState>\n"
     },
     {
       "id": "not-found",

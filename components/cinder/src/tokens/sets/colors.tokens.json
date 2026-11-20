@@ -10,7 +10,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.965, 0.035, 148]
+          "components": [0.965, 0.055, 148]
         },
         "$description": "Soft success-tinted surface background.",
         "$extensions": {
@@ -18,7 +18,7 @@
             "cssProperty": "--cinder-status-success-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(96.5% 0.035 148), color-mix(in oklab, var(--cinder-status-success-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(96.5% 0.055 148), color-mix(in oklab, var(--cinder-status-success-solid) 20%, oklch(from var(--cinder-surface) l 0 h)))",
             "palette": {
               "family": "success",
               "role": "background"
@@ -70,7 +70,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.456, 0.05, 151.329]
+          "components": [0.4452, 0.05, 151.329]
         },
         "$description": "Success color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -112,7 +112,7 @@
             "cssProperty": "--cinder-status-warning-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(96.8% 0.035 88), color-mix(in oklab, var(--cinder-status-warning-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(96.8% 0.035 88), color-mix(in oklab, var(--cinder-status-warning-solid) 20%, oklch(from var(--cinder-surface) l 0 h)))",
             "palette": {
               "family": "warning",
               "role": "background"
@@ -164,7 +164,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.5776, 0.05, 75.641]
+          "components": [0.5668, 0.05, 75.641]
         },
         "$description": "Warning color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -254,7 +254,7 @@
             "cssProperty": "--cinder-status-danger-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(95% 0.025 25), color-mix(in oklab, var(--cinder-status-danger-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(95% 0.025 25), color-mix(in oklab, var(--cinder-status-danger-solid) 20%, oklch(from var(--cinder-surface) l 0 h)))",
             "palette": {
               "family": "danger",
               "role": "background"
@@ -306,7 +306,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4368, 0.05, 25.392]
+          "components": [0.426, 0.05, 25.392]
         },
         "$description": "Danger color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -348,7 +348,7 @@
             "cssProperty": "--cinder-status-info-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(95% 0.028 235), color-mix(in oklab, var(--cinder-status-info-solid) 14%, var(--cinder-surface)))",
+            "cssRecipe": "light-dark(oklch(95% 0.028 235), color-mix(in oklab, var(--cinder-status-info-solid) 20%, oklch(from var(--cinder-surface) l 0 h)))",
             "palette": {
               "family": "info",
               "role": "background"
@@ -400,7 +400,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.424, 0.05, 238.535]
+          "components": [0.4132, 0.05, 238.535]
         },
         "$description": "Info color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {

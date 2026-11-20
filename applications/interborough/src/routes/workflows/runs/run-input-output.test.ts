@@ -5,6 +5,7 @@
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import type { WorkflowState } from '@lostgradient/weft';
 
@@ -457,9 +458,35 @@ describe('the message in and the reply out of a chat run', () => {
     });
 
     expect(view.getByText(copy.deliveredToChat, { exact: false })).not.toBeNull();
-    await fireEvent.click(view.getByRole('button', { name: copy.showRawPayloads }));
+    // COR-2489 design round: the action follows the note on its line, and takes a line of its own
+    // only when it wraps (tasks.css pulls the row back so a wrapped label starts on the text edge).
+    const showRaw = view.getByRole('button', { name: copy.showRawPayloads });
+    const row = showRaw.closest('[data-run-delivered]');
+    expect(row?.classList.contains('ib-run__delivered')).toBe(true);
+    expect(row?.querySelector(':scope > .ib-run__note')?.textContent).toBe(copy.deliveredToChat);
+    expect(showRaw.parentElement).toBe(row as HTMLElement);
+    expect(showRaw.hasAttribute('data-cinder-flush')).toBe(false);
+    await fireEvent.click(showRaw);
 
     expect(opened).toBe(1);
+  });
+
+  test('the raw payloads action takes its own line only when it wraps, its words on the text edge', () => {
+    const css = readFileSync(new URL('../../../styles/tasks.css', import.meta.url), 'utf8');
+    const rule = (selector: string): string => {
+      const start = css.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThanOrEqual(0);
+      return css.slice(start, css.indexOf('}', start));
+    };
+    const row = rule('.ib-run__delivered');
+    expect(row).toContain('flex-wrap: wrap;');
+    expect(row).toContain(
+      '--_ib-run-delivered-pull: calc(var(--cinder-button-padding-x-sm) + 1px);',
+    );
+    expect(row).toContain('margin-inline-start: calc(-1 * var(--_ib-run-delivered-pull));');
+    expect(rule('.ib-run__delivered > .ib-run__note')).toContain(
+      'padding-inline-start: var(--_ib-run-delivered-pull);',
+    );
   });
 
   test('a task with no answer says whether it is still to come', () => {

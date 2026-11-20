@@ -155,6 +155,26 @@
     border-radius: var(--cinder-button-radius-lg);
   }
 
+  /* `flush`: a quiet button that starts a line under text draws no face at rest, so its words are
+     what the eye lines up. It is pulled back by its own inline padding and its 1px transparent
+     border, so the words start on the text edge (COR-2489). Only a quiet variant with a label is
+     marked, so a face is never pulled past the edge. */
+  .cinder-button[data-cinder-flush] {
+    margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-sm) + 1px));
+  }
+
+  .cinder-button[data-cinder-flush][data-cinder-size='xs'] {
+    margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-xs) + 1px));
+  }
+
+  .cinder-button[data-cinder-flush][data-cinder-size='md'] {
+    margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-md) + 1px));
+  }
+
+  .cinder-button[data-cinder-flush][data-cinder-size='lg'] {
+    margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-lg) + 1px));
+  }
+
   /* ----------------------------------------
  * Icon-only modifier
  * Button sizes are compact visual sizes, not guaranteed touch targets.

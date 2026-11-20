@@ -311,7 +311,7 @@ describe('a blocked composer', () => {
     expect(composer(container)).toBeNull();
   });
 
-  test('Enable and restart keeps the conversation on screen under the shared restart banner, which offers Retry now once the host stopped answering', async () => {
+  test('Enable and restart keeps the conversation on screen under the shared restart banner, which offers Try again once the host stopped answering', async () => {
     const probing = { ...restartProbing };
     restartProbing.delayMs = 0;
     restartProbing.retryDelayMs = () => 60_000;
@@ -349,7 +349,7 @@ describe('a blocked composer', () => {
       );
 
       const banner = await findByTestId('chat-restart-banner');
-      await waitFor(() => expect(banner.textContent).toContain('Retry now'));
+      await waitFor(() => expect(banner.textContent).toContain('Try again'));
       expect(container.querySelector('.weft-chat-surface')).not.toBeNull();
     } finally {
       host.restore();

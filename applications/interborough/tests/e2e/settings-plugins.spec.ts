@@ -112,7 +112,9 @@ test.describe('Settings › Plugins', () => {
     await expect(opened.getByRole('switch', { name: 'Enabled' })).toBeChecked();
     await expect(opened).toContainText('@lostgradient/plugin-guardrails');
     await expect(opened).toContainText('Package plugin, loaded at startup');
-    await expect(opened.getByTestId('plugin-adds')).toContainText('guardrails:code-safety');
+    const adds = opened.getByTestId('plugin-adds');
+    await expect(adds.locator('[data-contribution="guardrails:code-safety"]')).toBeVisible();
+    await expect(adds).not.toContainText('guardrails:code-safety');
 
     // The configuration is a form built from the plugin's own schema, with one explicit Save.
     const configuration = opened.getByTestId('plugin-configuration');
@@ -494,8 +496,9 @@ test.describe('Settings › Plugins', () => {
     expect(
       Math.abs(secretBox.x + secretBox.width - (addKeyBox.x + addKeyBox.width)),
     ).toBeLessThanOrEqual(2);
-    await expect(anthropic.getByTestId('plugin-secret-note')).toContainText(
-      'readable only by you. The models appear as soon as the key passes a test.',
+    // Where or how the key is stored never renders (owner, 2026-11-19).
+    await expect(anthropic.getByTestId('plugin-secret-note')).toHaveText(
+      'The models appear as soon as the key passes a test.',
     );
     await captureAtEveryWidth(page, 'needs-setup');
   });

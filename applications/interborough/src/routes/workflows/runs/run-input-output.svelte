@@ -93,6 +93,9 @@
   const copy = RUN_DETAIL_COPY.io;
   const hasAnswer = $derived(answer !== undefined && answer.trim() !== '');
   const errorStack = $derived(workflow?.errorStack ?? '');
+  // Why a run only the Bureau holds failed, in one line of its own words; empty when it said
+  // nothing that reads, so no heading is drawn over nothing.
+  const bureauFailure = $derived(task?.statusMessage ? oneLine(task.statusMessage) : '');
   const scheduled = $derived(task !== undefined && isScheduleFire(task));
   // A goal's attempt was started by its goal with the goal's prompt, in a session no person chats
   // in: its message is the goal's, never "From you" and never "Sent in the chat".
@@ -156,6 +159,8 @@
   let replyOpen = $state(false);
 </script>
 
+{@render failure()}
+
 <Section title={RUN_PAGE_COPY.inputOutputHeading} {description} data-section="input-output">
   <Stack gap="var(--cinder-space-3)">
     {#if task !== undefined}
@@ -212,9 +217,12 @@
             <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
           {/if}
           {#if hasAnswer && (!prompted || (goalAttempt && onShowRaw !== undefined))}
-            <p class="ib-run__note">
-              <!-- A goal's attempt delivers nothing to a chat; its raw payloads are still there. -->
-              {#if !prompted}{copy.deliveredToChat}{/if}
+            <!-- Show raw payloads follows "Delivered to chat." on its line, and takes a line of its
+                 own only when it wraps, with its words on the card's text edge (COR-2489: at 320 it
+                 wrapped and its label sat 13px inside the text above it; tasks.css). A goal's
+                 attempt delivers nothing to a chat; its raw payloads are still there. -->
+            <div class="ib-run__delivered" data-run-delivered>
+              {#if !prompted}<p class="ib-run__note">{copy.deliveredToChat}</p>{/if}
               {#if onShowRaw !== undefined}
                 <Button
                   variant="ghost-accent"
@@ -223,7 +231,7 @@
                   onclick={onShowRaw}
                 />
               {/if}
-            </p>
+            </div>
           {/if}
         </section>
       </div>
@@ -232,45 +240,58 @@
     {#if task === undefined || showRaw}
       <RunPayloadCards {workflow} {record} {failedAt} />
     {/if}
-
-    {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
-      <div class="weft-overview-tab__failure">
-        <div class="weft-overview-tab__failure-title">
-          <CircleX aria-hidden="true" size={18} />
-          <span>Failed</span>
-          {#if workflow.failureCategory !== undefined}
-            <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
-          {/if}
-        </div>
-        {#if workflow.failureCategory !== undefined}
-          <p class="weft-overview-tab__failure-explanation">
-            {failureCategoryExplanation(workflow.failureCategory)}
-          </p>
-        {/if}
-        {#if workflow.error}
-          <!-- In its own words, never the error's JSON; the stack below says the rest. -->
-          <p class="weft-overview-tab__failure-explanation">
-            {oneLine(workflow.error, { keepParenthetical: true }) || workflow.error}
-          </p>
-        {/if}
-        {#if errorStack.length > 0}
-          <Collapsible variant="flat" trigger="Show full stack trace">
-            <pre class="weft-send-tab__result">{errorStack}</pre>
-          </Collapsible>
-        {/if}
-      </div>
-    {:else if record !== undefined && workflow === undefined && !failureOnStep}
-      {#if record.error !== undefined && record.error !== null}
-        <Section
-          level={3}
-          title={TASK_COPY.runRecord.error}
-          description={oneLine(record.error, { keepParenthetical: true }) || record.error}
-        />
-      {/if}
-    {/if}
   </Stack>
 
   <VisuallyHidden aria-live="polite" data-testid="payload-view-status">
     {payloadViewPreference.announcement}
   </VisuallyHidden>
 </Section>
+
+<!-- Why a failed run failed leads, above Input and output, so on a phone it is the first thing
+     under the header rather than under the fold below the payloads (COR-2489). A failure told on
+     the step that failed (`failureOnStep`) is told there instead. -->
+{#snippet failure()}
+  {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
+    <div class="weft-overview-tab__failure" data-run-failure>
+      <div class="weft-overview-tab__failure-title">
+        <CircleX aria-hidden="true" size={18} />
+        <span>Failed</span>
+        {#if workflow.failureCategory !== undefined}
+          <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
+        {/if}
+      </div>
+      {#if workflow.failureCategory !== undefined}
+        <p class="weft-overview-tab__failure-explanation">
+          {failureCategoryExplanation(workflow.failureCategory)}
+        </p>
+      {/if}
+      {#if workflow.error}
+        <!-- In its own words, never the error's JSON; the stack below says the rest. -->
+        <p class="weft-overview-tab__failure-explanation">
+          {oneLine(workflow.error, { keepParenthetical: true }) || workflow.error}
+        </p>
+      {/if}
+      {#if errorStack.length > 0}
+        <Collapsible variant="flat" trigger="Show full stack trace">
+          <pre class="weft-send-tab__result">{errorStack}</pre>
+        </Collapsible>
+      {/if}
+    </div>
+  {:else if task !== undefined && workflow === undefined && task.status === 'failed' && bureauFailure !== ''}
+    <!-- A run only the Bureau holds says why in its own words, here and not only in the rail, which
+         sits under everything on a phone (COR-2489). -->
+    <Section
+      title={RUN_DETAIL_COPY.instance.whyItFailed}
+      description={bureauFailure}
+      data-run-failure
+    />
+  {:else if record !== undefined && workflow === undefined && !failureOnStep}
+    {#if record.error !== undefined && record.error !== null}
+      <Section
+        title={TASK_COPY.runRecord.error}
+        description={oneLine(record.error, { keepParenthetical: true }) || record.error}
+        data-run-failure
+      />
+    {/if}
+  {/if}
+{/snippet}

@@ -502,7 +502,7 @@ describe('a host with no workflow of its own', () => {
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
   });
 
-  test('says where a file is added as plain text, in monospace, naming the host’s own directory when it says', async () => {
+  test('says where a file is added, the host’s own directory in a copy control when it says', async () => {
     const { container, findByRole } = open({ definitions: [], files: [] });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
@@ -512,16 +512,21 @@ describe('a host with no workflow of its own', () => {
     expect(hint?.textContent).toContain(WORKFLOW_COPY.list.empty.hintBefore);
     expect(hint?.querySelector('a')).toBeNull();
     await waitFor(() =>
-      expect(testId(container, 'workflow-directory')?.textContent).toBe(STUB_WORKFLOW_DIRECTORY),
+      expect(testId(container, 'workflow-directory')?.textContent).toContain(
+        STUB_WORKFLOW_DIRECTORY,
+      ),
     );
-    expect(testId(container, 'workflow-directory')?.tagName).toBe('CODE');
+    // A host path is shown only inside a copy control (owner, 2026-11-19).
+    expect(
+      testId(container, 'workflow-directory')?.classList.contains('cinder-copyable-value'),
+    ).toBe(true);
   });
 
   test('names the usual directory when the host does not say, and the host’s location when it keeps its files in a bucket', async () => {
     const usual = open({ definitions: [], files: [], workflowDirectory: null });
     await usual.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     await waitFor(() =>
-      expect(testId(usual.container, 'workflow-directory')?.textContent).toBe(
+      expect(testId(usual.container, 'workflow-directory')?.textContent).toContain(
         WORKFLOW_COPY.list.empty.hintDirectory,
       ),
     );
@@ -531,7 +536,7 @@ describe('a host with no workflow of its own', () => {
     const remote = open({ definitions: [], files: [], hostMode: 'remote' });
     await remote.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     await waitFor(() =>
-      expect(testId(remote.container, 'workflow-directory')?.textContent).toBe(
+      expect(testId(remote.container, 'workflow-directory')?.textContent).toContain(
         STUB_REMOTE_WORKFLOW_DIRECTORY,
       ),
     );

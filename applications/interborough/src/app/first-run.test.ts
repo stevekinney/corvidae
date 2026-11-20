@@ -5,6 +5,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  CHAT_READINESS_PATHS,
+  chatReadiness,
   FIRST_RUN_ASSISTANT_KEY,
   FIRST_RUN_SAID_HELLO_KEY,
   firstRunProgress,
@@ -36,6 +38,53 @@ function storageOf(
     },
   });
 }
+
+// COR-2438: whether a chat can work, read by every place that starts one.
+describe('whether a chat can work', () => {
+  const connected = [{ connected: true }];
+  const unconnected = [{ connected: false }];
+  const modelAgent = { media: { image: false } };
+  const scripted = { media: null };
+
+  test('asks for a provider first when there is neither a provider nor an agent', () => {
+    expect(chatReadiness({ providers: [], agents: [] })).toBe('needs-provider');
+    expect(chatReadiness({ providers: unconnected, agents: [] })).toBe('needs-provider');
+  });
+
+  test('asks for an agent when a provider is connected and no agent is offered', () => {
+    expect(chatReadiness({ providers: connected, agents: [] })).toBe('needs-agent');
+    expect(
+      chatReadiness({ providers: connected, agents: [{ ...modelAgent, visibility: 'hidden' }] }),
+    ).toBe('needs-agent');
+  });
+
+  test('is ready with a provider and an agent', () => {
+    expect(chatReadiness({ providers: connected, agents: [modelAgent] })).toBe('ready');
+  });
+
+  test('asks for a provider when every agent needs a model and none can be called', () => {
+    expect(chatReadiness({ providers: unconnected, agents: [modelAgent] })).toBe('needs-provider');
+  });
+
+  test('is ready with a scripted agent, which needs no provider, as Assistant does', () => {
+    expect(chatReadiness({ providers: [], agents: [scripted, modelAgent] })).toBe('ready');
+    // A hidden scripted agent is not one Chat offers.
+    expect(chatReadiness({ providers: [], agents: [{ ...scripted, visibility: 'hidden' }] })).toBe(
+      'needs-provider',
+    );
+  });
+
+  test('reads its provider step by the checklist’s own rule', () => {
+    for (const providers of [[], connected, unconnected]) {
+      const provider = firstRunProgress({ ...NOTHING, providers }).provider;
+      expect(chatReadiness({ providers, agents: [modelAgent] }) === 'ready').toBe(provider);
+    }
+    expect(CHAT_READINESS_PATHS).toEqual({
+      'needs-provider': '/settings/models',
+      'needs-agent': '/agents/new',
+    });
+  });
+});
 
 describe('the steps', () => {
   test('are all open on a fresh installation', () => {

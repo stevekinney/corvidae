@@ -12,6 +12,8 @@
    * or a plain network failure, never a caught local rendering bug).
    */
   import { Badge, Button } from '@lostgradient/cinder';
+
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import {
     CircleSlash,
     CircleX,
@@ -65,5 +67,5 @@
   <Icon aria-hidden="true" size={16} class="weft-query-fault__icon" />
   <Badge variant={tone}>{FAULT_TREATMENT_TITLE[treatment.kind]}</Badge>
   <p class="weft-query-fault__message">{treatment.message}</p>
-  <Button size="sm" variant="secondary" label="Retry" onclick={onRetry} />
+  <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={onRetry} />
 </div>

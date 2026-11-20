@@ -50,6 +50,16 @@ describe('abbreviateKey', () => {
     );
   });
 
+  // The visible-text walk found a workspace's ULID read in full on Storage (owner, 2026-11-19).
+  test('cuts each ULID the same way, so no row reads one in full', () => {
+    expect(abbreviateKey('workspace:01M7TP8RCD8HCAFZ0MFPE5E2RN/anthropic-api-key')).toBe(
+      'workspace:01M7TP8R…/anthropic-api-key',
+    );
+    expect(abbreviateKey('note:ABCDEFGHIJKLMNOPQRSTUVWXYZ')).toBe(
+      'note:ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    );
+  });
+
   test('leaves a key with no UUID, and one that only looks like the start of one, as it is', () => {
     expect(abbreviateKey('memory:preferences')).toBe('memory:preferences');
     expect(abbreviateKey('a:415b1fd8-77c2')).toBe('a:415b1fd8-77c2');

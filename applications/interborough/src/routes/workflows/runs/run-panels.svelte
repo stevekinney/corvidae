@@ -9,7 +9,7 @@
    * it was.
    */
   import { McpApp } from '@lostgradient/chat';
-  import { Badge } from '@lostgradient/cinder';
+  import { Section } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
@@ -46,16 +46,13 @@
 {#each panels as panel (panel.uri)}
   {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
   {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
-  <section
-    class="ib-run__section"
-    aria-labelledby="ib-run-panel-{panel.plugin}-{panel.app}"
+  <!-- Cinder's Section: the panel's title, with the plugin it comes from as the line under it. -->
+  <Section
+    title={panel.title}
+    description={RUN_PAGE_COPY.panelFromPlugin(panel.plugin)}
     data-section="plugin-panel"
     data-plugin={panel.plugin}
   >
-    <h2 id="ib-run-panel-{panel.plugin}-{panel.app}" class="ib-run__heading-2">
-      {panel.title}
-      <Badge>{RUN_PAGE_COPY.panelFromPlugin(panel.plugin)}</Badge>
-    </h2>
     {#key taskId}
       <McpApp
         resourceUri={panel.uri}
@@ -65,5 +62,5 @@
         toolInput={{ arguments: { taskId } }}
       />
     {/key}
-  </section>
+  </Section>
 {/each}

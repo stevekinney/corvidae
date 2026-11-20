@@ -9,6 +9,7 @@
    */
   import { Card, Skeleton, Sparkbar } from '@lostgradient/cinder';
 
+  import { countIsWorthShowing } from '../../lib/worth-showing.ts';
   import { HEALTH_METRICS_COPY as copy } from './health-copy.ts';
   import {
     finishTime,
@@ -74,44 +75,45 @@
     {/if}
   </Card>
 
-  <Card class="ib-metric-card" data-metric="runs-started">
-    {#snippet header()}
-      <div class="ib-metric-card__heading">
-        <h2 class="ib-metric-card__title">{copy.runsStarted}</h2>
-        <span class="ib-metric-card__window">{copy.window}</span>
-      </div>
-    {/snippet}
-    {#if loading || started === undefined}
-      {@render placeholder()}
-    {:else if started === null}
-      <p class="ib-metric-card__value">{copy.unavailable}</p>
-      <p class="ib-metric-card__caption">{copy.unavailableCaption}</p>
-    {:else}
-      <p class="ib-metric-card__value">{started.total}</p>
-      <p class="ib-metric-card__caption">{startedCaption(started)}</p>
-    {/if}
-  </Card>
+  {#if loading || started === undefined || started === null || countIsWorthShowing( { value: started.total } )}
+    <Card class="ib-metric-card" data-metric="runs-started">
+      {#snippet header()}
+        <div class="ib-metric-card__heading">
+          <h2 class="ib-metric-card__title">{copy.runsStarted}</h2>
+          <span class="ib-metric-card__window">{copy.window}</span>
+        </div>
+      {/snippet}
+      {#if loading || started === undefined}
+        {@render placeholder()}
+      {:else if started === null}
+        <p class="ib-metric-card__value">{copy.unavailable}</p>
+        <p class="ib-metric-card__caption">{copy.unavailableCaption}</p>
+      {:else}
+        <p class="ib-metric-card__value">{started.total}</p>
+        <p class="ib-metric-card__caption">{startedCaption(started)}</p>
+      {/if}
+    </Card>
+  {/if}
 
-  <Card class="ib-metric-card" data-metric="time-to-finish">
-    {#snippet header()}
-      <div class="ib-metric-card__heading">
-        <h2 class="ib-metric-card__title">{copy.timeToFinish}</h2>
-        <span class="ib-metric-card__window">{copy.window}</span>
-      </div>
-    {/snippet}
-    {#if loading || finish === undefined}
-      {@render placeholder()}
-    {:else if finish === null}
-      <p class="ib-metric-card__value">{copy.unavailable}</p>
-      <p class="ib-metric-card__caption">{copy.unavailableCaption}</p>
-    {:else if finish === 'none'}
-      <p class="ib-metric-card__value">{copy.unavailable}</p>
-      <p class="ib-metric-card__caption">{copy.noFinished}</p>
-    {:else}
-      <p class="ib-metric-card__value">{finishTime(finish.milliseconds)}</p>
-      <p class="ib-metric-card__caption">{copy.medianCaption(finish.count, started?.total)}</p>
-    {/if}
-  </Card>
+  {#if loading || finish !== 'none'}
+    <Card class="ib-metric-card" data-metric="time-to-finish">
+      {#snippet header()}
+        <div class="ib-metric-card__heading">
+          <h2 class="ib-metric-card__title">{copy.timeToFinish}</h2>
+          <span class="ib-metric-card__window">{copy.window}</span>
+        </div>
+      {/snippet}
+      {#if loading || finish === undefined}
+        {@render placeholder()}
+      {:else if finish === null}
+        <p class="ib-metric-card__value">{copy.unavailable}</p>
+        <p class="ib-metric-card__caption">{copy.unavailableCaption}</p>
+      {:else if finish !== 'none'}
+        <p class="ib-metric-card__value">{finishTime(finish.milliseconds)}</p>
+        <p class="ib-metric-card__caption">{copy.medianCaption(finish.count, started?.total)}</p>
+      {/if}
+    </Card>
+  {/if}
 </div>
 
 <style>
@@ -126,7 +128,8 @@
   @container (min-width: 36rem) {
     .ib-metric-cards {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-auto-columns: minmax(0, 1fr);
+      grid-auto-flow: column;
     }
   }
 
