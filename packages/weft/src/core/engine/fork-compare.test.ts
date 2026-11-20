@@ -243,7 +243,7 @@ describe('engine.compare', () => {
     await using _engine = engine;
     const fork = await engine.fork('five', { fromStep: 3 });
     await fork.result();
-    const stored = decode<WorkflowState>((await storage.get(KEYS.workflow(fork.id)))!);
+    const stored = decode((await storage.get(KEYS.workflow(fork.id)))!) as WorkflowState;
     expect(stored.forkedFrom?.workflowExecutionToken).toBeString();
     delete stored.forkedFrom?.workflowExecutionToken;
     await storage.put(KEYS.workflow(fork.id), encode(stored));

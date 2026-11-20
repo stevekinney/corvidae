@@ -89,6 +89,13 @@ export type BulkWorkflowSnapshot = {
 
 export type BulkOperationPreparation = {
   workflowIds: string[];
+  /**
+   * The run each id held in the scan the token names: its execution token, `undefined` for a run
+   * stored before the token existed. A commit acts on an id only while the run stored under it is
+   * this one ({@link bulkRunMoved}), so a `start-new` replacement that landed after the scan is
+   * never acted on.
+   */
+  runs: ReadonlyMap<string, string | undefined>;
   confirmationToken: string;
   preview: BulkOperationDryRunResult;
   scope: BulkOperationScopeSummary;
@@ -159,6 +166,7 @@ export function buildBulkOperationPreparation(
 
   return {
     workflowIds: snapshots.map((snapshot) => snapshot.id),
+    runs: new Map(snapshots.map((snapshot) => [snapshot.id, snapshot.workflowExecutionToken])),
     confirmationToken,
     scope,
     preview: {
@@ -273,6 +281,22 @@ function deriveBulkConfirmationToken(
       run: snapshot.workflowExecutionToken ?? null,
     })),
   })}`;
+}
+
+/**
+ * Whether the run now stored under `workflowId` is not the one the preparation scanned: a stable
+ * id reused with `start-new` after the scan. A commit skips such an id, whatever status the
+ * replacement is in. An id the preparation did not scan is never moved.
+ */
+export function bulkRunMoved(
+  preparation: BulkOperationPreparation,
+  workflowId: string,
+  state: Pick<WorkflowState, 'workflowExecutionToken'>,
+): boolean {
+  return (
+    preparation.runs.has(workflowId) &&
+    preparation.runs.get(workflowId) !== state.workflowExecutionToken
+  );
 }
 
 export function validateBulkConfirmation(

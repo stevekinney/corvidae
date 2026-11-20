@@ -25,6 +25,7 @@ import { runBulkFailedWorkflowRetry } from './bulk-operations-retry.ts';
 import {
   buildActionableBulkWorkflowFilter,
   buildBulkOperationPreparation,
+  bulkRunMoved,
   collectTerminalWorkflowSnapshots,
   normalizeBulkOperationOptions,
   prepareBulkOperation,
@@ -34,6 +35,7 @@ import {
   toBulkOperationError,
   validateBulkConfirmation,
   withBulkAuditEvent,
+  type BulkOperationPreparation,
 } from './bulk-operations-shared.ts';
 import { BulkDeleteRequiresTerminalWorkflowsError } from './errors.ts';
 import { assertLeaseHeldForEngineWork } from './fenced-write.ts';
@@ -84,6 +86,15 @@ async function runBulkCancellation(
     workflowIdsToCancel,
     bulkConcurrency,
     async (workflowId) => {
+      // `engine.cancel` takes only an id, so this read narrows the window rather than closing it:
+      // a replacement that landed after the scan is not cancelled.
+      const scanned = await loadWorkflowState(internals, workflowId);
+      if (scanned !== null && bulkRunMoved(preparation, workflowId, scanned)) {
+        return {
+          status: 'failed' as const,
+          error: { id: workflowId, error: 'Workflow was replaced after the preview' },
+        };
+      }
       await internals.engine.cancel(workflowId);
       const refreshedState = await loadWorkflowState(internals, workflowId);
       if (refreshedState?.status === 'cancelled') {
@@ -234,6 +245,12 @@ export async function signalAll(
     bulkConcurrency,
     async (workflowId) => {
       try {
+        // `engine.signal` takes only an id, so this read narrows the window rather than closing
+        // it: a replacement that landed after the scan is not signalled.
+        const scanned = await loadWorkflowState(internals, workflowId);
+        if (scanned !== null && bulkRunMoved(preparation, workflowId, scanned)) {
+          return { status: 'failed' as const };
+        }
         await internals.engine.signal(workflowId, name, payload);
         return { status: 'signalled' as const };
       } catch {
@@ -304,6 +321,7 @@ async function runBulkDeletion(
     const workflowStatesToDelete = await loadTerminalWorkflowStatesForBatch(
       internals,
       batchWorkflowIds,
+      preparation,
     );
 
     // A workflow that still owes an engine-driven finalizer (#446) must not be
@@ -385,11 +403,15 @@ export async function deleteAll(
 async function loadTerminalWorkflowStatesForBatch(
   internals: EngineInternals,
   workflowIds: readonly string[],
+  preparation: BulkOperationPreparation,
 ): Promise<WorkflowState[]> {
   const workflowStates: WorkflowState[] = [];
   for (const workflowId of workflowIds) {
     const refreshedState = await loadWorkflowState(internals, workflowId);
     if (refreshedState === null) continue;
+    // A `start-new` replacement landed after the scan: never previewed, so never deleted. The
+    // delete below is fenced on the bytes read here, so the replacement cannot slip in after.
+    if (bulkRunMoved(preparation, workflowId, refreshedState)) continue;
     if (!isTerminalWorkflowStatus(refreshedState.status)) {
       throw new BulkDeleteRequiresTerminalWorkflowsError();
     }
@@ -479,6 +501,7 @@ async function mutateTagsWithBulkControls(
     tags,
     mode,
     preparation.workflowIds,
+    preparation.runs,
   );
   if (!shouldPersistBulkAudit(options)) return result;
   return withBulkAuditEvent(internals, preparation, options, result, result.modified);

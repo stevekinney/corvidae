@@ -122,10 +122,7 @@ async function runBulkPurge(
   if (options.dryRun === true) return preparation.preview;
 
   validateBulkConfirmation(options, preparation);
-  // The run each id held when it was previewed: the delete is fenced on it, not on a fresh read.
-  const previewedRuns = new Map(
-    candidates.map((candidate) => [candidate.id, candidate.workflowExecutionToken] as const),
-  );
+  // The delete is fenced on the run each id held when it was previewed, not on a fresh read.
   const results = await runBulkWorkflowPool(
     preparation.workflowIds,
     resolveBulkOperationConcurrency(options),
@@ -133,7 +130,7 @@ async function runBulkPurge(
     // purged by someone else, or one that now owes a finalizer): skipped, never deleted.
     (workflowId) =>
       purgeWorkflowById(internals, workflowId, cleanupWaiters, {
-        workflowExecutionToken: previewedRuns.get(workflowId),
+        workflowExecutionToken: preparation.runs.get(workflowId),
       }),
   );
   const failures = results.flatMap((result) =>
