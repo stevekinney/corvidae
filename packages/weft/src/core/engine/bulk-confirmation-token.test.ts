@@ -5,10 +5,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import {
-  buildBulkOperationPreparation,
-  type BulkWorkflowSnapshot,
-} from './bulk-operations-shared.ts';
+import { buildBulkOperationPreparation } from './bulk-operations-shared.ts';
+import type { BulkWorkflowSnapshot } from './bulk-scanned-runs.ts';
 
 function snapshot(workflowExecutionToken: string | undefined): BulkWorkflowSnapshot {
   return {

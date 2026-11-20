@@ -225,7 +225,8 @@ describe('engine.compare', () => {
     await using _engine = engine;
     const fork = await engine.fork('five', { fromStep: 3 });
     await fork.result();
-    expect((await engine.get(fork.id))?.forkedFrom?.workflowExecutionToken).toBeString();
+    const forkState = await engine.get(fork.id);
+    expect(forkState?.forkedFrom?.workflowExecutionToken).toBeString();
     const replacement = await engine.start('five', null, {
       id: 'five',
       onTerminalConflict: 'start-new',

@@ -16,7 +16,6 @@ import type {
   BulkSignalResult,
   BulkTagResult,
   ListFilter,
-  WorkflowState,
   WorkflowStatus,
 } from '../types.ts';
 import { bulkMutateWorkflowTags } from './attributes-tags.ts';
@@ -25,8 +24,6 @@ import { runBulkFailedWorkflowRetry } from './bulk-operations-retry.ts';
 import {
   buildActionableBulkWorkflowFilter,
   buildBulkOperationPreparation,
-  bulkRunMoved,
-  collectTerminalWorkflowSnapshots,
   normalizeBulkOperationOptions,
   prepareBulkOperation,
   resolveBulkOperationConcurrency,
@@ -35,15 +32,17 @@ import {
   toBulkOperationError,
   validateBulkConfirmation,
   withBulkAuditEvent,
-  type BulkOperationPreparation,
 } from './bulk-operations-shared.ts';
-import { BulkDeleteRequiresTerminalWorkflowsError } from './errors.ts';
+import {
+  bulkRunReplaced,
+  collectTerminalWorkflowSnapshots,
+  loadTerminalWorkflowStatesForBatch,
+} from './bulk-scanned-runs.ts';
 import { assertLeaseHeldForEngineWork } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import type { LifecycleCallbacks } from './lifecycle.ts';
 import { BULK_OPERATION_BATCH_SIZE } from './listing.ts';
 import { loadWorkflowState } from './storage-io.ts';
-import { isTerminalWorkflowStatus } from './validation.ts';
 
 export { purgeInternal, TERMINAL_CLEANUP_DELAY_MS } from './bulk-operations-purge.ts';
 
@@ -88,8 +87,7 @@ async function runBulkCancellation(
     async (workflowId) => {
       // `engine.cancel` takes only an id, so this read narrows the window rather than closing it:
       // a replacement that landed after the scan is not cancelled.
-      const scanned = await loadWorkflowState(internals, workflowId);
-      if (scanned !== null && bulkRunMoved(preparation, workflowId, scanned)) {
+      if (await bulkRunReplaced(internals, preparation.runs, workflowId)) {
         return {
           status: 'failed' as const,
           error: { id: workflowId, error: 'Workflow was replaced after the preview' },
@@ -247,8 +245,7 @@ export async function signalAll(
       try {
         // `engine.signal` takes only an id, so this read narrows the window rather than closing
         // it: a replacement that landed after the scan is not signalled.
-        const scanned = await loadWorkflowState(internals, workflowId);
-        if (scanned !== null && bulkRunMoved(preparation, workflowId, scanned)) {
+        if (await bulkRunReplaced(internals, preparation.runs, workflowId)) {
           return { status: 'failed' as const };
         }
         await internals.engine.signal(workflowId, name, payload);
@@ -318,10 +315,12 @@ async function runBulkDeletion(
       batchStart,
       batchStart + BULK_OPERATION_BATCH_SIZE,
     );
+    // The delete below is fenced on the bytes this read returns, so a replacement the read left
+    // out cannot slip in after it.
     const workflowStatesToDelete = await loadTerminalWorkflowStatesForBatch(
       internals,
       batchWorkflowIds,
-      preparation,
+      preparation.runs,
     );
 
     // A workflow that still owes an engine-driven finalizer (#446) must not be
@@ -398,26 +397,6 @@ export async function deleteAll(
   options: BulkOperationOptions = {},
 ): Promise<BulkDeleteResult | BulkOperationDryRunResult> {
   return runBulkDeletion(internals, filter, cleanupWaiters, options);
-}
-
-async function loadTerminalWorkflowStatesForBatch(
-  internals: EngineInternals,
-  workflowIds: readonly string[],
-  preparation: BulkOperationPreparation,
-): Promise<WorkflowState[]> {
-  const workflowStates: WorkflowState[] = [];
-  for (const workflowId of workflowIds) {
-    const refreshedState = await loadWorkflowState(internals, workflowId);
-    if (refreshedState === null) continue;
-    // A `start-new` replacement landed after the scan: never previewed, so never deleted. The
-    // delete below is fenced on the bytes read here, so the replacement cannot slip in after.
-    if (bulkRunMoved(preparation, workflowId, refreshedState)) continue;
-    if (!isTerminalWorkflowStatus(refreshedState.status)) {
-      throw new BulkDeleteRequiresTerminalWorkflowsError();
-    }
-    workflowStates.push(refreshedState);
-  }
-  return workflowStates;
 }
 
 export async function tagAll(

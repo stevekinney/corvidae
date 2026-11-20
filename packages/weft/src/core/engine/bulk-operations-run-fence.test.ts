@@ -99,6 +99,21 @@ function replaceWithParkingRun(engine: TestEngine, id: string) {
   });
 }
 
+async function statusOf(engine: TestEngine, id: string) {
+  const state = await engine.get(id);
+  return state?.status;
+}
+
+async function tagsOf(engine: TestEngine, id: string) {
+  const state = await engine.get(id);
+  return state?.tags;
+}
+
+async function tokenOf(engine: TestEngine, id: string) {
+  const state = await engine.get(id);
+  return state?.workflowExecutionToken;
+}
+
 describe('a confirmed bulk operation acts only on the run it scanned', () => {
   it('delete skips a replacement that ended in the same status after the scan', async () => {
     const id = `fence-delete-${(invocation += 1)}`;
@@ -119,9 +134,10 @@ describe('a confirmed bulk operation acts only on the run it scanned', () => {
     expect(await replacement.result()).toBe('NEW');
     gate.release();
 
-    expect((await deleting).deleted).toBe(0);
+    const deletion = await deleting;
+    expect(deletion.deleted).toBe(0);
     expect(await base.get(KEYS.workflow(id))).not.toBeNull();
-    expect((await engine.get(id))?.status).toBe('completed');
+    expect(await statusOf(engine, id)).toBe('completed');
   });
 
   // The tag write reads the run inside the serialized state-write lock, which a replacement needs
@@ -131,7 +147,7 @@ describe('a confirmed bulk operation acts only on the run it scanned', () => {
     const id = `fence-tags-${(invocation += 1)}`;
     await using engine = await createEngine(new MemoryStorage());
     await completedRun(engine, id);
-    const scannedToken = (await engine.get(id))?.workflowExecutionToken;
+    const scannedToken = await tokenOf(engine, id);
     expect(scannedToken).toBeString();
     const replacement = await replaceWithParkingRun(engine, id);
     await finishParkedRun(engine, id);
@@ -143,16 +159,16 @@ describe('a confirmed bulk operation acts only on the run it scanned', () => {
         workflowExecutionToken: scannedToken,
       }),
     ).toBe(false);
-    expect((await engine.get(id))?.tags).toEqual(TAGS);
+    expect(await tagsOf(engine, id)).toEqual(TAGS);
 
-    const replacementToken = (await engine.get(id))?.workflowExecutionToken;
+    const replacementToken = await tokenOf(engine, id);
     expect(replacementToken).not.toBe(scannedToken);
     expect(
       await mutateWorkflowTags(internals, id, ['added'], 'add', {
         workflowExecutionToken: replacementToken,
       }),
     ).toBe(true);
-    expect((await engine.get(id))?.tags).toEqual([...TAGS, 'added'].toSorted());
+    expect(await tagsOf(engine, id)).toEqual([...TAGS, 'added'].toSorted());
   });
 
   it('retry-failed reports a replacement that failed again after the scan, and does not retry it', async () => {
@@ -162,7 +178,7 @@ describe('a confirmed bulk operation acts only on the run it scanned', () => {
     await using engine = await createEngine(gate.storage);
     const first = await engine.start('run-fence-failing', 'OLD', { id, tags: TAGS });
     await first.result().catch(() => undefined);
-    expect((await engine.get(id))?.status).toBe('failed');
+    expect(await statusOf(engine, id)).toBe('failed');
     const preview = await engine.retryFailedAll({ tags: TAGS }, { dryRun: true });
 
     gate.arm();
@@ -182,7 +198,7 @@ describe('a confirmed bulk operation acts only on the run it scanned', () => {
     const result = await retrying;
     expect(result.retried).toBe(0);
     expect(result.errors).toEqual([{ id, error: 'Workflow was replaced after the preview' }]);
-    expect((await engine.get(id))?.status).toBe('failed');
+    expect(await statusOf(engine, id)).toBe('failed');
   });
 
   it('cancel reports a replacement that started after the scan, and leaves it running', async () => {
@@ -209,7 +225,7 @@ describe('a confirmed bulk operation acts only on the run it scanned', () => {
     const result = await cancelling;
     expect(result.cancelled).toBe(0);
     expect(result.errors).toEqual([{ id, error: 'Workflow was replaced after the preview' }]);
-    expect((await engine.get(id))?.status).toBe('running');
+    expect(await statusOf(engine, id)).toBe('running');
     await engine.signal(id, 'go');
     expect(await replacement.result()).toBe('NEW');
   });
@@ -235,7 +251,7 @@ describe('a confirmed bulk operation acts only on the run it scanned', () => {
     gate.release();
 
     expect(await signalling).toMatchObject({ signalled: 0, failed: 1 });
-    expect((await engine.get(id))?.status).toBe('running');
+    expect(await statusOf(engine, id)).toBe('running');
     await engine.signal(id, 'go');
     expect(await replacement.result()).toBe('NEW');
   });

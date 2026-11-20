@@ -11,6 +11,11 @@ import { isWeftErrorCode } from '../weft-error.ts';
 /** Longest `failedStep.label`, in characters. */
 export const FAILED_STEP_LABEL_MAX_LENGTH = 200;
 
+/** A label as text; the type says string, but it is built from caller-supplied operation fields. */
+function labelText(label: unknown): string {
+  return String(label);
+}
+
 function truncateLabel(label: string): string {
   if (label.length <= FAILED_STEP_LABEL_MAX_LENGTH) return label;
   const cut = label.slice(0, FAILED_STEP_LABEL_MAX_LENGTH);
@@ -32,7 +37,7 @@ export function failedStepOf(
   // that threw would abort the failure write, and the run would end abandoned instead of failed.
   return {
     index: entry.stepIndex ?? entry.step,
-    label: truncateLabel(String(entry.operationLabel)),
+    label: truncateLabel(labelText(entry.operationLabel)),
   };
 }
 

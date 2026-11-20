@@ -261,7 +261,8 @@ describe('a confirmed bulk purge names the run it previewed', () => {
     );
     expect(refusal).toBeInstanceOf(BulkOperationConfirmationError);
     expect(await storage.get(KEYS.workflow(id))).not.toBeNull();
-    expect((await engine.get(id))?.status).toBe('completed');
+    const kept = await engine.get(id);
+    expect(kept?.status).toBe('completed');
   });
 
   it('skips a replacement that ends in the same status between the commit scan and the delete', async () => {
@@ -294,6 +295,7 @@ describe('a confirmed bulk purge names the run it previewed', () => {
     const result = await purging;
     expect('deleted' in result ? result.deleted : -1).toBe(0);
     expect(await base.get(KEYS.workflow(id))).not.toBeNull();
-    expect((await engine.get(id))?.status).toBe('completed');
+    const kept = await engine.get(id);
+    expect(kept?.status).toBe('completed');
   });
 });

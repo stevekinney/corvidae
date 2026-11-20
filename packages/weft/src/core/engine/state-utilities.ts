@@ -155,6 +155,11 @@ const KEY_LABELED_OPERATIONS = new Set<ContextOperationRequest['type']>([
   'state-commit',
 ]);
 
+/** A key a caller built, as the text a label needs; the type says string, the caller may not. */
+function describeKey(key: unknown): string {
+  return String(key);
+}
+
 export function getTimelineOperationLabel(operation: ContextOperationRequest): string {
   if (KEY_LABELED_OPERATIONS.has(operation.type)) {
     return (operation as Extract<ContextOperationRequest, { key: string }>).key;
@@ -174,7 +179,7 @@ export function getTimelineOperationLabel(operation: ContextOperationRequest): s
       // A reference is caller-built, so its key can be any value until `processLoadOperation`
       // refuses it. The label is read before that, by the timeline entry and by the failure
       // record's failed step, and both need a string.
-      return String(operation.reference.key);
+      return describeKey(operation.reference.key);
     default:
       return operation.type;
   }

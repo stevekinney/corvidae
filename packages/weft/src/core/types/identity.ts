@@ -129,3 +129,20 @@ export type RetryFailedWorkflowResult =
     }
   | { readonly workflowId: string; readonly status: 'no-checkpoint' }
   | { readonly workflowId: string; readonly status: 'not-found' };
+
+/**
+ * Lineage metadata recorded when a workflow was created by forking another
+ * workflow at a checkpoint boundary. Absent on workflows started normally via
+ * {@link Engine.start}. Available on {@link WorkflowState.forkedFrom}.
+ */
+export interface ForkLineage {
+  workflowId: WorkflowId;
+  step: number;
+  /**
+   * The {@link WorkflowState.workflowExecutionToken} of the source run when it was forked. A stable
+   * id reused with `onTerminalConflict: 'start-new'` keeps the id and replaces the run, so
+   * `engine.compare` reads the source only while the run stored under `workflowId` is this one.
+   * Absent on a fork made before the field existed, and when the source had no token.
+   */
+  workflowExecutionToken?: string;
+}

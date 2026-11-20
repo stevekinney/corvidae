@@ -25,7 +25,6 @@ import { reactivationRetryingOperation } from './activity-retrying-record.ts';
 import { buildTerminalWorkflowIndexOperations } from './attributes-tags.ts';
 import {
   buildActionableBulkWorkflowFilter,
-  bulkRunMoved,
   normalizeBulkOperationOptions,
   prepareBulkOperation,
   resolveBulkOperationConcurrency,
@@ -34,9 +33,9 @@ import {
   toBulkOperationError,
   validateBulkConfirmation,
   withBulkAuditEvent,
-  type BulkOperationPreparation,
 } from './bulk-operations-shared.ts';
 import { bindReactivation, throwIfReactivationLostToRemoval } from './bulk-retry-build-binding.ts';
+import { assertBulkRunNotReplaced, type ScannedRuns } from './bulk-scanned-runs.ts';
 import { ensureWorkflowCatalogReady, isWorkflowCatalogReady } from './catalog-readiness.ts';
 import { resolveExecutableRegistrationForRetry } from './dynamic-source-execution.ts';
 import {
@@ -115,7 +114,7 @@ export async function runBulkFailedWorkflowRetry(
     preparation.workflowIds,
     bulkConcurrency,
     async (workflowId) => {
-      await retryFailedWorkflow(internals, workflowId, callbacks, preparation);
+      await retryFailedWorkflow(internals, workflowId, callbacks, preparation.runs);
       return { status: 'retried' as const };
     },
   );
@@ -138,18 +137,13 @@ async function retryFailedWorkflow(
   internals: EngineInternals,
   workflowId: string,
   callbacks: LifecycleCallbacks | undefined,
-  preparation: BulkOperationPreparation,
+  runs: ScannedRuns,
 ): Promise<void> {
   const state = await loadWorkflowState(internals, workflowId);
   if (state === null) {
     throw new Error('Workflow no longer exists');
   }
-  // A `start-new` replacement that landed after the scan was never previewed: not retried, and
-  // reported as a failure of this id. The checkpoint-backed reactivation below is conditional on
-  // the record read here; the checkpoint-absent fallback re-reads inside `startWorkflow`.
-  if (bulkRunMoved(preparation, workflowId, state)) {
-    throw new Error('Workflow was replaced after the preview');
-  }
+  assertBulkRunNotReplaced(runs, workflowId, state);
   if (state.status !== 'failed') {
     throw new Error(`Workflow is ${state.status}, not failed`);
   }

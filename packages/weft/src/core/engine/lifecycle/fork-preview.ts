@@ -14,12 +14,12 @@ import type { EngineInternals } from '../internals.ts';
 import { normalizeForkStep } from '../state-utilities.ts';
 import { loadWorkflowState } from '../storage-io.ts';
 import {
-  assertForkInheritedBuildNotRemoved,
   loadForkSourceCheckpoint,
   resolveForkPersistedRevision,
   resolveForkTargetRevision,
 } from './fork-helpers.ts';
 import { assertForkSourceCheckpointMatchesState } from './fork-source-replacement-guards.ts';
+import { assertForkInheritedBuildNotRemoved } from './fork-worker-binding.ts';
 import { derivePreparedExecutionState } from './persist.ts';
 import type { LifecycleCallbacks } from './shared.ts';
 

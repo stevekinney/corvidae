@@ -13,7 +13,7 @@ import type {
 } from '../types.ts';
 import {
   purgeInternal,
-  purgeWorkflowById,
+  purgeWorkflow,
   resolvePurgeWindow,
   shouldPurgeWorkflowState,
   type CleanupWaiters,
@@ -28,11 +28,16 @@ import {
   toBulkOperationError,
   validateBulkConfirmation,
   withBulkAuditEvent,
+} from './bulk-operations-shared.ts';
+import {
+  bulkRunMoved,
   workflowStateToBulkSnapshot,
   type BulkWorkflowSnapshot,
-} from './bulk-operations-shared.ts';
+  type ScannedRuns,
+} from './bulk-scanned-runs.ts';
 import type { EngineInternals } from './internals.ts';
 import { streamWorkflowStates } from './listing.ts';
+import { loadWorkflowState } from './storage-io.ts';
 
 /**
  * A purge commit that deleted some runs and failed for others. The deletes cannot be undone, so the
@@ -61,7 +66,7 @@ export class PurgeIncompleteError extends AggregateError {
  * The runs a purge of `filter` would remove right now, in the order it would remove them: terminal,
  * owing no finalizer, past the filter's `offset` and within its `limit`. It reads and writes
  * nothing else, so a preview and the token derived from it describe exactly what a commit with
- * that token deletes (a commit that finds a run changed skips it; see `purgeWorkflowById`).
+ * that token deletes (a commit that finds a run changed skips it; see `purgeScannedRun`).
  */
 export async function collectPurgeCandidates(
   internals: EngineInternals,
@@ -108,6 +113,23 @@ export async function purge(
   return runBulkPurge(internals, filter, cleanupWaiters, options);
 }
 
+/**
+ * `purgeWorkflowById` for a run a confirmed purge previewed: skipped when the run now stored under
+ * the id is another (a `start-new` replacement, whatever status it ended in), because the
+ * preview never covered it. The delete itself is fenced on the bytes read here.
+ */
+async function purgeScannedRun(
+  internals: EngineInternals,
+  workflowId: string,
+  runs: ScannedRuns,
+  cleanupWaiters: CleanupWaiters,
+): Promise<boolean> {
+  const state = await loadWorkflowState(internals, workflowId);
+  if (state === null || bulkRunMoved(runs, workflowId, state)) return false;
+  if (!(await shouldPurgeWorkflowState(internals, state, false, 0))) return false;
+  return purgeWorkflow(internals, state, cleanupWaiters);
+}
+
 async function runBulkPurge(
   internals: EngineInternals,
   filter: ListFilter | undefined,
@@ -128,10 +150,7 @@ async function runBulkPurge(
     resolveBulkOperationConcurrency(options),
     // `false` is a run that moved after the preview (replaced by a `start-new`, reactivated, or
     // purged by someone else, or one that now owes a finalizer): skipped, never deleted.
-    (workflowId) =>
-      purgeWorkflowById(internals, workflowId, cleanupWaiters, {
-        workflowExecutionToken: preparation.runs.get(workflowId),
-      }),
+    (workflowId) => purgeScannedRun(internals, workflowId, preparation.runs, cleanupWaiters),
   );
   const failures = results.flatMap((result) =>
     result.status === 'rejected' ? [result.reason] : [],

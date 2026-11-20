@@ -14,7 +14,6 @@ import type {
   BulkOperationPrincipal,
   BulkOperationScopeSummary,
   ListFilter,
-  WorkflowState,
   WorkflowStatus,
 } from '../types.ts';
 import {
@@ -23,14 +22,13 @@ import {
 } from '../types/bulk.ts';
 import { normalizeWorkflowTags } from '../workflow-tags.ts';
 import {
-  BulkDeleteRequiresTerminalWorkflowsError,
-  BulkOperationConfirmationError,
-  EngineDisposedError,
-} from './errors.ts';
+  snapshotMatchingWorkflowSnapshots,
+  type BulkWorkflowSnapshot,
+  type ScannedRuns,
+} from './bulk-scanned-runs.ts';
+import { BulkOperationConfirmationError, EngineDisposedError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
-import { streamWorkflowStateBatches } from './listing.ts';
 import { trackPurgeWrite } from './purge-write-tracking.ts';
-import { isTerminalWorkflowStatus } from './validation.ts';
 
 export const BULK_OPERATION_SAMPLE_LIMIT = 20;
 export const DEFAULT_BULK_OPERATION_CONCURRENCY = 1;
@@ -73,29 +71,10 @@ export async function runBulkWorkflowPool<TItem, TResult>(
   return results;
 }
 
-export type BulkWorkflowSnapshot = {
-  id: string;
-  type: string;
-  status: WorkflowStatus;
-  updatedAt: number;
-  /**
-   * The run the snapshot describes ({@link WorkflowState.workflowExecutionToken}). A stable id
-   * reused with `onTerminalConflict: 'start-new'` keeps its id and can end in the same status, so
-   * the confirmation token names the run as well, and a commit refuses a token whose run was
-   * replaced. Absent on a run stored before the token existed.
-   */
-  workflowExecutionToken?: string;
-};
-
 export type BulkOperationPreparation = {
   workflowIds: string[];
-  /**
-   * The run each id held in the scan the token names: its execution token, `undefined` for a run
-   * stored before the token existed. A commit acts on an id only while the run stored under it is
-   * this one ({@link bulkRunMoved}), so a `start-new` replacement that landed after the scan is
-   * never acted on.
-   */
-  runs: ReadonlyMap<string, string | undefined>;
+  /** The run each id held in the scan the token names; see `bulkRunMoved`. */
+  runs: ScannedRuns;
   confirmationToken: string;
   preview: BulkOperationDryRunResult;
   scope: BulkOperationScopeSummary;
@@ -283,22 +262,6 @@ function deriveBulkConfirmationToken(
   })}`;
 }
 
-/**
- * Whether the run now stored under `workflowId` is not the one the preparation scanned: a stable
- * id reused with `start-new` after the scan. A commit skips such an id, whatever status the
- * replacement is in. An id the preparation did not scan is never moved.
- */
-export function bulkRunMoved(
-  preparation: BulkOperationPreparation,
-  workflowId: string,
-  state: Pick<WorkflowState, 'workflowExecutionToken'>,
-): boolean {
-  return (
-    preparation.runs.has(workflowId) &&
-    preparation.runs.get(workflowId) !== state.workflowExecutionToken
-  );
-}
-
 export function validateBulkConfirmation(
   options: BulkOperationCommitOptions,
   preparation: BulkOperationPreparation,
@@ -445,32 +408,6 @@ export function toBulkOperationError(
   };
 }
 
-export async function snapshotMatchingWorkflowSnapshots(
-  internals: EngineInternals,
-  filter?: ListFilter,
-): Promise<BulkWorkflowSnapshot[]> {
-  const snapshots: BulkWorkflowSnapshot[] = [];
-
-  // Snapshot ids before mutating workflow state entries so storage scans
-  // cannot skip or re-visit workflows when backends reorder after writes.
-  for await (const batch of streamWorkflowStateBatches(internals, filter))
-    for (const state of batch) snapshots.push(workflowStateToBulkSnapshot(state));
-
-  return snapshots;
-}
-
-export function workflowStateToBulkSnapshot(state: WorkflowState): BulkWorkflowSnapshot {
-  return {
-    id: state.id,
-    type: state.type,
-    status: state.status,
-    updatedAt: state.updatedAt,
-    ...(state.workflowExecutionToken === undefined
-      ? {}
-      : { workflowExecutionToken: state.workflowExecutionToken }),
-  };
-}
-
 function uniqueSorted<const T extends string>(values: readonly T[]): T[] {
   return [...new Set(values)].toSorted((left, right) => left.localeCompare(right));
 }
@@ -500,20 +437,4 @@ function isBulkTokenPrimitive(value: unknown): boolean {
     typeof value === 'number' ||
     typeof value === 'boolean'
   );
-}
-
-export async function collectTerminalWorkflowSnapshots(
-  internals: EngineInternals,
-  filter: ListFilter,
-): Promise<BulkWorkflowSnapshot[]> {
-  const snapshots: BulkWorkflowSnapshot[] = [];
-  for await (const batch of streamWorkflowStateBatches(internals, filter)) {
-    for (const state of batch) {
-      if (!isTerminalWorkflowStatus(state.status)) {
-        throw new BulkDeleteRequiresTerminalWorkflowsError();
-      }
-      snapshots.push(workflowStateToBulkSnapshot(state));
-    }
-  }
-  return snapshots;
 }

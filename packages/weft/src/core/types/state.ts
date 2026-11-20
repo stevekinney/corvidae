@@ -6,7 +6,7 @@ import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import type { ActivityCallOptions } from './activity.ts';
 import type { CheckpointState } from './checkpoint.ts';
 import type { TerminationReason } from './history-policy.ts';
-import type { FailureCategory, WorkflowId, WorkflowStatus } from './identity.ts';
+import type { FailureCategory, ForkLineage, WorkflowId, WorkflowStatus } from './identity.ts';
 import type { WorkflowFailedStep, WorkflowRetrying } from './workflow-failure.ts';
 import type { WorkflowOperation } from './workflow-function.ts';
 
@@ -160,23 +160,6 @@ export interface RestartLineage {
   workflowId: WorkflowId;
   workflowExecutionToken?: string;
   replacedAt: number;
-}
-
-/**
- * Lineage metadata recorded when a workflow was created by forking another
- * workflow at a checkpoint boundary. Absent on workflows started normally via
- * {@link Engine.start}. Available on {@link WorkflowState.forkedFrom}.
- */
-export interface ForkLineage {
-  workflowId: WorkflowId;
-  step: number;
-  /**
-   * The {@link WorkflowState.workflowExecutionToken} of the source run when it was forked. A stable
-   * id reused with `onTerminalConflict: 'start-new'` keeps the id and replaces the run, so
-   * `engine.compare` reads the source only while the run stored under `workflowId` is this one.
-   * Absent on a fork made before the field existed, and when the source had no token.
-   */
-  workflowExecutionToken?: string;
 }
 
 /**
