@@ -1262,7 +1262,7 @@ test('[plugin-hook-secret-missing] /hooks/:hook: a chosen key that is Missing is
     source: SOURCE,
   });
   await warning.getByRole('button', { name: HOOKS_COPY.secrets.addKey, exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Save slack-signing-key' });
+  const dialog = page.getByRole('dialog', { name: 'Save Slack signing key' });
   await dialog.getByLabel('Value').fill('a-secret-the-page-never-shows');
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(dialog).toHaveCount(0);

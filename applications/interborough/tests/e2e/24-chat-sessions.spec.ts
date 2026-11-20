@@ -31,7 +31,7 @@ const composer = (page: Page) => page.getByRole('textbox');
 const newChatAction = (page: Page) =>
   page
     .getByRole('region', { name: 'Chats' })
-    .locator('header')
+    .locator('.cinder-page-header')
     .getByRole('link', { name: 'New chat' });
 
 // A new chat with no `?agent=` starts with the host's default agent, the barrier agent
@@ -111,7 +111,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       await page.goto('/chats');
 
       await expect(page).toHaveURL(/\/chats$/);
-      // The frame is ready: the list words its own first use, inside its pane.
+      // The page shows first use once the list has loaded.
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
       const list = page.getByRole('region', { name: 'Chats' });
       await expect(list.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();

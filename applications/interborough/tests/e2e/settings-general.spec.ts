@@ -928,7 +928,7 @@ test.describe('Settings › General, the Embedder row', () => {
     );
     await captureEmbedder(page, 'embedder-needs-setup');
     await embedderRow(page).getByRole('button', { name: 'Add the key' }).click();
-    await expect(page.getByRole('dialog', { name: 'Save gemini-api-key' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Save Gemini API key' })).toBeVisible();
   });
 
   test('embedder-dimension-changed: the vectors are another size, and Embed again asks to embed every memory again', async ({
