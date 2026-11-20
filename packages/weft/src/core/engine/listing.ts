@@ -9,10 +9,12 @@ import type {
   ListOptions,
   PaginatedResult,
   SearchAttributeValue,
+  WorkflowRetrying,
   WorkflowState,
   WorkflowSummary,
 } from '../types.ts';
 import { normalizeWorkflowTags } from '../workflow-tags.ts';
+import { decodeActivityRetrying } from './activity-retrying-record.ts';
 import { mutateWorkflowTags, validateAttributeValueSizes } from './attributes-tags.ts';
 import { CONSTRAINED_ID_CHUNK_SIZE } from './candidate-read-batching.ts';
 import {
@@ -148,9 +150,30 @@ async function collectSummariesFromFullScan(
     const attributeBytes = shouldReadFailureCategoryAttribute(state, options)
       ? await internals.storage.get(KEYS.attribute(state.id))
       : null;
-    items.push(summaryFromState(state, failureCategoryFromAttributeBytes(attributeBytes)));
+    items.push(
+      summaryFromState(
+        state,
+        failureCategoryFromAttributeBytes(attributeBytes),
+        await readRetryingActivity(internals, state),
+      ),
+    );
   }
   return items;
+}
+
+/**
+ * The activity a run is retrying, read only for a run that is running: the record is deleted when
+ * the run leaves `running`, but never trusted after it. One small read per running run.
+ */
+async function readRetryingActivity(
+  internals: EngineInternals,
+  state: WorkflowState,
+): Promise<WorkflowRetrying | undefined> {
+  if (state.status !== 'running') return undefined;
+  return decodeActivityRetrying(
+    await internals.storage.get(KEYS.activityRetrying(state.id)),
+    state.workflowExecutionToken,
+  );
 }
 
 export function assertWorkflowListScanWithinCap(scannedRows: number): void {
@@ -165,8 +188,10 @@ async function summariesFromStates(
   options: ListOptions | undefined,
 ): Promise<WorkflowSummary[]> {
   const attributeBytesByWorkflowId = new Map<string, Uint8Array | null>();
+  const retryingByWorkflowId = new Map<string, WorkflowRetrying | undefined>();
   await Promise.all(
     states.map(async (state) => {
+      retryingByWorkflowId.set(state.id, await readRetryingActivity(internals, state));
       if (!shouldReadFailureCategoryAttribute(state, options)) return;
       attributeBytesByWorkflowId.set(
         state.id,
@@ -179,6 +204,7 @@ async function summariesFromStates(
     summaryFromState(
       state,
       failureCategoryFromAttributeBytes(attributeBytesByWorkflowId.get(state.id) ?? null),
+      retryingByWorkflowId.get(state.id),
     ),
   );
 }
@@ -214,6 +240,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function summaryFromState(
   state: WorkflowState,
   attributeFailureCategory?: FailureCategory,
+  retrying?: WorkflowRetrying,
 ): WorkflowSummary {
   const failureCategory = state.failureCategory ?? attributeFailureCategory;
   return {
@@ -227,6 +254,8 @@ function summaryFromState(
     updatedAt: state.updatedAt,
     ...(state.executionDeadline !== undefined && { executionDeadline: state.executionDeadline }),
     ...(failureCategory !== undefined && failureCategory !== null && { failureCategory }),
+    ...(state.failedStep !== undefined && { failedStep: state.failedStep }),
+    ...(retrying !== undefined && { retrying }),
   };
 }
 

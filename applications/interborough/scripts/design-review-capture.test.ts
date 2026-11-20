@@ -451,6 +451,8 @@ describe('captureForDesignReview readiness', () => {
       locator() {
         return {
           evaluate: async () => 1,
+          // No rendered Markdown on this page, so the Markdown paint wait returns at once.
+          count: async () => 0,
         };
       },
     };

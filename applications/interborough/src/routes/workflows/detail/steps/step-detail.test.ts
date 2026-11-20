@@ -3,9 +3,9 @@ import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import type { WaterfallBar } from '@lostgradient/interborough-plugin/step-waterfall';
 import { logLine } from '../../runs/run-log-cases.test-support.ts';
 import StepDetail from './step-detail.svelte';
-import type { WaterfallBar } from './step-waterfall.ts';
 
 type EntryOverrides = { [K in keyof WorkflowTimelineEntry]?: WorkflowTimelineEntry[K] | undefined };
 

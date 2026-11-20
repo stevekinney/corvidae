@@ -192,3 +192,42 @@ describe('openStepNumbers', () => {
     );
   });
 });
+
+describe('the entries of bureau.runs.timeline', () => {
+  test('are laid out by the same function as the engine’s, with no input or output on them', () => {
+    // The shape `bureau.runs.timeline` serves: a label and tries, and no summary of any payload.
+    const served = [
+      {
+        step: 1,
+        label: 'fetch',
+        operationType: 'activity',
+        status: 'completed',
+        timestamp: 1_000,
+        duration: 250,
+        tries: 1,
+      },
+      {
+        step: 2,
+        label: 'write',
+        operationType: 'activity',
+        status: 'completed',
+        timestamp: 1_250,
+        duration: 750,
+        tries: 2,
+      },
+    ];
+    const fromServed = stepWaterfall(served, { runStartedAt: 1_000, now: 5_000 });
+    const fromEngine = stepWaterfall(
+      served.map(({ step, timestamp, duration }) => entry({ step, timestamp, duration })),
+      { runStartedAt: 1_000, now: 5_000 },
+    );
+    expect(fromServed.get(2)).toEqual({
+      offset: 25,
+      width: 75,
+      open: false,
+      instant: false,
+      startedAfter: 250,
+    });
+    expect(fromServed).toEqual(fromEngine);
+  });
+});

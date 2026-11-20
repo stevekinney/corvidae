@@ -8,6 +8,7 @@ import {
 } from '../types.ts';
 import {
   completeActivityRetryAttempt,
+  forgetActivityRetryName,
   readActivityRetryAttempt,
   readCompletedRetrySleepCount,
   readOrInitActivityDispatchedAt,
@@ -383,6 +384,21 @@ function* runPreparedActivityWithRetry<TResult>(
   prepared: RunActivityRequest<TResult>,
   retrySleep: ActivityRetrySleepGenerator,
 ): Generator<ContextOperationRequest, TResult, unknown> {
+  try {
+    return yield* runPreparedActivityAttempts(context, prepared, retrySleep);
+  } catch (error) {
+    // The activity's retries ended without a result (a non-retryable error, attempts or budget
+    // exhausted, or a failure while it backed off): it is no longer retrying (COR-2529).
+    forgetActivityRetryName(getInternals(context), prepared.retryStateKey);
+    throw error;
+  }
+}
+
+function* runPreparedActivityAttempts<TResult>(
+  context: Context,
+  prepared: RunActivityRequest<TResult>,
+  retrySleep: ActivityRetrySleepGenerator,
+): Generator<ContextOperationRequest, TResult, unknown> {
   const {
     request,
     retryStateKey,
@@ -458,7 +474,7 @@ function* runPreparedActivityWithRetry<TResult>(
       assertScheduleToCloseBudgetNotExhausted(budget, request.activityName, now, now + backoff);
 
       const nextAttempt = attempt + 1;
-      writeActivityRetryAttempt(internals, retryStateKey, nextAttempt);
+      writeActivityRetryAttempt(internals, retryStateKey, nextAttempt, request.activityName);
       yield* retrySleep(backoff, nextAttempt);
       attempt = nextAttempt;
     }

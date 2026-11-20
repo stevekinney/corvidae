@@ -22,6 +22,7 @@ import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.
 import { resolvePendingOperationStep } from '../pending-operation-step.ts';
 import { buildIndexOperations } from '../search-attributes.ts';
 import type { SearchAttributeValue, WorkflowTimelineEntry } from '../types.ts';
+import { buildActivityRetryingOperations } from './activity-retrying-record.ts';
 import { retryCheckpointBatch } from './checkpoint-commit-retry.ts';
 import {
   getCommittedCheckpointBytes,
@@ -440,6 +441,10 @@ async function commitCheckpoint(
     options.settledBranchOperationIds,
   );
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
+  // The record behind `WorkflowSummary.retrying` moves in this same batch, only when it changes.
+  commit.operations.push(
+    ...buildActivityRetryingOperations(internals, workflowId, commit.checkpoint),
+  );
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'
       ? preservePendingTimelineEntry(internals, workflowId, commit.operations)
