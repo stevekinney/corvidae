@@ -13,8 +13,12 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  CINDER_GENERATED_OUTPUTS,
+  ensureCinderGenerated,
+} from '../../../scripts/ensure-cinder-generated.ts';
 import {
   buildPanelPage,
   HOST_PANEL_PACKAGES,
@@ -51,6 +55,8 @@ export type ReleaseOperations = {
   readonly buildPanelPage?: PanelPageBuilder;
   /** The panels the workspace plugins contribute; defaults to {@link workspacePanels}. */
   readonly workspacePanels?: () => Promise<readonly WorkspacePanel[]>;
+  /** The Cinder checkout holding generated assets, supplied by the isolated release fixtures. */
+  readonly generatedCinder?: string;
   readonly platform?: NodeJS.Platform;
   readonly architecture?: string;
   readonly now?: () => number;
@@ -208,6 +214,17 @@ async function stage(
   };
   for (const dependency of Object.keys(manifest.dependencies ?? {}))
     await stage(dependency, nodeModules, seen, dependencies, source);
+}
+
+// The frozen source archive excludes generated assets. Stage the ones produced
+// from the same clean checkout as the executable so relocated panels can build.
+async function stageGeneratedCinder(source: string, runtime: string): Promise<void> {
+  const destination = join(runtime, '@lostgradient', 'cinder');
+  for (const file of CINDER_GENERATED_OUTPUTS) {
+    const target = join(destination, file);
+    await mkdir(dirname(target), { recursive: true });
+    await cp(join(source, file), target);
+  }
 }
 
 async function verifyFrozenInstall(
@@ -513,6 +530,9 @@ export async function buildRelease(
   const readState = operations.readRepositoryState ?? (() => readRepositoryState());
   const { status, sourceSha } = await readState();
   if (status.trim() !== '') throw new Error('Release inputs are dirty');
+  const generatedCinder =
+    operations.generatedCinder ?? join(REPOSITORY_ROOT, 'components', 'cinder');
+  if (operations.generatedCinder === undefined) ensureCinderGenerated({ root: REPOSITORY_ROOT });
   await mkdir(options.outdir, { recursive: true });
   const targetRoot = join(options.outdir, 'interborough');
   const archive = join(options.outdir, `interborough-${options.version}-darwin-arm64.tar.gz`);
@@ -543,6 +563,7 @@ export async function buildRelease(
     await stage(SDK, runtime, staged, productionInstall.dependencies);
     for (const name of PANEL_RUNTIME_PACKAGES)
       await stage(name, runtime, staged, productionInstall.dependencies);
+    await stageGeneratedCinder(generatedCinder, runtime);
     await bundleSdk(runtime, productionInstall.source, command);
     await assertContained(join(root, 'share', 'interborough', 'plugin-runtime'));
     await verifyRelocatedHost(root, prebuilt, operations.now, operations.sleep);
