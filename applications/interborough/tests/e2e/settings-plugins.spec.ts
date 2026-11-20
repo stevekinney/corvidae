@@ -128,7 +128,9 @@ test.describe('Settings › Plugins', () => {
     await expect(groundingRow).not.toContainText('groundingThreshold');
     await expect(configuration.getByRole('button', { name: 'Save configuration' })).toBeVisible();
     await expect(configuration).toContainText(PLUGINS_COPY.configuration.note);
-    await expect(opened.getByTestId('plugin-in-use')).toContainText('Guardrails.');
+    await expect(opened.getByTestId('plugin-in-use')).toHaveText(
+      PLUGINS_COPY.inUse.nothing('Guardrails'),
+    );
 
     await checkA11y('settings plugins at 1280px');
 
