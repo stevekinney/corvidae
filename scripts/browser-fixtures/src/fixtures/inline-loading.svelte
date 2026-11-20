@@ -38,8 +38,8 @@
   }
 </script>
 
-<div class="example-preview-column" style="align-items: flex-start; gap: 0.75rem;">
-  <div class="example-preview-row" style="align-items: center; gap: 0.75rem;">
+<div class="example-preview-column" style="align-items: flex-start; gap: var(--cinder-space-3);">
+  <div class="example-preview-row" style="align-items: center; gap: var(--cinder-space-3);">
     <Button type="button" onclick={startSuccess}>Save (success)</Button>
     <Button type="button" variant="secondary" onclick={startError}>Save (error)</Button>
     <InlineLoading bind:status description={message} />

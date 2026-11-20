@@ -6,7 +6,7 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    border: 1px solid var(--cinder-border);
+    border: var(--cinder-border-width) solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
@@ -18,7 +18,7 @@
     gap: var(--cinder-space-2);
     min-width: 0;
     padding: var(--cinder-space-3) var(--cinder-space-4);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
     background: var(--cinder-surface-raised);
     flex-shrink: 0;
   }
@@ -69,7 +69,7 @@
   .cinder-preview-panel__tabs {
     flex-shrink: 0;
     padding: 0 var(--cinder-space-4);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
     background: var(--cinder-surface);
   }
 
@@ -85,7 +85,7 @@
   .cinder-preview-panel__footer {
     flex-shrink: 0;
     padding: var(--cinder-space-3) var(--cinder-space-4);
-    border-block-start: 1px solid var(--cinder-border-muted);
+    border-block-start: var(--cinder-border-width) solid var(--cinder-border-muted);
     background: var(--cinder-surface-raised);
     color: var(--cinder-text-muted);
   }

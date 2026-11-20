@@ -1,18 +1,14 @@
 import type { ComponentEntry, Theme, Viewport } from '@lostgradient/testing';
 import {
-  applyComponentFilter,
   applyInteractions,
   loadManifest,
   manifestDigest,
-  parseComponentFilter,
   THEMES,
   VIEWPORTS,
 } from '@lostgradient/testing';
 
 import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
-import { runFixtureSweep } from '@lostgradient/testing/playwright/component-sweep';
 import { resolve } from 'node:path';
-import { environmentConfiguration } from '../environment-configuration.ts';
 
 type LiveManifest = { digest: string; entries: unknown[] };
 type ComponentPage = {
@@ -80,23 +76,8 @@ test.describe('server identity', () => {
   });
 });
 
-// `CINDER_TEST_COMPONENTS` is an optional comma-separated allow-list supplied
-// by the caller when a focused component run is useful. Empty, whitespace, or
-// unset values run the full matrix. Unknown slugs throw so a stale scope
-// selection cannot silently omit coverage.
+// The per-component sweep is `components-sweep.playwright.ts`, which owns `CINDER_TEST_COMPONENTS`.
 const allEntries = loadManifest();
-const knownSlugs = new Set(allEntries.map((entry) => entry.slug));
-const filterSlugs = parseComponentFilter(
-  environmentConfiguration().cinderTestComponents,
-  knownSlugs,
-);
-// The terminal's baselines belong to the terminal package's `terminal-visual.playwright.ts`
-// (`components/terminal/browser`), which owns them; sweeping the entry here as well would write each image from two tests. The Chat stress
-// fixture is served by case (`?case=NN`) and captured by `capture-chat-stress.ts`, which owns its
-// images, so this sweep leaves it out too.
-const entries = applyComponentFilter(allEntries, filterSlugs).filter(
-  (entry) => entry.slug !== 'terminal' && entry.slug !== 'chat-stress',
-);
 
 test('visual baselines belong to the application, browser project, and platform', () => {
   const testInfo = test.info();
@@ -721,23 +702,4 @@ for (const theme of THEMES) {
       await expect(page.locator('.cinder-select__option')).toHaveCount(0);
     });
   }
-}
-
-for (const entry of entries) {
-  test.describe(entry.name, () => {
-    const fixtures = entry.fixtures;
-    if (fixtures === undefined || fixtures.length === 0) {
-      throw new Error(`Fixture manifest entry '${entry.slug}' has no extracted fixtures.`);
-    }
-
-    for (const theme of THEMES) {
-      for (const viewport of VIEWPORTS) {
-        for (const fixture of fixtures) {
-          test(`${theme}-${viewport.name}-${fixture.name}`, async ({ componentPage }) => {
-            await runFixtureSweep(componentPage, entry, theme, viewport, fixture);
-          });
-        }
-      }
-    }
-  });
 }

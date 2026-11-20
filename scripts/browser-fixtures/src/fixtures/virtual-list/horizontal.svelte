@@ -25,7 +25,7 @@
 >
   {#snippet row(column, context)}
     <div
-      style={`display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; inline-size: ${columnWidth}px; block-size: 12rem; border-inline-end: 1px solid var(--cinder-border); font-size: var(--cinder-text-sm);`}
+      style={`display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--cinder-space-1); inline-size: ${columnWidth}px; block-size: 12rem; border-inline-end: 1px solid var(--cinder-border); font-size: var(--cinder-text-sm);`}
       data-index={context.index}
     >
       <strong>{column.label}</strong>

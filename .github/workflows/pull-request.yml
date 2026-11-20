@@ -19,6 +19,9 @@ env:
   TURBO_SCM_BASE: origin/${{ github.base_ref }}
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
+  # Vercel Remote Cache, shared with the owner's machine; empty (a fork), remote caching is off.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   static:
@@ -35,10 +38,15 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: pr-static
       - run: bun run format:check
       - run: bun run lint:root
         if: ${{ !cancelled() }}
       - run: bun run typecheck:root
+        if: ${{ !cancelled() }}
+      - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
 
   workspaces:
@@ -55,10 +63,15 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: pr-workspaces
       # No Bun test worker starts here, so the test pool does not bound these tasks; the standard
       # runner has 4 vCPUs and 16 GB (public repositories). The root `turbo.json` caps at 34%, one
       # task here, for the shared 12-core development host.
       - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   tests:
     name: Affected fast-lane tests
@@ -76,6 +89,9 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: pr-tests
       # A change that reaches the root workspace runs `test:browser-fixtures`, which needs Chromium.
       - run: bunx playwright install --with-deps chromium
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
@@ -89,6 +105,8 @@ jobs:
       # at the cost of only the tests the change reaches. The `main` workflow's slow job runs them
       # all, but only after the merge.
       - run: bun scripts/affected-tests.ts run --isolated --base "$TURBO_SCM_BASE"
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   # The browser suites run only when the change reaches them, by the selection the `workspaces` job
   # uses: Turborepo's affected packages, which include a workspace's dependents. Their own workflow
@@ -127,6 +145,8 @@ jobs:
     name: Browser suites
     needs: browser-selection
     uses: ./.github/workflows/browser-suites.yml
+    # The called workflow reads TURBO_TOKEN for the remote cache.
+    secrets: inherit
     with:
       fixtures: ${{ needs.browser-selection.outputs.fixtures == 'true' }}
       interborough: ${{ needs.browser-selection.outputs.interborough == 'true' }}

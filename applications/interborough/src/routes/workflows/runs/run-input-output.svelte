@@ -86,6 +86,10 @@
   const hasAnswer = $derived(answerHtml !== undefined && answerHtml.trim() !== '');
   const errorStack = $derived(workflow?.errorStack ?? '');
   const scheduled = $derived(task !== undefined && isScheduleFire(task));
+  // A goal's attempt was started by its goal with the goal's prompt, in a session no person chats
+  // in: its message is the goal's, never "From you" and never "Sent in the chat".
+  const goalAttempt = $derived(task?.origin?.kind === 'goal');
+  const prompted = $derived(scheduled || goalAttempt);
   const agent = $derived(
     task?.agentName === null || task?.agentName === undefined
       ? TASK_COPY.unknownAgent
@@ -121,7 +125,9 @@
     task !== undefined
       ? scheduled
         ? copy.scheduleDescription
-        : copy.chatDescription
+        : goalAttempt
+          ? copy.goalDescription
+          : copy.chatDescription
       : workflowGoing
         ? copy.workflowDescriptionLive
         : copy.workflowDescription,
@@ -148,10 +154,12 @@
   <Stack gap="var(--cinder-space-3)">
     {#if task !== undefined}
       <div class="ib-run__payloads">
-        <section class="ib-run__payload-card" aria-label={scheduled ? copy.prompt : copy.messageIn}>
+        <section class="ib-run__payload-card" aria-label={prompted ? copy.prompt : copy.messageIn}>
           <header class="ib-run__payload-title-row">
-            <h3 class="ib-run__heading-3">{scheduled ? copy.prompt : copy.messageIn}</h3>
-            <span class="ib-run__note">{scheduled ? copy.fromSchedule : copy.fromYou}</span>
+            <h3 class="ib-run__heading-3">{prompted ? copy.prompt : copy.messageIn}</h3>
+            <span class="ib-run__note"
+              >{scheduled ? copy.fromSchedule : goalAttempt ? copy.fromGoal : copy.fromYou}</span
+            >
           </header>
           {#if messageIn !== undefined}
             <p class="ib-run__message" data-testid="run-message-in">{messageIn}</p>
@@ -160,7 +168,7 @@
           {:else}
             <p class="ib-run__note">{copy.noMessageIn}</p>
           {/if}
-          {#if startedAt !== undefined && !scheduled}
+          {#if startedAt !== undefined && !prompted}
             <p class="ib-run__note">{copy.sentInChat(dayAndTime(startedAt, Date.now()))}</p>
           {/if}
         </section>
@@ -199,9 +207,10 @@
           {:else if followState === 'reconnecting'}
             <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
           {/if}
-          {#if hasAnswer && !scheduled}
+          {#if hasAnswer && (!prompted || (goalAttempt && onShowRaw !== undefined))}
             <p class="ib-run__note">
-              {copy.deliveredToChat}
+              <!-- A goal's attempt delivers nothing to a chat; its raw payloads are still there. -->
+              {#if !prompted}{copy.deliveredToChat}{/if}
               {#if onShowRaw !== undefined}
                 <Button
                   variant="ghost-accent"

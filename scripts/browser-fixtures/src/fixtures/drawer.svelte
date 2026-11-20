@@ -21,8 +21,8 @@
   ];
 </script>
 
-<div style="display: flex; flex-direction: column; gap: 1rem; max-width: 32rem;">
-  <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+<div style="display: flex; flex-direction: column; gap: var(--cinder-space-4); max-width: 32rem;">
+  <div style="display: flex; flex-wrap: wrap; gap: var(--cinder-space-4); align-items: flex-end;">
     <Select id="placement" bind:value={placement} options={placementOptions} label="Placement" />
     <Select id="size" bind:value={size} options={sizeOptions} label="Size" />
     <Checkbox id="use-trigger-ref" bind:checked={useTriggerRef} label="Use triggerRef" />
@@ -48,7 +48,7 @@
   <p>Current settings: placement={placement}, size={size}.</p>
 
   {#snippet footer()}
-    <div style="display: flex; gap: 0.5rem;">
+    <div style="display: flex; gap: var(--cinder-space-2);">
       <Button variant="secondary" label="Cancel" onclick={() => (open = false)} />
       <Button label="Confirm" onclick={() => (open = false)} />
     </div>

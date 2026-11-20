@@ -27,13 +27,13 @@
   .button-shortcut {
     display: grid;
     grid-template-columns: repeat(3, max-content);
-    gap: 0.75rem 1.5rem;
-    padding: 1rem;
+    gap: var(--cinder-space-3) var(--cinder-space-6);
+    padding: var(--cinder-space-4);
   }
 
   .button-shortcut__row {
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: var(--cinder-space-2);
   }
 </style>

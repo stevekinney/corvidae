@@ -94,6 +94,8 @@ export interface LinearDependencies {
   executionStateDirectory?: string;
   /** Stable coordinator identity; production defaults to the Chef run. */
   ownerId?: string;
+  /** Where `lease` writes its marker; defaults to the host-sessions places directory. */
+  leaseDirectory?: string;
 }
 
 export interface LinearClient {
@@ -1598,6 +1600,67 @@ export async function releaseLease(
   };
 }
 
+/**
+ * Writes (or, on release, removes) this session's lease marker in the host-sessions ledger
+ * directory after the Linear lease has succeeded and read back, so `host-sessions.ts hook` denies
+ * `start_session` from a leased session. The session id is `--session`, else
+ * `CLAUDE_CODE_SESSION_ID`, which Claude Code sets and which equals the hooks' `session_id`; with
+ * neither, the lease stands as before and the summary says no marker was written.
+ */
+async function withLeaseMarker(
+  perform: () => Promise<Outcome>,
+  options: {
+    release: boolean;
+    runId: string;
+    now: Date;
+    session: string | undefined;
+    directory: string | undefined;
+  },
+): Promise<Outcome> {
+  const { session } = options;
+  if (session === undefined || session === '') {
+    const outcome = await perform();
+    if (!outcome.ok) return outcome;
+    return {
+      ...outcome,
+      summary: `${outcome.summary} No lease marker was written: CLAUDE_CODE_SESSION_ID is unset, so pass --session <id>.`,
+      data: { ...outcome.data, marker: false },
+    };
+  }
+  const host = await import('../host-sessions.ts');
+  const directory = options.directory ?? (await host.hostPlacesDirectory());
+  if (options.release) {
+    // A release removes this session's own marker whether or not Linear accepted it: another run
+    // may hold the lease by now, and a marker must never outlive the lease it records.
+    let outcome: Outcome;
+    try {
+      outcome = await perform();
+    } finally {
+      await host.removeLeaseMarker(directory, session);
+    }
+    return {
+      ...outcome,
+      summary: `${outcome.summary} Lease marker removed for session ${session}.`,
+      data: { ...outcome.data, marker: true },
+    };
+  }
+  const outcome = await perform();
+  if (!outcome.ok) return outcome;
+  await host.writeLeaseMarker(directory, {
+    sessionId: session,
+    project: typeof outcome.data['project'] === 'string' ? outcome.data['project'] : '',
+    run: options.runId,
+    leasedAt: options.now.toISOString(),
+    // The Linear lease lapses `leaseExpiryHours` after its last renewal; the marker lapses with it.
+    expiresAt: new Date(options.now.getTime() + leaseExpiryHours * 3_600_000).toISOString(),
+  });
+  return {
+    ...outcome,
+    summary: `${outcome.summary} Lease marker written for session ${session}.`,
+    data: { ...outcome.data, marker: true },
+  };
+}
+
 interface Parsed {
   positionals: string[];
   added: string[];
@@ -1878,7 +1941,10 @@ export async function run(
     'branch',
     'head',
     'generation',
+    'session',
   ]);
+  if (command !== 'lease' && parsed.options.has('session'))
+    throw new UsageError('--session applies only to lease.');
   if (command !== 'comment' && parsed.options.has('update'))
     throw new UsageError('--update applies only to comment.');
   if (command !== 'project-update' && parsed.options.has('health'))
@@ -2127,6 +2193,23 @@ export async function run(
     const [id] = identifierArgument(parsed, 1);
     const by = required(parsed, 'by');
     plan = (client) => blockIssue(client, id as string, by);
+  }
+  if (command === 'lease') {
+    const leasePlan = plan;
+    const release = parsed.flags.has('release');
+    const session = parsed.options.get('session');
+    if (session === '') throw new UsageError('--session needs a session id.');
+    const runId = parsed.options.get('run') as string;
+    plan = async (client) =>
+      withLeaseMarker(() => leasePlan(client), {
+        release,
+        runId,
+        now,
+        session:
+          session ??
+          (dependencies.environment ?? rootScriptEnvironment())['CLAUDE_CODE_SESSION_ID'],
+        directory: dependencies.leaseDirectory,
+      });
   }
   const client = createClient(dependencies);
   try {

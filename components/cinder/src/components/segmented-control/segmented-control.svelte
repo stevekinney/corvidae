@@ -7,6 +7,13 @@
   import type { Attachment } from 'svelte/attachments';
   import { SvelteSet } from 'svelte/reactivity';
 
+  import {
+    ariaInvalid,
+    composeDescribedBy,
+    describeId,
+    errorId as buildErrorId,
+  } from '../../_internal/field-control.ts';
+  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import Select from '../select/select.svelte';
 
@@ -23,6 +30,10 @@
     label,
     name,
     labelVisible = true,
+    description,
+    note,
+    error,
+    errorAction,
     disabled = false,
     size = 'md',
     density,
@@ -257,78 +268,111 @@
       }
     };
   });
+
+  // A description, a note or an error is drawn by the shared form-field frame under the control, so
+  // it reads as RadioGroup's and Input's do. The frame's id is its own: the group keeps `id`.
+  const frameId = $derived(`${id}-field`);
+  const hasMessage = $derived(!!description || !!note || !!error);
+  const describedBy = $derived(
+    hasMessage
+      ? composeDescribedBy(
+          describeId(frameId, !!description),
+          note ? `${frameId}-note` : undefined,
+          buildErrorId(frameId, !!error),
+        )
+      : undefined,
+  );
 </script>
 
-<div
-  class="cinder-segmented-control-container"
-  data-cinder-overflowing={overflowing ? '' : undefined}
-  data-cinder-stacked={stacked ? '' : undefined}
-  {@attach measureRoom}
->
-  {#if overflowing}
-    <Select
-      id={`${id}-select`}
-      {label}
-      {labelVisible}
-      {disabled}
-      options={selectOptions}
-      {...selectedValue === undefined ? {} : { value: selectedValue }}
-      onValueChange={(next) => controller.toggle(next)}
-    />
-  {:else}
-    <span
-      id={`${id}-label`}
-      class={classNames('cinder-segmented-control-label', !labelVisible && 'cinder-sr-only')}
-    >
-      {label}
-    </span>
-  {/if}
-  {#if rendersNavigation}
-    <nav
-      {...rest}
-      {id}
-      role={effectiveVariant === 'navigation' ? 'navigation' : undefined}
-      aria-labelledby={`${id}-label`}
-      data-cinder-orientation={effectiveOrientation}
-      data-cinder-size={effectiveSize}
-      data-cinder-density={density === 'toolbar' ? 'toolbar' : undefined}
-      data-cinder-selection-mode={selectionMode}
-      data-cinder-detached={detached ? '' : undefined}
-      data-cinder-full-width={fullWidth ? '' : undefined}
-      data-cinder-variant={effectiveVariant}
-      class={classNames('cinder-segmented-control', customClassName)}
-    >
-      {@render children()}
-    </nav>
-  {:else}
-    <div
-      {...rest}
-      {id}
-      bind:this={stripElement}
-      role={groupRole}
-      aria-hidden={overflowing ? 'true' : undefined}
-      inert={overflowing ? true : undefined}
-      data-cinder-measuring={overflowing ? '' : undefined}
-      aria-labelledby={`${id}-label`}
-      aria-disabled={disabled ? 'true' : undefined}
-      aria-orientation={selectionMode === 'single' ? effectiveOrientation : undefined}
-      data-cinder-orientation={effectiveOrientation}
-      data-cinder-size={effectiveSize}
-      data-cinder-density={density === 'toolbar' ? 'toolbar' : undefined}
-      data-cinder-selection-mode={selectionMode}
-      data-cinder-detached={detached ? '' : undefined}
-      data-cinder-full-width={fullWidth ? '' : undefined}
-      data-cinder-variant={effectiveVariant}
-      class={classNames('cinder-segmented-control', customClassName)}
-      onkeydown={(event) => controller.handleKeydown(event)}
-    >
-      {@render children()}
-    </div>
-  {/if}
-  {#if name && !rendersNavigation}
-    <input bind:this={resetInputElement} type="hidden" disabled />
-    {#each selectedValues as selectedValue (selectedValue)}
-      <input type="hidden" {name} value={selectedValue} {disabled} />
-    {/each}
-  {/if}
-</div>
+{#snippet body()}
+  <div
+    class="cinder-segmented-control-container"
+    data-cinder-overflowing={overflowing ? '' : undefined}
+    data-cinder-stacked={stacked ? '' : undefined}
+    {@attach measureRoom}
+  >
+    {#if overflowing}
+      <Select
+        id={`${id}-select`}
+        {label}
+        {labelVisible}
+        {disabled}
+        options={selectOptions}
+        {...selectedValue === undefined ? {} : { value: selectedValue }}
+        onValueChange={(next) => controller.toggle(next)}
+      />
+    {:else}
+      <span
+        id={`${id}-label`}
+        class={classNames('cinder-segmented-control-label', !labelVisible && 'cinder-sr-only')}
+      >
+        {label}
+      </span>
+    {/if}
+    {#if rendersNavigation}
+      <nav
+        {...rest}
+        {id}
+        role={effectiveVariant === 'navigation' ? 'navigation' : undefined}
+        aria-labelledby={`${id}-label`}
+        data-cinder-orientation={effectiveOrientation}
+        data-cinder-size={effectiveSize}
+        data-cinder-density={density === 'toolbar' ? 'toolbar' : undefined}
+        data-cinder-selection-mode={selectionMode}
+        data-cinder-detached={detached ? '' : undefined}
+        data-cinder-full-width={fullWidth ? '' : undefined}
+        data-cinder-variant={effectiveVariant}
+        class={classNames('cinder-segmented-control', customClassName)}
+      >
+        {@render children()}
+      </nav>
+    {:else}
+      <div
+        {...rest}
+        {id}
+        bind:this={stripElement}
+        role={groupRole}
+        aria-hidden={overflowing ? 'true' : undefined}
+        inert={overflowing ? true : undefined}
+        data-cinder-measuring={overflowing ? '' : undefined}
+        aria-labelledby={`${id}-label`}
+        aria-disabled={disabled ? 'true' : undefined}
+        {...describedBy === undefined ? {} : { 'aria-describedby': describedBy }}
+        {...error ? { 'aria-invalid': ariaInvalid(true) } : {}}
+        aria-orientation={selectionMode === 'single' ? effectiveOrientation : undefined}
+        data-cinder-orientation={effectiveOrientation}
+        data-cinder-size={effectiveSize}
+        data-cinder-density={density === 'toolbar' ? 'toolbar' : undefined}
+        data-cinder-selection-mode={selectionMode}
+        data-cinder-detached={detached ? '' : undefined}
+        data-cinder-full-width={fullWidth ? '' : undefined}
+        data-cinder-variant={effectiveVariant}
+        class={classNames('cinder-segmented-control', customClassName)}
+        onkeydown={(event) => controller.handleKeydown(event)}
+      >
+        {@render children()}
+      </div>
+    {/if}
+    {#if name && !rendersNavigation}
+      <input bind:this={resetInputElement} type="hidden" disabled />
+      {#each selectedValues as selectedValue (selectedValue)}
+        <input type="hidden" {name} value={selectedValue} {disabled} />
+      {/each}
+    {/if}
+  </div>
+{/snippet}
+
+{#if hasMessage}
+  <FormFieldFrame
+    id={frameId}
+    class="cinder-segmented-control-field"
+    {description}
+    {note}
+    {error}
+    {errorAction}
+    {disabled}
+    control={body}
+  />
+{:else}
+  {@render body()}
+{/if}

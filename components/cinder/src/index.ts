@@ -1057,6 +1057,7 @@ export type {
   StackedListItemGroupLayout,
   StackedListItemLeadingTone,
   StackedListItemPhoneActions,
+  StackedListItemPhoneWidth,
   StackedListItemProps,
   StackedListItemStatusPlacement,
   StackedListItemTitleLines,

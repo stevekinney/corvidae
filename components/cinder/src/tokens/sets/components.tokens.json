@@ -1524,6 +1524,140 @@
       }
     }
   },
+  "table": {
+    "header": {
+      "background": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0, 0, 0],
+          "alpha": 0
+        },
+        "$description": "Fill painted by header cells over the table header surface. The default is transparent, so sticky headers retain their opaque backdrop.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-background",
+            "public": true,
+            "category": "color",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "foreground": {
+        "$type": "color",
+        "$value": "{text.muted}",
+        "$description": "Text color in unsorted header cells.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-foreground",
+            "public": true,
+            "category": "color",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "sorted-foreground": {
+        "$type": "color",
+        "$value": "{text.default}",
+        "$description": "Text color in the currently sorted header cell.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-sorted-foreground",
+            "public": true,
+            "category": "color",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "font-size": {
+        "$type": "dimension",
+        "$value": "{font.size.xs}",
+        "$description": "Font size of a column header and its sort button.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-font-size",
+            "public": true,
+            "category": "typography",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "padding-block": {
+        "$type": "dimension",
+        "$value": "{space.2}",
+        "$description": "Block padding of a comfortable header cell.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-padding-block",
+            "public": true,
+            "category": "spacing",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "padding-inline": {
+        "$type": "dimension",
+        "$value": "{space.3}",
+        "$description": "Inline padding of a comfortable or condensed header cell.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-padding-inline",
+            "public": true,
+            "category": "spacing",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "padding-block-condensed": {
+        "$type": "dimension",
+        "$value": "{space.one}",
+        "$description": "Block padding of a condensed header cell.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-padding-block-condensed",
+            "public": true,
+            "category": "spacing",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "padding-block-spacious": {
+        "$type": "dimension",
+        "$value": "{space.3}",
+        "$description": "Block padding of a spacious header cell.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-padding-block-spacious",
+            "public": true,
+            "category": "spacing",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      },
+      "padding-inline-spacious": {
+        "$type": "dimension",
+        "$value": "{space.4}",
+        "$description": "Inline padding of a spacious header cell.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-table-header-padding-inline-spacious",
+            "public": true,
+            "category": "spacing",
+            "component": "table",
+            "cssRecipe": null
+          }
+        }
+      }
+    }
+  },
   "table-of-contents": {
     "link": {
       "color": {

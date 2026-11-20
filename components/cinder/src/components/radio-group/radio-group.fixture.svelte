@@ -23,6 +23,6 @@
 <style>
   .radio-alignment {
     inline-size: 16rem;
-    padding: 1rem;
+    padding: var(--cinder-space-4);
   }
 </style>

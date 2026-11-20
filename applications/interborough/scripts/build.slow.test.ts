@@ -84,7 +84,9 @@ describe('buildApplication', () => {
 
     expect(result.directory).toBe(outdir);
     expect(result.files).toContain('index.html');
-    const assets = result.files.filter((file) => file !== 'index.html');
+    const assets = result.files.filter(
+      (file) => file !== 'index.html' && file !== 'build-info.json',
+    );
     expect(assets.length).toBeGreaterThan(0);
     for (const file of assets) {
       expect(file).toMatch(

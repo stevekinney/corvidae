@@ -256,6 +256,9 @@
        header all but the create "+" drop to a row of their own (below). */
     font-size: var(--cinder-text-xl);
     line-height: var(--cinder-leading-tight);
+  }
+
+  :where(.cinder-page-header:not([data-cinder-regular-actions])) .cinder-page-header__actions {
     margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
 
@@ -374,7 +377,9 @@
   /* The overflow menu button is an icon-only control at the compact height of the other header
      actions, so it never makes the header taller than its title (COR-2337). The extra class
      outranks the dropdown trigger's own `md` height wherever its stylesheet lands. */
-  .cinder-page-header__actions .cinder-page-header__overflow {
+  :where(.cinder-page-header:not([data-cinder-regular-actions]))
+    .cinder-page-header__actions
+    .cinder-page-header__overflow {
     inline-size: var(--_cinder-compact-control-height);
     min-inline-size: var(--_cinder-compact-control-height);
     block-size: var(--_cinder-compact-control-height);
