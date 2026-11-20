@@ -13,7 +13,7 @@
   padding-block-start: var(--cinder-space-3);
 }
 
-.ib-capabilities__panel:has(> .cinder-empty-state) {
+.ib-capabilities__panel:has(> [data-list-empty]) {
   padding-block-start: 0;
 }
 
