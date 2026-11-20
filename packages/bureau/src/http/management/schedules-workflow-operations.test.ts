@@ -815,7 +815,8 @@ describe('changing what a schedule runs', () => {
       overlap: 'allow',
       continuesChat: false,
     });
-    expect((await readStored(engine, id))['input']).toBeNull();
+    const stored = await readStored(engine, id);
+    expect(stored['input']).toBeNull();
   });
 
   it('refuses a mixed target, a workflow it may not start, and a field of the other kind, and writes nothing', async () => {
