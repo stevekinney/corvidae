@@ -1,6 +1,6 @@
 /**
  * The sections of Settings, in the order the section navigation lists them: the Bureau's runtime
- * settings, the providers and models, the data and retention overview, and the API reference. Each is a route of its own
+ * settings, the providers and models, A2A and MCP, the data and retention overview, and the API reference. Each is a route of its own
  * (`app/routes.ts`), so a section is linked to, and survives a reload.
  */
 import { SETTINGS_SECTION_COPY } from '../../app/copy/settings.ts';
@@ -16,6 +16,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { path: '/settings/models', label: SETTINGS_SECTION_COPY.models },
   { path: '/settings/allowed-models', label: SETTINGS_SECTION_COPY.modelPolicy },
   { path: '/settings/a2a', label: SETTINGS_SECTION_COPY.a2a },
+  { path: '/settings/mcp', label: SETTINGS_SECTION_COPY.mcp },
   { path: '/settings/plugins', label: SETTINGS_SECTION_COPY.plugins },
   { path: '/settings/data-and-retention', label: SETTINGS_SECTION_COPY.dataAndRetention },
   { path: '/settings/api-reference', label: SETTINGS_SECTION_COPY.apiReference },

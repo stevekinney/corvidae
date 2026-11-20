@@ -213,6 +213,11 @@ import {
   type BureauHandler,
   type HostSocketData,
 } from './host-websocket.ts';
+import {
+  instanceRecordPath,
+  removeInstanceRecord,
+  writeInstanceRecord,
+} from './instance-record.ts';
 import { resolveLaunchCommand } from './launch-command.ts';
 import {
   claimWorkspaceBinding,
@@ -230,6 +235,7 @@ import {
   disposeHostStorage,
   hostPathsReport,
   localContentDirectory,
+  localDatabaseHome,
   redactDatabase,
   type ContentKinds,
   type DatabaseKinds,
@@ -1918,6 +1924,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // Recorded as the last step that can fail: a start that throws anywhere earlier leaves the
     // record alone, so the next start still reports the change (COR-2210).
     await commitPanelDigests(storage, mcpMounts.pendingDigests);
+    // The address this host bound, for a CLI that cannot guess it (COR-2540). Written last, with
+    // nothing left that can fail, and only into a local home, which this process holds the lock of.
+    await recordInstance(
+      held,
+      databaseKinds,
+      publicOrigin,
+      options.warn ?? ((message) => console.warn(message)),
+    );
     return {
       routeInventory,
       url: new URL(`http://${LOOPBACK}:${publicPort}/`),
@@ -1991,9 +2005,35 @@ export function deriveStartOverrideSigningSecret(key: string): string {
   return createHash('sha256').update(`interborough:worker-start-override:${key}`).digest('hex');
 }
 
+/**
+ * Leave the record of this host's address and process in its local home (`instance-record.ts`), and
+ * note it in `held` so teardown removes it. A remote host has no home directory of its own, so it
+ * records nothing. A record that cannot be written is a warning, not a failure: the host runs, and
+ * only a CLI that looked for it by the record would not find it.
+ */
+async function recordInstance(
+  held: Held,
+  databaseKinds: DatabaseKinds,
+  origin: string,
+  warn: (message: string) => void,
+): Promise<void> {
+  const home = localDatabaseHome(held.bungalow.database, databaseKinds);
+  if (home === undefined) return;
+  try {
+    await writeInstanceRecord(home, { url: origin, pid: process.pid });
+    held.instanceRecord = { home, pid: process.pid };
+  } catch (error) {
+    warn(
+      `The host could not record its address in ${instanceRecordPath(home)}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 /** What the host holds while it starts and runs, so a failure at any step can release the rest. */
 type Held = {
   readonly bungalow: Bungalow;
+  /** Where this host recorded its address, until teardown removes it. */
+  instanceRecord?: { readonly home: string; readonly pid: number };
   storage?: Storage;
   bureau?: Bureau<AgentDefinitions>;
   providers?: ProviderManager;
@@ -2019,6 +2059,11 @@ async function teardown(held: Held): Promise<void> {
       failures.push(error);
     }
   };
+  // First, while the home lock is still held, so nothing reads the address of a host that is going away.
+  const { instanceRecord } = held;
+  await step(
+    instanceRecord && (() => removeInstanceRecord(instanceRecord.home, instanceRecord.pid)),
+  );
   // No change to the providers may start once the host is going away.
   held.providers?.close();
   held.plugins?.close();

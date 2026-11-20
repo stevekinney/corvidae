@@ -10,6 +10,7 @@
 
 import type { BungalowEnvironment } from '@lostgradient/bungalow';
 
+import { connectionLines } from './connection-details.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { startHost } from './host.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
@@ -45,6 +46,7 @@ export async function serveHost(
     `Interborough is listening on ${host.url.protocol}//${host.url.hostname}:${host.url.port || 80}`,
   );
   console.info(`Its state lives in ${host.stateDescription}`);
+  for (const line of connectionLines(host.url)) console.info(line);
 
   installShutdownSignals(process, () => stop(0));
 }

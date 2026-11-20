@@ -30,6 +30,7 @@ import { dirname, join } from 'node:path';
 
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
+import { connectionLines } from './connection-details.ts';
 import { developmentPluginPaths } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
@@ -95,6 +96,7 @@ const host: Host = showcase
   : await startHost(hostOptions);
 console.info(`Interborough is listening on ${host.url}`);
 console.info(`Its state lives in ${host.stateDescription}`);
+for (const line of connectionLines(host.url)) console.info(line);
 
 if (showcase) console.info('The showcase host holds the sample world at Monday, Nov 2, 10:45 AM.');
 

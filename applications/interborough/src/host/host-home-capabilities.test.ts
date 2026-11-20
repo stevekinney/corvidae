@@ -217,6 +217,7 @@ describe('the tables the host is given', () => {
           return sqlite.redact(database);
         },
         describeState: () => 'a table entry that says where the state lives',
+        localHome: (database) => sqlite.localHome(database),
       },
     };
 

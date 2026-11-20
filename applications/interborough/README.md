@@ -26,13 +26,54 @@ bun run --filter=@lostgradient/interborough lint
 bun run --filter=@lostgradient/interborough typecheck
 ```
 
-- `dev` runs the supervisor (below) around `bun --watch src/host/dev.ts`. It builds the browser application into `build/`, starts the host on `http://127.0.0.1:7234`, and rebuilds when the source changes. It runs under `bun --watch`, which restarts the host when its own modules change, and builds the browser application in a child process because the bundler fails inside the watched process. `INTERBOROUGH_PORT` picks another port, and `0` asks for a free one. Open pages reload themselves after each successful rebuild (and when the host restarts): the development host injects a small client into `index.html` that listens on `/__dev/reload`. A production host serves neither, and `build/` never contains the client.
+- `dev` runs the supervisor (below) around `bun --watch src/host/dev.ts`. It builds the browser application into `build/`, starts the host on `http://127.0.0.1:7234`, and rebuilds when the source changes. It runs under `bun --watch`, which restarts the host when its own modules change, and builds the browser application in a child process because the bundler fails inside the watched process. `INTERBOROUGH_PORT` picks another port, and `0` asks for a free one; a linked git worktree takes its own home and port instead (see "A linked worktree runs its own Interborough"). Open pages reload themselves after each successful rebuild (and when the host restarts): the development host injects a small client into `index.html` that listens on `/__dev/reload`. A production host serves neither, and `build/` never contains the client.
 - `build` writes the production build into `build/`: `index.html` and content-hashed JavaScript, CSS, and WebAssembly under `build/assets/`. The host serves that directory. A build replaces `build/` only once it succeeds.
 - `start` runs the supervisor around `bun --no-install src/host/serve.ts`, which serves the existing `build/` with `development: false`. It builds nothing and watches nothing. Without `build/index.html` it exits 1 and tells you to run `bun run build` first. `INTERBOROUGH_BUILD_DIRECTORY` names another build directory for `start` and `dev`.
 - **Restarting the host.** `POST /host/restart` (through the same Host and Origin guard as every route) answers `202`, shuts the Bureau down with its runs left parked, stops the host, and exits with code 75. The supervisor (`src/host/supervisor.ts`, `bun src/host/supervisor.ts <serve|dev>`) starts the host again on exactly that code and ends with the child's own code on any other; SIGINT and SIGTERM go to the child. A run waiting on a signal is still waiting after the restart. A source edit under `dev` restarts the host inside `bun --watch` without the supervisor. A supervisor killed with SIGKILL cannot forward the signal, so it leaves its host running.
 - `test` runs the host's suite under `bunfig.toml`, then the browser application's under `bunfig.ui.toml`, whose preload installs happy-dom, the Svelte compile plugin from `@lostgradient/testing`, and the jest-dom matchers. The browser suite stays serial: under `--parallel`, Bun 1.4.2's workers load the default `bunfig.toml` preload on top of the one `--config` names. The tests in a `*.slow.test.ts` file bundle for seconds, so `test:slow` runs them.
 - `test:browser` runs the Playwright suite in `tests/e2e` against a host it starts on port 7399 with the console's fixtures registered. The barrier's control listens on the next port, and the hosts described under "Schedules, goals, and the audit trail", "The journey" and "First run", the connect host, the showcase host and the plugin-page host (`plugin-page.spec.ts`, which loads fixture plugins that place pages in the sidebar) on the ports after it, so the suite holds eight consecutive ports. Set `INTERBOROUGH_E2E_PORT` to run the suite beside another checkout's, which holds 7399. `bun run --filter=@lostgradient/interborough test:browser -- tests/e2e/90-journey.spec.ts` runs the journey alone.
 - `test:coverage` runs the browser suite under coverage and prints each area's coverage; it is a report, and no floor fails it.
+
+## Connecting a coding agent
+
+Interborough serves its own MCP endpoint at `/bureau/mcp`, on the host's origin (`http://127.0.0.1:7234/bureau/mcp` on the default port). It is Bureau's endpoint, not Weft's `/mcp`, which serves the engine's operations. It needs no sign-in: the host listens on loopback and serves every caller as `anonymous:local`, so none of what follows carries a key, a token or a header.
+
+Three places say where it is and how to connect:
+
+- **The terminal.** `dev` and `start` print the address, then one line each for the interface, the API, the MCP endpoint and the flag that targets this instance: `Interface: http://127.0.0.1:7234`, `API: http://127.0.0.1:7234/api`, `MCP: http://127.0.0.1:7234/bureau/mcp` and `CLI: --url http://127.0.0.1:7234`.
+- **Settings › MCP** (`/settings/mcp`) shows the endpoint address with a copy button, the Claude Code command, and the `mcpServers` entry any other MCP client reads, each copyable.
+- **`interborough mcp`** prints the same address and both configurations as text, and as data with `--output json`. It sends no request, so it works whether or not the host is up; `--url` and `--connection` pick the instance it describes.
+
+For Claude Code, register the endpoint once:
+
+```bash
+claude mcp add --transport http interborough http://127.0.0.1:7234/bureau/mcp
+```
+
+Any other client takes the same server as a JSON entry:
+
+```json
+{
+  "mcpServers": {
+    "interborough": { "type": "http", "url": "http://127.0.0.1:7234/bureau/mcp" }
+  }
+}
+```
+
+One function builds all of these (`src/lib/mcp-connection.ts`), and `bun run --filter=@lostgradient/interborough smoke:claude-code-mcp` runs its Claude Code arguments against a real `claude` on `PATH`: it starts a host on a scratch home, registers `/bureau/mcp` under an isolated `CLAUDE_CONFIG_DIR`, and asks `claude mcp list` whether the connection succeeds. It runs by hand, outside `validate`. The command was checked against Claude Code 2.1.316.
+
+## A linked worktree runs its own Interborough
+
+Two agents working in two git worktrees can each run `bun run --filter=@lostgradient/interborough dev` and drive their own host with the CLI, with no variable to set and no effect on the owner's real data. The rule is git's own: a checkout is a _linked worktree_ when `git rev-parse --git-dir` and `git rev-parse --git-common-dir` name different directories. In the main checkout they name the same one.
+
+- **In a linked worktree**, `dev` with neither variable set keeps its state in `tmp/interborough-dev` under that worktree (`tmp/` is ignored by git) and listens on a free port the supervisor picks once and keeps across restarts and `--watch` reloads. It says so as it starts: `<worktree> is a linked git worktree, so it runs its own Interborough: its state lives in <home> and it listens on port <port>.`, and the host's own start lines name the same home and address.
+- **`dev --showcase`** derives only the port: its home is already one per worktree (`tmp/interborough-showcase`, or `INTERBOROUGH_SHOWCASE_HOME`), which is emptied and reseeded on every start. The CLI does not look in the showcase home, so pass `--url` to reach a showcase host.
+- **In the main checkout**, `dev` is unchanged: `~/.interborough` and port 7234.
+- **A variable you set wins**, in any checkout, each on its own: `INTERBOROUGH_HOME` replaces the derived home and `INTERBOROUGH_PORT` the derived port. `start` (the production entry) never derives anything.
+- **The host records where it is.** Once its listener is bound, a local host writes `instance.json` in its home (`src/host/instance-record.ts`): the origin it actually bound and its process identifier. It removes the file when it exits cleanly. The record is a hint, never a lease: a reader uses it only while that process is alive and the recorded address answers `/host/status`, so a host that was killed leaves nothing a command would follow.
+- **The CLI follows the record.** Run from a linked worktree with no `--url` and no `--connection`, a command targets the instance recorded in that worktree's home (the `INTERBOROUGH_HOME` in its environment, else the derived home), ahead of the saved connection, whose credential is then not used, and ahead of the default address. `--url` and `--connection` still go where they say, and from the main checkout nothing changes.
+
+No state is copied between worktrees: each home starts empty.
 
 ## The host
 
