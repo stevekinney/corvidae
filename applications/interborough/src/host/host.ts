@@ -270,6 +270,7 @@ import {
 } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
 import { storageDeletionApplied, storageDeletionOf, storageResourceOf } from './storage-audit.ts';
+import { createToolListingMemory, rememberPluginListings } from './tool-listing-memory.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
@@ -1008,6 +1009,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const storage =
       claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now, databaseKinds);
     held.storage = storage;
+    // Each tool source's and plugin's last tool listing, kept across restarts (COR-2435), so a
+    // source that fails or a plugin that is off still shows the tools it offered.
+    const toolListings = createToolListingMemory(storage, clock.now);
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
     // plans against a provider that is not configured. The demo agents still answer from a
@@ -1073,6 +1077,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
       reservedSecretKeys: [APPROVAL_SECRET_KEY, DELEGATION_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
       reservedSecretPrefixes: [ANSWER_ENCRYPTION_KEY, TOOL_SOURCE_SECRET_PREFIX],
+      listings: toolListings,
     });
     held.plugins = pluginManager;
     await pluginManager.ensureGeneratedSecrets();
@@ -1137,6 +1142,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         held.bureau === undefined ? [] : agentToolUseOf(held.bureau.agents)(),
       origin: () => hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
       warn: options.warn ?? ((message) => console.warn(message)),
+      listings: toolListings,
       ...(options.toolSourceProbeTimeoutMilliseconds === undefined
         ? {}
         : { probeTimeoutMilliseconds: options.toolSourceProbeTimeoutMilliseconds }),
@@ -1427,6 +1433,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // A tool source connected from now on is loaded at once, and its tools join the Bureau's
     // catalog without a restart (COR-2009).
     toolSources.goLive((tools) => bureau.agents.addTools(tools));
+    // What each running plugin contributes is kept as its last listing, so it still shows once
+    // the plugin is turned off (COR-2435).
+    await rememberPluginListings(
+      toolListings,
+      await bureau.plugins.list(),
+      bureau.agents.tools(),
+      options.warn ?? ((message) => console.warn(message)),
+    );
     // One line per plugin with its status and problem codes, once Bureau has composed them.
     for (const line of pluginStartupLines(await pluginManager.snapshot())) {
       log(line);

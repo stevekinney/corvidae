@@ -335,10 +335,9 @@ export async function october21(context: SessionContext): Promise<void> {
         args: [join(import.meta.dir, 'github-stub-mcp.ts')],
       },
     },
-    tools: { delete_branch: { enabled: false } },
-    // What a person calls it, which Capabilities and each of its tools show: "GitHub", not its
-    // identifier `github`.
+    // Named as people call it, so the Sources list and its detail read "GitHub", not "github".
     name: 'GitHub',
+    tools: { delete_branch: { enabled: false } },
     operationId: crypto.randomUUID(),
     expectedRevision: toolSources.configurationRevision,
   });

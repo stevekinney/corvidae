@@ -5,7 +5,7 @@
 
 <section aria-label="Overview preview">
   <div id="overview-mount-basic" data-overview-preview-rendered="">
-    <div style="min-height: 12rem; display: grid; place-items: center;">
+    <div class="example-grid">
       <SpeedDial aria-label="Quick actions">
         {#snippet trigger()}<span aria-hidden="true">+</span>{/snippet}
         <SpeedDial.Action label="Create" onclick={() => (lastAction = 'Create')}
@@ -20,3 +20,11 @@
   </div>
 </section>
 <p>Last action: {lastAction}</p>
+
+<style>
+  .example-grid {
+    min-height: 12rem;
+    display: grid;
+    place-items: center;
+  }
+</style>

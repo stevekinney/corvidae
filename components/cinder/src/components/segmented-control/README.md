@@ -62,13 +62,16 @@ A `Segment` takes a `count`, drawn after its label in a muted, tabular figure ("
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-segmented-control`. |
 | `density` | `"toolbar"` | no | — | Opt the control into compact toolbar sizing so it lines up cleanly with sibling `Button` (size="sm"), `Chip` (density="toolbar"), and other toolbar elements. Toolbar density resolves to the compact `"sm"` font and padding scale — when set, any explicit `size` value is ignored and the resolved size (`data-cinder-size`) is `"sm"`, so the control's outer height is `--cinder-control-height-sm` and matches sibling toolbar controls. |
+| `description` | `string` | no | — | Helper text under the control, wired into the group's `aria-describedby`. |
 | `detached` | `boolean` | no | — | Render segments as detached individual buttons instead of a unified strip. |
 | `disabled` | `boolean` | no | — | Disable the whole control. |
+| `error` | `string` | no | — | Validation error under the control, with a warning glyph; sets `aria-invalid="true"` on the group. |
 | `fullWidth` | `boolean` | no | — | Stretch the control to fill available width. |
 | `id` | `string` | yes | — | Unique identifier for the control. |
 | `label` | `string` | yes | — | Accessible label for the group. |
 | `labelVisible` | `boolean` | no | `true` | Whether the label is visibly rendered. Set `false` to visually hide it while keeping it available to assistive technology. |
 | `name` | `string` | no | — | Native form field name. Renders hidden input(s) carrying the selected value(s). |
+| `note` | `string` | no | — | Neutral explanation under the helper text, wired into `aria-describedby`. Not an error and not a warning. |
 | `orientation` | `"horizontal"` \| `"vertical"` | no | — | Layout orientation. |
 | `overflow` | `"scroll"` \| `"select"` | no | `"scroll"` | What the control does when its segments are wider than the room it has (COR-2181). `scroll` (the default) keeps the strip and lets it scroll sideways, as it always has. `select` draws the same options as a Select with the same accessible name, so every option stays on screen on a phone; the segments stay in the document, hidden, so the control knows how much room they need and returns to the strip when the room is there. It applies to a single-choice `radiogroup` only. |
 | `selectionMode` | `"single"` \| `"multiple"` | no | — | Selection mode. `"single"` allows exactly one segment to be selected at a time; `"multiple"` allows any number of segments to be selected simultaneously. Default `"single"`. |
@@ -76,6 +79,7 @@ A `Segment` takes a `count`, drawn after its label in a muted, tabular figure ("
 | `size` | `"sm"` \| `"md"` \| `"lg"` | no | — | Requested visual size of the control. Defaults to `"md"`. The control's outer height is the shared `--cinder-control-height-*` step for the size (`sm` 28px, `md` 32px, `lg` 40px), the same as a Button or Input of that size. The resolved size is reflected as `data-cinder-size` on the root; when `density="toolbar"` is set, the resolved size is forced to `"sm"` and any explicit `size` value is ignored. `size="md"` option text uses `--cinder-text-sm`; `size="sm"` and `density="toolbar"` use `--cinder-text-xs`; `size="lg"` uses `--cinder-text-sm`. |
 | `variant` | `"radiogroup"` \| `"tablist"` \| `"navigation"` | no | — | ARIA interaction pattern. Use `navigation` for route-backed links. |
 | `children` | `(opaque)` | yes | — | Child `<Segment>` elements. Not expressible in JSON Schema; see the component types for the signature. |
+| `errorAction` | `(opaque)` | no | — | Rendered after the error message inside the same live region, such as a quiet "Try again". Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChange` | `(opaque)` | no | — | Called when the selected value changes (single mode only). Not expressible in JSON Schema; see the component types for the signature. |
 | `value` | `(opaque)` | no | — | Currently selected value. Not expressible in JSON Schema; see the component types for the signature. |
 

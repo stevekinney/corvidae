@@ -135,6 +135,7 @@
     "$.models[].tools",
     "$.tools",
     "$.tools[].defaultApproval",
+    "$.tools[].defaultAsks",
     "$.tools[].description",
     "$.tools[].inputSchema",
     "$.tools[].inputSchema|anyOf[0].*",
@@ -146,6 +147,8 @@
     "$.tools[].source",
     "$.tools[].tier",
     "$.tools[].title",
+    "$.tools[].userApprovals",
+    "$.tools[].userApprovals.*",
     "$.tools[].users"
   ],
   "output:bureau.agents.definitions.create": ["$.hash", "$.id"],
@@ -2184,6 +2187,14 @@
   ],
   "output:bureau.settings.schema": ["$.schema", "$.schema.*", "$.schema.*.*"],
   "output:bureau.settings.update": ["$.pendingRestart", "$.revision"],
+  "output:bureau.skills.get": [
+    "$.instructions",
+    "$.instructions|anyOf[0].size",
+    "$.instructions|anyOf[0].text",
+    "$.instructions|anyOf[0].truncated",
+    "$.name",
+    "$.unavailableReason"
+  ],
   "output:bureau.skills.list": [
     "$.revision",
     "$.skills",

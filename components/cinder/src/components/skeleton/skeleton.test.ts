@@ -460,7 +460,7 @@ describe('Skeleton list variant', () => {
     ).not.toBeNull();
     // The border, radius and surface are the opt-in's alone: the bare list rule draws none.
     expect(skeletonCss).toMatch(
-      /\.cinder-skeleton-list\[data-cinder-framed\]\s*\{[^}]*border: 1px solid[^}]*border-radius/,
+      /\.cinder-skeleton-list\[data-cinder-framed\]\s*\{[^}]*border: var\(--cinder-border-width\) solid[^}]*border-radius/,
     );
     expect(skeletonCss).not.toMatch(/\.cinder-skeleton-list\s*\{[^}]*border/);
     // No divider between rows: the loaded rows have none.
@@ -583,7 +583,7 @@ describe('Skeleton grouped variant', () => {
     // Only forced colours draw an edge; the surface carries tone, not a border.
     expect(css).not.toMatch(/\.cinder-skeleton-grouped \{ overflow: hidden;[^}]*border:/);
     expect(css).toMatch(
-      /\.cinder-skeleton-grouped-content \{[^}]*border-block-end: 1px solid var\(--cinder-border-faint\)/,
+      /\.cinder-skeleton-grouped-content \{[^}]*border-block-end: var\(--cinder-border-width\) solid var\(--cinder-border-faint\)/,
     );
     expect(css).toMatch(
       /\.cinder-skeleton-action-bar \{[^}]*block-size: var\(--cinder-button-height-sm\)/,

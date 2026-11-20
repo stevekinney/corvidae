@@ -147,7 +147,7 @@ describe('Surface CSS contract', () => {
     const css = await Bun.file(new URL('./surface.css', import.meta.url)).text();
 
     // Base rule declares the border; transparent tone neutralizes its visible color.
-    expect(css).toContain('border: 1px solid var(--cinder-border)');
+    expect(css).toContain('border: var(--cinder-border-width) solid var(--cinder-border)');
     expect(css).toContain("[data-cinder-tone='transparent']");
     expect(css).toContain('background: transparent');
     expect(css).toContain('border-color: transparent');

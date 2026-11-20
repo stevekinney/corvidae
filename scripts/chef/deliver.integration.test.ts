@@ -2,6 +2,7 @@ import { expect } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import { createDeliveryFixture, branchRunner as landingRunner } from './deliver.test-support.ts';
 import { deliver, renderDeliver, run, type DeliverOptions, type LeaseReading } from './deliver.ts';
@@ -106,8 +107,18 @@ async function approvedMembers<T extends Partial<DeliverOptions>>(
   return { ...base, verification: binding };
 }
 
+async function initializeCheckout(directory: string): Promise<void> {
+  const result = await runWithHangGuard(['git', 'init', '--quiet', directory]);
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+  writeFileSync(
+    join(directory, 'package.json'),
+    JSON.stringify({ name: 'widgets', workspaces: [] }),
+  );
+}
+
 async function setUp(): Promise<void> {
   sandbox = mkdtempSync(join(tmpdir(), 'deliver-'));
+  await initializeCheckout(sandbox);
   control = mkdtempSync(join(tmpdir(), 'deliver-control-'));
   const configPath = join(control, 'config.json');
   writeFileSync(
@@ -1611,6 +1622,7 @@ async function landBranch(landing: Landing = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'deliver-landing-'));
   const controlDirectory = mkdtempSync(join(tmpdir(), 'deliver-landing-control-'));
   try {
+    await initializeCheckout(directory);
     const configPath = join(controlDirectory, 'config.json');
     writeFileSync(
       configPath,

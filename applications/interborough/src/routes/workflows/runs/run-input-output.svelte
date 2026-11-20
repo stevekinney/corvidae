@@ -9,7 +9,15 @@
    * holds has its input and result here, and a run of a workflow file the engine does not hold has
    * the Bureau's record of its trigger, result and error.
    */
-  import { Badge, Button, Collapsible, Section, Stack, VisuallyHidden } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    Collapsible,
+    Markdown,
+    Section,
+    Stack,
+    VisuallyHidden,
+  } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { CircleX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
@@ -33,8 +41,8 @@
     task?: TaskView | undefined;
     /** The thread the task's message is in, when it is not the task's `contextId` (a goal's attempt). */
     threadId?: string | null | undefined;
-    /** The agent's answer, as Markdown rendered to HTML (`renderMarkdown`), once there is one. */
-    answerHtml?: string | undefined;
+    /** The agent's answer, as the Markdown source Cinder's `Markdown` renders, once there is one. */
+    answer?: string | undefined;
     /** Whether the answer was cut short. */
     answerTruncated?: boolean | undefined;
     /** The state of the live follow of the task, for the sentence under the answer. */
@@ -70,7 +78,7 @@
   let {
     task,
     threadId,
-    answerHtml,
+    answer,
     answerTruncated = false,
     followState,
     workflow,
@@ -83,7 +91,7 @@
   }: RunInputOutputProps = $props();
 
   const copy = RUN_DETAIL_COPY.io;
-  const hasAnswer = $derived(answerHtml !== undefined && answerHtml.trim() !== '');
+  const hasAnswer = $derived(answer !== undefined && answer.trim() !== '');
   const errorStack = $derived(workflow?.errorStack ?? '');
   const scheduled = $derived(task !== undefined && isScheduleFire(task));
   // A goal's attempt was started by its goal with the goal's prompt, in a session no person chats
@@ -144,9 +152,7 @@
     }
     return TASK_COPY.noAnswerYet;
   });
-  const clamps = $derived(
-    answerHtml !== undefined && answerHtml.replace(/<[^>]*>/g, '').length > CLAMP_ABOVE,
-  );
+  const clamps = $derived(answer !== undefined && answer.length > CLAMP_ABOVE);
   let replyOpen = $state(false);
 </script>
 
@@ -179,14 +185,12 @@
             <span class="ib-run__note">{copy.fromAgent(agent)}</span>
           </header>
           {#if hasAnswer}
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-            <div
+            <Markdown
               id="ib-run-reply"
-              class="cinder-markdown-content weft-artifact-markdown ib-run__answer"
+              content={answer ?? ''}
+              class="weft-artifact-markdown ib-run__answer"
               data-clamped={clamps && !replyOpen ? '' : undefined}
-            >
-              {@html answerHtml}
-            </div>
+            />
             {#if clamps}
               <button
                 type="button"

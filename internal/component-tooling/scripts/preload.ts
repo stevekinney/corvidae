@@ -2,6 +2,8 @@ import { plugin } from 'bun';
 import { afterEach } from 'bun:test';
 import { resolve } from 'node:path';
 
+import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
+
 import {
   configureAsyncUtilityDeadline,
   registerGlobalCleanup,
@@ -39,6 +41,11 @@ export function allowCinderTestStyleBlock(path: string): boolean {
 //      — banner + number-input alone hangs together). Static imports avoid
 //      the race.
 setupHappyDom();
+
+// Cinder's token artifacts are generated, not tracked, and a test imports them through its index.
+// A direct `bun test` bypasses Turbo's `metadata` task, so make sure they exist before any test file
+// loads (a no-op while they are present and fresh).
+ensureCinderGenerated();
 
 await plugin(sveltePlugin({ generate: 'client', allowStyleBlock: allowCinderTestStyleBlock }));
 

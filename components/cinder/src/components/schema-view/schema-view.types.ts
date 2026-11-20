@@ -4,8 +4,9 @@ import type { HTMLAttributes } from 'svelte/elements';
  * Props for SchemaView.
  *
  * SchemaView is read-only: it shows what a JSON Schema describes as one aligned
- * grid of Field, Type and Description, one row per field, and offers the raw
- * document behind a disclosure. To edit a schema, use `JsonSchemaEditor`.
+ * grid of Field, Type and Description (or as unframed rows), one row per field,
+ * and offers the raw document behind a disclosure or open beside the fields. To
+ * edit a schema, use `JsonSchemaEditor`.
  */
 export type SchemaViewProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'children'> & {
   /**
@@ -27,10 +28,25 @@ export type SchemaViewProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'child
    */
   maxDepth?: number;
   /**
-   * Label of the disclosure that reveals the raw schema document.
+   * Label of the raw schema document: the disclosure's trigger, or the title over the code block.
    * @default "JSON schema"
    */
   rawLabel?: string;
+  /**
+   * How the fields are drawn. `table` is the framed grid of Field, Type and Description under a
+   * header row. `rows` is one unframed row per field, its name flush with the text above it, then
+   * the word "Required", then its type as plain words, with its description and rules on the line
+   * below.
+   * @default "table"
+   */
+  layout?: 'table' | 'rows';
+  /**
+   * Where the raw schema document is. `collapsed` puts it behind a closed disclosure after the
+   * fields. `beside` shows it open in a JSON code block: beside the fields when the view is at
+   * least 38rem wide, under them when it is narrower. `none` leaves it out.
+   * @default "collapsed"
+   */
+  raw?: 'collapsed' | 'beside' | 'none';
   /**
    * Text shown, in a bordered box instead of an empty grid, when the schema
    * declares no fields.

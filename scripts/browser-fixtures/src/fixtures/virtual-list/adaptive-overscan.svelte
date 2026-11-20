@@ -35,9 +35,9 @@
   }
 </script>
 
-<div id="adaptive-overscan-example" style="display: flex; flex-direction: column; gap: 0.75rem;">
+<div id="adaptive-overscan-example" class="adaptive-overscan-example-layout gap-3">
   <p
-    style="color: var(--cinder-text-muted); font-size: var(--cinder-text-sm);"
+    class="adaptive-overscan-status-layout text-muted"
     data-testid="adaptive-overscan-status"
     data-end-reached-count={endReachedCount}
     data-end-reached-visible-end-index={endReachedVisibleEndIndex}
@@ -58,12 +58,27 @@
     aria-label="Adaptive overscan feed"
   >
     {#snippet row(item, context)}
-      <div
-        style="display: flex; align-items: center; gap: 0.75rem; block-size: 120px; padding-inline: 0.75rem; border-block-end: 1px solid var(--cinder-border);"
-        data-index={context.index}
-      >
+      <div class="virtual-row gap-3 padding-inline-3" data-index={context.index}>
         <span>{item.label}</span>
       </div>
     {/snippet}
   </VirtualList>
 </div>
+
+<style>
+  .adaptive-overscan-example-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .adaptive-overscan-status-layout {
+    font-size: var(--cinder-text-sm);
+  }
+
+  .virtual-row {
+    display: flex;
+    align-items: center;
+    block-size: 120px;
+    border-block-end: 1px solid var(--cinder-border);
+  }
+</style>

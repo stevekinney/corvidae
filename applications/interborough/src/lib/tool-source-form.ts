@@ -220,7 +220,15 @@ export function fieldOfHostField(
  * what the choices made apply to is read: the command of an MCP server reached by URL is ignored,
  * so a person who changed their mind is not asked about it.
  */
-export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResult {
+export function buildToolSourceRequest(
+  form: ToolSourceForm,
+  /**
+   * For Edit connection (COR-2436): the names of the credentials the host holds for the saved
+   * source. A token or key left blank is then left out of the request, so the host keeps the
+   * stored one while the source still goes to the same place.
+   */
+  stored: readonly string[] = [],
+): ToolSourceFormResult {
   const copy = CAPABILITIES_COPY.source.connect.errors;
   const errors: Partial<Record<ToolSourceFormField, string>> = {};
   const id = form.id.trim();
@@ -232,8 +240,9 @@ export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResu
   const credentials: Record<string, string> = {};
   const secret = form.secret.trim();
   if (authentication === 'bearer' || authentication === 'api-key') {
-    if (secret === '') errors.secret = copy.secretRequired[authentication];
-    credentials[authentication === 'bearer' ? BEARER_CREDENTIAL : API_KEY_CREDENTIAL] = secret;
+    const credential = authentication === 'bearer' ? BEARER_CREDENTIAL : API_KEY_CREDENTIAL;
+    if (secret !== '') credentials[credential] = secret;
+    else if (!stored.includes(credential)) errors.secret = copy.secretRequired[authentication];
   }
   if (authentication === 'api-key' && form.header.trim() === '') {
     errors.header = copy.headerRequired;
@@ -311,6 +320,73 @@ export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResu
       ...(description === '' ? {} : { description }),
     },
     id,
+  };
+}
+
+/** The longest description a saved source may hold, in characters (the host's limit). */
+const MAXIMUM_DESCRIPTION_LENGTH = 500;
+
+/**
+ * The sentence a source is saved with from what an MCP server's instructions say (rows 31o, 33f,
+ * COR-2436): their first line, every control character a space, cut to what a saved description
+ * may hold, so the host never refuses a field the page does not show. Empty for none.
+ */
+export function descriptionOfInstructions(instructions: string | null | undefined): string {
+  const firstLine = (instructions ?? '').split(/\r?\n/, 1)[0] ?? '';
+  // eslint-disable-next-line no-control-regex -- a control character is what this removes.
+  const controls = /[\u0000-\u001f\u007f]+/g;
+  return firstLine.replace(controls, ' ').trim().slice(0, MAXIMUM_DESCRIPTION_LENGTH).trim();
+}
+
+/**
+ * The form a saved source fills in for Edit connection (COR-2436), from the description the host
+ * sent (`GET /host/tool-sources/<id>/editing`): its kind, address and sign-in, its name (its `id`
+ * when it has none), and the token or key left blank, which keeps the stored one. The host sends
+ * only a source the form shows exactly; anything else reads as an empty form.
+ */
+export function editingForm(editing: {
+  readonly id: string;
+  readonly source: Readonly<Record<string, unknown>>;
+  readonly name: string | null;
+}): ToolSourceForm {
+  const record = (value: unknown): Readonly<Record<string, unknown>> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value))
+      : {};
+  const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+  const { source } = editing;
+  const authentication = record(
+    source['kind'] === 'mcp'
+      ? record(source['transport'])['authentication']
+      : source['authentication'],
+  );
+  const type = text(authentication['type']);
+  const chosen: ToolSourceAuthenticationChoice =
+    type === 'bearer' || type === 'oauth' || type === 'api-key' ? type : 'none';
+  const base: ToolSourceForm = {
+    ...EMPTY_TOOL_SOURCE_FORM,
+    id: editing.id,
+    name: editing.name ?? editing.id,
+    authentication: chosen,
+  };
+  if (source['kind'] === 'mcp') {
+    return {
+      ...base,
+      kind: 'mcp',
+      transport: 'http',
+      url: text(record(source['transport'])['url']),
+    };
+  }
+  const specification = record(source['specification']);
+  return {
+    ...base,
+    kind: 'openapi',
+    specification: specification['type'] === 'document' ? 'file' : 'url',
+    specificationUrl: text(specification['url']),
+    document:
+      specification['type'] === 'document' ? JSON.stringify(specification['document'] ?? {}) : '',
+    baseUrl: text(source['baseUrl']),
+    header: text(authentication['header']),
   };
 }
 

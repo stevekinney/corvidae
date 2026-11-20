@@ -69,32 +69,28 @@
           })}
       />
     </div>
-    <p style="margin-top: 0.75rem; font-size: 0.875rem;">
+    <p class="children-p margin-block-start-3">
       <strong>Undo fired:</strong>
       {undoCount} <strong>Pause fired:</strong>
       {pauseCount}
     </p>
     {#if dockedPage}
-      <div
-        data-testid="docked-page"
-        style="position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--cinder-surface);"
-      >
-        <div
-          data-testid="docked-page-scroll"
-          style="flex: 1; min-block-size: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 0.75rem 0.75rem 0;"
-        >
-          <h2 style="margin: 0 0 0.5rem;">Release notes for 2.4</h2>
+      <div data-testid="docked-page" class="docked-page-layout background-surface">
+        <div data-testid="docked-page-scroll" class="docked-page-scroll-layout">
+          <h2 class="children-h2">Release notes for 2.4</h2>
           {#each Array.from({ length: 24 }, (_, index) => index) as line (line)}
-            <p style="margin: 0 0 0.5rem;">Line {line + 1} of the draft the workflow asks about.</p>
+            <p class="children-h2">
+              Line {line + 1} of the draft the workflow asks about.
+            </p>
           {/each}
           <DockedActionBar label="Decision">
-            <p style="margin: 0;">The workflow continues as soon as you answer.</p>
+            <p class="children-p-layout">The workflow continues as soon as you answer.</p>
             {#snippet actions()}
               <Button variant="secondary" label="Send back" />
               <Button variant="primary" label="Approve" />
             {/snippet}
           </DockedActionBar>
-          <div aria-hidden="true" style="flex: none; block-size: 0.75rem;"></div>
+          <div aria-hidden="true" class="children-div"></div>
         </div>
         {@render tabBar()}
       </div>
@@ -102,18 +98,15 @@
     {#if bottomTabBar || dockedSurface}
       <!-- One column fixed to the bottom, as a phone shell's page sits on its tabs: whatever is
            docked above the tab bar ends where the tab bar starts. -->
-      <div
-        data-testid="bottom-tab-bar"
-        style="position: fixed; inset-inline: 0; bottom: 0; display: flex; flex-direction: column;"
-      >
+      <div data-testid="bottom-tab-bar" class="bottom-tab-bar-layout">
         {#if dockedSurface}
           <div
             data-testid="docked-surface"
-            style="display: grid; gap: 0.5rem; padding: 0.75rem; border-top: 1px solid var(--cinder-border); background: var(--cinder-surface);"
+            class="docked-surface-layout gap-2 padding-block-3 padding-inline-3 background-surface"
             {@attach dockedToBottom()}
           >
-            <p style="margin: 0;">An approval is waiting above.</p>
-            <textarea aria-label="Message" rows="3" style="inline-size: 100%;"></textarea>
+            <p class="children-p-layout">An approval is waiting above.</p>
+            <textarea aria-label="Message" rows="3" class="children-textarea"></textarea>
           </div>
         {/if}
         {#if dockedStack}
@@ -131,3 +124,55 @@
     {/if}
   {/snippet}
 </ToastRegion>
+
+<style>
+  .children-p {
+    font-size: var(--cinder-text-base);
+  }
+
+  .docked-page-layout {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .docked-page-scroll-layout {
+    flex: 1;
+    min-block-size: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: var(--cinder-space-3) var(--cinder-space-3) 0;
+  }
+
+  .children-h2 {
+    margin: 0 0 var(--cinder-space-2);
+  }
+
+  .children-p-layout {
+    margin: 0;
+  }
+
+  .children-div {
+    flex: none;
+    block-size: var(--cinder-space-3);
+  }
+
+  .bottom-tab-bar-layout {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .docked-surface-layout {
+    display: grid;
+    border-top: var(--cinder-border-width) solid var(--cinder-border);
+  }
+
+  .children-textarea {
+    inline-size: 100%;
+  }
+</style>

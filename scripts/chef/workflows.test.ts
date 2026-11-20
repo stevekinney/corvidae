@@ -26,7 +26,19 @@ interface DeliveryResult {
 
 /** What each step returns when the script ran clean: the stubs a test overrides by label word. */
 const cleanResponses: Responses = {
-  brief: { exitCode: 0, briefPath: 'tmp/chef/briefs/COR-7.md' },
+  critique: {
+    rows: [
+      {
+        id: '11a',
+        board: 'Runs',
+        text: 'Runs as cards',
+        states: [{ route: '/runs', state: 'ready', kind: 'ready' }],
+      },
+    ],
+    checked: [{ literal: '700px', result: 'consistent' }],
+    conflicts: [],
+  },
+  resolve: { exitCode: 0 },
   'record override': { recorded: true, path: '/main/tmp/chef/events.jsonl' },
   implement: {
     status: 'ready-for-review',
@@ -43,10 +55,9 @@ const cleanResponses: Responses = {
     url: 'https://github.com/stevekinney/corvidae/actions/runs/99',
     ref: 'chef/cor-7',
     inputs: { unitWorkspace: 'scripts' },
-    command: ['gh', 'workflow', 'run', 'targeted-checks.yml'],
+    command: ['bun', 'scripts/chef/targeted-run.ts'],
     requiresFullRun: false,
   },
-  'override brief': { briefPath: '/main/tmp/chef/briefs/COR-7.md', bytes: 2048 },
   wait: { run: '99', headSha: 'abc', conclusion: 'success', jobs: [] },
   compare: {
     run: '99',
@@ -57,8 +68,37 @@ const cleanResponses: Responses = {
     hasNew: false,
   },
   review: { verdict: 'approve', findings: [], evidencePath: 'tmp/chef/review.md' },
-  correct: { status: 'ready-for-review', head: 'def', report: '' },
+  classify: { classes: [], seenOnBranch: [] },
+  correct: {
+    status: 'ready-for-review',
+    head: 'def',
+    report: '',
+    regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' },
+  },
+  'class-fix': {
+    status: 'ready-for-review',
+    head: 'def',
+    report: '',
+    regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' },
+    entryPoints: ['entry point a', 'entry point b'],
+  },
+  pin: {
+    priorExitCode: 1,
+    priorHead: 'abc',
+    newExitCode: 0,
+    newHead: 'def',
+    priorOutput: 'scripts/chef/x.test.ts:\n(fail) a > b [1ms]\n',
+  },
 };
+
+const briefRecord = (issue = 'COR-7', fields: Record<string, unknown> = {}) => ({
+  validated: true,
+  exitCode: 0,
+  briefPath: `/main/tmp/chef/briefs/${issue}.md`,
+  ...fields,
+});
+const refusedBrief = (error = 'COR-1 blocks COR-7') =>
+  briefRecord('COR-7', { exitCode: 1, briefPath: '', error });
 
 /** The head of round `count`: the worker pushes `abc`, and its one correction pushes `def`. */
 const head = (count: number) => (count === 1 ? 'abc' : 'def');
@@ -75,19 +115,43 @@ const perRound = (fields: Record<string, unknown>) => (count: number) => ({
  * whose key is the longest prefix of that call's label, a function of the call number for that key.
  */
 async function runDelivery(arguments_: Record<string, unknown> = {}, stubs: Responses = {}) {
-  const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8').replace(
+  const run = await runWorkflow(
+    'deliver-issue.js',
+    cleanResponses,
+    {
+      issues: ['COR-7'],
+      run: 'run-1',
+      preparedBriefs: Object.fromEntries(
+        (Array.isArray(arguments_['issues']) ? arguments_['issues'] : ['COR-7']).map(
+          (issue: string) => [issue, briefRecord(issue)],
+        ),
+      ),
+      ...arguments_,
+    },
+    stubs,
+  );
+  return { ...run, result: run.result as DeliveryResult[] };
+}
+
+async function runWorkflow(
+  file: string,
+  base: Responses,
+  workflowArguments: Record<string, unknown>,
+  stubs: Responses,
+) {
+  const source = readFileSync(join(workflowsDirectory, file), 'utf8').replace(
     /^export const meta = \{[\s\S]*?^};\n/m,
     '',
   );
   const calls: Call[] = [];
   const counts = new Map<string, number>();
-  const responses = { ...cleanResponses, ...stubs };
+  const responses = { ...base, ...stubs };
   const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (
     ...arguments_: string[]
   ) => (...arguments_: unknown[]) => Promise<unknown>;
   const run = new AsyncFunction('args', 'agent', 'phase', 'log', 'parallel', 'pipeline', source);
-  const result = (await run(
-    { issues: ['COR-7'], run: 'run-1', ...arguments_ },
+  const result = await run(
+    workflowArguments,
     async (prompt: string, options: Call['options']) => {
       calls.push({ prompt, label: options.label, options });
       const key = Object.keys(responses)
@@ -97,9 +161,14 @@ async function runDelivery(arguments_: Record<string, unknown> = {}, stubs: Resp
       const count = (counts.get(key) ?? 0) + 1;
       counts.set(key, count);
       const stub = responses[key];
-      return typeof stub === 'function'
-        ? (stub as (count: number, label: string) => unknown)(count, options.label)
-        : stub;
+      const answer =
+        typeof stub === 'function'
+          ? (stub as (count: number, label: string) => unknown)(count, options.label)
+          : stub;
+      // The checks step also reports whether the worker's report stands; a clean run says it does.
+      return key === 'checks' && typeof answer === 'object' && answer !== null
+        ? { reportOk: true, ...answer }
+        : answer;
     },
     () => undefined,
     () => undefined,
@@ -107,7 +176,7 @@ async function runDelivery(arguments_: Record<string, unknown> = {}, stubs: Resp
     async () => {
       throw new Error('deliver-issue.js does not use pipeline');
     },
-  )) as DeliveryResult[];
+  );
   const labels = calls.map((call) => call.label.split(' ')[0]);
   return { calls, labels, result };
 }
@@ -194,7 +263,8 @@ describe('workflow scripts', () => {
           if (agentType === 'chef-worker' && file === 'deliver-issue.js')
             expect(options).toMatch(/\bmodel:\s*(chosen\.model|model),?\s*\}/);
           else if (agentType !== undefined) expect(options).not.toMatch(/\bmodel:/);
-          if (agentType === 'chef-reviewer') continue;
+          // The two read-only reviewers: the code reviewer and the pre-build design critique.
+          if (agentType === 'chef-reviewer' || agentType === 'design-reviewer') continue;
           if (agentType === undefined && /model:\s*'haiku'/.test(options)) {
             expect(prompt).not.toMatch(/\b(push|commit)\b/i);
             continue;
@@ -243,7 +313,6 @@ describe('workflow scripts', () => {
   test('deliver-issue.js drives check, dispatch, wait, compare and review to a recorded evidence request', async () => {
     const delivery = await runDelivery();
     expect(delivery.labels).toEqual([
-      'brief',
       'implement',
       'checks',
       'dispatch',
@@ -275,6 +344,49 @@ describe('workflow scripts', () => {
     );
   });
 
+  // A worker's report gates landing, not only its stop: the checks step runs `report.ts check`, and
+  // a report that is missing, invalid, for another brief version, recorded through the three-blocks
+  // escape or for another head comes back as reportOk false.
+  test('deliver-issue.js asks for the report check at the pushed head and never lands without it', async () => {
+    const clean = await runDelivery();
+    const checkPrompt = clean.calls.find((call) => call.label.startsWith('checks'))?.prompt ?? '';
+    expect(checkPrompt).toContain('bun scripts/chef/report.ts check COR-7 --head abc');
+    for (const problem of [
+      'there is no readable report',
+      "the worker's stop was let through after the block limit",
+      'the report is for head old, not the pushed head abc',
+      'the brief was amended after you read it',
+    ]) {
+      const delivery = await runDelivery(
+        {},
+        {
+          checks: {
+            exitCode: 0,
+            line: 'ok',
+            head: 'abc',
+            reportOk: false,
+            reportProblems: [problem],
+          },
+        },
+      );
+      expect(delivery.labels).toEqual(['implement', 'checks']);
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain(problem);
+      expect(delivery.result[0]?.evidenceRequest).toBeNull();
+    }
+  });
+
+  test('deliver-issue.js sends the correction worker its brief path, the corrections and the report command', async () => {
+    const delivery = await runDelivery(
+      {},
+      { review: { verdict: 'blocked', findings: ['a defect'] } },
+    );
+    const prompt = delivery.calls.find((call) => call.label.startsWith('correct'))?.prompt ?? '';
+    expect(prompt).toContain('tmp/chef/briefs/COR-7.md');
+    expect(prompt).toContain('corrections/COR-7.jsonl');
+    expect(prompt).toContain('bun scripts/chef/report.ts write COR-7');
+  });
+
   test('deliver-issue.js stops for judgment, with no evidence request, when the run needs a full run', async () => {
     const delivery = await runDelivery(
       {},
@@ -286,7 +398,7 @@ describe('workflow scripts', () => {
         },
       },
     );
-    expect(delivery.labels).toEqual(['brief', 'implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['implement', 'checks', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     expect(delivery.result[0]?.evidenceRequest).toBeNull();
   });
@@ -296,9 +408,16 @@ describe('workflow scripts', () => {
       {},
       { checks: (count: number) => ({ exitCode: 1, line: 'lint failed', head: head(count) }) },
     );
-    expect(delivery.labels).toEqual(['brief', 'implement', 'checks', 'correct', 'checks']);
+    expect(delivery.labels).toEqual([
+      'implement',
+      'checks',
+      'classify',
+      'correct',
+      'pin',
+      'checks',
+    ]);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
-    expect(delivery.result[0]?.reason).toContain('after 2 rounds');
+    expect(delivery.result[0]?.reason).toContain('after 1 correction');
   });
 
   // Round 2 must not land the corrected head with round 1's run.
@@ -377,7 +496,7 @@ describe('workflow scripts', () => {
       expect(delivery.labels.filter((label) => label === 'correct')).toHaveLength(1);
       expect(delivery.labels.filter((label) => label === 'checks')).toHaveLength(2);
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
-      expect(delivery.result[0]?.reason).toContain('after 2 rounds');
+      expect(delivery.result[0]?.reason).toContain('after 1 correction');
       expect(delivery.result[0]?.evidenceRequest).toBeNull();
     });
   }
@@ -426,16 +545,9 @@ describe('workflow scripts', () => {
         const delivery =
           where === 'args'
             ? await runWithCorrection({ paths: { 'COR-7': [path] } })
-            : await runWithCorrection(
-                {},
-                {
-                  brief: {
-                    exitCode: 0,
-                    briefPath: 'tmp/chef/briefs/COR-7.md',
-                    paths: [path],
-                  },
-                },
-              );
+            : await runWithCorrection({
+                preparedBriefs: { 'COR-7': briefRecord('COR-7', { paths: [path] }) },
+              });
         expect(modelOf(delivery.calls, 'implement')).toEqual(['opus']);
         expect(modelOf(delivery.calls, 'correct')).toEqual(['opus']);
         expect(delivery.result[0]?.evidenceRequest?.['workerModel']).toMatchObject({
@@ -464,7 +576,7 @@ describe('workflow scripts', () => {
   test('deliver-issue.js leaves the reviewer on its frontmatter model and the checks on Haiku', async () => {
     const delivery = await runWithCorrection({ models: { 'COR-7': 'opus' } });
     expect(modelOf(delivery.calls, 'review')).toEqual([undefined, undefined]);
-    for (const word of ['checks', 'dispatch', 'wait', 'compare', 'brief'])
+    for (const word of ['checks', 'dispatch', 'wait', 'compare'])
       for (const model of modelOf(delivery.calls, word)) expect(model).toBe('haiku');
   });
 
@@ -473,38 +585,100 @@ describe('workflow scripts', () => {
       {},
       { dispatch: { ...(cleanResponses['dispatch'] as object), dispatched: false } },
     );
-    expect(delivery.labels).toEqual(['brief', 'implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['implement', 'checks', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
   });
 
-  test('deliver-issue.js passes only coordinator-supplied context and classification to brief preparation', () => {
-    const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8');
-    expect(source).toContain('args.verifiedContexts');
-    expect(source).toContain('args.classifications');
-    expect(source).toContain("arguments_.push('--context', shellArgument(context))");
-    expect(source).toContain("arguments_.push('--classification', shellArgument(classification))");
+  test('deliver-issue.js uses the supplied validated brief without invoking a preparation model', async () => {
+    const path = '/coordinator/verified/brief for COR-7.md';
+    const delivery = await runDelivery({
+      preparedBriefs: { 'COR-7': briefRecord('COR-7', { briefPath: path }) },
+    });
+    expect(delivery.labels[0]).toBe('implement');
+    expect(delivery.calls[0]?.prompt).toContain(`brief file ${path} and nothing else`);
+    expect(delivery.calls.some((call) => call.options.phase === 'brief')).toBe(false);
   });
 
-  test('deliver-issue.js never dispatches a worker for a brief that exits nonzero without an override', async () => {
+  test('deliver-issue.js dispatches no worker for missing, malformed, or refused preparation', async () => {
     for (const brief of [
-      { exitCode: 1, briefPath: '', error: 'repository pin does not match origin' },
-      { exitCode: 2, briefPath: '', error: 'required context is unreadable' },
-      { exitCode: 0, briefPath: '' },
+      undefined,
+      { validated: true, exitCode: 0 },
+      briefRecord('COR-7', { validated: false }),
+      briefRecord('COR-7', { briefPath: 'relative/brief.md' }),
+      refusedBrief('repository pin does not match origin'),
+      refusedBrief('required context is unreadable'),
     ]) {
-      const delivery = await runDelivery({}, { brief });
-      expect(delivery.labels).toEqual(['brief']);
+      const delivery = await runDelivery({ preparedBriefs: { 'COR-7': brief } });
+      expect(delivery.calls).toHaveLength(0);
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     }
   });
 
-  test('deliver-issue.js records an override as an event and then continues', async () => {
+  describe('the pre-build design critique', () => {
+    const designArguments = {
+      preparedBriefs: {
+        'COR-7': { ...refusedBrief('design rows are not resolved'), needsResolvedRows: true },
+      },
+      resolvedBriefs: { 'COR-7': briefRecord() },
+    };
+
+    test('critiques and resolves design rows before dispatching from the supplied resolved brief', async () => {
+      const delivery = await runDelivery(designArguments);
+      expect(delivery.labels.slice(0, 3)).toEqual(['critique', 'resolve', 'implement']);
+      const critique = delivery.calls[0];
+      expect(critique?.options.agentType).toBe('design-reviewer');
+      expect(critique?.options.model).toBeUndefined();
+      expect(critique?.prompt).toContain('bun scripts/chef/design-critique.ts rows COR-7');
+      const resolve = delivery.calls[1];
+      expect(resolve?.prompt).toContain('bun scripts/chef/design-critique.ts write COR-7 --input');
+      expect(resolve?.prompt).toContain(
+        '"states":[{"route":"/runs","state":"ready","kind":"ready"}]',
+      );
+      expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
+    });
+
+    test('hands the critique the coordinator’s verified design context, or says there is none', async () => {
+      const withContext = await runDelivery({
+        ...designArguments,
+        verifiedContexts: { 'COR-7': '/main/tmp/chef/context.json' },
+      });
+      expect(withContext.calls[0]?.prompt).toContain('/main/tmp/chef/context.json');
+      const without = await runDelivery(designArguments);
+      expect(without.calls[0]?.prompt).toContain('supplied no design context file');
+    });
+
+    test('stops for judgment, building nothing, when the file was refused', async () => {
+      const delivery = await runDelivery(designArguments, {
+        resolve: { exitCode: 1, error: 'row 11a declares no states' },
+      });
+      expect(delivery.labels).toEqual(['critique', 'resolve']);
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain('row 11a declares no states');
+    });
+
+    test('requires a validated resolved brief after a successful critique', async () => {
+      const delivery = await runDelivery({ ...designArguments, resolvedBriefs: {} });
+      expect(delivery.labels).toEqual(['critique', 'resolve']);
+      expect(delivery.result[0]?.reason).toContain('missing validated coordinator brief');
+    });
+
+    test('adds no critique for a clean brief or a refusal unrelated to design', async () => {
+      const refused = await runDelivery({ preparedBriefs: { 'COR-7': refusedBrief() } });
+      expect(refused.calls).toHaveLength(0);
+      const clean = await runDelivery();
+      expect(clean.labels).not.toContain('critique');
+    });
+  });
+
+  test('deliver-issue.js records an override and uses only the supplied override brief', async () => {
     const override = { reason: 'the blocker closed in this batch', at: '2026-11-19T10:00:00Z' };
-    const delivery = await runDelivery(
-      { override: { 'COR-7': override } },
-      { brief: { exitCode: 1, briefPath: '', error: 'COR-1 blocks COR-7' } },
-    );
-    expect(delivery.labels.slice(0, 4)).toEqual(['brief', 'record', 'override', 'implement']);
-    const recording = delivery.calls[1]?.prompt ?? '';
+    const delivery = await runDelivery({
+      override: { 'COR-7': override },
+      preparedBriefs: { 'COR-7': refusedBrief() },
+      overrideBriefs: { 'COR-7': briefRecord('COR-7', { bytes: 2048 }) },
+    });
+    expect(delivery.labels.slice(0, 2)).toEqual(['record', 'implement']);
+    const recording = delivery.calls[0]?.prompt ?? '';
     expect(recording).toContain('tmp/chef/events.jsonl');
     const line = /: (\{.*\})\n/.exec(recording)?.[1] ?? '';
     expect(JSON.parse(line)).toEqual({
@@ -514,44 +688,38 @@ describe('workflow scripts', () => {
       reason: override.reason,
       at: override.at,
     });
-    expect(delivery.calls[2]?.prompt).toContain('--stdout');
-    expect(delivery.calls[3]?.prompt).toContain('brief file /main/tmp/chef/briefs/COR-7.md ');
+    expect(delivery.calls[1]?.prompt).toContain('brief file /main/tmp/chef/briefs/COR-7.md ');
     expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
     expect(delivery.result[0]?.evidenceRequest?.['override']).toEqual(override);
   });
 
-  test('deliver-issue.js never starts a worker after an override that produced no brief', async () => {
+  test('deliver-issue.js starts no worker after an override with no usable coordinator brief', async () => {
     const override = { 'COR-7': { reason: 'the blocker closed', at: '2026-11-19T10:00:00Z' } };
-    for (const written of [
-      { briefPath: '/main/tmp/chef/briefs/COR-7.md', bytes: 0 },
-      { briefPath: 'tmp/chef/briefs/COR-7.md', bytes: 2048 },
-      { briefPath: '', bytes: 2048 },
+    for (const record of [
+      undefined,
+      briefRecord('COR-7', { bytes: 0 }),
+      briefRecord('COR-7', { briefPath: 'relative/brief.md', bytes: 2048 }),
+      briefRecord('COR-8', { bytes: 2048 }),
     ]) {
-      const delivery = await runDelivery(
-        { override },
-        { brief: { exitCode: 1, briefPath: '' }, 'override brief': written },
-      );
-      expect(delivery.labels).toEqual(['brief', 'record', 'override']);
+      const delivery = await runDelivery({
+        override,
+        preparedBriefs: { 'COR-7': refusedBrief() },
+        overrideBriefs: { 'COR-7': record },
+      });
+      expect(delivery.labels).toEqual(['record']);
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     }
   });
 
   test('deliver-issue.js applies an override to its own issue only', async () => {
-    const delivery = await runDelivery(
-      {
-        issues: ['COR-7', 'COR-8'],
-        override: { 'COR-7': { reason: 'closed in this batch', at: '2026-11-19T10:00:00Z' } },
-      },
-      {
-        brief: { exitCode: 1, briefPath: '', error: 'blocked' },
-        'override brief': (_count: number, label: string) => ({
-          briefPath: `/main/tmp/chef/briefs/${label.split(' ').at(-1)}.md`,
-          bytes: 10,
-        }),
-      },
-    );
+    const delivery = await runDelivery({
+      issues: ['COR-7', 'COR-8'],
+      preparedBriefs: { 'COR-7': refusedBrief(), 'COR-8': refusedBrief() },
+      override: { 'COR-7': { reason: 'closed in this batch', at: '2026-11-19T10:00:00Z' } },
+      overrideBriefs: { 'COR-7': briefRecord('COR-7', { bytes: 10 }) },
+    });
     const byIssue = (issue: string) => delivery.calls.filter((call) => call.label.endsWith(issue));
-    expect(byIssue('COR-8').map((call) => call.label.split(' ')[0])).toEqual(['brief']);
+    expect(byIssue('COR-8')).toHaveLength(0);
     expect(byIssue('COR-7').map((call) => call.label.split(' ')[0])).toContain('implement');
     expect(delivery.result.map((entry) => entry.status)).toEqual([
       'READY_TO_LAND',
@@ -560,33 +728,347 @@ describe('workflow scripts', () => {
   });
 
   test('deliver-issue.js refuses an override without a reason or a time', async () => {
-    const delivery = await runDelivery(
-      { override: { 'COR-7': { reason: ' ', at: '2026-11-19T10:00:00Z' } } },
-      { brief: { exitCode: 1, briefPath: '' } },
-    );
+    const delivery = await runDelivery({
+      override: { 'COR-7': { reason: ' ', at: '2026-11-19T10:00:00Z' } },
+      preparedBriefs: { 'COR-7': refusedBrief() },
+    });
     expect(delivery.calls).toHaveLength(0);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
-  });
-
-  test('deliver-issue.js keeps verified context and classification as one shell argument each', async () => {
-    const delivery = await runDelivery({
-      verifiedContexts: { 'COR-7': "/coordinator/boards/with space/'quoted'; touch nope" },
-      classifications: { 'COR-7': 'no-behavior' },
-    });
-    const prompt = delivery.calls[0]?.prompt ?? '';
-    expect(prompt).toContain('--base "$(git rev-parse HEAD)"');
-    expect(prompt).not.toContain('<that-40-character-sha>');
-    expect(prompt).toContain(
-      "--context '/coordinator/boards/with space/'\"'\"'quoted'\"'\"'; touch nope'",
-    );
-    expect(prompt).toContain("--classification 'no-behavior'");
-    expect(delivery.calls.filter((call) => call.options.phase === 'implement')).toHaveLength(1);
   });
 
   test('deliver-issue.js refuses an invalid coordinator classification before preparation', async () => {
     const delivery = await runDelivery({ classifications: { 'COR-7': 'no-behavior; touch nope' } });
     expect(delivery.calls).toHaveLength(0);
     expect(delivery.result[0]?.reason).toBe('invalid coordinator classification');
+  });
+
+  // One correction path: a coordinator-requested correction skips the brief and the build, and
+  // runs classify, correction, pin, checks, evidence, compare and review at the new head.
+  const regression = { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' };
+  const pinned = cleanResponses['pin'] as Record<string, unknown>;
+  const afterFix = {
+    checks: { exitCode: 0, line: 'focused checks: ok', head: 'def' },
+    dispatch: { ...(cleanResponses['dispatch'] as object), headSha: 'def' },
+    wait: { ...(cleanResponses['wait'] as object), headSha: 'def' },
+    compare: { ...(cleanResponses['compare'] as object), headSha: 'def' },
+    classify: { classes: [], seenOnBranch: [] },
+    correct: { status: 'ready-for-review', head: 'def', report: '', regressionTest: regression },
+    'class-fix': {
+      status: 'ready-for-review',
+      head: 'def',
+      report: '',
+      regressionTest: regression,
+      entryPoints: ['route a', 'route b'],
+    },
+    pin: pinned,
+  };
+  const requested = (correction: Record<string, unknown> = {}) => ({
+    issues: [],
+    correction: {
+      issue: 'COR-7',
+      head: 'abc',
+      branch: 'chef/cor-7',
+      worktree: '/worktree',
+      finding: 'the route accepts a negative timeout',
+      ...correction,
+    },
+  });
+
+  test('a coordinator-requested correction runs through the workflow, with no hand-written fix', async () => {
+    const delivery = await runDelivery(requested(), afterFix);
+    expect(delivery.labels).toEqual([
+      'classify',
+      'correct',
+      'pin',
+      'checks',
+      'dispatch',
+      'wait',
+      'compare',
+      'review',
+    ]);
+    const fix = delivery.calls.find((call) => call.label.startsWith('correct'));
+    expect(fix?.options.agentType).toBe('chef-worker');
+    expect(fix?.prompt).toContain('the route accepts a negative timeout');
+    expect(delivery.result[0]).toMatchObject({ status: 'READY_TO_LAND', head: 'def' });
+    expect(delivery.result[0]?.evidenceRequest).toMatchObject({ revision: 'def' });
+  });
+
+  test('a second finding of one class produces a CLASS_FIX step', async () => {
+    const delivery = await runDelivery(requested({ class: 'boundary-validation' }), {
+      ...afterFix,
+      classify: { classes: ['boundary-validation'], seenOnBranch: ['boundary-validation'] },
+    });
+    expect(delivery.labels.slice(0, 3)).toEqual(['classify', 'class-fix', 'pin']);
+    expect(delivery.labels).not.toContain('correct');
+    const prompt = delivery.calls.find((call) => call.label.startsWith('class-fix'))?.prompt;
+    expect(prompt).toContain('every entry point');
+    expect(delivery.result[0]?.steps['correction1']).toMatchObject({
+      kind: 'CLASS_FIX',
+      repeated: ['boundary-validation'],
+    });
+    expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
+  });
+
+  test('a class the coordinator names as already seen produces a CLASS_FIX step', async () => {
+    const delivery = await runDelivery(requested({ seenClasses: ['state-machine'] }), {
+      ...afterFix,
+      classify: { classes: ['state-machine'], seenOnBranch: [] },
+    });
+    expect(delivery.labels[1]).toBe('class-fix');
+  });
+
+  test('a first finding of a class gets a point fix, and the branch path classifies too', async () => {
+    const delivery = await runWithCorrection(
+      {},
+      { classify: { classes: ['boundary-validation'], seenOnBranch: [] }, pin: pinned },
+    );
+    expect(delivery.labels).toContain('classify');
+    expect(delivery.labels).toContain('correct');
+    expect(delivery.labels).not.toContain('class-fix');
+    expect(delivery.labels.indexOf('pin')).toBeGreaterThan(delivery.labels.indexOf('correct'));
+  });
+
+  test('a class fix without every entry point listed is refused', async () => {
+    const delivery = await runDelivery(requested(), {
+      ...afterFix,
+      classify: { classes: ['boundary-validation'], seenOnBranch: ['boundary-validation'] },
+      'class-fix': { ...afterFix['class-fix'], entryPoints: [] },
+    });
+    expect(delivery.labels).toEqual(['classify', 'class-fix']);
+    expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+    expect(delivery.result[0]?.reason).toContain('entry point');
+  });
+
+  for (const [name, stubs] of [
+    ['reports none', { correct: { ...afterFix.correct, regressionTest: undefined } }],
+    [
+      'names a different pre-fix head',
+      {
+        correct: { ...afterFix.correct, regressionTest: { ...regression, failsOn: 'zzz' } },
+        pin: { ...pinned, priorHead: 'zzz' },
+      },
+    ],
+    [
+      'names a post-fix head that is not the new head',
+      {
+        correct: { ...afterFix.correct, regressionTest: { ...regression, passesOn: 'zzz' } },
+        pin: { ...pinned, newHead: 'zzz' },
+      },
+    ],
+    ['was run at another pre-fix commit', { pin: { ...pinned, priorHead: 'zzz' } }],
+    [
+      'comes with a fix that left the head unchanged',
+      {
+        correct: {
+          ...afterFix.correct,
+          head: 'abc',
+          regressionTest: { ...regression, passesOn: 'abc' },
+        },
+        pin: { ...pinned, newHead: 'abc' },
+      },
+    ],
+    [
+      'is not a test file',
+      { correct: { ...afterFix.correct, regressionTest: { ...regression, path: 'a.ts' } } },
+    ],
+    ['passes on the pre-fix head', { pin: { ...pinned, priorExitCode: 0 } }],
+    ['fails on the new head', { pin: { ...pinned, newExitCode: 1 } }],
+    ['ran at another commit', { pin: { ...pinned, newHead: 'zzz' } }],
+  ] as [string, Responses][]) {
+    test(`a correction whose failing-first test ${name} is refused`, async () => {
+      const delivery = await runDelivery(requested(), { ...afterFix, ...stubs });
+      expect(delivery.labels).not.toContain('checks');
+      expect(delivery.labels).not.toContain('dispatch');
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain('regression test');
+      expect(delivery.result[0]?.evidenceRequest).toBeNull();
+    });
+  }
+
+  // Exit 75 (busy pool) and 70 (hang guard) are not test results, and a failure that names no test
+  // in the pinned file is a setup failure: each is "pin did not run", never "pinned".
+  for (const [name, pin] of [
+    ['a busy pool (75) at the pre-fix head', { ...pinned, priorExitCode: 75 }],
+    ['the hang guard (70) at the pre-fix head', { ...pinned, priorExitCode: 70 }],
+    ['a busy pool (75) at the new head', { ...pinned, newExitCode: 75 }],
+    ['a setup failure (exit 2) at the pre-fix head', { ...pinned, priorExitCode: 2 }],
+    [
+      'exit 1 with no (fail) line',
+      { ...pinned, priorOutput: 'scripts/chef/x.test.ts:\nerror: Cannot find module\n' },
+    ],
+    ['exit 1 with no output at all', { ...pinned, priorOutput: '' }],
+    [
+      'a (fail) line in another file',
+      { ...pinned, priorOutput: '(fail) a > b [1ms]\nscripts/chef/other.test.ts:\n' },
+    ],
+  ] as [string, Record<string, unknown>][]) {
+    test(`a pin that saw ${name} did not run, so the correction is refused`, async () => {
+      const delivery = await runDelivery(requested(), { ...afterFix, pin });
+      expect(delivery.labels).not.toContain('checks');
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain('pin did not run');
+    });
+  }
+
+  test('the branch path refuses its own correction when the test passes before the fix', async () => {
+    const delivery = await runWithCorrection({}, { pin: { ...pinned, priorExitCode: 0 } });
+    expect(delivery.labels.filter((label) => label === 'checks')).toHaveLength(1);
+    expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+    expect(delivery.result[0]?.reason).toContain('regression test');
+  });
+
+  test('a correction request with missing fields is refused before any agent runs', async () => {
+    const delivery = await runDelivery(requested({ worktree: '' }), afterFix);
+    expect(delivery.calls).toHaveLength(0);
+    expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+  });
+
+  test('the script names exactly the defect classes review-threads tags', () => {
+    const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8');
+    const names = (
+      JSON.parse(readFileSync(join(root, 'scripts', 'chef', 'defect-classes.json'), 'utf8')) as {
+        classes: { name: string }[];
+      }
+    ).classes.map((entry) => entry.name);
+    const listed = /const CLASS_NAMES = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    expect([...listed.matchAll(/'([^']+)'/g)].map((match) => match[1])).toEqual(names);
+  });
+});
+
+describe('answer-threads.js corrections', () => {
+  const answerPin = {
+    priorExitCode: 1,
+    priorHead: 'abc',
+    newExitCode: 0,
+    newHead: 'def',
+    priorOutput: 'scripts/chef/x.test.ts:\n(fail) a > b [1ms]\n',
+  };
+  const answerResponses: Responses = {
+    triage: {
+      threads: [
+        { id: 'T1', triage: 'fix' },
+        { id: 'T2', triage: 'decline' },
+      ],
+    },
+    classify: { head: 'abc', repeating: [] },
+    answer: {
+      round: 1,
+      answered: ['T1', 'T2'],
+      fixedHead: 'def',
+      open: [],
+      replyFile: 'tmp/replies.tsv',
+      regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'def' },
+    },
+    pin: answerPin,
+    resolve: { exitCode: 0, resolved: ['T1', 'T2'] },
+  };
+  const answerRound = (stubs: Responses = {}) =>
+    runWorkflow(
+      'answer-threads.js',
+      answerResponses,
+      { pr: 7, worktree: '/worktree', round: 1 },
+      stubs,
+    );
+  const asRecord = (value: unknown) => value as Record<string, unknown>;
+
+  test('proves the test, then resolves the threads, and returns the fixed head', async () => {
+    const round = await answerRound();
+    expect(round.labels).toEqual(['triage', 'classify', 'answer', 'pin', 'resolve']);
+    expect(asRecord(round.result)['fixedHead']).toBe('def');
+    expect(round.calls.find((call) => call.label.startsWith('answer'))?.prompt).toContain(
+      'never run `resolve` yourself',
+    );
+  });
+
+  test('a round that pushed no fix resolves its threads without a pin', async () => {
+    const round = await answerRound({
+      answer: { round: 1, answered: ['T1'], fixedHead: 'abc', open: [], replyFile: 'r.tsv' },
+    });
+    expect(round.labels).toEqual(['triage', 'classify', 'answer', 'resolve']);
+  });
+
+  for (const [name, stubs] of [
+    [
+      'no regression test',
+      { answer: { ...(answerResponses['answer'] as object), regressionTest: undefined } },
+    ],
+    [
+      'a regression test that fails on another pre-fix head',
+      {
+        answer: {
+          ...(answerResponses['answer'] as object),
+          regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'zzz', passesOn: 'def' },
+        },
+      },
+    ],
+    [
+      'a regression test that is not a test file',
+      {
+        answer: {
+          ...(answerResponses['answer'] as object),
+          regressionTest: { path: 'scripts/chef/x.ts', failsOn: 'abc', passesOn: 'def' },
+        },
+      },
+    ],
+    [
+      'a regression test that passes on another head than the pushed one',
+      {
+        answer: {
+          ...(answerResponses['answer'] as object),
+          regressionTest: { path: 'scripts/chef/x.test.ts', failsOn: 'abc', passesOn: 'zzz' },
+        },
+      },
+    ],
+    ['a test that passes on the pre-fix head', { pin: { ...answerPin, priorExitCode: 0 } }],
+    ['a test that fails on the new head', { pin: { ...answerPin, newExitCode: 1 } }],
+    ['a pin run at another commit', { pin: { ...answerPin, newHead: 'zzz' } }],
+    ['a pin that exited 75 (busy pool)', { pin: { ...answerPin, priorExitCode: 75 } }],
+    ['a pin that exited 70 (hang guard)', { pin: { ...answerPin, newExitCode: 70 } }],
+    ['a pin whose failure names no test in the file', { pin: { ...answerPin, priorOutput: '' } }],
+    [
+      'answered threads with no reply file',
+      { answer: { ...(answerResponses['answer'] as object), replyFile: undefined } },
+    ],
+  ] as [string, Responses][]) {
+    test(`refuses ${name}: no thread is resolved, and fixedHead is null`, async () => {
+      const round = await answerRound(stubs);
+      expect(round.labels).not.toContain('resolve');
+      expect(round.result).toMatchObject({
+        status: 'NEEDS_JUDGMENT',
+        fixedHead: null,
+        pushedHead: 'def',
+        answered: [],
+        open: ['T1', 'T2'],
+      });
+      expect(asRecord(round.result)['reason']).toEqual(expect.any(String));
+    });
+  }
+
+  test('a pin that exited 75 is reported as not run', async () => {
+    const round = await answerRound({ pin: { ...answerPin, priorExitCode: 75 } });
+    expect(asRecord(round.result)['reason']).toContain('pin did not run');
+  });
+
+  test('a repeated class runs CLASS_FIX, and refuses a fix that lists no entry points', async () => {
+    const repeated = { classify: { head: 'abc', repeating: ['state-machine'] } };
+    const refused = await answerRound(repeated);
+    const prompt = refused.calls.find((call) => call.label.startsWith('answer'))?.prompt;
+    expect(prompt).toContain('CLASS_FIX');
+    expect(prompt).toContain('every entry point');
+    expect(refused.labels).not.toContain('resolve');
+    expect(asRecord(refused.result)['reason']).toContain('entry point');
+    const accepted = await answerRound({
+      ...repeated,
+      answer: {
+        ...(answerResponses['answer'] as object),
+        entryPoints: ['hook a', 'hook b'],
+      },
+    });
+    expect(accepted.labels).toContain('resolve');
+    const pointFix = await answerRound();
+    expect(pointFix.calls.find((call) => call.label.startsWith('answer'))?.prompt).not.toContain(
+      'CLASS_FIX',
+    );
   });
 });
 

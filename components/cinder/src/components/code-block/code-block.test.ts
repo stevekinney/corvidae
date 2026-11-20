@@ -402,23 +402,26 @@ describe('CodeBlock — static structure', () => {
     expect(css).toContain('box-shadow: none;');
   });
 
-  test('CSS contains dark-theme rule that overrides shiki span color with --shiki-dark', async () => {
+  test('token color follows the color scheme in effect, however it was set', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
-    // The rule must cover the [data-cinder-theme='dark'] selector (playground uses this).
-    expect(css).toContain("data-cinder-theme='dark'");
-    // The rule must switch the inline `color:` to the --shiki-dark custom property.
-    expect(css).toContain('color: var(--shiki-dark, inherit)');
-  });
-
-  test('CSS contains prefers-color-scheme: dark fallback for system dark mode', async () => {
-    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
-    expect(css).toContain('@media (prefers-color-scheme: dark)');
+    // `light-dark()` reads the element's own `color-scheme`, so an app that themes with
+    // `color-scheme` or `data-theme` on <html> and never sets `data-cinder-theme` gets dark tokens.
+    expect(css).toMatch(
+      /span\[style\*='--shiki-light'\]\[style\*='--shiki-dark'\]\s*\{\s*(?:\/\*[^*]*\*\/\s*)?color:\s*light-dark\(var\(--shiki-light\),\s*var\(--shiki-dark\)\);/,
+    );
+    // No selector that keys the swap to one theme attribute, and no inline-style override to beat.
+    expect(css).not.toContain('var(--shiki-dark, inherit)');
+    expect(css).not.toMatch(/\[data-cinder-theme=[^\]]*\]\s*\.cinder-code-block/);
   });
 
   test("github-light's orange takes Cinder's warning text, which meets AA on the inset field", async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    // A single-theme span is matched on its inline `color:`; a dual-theme span reassigns `--shiki-light`.
     expect(css).toContain(
-      ".cinder-code-block :where(pre.shiki) span[style*='E36209;' i],\n  .cinder-code-block :where(pre.shiki) span[style$='E36209' i] {\n    color: var(--cinder-status-warning-text) !important;",
+      ".cinder-code-block :where(pre.shiki) span[style*='color:#E36209' i] {\n    color: var(--cinder-status-warning-text) !important;",
+    );
+    expect(css).toContain(
+      ".cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#E36209' i] {\n    --shiki-light: var(--cinder-status-warning-text) !important;",
     );
   });
 

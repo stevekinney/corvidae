@@ -81,7 +81,7 @@ export interface StressSetup {
   /** A draft the host puts back in the composer when the page loads. */
   restoredDraft?: string;
   /** The inline size of the chat shell in CSS pixels, when the case is about a narrow composer. */
-  shellWidth?: number;
+  narrowShell?: boolean;
   /** Mounts a second chat under the first, each with its own composer. */
   secondChat: boolean;
   emptyPrompts: string[];
@@ -476,7 +476,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
     setup.streaming = true;
     setup.runInput = true;
     setup.turnStates[0] = { kind: 'streaming' };
-    if (param(stressCase, 'narrow', false)) setup.shellWidth = 360;
+    if (param(stressCase, 'narrow', false)) setup.narrowShell = true;
     return setup;
   },
 

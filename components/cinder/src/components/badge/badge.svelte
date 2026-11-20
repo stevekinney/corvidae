@@ -38,6 +38,7 @@
 
   let {
     variant = 'neutral',
+    appearance = 'soft',
     size = 'md',
     monospace = false,
     truncate = false,
@@ -91,6 +92,7 @@
 <span
   class={classNames('cinder-badge', customClassName)}
   data-cinder-variant={subscriptionStateConfiguration?.variant ?? severityVariant ?? variant}
+  data-cinder-appearance={appearance === 'outlined' ? 'outlined' : undefined}
   data-cinder-severity={subscriptionState === undefined ? severity : undefined}
   data-cinder-size={size}
   data-cinder-monospace={monospace ? '' : undefined}

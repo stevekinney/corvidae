@@ -88,7 +88,7 @@
     min-inline-size: 0;
     padding-block: var(--cinder-space-2-5);
     padding-inline-end: var(--cinder-space-2);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-faint);
   }
 
   .cinder-grouped-list-item:last-child > .cinder-grouped-list-item__content {
@@ -213,8 +213,8 @@
  * ---------------------------------------- */
 
   /* The lead is a fixed column, right-aligned, wide enough for "11 pm–2 am" at the comfortable
-     density, so the windows of every row line up on their last character: 104px on a wide row,
-     where the window is two steps over the name, and 96px on a narrow one (below), where it is one
+     density, so the windows of every row line up on their last character: 112px on a wide row,
+     where the window is two steps over the name, and 100px on a narrow one (below), where it is one
      step over. It aligns to the first line of a wrapping name. The row's title and subtitle are
      the basic row's own: the lead is the only thing a time-led row adds. */
   .cinder-grouped-list-item__lead.cinder-grouped-list-item__lead--timed {
@@ -223,7 +223,7 @@
     flex-direction: column;
     align-items: flex-end;
     align-self: flex-start;
-    inline-size: 6.5rem;
+    inline-size: 7rem;
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     text-align: end;
@@ -451,7 +451,7 @@
 
     .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__lead {
       grid-row: 1 / span 2;
-      inline-size: 6rem;
+      inline-size: 6.25rem;
       margin-inline-end: var(--cinder-space-3);
     }
 

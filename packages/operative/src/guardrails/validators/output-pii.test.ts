@@ -213,3 +213,47 @@ describe('output-pii on long unbroken runs (COR-1753)', () => {
     expect(result.redacted).toBe(`${run} mail [EMAIL_REDACTED] ${run}_api_key=[KEY_REDACTED]`);
   });
 });
+
+describe('output-pii on identifiers and phone formats', () => {
+  const identifiers = [
+    '123e4567-e89b-12d3-a456-426614174000',
+    '00000000-0000-4000-8000-000000000000',
+    '8284d5b4-a280-4121-8123-123456789012',
+    '149e4565-dc53-4c49-8521-40275bbebdcb',
+    '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+    '2fd4e1c67a2d28fced849ee1bb76e7391b93eb12',
+    'tool-call-1-8284d5b4-a280-4121-8123-123456789012',
+    'tool-call-1-00000000-0000-4000-8000-000000000000',
+    '{"callId":"tool-call-1-149e4565-dc53-4c49-8521-1234567890ab","outcome":"success"}',
+  ];
+
+  it.each(identifiers)('does not read %s as personal information', async (identifier) => {
+    const result = await createOutputPIIValidator().validate(identifier, baseContext);
+    expect(result.valid).toBe(true);
+    expect(result.redacted).toBeUndefined();
+  });
+
+  const phones = [
+    '+1 415 555 0123',
+    '(415) 555-0123',
+    '415.555.0123',
+    '4155550123',
+    '+44 207 946 0958',
+    '+1-415-555-0123',
+  ];
+
+  it.each(phones)('still redacts the phone number %s', async (phone) => {
+    const result = await createOutputPIIValidator().validate(`Call ${phone} now.`, baseContext);
+    expect(result.valid).toBe(false);
+    expect(result.redacted).toContain('[PHONE_REDACTED]');
+    expect(result.redacted).not.toContain('555');
+  });
+
+  it('redacts a phone number beside an identifier and leaves the identifier', async () => {
+    const result = await createOutputPIIValidator().validate(
+      'id 8284d5b4-a280-4121-8123-123456789012 phone 415-555-0123',
+      baseContext,
+    );
+    expect(result.redacted).toBe('id 8284d5b4-a280-4121-8123-123456789012 phone [PHONE_REDACTED]');
+  });
+});

@@ -1,15 +1,12 @@
 import { Glob } from 'bun';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import {
   assertValidResolverDocument,
   assertValidTokenDocument,
 } from '../../src/tokens/runtime/validate.ts';
-
-const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-export const tokenRoot = join(scriptDirectory, '..', '..', 'src', 'tokens');
+import { tokenRoot } from './generator-configuration.ts';
 
 export async function loadRawTokenDocuments(): Promise<Array<{ path: string; document: unknown }>> {
   const files: Array<{ path: string; document: unknown }> = [];

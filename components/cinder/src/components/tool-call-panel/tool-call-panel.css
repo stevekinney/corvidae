@@ -24,7 +24,7 @@
     min-block-size: 0;
     max-block-size: 100%;
     overflow: hidden;
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
@@ -59,7 +59,7 @@
     justify-content: space-between;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-4);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    border-block-end: var(--cinder-border-width) solid var(--cinder-border-muted);
   }
 
   .cinder-tool-call-panel__heading {
@@ -234,7 +234,7 @@
   /* The block that holds fields or JSON: inset from the panel, and tinted red for an error. */
   .cinder-tool-call-panel__block {
     padding: var(--cinder-space-2-5) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
+    border: var(--cinder-border-width) solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
     min-inline-size: 0;

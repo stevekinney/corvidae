@@ -11,9 +11,11 @@
 # and Cinder's font stack is the system's: a bare runner's default sans (DejaVu Sans) is wider than the
 # image's and cuts off text that fits on macOS (COR-2412). So it runs in the same image, on x64.
 #
-# Both call Playwright directly: the root `test:browser:*` scripts wrap it in the shared development
-# host's lock and slot pool (`scripts/run-exclusively.ts`, `scripts/host-slots.ts`), which a runner
-# does not need. The packages' own browser suites (COR-2080) run through `validate:batch` in the
+# Both shard jobs run through a Turborepo task (`//#ci:browser-fixtures`, `//#ci:browser-interborough`)
+# whose hash holds the shard, the image tag and every file the suite reads, so a shard whose inputs
+# did not change replays. The tasks call Playwright directly: the root `test:browser:*` scripts wrap
+# it in the shared development host's lock and slot pool (`scripts/run-exclusively.ts`,
+# `scripts/host-slots.ts`), which a runner does not need. The packages' own browser suites (COR-2080) run through `validate:batch` in the
 # `packages` job, under the `fixtures` input, which their changes reach as well.
 name: Browser suites
 
@@ -35,6 +37,9 @@ permissions:
 env:
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
+  # Vercel Remote Cache, shared with the owner's machine; empty, remote caching is off.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   fixtures:
@@ -50,6 +55,10 @@ jobs:
         shard: [1, 2, 3, 4]
     env:
       CINDER_VISUAL_DIFF: block
+      # The task's hash holds the shard and the image, so a shard replays only a run of the same
+      # slice on the same renderer (`//#ci:browser-fixtures` in `turbo.json`).
+      PLAYWRIGHT_BASE_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
+      PLAYWRIGHT_SHARD: ${{ matrix.shard }}/4
     steps:
       # The image has neither Git (which `actions/checkout` needs for a repository rather than a
       # tarball) nor `unzip` (which `setup-bun` needs).
@@ -62,21 +71,19 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
-      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bunx turbo run metadata
-      - run: bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: browser-fixtures-${{ matrix.shard }}
+      # One Turborepo task (`//#ci:browser-fixtures`): it makes the component packages' derived
+      # metadata first, then the manifest, then runs the shard; a run whose inputs did not change
+      # replays the result and restores the reports below.
       # Four workers on the four processors the renderer container gets locally (`CONTAINER_CPUS`).
       # A shard takes whole files, and one file holds about half the cases, so its shard runs about
       # 31 minutes while another gets no file. `--fully-parallel` balances them but breaks
       # `overview-pairs-featured-preview-and-code.playwright.ts`, whose cases share a server.
-      # Inside a container `github.workspace` names the host's path, so the reports take the
-      # container's `GITHUB_WORKSPACE`.
-      - run: >-
-          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report"
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json"
-          bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts
-          --project=chromium --workers=4 --shard=${{ matrix.shard }}/4 --reporter=line,html,json
+      # The root script `ci:browser-fixtures` takes the reports' paths from the container's working
+      # directory, since inside a container `github.workspace` names the host's path.
+      - run: bunx turbo run //#ci:browser-fixtures
       # A failed report upload must not fail the suite's job.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ failure() }}
@@ -88,6 +95,8 @@ jobs:
             scripts/browser-fixtures/test-results/
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   # The packages' own browser suites (COR-2080): the cached `test:browser` task of every package
   # `turbo.json` gives one (chat, editor and terminal, moved out of the fixture suite above), which
@@ -115,6 +124,9 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: browser-packages
       - run: bun run validate:batch
       - run: >-
           bunx turbo run test:browser --filter=@lostgradient/terminal --dry=json
@@ -131,6 +143,8 @@ jobs:
             components/*/browser/playwright-report/
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
 
   interborough:
     name: Interborough end-to-end (${{ matrix.shard }}/4)
@@ -144,6 +158,10 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+    env:
+      # The task's hash holds the shard and the image (`//#ci:browser-interborough` in `turbo.json`).
+      PLAYWRIGHT_BASE_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
+      PLAYWRIGHT_SHARD: ${{ matrix.shard }}/4
     steps:
       # The image has neither Git (which `actions/checkout` needs for a repository rather than a
       # tarball) nor `unzip` (which `setup-bun` needs).
@@ -156,13 +174,12 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
-      # The gated runner picks a free block of ports and never reuses a server; it passes every
-      # argument on to `playwright test`.
-      - run: >-
-          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report"
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json"
-          bun applications/interborough/scripts/run-gated-browser-suite.ts
-          --shard=${{ matrix.shard }}/4 --trace=retain-on-failure --reporter=line,html,json
+      - uses: ./.github/actions/turbo-cache/restore
+        with:
+          name: browser-interborough-${{ matrix.shard }}
+      # The root script `ci:browser-interborough` runs the gated runner, which picks a free block
+      # of ports and never reuses a server; it passes every argument on to `playwright test`.
+      - run: bunx turbo run //#ci:browser-interborough
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ failure() }}
         continue-on-error: true
@@ -173,3 +190,5 @@ jobs:
             applications/interborough/test-results/
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}

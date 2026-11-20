@@ -1,0 +1,77 @@
+{
+  "description": "The owner's recurring standing rules and the guard that fails when a change breaks each one. A rule the owner states twice becomes a guard in the change that fixes it, and a row here. scripts/owner-rules.test.ts fails when a row names a guard script or test that does not exist, a guard that lint:guards does not chain, an allowlist that does not exist, or scans that differ from the guard's own. A rule with no guard yet carries the reason in unguardedReason.",
+  "rules": [
+    {
+      "id": "no-middle-dot-separators",
+      "rule": "Never separate pieces of copy with a middle dot (U+00B7), and never with a comma either.",
+      "date": "2026-11-10",
+      "source": "Owner standing order (COR-2335, COR-2336, COR-2449)",
+      "guard": {
+        "script": "scripts/check-middle-dot-separators.ts",
+        "test": "scripts/check-middle-dot-separators.test.ts"
+      },
+      "scans": [
+        "components/cinder",
+        "components/chat",
+        "applications/playground",
+        "applications/interborough",
+        "scripts/browser-fixtures/src"
+      ]
+    },
+    {
+      "id": "no-sidebar-headings",
+      "rule": "The sidebar draws no section headings: the sections are named for a screen reader and drawn with no header.",
+      "date": "2026-11-19",
+      "source": "Owner review of the live app, 2026-11-19 (chef-sdlc-architecture-review-2026-11-19-corrections.md, section 2)",
+      "guard": {
+        "script": "scripts/check-sidebar-no-headings.ts",
+        "test": "scripts/check-sidebar-no-headings.test.ts",
+        "allowlist": "scripts/sidebar-no-headings-allowlist.json"
+      },
+      "scans": ["applications/interborough/src"]
+    },
+    {
+      "id": "light-and-dark-shadows",
+      "rule": "Light mode is not heavy: no shadow token heavier than the agreed light shadow. Dark mode has no bright shadows: a shadow is black in both themes and never drawn from text, ink or white.",
+      "date": "2026-11-19",
+      "source": "Owner review of the live app, 2026-11-19 (COR-2441; chef-sdlc-architecture-review-2026-11-19-corrections.md, section 2)",
+      "guard": {
+        "script": "scripts/check-light-shadows.ts",
+        "test": "scripts/check-light-shadows.test.ts"
+      },
+      "scans": ["components", "applications", "packages", "plugins"]
+    },
+    {
+      "id": "no-paths-ids-or-secrets-in-visible-text",
+      "rule": "The interface never shows a file path, a ULID or a secret reference.",
+      "date": "2026-11-19",
+      "source": "Owner review of the live app, 2026-11-19 (chef-sdlc-architecture-review-2026-11-19-corrections.md, sections 1 and 2)",
+      "guard": {
+        "script": "scripts/check-visible-text-leaks.ts",
+        "test": "scripts/check-visible-text-leaks.test.ts",
+        "allowlist": "scripts/visible-text-leaks-allowlist.json"
+      },
+      "scans": ["applications/interborough/src"]
+    },
+    {
+      "id": "one-empty-state-layout",
+      "rule": "Every empty state is Cinder's EmptyState in its one layout: no hand-rolled empty-state markup and no layout, size or align variant.",
+      "date": "2026-11-19",
+      "source": "Owner review of the live app, 2026-11-19, six different empty-state patterns (chef-sdlc-architecture-review-2026-11-19-corrections.md, sections 1 and 2)",
+      "guard": {
+        "script": "scripts/check-empty-state-layout.ts",
+        "test": "scripts/check-empty-state-layout.test.ts",
+        "allowlist": "scripts/empty-state-layout-allowlist.json"
+      },
+      "scans": ["applications/interborough/src"]
+    },
+    {
+      "id": "status-words-are-badges",
+      "rule": "A status word is a badge, not plain text.",
+      "date": "2026-11-19",
+      "source": "Owner review of the live app, 2026-11-19 (chef-sdlc-architecture-review-2026-11-19-corrections.md, section 2)",
+      "guard": null,
+      "unguardedReason": "Which words are statuses is a judgment no text scan can make exactly, and the corrections list no guard for it; the design reviewer checks it as a standing rule until a Cinder component carries it."
+    }
+  ]
+}

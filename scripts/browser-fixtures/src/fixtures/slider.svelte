@@ -20,7 +20,7 @@
   const rangeDisplayValue = ([low, high]: [number, number]) => `${low}–${high}`;
 </script>
 
-<div class="slider-fixture">
+<div class="slider-fixture gap-8">
   <section id="example-mount-basic">
     <Slider
       label="Volume"
@@ -32,17 +32,17 @@
     <p>Value: {value}</p>
   </section>
 
-  <section id="example-mount-endpoint-min" class="slider-fixture__row">
+  <section id="example-mount-endpoint-min" class="slider-fixture__row gap-4">
     <Select id="endpoint-min-select" label="Adjacent control" options={adjacentOptions} value="a" />
     <Slider label="Minimum endpoint" min={0} max={100} value={0} />
   </section>
 
-  <section id="example-mount-endpoint-max" class="slider-fixture__row">
+  <section id="example-mount-endpoint-max" class="slider-fixture__row gap-4">
     <Select id="endpoint-max-select" label="Adjacent control" options={adjacentOptions} value="a" />
     <Slider label="Maximum endpoint" min={0} max={100} value={100} />
   </section>
 
-  <section id="example-mount-range-endpoints" class="slider-fixture__row">
+  <section id="example-mount-range-endpoints" class="slider-fixture__row gap-4">
     <Select
       id="range-endpoints-select"
       label="Adjacent control"
@@ -130,13 +130,11 @@
 <style>
   .slider-fixture {
     display: grid;
-    gap: 2rem;
     max-inline-size: 32rem;
   }
 
   .slider-fixture__row {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
   }
 </style>

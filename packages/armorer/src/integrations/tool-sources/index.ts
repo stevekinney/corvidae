@@ -265,9 +265,41 @@ export type LoadedToolSource = {
   kind: ToolSourceDescription['kind'];
   /** The tools the source produced, ready to register in a toolbox. */
   tools: readonly Tool[];
+  /**
+   * What an MCP server says of itself when it connects: the `serverInfo` of its `initialize`
+   * answer (`name`, `version`, and `title` when it gives one) and its `instructions`, as the server
+   * sent them. Untrusted text, for a person to recognise the server; never a credential. Absent
+   * for an OpenAPI source, and for a server that sent none.
+   */
+  server?: ToolSourceServerInformation;
   /** Releases the connection: closes an MCP client and stops a stdio child. Idempotent. */
   close(): Promise<void>;
 };
+
+/** What an MCP server says of itself when it connects (`LoadedToolSource.server`). */
+export type ToolSourceServerInformation = {
+  /** The server's `serverInfo.name`. */
+  readonly name: string;
+  /** Its `serverInfo.title`, when it gives one. */
+  readonly title?: string;
+  /** Its `serverInfo.version`. */
+  readonly version?: string;
+  /** The `instructions` it sent with its `initialize` answer, when it sent any. */
+  readonly instructions?: string;
+};
+
+/** What `client` learned of its server when it connected, or `undefined` when nothing. */
+function serverInformationOf(client: Client): ToolSourceServerInformation | undefined {
+  const implementation = client.getServerVersion();
+  const instructions = client.getInstructions();
+  if (implementation === undefined) return undefined;
+  return {
+    name: implementation.name,
+    ...(typeof implementation.title === 'string' ? { title: implementation.title } : {}),
+    ...(typeof implementation.version === 'string' ? { version: implementation.version } : {}),
+    ...(typeof instructions === 'string' && instructions !== '' ? { instructions } : {}),
+  };
+}
 
 /**
  * Builds the tools for one saved source.
@@ -371,7 +403,14 @@ async function loadMcpSource(
       version: (tool, capability) =>
         versionOfMaterial(['mcp', source.id, recipient, tool.name, tool.inputSchema, capability]),
     });
-    return { id: source.id, kind: 'mcp', tools, close: onceAsync(() => client.close()) };
+    const server = serverInformationOf(client);
+    return {
+      id: source.id,
+      kind: 'mcp',
+      tools,
+      ...(server === undefined ? {} : { server }),
+      close: onceAsync(() => client.close()),
+    };
   } catch (error) {
     await client.close().catch(() => undefined);
     throw error;

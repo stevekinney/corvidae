@@ -138,6 +138,12 @@ svg.cinder-icon-lg {
   margin-block: 0 var(--cinder-space-3);
 }
 
+/* Markdown wraps a code block, a table and a diagram in a node wrapper, so the rule above no longer
+ * reaches the element inside it. The wrapper takes the same space under it as a paragraph. */
+.cinder-markdown-content > [data-cinder-markdown-node]:not(:last-child) {
+  margin-block-end: var(--cinder-space-3);
+}
+
 .cinder-markdown-content :where(h1, h2, h3, h4, h5, h6) {
   margin-block: var(--cinder-space-4) var(--cinder-space-2);
   line-height: var(--cinder-leading-tight);
@@ -288,6 +294,29 @@ svg.cinder-icon-lg {
 .cinder-markdown-content :where(th) {
   background: var(--cinder-surface-inset);
   font-weight: var(--cinder-font-semibold);
+}
+
+/* A table inside the Markdown table scroller: the frame draws the outer border, the cells stay on
+ * one line, and the header row reads as one band, and the cue above it has no paragraph margin.
+ * These sit here, not in the scroller's own stylesheet, because the rules above are in this layer
+ * and a component layer would lose to them. */
+.cinder-markdown-table-scroller table {
+  margin: 0;
+  border-style: hidden;
+}
+
+.cinder-markdown-content .cinder-markdown-table-cue {
+  margin: 0;
+}
+
+.cinder-markdown-table-scroller :is(th, td) {
+  white-space: nowrap;
+  border: 0;
+}
+
+.cinder-markdown-table-scroller thead th {
+  background: var(--cinder-surface-inset);
+  border-block-end-color: var(--cinder-border-strong);
 }
 
 /* INTERNAL — used by Cinder components. Not a public API. May change without notice. */

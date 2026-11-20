@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import type { Fetcher } from './bureau-client.ts';
 import { SETTING_LOCK_REASONS } from './bureau-settings.ts';
+import { REMEMBERED_TOOL_FIELDS } from './host-tool-sources.ts';
 
 /** The route that reports the plugins. */
 export const HOST_PLUGINS_ROUTE = '/host/plugins';
@@ -80,6 +81,17 @@ const pluginSchema = z.object({
   running: z.object({ enabled: z.boolean(), configuration: z.unknown() }),
   secrets: z.array(secretSchema),
   restartRequired: z.boolean(),
+  /**
+   * For a plugin that is not running: the tools it contributed the last time it ran, kept across
+   * restarts (COR-2435). None of them runs; absent when none is known.
+   */
+  lastListing: z
+    .object({
+      listedAt: z.string(),
+      truncated: z.boolean(),
+      tools: z.array(z.object({ name: z.string(), tool: z.string(), ...REMEMBERED_TOOL_FIELDS })),
+    })
+    .optional(),
 });
 
 const unloadedSchema = z.object({
