@@ -501,7 +501,7 @@ function loadResolved(
   return problems.length > 0 ? { problems } : { resolved: value as ResolvedRows, problems };
 }
 
-function sourceContext(path: string | undefined): ReadonlyMap<string, string> | undefined {
+export function sourceContext(path: string | undefined): ReadonlyMap<string, string> | undefined {
   if (path === undefined) return undefined;
   const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
   if (!Array.isArray(parsed)) throw new UsageError('--context must be a JSON array.');

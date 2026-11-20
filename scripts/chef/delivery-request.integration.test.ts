@@ -479,6 +479,45 @@ describe('prepare', () => {
     expect(setup.dispatched).toHaveLength(1);
   });
 
+  test('a retry reuses the saved members, so a Linear edit in between cannot change the key or the run', async () => {
+    const first = await harness({}, {}, answers(), 'retry');
+    // The first attempt dispatches, then gives up: the evidence job never gets a runner.
+    const gaveUp = await rejectionOf(
+      prepare(first.options, {
+        ...first.dependencies,
+        readJobs: () => [{ name: EVIDENCE_JOB, runner: '', startedAt: '' }],
+      }),
+    );
+    expect(String(gaveUp)).toContain('has no runner yet');
+    expect(first.dispatched).toHaveLength(1);
+    // The issue is edited on Linear, so a fresh read would carry a new revision and a new request key.
+    let reads = 0;
+    const edited = assignmentFor('COR-1', ['AC1', 'AC2']);
+    edited.identity.revision = 'edited';
+    edited.identity.digest = digest(
+      JSON.stringify({ ...edited, identity: { ...edited.identity, digest: undefined } }),
+    );
+    const retried = await prepare(first.options, {
+      ...first.dependencies,
+      readAssignments: async () => {
+        reads += 1;
+        return { assignments: [edited, assignmentFor('COR-2', ['AC1'])], refusals: [] };
+      },
+      readJobs: () => [{ name: EVIDENCE_JOB, runner: RUNNER_NAME, startedAt: 't' }],
+    });
+    expect(reads).toBe(0);
+    expect(retried.dispatched).toBe(false);
+    expect(first.dispatched).toHaveLength(1);
+  });
+
+  test('says which authority is missing when the run holds no local one', async () => {
+    const setup = await harness({ leaseResource: async () => 'project:other' });
+    expect(String(await rejectionOf(setup.prepared()))).toContain(
+      'no current local authority for project:other',
+    );
+    expect(setup.dispatched).toEqual([]);
+  });
+
   test('refuses a bound run that already failed: the same head cannot be dispatched twice', async () => {
     const setup = await harness({
       provider: { findRuns: async () => [{ state: 'failed', id: LANDING_RUN_ID, attempt: 1 }] },
@@ -638,11 +677,13 @@ describe('the real branch merge', () => {
   }
 
   test('accepts a prepared request at the verification steps', async () => {
-    expect(await landPrepared(true)).toMatchObject({ failedStep: null, merged: true });
+    const landed = await landPrepared(true);
+    expect(landed).toMatchObject({ failedStep: null, merged: true });
   });
 
   test('refuses the same request when no run carries its dispatched inputs', async () => {
-    expect((await landPrepared(false)).failedStep).toBe('verification');
+    const refused = await landPrepared(false);
+    expect(refused.failedStep).toBe('verification');
   });
 });
 
@@ -658,8 +699,42 @@ describe('the command line and the workflow it binds', () => {
     expect(workflow).toContain("format('P07 {0}', inputs.verification_request)");
   });
 
+  test('a refusal exits 1 with its reason, and a bad flag is a usage error', async () => {
+    const setup = await harness({
+      leaseResource: async () => {
+        throw new UsageError('run run does not hold a live lease on Widgets');
+      },
+    });
+    const flags = [
+      'prepare',
+      '--branch',
+      BRANCH,
+      '--head',
+      HEAD,
+      '--worktree',
+      setup.options.worktree,
+      '--base',
+      BASE,
+      '--run',
+      'run',
+      '--project',
+      'Widgets',
+      '--issue',
+      'COR-1',
+      '--issue',
+      'COR-2',
+    ];
+    const refused = await run(flags, { prepare: setup.dependencies });
+    expect(refused.code).toBe(1);
+    expect(refused.output).toContain('REFUSED: run run does not hold a live lease');
+    const asJson = await run([...flags, '--json'], { prepare: setup.dependencies });
+    expect(JSON.parse(asJson.output)).toMatchObject({ ok: false });
+    expect(String(await rejectionOf(run([...flags, '--route', 'tag'])))).toContain('--route');
+  });
+
   test('prints usage, and refuses a missing subcommand or member', async () => {
-    expect((await run(['--help'])).output).toContain('delivery-request.ts prepare');
+    const help = await run(['--help']);
+    expect(help.output).toContain('delivery-request.ts prepare');
     expect(String(await rejectionOf(run([])))).toContain('subcommand');
     expect(
       String(

@@ -6,7 +6,8 @@
 //   bun scripts/chef/delivery-request.ts prepare --branch <branch> --head <sha> --worktree <path>
 //       --base <sha> --run <id> --project <name> --issue <ID> [--issue <ID> ...]
 //       [--route branch|pull-request] [--no-track] [--no-close] [--leave-open <ID> ...]
-//       [--classification behavior|no-behavior] [--wait-minutes <n>] [--config <file>] [--json]
+//       [--classification behavior|no-behavior] [--context <json>] [--wait-minutes <n>]
+//       [--config <file>] [--json]
 //   bun scripts/chef/delivery-request.ts check --file <json> --digest <sha256>
 //       [--head <sha>] [--state-directory <dir>] [--config <file>] [--json]
 //
@@ -18,7 +19,8 @@
 //   1. Each `--issue` is read from Linear through `brief.ts`'s `readBatchBrief` (criteria from the
 //      description, blockers, source digests): an unreadable or blocked issue refuses the request,
 //      and there is no offline criteria file, because an Assignment's revision, dependencies and
-//      source digests exist only on that read. The coordinator adds `merge` to each assignment's
+//      source digests exist only on that read. An issue that links a design needs `--context`, the
+//      same file `brief.ts --context` takes. The coordinator adds `merge` to each assignment's
 //      consequential actions (the acceptance this command records) and re-digests it.
 //   2. The evidence plan is computed from `git diff <base>...<head>` (`computeEvidencePlan`). Every
 //      acceptance criterion of every member becomes one provider obligation on one `main.yml` job
@@ -27,11 +29,14 @@
 //      coordinator attests is that each criterion was accepted. No criterion has a test of its own.
 //   3. The identity, its request key and the batch plan digest are computed before anything is sent.
 //      `targeted-run.ts` dispatches `main.yml` with `verification_request`, `verification_plan` and
-//      `verification_base` (its one dispatch path) unless a run with that key already exists, so a
-//      second `prepare` for the same head reuses the run. The run id and the runner of the evidence
-//      job are known only afterwards, and both enter the digest-pinned file: `prepare` polls (up to
+//      `verification_base` unless a run with that key already exists. Before it sends anything,
+//      `prepare` saves the members it built beside the request (`<operation>.pending.json`), and a
+//      second `prepare` with the same arguments loads them instead of reading Linear again, so the
+//      key, and with it the run, is the same. The run id and the runner of the evidence job are
+//      known only afterwards, and both enter the digest-pinned file: `prepare` polls (up to
 //      `--wait-minutes`, default 10) until the job has a runner. If that expires, run the same
-//      command again; nothing is dispatched twice.
+//      command again; nothing is dispatched twice. (`ci-evidence-run.ts` is a second sender of the
+//      same inputs, through the provider's `dispatch`; do not use both for one head.)
 //   4. The branch must contain `--base`: a workflow dispatch checks out the branch head, so the
 //      request's integration tree is the head's tree, and `deliver.ts` compares it with
 //      `git merge-tree --write-tree <base> <head>`. After `prepare`, dispatch nothing else on the
@@ -51,16 +56,18 @@
 // which `deliver.ts` accepts only when the new commits touch nothing the evidence covers: `check`
 // is conservative. The lease and the pull-request threads are `deliver.ts`'s own steps.
 //
-// Exit codes: `prepare` 0 request written and run dispatched or reused; `check` 0 when `deliver.ts`
-// would proceed past verification, 1 with a refusal printed; both 2 on invalid usage.
+// Exit codes: `prepare` 0 request written and run dispatched or reused, 1 refused (a git, Linear,
+// lease, authority or evidence condition, printed); `check` 0 when `deliver.ts` would proceed past
+// verification, 1 with each refusal printed; both 2 on invalid usage.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { readBatchBrief, refusalReasons } from './brief.ts';
+import { readBatchBrief, refusalReasons, sourceContext } from './brief.ts';
 import { createGitHubCiEvidenceProvider } from './ci-evidence-github.ts';
 import {
+  CiEvidenceError,
   ciEvidenceRequestKey,
   type CiEvidenceProvider,
   type CiEvidenceRequest,
@@ -79,16 +86,18 @@ import {
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
 import { repositoryContext } from './evidence-plan.ts';
+import { EvidenceRequestError } from './evidence.ts';
 import {
   createExecutionStateStore,
   currentAuthority,
+  ExecutionStateError,
   readExecutionSnapshot,
   recordMutationIntent,
   type ExecutionStateStore,
 } from './execution-state.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { changedPaths } from './landing-plan.ts';
-import { createClient, readProject } from './linear.ts';
+import { createClient, LinearError, readProject } from './linear.ts';
 import {
   defaultRunner,
   emitResult,
@@ -135,6 +144,8 @@ export interface PrepareOptions {
   close: boolean;
   leaveOpen: string[];
   classification?: 'behavior' | 'no-behavior' | undefined;
+  /** The verified design sources `brief.ts --context` takes; an issue that links a design needs them. */
+  sourceContext?: ReadonlyMap<string, string> | undefined;
   waitMinutes: number;
 }
 
@@ -170,6 +181,7 @@ export interface PrepareDependencies {
     base: string;
     run: string;
     classification?: 'behavior' | 'no-behavior' | undefined;
+    sourceContext?: ReadonlyMap<string, string> | undefined;
   }) => Promise<{ assignments: Assignment[]; refusals: string[] }>;
   /** The execution-state resource of the project lease `run` holds, or a thrown reason. */
   leaseResource: (project: string, run: string) => Promise<string>;
@@ -270,6 +282,28 @@ function membersOf(
   });
 }
 
+/** Writes `text` to `path` in one rename, so a reader never sees half a file. */
+function writeWhole(path: string, text: string): void {
+  const staged = `${path}.${crypto.randomUUID()}`;
+  writeFileSync(staged, text);
+  renameSync(staged, path);
+}
+
+/** The members an earlier attempt saved for `fingerprint`, or `undefined` when there are none. */
+function readPending(path: string, fingerprint: string): DeliveryMember[] | undefined {
+  try {
+    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+      fingerprint?: unknown;
+      members?: unknown;
+    };
+    return saved.fingerprint === fingerprint && Array.isArray(saved.members)
+      ? (saved.members as DeliveryMember[])
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function poll<T>(
   attempts: number,
   dependencies: Pick<PrepareDependencies, 'wait'>,
@@ -338,34 +372,65 @@ export async function prepare(
     .filter((path) => path !== '');
   const plan = dependencies.plan(kept, cwd);
 
-  const read = await dependencies.readAssignments({
-    issues: options.issues,
-    repository,
-    base: options.base,
-    run: options.run,
-    classification: options.classification,
-  });
-  const accepted = read.assignments.map(acceptedAssignment);
-  const refused = [
-    ...read.refusals,
-    ...accepted.flatMap((assignment) => {
-      const gate = gateAssignment(assignment, 'held');
-      return gate.dispatchable ? [] : [refusalReasons([assignment], [gate])];
-    }),
-  ];
-  if (refused.length > 0)
-    throw new UsageError(`Refused: an assignment is not dispatchable.\n${refused.join('\n')}`);
-  if (accepted.map((assignment) => assignment.identity.identifier).join() !== options.issues.join())
-    throw new UsageError('the assignments read do not match --issue, in order.');
+  const operationId = operationIdOf(options.branch, options.head);
+  const directory = join(dependencies.mainCheckout, 'tmp', 'chef', 'requests');
+  const pendingFile = join(directory, `${operationId.replaceAll(':', '-')}.pending.json`);
+  const fingerprint = digest(
+    JSON.stringify([
+      options.branch,
+      options.head,
+      options.base,
+      options.route,
+      options.issues,
+      options.track,
+      options.close,
+      options.leaveOpen,
+      options.classification ?? null,
+    ]),
+  );
+  // The members of an earlier attempt with these arguments: the request key covers each issue's
+  // Linear revision, so a retry must not read it again and dispatch a second run for a new key.
+  let members = readPending(pendingFile, fingerprint);
+  if (members === undefined) {
+    const read = await dependencies.readAssignments({
+      issues: options.issues,
+      repository,
+      base: options.base,
+      run: options.run,
+      classification: options.classification,
+      sourceContext: options.sourceContext,
+    });
+    const accepted = read.assignments.map(acceptedAssignment);
+    const refused = [
+      ...read.refusals,
+      ...accepted.flatMap((assignment) => {
+        const gate = gateAssignment(assignment, 'held');
+        return gate.dispatchable ? [] : [refusalReasons([assignment], [gate])];
+      }),
+    ];
+    if (refused.length > 0)
+      throw new UsageError(`Refused: an assignment is not dispatchable.\n${refused.join('\n')}`);
+    if (
+      accepted.map((assignment) => assignment.identity.identifier).join() !== options.issues.join()
+    )
+      throw new UsageError('the assignments read do not match --issue, in order.');
+    members = membersOf(accepted, options, plan, plan.changed);
+  }
 
   const resource = await dependencies.leaseResource(options.project, options.run);
-  const authority = currentAuthority(dependencies.state, {
-    resource,
-    runId: options.run,
-    ownerId: `linear:${options.run}`,
-  });
+  let authority;
+  try {
+    authority = currentAuthority(dependencies.state, {
+      resource,
+      runId: options.run,
+      ownerId: `linear:${options.run}`,
+    });
+  } catch (error) {
+    throw new UsageError(
+      `run ${options.run} has no current local authority for ${resource} (${error instanceof Error ? error.message : String(error)}); run linear.ts lease on this host first.`,
+    );
+  }
 
-  const members = membersOf(accepted, options, plan, plan.changed);
   const identityInput = {
     repository,
     resource: authority.resource,
@@ -392,6 +457,8 @@ export async function prepare(
   let dispatched = false;
   let command: string[] = [];
   if (found.length === 0) {
+    mkdirSync(directory, { recursive: true });
+    writeWhole(pendingFile, JSON.stringify({ fingerprint, members }));
     command = dependencies.dispatch(
       options.branch,
       { request: identity.requestKey, plan: identity.verificationPlanDigest, base: options.base },
@@ -426,7 +493,7 @@ export async function prepare(
       `run ${runId}'s job "${EVIDENCE_JOB}" has no runner yet; run the same command again (it dispatches nothing twice).`,
     );
 
-  const finished: DeliveryMember[] = members.map((member) => ({
+  const finished: DeliveryMember[] = members.map((member: DeliveryMember) => ({
     ...member,
     providerRuns: member.plan.obligations.map((obligation) => ({
       id: runId,
@@ -437,7 +504,6 @@ export async function prepare(
       event: 'workflow_dispatch',
     })),
   }));
-  const operationId = operationIdOf(options.branch, options.head);
   const request: DeliveryRequest = {
     repository,
     revision: options.head,
@@ -452,15 +518,12 @@ export async function prepare(
   };
   const text = JSON.stringify(request);
   const requestDigest = digest(text);
-  const directory = join(dependencies.mainCheckout, 'tmp', 'chef', 'requests');
   mkdirSync(directory, { recursive: true });
   const file = join(
     directory,
     `${operationId.replaceAll(':', '-')}-${requestDigest.slice(0, 12)}.json`,
   );
-  const staged = `${file}.${crypto.randomUUID()}`;
-  writeFileSync(staged, text);
-  renameSync(staged, file);
+  writeWhole(file, text);
   readDeliveryRequest(file, requestDigest);
 
   const binding = {
@@ -535,8 +598,14 @@ export async function check(
   }
   const { request } = loaded;
   const cwd = request.worktree;
-  const operation = readExecutionSnapshot(loaded.state).operations[request.operationId];
-  const route = operation?.approval?.route;
+  let route: string | undefined;
+  try {
+    route = readExecutionSnapshot(loaded.state).operations[request.operationId]?.approval?.route;
+  } catch (error) {
+    return [
+      `the execution state could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
   if (route !== 'branch' && route !== 'pull-request')
     return ['the request has no coordinator approval binding, so deliver.ts refuses it'];
   const problems: string[] = [];
@@ -560,35 +629,45 @@ export async function check(
     return [
       `the current base, head or integration tree could not be derived (merge-tree exit ${merged.code}): the head conflicts with origin/${defaultBranch} or is not fetched`,
     ];
-  const verification = validateDeliveryVerification(
-    loaded,
-    {
-      repository: request.repository,
-      revision: head,
-      base,
-      integrationTree,
-      route,
-      action: 'merge',
-    },
-    dependencies.verification,
-  );
-  if (verification !== undefined) problems.push(verification);
-  const ci = await validateDeliveryCiEvidence(loaded, dependencies.verification);
-  if (ci !== undefined) problems.push(ci);
-  const landing = await validateLandingEvidence(
-    loaded,
-    { route, defaultBranch },
-    {
-      runner,
-      ...(dependencies.verification.ciProvider === undefined
-        ? {}
-        : { ciProvider: dependencies.verification.ciProvider }),
-      ...(dependencies.readVerdicts === undefined
-        ? {}
-        : { readVerdicts: dependencies.readVerdicts }),
-    },
-  );
-  if (landing !== undefined) problems.push(landing);
+  // Each validator stands alone, and a thrown error is its refusal, as it is `deliver.ts`'s.
+  const steps: (() => Promise<string | undefined> | string | undefined)[] = [
+    () =>
+      validateDeliveryVerification(
+        loaded,
+        {
+          repository: request.repository,
+          revision: head,
+          base,
+          integrationTree,
+          route,
+          action: 'merge',
+        },
+        dependencies.verification,
+      ),
+    () => validateDeliveryCiEvidence(loaded, dependencies.verification),
+    () =>
+      validateLandingEvidence(
+        loaded,
+        { route, defaultBranch },
+        {
+          runner,
+          ...(dependencies.verification.ciProvider === undefined
+            ? {}
+            : { ciProvider: dependencies.verification.ciProvider }),
+          ...(dependencies.readVerdicts === undefined
+            ? {}
+            : { readVerdicts: dependencies.readVerdicts }),
+        },
+      ),
+  ];
+  for (const step of steps) {
+    try {
+      const problem = await step();
+      if (problem !== undefined) problems.push(problem);
+    } catch (error) {
+      problems.push(error instanceof Error ? error.message : String(error));
+    }
+  }
   return problems;
 }
 
@@ -649,6 +728,7 @@ async function productionDependencies(
         base: input.base,
         run: input.run,
         ...(input.classification === undefined ? {} : { classification: input.classification }),
+        ...(input.sourceContext === undefined ? {} : { sourceContext: input.sourceContext }),
       });
       const refusals =
         brief.gates.every((gate) => gate.dispatchable) && brief.foreignClaim === undefined
@@ -659,12 +739,12 @@ async function productionDependencies(
             ].filter((line) => line !== '');
       return { assignments: brief.assignments, refusals };
     },
-    leaseResource: async (project, run) => {
+    leaseResource: async (project, holder) => {
       const { data } = await readProject(client, project);
       const lease = data['lease'] as { run: string; live: boolean } | null;
-      if (lease === null || lease.run !== run || !lease.live)
+      if (lease === null || lease.run !== holder || !lease.live)
         throw new UsageError(
-          `run ${run} does not hold a live lease on ${project}: run linear.ts lease first.`,
+          `run ${holder} does not hold a live lease on ${project}: run linear.ts lease first.`,
         );
       return `project:${String(data['id'])}`;
     },
@@ -699,6 +779,7 @@ export async function run(
       'project',
       'route',
       'classification',
+      'context',
       'wait-minutes',
       'config',
       'file',
@@ -721,13 +802,10 @@ export async function run(
       parsed.values['state-directory'] === undefined
         ? undefined
         : resolve(parsed.values['state-directory']);
-    const verification: Partial<DeliveryVerificationDependencies> = {
-      ...(stateDirectory === undefined
+    const verification: Partial<DeliveryVerificationDependencies> =
+      stateDirectory === undefined
         ? {}
-        : {
-            state: createExecutionStateStore({ stateDirectory, hostId: hostname() }),
-          }),
-    };
+        : { state: createExecutionStateStore({ stateDirectory, hostId: hostname() }) };
     const problems = await check(
       {
         file,
@@ -774,13 +852,35 @@ export async function run(
     close: !parsed.flags.has('no-close') && !parsed.flags.has('no-track'),
     leaveOpen: parsed.repeated['leave-open'] ?? [],
     classification,
+    ...(parsed.values['context'] === undefined
+      ? {}
+      : { sourceContext: sourceContext(resolve(parsed.values['context'])) }),
     waitMinutes: Number(parsed.values['wait-minutes'] ?? '10'),
   };
   validatePrepare(options);
-  const result = await prepare(
-    options,
-    dependencies?.prepare ?? (await productionDependencies(configPath, worktree)),
-  );
+  let result: PrepareResult;
+  try {
+    result = await prepare(
+      options,
+      dependencies?.prepare ?? (await productionDependencies(configPath, worktree)),
+    );
+  } catch (error) {
+    // A git, Linear, lease, authority or evidence condition is a refusal (exit 1), not misuse.
+    if (
+      error instanceof UsageError ||
+      error instanceof ExecutionStateError ||
+      error instanceof EvidenceRequestError ||
+      error instanceof CiEvidenceError ||
+      error instanceof LinearError
+    )
+      return {
+        code: 1,
+        output: json
+          ? JSON.stringify({ ok: false, error: error.message })
+          : `REFUSED: ${error.message}`,
+      };
+    throw error;
+  }
   return {
     code: 0,
     output: json

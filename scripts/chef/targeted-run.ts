@@ -317,9 +317,10 @@ export function buildFullRunCommand(ref: string, binding?: VerificationBinding):
 }
 
 /**
- * Dispatches the bound `main.yml` run, once. The single place a delivery request's run is sent, so
- * `ci-evidence-github.ts`'s provider `dispatch` (which sends the same inputs) is not a second path
- * a command line takes. Throws a `UsageError` for a malformed binding or a failed dispatch.
+ * Dispatches the bound `main.yml` run, once. It is the dispatcher `delivery-request.ts` uses.
+ * `ci-evidence-github.ts`'s provider `dispatch` sends the same three inputs and is reached only by
+ * `ci-evidence-run.ts`; sending one head's run through both would dispatch it twice. Throws a
+ * `UsageError` for a malformed binding or a failed dispatch.
  */
 export function dispatchVerificationRun(
   runner: Runner,
