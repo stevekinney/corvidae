@@ -338,6 +338,11 @@ const keepsReplacementWhenOwnerlessLockChangesInode = await inScratchDirectory(a
   await mkdir(lockDirectory);
   await writeFile(join(lockDirectory, 'stray'), 'old');
   const before = await stat(lockDirectory);
+  // Allocate while the original still owns its inode, so the replacement must differ.
+  await mkdir(replacement);
+  await writeFile(join(replacement, 'stray'), 'replacement');
+  const replacementState = await stat(replacement);
+  expect(replacementState.ino).not.toBe(before.ino);
   const originalReadFile = fileSystem.readFile;
   let replaced = false;
   const readWithReplacement = async (...arguments_: Parameters<typeof originalReadFile>) => {
@@ -347,8 +352,6 @@ const keepsReplacementWhenOwnerlessLockChangesInode = await inScratchDirectory(a
       if (!replaced && arguments_[0] === join(lockDirectory, ownerFileName)) {
         replaced = true;
         await rm(lockDirectory, { recursive: true });
-        await mkdir(replacement);
-        await writeFile(join(replacement, 'stray'), 'replacement');
         await fileSystem.rename(replacement, lockDirectory);
       }
     }
