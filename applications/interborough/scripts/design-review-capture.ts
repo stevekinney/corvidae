@@ -188,6 +188,7 @@ const SHOWCASE_SPECIFICATIONS = [
   // deleted, Restore, skills and reference documents; Reviews loading, resolved elsewhere, a
   // workflow review, Denied and a Done list longer than a page (COR-2429, COR-2426).
   'tests/e2e/agents-reviews-design-states.spec.ts',
+  'tests/e2e/31-reviews.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
 ] as const;
