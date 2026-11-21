@@ -5,7 +5,7 @@
  * limit per chat. Each change saves at once as its own write, which sends the whole definition,
  * because an update that leaves out `tools` removes them, and names the hash the tab holds.
  */
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
@@ -740,7 +740,18 @@ describe('the states', () => {
   });
 
   /** A built-in agent that states one tool, with `overrides` in force over it. */
-  function serveBuiltIn(overrides: Record<string, unknown>) {
+  type OverrideWrite = { id: string; hash: string; version: number };
+  function serveBuiltIn(
+    overrides: Record<string, unknown>,
+    write: () => OverrideWrite | Promise<OverrideWrite> = () => ({
+      id: 'assistant',
+      hash: 'hash-1',
+      version: 1,
+    }),
+  ) {
+    let stored = overrides;
+    let hash = 'hash-0';
+    let version: number | null = null;
     return serve({
       'bureau.agents.list': () => ({ agents: [{ ...AGENT, name: 'assistant', kind: 'code' }] }),
       'bureau.agents.definitions.get': () => ({
@@ -763,18 +774,25 @@ describe('the states', () => {
       }),
       'bureau.agents.overrides.get': () => ({
         id: 'assistant',
-        hash: 'hash-0',
-        version: null,
-        overrides,
+        hash,
+        version,
+        overrides: stored,
         ownTools: ['lookup-order'],
       }),
-      'bureau.agents.overrides.update': () => ({ id: 'assistant', hash: 'hash-1', version: 1 }),
+      'bureau.agents.overrides.update': async (parameters) => {
+        const written = await write();
+        stored = parameters['overrides'] as Record<string, unknown>;
+        hash = written.hash;
+        version = written.version;
+        return written;
+      },
     });
   }
 
   test('shows a built-in agent’s tools and holds them, with the Asks, because its own policy cannot be read (COR-2229)', async () => {
     landAt('/agents/assistant/access');
-    const served = serveBuiltIn({});
+    const write = Promise.withResolvers<OverrideWrite>();
+    const served = serveBuiltIn({}, () => write.promise);
     const { container, findByTestId } = mount();
 
     await findByTestId('agent-built-in');
@@ -786,10 +804,23 @@ describe('the states', () => {
     expect(box?.disabled).toBe(true);
     expect(selectOf(lookup).disabled).toBe(true);
 
+    await fireEvent.click(
+      within(container).getByRole('button', { name: AGENT_PAGE_COPY.plugin.replaceAsks }),
+    );
+    const overridesWrites = () =>
+      served.calls.filter((call) => call.method === 'bureau.agents.overrides.update');
+    try {
+      await waitFor(() => expect(overridesWrites()).toHaveLength(1));
+      expect(box?.disabled).toBe(true);
+      expect(selectOf(lookup).disabled).toBe(true);
+      expect(overridesWrites()[0]?.params).toMatchObject({ overrides: { approvals: {} } });
+    } finally {
+      write.resolve({ id: 'assistant', hash: 'hash-1', version: 1 });
+    }
+    await waitFor(() => expect(selectOf(lookup).disabled).toBe(false));
     await fireEvent.click(box!);
-    expect(
-      served.calls.filter((call) => call.method === 'bureau.agents.overrides.update'),
-    ).toHaveLength(0);
+    await waitFor(() => expect(overridesWrites()).toHaveLength(2));
+    expect(overridesWrites()[1]?.params).toMatchObject({ overrides: { approvals: {} } });
   });
 
   test('saves a change to a built-in agent’s tools as a version of its overrides once its Asks are overridden, not to a file (COR-2229)', async () => {

@@ -220,6 +220,7 @@ test.describe('a workflow built from cards', () => {
       '/workflows',
     );
     await expect(root.locator('.weft-workflow-builder__body')).toHaveAttribute('inert', '');
+    await expect(root.getByRole('button', { name: /Add a field|Create workflow/ })).toHaveCount(0);
     await checkA11y('the builder at 375px');
   });
 });

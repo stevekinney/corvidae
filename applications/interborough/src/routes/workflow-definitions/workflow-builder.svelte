@@ -10,8 +10,8 @@
    * `workflow-step-list.svelte`, one list at any depth (a case, an otherwise path, side-by-side
    * lists, a repeat's steps), which reads the text, the catalogs and the one way to change the text
    * from the host this component provides (`workflow-builder-host.ts`). Below 640 pixels the
-   * builder is read-only (its fields, its JSON and its actions; the tabs still switch) and says to
-   * open it on a larger screen, beside a link back (row 05n).
+   * builder shows read-only fields and JSON without its editing actions. The tabs still switch.
+   * A notice says to open it on a larger screen, beside a link back (row 05n).
    *
    * Create workflow's problems (the ID, what starts it, each step) are said at their fields and
    * outline their step once the page asks to `showProblems`, from two of them in one line above the
@@ -548,21 +548,28 @@
   <FormSection {heading} {description}>
     {#if schema.kind === 'unreadable'}
       <p class="weft-workflow-builder__note">{copy.schemaUnreadable}</p>
-    {:else if schema.kind === 'none' && !schemaOpened[key]}
+    {:else if schema.kind === 'none' && (readOnly || !schemaOpened[key])}
       <div
         class="weft-workflow-builder__schema-empty"
         data-testid={`workflow-builder-${key}-empty`}
       >
         <p class="weft-workflow-builder__note">{empty}</p>
-        <Button variant="secondary" size="sm" onclick={() => (schemaOpened[key] = true)}>
-          {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
-          {copy.addField}
-        </Button>
+        {#if !readOnly}
+          <Button
+            variant="secondary"
+            size="sm"
+            label={copy.addField}
+            onclick={() => (schemaOpened[key] = true)}
+          >
+            {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
+          </Button>
+        {/if}
       </div>
     {:else}
       <JsonSchemaEditor
         id={`workflow-builder-${key}`}
         schema={shownSchema(schema)}
+        readonly={locked}
         onValueChangeRequest={(event) => changeSchema(key, event.schema)}
       />
     {/if}
@@ -861,8 +868,8 @@
         <span class="cinder-sr-only">{copy.readBack.label}: </span>{view?.readBack ?? ''}
       {/if}
     </p>
-    {#if actions !== undefined}
-      <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions()}</div>
+    {#if actions !== undefined && !readOnly}
+      <div class="weft-workflow-builder__actions">{@render actions()}</div>
     {/if}
   </footer>
 </div>

@@ -74,19 +74,6 @@
   const keyPage = $derived(provider === null ? undefined : providerKeyPage(provider));
   const open = $derived(provider !== null);
   const connected = $derived(flow.phase === 'connected');
-  const subtitle = $derived(
-    flow.phase === 'testing' || flow.phase === 'saving'
-      ? copy.subtitle.testing
-      : flow.phase === 'failed'
-        ? copy.subtitle.failed
-        : flow.phase === 'tested'
-          ? copy.subtitle.tested
-          : flow.phase === 'connected'
-            ? copy.subtitle.connected
-            : flow.failure !== ''
-              ? copy.subtitle.saveFailed
-              : copy.subtitle.idle,
-  );
 
   /**
    * Whether the field shows the key's masked form (`sk-ant-••••`) instead of the key: while it is
@@ -120,7 +107,7 @@
 <Modal
   {open}
   title={copy.title(displayName)}
-  description={subtitle}
+  description={copy.subtitle}
   onDismiss={close}
   dismissOnEscape={!flow.saving}
   dismissOnBackdropClick={!flow.saving}

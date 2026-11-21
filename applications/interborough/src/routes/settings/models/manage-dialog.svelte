@@ -5,7 +5,7 @@
    * saved key is never shown again, so there is nothing here to reveal or copy. Remove key and
    * Replace key each close this dialog and open their own.
    */
-  import { Button, Modal, StatusDot } from '@lostgradient/cinder';
+  import { Button, ConfirmDialog, Modal, StatusDot } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
@@ -43,6 +43,9 @@
 
   const copy = MODELS_COPY.manageDialog;
   const queryClient = useQueryClient();
+  type LeaveAction = 'close' | 'remove' | 'replace';
+  let pending = $state<LeaveAction | null>(null);
+  let open = $state(false);
 
   const configuration = new ProviderConfigurationDraft({
     source: () => (provider === null ? undefined : configurations.get(provider)),
@@ -50,27 +53,48 @@
   });
 
   const displayName = $derived(provider === null ? '' : providerTitle(provider, configurations));
-  const open = $derived(provider !== null);
 
   // Whatever closes the dialog, the settings start over from what is stored the next time it opens.
   $effect(() => {
-    if (provider === null) configuration.reset();
+    open = provider !== null;
+    if (provider === null) {
+      configuration.reset();
+      pending = null;
+    }
   });
 
-  function close(): void {
+  function leave(action: LeaveAction): void {
+    const name = provider;
+    if (name === null) return;
     configuration.reset();
+    open = false;
     provider = null;
+    pending = null;
+    if (action === 'remove') onRemove(name);
+    if (action === 'replace') onReplace(name);
   }
 
-  function hand(next: (provider: string) => void): void {
-    if (provider === null) return;
-    const name = provider;
-    provider = null;
-    next(name);
+  function requestLeave(action: LeaveAction): void {
+    if (provider === null || configuration.saving) return;
+    if (configuration.dirty) {
+      // Escape and the backdrop close the bound Modal first. Reopen it in the same turn so the
+      // form stays mounted under the confirmation and Keep editing restores the live draft.
+      open = true;
+      pending = action;
+      return;
+    }
+    leave(action);
   }
 </script>
 
-<Modal {open} title={displayName === '' ? copy.fallbackTitle : displayName} onDismiss={close}>
+<Modal
+  bind:open
+  title={displayName === '' ? copy.fallbackTitle : displayName}
+  dismissOnEscape={!configuration.saving}
+  dismissOnBackdropClick={!configuration.saving}
+  closeButtonVisible={!configuration.saving}
+  onDismiss={() => requestLeave('close')}
+>
   {#snippet children()}
     <div class="ib-manage">
       <div class="ib-manage__status" data-testid="provider-manage-body">
@@ -82,8 +106,16 @@
   {/snippet}
   {#snippet footer()}
     {#if hasKey}
-      <Button variant="secondary" onclick={() => hand(onRemove)}>{copy.removeKey}</Button>
-      <Button variant="secondary" onclick={() => hand(onReplace)}>{copy.replaceKey}</Button>
+      <Button
+        variant="secondary"
+        disabled={configuration.saving}
+        onclick={() => requestLeave('remove')}>{copy.removeKey}</Button
+      >
+      <Button
+        variant="secondary"
+        disabled={configuration.saving}
+        onclick={() => requestLeave('replace')}>{copy.replaceKey}</Button
+      >
     {/if}
     {#if configuration.dirty || configuration.saving}
       <Button
@@ -93,10 +125,23 @@
         >{configuration.saving ? copy.saving : copy.save}</Button
       >
     {:else}
-      <Button variant="primary" onclick={close}>{copy.done}</Button>
+      <Button variant="primary" onclick={() => requestLeave('close')}>{copy.done}</Button>
     {/if}
   {/snippet}
 </Modal>
+
+<ConfirmDialog
+  open={pending !== null}
+  title={copy.discardTitle}
+  description={copy.discardDescription}
+  cancelLabel={copy.keepEditing}
+  confirmLabel={copy.discardChanges}
+  destructive
+  onCancel={() => (pending = null)}
+  onConfirm={() => {
+    if (pending !== null) leave(pending);
+  }}
+/>
 
 <style>
   .ib-manage {

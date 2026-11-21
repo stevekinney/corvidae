@@ -892,9 +892,12 @@ describe('the builder', () => {
     expect(container.querySelector('.weft-workflow-builder__body')?.hasAttribute('inert')).toBe(
       true,
     );
-    expect(container.querySelector('.weft-workflow-builder__actions')?.hasAttribute('inert')).toBe(
-      true,
+    expect(container.querySelector('.weft-workflow-builder__actions')).toBeNull();
+    const buttonLabels = [...container.querySelectorAll('button')].map((button) =>
+      button.textContent?.trim(),
     );
+    expect(buttonLabels).not.toContain(WORKFLOW_COPY.creator.saveAction);
+    expect(buttonLabels).not.toContain(BUILDER.addField);
     // What cannot be used is not drawn: no add, move or remove, only the steps themselves.
     expect(container.querySelector('#workflow-builder-add')).toBeNull();
     // Nor the empty band its wrapper would leave.

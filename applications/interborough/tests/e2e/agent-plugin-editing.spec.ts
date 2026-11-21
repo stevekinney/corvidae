@@ -77,6 +77,66 @@ const STALE = {
 const FORBIDDEN = { message: 'Forbidden', httpStatus: 403, weftCode: 'Forbidden' } as const;
 const FAILED = { message: 'Internal error', httpStatus: 500, weftCode: 'Internal' } as const;
 
+test('replaces a built-in agent’s Asks as an explicit empty override', async ({
+  page,
+  request,
+}) => {
+  const id = TEXT_ECHO_AGENT_NAME;
+  const params = { id };
+  const read = async () => {
+    const response = await bureau(request, 'bureau.agents.overrides.get', params);
+    expect(response.fault).toBeUndefined();
+    return response.result as {
+      hash: string;
+      overrides: { approvals: Record<string, string> | null };
+    };
+  };
+  const original = await read();
+  expect(original.overrides.approvals).toBeNull();
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.goto(`/agents/${encodeURIComponent(id)}/access`);
+  const replace = page.getByRole('button', { name: AGENT_PAGE_COPY.plugin.replaceAsks });
+  const note = page.getByTestId('agent-built-in');
+  await expect(replace).toBeEnabled();
+  await expect(note).toContainText(
+    AGENT_PAGE_COPY.plugin.overridableKept(['approvals', 'guardrails']),
+  );
+  await captureForDesignReview(page, {
+    route: '/agents/:agent/access (a built-in agent)',
+    state: 'replace its asks available',
+    source: SOURCE,
+  });
+  try {
+    await replace.click();
+    await expect(replace).toHaveCount(0);
+    await expect(note).toContainText(AGENT_PAGE_COPY.plugin.overridableKept(['guardrails']));
+    await expect
+      .poll(async () => {
+        const stored = await read();
+        return stored.overrides.approvals;
+      })
+      .toEqual({});
+    await page.reload();
+    await expect(note).toContainText(AGENT_PAGE_COPY.plugin.overridableKept(['guardrails']));
+    await expect(replace).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/access (a built-in agent)',
+      state: 'asks replaced, guardrails held',
+      source: SOURCE,
+    });
+  } finally {
+    const current = await read();
+    if (current.hash !== original.hash) {
+      const restored = await bureau(request, 'bureau.agents.overrides.update', {
+        ...params,
+        expectedHash: current.hash,
+        overrides: original.overrides,
+      });
+      expect(restored.fault).toBeUndefined();
+    }
+  }
+});
+
 /** The version the overrides are at, 0 for an agent nobody changed. A reset is a version too, so a run counts from here. */
 async function versionNow(request: APIRequestContext): Promise<number> {
   const read = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
