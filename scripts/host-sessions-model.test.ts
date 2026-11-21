@@ -22,14 +22,18 @@ import {
   type SessionState,
 } from './host-sessions-model.ts';
 
-const admit = (toolUseId: string, at = 0): SessionEvent => ({
+const admit = (toolUseId: string, at = 0): Extract<SessionEvent, { kind: 'admit' }> => ({
   kind: 'admit',
   toolUseId,
   at,
   description: `Deliver ${toolUseId}`,
   dispatcher: '',
 });
-const start = (agentId: string, at = 0): SessionEvent => ({ kind: 'start', agentId, at });
+const start = (agentId: string, at = 0): Extract<SessionEvent, { kind: 'start' }> => ({
+  kind: 'start',
+  agentId,
+  at,
+});
 const stop = (agentId: string, at = 0): SessionEvent => ({ kind: 'stop', agentId, at });
 const launched = (toolUseId: string, agentId: string): SessionEvent => ({
   kind: 'launched',
@@ -141,7 +145,7 @@ describe('the session count', () => {
     expect(foldSession(events).dispatches.get('tB')?.agentId).toBe('b');
   });
 
-  test('a release frees a pending dispatch or a running agent', () => {
+  test('a release frees each place it can identify while an anonymous start keeps its other compatible dispatch reserved', () => {
     const events: SessionEvent[] = [
       admit('tA'),
       admit('tB'),
@@ -149,7 +153,7 @@ describe('the session count', () => {
       { kind: 'release', target: 'tB', at: 0 },
       { kind: 'release', target: 'a', at: 0 },
     ];
-    expect(placesAfterEach(events)).toEqual([1, 2, 2, 1, 0]);
+    expect(placesAfterEach(events)).toEqual([1, 2, 2, 1, 1]);
   });
 
   test('a launched dispatch whose start was never recorded keeps its place past the limit, and its stop returns it', () => {
@@ -160,14 +164,144 @@ describe('the session count', () => {
     expect(placesAfterEach([...events, stop('a'), stop('a')])).toEqual([1, 1, 0, 0]);
   });
 
-  test('only a pending dispatch older than the limit counts as never started', () => {
+  test('an ambiguous start prevents either compatible dispatch from expiring', () => {
     const state = foldSession([admit('tA', 0), admit('tB', 5), start('a', 6)]);
     expect(neverStarted(state, neverStartedLimitMilliseconds + 4).map((d) => d.toolUseId)).toEqual(
       [],
     );
-    expect(neverStarted(state, neverStartedLimitMilliseconds + 5).map((d) => d.toolUseId)).toEqual([
-      'tB',
+    expect(neverStarted(state, neverStartedLimitMilliseconds + 5)).toEqual([]);
+  });
+
+  test('a late anonymous start holds the maximum compatible count until either dispatch link resolves it', () => {
+    const prefix: SessionEvent[] = [
+      admit('t0'),
+      { kind: 'expire', toolUseId: 't0', at: 1 },
+      admit('t1'),
+      start('a0', 2),
+    ];
+    expect(placesAfterEach(prefix)).toEqual([1, 0, 1, 2]);
+    expect(placesAfterEach([...prefix, launched('t0', 'a0')])).toEqual([1, 0, 1, 2, 2]);
+    expect(placesAfterEach([...prefix, launched('t1', 'a0')])).toEqual([1, 0, 1, 2, 1]);
+  });
+
+  test('projects every capacity rate independently across compatible histories', () => {
+    const workerAndReadOnly = foldSession([
+      {
+        ...admit('t-read-only'),
+        agentType: 'Explore',
+        readOnly: true,
+      },
+      admit('t-worker'),
+      start('a'),
+      stop('a'),
     ]);
+    expect([workerPlaces(workerAndReadOnly), readOnlyAgents(workerAndReadOnly)]).toEqual([1, 1]);
+
+    const workerAndOpus = foldSession([
+      { ...admit('t-opus'), agentType: 'chef-reviewer', opus: true },
+      { ...admit('t-worker'), agentType: 'chef-worker' },
+      start('a'),
+      stop('a'),
+    ]);
+    expect([workerPlaces(workerAndOpus), opusPlaces(workerAndOpus)]).toEqual([1, 1]);
+  });
+
+  test('the two COR-2463 expiry traces retain only histories compatible with their recorded expiry and link', () => {
+    expect(
+      placesAfterEach([
+        admit('t0'),
+        { kind: 'expire', toolUseId: 't0', at: 1 },
+        admit('t1'),
+        start('a0', 2),
+        launched('t1', 'a0'),
+      ]),
+    ).toEqual([1, 0, 1, 2, 1]);
+    expect(
+      placesAfterEach([
+        admit('t0'),
+        admit('t1'),
+        start('a1'),
+        { kind: 'expire', toolUseId: 't1', at: 1 },
+        start('a0', 2),
+        stop('a0', 3),
+        stop('a1', 4),
+        launched('t1', 'a1'),
+      ]),
+    ).toEqual([1, 2, 2, 2, 2, 1, 0, 0]);
+  });
+
+  test('rejects a stale link without reinstating a dispatch its failure already released', () => {
+    const events = [admit('t'), failed('t'), launched('t', 'a')];
+    expect(placesAfterEach(events)).toEqual([1, 0, 0]);
+    expect(foldSession(events).dispatches.get('t')).toMatchObject({ status: 'failed' });
+  });
+
+  test('unobserved type differences do not distinguish equivalent fallback assignments', () => {
+    const count = 24;
+    const dispatches: SessionEvent[] = Array.from({ length: count }, (_, index) => ({
+      ...admit('tool-' + String(index)),
+      agentType: 'type-' + String(index),
+    }));
+    const starts: SessionEvent[] = Array.from({ length: count }, (_, index) => ({
+      ...start('agent-' + String(index)),
+      agentType: 'unknown-type',
+    }));
+    const state = foldSession([...dispatches, ...starts]);
+    expect(workerPlaces(state)).toBe(count);
+    expect(
+      [...state.dispatches.values()].filter((dispatch) => dispatch.status === 'started'),
+    ).toHaveLength(count);
+  });
+
+  test('counts each role after many anonymous starts that cannot be distinguished by future hooks', () => {
+    const count = 18;
+    const dispatches: SessionEvent[] = Array.from({ length: count }, (_, index) => ({
+      ...admit('mixed-tool-' + String(index)),
+      readOnly: index % 3 === 0,
+      opus: index % 3 === 1,
+    }));
+    const starts = Array.from({ length: count }, (_, index) =>
+      start('mixed-agent-' + String(index)),
+    );
+    const state = foldSession([...dispatches, ...starts, stop('mixed-agent-0')]);
+    expect(workerPlaces(state)).toBe(12);
+    expect(readOnlyAgents(state)).toBe(6);
+    expect(opusPlaces(state)).toBe(6);
+    const linked = applySessionEvent(state, launched('mixed-tool-0', 'mixed-agent-0'));
+    expect(workerPlaces(linked)).toBe(12);
+    expect(readOnlyAgents(linked)).toBe(5);
+    expect(opusPlaces(linked)).toBe(6);
+  });
+
+  test('refines dozens of interchangeable starts when delayed links name the reverse order', () => {
+    const ids = Array.from({ length: 24 }, (_, index) => String(index));
+    let state = foldSession([
+      ...ids.map((id): SessionEvent => ({ ...admit(`tool-${id}`), bypass: true })),
+      ...ids.map((id) => start(`agent-${id}`)),
+    ]);
+    expect(workerPlaces(state)).toBe(ids.length);
+
+    for (const [index, agent] of ids.entries()) {
+      const tool = ids.at(-1 - index)!;
+      state = applySessionEvent(state, launched(`tool-${tool}`, `agent-${agent}`));
+      expect(state.dispatches.get(`tool-${tool}`)?.agentId).toBe(`agent-${agent}`);
+      expect(workerPlaces(state)).toBe(ids.length);
+    }
+    for (const [index, agent] of ids.entries()) {
+      state = applySessionEvent(state, stop(`agent-${agent}`));
+      expect(workerPlaces(state)).toBe(ids.length - index - 1);
+    }
+  });
+
+  test('does not manufacture an unadmitted start to satisfy a later contradictory link', () => {
+    const events = [admit('t'), start('a'), start('b'), launched('t', 'b')];
+    expect(placesAfterEach(events)).toEqual([1, 1, 2, 2]);
+    expect(foldSession(events).dispatches.get('t')?.agentId).toBe('a');
+  });
+
+  test('expires a dispatch only when every compatible history still has it pending', () => {
+    const state = foldSession([admit('t0', 0), admit('t1', 1), start('a', 2)]);
+    expect(neverStarted(state, neverStartedLimitMilliseconds + 2)).toEqual([]);
   });
 });
 
