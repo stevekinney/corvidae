@@ -287,6 +287,10 @@ describe('Turborepo cache in the workflows', () => {
           const normalized = input.replace(/^\$TURBO_ROOT\$\//u, '');
           return normalized === path || new Bun.Glob(normalized).match(path);
         });
+      // This must be the positive suite-wide input. The exclusions below it deliberately match the
+      // directory too, and do not invalidate the cache when a runtime file changes.
+      expect(inputs).toContain(`$TURBO_ROOT$/${directory}**`);
+      expect(covers(entrypoint)).toBe(true);
       const reachableRootHelpers = [...seen].filter(isRootHelper);
       const dynamicDomains = new Map([
         [
@@ -342,11 +346,6 @@ describe('Turborepo cache in the workflows', () => {
       ).toEqual([]);
       expect(reachableRootHelpers.filter((path) => !covers(path)).toSorted()).toEqual([]);
       expect(inputs.some((input) => /scripts\/\*\.ts/u.test(input))).toBe(false);
-      expect(
-        inputs.some((input) =>
-          new Bun.Glob(input.replace(/^\$TURBO_ROOT\$\//u, '')).match(directory),
-        ),
-      ).toBe(true);
       expect(command).toContain(entrypoint);
       expect(commandRoots).toContain(entrypoint);
     });
