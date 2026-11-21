@@ -58,7 +58,7 @@ function isPrepared(source: string, helper: string, argument: string): boolean {
   }
   if (helper === 'checkBuildFlagHydrationSafety') return false;
   for (const [, argumentsList = ''] of source.matchAll(
-    /\bprepareSvelteServerSources\(\s*\[([^\[\]]*)\]/g,
+    /\bprepareSvelteServerSources\(\s*\[([^\][]*)\]/g,
   )) {
     if (argumentsList.split(',').some((entry) => entry.trim() === argument)) return true;
   }
