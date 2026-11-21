@@ -4,7 +4,7 @@
 //
 // Usage:
 //   bun scripts/chef/delivery-request.ts prepare --branch <branch> --head <sha> --worktree <path>
-//       --base <sha> --run <id> --project <name> --issue <ID> [--issue <ID> ...]
+//       --base <sha> --run <id> [--project <name>] --issue <ID> [--issue <ID> ...]
 //       [--route branch|pull-request] [--no-track] [--no-close] [--leave-open <ID> ...]
 //       [--classification behavior|no-behavior] [--context <json>] [--wait-minutes <n>]
 //       [--config <file>] [--json]
@@ -43,7 +43,8 @@
 //      branch: a newer dispatch on a ref cancels this run, and a red or cancelled bound run cannot
 //      be replaced for the same head (a second run with the same key is ambiguous). Push a new head
 //      and prepare again. The execution state's authority is the project lease's
-//      (`project:<id>`, owner `linear:<run>`, from `linear.ts lease`); `prepare` never mints one.
+//      (`project:<id>`, owner `linear:<run>`, from `linear.ts lease`) when `--project` is given.
+//      Without a project, every member instead retains its current `issue:<identifier>` claim.
 //   Members are tracked and closed on delivery by default (`--no-track` tracks none, `--no-close`
 //   closes none, `--leave-open <ID>` keeps one open). `--route` is the approval's route, `branch`
 //   unless the head lands by pull request; one-way doors need `pull-request`.
@@ -94,6 +95,7 @@ import {
   readExecutionSnapshot,
   recordMutationIntent,
   withProviderTransitionLock,
+  type Authority,
   type ExecutionStateStore,
 } from './execution-state.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
@@ -141,7 +143,8 @@ export interface PrepareOptions {
   worktree: string;
   base: string;
   run: string;
-  project: string;
+  /** A project lease, or absent when each issue claim is the delivery authority. */
+  project?: string;
   issues: string[];
   route: DeliveryRoute;
   track: boolean;
@@ -246,9 +249,10 @@ function membersOf(
   options: PrepareOptions,
   plan: EvidencePlan,
   inputs: string[],
+  authorities?: readonly Authority[],
 ): DeliveryMember[] {
   const reason = `main.yml job "${EVIDENCE_JOB}" of the run bound to this head; evidence plan: ${plan.changed.length} changed files, ${plan.unit_tests.length} unit-test lanes, full run ${plan.requires_full_run ? `required (${plan.full_run_rules.map(({ rule }) => rule).join('; ')})` : 'not required'}.`;
-  return assignments.map((assignment) => {
+  return assignments.map((assignment, index) => {
     const base = createVerificationPlan({
       assignment,
       commands: [],
@@ -261,6 +265,7 @@ function membersOf(
     const identifier = assignment.identity.identifier;
     return {
       assignment,
+      ...(authorities === undefined ? {} : { authority: authorities[index] }),
       plan: {
         version: base.version,
         // The base plan's per-risk obligations are replaced by one bound job per criterion, so a
@@ -293,6 +298,14 @@ function membersOf(
       blockers: [],
     };
   });
+}
+
+function frozenFingerprint(members: readonly DeliveryMember[]): string {
+  return digest(
+    JSON.stringify(
+      members.map(({ assignment, authority, plan }) => ({ assignment, authority, plan })),
+    ),
+  );
 }
 
 /** Writes `text` to `path` in one rename, so a reader never sees half a file. */
@@ -422,46 +435,86 @@ export async function prepare(
       options.classification ?? null,
     ]),
   );
-  // Every attempt reads the issues again and refuses a blocker or another run's claim that appeared
-  // since. The members of an earlier attempt with these arguments are still the ones used: the
-  // request key covers each issue's Linear revision, so a retry must not dispatch for a new key.
-  const read = await dependencies.readAssignments({
-    issues: options.issues,
-    repository,
-    base: options.base,
-    run: options.run,
-    classification: options.classification,
-    sourceContext: options.sourceContext,
-  });
-  const accepted = read.assignments.map(acceptedAssignment);
-  const refused = [
-    ...read.refusals,
-    ...accepted.flatMap((assignment) => {
-      const gate = gateAssignment(assignment, 'held');
-      return gate.dispatchable ? [] : [refusalReasons([assignment], [gate])];
-    }),
-  ];
-  if (refused.length > 0)
-    throw new UsageError(`Refused: an assignment is not dispatchable.\n${refused.join('\n')}`);
-  if (accepted.map((assignment) => assignment.identity.identifier).join() !== options.issues.join())
-    throw new UsageError('the assignments read do not match --issue, in order.');
-  const members =
-    readPending(pendingFile, fingerprint, dependencies.now()) ??
-    membersOf(accepted, options, plan, kept);
-
-  const resource = await dependencies.leaseResource(options.project, options.run);
-  let authority;
-  try {
-    authority = currentAuthority(dependencies.state, {
-      resource,
-      runId: options.run,
-      ownerId: `linear:${options.run}`,
-    });
-  } catch (error) {
-    throw new UsageError(
-      `run ${options.run} has no current local authority for ${resource} (${error instanceof Error ? error.message : String(error)}); run linear.ts lease on this host first.`,
-    );
-  }
+  let members: DeliveryMember[] | undefined;
+  let authority: Authority | undefined;
+  // The operation lock freezes current Linear assignments and their held authorities before the
+  // request-key provider transition. A retry must prove the same batch still exists; it cannot
+  // silently spend CI using an earlier member list after Linear changed.
+  await withProviderTransitionLock(
+    dependencies.state,
+    `delivery-operation:${operationId}`,
+    async () => {
+      const read = await dependencies.readAssignments({
+        issues: options.issues,
+        repository,
+        base: options.base,
+        run: options.run,
+        classification: options.classification,
+        sourceContext: options.sourceContext,
+      });
+      const accepted = read.assignments.map(acceptedAssignment);
+      const refused = [
+        ...read.refusals,
+        ...accepted.flatMap((assignment) => {
+          const gate = gateAssignment(assignment, 'held');
+          return gate.dispatchable ? [] : [refusalReasons([assignment], [gate])];
+        }),
+      ];
+      if (refused.length > 0)
+        throw new UsageError(`Refused: an assignment is not dispatchable.\n${refused.join('\n')}`);
+      if (
+        accepted.map((assignment) => assignment.identity.identifier).join() !==
+        options.issues.join()
+      )
+        throw new UsageError('the assignments read do not match --issue, in order.');
+      let authorities: Authority[] | undefined;
+      if (options.project === undefined) {
+        try {
+          authorities = accepted.map((assignment) =>
+            currentAuthority(dependencies.state, {
+              resource: `issue:${assignment.identity.identifier}`,
+              runId: options.run,
+              ownerId: `linear:${options.run}`,
+            }),
+          );
+        } catch (error) {
+          throw new UsageError(
+            `run ${options.run} does not hold every current issue claim (${error instanceof Error ? error.message : String(error)}); claim each member before preparing.`,
+          );
+        }
+      } else {
+        const resource = await dependencies.leaseResource(options.project, options.run);
+        try {
+          authority = currentAuthority(dependencies.state, {
+            resource,
+            runId: options.run,
+            ownerId: `linear:${options.run}`,
+          });
+        } catch (error) {
+          throw new UsageError(
+            `run ${options.run} has no current local authority for ${resource} (${error instanceof Error ? error.message : String(error)}); run linear.ts lease on this host first.`,
+          );
+        }
+      }
+      const current = membersOf(accepted, options, plan, kept, authorities);
+      const saved = readPending(pendingFile, fingerprint, dependencies.now());
+      if (saved !== undefined && frozenFingerprint(saved) !== frozenFingerprint(current))
+        throw new UsageError(
+          'the accepted batch changed after its operation freeze; push a new head and prepare a fresh identity.',
+        );
+      members = saved ?? current;
+      authority = authorities?.[0] ?? authority;
+      if (saved === undefined) {
+        mkdirSync(directory, { recursive: true });
+        writeWhole(
+          pendingFile,
+          JSON.stringify({ fingerprint, members, savedAt: dependencies.now() }),
+        );
+      }
+    },
+  );
+  if (members === undefined || authority === undefined)
+    throw new UsageError('delivery operation did not retain an authority and frozen members.');
 
   const identityInput = {
     repository,
@@ -496,7 +549,6 @@ export async function prepare(
           `${found.length} runs carry request key ${identity.requestKey}: a second dispatch for this head cannot be told from the first; push a new head.`,
         );
       if (found.length > 0 || dispatchAttempted(pendingFile, identity.requestKey)) return;
-      mkdirSync(directory, { recursive: true });
       writeWhole(
         pendingFile,
         JSON.stringify({
@@ -579,25 +631,31 @@ export async function prepare(
     digest: requestDigest,
     stateDirectory: dependencies.state.stateDirectory,
   };
-  await recordMutationIntent(dependencies.state, authority, {
-    operationId,
-    action: 'merge',
-    intentFingerprint: digest(
-      JSON.stringify([options.branch, options.head, options.base, options.route]),
-    ),
-  });
-  const existing = readExecutionSnapshot(dependencies.state).operations[operationId]?.approval;
-  if (existing === undefined)
-    await prepareDeliveryVerification(
-      binding,
-      finished.map((member) => member.assignment),
-      { route: options.route, action: 'merge' },
-      { state: dependencies.state },
-    );
-  else if (existing.requestDigest !== requestDigest || existing.route !== options.route)
-    throw new UsageError(
-      `${operationId} is already approved for another request (${existing.requestDigest.slice(0, 12)}, ${existing.route}); an approval is written once: push a new head.`,
-    );
+  await withProviderTransitionLock(
+    dependencies.state,
+    `delivery-operation:${operationId}`,
+    async () => {
+      await recordMutationIntent(dependencies.state, authority, {
+        operationId,
+        action: 'merge',
+        intentFingerprint: digest(
+          JSON.stringify([options.branch, options.head, options.base, options.route]),
+        ),
+      });
+      const existing = readExecutionSnapshot(dependencies.state).operations[operationId]?.approval;
+      if (existing === undefined)
+        await prepareDeliveryVerification(
+          binding,
+          finished.map((member) => member.assignment),
+          { route: options.route, action: 'merge' },
+          { state: dependencies.state },
+        );
+      else if (existing.requestDigest !== requestDigest || existing.route !== options.route)
+        throw new UsageError(
+          `${operationId} is already approved for another request (${existing.requestDigest.slice(0, 12)}, ${existing.route}); an approval is written once: push a new head.`,
+        );
+    },
+  );
   return {
     file,
     digest: requestDigest,
@@ -894,7 +952,7 @@ export async function run(
     worktree,
     base: requireOption(parsed, 'base'),
     run: requireOption(parsed, 'run'),
-    project: requireOption(parsed, 'project'),
+    project: parsed.values['project'],
     issues: parsed.repeated['issue'] ?? [],
     route,
     track: !parsed.flags.has('no-track'),

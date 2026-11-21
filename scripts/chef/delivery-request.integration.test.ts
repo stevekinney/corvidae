@@ -25,6 +25,7 @@ import {
 import { directMerge } from './direct-merge.ts';
 import {
   acquireDispatch,
+  cancelDispatch,
   createExecutionStateStore,
   type ExecutionStateStore,
 } from './execution-state.ts';
@@ -427,6 +428,83 @@ scenarios.describe('prepare', () => {
   );
 
   scenarios.scenario(
+    'freezes issue-only member authorities and refuses a changed accepted batch without redispatching',
+    async () => {
+      let criteria = ['AC1'];
+      const setup = await harness(
+        {
+          readAssignments: async () => ({
+            assignments: [assignmentFor('COR-1', criteria), assignmentFor('COR-2', ['AC1'])],
+            refusals: [],
+          }),
+        },
+        { project: undefined },
+      );
+      for (const identifier of setup.options.issues) {
+        const held = await acquireDispatch(setup.state, {
+          resource: `issue:${identifier}`,
+          runId: 'run',
+          ownerId: 'linear:run',
+        });
+        expect(held.granted).toBe(true);
+      }
+      const first = await setup.prepared();
+      const request = readDeliveryRequest(first.file, first.digest);
+      expect(request.members.map((member) => member.authority?.resource)).toEqual([
+        'issue:COR-1',
+        'issue:COR-2',
+      ]);
+      criteria = ['AC1', 'AC2'];
+      expect(String(await rejectionOf(setup.prepared()))).toContain('accepted batch changed');
+      expect(setup.dispatched).toHaveLength(1);
+    },
+  );
+
+  scenarios.scenario('serializes concurrent issue-only callers to one dispatch', async () => {
+    const setup = await harness({}, { project: undefined });
+    for (const identifier of setup.options.issues) {
+      const held = await acquireDispatch(setup.state, {
+        resource: `issue:${identifier}`,
+        runId: 'run',
+        ownerId: 'linear:run',
+      });
+      expect(held.granted).toBe(true);
+    }
+    const results = await Promise.all([setup.prepared(), setup.prepared()]);
+    expect(results.filter((result) => result.dispatched)).toHaveLength(1);
+    expect(setup.dispatched).toHaveLength(1);
+  });
+
+  scenarios.scenario(
+    'refuses check and landing verification after any issue-only claim is revoked',
+    async () => {
+      const setup = await harness({}, { project: undefined });
+      for (const identifier of setup.options.issues) {
+        const held = await acquireDispatch(setup.state, {
+          resource: `issue:${identifier}`,
+          runId: 'run',
+          ownerId: 'linear:run',
+        });
+        expect(held.granted).toBe(true);
+      }
+      const prepared = await setup.prepared();
+      const request = readDeliveryRequest(prepared.file, prepared.digest);
+      const revoked = request.members[1]?.authority;
+      if (revoked === undefined) throw new Error('fixture did not retain issue authority');
+      expect(await cancelDispatch(setup.state, revoked)).toBe(true);
+      const problems = await check(
+        {
+          file: prepared.file,
+          digest: prepared.digest,
+          stateDirectory: setup.state.stateDirectory,
+        },
+        checkDependencies(setup, setup.dispatched[0] ?? []),
+      );
+      expect(problems.join('\n')).toContain('transitions are revoked');
+    },
+  );
+
+  scenarios.scenario(
     'refuses a head that is not the published branch head, or a branch without the base',
     async () => {
       const stale = await harness(
@@ -660,7 +738,7 @@ scenarios.describe('prepare', () => {
   );
 
   scenarios.scenario(
-    'a retry reuses the saved members, so a Linear edit in between cannot change the key or the run',
+    'a retry refuses a changed accepted batch rather than changing the key or run',
     async () => {
       const first = await harness({}, {}, answers(), 'retry');
       // The first attempt dispatches, then gives up: the evidence job never gets a runner.
@@ -679,20 +757,18 @@ scenarios.describe('prepare', () => {
       edited.identity.digest = digest(
         JSON.stringify({ ...edited, identity: { ...edited.identity, digest: undefined } }),
       );
-      const retried = await prepare(first.options, {
-        ...first.dependencies,
-        readAssignments: async () => {
-          reads += 1;
-          return { assignments: [edited, assignmentFor('COR-2', ['AC1'])], refusals: [] };
-        },
-        readJobs: () => [{ name: EVIDENCE_JOB, runner: RUNNER_NAME, startedAt: 't' }],
-      });
-      // Linear is read again, so a blocker or claim that appeared since is refused, but the members
-      // saved by the first attempt are the ones used.
+      const retried = rejectionOf(
+        prepare(first.options, {
+          ...first.dependencies,
+          readAssignments: async () => {
+            reads += 1;
+            return { assignments: [edited, assignmentFor('COR-2', ['AC1'])], refusals: [] };
+          },
+          readJobs: () => [{ name: EVIDENCE_JOB, runner: RUNNER_NAME, startedAt: 't' }],
+        }),
+      );
+      expect(String(await retried)).toContain('accepted batch changed');
       expect(reads).toBe(1);
-      expect(retried.dispatched).toBe(false);
-      const unedited = await prepare(first.options, first.dependencies);
-      expect(retried.digest).toBe(unedited.digest);
       expect(first.dispatched).toHaveLength(1);
     },
   );

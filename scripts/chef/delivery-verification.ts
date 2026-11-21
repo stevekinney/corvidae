@@ -65,6 +65,14 @@ export interface DeliveryMergeObservation {
   pullRequest?: number;
 }
 
+/** Every issue-only member remains held through prepare, check, and landing. */
+function requireDeliveryAuthorities(state: ExecutionStateStore, request: DeliveryRequest): void {
+  requireAuthority(state, request.authority);
+  for (const member of request.members) {
+    if (member.authority !== undefined) requireAuthority(state, member.authority);
+  }
+}
+
 function isCommit(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(value);
 }
@@ -118,7 +126,7 @@ export async function recordDeliveryMergeObservation(
 ): Promise<void> {
   validateDeliveryMergeObservation(observation, verification.request);
   const state = partial.state ?? verification.state;
-  requireAuthority(state, verification.request.authority);
+  requireDeliveryAuthorities(state, verification.request);
   await recordMutationResult(
     state,
     verification.request.authority,
@@ -142,7 +150,7 @@ export async function prepareDeliveryVerification(
 ): Promise<void> {
   const request = readDeliveryRequest(verification.file, verification.digest);
   const state = deliveryState(verification, partial);
-  requireAuthority(state, request.authority);
+  requireDeliveryAuthorities(state, request);
   const approvedAssignments = structuredClone(assignments);
   if (approvedAssignments.length !== request.members.length)
     throw new Error('delivery approval does not match its accepted members');
@@ -195,7 +203,7 @@ export function loadDeliveryVerification(
 ): LoadedDeliveryVerification {
   const request = readDeliveryRequest(verification.file, verification.digest);
   const state = deliveryState(verification, partial);
-  requireAuthority(state, request.authority);
+  requireDeliveryAuthorities(state, request);
   return { request, file: verification.file, digest: verification.digest, state };
 }
 
@@ -207,7 +215,7 @@ export function validateDeliveryApproval(
 ): string | undefined {
   const { request } = verification;
   const state = partial.state ?? verification.state;
-  requireAuthority(state, request.authority);
+  requireDeliveryAuthorities(state, request);
   const operation = readExecutionSnapshot(state).operations[request.operationId];
   const approval = operation?.approval;
   if (approval === undefined) return 'delivery request has no coordinator approval binding';

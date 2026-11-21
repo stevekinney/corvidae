@@ -11,6 +11,7 @@ import {
   type ProviderEvidenceTransport,
   type VerificationRequest,
 } from './evidence.ts';
+import type { Authority } from './execution-state.ts';
 import {
   digest,
   gateAssignment,
@@ -27,6 +28,8 @@ export interface DeliveryPlan extends Omit<VerificationPlan, 'obligations'> {
 /** Each member retains its own criterion namespace and independently approved evidence plan. */
 export interface DeliveryMember {
   assignment: Assignment;
+  /** Issue-only batches retain the actual held authority for this member. */
+  authority?: Authority;
   plan: DeliveryPlan;
   providerRuns: VerificationRequest['providerRuns'];
   track: boolean;
@@ -76,6 +79,16 @@ const plain = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const strings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.trim() !== '');
+const validAuthority = (value: unknown): value is Authority =>
+  plain(value) &&
+  typeof value['resource'] === 'string' &&
+  value['resource'] !== '' &&
+  typeof value['runId'] === 'string' &&
+  value['runId'] !== '' &&
+  typeof value['ownerId'] === 'string' &&
+  value['ownerId'] !== '' &&
+  Number.isSafeInteger(value['generation']) &&
+  Number(value['generation']) >= 1;
 
 /** Parse a digest-pinned contract before provider reads; its fields request proof, never supply it. */
 export function readDeliveryRequest(file: string, expectedDigest: string): DeliveryRequest {
@@ -134,6 +147,14 @@ export function readDeliveryRequest(file: string, expectedDigest: string): Deliv
       throw new EvidenceRequestError('delivery request has malformed member');
     const { identity, criteria } = member.assignment;
     if (
+      member.authority !== undefined &&
+      (!validAuthority(member.authority) ||
+        member.authority.resource !== `issue:${identity.identifier}` ||
+        member.authority.runId !== request.authority.runId ||
+        member.authority.ownerId !== request.authority.ownerId)
+    )
+      throw new EvidenceRequestError('delivery member has invalid issue authority');
+    if (
       (member.requestedClose && !member.track) ||
       (member.track && !/^[A-Z][A-Z0-9]*-[1-9]\d*$/.test(identity.identifier))
     )
@@ -183,6 +204,11 @@ export function readDeliveryRequest(file: string, expectedDigest: string): Deliv
       providerRuns: member.providerRuns,
     });
   }
+  const issueOnly = request.authority.resource.startsWith('issue:');
+  if (issueOnly && request.members.some((member) => member.authority === undefined))
+    throw new EvidenceRequestError('issue-only delivery request lacks a member authority');
+  if (!issueOnly && request.members.some((member) => member.authority !== undefined))
+    throw new EvidenceRequestError('project delivery request has member authorities');
   return request;
 }
 
