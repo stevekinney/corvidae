@@ -19,31 +19,39 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  release:
+  package:
     name: Build and package macOS arm64 release
     runs-on: macos-15
     timeout-minutes: 90
+    outputs:
+      source_sha: ${{ steps.release-inputs.outputs.source_sha }}
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
       VERSION: ${{ inputs.version }}
       PUBLISH: ${{ inputs.publish }}
-      RELEASE_DIRECTORY: ${{ runner.temp }}/interborough-release
-      PACKAGE_DIRECTORY: ${{ runner.temp }}/interborough-package
     steps:
       - name: Validate immutable inputs
+        id: release-inputs
         run: |
           test "${#SOURCE_SHA}" = 40
           printf '%s' "$SOURCE_SHA" | grep -Eq '^[0-9a-fA-F]{40}$'
           printf '%s' "$VERSION" | grep -Eq '^([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          source_sha="$(printf '%s' "$SOURCE_SHA" | tr '[:upper:]' '[:lower:]')"
+          if [ "$PUBLISH" = true ]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$source_sha" = "$GITHUB_SHA"
+          fi
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ steps.release-inputs.outputs.source_sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Verify checked out source
+        env:
+          SOURCE_SHA: ${{ steps.release-inputs.outputs.source_sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -51,43 +59,136 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
       - run: bun install --frozen-lockfile
+      - run: bunx playwright install chromium
       - name: Build one release archive
         working-directory: applications/interborough
-        run: bun scripts/build-release.ts --version "$VERSION" --outdir "$RELEASE_DIRECTORY"
+        run: bun scripts/build-release.ts --version "$VERSION" --outdir "$RUNNER_TEMP/interborough-release"
       - name: Test release archive before npm packaging
         working-directory: applications/interborough
-        run: bun scripts/test-installed-release.ts --archive "$RELEASE_DIRECTORY/interborough-$VERSION-darwin-arm64.tar.gz"
+        env:
+          CORVIDAE_EXPECTED_RELEASE_SHA: ${{ steps.release-inputs.outputs.source_sha }}
+        run: |
+          bun scripts/test-installed-release.ts \
+            --archive "$RUNNER_TEMP/interborough-release/interborough-$VERSION-darwin-arm64.tar.gz" \
+            --evidence "$RUNNER_TEMP/interborough-evidence/archive"
       - name: Pack and test offline install
         working-directory: applications/interborough
-        run: bun scripts/package-release.ts --archive "$RELEASE_DIRECTORY/interborough-$VERSION-darwin-arm64.tar.gz" --outdir "$PACKAGE_DIRECTORY"
+        run: |
+          bun scripts/package-release.ts \
+            --archive "$RUNNER_TEMP/interborough-release/interborough-$VERSION-darwin-arm64.tar.gz" \
+            --outdir "$RUNNER_TEMP/interborough-package"
+          bun scripts/test-installed-release.ts \
+            --command "$RUNNER_TEMP/interborough-package/prefix/bin/interborough" \
+            --evidence "$RUNNER_TEMP/interborough-evidence/offline-install"
+      - name: Upload installed release evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: interborough-installed-release-evidence
+          path: ${{ runner.temp }}/interborough-evidence
+          if-no-files-found: ignore
       - name: Upload tested package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: interborough-$VERSION-darwin-arm64-npm-package
-          path: ${{ runner.temp }}/interborough-package/*.tgz
+          path: |
+            ${{ runner.temp }}/interborough-package/*.tgz
+            ${{ runner.temp }}/interborough-package/package-result.json
           if-no-files-found: error
+
+  publish:
+    name: Publish the tested npm tarball
+    if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: interborough-${{ inputs.version }}-darwin-arm64-npm-package
+          path: ${{ runner.temp }}/interborough-package
       - name: Fail closed when the version exists
-        if: ${{ inputs.publish }}
         run: |
-          if npm view "interborough@$VERSION" version --json > version.json 2> version.err; then
+          response="$RUNNER_TEMP/npm-version-check.json"
+          diagnostics="$RUNNER_TEMP/npm-version-check.log"
+          if npm view "interborough@$VERSION" version --json > "$response" 2> "$diagnostics"; then
             echo "interborough@$VERSION already exists" >&2
             exit 1
           fi
-          grep -q 'E404' version.err || { cat version.err >&2; exit 1; }
+          if ! node -e 'const result = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (result.error?.code !== "E404") process.exit(1);' "$response"; then
+            cat "$diagnostics" >&2
+            exit 1
+          fi
       - name: Publish the tested tarball
-        if: ${{ inputs.publish }}
-        run: npm publish "$PACKAGE_DIRECTORY/interborough-$VERSION.tgz" --provenance --access public
+        run: |
+          package="$RUNNER_TEMP/interborough-package/interborough-$VERSION.tgz"
+          node -e 'const fs = require("node:fs"); const { createHash } = require("node:crypto"); const digest = createHash("sha512").update(fs.readFileSync(process.argv[1])).digest("base64"); const result = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); if ("sha512-" + digest !== result.integrity) process.exit(1);' "$package" "$RUNNER_TEMP/interborough-package/package-result.json"
+          npm publish "$package" --ignore-scripts --provenance --access public
+
+  verify:
+    name: Verify public npm tarball, provenance and anonymous install
+    needs: [package, publish]
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ inputs.version }}
+      NODE_AUTH_TOKEN: ''
+      NPM_TOKEN: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.source_sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install chromium
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: interborough-${{ inputs.version }}-darwin-arm64-npm-package
+          path: ${{ runner.temp }}/interborough-package
       - name: Verify registry bytes and anonymous install
-        if: ${{ inputs.publish }}
+        run: |
+          package_directory="$RUNNER_TEMP/interborough-package"
+          mkdir -p "$RUNNER_TEMP/interborough-registry"
+          cd "$RUNNER_TEMP/interborough-registry"
+          npm view "interborough@$VERSION" dist --json > registry-dist.json
+          node -e 'const fs = require("node:fs"); const registry = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const local = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); if (!registry.integrity || registry.integrity !== local.integrity || !registry.attestations) process.exit(1); console.log(registry.integrity);' registry-dist.json "$package_directory/package-result.json"
+          npm pack "interborough@$VERSION" --ignore-scripts --json > registry-pack.json
+          downloaded="$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))[0].filename)' registry-pack.json)"
+          cmp "$package_directory/interborough-$VERSION.tgz" "$downloaded"
+          npm install --global --ignore-scripts --prefix "$RUNNER_TEMP/interborough-fresh-prefix" "interborough@$VERSION"
+          printf '{"private":true}\n' > package.json
+          npm install --ignore-scripts --save-exact "interborough@$VERSION"
+          npm audit signatures
+      - name: Test anonymous global install
         working-directory: applications/interborough
         run: |
-          npm view "interborough@$VERSION" dist --json > "$PACKAGE_DIRECTORY/registry-dist.json"
-          node -e 'const fs = require("node:fs"); const registry = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const local = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); if (!registry.integrity || registry.integrity !== local.integrity) process.exit(1);' "$PACKAGE_DIRECTORY/registry-dist.json" "$PACKAGE_DIRECTORY/package-result.json"
-          npm pack "interborough@$VERSION" --json > "$PACKAGE_DIRECTORY/registry-pack.json"
-          downloaded="$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))[0].filename)' "$PACKAGE_DIRECTORY/registry-pack.json")"
-          cmp "$PACKAGE_DIRECTORY/interborough-$VERSION.tgz" "$downloaded"
-          npm install --global --ignore-scripts --prefix "$PACKAGE_DIRECTORY/fresh-prefix" "$downloaded"
-          env -u NODE_AUTH_TOKEN -u NPM_TOKEN bun scripts/test-installed-release.ts --command "$PACKAGE_DIRECTORY/fresh-prefix/bin/interborough"
-          npm audit signatures interborough@$VERSION
+          bun scripts/test-installed-release.ts \
+            --command "$RUNNER_TEMP/interborough-fresh-prefix/bin/interborough" \
+            --evidence "$RUNNER_TEMP/interborough-registry-evidence"
+      - name: Upload registry install evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: interborough-npm-registry-evidence
+          path: |
+            ${{ runner.temp }}/interborough-registry/registry-dist.json
+            ${{ runner.temp }}/interborough-registry-evidence
+          if-no-files-found: ignore
