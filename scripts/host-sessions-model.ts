@@ -570,14 +570,14 @@ export function neverStarted(
   const candidates = candidatesOf(state);
   return [...state.dispatches.values()].filter((dispatch) =>
     candidates.every((candidate) => {
-        const possible = candidate.dispatches.get(dispatch.toolUseId);
-        // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
-        // `SubagentStart` was recorded; it keeps its place until that agent's stop.
-        return (
-          possible?.status === 'pending' &&
-          possible.agentId === undefined &&
-          now - possible.admittedAt >= limit
-        );
+      const possible = candidate.dispatches.get(dispatch.toolUseId);
+      // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
+      // `SubagentStart` was recorded; it keeps its place until that agent's stop.
+      return (
+        possible?.status === 'pending' &&
+        possible.agentId === undefined &&
+        now - possible.admittedAt >= limit
+      );
     }),
   );
 }

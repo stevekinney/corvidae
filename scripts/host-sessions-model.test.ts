@@ -236,7 +236,6 @@ describe('the session count', () => {
     const state = foldSession([admit('t0', 0), admit('t1', 1), start('a', 2)]);
     expect(neverStarted(state, neverStartedLimitMilliseconds + 2)).toEqual([]);
   });
-
 });
 
 describe('every interleaving', () => {
