@@ -23,7 +23,6 @@
    * canceled", a neutral state that says nothing is missing and offers Try again.
    */
   import { ErrorState, Skeleton } from '@lostgradient/cinder';
-  import type { Snippet } from 'svelte';
 
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
@@ -36,32 +35,19 @@
     now: number;
     /** The IANA zone the band names the times' zone of: the viewer's. */
     zone: string;
-    /** The filter bar as the page draws it while it has no counts. */
-    bar: Snippet;
     /** Called when Cancel, in the status line a slow read shows, is pressed. */
     onCancel: () => void;
     /** Called when Try again, under "Loading canceled", is pressed. */
     onRetry: () => void;
   }
 
-  let { kind, now, zone, bar, onCancel, onRetry }: Props = $props();
+  let { kind, now, zone, onCancel, onRetry }: Props = $props();
 
   // The band the rows will sit under: today, and the zone their times are in (row 52z).
   const today = $derived(runDayGroup(now, now, zone));
-
-  // The skeleton keeps its own time, so the filter bar waits the same delay beside it.
-  let revealed = $state(false);
-  $effect(() => {
-    // poll-reason: timer
-    const timer = setTimeout(() => {
-      revealed = true;
-    }, RUN_LIST_LOADING_DELAY_MILLISECONDS);
-    return () => clearTimeout(timer);
-  });
 </script>
 
 {#if kind === 'canceled'}
-  {@render bar()}
   <ErrorState
     bordered
     tone="neutral"
@@ -72,9 +58,6 @@
     {onRetry}
   />
 {:else}
-  {#if revealed}
-    {@render bar()}
-  {/if}
   <Skeleton
     variant="list"
     rows={5}

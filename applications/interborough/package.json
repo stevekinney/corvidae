@@ -49,6 +49,7 @@
     "@lostgradient/storage-indexeddb": "workspace:*",
     "@lostgradient/storage-postgres": "workspace:*",
     "@lostgradient/testing": "workspace:*",
+    "@lostgradient/velveteen": "workspace:*",
     "@lostgradient/backchannel": "workspace:*",
     "@lostgradient/backchannel-mcp": "workspace:*",
     "@lostgradient/weft": "workspace:*",
