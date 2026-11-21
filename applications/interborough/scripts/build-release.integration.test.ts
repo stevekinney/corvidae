@@ -295,18 +295,12 @@ async function expectRelocatedFailure(
   const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
   const fixture = await releaseFixture({ markerPath: marker, runtimeFailure });
   const output = await mkdtemp(join(tmpdir(), `interborough-release-${runtimeFailure}-`));
-  let clock = 0;
   try {
+    // These fixtures reach the verifier's HTTP checks. Keep the real startup clock so a
+    // scheduled sleep before the child binds cannot consume the retry window in a tight loop.
     expect(
       await throwingRejectionOf(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], {
-          ...fixture.operations,
-          now: () => clock,
-          sleep: async () => {
-            while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
-            clock += 100;
-          },
-        }),
+        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
       ),
     ).toThrow(message);
     expect(await Bun.file(marker).text()).toBe('terminated');
@@ -772,6 +766,7 @@ describe('release arguments', () => {
   });
 
   // spawn-free: the release fixture controls every child process boundary deterministically.
+  // spawn-free: missing runtime packages fail during mocked staging before the relocated host can start.
   test.each(PANEL_RUNTIME_PACKAGES.map((name) => [name]))(
     'rejects a release whose frozen install has no %s to stage',
     async (name) => {

@@ -60,3 +60,7 @@ packages/bureau/src/a2ui/server-to-client.schema.json
 components/chat/src/lib/a2ui/examples/
 # The design system's cover card is published byte for byte; its `@dsCard` marker must stay its first line.
 components/cinder/scripts/design-system/assets/cover.html
+
+# Velveteen's generated conformance output and pinned checkout.
+packages/velveteen/**/.velveteen/
+packages/velveteen/tests/reference/upstream

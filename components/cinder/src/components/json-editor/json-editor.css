@@ -167,7 +167,7 @@
     color: var(--cinder-status-danger-text);
   }
 
-  .cinder-json-editor__status :global(svg) {
+  .cinder-json-editor__status svg {
     flex: none;
   }
 
@@ -278,7 +278,7 @@
     gap: var(--cinder-space-1-5);
   }
 
-  .cinder-json-editor__feedback :global(svg) {
+  .cinder-json-editor__feedback svg {
     flex: none;
     margin-block-start: 0.2em;
   }

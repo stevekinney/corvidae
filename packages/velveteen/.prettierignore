@@ -1,0 +1,9 @@
+node_modules/
+.velveteen/
+test-results/
+playwright-report/
+tests/reference/upstream/
+tests/reference/.svelte-kit/
+tests/reference/build/
+bun.lock
+tests/reference/bun.lock
