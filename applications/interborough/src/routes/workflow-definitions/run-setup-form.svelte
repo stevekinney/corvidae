@@ -643,7 +643,7 @@
           data-testid="run-setup-action-off">{offReason}</span
         >
       {/if}
-      <Button variant="secondary" disabled={starting} onclick={cancel}>{copy.cancel}</Button>
+      <Button variant="secondary" disabled={starting} onclick={cancel} label={copy.cancel} />
       <Button
         data-changes
         variant="primary"

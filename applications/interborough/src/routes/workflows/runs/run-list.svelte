@@ -491,9 +491,8 @@
             variant="secondary"
             href={router.href(TASK_COPY.list.loadFailed.healthPath)}
             onclick={(event) => open(event, TASK_COPY.list.loadFailed.healthPath)}
-          >
-            {TASK_COPY.list.loadFailed.checkHealth}
-          </Button>
+            label={TASK_COPY.list.loadFailed.checkHealth}
+          />
         {/snippet}
       </ErrorState>
     {:else if loading}

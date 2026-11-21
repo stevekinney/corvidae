@@ -1,0 +1,59 @@
+{
+  "issue": "COR-2442",
+  "branch": "steve/cor-2442-filled-controls",
+  "checkedAt": "0e942d7a5872344b262743e13a2aae7364d08350",
+  "briefVersion": "9e977f8ec935",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Cinder's direct filled-appearance regression and focused Cinder tests pass; Combobox and MultiSelect now own the shared filled frame, while Autocomplete and NumberInput forward Input appearance."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Filled examples and a four-control browser fixture are prepared; coordinator-owned browser verification is pending."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The coarse-pointer CheckboxGroup geometry regression is prepared; coordinator-owned Playwright verification is pending."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Checkbox task-row and long-label examples are present and Cinder's generated component checks pass in focused checks."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "The shared coarse-pointer CheckboxGroup regression is prepared; coordinator-owned Playwright verification is pending."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Checkbox task-row examples cover the task variant and focused checks pass."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Semantically plain controls were migrated to Button label props; rich and user-critical controls remain intentionally structured."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Secondary button token descriptions were regenerated; bun run tokens:check passed and focused checks pass."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "Fixtures and selector contracts are prepared for the coordinator-owned capture and Terra review."
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-branch",
+      "evidence": "Migrated the admitted 15 plain literals and 152 safe dotted-copy expressions across 69 route files; rich snippets are preserved."
+    }
+  ]
+}

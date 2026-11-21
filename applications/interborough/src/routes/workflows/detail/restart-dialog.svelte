@@ -301,9 +301,12 @@
     </div>
   {/snippet}
   {#snippet footer()}
-    <Button variant="secondary" onclick={dismiss} disabled={restartMutation.isPending}
-      >Cancel</Button
-    >
+    <Button
+      variant="secondary"
+      onclick={dismiss}
+      disabled={restartMutation.isPending}
+      label="Cancel"
+    />
     <Tooltip text={restartGate.title ?? ''}>
       <Button
         data-changes
@@ -311,9 +314,8 @@
         onclick={submit}
         loading={restartMutation.isPending}
         disabled={!canSubmit}
-      >
-        Restart workflow
-      </Button>
+        label="Restart workflow"
+      />
     </Tooltip>
   {/snippet}
 </Modal>

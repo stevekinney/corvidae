@@ -180,12 +180,19 @@
   >
     {AGENTS_COPY.enable.back(applied.plugins, applied.agents)}
     {#snippet actions()}
-      <Button variant="secondary" size="sm" href={router.href(PLUGINS_PATH)} onclick={openPlugins}
-        >{AGENTS_COPY.enable.openPlugins}</Button
-      >
-      <Button variant="secondary" size="sm" onclick={() => flow.close()}
-        >{RESTART_COPY.back.dismiss}</Button
-      >
+      <Button
+        variant="secondary"
+        size="sm"
+        href={router.href(PLUGINS_PATH)}
+        onclick={openPlugins}
+        label={AGENTS_COPY.enable.openPlugins}
+      />
+      <Button
+        variant="secondary"
+        size="sm"
+        onclick={() => flow.close()}
+        label={RESTART_COPY.back.dismiss}
+      />
     {/snippet}
   </Banner>
 {:else if flow.phase === 'unconfirmed'}
@@ -208,9 +215,13 @@
   >
     {RESTART_COPY.refusal[notRestarted]}
     {#snippet actions()}
-      <Button variant="secondary" size="sm" href={router.href(PLUGINS_PATH)} onclick={openPlugins}
-        >{AGENTS_COPY.enable.openPlugins}</Button
-      >
+      <Button
+        variant="secondary"
+        size="sm"
+        href={router.href(PLUGINS_PATH)}
+        onclick={openPlugins}
+        label={AGENTS_COPY.enable.openPlugins}
+      />
     {/snippet}
   </Banner>
 {/if}

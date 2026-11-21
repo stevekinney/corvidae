@@ -1019,9 +1019,12 @@
                   </p>
                   <HookMissingEvents missing={missingEvents} titleOf={titleOfPlugin} />
                 </div>
-                <Button variant="ghost" size="sm" onclick={() => (whenOpen = true)}
-                  >{copy.steps.edit}</Button
-                >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => (whenOpen = true)}
+                  label={copy.steps.edit}
+                />
               </div>
             {:else if isDefault && hook !== undefined}
               <p class="ib-hook-editor__plain" data-testid="hook-when-readonly">
@@ -1065,9 +1068,12 @@
             {#if compactThen && hook !== undefined}
               <p class="ib-hook-step__summary" data-testid="hook-step-summary-then">
                 <span>{thenSummary(hook.action)}</span>
-                <Button variant="ghost" size="sm" onclick={() => (thenOpen = true)}
-                  >{copy.steps.edit}</Button
-                >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => (thenOpen = true)}
+                  label={copy.steps.edit}
+                />
               </p>
             {:else if isPlugin && hook !== undefined && hook.action.type === 'plugin'}
               <!-- A saved plugin hook: its action is fixed and shown as text, and its configuration is
@@ -1273,9 +1279,12 @@
               <Alert variant="warning" data-testid="hook-changed">
                 <p class="ib-hook-editor__alert-title">{STALE_COPY.title(hookId)}</p>
                 <p class="ib-hook-editor__alert-body">{copy.changedDescription}</p>
-                <Button variant="secondary" size="sm" onclick={() => void reload()}
-                  >{copy.reload}</Button
-                >
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onclick={() => void reload()}
+                  label={copy.reload}
+                />
               </Alert>
             {:else if stale}
               <Alert

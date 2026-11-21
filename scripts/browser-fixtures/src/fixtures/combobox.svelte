@@ -15,13 +15,14 @@
   let selected = $state('');
 </script>
 
-<section aria-label="Overview preview">
+<section aria-label="Overview preview" data-density="comfortable">
   <div id="overview-mount-basic" data-example-preview-ready="">
     <Combobox
       id="fruit"
       label="Favorite fruit"
       placeholder="Start typing…"
       options={fruits}
+      appearance="filled"
       bind:value={selected}
     />
   </div>

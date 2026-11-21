@@ -500,9 +500,12 @@
         <p class="ib-memory__alert-body">{MEMORY_COPY.correct.notSaved.draftLabel}</p>
         <blockquote class="ib-memory__draft" data-correction-draft>{refused.content}</blockquote>
         {#if selectedId !== refused.id}
-          <Button variant="secondary" size="sm" onclick={() => editAgain(failure)}
-            >{MEMORY_COPY.correct.notSaved.editAgain}</Button
-          >
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => editAgain(failure)}
+            label={MEMORY_COPY.correct.notSaved.editAgain}
+          />
         {/if}
       </Alert>
     {/if}
@@ -566,8 +569,8 @@
               variant="secondary"
               href={router.href(viewPath(false))}
               onclick={(event: MouseEvent) => void switchView(event, false)}
-              >{MEMORY_COPY.quarantinedView.empty.back}</Button
-            >
+              label={MEMORY_COPY.quarantinedView.empty.back}
+            />
           {/snippet}
         </EmptyState>
       {:else if narrowed && (applied === '' || base.length > 0)}
@@ -597,9 +600,12 @@
         >
           {#snippet icon()}<Brain aria-hidden="true" />{/snippet}
           {#snippet action()}
-            <Button data-changes variant="primary" onclick={() => adding?.ask()}
-              >{MEMORY_COPY.add.action}</Button
-            >
+            <Button
+              data-changes
+              variant="primary"
+              onclick={() => adding?.ask()}
+              label={MEMORY_COPY.add.action}
+            />
           {/snippet}
         </EmptyState>
       {/if}
@@ -756,8 +762,9 @@
                 variant="secondary"
                 size="sm"
                 disabled={paging.isFetchingNextPage}
-                onclick={() => void paging.fetchNextPage()}>{MEMORY_COPY.loadMore}</Button
-              >
+                onclick={() => void paging.fetchNextPage()}
+                label={MEMORY_COPY.loadMore}
+              />
             </div>
           {:else}
             <MemoryRow

@@ -248,8 +248,9 @@
           variant="secondary"
           size="sm"
           href={router.href(codePath)}
-          onclick={(event: MouseEvent) => go(event, codePath)}>{copy.openCode}</Button
-        >
+          onclick={(event: MouseEvent) => go(event, codePath)}
+          label={copy.openCode}
+        />
       {/snippet}
     </Alert>
   {:else if target?.status === 'paused'}
@@ -262,8 +263,9 @@
           variant="secondary"
           size="sm"
           disabled={resume.isPending || file?.hash === null || file?.hash === undefined}
-          onclick={resumeFile}>{copy.resumeAction}</Button
-        >
+          onclick={resumeFile}
+          label={copy.resumeAction}
+        />
       {/snippet}
     </Alert>
   {/if}
@@ -275,8 +277,9 @@
           variant="secondary"
           size="sm"
           href={router.href(MODELS_PATH)}
-          onclick={(event: MouseEvent) => go(event, MODELS_PATH)}>{copy.connectProvider}</Button
-        >
+          onclick={(event: MouseEvent) => go(event, MODELS_PATH)}
+          label={copy.connectProvider}
+        />
       {/snippet}
     </Alert>
   {/if}
@@ -303,8 +306,8 @@
           variant="secondary"
           href={router.href(workflowPath)}
           onclick={(event: MouseEvent) => go(event, workflowPath)}
-          >{copy.blocked.openWorkflow}</Button
-        >
+          label={copy.blocked.openWorkflow}
+        />
       {/snippet}
     </EmptyState>
   {:else if resolution.data !== null}

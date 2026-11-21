@@ -513,7 +513,7 @@ test('a view the principal lacks the scopes for is forbidden without a probe req
   await page.goto('/health/storage');
   const frame = page.locator('[data-view="storage"]');
   await expect(frame).toHaveAttribute('data-state', 'forbidden');
-  await expect(frame.getByRole('link', { name: 'See your scopes' })).toBeVisible();
+  await expect(frame.getByRole('link', { name: 'Back to Home' })).toBeVisible();
   await expect(frame).not.toContainText('storage:admin');
 });
 

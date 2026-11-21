@@ -312,8 +312,9 @@
             variant="secondary"
             href={router.href(goalEditPath(found.goalRunId))}
             onclick={(event) => go(event, goalEditPath(found.goalRunId))}
-            mutating>{copy.editAction}</Button
-          >
+            mutating
+            label={copy.editAction}
+          />
           {#if actions.startAgain}
             <span class="ib-goal__start-again">
               <Button

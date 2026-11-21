@@ -636,8 +636,9 @@
                     href={router.href(SETTINGS_MODELS_PATH)}
                     variant="secondary"
                     size="sm"
-                    onclick={openSettings}>{copy.noProvider.action}</Button
-                  >
+                    onclick={openSettings}
+                    label={copy.noProvider.action}
+                  />
                 {/snippet}
               </Callout>
             {/if}
@@ -714,15 +715,17 @@
               variant="primary"
               size="sm"
               loading={save.isPending}
-              disabled={!dirty}>{copy.save}</Button
-            >
+              disabled={!dirty}
+              label={copy.save}
+            />
             <Button
               type="button"
               variant="secondary"
               size="sm"
               disabled={!dirty || save.isPending}
-              onclick={discard}>{copy.discard}</Button
-            >
+              onclick={discard}
+              label={copy.discard}
+            />
             <p class="ib-agent-note" data-testid="agent-settings-save-note">
               {copy.saveNote(nextVersion)}
             </p>
@@ -749,8 +752,9 @@
                 variant="ghost-danger"
                 size="sm"
                 disabled={hash === null || removal.isPending}
-                onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
-              >
+                onclick={() => (confirmingDelete = true)}
+                label={copy.deleteAction}
+              />
             {/snippet}
           </SectionHeading>
         </section>
@@ -778,8 +782,9 @@
                 variant="secondary"
                 size="sm"
                 loading={toggle.isPending}
-                onclick={() => toggle.mutate('enable')}>{copy.disable.enable}</Button
-              >
+                onclick={() => toggle.mutate('enable')}
+                label={copy.disable.enable}
+              />
             {/snippet}
           </SectionHeading>
         {:else}
@@ -797,8 +802,9 @@
                 variant="ghost-danger"
                 size="sm"
                 disabled={toggle.isPending}
-                onclick={() => (confirmingDisable = true)}>{copy.disable.action}</Button
-              >
+                onclick={() => (confirmingDisable = true)}
+                label={copy.disable.action}
+              />
             {/snippet}
           </SectionHeading>
         {/if}

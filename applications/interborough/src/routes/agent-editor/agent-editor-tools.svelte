@@ -49,9 +49,13 @@
 
 <div class="weft-agent-tools">
   <div class="weft-agent-tools__bar weft-agent-tools__bar--end">
-    <Button type="button" variant="secondary" size="sm" onclick={onAdd}
-      >{copy.addToolsAction}</Button
-    >
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      onclick={onAdd}
+      label={copy.addToolsAction}
+    />
   </div>
 
   {#if chosen.length === 0}
