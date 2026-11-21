@@ -59,7 +59,7 @@ export function isScheduleView(value: unknown): value is ScheduleView {
 }
 
 /** Whether `value` is the answer of `bureau.schedules.list`. */
-export function isScheduleList(
+function isScheduleList(
   value: unknown,
 ): value is { readonly schedules: ScheduleView[]; readonly nextOffset: number | null } {
   return (

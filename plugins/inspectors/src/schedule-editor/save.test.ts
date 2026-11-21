@@ -5,7 +5,10 @@ import {
 } from '@lostgradient/interborough-plugin/schedule-form';
 import { describe, expect, it } from 'bun:test';
 
-import { runSavePlan, type ToolAnswer, type ToolCall } from './save.ts';
+import { runSavePlan, type ToolCall } from './save.ts';
+
+/** What one call answers, as `runSavePlan` reads it. */
+type ToolAnswer = Awaited<ReturnType<ToolCall>>;
 
 const source: ScheduleFormSource = {
   id: 's1',

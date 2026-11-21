@@ -5,7 +5,6 @@ import {
   everySchedule,
   faultOfResult,
   isReceipt,
-  isScheduleList,
   isScheduleView,
   scheduleLabel,
   scheduleOfTask,
@@ -27,19 +26,20 @@ const view: ScheduleView = {
 };
 
 describe('what the editor reads of the Bureau', () => {
-  it('accepts a schedule view with what the form reads, and nothing less', () => {
+  it('accepts a schedule view with what the form reads, and nothing less', async () => {
     expect(isScheduleView(view)).toBe(true);
     expect(isScheduleView({ ...view, revision: '2' })).toBe(false);
     expect(isScheduleView({ ...view, target: { kind: 'agent' } })).toBe(false);
     expect(isScheduleView({ ...view, target: { kind: 'other', agentName: 'x' } })).toBe(false);
     expect(isScheduleView(null)).toBe(false);
-    expect(isScheduleList({ schedules: [view], nextOffset: null })).toBe(true);
-    expect(isScheduleList({ schedules: [{ id: 's' }], nextOffset: null })).toBe(false);
+    // A page is read as a list only when every schedule and its `nextOffset` are well formed.
+    const listed = (page: unknown) => everySchedule(async () => page);
+    expect(await listed({ schedules: [view], nextOffset: null })).toHaveLength(1);
+    expect(await listed({ schedules: [{ id: 's' }], nextOffset: null })).toBeUndefined();
     // The guard vouches for `nextOffset` too: a missing or non-integer one is not a list.
-    expect(isScheduleList({ schedules: [view] })).toBe(false);
-    expect(isScheduleList({ schedules: [view], nextOffset: '100' })).toBe(false);
-    expect(isScheduleList({ schedules: [view], nextOffset: 1.5 })).toBe(false);
-    expect(isScheduleList({ schedules: [view], nextOffset: 100 })).toBe(true);
+    expect(await listed({ schedules: [view] })).toBeUndefined();
+    expect(await listed({ schedules: [view], nextOffset: '100' })).toBeUndefined();
+    expect(await listed({ schedules: [view], nextOffset: 1.5 })).toBeUndefined();
     expect(isReceipt({ id: 's1', status: 'paused', revision: 3 })).toBe(true);
     expect(isReceipt({ id: 's1', status: 'gone', revision: 3 })).toBe(false);
   });

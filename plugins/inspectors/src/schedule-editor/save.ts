@@ -13,7 +13,7 @@ import type { ScheduleSaveCall } from '@lostgradient/interborough-plugin/schedul
 import { faultOfResult, isReceipt, isScheduleView, type CallFault } from './model.ts';
 
 /** What one tool call answers, as the bridge hands it to the page. */
-export type ToolAnswer = {
+type ToolAnswer = {
   readonly isError?: boolean | undefined;
   readonly content?: unknown;
   readonly structuredContent?: unknown;
