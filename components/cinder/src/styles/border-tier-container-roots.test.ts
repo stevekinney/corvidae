@@ -66,7 +66,8 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
         ' '.repeat(c.length),
       );
       for (const match of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-        const subject = new RegExp(`^\\.cinder-${name}(\\[[^\\]]+\\])*$`);
+        // Attribute and class modifiers keep the component root as the subject.
+        const subject = new RegExp(`^\\.cinder-${name}(?:\\[[^\\]]+\\]|\\.[\\w-]+)*$`);
         const selectors = match[1]!.split(',').map((part) => part.replace(/\s+/g, ' ').trim());
         if (!selectors.some((selector) => subject.test(selector) && !OPT_IN.test(selector)))
           continue;
