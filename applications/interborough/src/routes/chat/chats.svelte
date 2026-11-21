@@ -111,6 +111,7 @@
   const onChats = $derived(router.current.route?.pattern.startsWith('/chats') === true);
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
+  let automaticallyOpened = $state<string | null>(null);
   // The chats that are not archived. The archived ones are their own list, read only while their
   // view is shown, so a chat put away leaves All, Waiting on you and Done.
   const sessions = createInfiniteQuery(
@@ -362,13 +363,15 @@
     return chatSessionPath(id, viewSearch(showingArchived));
   }
 
-  /** This address in the archived view, or out of it: the open chat stays open. */
+  /** Keep an explicitly chosen chat across views. An automatic selection belongs to its list. */
   function viewPath(archivedView: boolean): string {
     const parameters = new URLSearchParams(router.current.search);
     if (archivedView) parameters.set(VIEW_PARAMETER, ARCHIVED_VIEW);
     else parameters.delete(VIEW_PARAMETER);
     const query = parameters.toString();
-    return query === '' ? router.pathname : `${router.pathname}?${query}`;
+    const pathname =
+      automaticallyOpened !== null && automaticallyOpened === openId ? '/chats' : router.pathname;
+    return query === '' ? pathname : `${pathname}?${query}`;
   }
 
   /**
@@ -393,7 +396,9 @@
   /** Automatic selection keeps the current view and history entry. */
   function openChat(key: string | null, change?: ListDetailSelectionChange): void {
     if (key === openId) return;
-    const options = change?.automatic === true ? { replace: true, keep: true } : {};
+    const automatic = change?.automatic === true;
+    automaticallyOpened = automatic ? key : null;
+    const options = automatic ? { replace: true, keep: true } : {};
     if (key !== null) {
       router.navigate(chatPath(key), options);
       return;
