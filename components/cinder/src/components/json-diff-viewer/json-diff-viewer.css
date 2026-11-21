@@ -1,0 +1,145 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* Every control is a Button, and the identical-values state is an EmptyState. */
+@import '../button/button.css';
+@import '../empty-state/empty-state.css';
+
+@layer cinder.components {
+  /* ========================================
+ * JSON DIFF VIEWER
+ * Structural comparison of two JSON values. Each row leads with a symbol (+ - ~ =) so the kind
+ * never rests on colour alone; the tint is a second signal.
+ * ======================================== */
+
+  .cinder-json-diff-viewer {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-3);
+    overflow: auto;
+  }
+
+  .cinder-json-diff-viewer__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* A nested level sits under its key, indented behind a dashed rule like JsonViewer's. */
+  .cinder-json-diff-viewer__row > .cinder-json-diff-viewer__list {
+    grid-column: 1 / -1;
+    padding-inline-start: var(--cinder-space-4);
+    border-inline-start: 1px dashed var(--cinder-border-muted);
+  }
+
+  /* A short key keeps its own width; a long key is held to half the row and wraps inside it, so it
+   * never makes the viewer scroll sideways. The value's track keeps at least 12 characters (or 40%
+   * of a narrower row), so a long key can never squeeze the value to one character wide. */
+  .cinder-json-diff-viewer__row {
+    display: grid;
+    grid-template-columns: auto fit-content(50%) minmax(min(12ch, 40%), 1fr);
+    column-gap: var(--cinder-space-2);
+    align-items: baseline;
+    border-radius: var(--cinder-radius-sm);
+    padding-inline: var(--cinder-space-1);
+  }
+
+  .cinder-json-diff-viewer__marker {
+    inline-size: 1ch;
+    font-weight: var(--cinder-font-semibold);
+    text-align: center;
+  }
+
+  .cinder-json-diff-viewer__key {
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-json-diff-viewer__key::after {
+    content: ':';
+  }
+
+  .cinder-json-diff-viewer__value {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='added'] {
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='removed'] {
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='changed'] {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='unchanged'] {
+    color: var(--cinder-text-muted);
+  }
+
+  /* A container that changed in place only frames its children; the tint stays on the rows. */
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='changed']:has(
+      > .cinder-json-diff-viewer__list
+    ) {
+    background: none;
+    color: inherit;
+  }
+
+  /* The disclosure and paging controls are Buttons in the link variant, the one pattern
+   * SourceDiffViewer's "Show all" uses: accent text, a chevron, the label on one line starting at
+   * the inline start, so a narrow screen never wraps it with a centred second line. */
+  .cinder-json-diff-viewer__control {
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-1);
+    text-align: start;
+  }
+
+  .cinder-json-diff-viewer__button {
+    justify-self: start;
+    white-space: nowrap;
+    text-align: start;
+  }
+
+  /* On a coarse pointer each control's 44px hit region is Button's pseudo-element, which takes no
+   * layout and reaches past the text by half the difference. Button lets a region overlap what is
+   * around it invisibly, so room is added only where it would take another control's taps: between
+   * two stacked controls, each a control's item or a row that holds one. A lone control, and a
+   * tinted row beside plain rows, keep their own height. The last two selectors cross levels: a
+   * row whose inner list ends in a control, then the parent level's own control (or a row holding
+   * one) directly under it. */
+  @media (any-pointer: coarse) {
+    .cinder-json-diff-viewer__control + .cinder-json-diff-viewer__control,
+    .cinder-json-diff-viewer__control
+      + .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button),
+    .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button)
+      + .cinder-json-diff-viewer__control,
+    .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button)
+      + .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button),
+    .cinder-json-diff-viewer__row:has(
+        > .cinder-json-diff-viewer__list > .cinder-json-diff-viewer__control:last-child
+      )
+      + .cinder-json-diff-viewer__control,
+    .cinder-json-diff-viewer__row:has(
+        > .cinder-json-diff-viewer__list > .cinder-json-diff-viewer__control:last-child
+      )
+      + .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button) {
+      margin-block-start: calc(var(--cinder-space-3) * 2);
+    }
+  }
+
+  @media (forced-colors: active) {
+    /* Tints do not survive forced colours; the marker and a rule carry the kind. */
+    .cinder-json-diff-viewer__row[data-cinder-diff-kind='added'],
+    .cinder-json-diff-viewer__row[data-cinder-diff-kind='removed'],
+    .cinder-json-diff-viewer__row[data-cinder-diff-kind='changed'] {
+      border-inline-start: 2px solid CanvasText;
+    }
+  }
+}
