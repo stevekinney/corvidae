@@ -23,6 +23,10 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'health-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 
+interface WarningFixtureWindow extends Window {
+  emitCheckpointSizeWarning(): void;
+}
+
 /** The problems `bureau.health.attention` lists, as the page reads them. */
 interface AttentionAnswer {
   items: { kind: string; area: string; at: number | null }[];
@@ -195,7 +199,7 @@ async function answerStorageSizes(
   }, reports);
 }
 
-/** Feeds the Alerts tab one operational checkpoint warning through the shared fleet stream. */
+/** Opens the shared fleet feed and exposes an operational-warning event for the mounted Alerts tab. */
 async function answerCheckpointSizeWarning(page: Page): Promise<void> {
   await page.route('**/jsonrpc', async (route) => {
     const request = JSON.parse(route.request().postData() ?? '{}') as {
@@ -219,21 +223,23 @@ async function answerCheckpointSizeWarning(page: Page): Promise<void> {
           return original(input, init);
         }
         const encoder = new TextEncoder();
-        const envelope = {
-          kind: 'checkpoint:size-warning',
-          sequence: 1,
-          cursor: 'checkpoint-size-warning',
-          emittedAtMs: Date.now(),
-          payload: { message: 'Checkpoint crossed 80% of its limit.' },
-        };
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(
-              encoder.encode(
-                `id: 1\nevent: checkpoint:size-warning\ndata: ${JSON.stringify(envelope)}\n\n`,
-              ),
-            );
             controller.enqueue(encoder.encode('event: ping\ndata: {"replayComplete":true}\n\n'));
+            (window as WarningFixtureWindow).emitCheckpointSizeWarning = () => {
+              const envelope = {
+                kind: 'checkpoint:size-warning',
+                sequence: 1,
+                cursor: 'checkpoint-size-warning',
+                emittedAtMs: Date.now(),
+                payload: { message: 'Checkpoint crossed 80% of its limit.' },
+              };
+              controller.enqueue(
+                encoder.encode(
+                  `id: 1\nevent: checkpoint:size-warning\ndata: ${JSON.stringify(envelope)}\n\n`,
+                ),
+              );
+            };
             init?.signal?.addEventListener('abort', () => {
               try {
                 controller.close();
@@ -311,6 +317,10 @@ test('Warning indicator in System alerts', async ({ page }) => {
   await answerCheckpointSizeWarning(page);
   await page.goto('/health?advanced=alerts');
 
+  await expect(page.getByText('No alert activity since page load')).toBeVisible();
+  await page.evaluate(() => {
+    (window as WarningFixtureWindow).emitCheckpointSizeWarning();
+  });
   const row = page.locator('.weft-alerts-tab__row').filter({ hasText: 'Checkpoint size warning' });
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('Warning');
