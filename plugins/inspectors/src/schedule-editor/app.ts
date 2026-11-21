@@ -274,7 +274,9 @@ async function start(): Promise<void> {
           'danger',
         );
       } else if (outcome.id === undefined) {
-        // A create the host never answered may have been written: another one would make a second.
+        // A create the host never answered may have been written: another one would make a second,
+        // so the form takes no save until the person goes back to the list and opens it again.
+        view.stale = true;
         say(
           'The host did not answer, so the schedule may or may not have been made. Look at the list before trying again.',
           'danger',
