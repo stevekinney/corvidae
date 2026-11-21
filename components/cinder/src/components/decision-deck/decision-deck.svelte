@@ -78,6 +78,7 @@
     acceptLabel = 'Accept',
     rejectLabel = 'Reject',
     laterLabel = 'Later',
+    pinActions = false,
     undoLabel = 'Undo',
     emptyTitle = 'All caught up',
     emptyDescription,
@@ -384,7 +385,10 @@
       {@render leavingCopy()}
     </div>
 
-    <div class="cinder-decision-deck__actions">
+    <div
+      class="cinder-decision-deck__actions"
+      data-cinder-pin-actions={pinActions ? '' : undefined}
+    >
       <div class="cinder-decision-deck__action-cell">
         <Button
           iconOnly

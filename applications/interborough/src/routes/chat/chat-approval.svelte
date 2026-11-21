@@ -18,7 +18,6 @@
     DecisionDeck,
     formatTimeOfDay,
     Modal,
-    overflowFade,
     PayloadInspector,
     Text,
     Tooltip,
@@ -139,7 +138,6 @@
   );
   let deckFor = $state<string | undefined>();
   let selectedDecision = $state<'approve' | 'deny' | undefined>();
-  const argumentsOverflow = overflowFade({ keyboardScrollable: true });
 
   function closeDeck(): void {
     deckFor = undefined;
@@ -171,31 +169,30 @@
   </Tooltip>
   {#if deckFor === requestKey && !disabled}
     <Modal open title={copy.deckTitle} onDismiss={closeDeck}>
-      {#snippet children()}
-        <DecisionDeck
-          items={[
-            {
-              id: requestKey,
-              title: entry.name,
-              eyebrow: source,
-            },
-          ]}
-          label={copy.deckTitle}
-          acceptLabel="Approve"
-          rejectLabel="Deny"
-          emptyTitle={copy.selectedDecision}
-          emptyDescription=""
-          onDecision={({ outcome }) => reviewOutcome(outcome)}
-          onUndo={() => (selectedDecision = undefined)}
-          card={reviewCard}
-        />
-        {#if selectedDecision !== undefined}
-          <section aria-label={copy.selectedDecision}>
-            <Text variant="code">{entry.name}</Text>
-            {@render reviewArguments()}
-          </section>
-        {/if}
-      {/snippet}
+      <DecisionDeck
+        items={[
+          {
+            id: requestKey,
+            title: entry.name,
+            eyebrow: source,
+          },
+        ]}
+        label={copy.deckTitle}
+        acceptLabel="Approve"
+        rejectLabel="Deny"
+        pinActions
+        emptyTitle={copy.selectedDecision}
+        emptyDescription=""
+        onDecision={({ outcome }) => reviewOutcome(outcome)}
+        onUndo={() => (selectedDecision = undefined)}
+        card={reviewCard}
+      />
+      {#if selectedDecision !== undefined}
+        <section aria-label={copy.selectedDecision}>
+          <Text variant="code">{entry.name}</Text>
+          {@render reviewArguments()}
+        </section>
+      {/if}
       {#snippet footer()}
         <Button type="button" variant="secondary" onclick={closeDeck}>
           {copy.returnToApproval}
@@ -230,15 +227,7 @@
 {/snippet}
 
 {#snippet reviewArguments()}
-  <div
-    class="weft-chat-approval__deck-arguments"
-    role="region"
-    aria-label="Arguments"
-    tabindex="-1"
-    {@attach argumentsOverflow}
-  >
-    <PayloadInspector value={reviewedOperation.argsPreview} label="Arguments" bare />
-  </div>
+  <PayloadInspector value={reviewedOperation.argsPreview} label="Arguments" bare />
 {/snippet}
 
 <ApprovalCard
@@ -312,13 +301,3 @@
 {#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}
   <p class="weft-chat-approval__provider-note">{providerNote}</p>
 {/if}
-
-<style>
-  @media (max-width: 30rem) {
-    .weft-chat-approval__deck-arguments {
-      max-block-size: min(10rem, 27dvh);
-      overflow-y: auto;
-      overscroll-behavior: contain;
-    }
-  }
-</style>

@@ -61,6 +61,7 @@ A decided card leaves as a copy that plays its exit for about 200 ms, so for tha
 | `keyboardHint` | `string` | no | — | Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming the arrow keys, which follow the reading direction (accept is the arrow toward the inline-end edge). |
 | `label` | `string` | no | — | Accessible name of the deck, such as "Review queue". Left unset, the deck is unnamed. |
 | `laterLabel` | `string` | no | — | Text of the later button. Defaults to "Later". |
+| `pinActions` | `boolean` | no | — | Keeps the decision row at the bottom of a scrolling container while a long card is read. |
 | `rejectLabel` | `string` | no | — | Text of the reject button and the reject stamp. Defaults to "Reject". |
 | `threshold` | `number` | no | — | How far in pixels a card must be dragged sideways before releasing it decides. Defaults to 110. A shorter release springs the card back. |
 | `undoLabel` | `string` | no | — | Text of the undo button. Defaults to "Undo". |

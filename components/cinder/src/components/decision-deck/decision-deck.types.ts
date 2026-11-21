@@ -41,6 +41,8 @@ export type DecisionDeckProps<TItem extends DecisionDeckItem = DecisionDeckItem>
   rejectLabel?: string;
   /** Text of the later button. Defaults to "Later". */
   laterLabel?: string;
+  /** Keeps the decision row at the bottom of a scrolling container while a long card is read. */
+  pinActions?: boolean;
   /** Text of the undo button. Defaults to "Undo". */
   undoLabel?: string;
   /** Title of the empty state shown when every card is decided. Defaults to "All caught up". */

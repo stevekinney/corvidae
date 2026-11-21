@@ -192,7 +192,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   test('opens the decision deck beside the ordinary tool approval controls (COR-2452)', async ({
     page,
   }) => {
-    await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await open(page, 320, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
     await approval.getByRole('button', { name: 'Review in deck' }).click();
@@ -201,19 +201,18 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await expect(deck).toContainText('Approval can’t be undone.');
     await expect(deck).toContainText('4200');
     await expect(deck.getByRole('button', { name: 'Back to approval controls' })).toBeVisible();
-    await page.setViewportSize({ width: 320, height: 640 });
-    for (const decision of ['Approve', 'Deny', 'Later']) {
-      const button = deck.getByRole('button', { name: decision, exact: true });
-      await expect(button).toBeInViewport({ ratio: 1 });
-      const bounds = await button.boundingBox();
-      expect(bounds?.height).toBeLessThanOrEqual(36);
-    }
-    await page.setViewportSize({ width: 375, height: 640 });
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'tool approval decision deck',
       source: SOURCE,
     });
+    for (const decision of ['Approve', 'Deny', 'Later']) {
+      const button = deck.getByRole('button', { name: decision, exact: true });
+      await expect(button).toBeInViewport({ ratio: 1 });
+      const bounds = await button.boundingBox();
+      expect(bounds?.height).toBeLessThanOrEqual(36);
+      await button.click({ trial: true });
+    }
     await deck.getByRole('button', { name: 'Deny' }).click();
     await expect(deck.getByRole('button', { name: 'Confirm denial' })).toBeVisible();
     await expect(deck).toContainText('4200');
