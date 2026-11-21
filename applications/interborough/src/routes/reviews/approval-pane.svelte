@@ -13,6 +13,7 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
 
+  import { getConnection } from '../../app/connection.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
@@ -37,6 +38,7 @@
 
   let { review, note = $bindable(''), deciding, outcome, onDecide }: ApprovalPaneProps = $props();
 
+  const connection = getConnection();
   const waiting = $derived(review.status === 'pending');
   const toolLabel = $derived(humanizeIdentifier(review.approval.toolName, { casing: 'sentence' }));
   const question = $derived(
@@ -104,6 +106,7 @@
       idempotencyKey={`${review.id}:${String(review.round)}`}
       {...action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }}
       {...alwaysAsks ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }}
+      {...connection.unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}}
       {...deciding ? { resolving: lastDecision } : {}}
       bind:draftNote={note}
       onResolve={(resolution) => {
