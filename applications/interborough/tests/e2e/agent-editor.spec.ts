@@ -8,6 +8,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
 import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
+import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
 import { agentDuplicatePath } from '../../src/lib/agent-paths.ts';
 import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
 import {
@@ -21,6 +22,7 @@ import {
 } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const copy = AGENT_EDITOR_COPY.model;
 const WIDTHS = [375, 1280] as const;
@@ -133,6 +135,16 @@ for (const width of WIDTHS) {
       const option = page.getByRole('option', { name: /^Claude Haiku 4\.5/ });
       await expect(option).toBeVisible();
       await expect(page.getByRole('option', { name: /^Claude Sonnet 5/ })).toHaveCount(0);
+      if (width === 375) {
+        const navigation = page.getByRole('navigation', { name: NAVIGATION_COPY.tabBar });
+        const listbox = page.getByRole('listbox');
+        await expect(navigation).toBeVisible();
+        await navigation.getByRole('button', { name: NAVIGATION_COPY.moreTab }).click({
+          trial: true,
+        });
+        const { dock, panel } = await readBoxes(page, { dock: navigation, panel: listbox });
+        expect(panel.y + panel.height).toBeLessThanOrEqual(dock.y);
+      }
       await captureForDesignReview(page, {
         route: '/agents/new',
         state: 'model display names, filtered picker',
