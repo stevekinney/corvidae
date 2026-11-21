@@ -537,6 +537,8 @@ export interface WeftServer extends AsyncDisposable {
   readonly url: string;
   readonly registry: WorkerRegistry;
   readonly taskQueue: TaskQueue;
+  /** All registered operation names for in-process composition, including hidden operations. */
+  readonly operationNames: readonly string[];
   /**
    * Resolves once startup task-ledger recovery (WFT-23) has reconstructed
    * every non-terminal task's in-memory indexes from durable storage;
@@ -746,6 +748,7 @@ export function serve(options: ServeOptions): WeftServer {
     url: `${scheme}://${resolvedHostname}:${resolvedPort}`,
     registry: context.registry,
     taskQueue: context.taskQueue,
+    operationNames: Object.freeze(context.liveOperationRegistry.list().map(({ name }) => name)),
     ready: context.taskLedgerRecovery.ready,
     connections: () => ({ ...context.connectionCounts }),
     async stop() {
