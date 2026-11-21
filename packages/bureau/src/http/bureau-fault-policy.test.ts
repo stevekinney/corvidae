@@ -6,6 +6,7 @@ import {
   createOperationHandler,
   defineOperation,
   isFaultCode,
+  type OperationFault,
   principalFromApiKey,
 } from '@lostgradient/backchannel';
 import { createAgent } from '@lostgradient/operative';
@@ -18,9 +19,7 @@ import { z } from 'zod';
 
 import { BUREAU_ERROR_CODES, BureauError, type BureauErrorCode } from '../bureau-errors.ts';
 import {
-  BUREAU_ERROR_FAULT_CODE,
-  BUREAU_ERROR_REMEDIATION,
-  bureauFault,
+  type BureauFaultContext,
   bureauFaultOf,
   bureauFaultPolicy,
   bureauRefusalKind,
@@ -42,6 +41,11 @@ function errorOf(code: BureauErrorCode): BureauError {
     : new BureauError(`${code} message`, code);
 }
 
+/** The fault the policy makes of `error`, which is a BureauError. */
+function faultOf(error: BureauError, context?: BureauFaultContext): OperationFault {
+  return bureauFaultOf(error, context) as OperationFault;
+}
+
 const MAX_REMEDIATION_LENGTH = 500;
 
 /** What the wire accepts of a remediation: one line of 1 to 500 characters, no control characters. */
@@ -53,57 +57,51 @@ function remediationProblem(value: unknown): string | undefined {
 }
 
 describe('the Bureau fault policy', () => {
-  it('maps every BureauError code to a fault code, and no other', () => {
-    expect(Object.keys(BUREAU_ERROR_FAULT_CODE).toSorted()).toEqual(
-      [...BUREAU_ERROR_CODES].toSorted(),
-    );
+  it('maps every BureauError code to a fault code that is not EngineFailure', () => {
     for (const code of BUREAU_ERROR_CODES) {
-      expect(isFaultCode(BUREAU_ERROR_FAULT_CODE[code]), code).toBe(true);
-      expect(bureauFault(errorOf(code)).code, code).toBe(BUREAU_ERROR_FAULT_CODE[code]);
+      const fault = faultOf(errorOf(code));
+      expect(isFaultCode(fault.code), code).toBe(true);
+      expect(fault.code, code).not.toBe('EngineFailure');
     }
   });
 
   it('gives every code a remediation the wire accepts, and puts it on every fault it builds', () => {
-    expect(Object.keys(BUREAU_ERROR_REMEDIATION).toSorted()).toEqual(
-      [...BUREAU_ERROR_CODES].toSorted(),
-    );
     for (const code of BUREAU_ERROR_CODES) {
-      expect(remediationProblem(BUREAU_ERROR_REMEDIATION[code]), code).toBeUndefined();
-      expect(bureauFault(errorOf(code)).remediation, code).toBe(BUREAU_ERROR_REMEDIATION[code]);
+      const { remediation } = faultOf(errorOf(code));
+      expect(remediationProblem(remediation), code).toBeUndefined();
       for (const form of ['unprocessable', 'shutting-down'] as const) {
-        const fault = bureauFault(errorOf(code), { forms: { [code]: form } });
-        expect(fault.remediation, `${code} ${form}`).toBe(BUREAU_ERROR_REMEDIATION[code]);
+        const fault = faultOf(errorOf(code), { forms: { [code]: form } });
+        expect(fault.remediation, `${code} ${form}`).toBe(remediation);
       }
     }
   });
 
   it('names the resource, the field and the capability an operation passes in', () => {
     expect(
-      bureauFault(errorOf('NOT_FOUND'), { notFound: { resource: 'run', identifier: 'r1' } }),
+      faultOf(errorOf('NOT_FOUND'), { notFound: { resource: 'run', identifier: 'r1' } }),
     ).toMatchObject({
       code: 'NotFound',
       message: 'No run with id "r1"',
       data: { resource: 'run', identifier: 'r1' },
     });
-    expect(
-      bureauFault(errorOf('BAD_REQUEST'), { invalidPath: ['input', 'payload'] }),
-    ).toMatchObject({
+    expect(faultOf(errorOf('BAD_REQUEST'), { invalidPath: ['input', 'payload'] })).toMatchObject({
       code: 'InvalidParams',
       data: { issues: [{ path: ['input', 'payload'], message: 'BAD_REQUEST message' }] },
     });
-    expect(bureauFault(errorOf('NOT_CONFIGURED'))).toMatchObject({
+    expect(faultOf(errorOf('NOT_CONFIGURED'))).toMatchObject({
       data: { capability: 'generate' },
     });
-    expect(bureauFault(errorOf('NOT_CONFIGURED'), { capability: 'durable' })).toMatchObject({
+    expect(faultOf(errorOf('NOT_CONFIGURED'), { capability: 'durable' })).toMatchObject({
       data: { capability: 'durable' },
     });
-    expect(
-      bureauFault(errorOf('CONFLICT'), { forms: { CONFLICT: 'shutting-down' } }),
-    ).toMatchObject({ code: 'Unavailable', data: { reason: 'shutting-down' } });
+    expect(faultOf(errorOf('CONFLICT'), { forms: { CONFLICT: 'shutting-down' } })).toMatchObject({
+      code: 'Unavailable',
+      data: { reason: 'shutting-down' },
+    });
   });
 
   it('does not repeat a storage outage message, which could name an internal', () => {
-    const fault = bureauFault(
+    const fault = faultOf(
       new BureauError('connect ECONNREFUSED 10.0.0.7:5432', 'STORAGE_UNAVAILABLE'),
     );
     expect(fault.message).not.toContain('10.0.0.7');
@@ -180,9 +178,9 @@ describe('an operation that maps nothing of its own', () => {
         }),
       );
       const body = (await response.json()) as RpcBody;
-      const expected = bureauFault(errorOf(code));
+      const expected = faultOf(errorOf(code));
       expect(body.error?.message, code).toBe(expected.message);
-      expect(body.error?.data?.['remediation'], code).toBe(BUREAU_ERROR_REMEDIATION[code]);
+      expect(body.error?.data?.['remediation'], code).toBe(expected.remediation);
       expect(body.error?.data?.['retryable'], code).toBeDefined();
       expect(body.error?.message, code).not.toBe('internal error');
     }
@@ -211,7 +209,10 @@ describe('an operation that maps nothing of its own', () => {
       );
       rename.mockRestore();
 
-      expect(body.error?.data?.['remediation']).toBe(BUREAU_ERROR_REMEDIATION.STORAGE_UNAVAILABLE);
+      expect(body.error?.data?.['remediation']).toBe(
+        faultOf(new BureauError('x', 'STORAGE_UNAVAILABLE')).remediation,
+      );
+      expect(body.error?.data?.['remediation']).toEqual(expect.any(String));
       expect(body.error?.message).not.toContain('10.0.0.7');
       expect(body.error?.code).not.toBe(-32603);
     } finally {

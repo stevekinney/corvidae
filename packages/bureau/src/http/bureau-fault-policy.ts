@@ -15,14 +15,14 @@
 import type { FaultCode, FaultPolicy, OperationFault } from '@lostgradient/backchannel';
 import { weftFaultPolicy } from '@lostgradient/weft';
 
-import { BureauError, type BureauErrorCode } from '../bureau-errors.ts';
+import { BUREAU_ERROR_CODES, BureauError, type BureauErrorCode } from '../bureau-errors.ts';
 
 /**
  * The fault code each {@link BureauErrorCode} answers by default. The record is exhaustive over
- * the codes, so a new code cannot compile without a mapping, and the policy's test fails if it is
- * not in {@link BUREAU_ERROR_CODES}.
+ * the codes, so a new code cannot compile without a mapping, and the check below fails at load if
+ * one of {@link BUREAU_ERROR_CODES} has none.
  */
-export const BUREAU_ERROR_FAULT_CODE: Readonly<Record<BureauErrorCode, FaultCode>> = Object.freeze({
+const BUREAU_ERROR_FAULT_CODE: Readonly<Record<BureauErrorCode, FaultCode>> = Object.freeze({
   NOT_FOUND: 'NotFound',
   CONFLICT: 'Conflict',
   NOT_CONFIGURED: 'UnsupportedCapability',
@@ -37,7 +37,7 @@ export const BUREAU_ERROR_FAULT_CODE: Readonly<Record<BureauErrorCode, FaultCode
  * repeats an error message that could name an internal. It is the `remediation` of every fault
  * {@link bureauFault} builds, however the context shapes the rest of it.
  */
-export const BUREAU_ERROR_REMEDIATION: Readonly<Record<BureauErrorCode, string>> = Object.freeze({
+const BUREAU_ERROR_REMEDIATION: Readonly<Record<BureauErrorCode, string>> = Object.freeze({
   NOT_FOUND:
     'Check the identifier, and list the resource to find the current one; a resource you cannot see answers the same way.',
   CONFLICT:
@@ -51,6 +51,18 @@ export const BUREAU_ERROR_REMEDIATION: Readonly<Record<BureauErrorCode, string>>
   STORAGE_UNAVAILABLE:
     "Repeat the request after a short wait; if it keeps failing, ask the operator to check the Bureau's storage.",
 });
+
+// The records are exhaustive at compile time; this holds at run time too, where a cast or a
+// stale build could drop a code, and a code with no fault must fail loudly rather than answer
+// `EngineFailure` one request at a time.
+for (const code of BUREAU_ERROR_CODES) {
+  if (
+    !Object.hasOwn(BUREAU_ERROR_FAULT_CODE, code) ||
+    !Object.hasOwn(BUREAU_ERROR_REMEDIATION, code)
+  ) {
+    throw new Error(`The Bureau fault policy maps no fault, or no remediation, for ${code}.`);
+  }
+}
 
 /**
  * The other form a code takes where an operation's contract differs from the default:
@@ -78,7 +90,7 @@ const STORAGE_UNAVAILABLE_MESSAGE = "The Bureau's storage is unavailable.";
  * The fault a `BureauError` becomes, with its `remediation`. The code is the one of
  * {@link BUREAU_ERROR_FAULT_CODE} unless the context asks for the other form of that error code.
  */
-export function bureauFault(error: BureauError, context: BureauFaultContext = {}): OperationFault {
+function bureauFault(error: BureauError, context: BureauFaultContext = {}): OperationFault {
   const remediation = BUREAU_ERROR_REMEDIATION[error.code];
   const form = context.forms?.[error.code];
   if (form === 'shutting-down') {
