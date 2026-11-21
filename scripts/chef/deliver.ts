@@ -96,10 +96,10 @@ export interface DeliverReport {
   /** The revert findings accepted because `--intended` named their path (a branch merge only). */
   acceptedReverts: string[];
   /**
-   * The commits on main since the evidence that main's own CI had verified, so the landing queue
-   * did not count them (a branch merge only), one line per run. Absent when none.
+   * The commits of main that the head was merged onto after its evidence, oldest first, so the
+   * landing comment can name them (a branch merge only). Absent when main had not moved.
    */
-  verifiedOnMain?: string[];
+  mergedMainCommits?: string[];
   /** The issues commented on whose state was left alone, in order. */
   leftOpen: string[];
   /** What happened to the delivered worktree; `null` when the step did not run. */
@@ -288,7 +288,7 @@ export async function deliver(
     report.mainHealthWarning = direct.mainHealthWarning ?? null;
     report.guardsAlreadyFailing = direct.guardsAlreadyFailing ?? [];
     report.acceptedReverts = direct.acceptedReverts ?? [];
-    if (direct.verifiedOnMain !== undefined) report.verifiedOnMain = direct.verifiedOnMain;
+    if (direct.mergedMainCommits !== undefined) report.mergedMainCommits = direct.mergedMainCommits;
     if (direct.failedStep !== null) {
       fail(direct.failedStep, direct.detail ?? '');
       return report.merged &&
@@ -353,8 +353,10 @@ export function renderDeliver(report: DeliverReport): string {
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
   if (report.acceptedReverts.length > 0)
     lines.push(`revert accepted as intended: ${report.acceptedReverts.join('; ')}`);
-  for (const verified of report.verifiedOnMain ?? [])
-    lines.push(`landed without a new run: main commits ${verified}`);
+  if (report.mergedMainCommits !== undefined)
+    lines.push(
+      `base moved, landed without a new run: merged onto main commits ${report.mergedMainCommits.map((sha) => sha.slice(0, 12)).join(', ')}`,
+    );
   if (report.guardsAlreadyFailing.length > 0)
     lines.push(
       `WARNING guards: already failing on main, with no finding of this change's own: ${report.guardsAlreadyFailing.map((one) => `${one.guard} (${one.findings} output lines)`).join(', ')}`,

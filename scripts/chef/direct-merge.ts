@@ -18,19 +18,15 @@
 //                 does, and a named path with no finding is an error, so a stale flag cannot hide a
 //                 later revert;
 //   3. conflict   `git merge-tree --write-tree <base> <head>` builds the merged tree; a conflict is
-//                 refused and nothing is merged in: the worker merges the base in and returns a new
-//                 head. A branch that changes nothing relative to the base is refused at `merge`;
-//   3b. queue     `land-queue.ts`: a commit on `origin/<default>` since the head's merge-base that
-//                 touches what the head's evidence plan reaches refuses the landing, naming the
-//                 files, because the head's evidence never saw it, unless main's own CI verified
-//                 it (a `main.yml` push run succeeded at that commit or a later one on main, owner
-//                 decision 2026-11-21; the report's `verifiedOnMain` names the runs, and an
-//                 unreadable provider verifies nothing). It runs here, inside the merge
-//                 lock the push holds, so the decision and the push are one critical section. On
-//                 LAND with `main` moved, the integration-tree check accepts the attested base and
-//                 tree for the pushed ones only when Git shows the pushed tree is the attested
-//                 tree plus exactly main's new commits (`acceptMovedMain`); any other movement is
-//                 refused at `verification`;
+//                 refused with its paths named and nothing is merged in: the worker merges the base
+//                 in and returns a new head. A branch that changes nothing relative to the base is
+//                 refused at `merge`. Main moving after the head's evidence is no reason to refuse
+//                 (owner decision, 2026-11-21): when the merge is clean, `acceptMovedMain`
+//                 (`moved-base.ts`) accepts the attested base and tree for the pushed ones, given
+//                 that the attested base is an ancestor of main and the head merged onto it
+//                 reproduces the attested tree, and the report's `mergedMainCommits` names the
+//                 commits main gained. It runs inside the merge lock the push holds, so the
+//                 decision and the push are one critical section;
 //   4. guards     each guard of `lint:guards` runs as its own process on the tree that will be
 //                 pushed (the one squash commit, in a temporary detached Git worktree that is
 //                 always removed afterwards; `text-guards.ts` says why a worktree and not an
@@ -71,11 +67,10 @@ import {
 } from './delivery-verification.ts';
 import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { describeVerified, type MainRunReader } from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
-import { acceptMovedMain, landingQueue } from './moved-base.ts';
+import { acceptMovedMain, describeConflicts, mergeHeadOnto } from './moved-base.ts';
 import { defaultRunner, UsageError, type Runner } from './process-runner.ts';
 import { loadRepositoryConfig } from './repository-config.ts';
 import { revertCheck, RevertCheckError } from './revert-check.ts';
@@ -86,7 +81,6 @@ import {
   type GuardsResult,
 } from './text-guards.ts';
 import { totalUsage, type UsageTotals } from './transcript-usage.ts';
-import type { EvidencePlan } from './verification-plan.ts';
 
 export interface DirectMergeOptions {
   configPath: string;
@@ -127,10 +121,10 @@ export interface DirectMergeReport {
   /** The revert findings the caller named as intended, each file with the commit it undoes. */
   acceptedReverts?: string[];
   /**
-   * The commits on `origin/<default>` since the head's evidence that main's own CI had already
-   * verified and the queue therefore did not count, one line per `main.yml` run. Absent when none.
+   * The commits of `origin/<default>` that the head was merged onto after its evidence, oldest
+   * first, so the landing comment can name them. Absent when `main` had not moved.
    */
-  verifiedOnMain?: string[];
+  mergedMainCommits?: string[];
   failedStep: string | null;
   detail: string | null;
   usage?: UsageTotals;
@@ -147,10 +141,6 @@ export interface DirectMergeDependencies {
   now: () => Date;
   sleep: (milliseconds: number) => void;
   verification: DeliveryVerificationDependencies;
-  /** The evidence plan of a changed-file list, read from `worktree`; a test supplies one. */
-  evidencePlan: (changed: string[], worktree: string) => EvidencePlan;
-  /** Main's own `main.yml` push runs, for the landing queue; defaults to `gh run list`. */
-  mainRuns: MainRunReader;
 }
 
 /** The refusal's detail: the first failing guard by name, and the others that failed after it. */
@@ -274,42 +264,34 @@ async function directMergeCore(
   }
 
   // 3. conflict
-  const mergedTree = git('merge-tree', '--write-tree', base, options.head);
-  const tree = mergedTree.stdout.split('\n')[0]?.trim() ?? '';
-  if (mergedTree.code !== 0 || !/^[0-9a-f]{40,64}$/.test(tree))
+  const mergedTree = mergeHeadOnto(git, base, options.head);
+  if ('failure' in mergedTree) return fail('conflict', mergedTree.failure);
+  if ('conflicts' in mergedTree)
     return fail(
       'conflict',
-      mergedTree.code === 1
-        ? `${options.branch} conflicts with origin/${defaultBranch}; merge it in, resolve the conflict, and return the new head for acceptance.`
-        : `git merge-tree failed (exit ${mergedTree.code}): ${firstLine(mergedTree.stderr || mergedTree.stdout)}`,
+      `${options.branch} conflicts with origin/${defaultBranch}${describeConflicts(mergedTree.conflicts)}; merge it in, resolve the conflict, and return the new head for acceptance.`,
     );
+  const { tree } = mergedTree;
   const baseTree = git('rev-parse', `${base}^{tree}`).stdout.trim();
   if (tree === baseTree)
     return fail('merge', `${options.branch} changes nothing relative to origin/${defaultBranch}.`);
-  // 3b. queue: inside the merge lock this step shares with the push, so the decision and the merge
-  // are one critical section. Commits that reached `main` since the head's evidence, and touch
-  // what its plan reaches, need a new evidence run: refuse with the files named.
-  const queued = landingQueue(options, partial, runner, base, defaultBranch, config.repository);
-  if ('refusal' in queued) return fail('queue', queued.refusal);
-  // Say which commits main's own CI verified, so the landing comment can name them.
-  const verifiedOnMain = describeVerified(queued.classified.verified);
-  if (verifiedOnMain.length > 0) report.verifiedOnMain = verifiedOnMain;
   // The identity the verification chain attests: the actual base and tree, or, when main moved
-  // outside the plan's scope and Git shows the tree is the attested one plus main's new commits,
-  // the attested ones. Any other movement keeps the actual values and is refused below.
+  // after the evidence and the head merged into it cleanly (above), the attested ones. A moved
+  // base never needs a new evidence run: only a conflict refuses (owner decision, 2026-11-21).
+  // Inside the merge lock the push holds, so the decision and the push are one critical section.
   let attested = { base, tree };
   let landed: { landedBase: string; landedTree: string } | undefined;
   const { request } = verification;
   if (base !== request.base) {
-    const movedProblem = acceptMovedMain(
+    const moved = acceptMovedMain(
       git,
       { base: request.base, tree: request.integrationTree },
       options.head,
       base,
       tree,
-      queued.classified,
     );
-    if (movedProblem !== undefined) return fail('verification', movedProblem);
+    if ('problem' in moved) return fail('verification', moved.problem);
+    if (moved.mergedIn.length > 0) report.mergedMainCommits = moved.mergedIn;
     attested = { base: request.base, tree: request.integrationTree };
     landed = { landedBase: base, landedTree: tree };
   }
