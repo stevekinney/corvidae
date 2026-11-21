@@ -1,7 +1,7 @@
 {
   "issue": "COR-2547",
   "branch": "worktree-agent-a90c799d2ed4fb4a6",
-  "checkedAt": "1099f62cc0d60740c4c3bed3af95233378fc1bd2",
+  "checkedAt": "1573ee39368633124a6ffbab3afc7e2f4e371cab",
   "briefVersion": "a0f718df2a68",
   "status": "READY",
   "criteria": [
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "bulk-action-dialog.svelte is the one flow on ConfirmDialog; bulk-purge-dialog.svelte is a thin wrapper that supplies the lead through description (lead snippet) and the id sample and kept note through options (details snippet); no <style> and no weft-bulk-dialog in either file; bulk-action-dialog.test.ts, bulk-action-dialog.additional.test.ts and bulk-purge-dialog.test.ts pass. Assertions changed: the two queryByRole('alert') toBeNull checks now require the always-mounted alert region to be empty (ConfirmDialog keeps it mounted by design), and the test that read the deleted <style> block now asserts the file has no styles and that the sample, chip and notes are ConfirmDialog options."
+      "evidence": "bulk-action-dialog.svelte is the one flow on ConfirmDialog; bulk-purge-dialog.svelte is a thin wrapper that supplies the lead through description (lead snippet) and the id sample and kept note through options (details snippet); no <style> and no weft-bulk-dialog in either file; bulk-action-dialog.test.ts, bulk-action-dialog.additional.test.ts and bulk-purge-dialog.test.ts pass. Assertions changed: the two queryByRole('alert') toBeNull checks now require the always-mounted alert region to be empty (ConfirmDialog keeps it mounted by design), and the test that read the deleted <style> block now asserts the file has no styles and that the sample, chip and notes are ConfirmDialog options. Design round 1: the purge lists at most five ids (PURGE_SAMPLE_SHOWN) and the committing, stale and nothing-matches wording is shared (src/app/copy/bulk-dialog.ts)."
     },
     {
       "id": "AC5",
@@ -38,7 +38,7 @@
     {
       "id": "AC7",
       "status": "met-on-branch",
-      "evidence": "Purge supplies staleNotice from BULK_PURGE_COPY.stale (title, body); only HttpClientError faultCode Conflict is stale; the warning callout carries Refresh preview through errorAction; bulk-purge-dialog.test.ts Conflict and InvalidParams tests pass unchanged and bulk-action-dialog.states.test.ts asserts the warning tone."
+      "evidence": "Purge stale state keeps its Conflict-only branching and Refresh preview in the callout; since design round 1 (B5) its words are the one shared stale notice (src/app/copy/bulk-dialog.ts), so the COR-2521 sentence \"Nothing was purged. Check the new count before you purge.\" became \"Nothing was changed. Check the new count before you confirm.\" and the purge tests assert the new words."
     },
     {
       "id": "AC8",
