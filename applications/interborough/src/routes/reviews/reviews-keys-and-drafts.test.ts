@@ -211,9 +211,7 @@ describe('a key never decides a review the person has not seen', () => {
     );
     // The first decision is settled, so only the wait for the next review to be seen holds the key.
     await waitFor(() =>
-      expect(getByRole('button', { name: 'Approve', exact: true }).hasAttribute('disabled')).toBe(
-        false,
-      ),
+      expect(getByRole('button', { name: /^Approve$/ }).hasAttribute('disabled')).toBe(false),
     );
     await waitFor(() => expect(frames.length).toBeGreaterThan(0));
     // The next review is open but has not been painted: the key acts on nothing.

@@ -237,7 +237,7 @@ describe('deciding a Bureau tool approval', () => {
   });
 
   test('shows the tool and what it was given before it is decided', async () => {
-    const { container, findByRole, findByTestId } = open({ reviews: [APPROVAL] });
+    const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
@@ -1165,8 +1165,8 @@ describe('the Done tab', () => {
       const card = container.querySelector('[data-cinder-layout="detail"]');
       expect(card?.getAttribute('data-cinder-state')).toBe(cardState);
       if (notice !== undefined) expect(card?.textContent).toContain(notice);
-      expect(queryByRole('button', { name: 'Approve', exact: true })).toBeNull();
-      expect(queryByRole('button', { name: 'Deny', exact: true })).toBeNull();
+      expect(queryByRole('button', { name: /^Approve$/ })).toBeNull();
+      expect(queryByRole('button', { name: /^Deny$/ })).toBeNull();
     });
   }
 

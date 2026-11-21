@@ -10,6 +10,7 @@
     ApprovalCard,
     humanizeIdentifier,
     type ApprovalOperation,
+    type ApprovalCardProps,
     type ApprovalResolution,
     type ApprovalState,
   } from '@lostgradient/cinder';
@@ -91,11 +92,26 @@
       : undefined,
   );
   const resolution = $derived(review.resolution);
-  const decidedBy = $derived(
-    resolution === undefined
-      ? undefined
-      : decidedByName(resolution.decidedBy, principalStore.principal?.subject ?? undefined),
-  );
+  const optionalCardProps = $derived({
+    ...(action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
+    ...(alwaysAsks ? {} : { rememberScope: 'the rest of this chat' }),
+    ...(deciding === undefined ? {} : { resolving: deciding }),
+    ...(outcome?.tone === 'danger'
+      ? { failure: { summary: outcome.title, detail: outcome.message } }
+      : {}),
+    ...(resolution === undefined
+      ? {}
+      : {
+          decidedBy: decidedByName(
+            resolution.decidedBy,
+            principalStore.principal?.subject ?? undefined,
+          ),
+          decidedAt: resolution.decidedAt,
+          ...(resolution.reason === undefined ? {} : { decisionNote: resolution.reason }),
+        }),
+    ...(review.status === 'rejected' ? { outcomeLabel: REVIEWS_COPY.decided.rejected } : {}),
+    ...(closedNotice === undefined ? {} : { notice: closedNotice }),
+  } satisfies Partial<ApprovalCardProps>);
 
   function decide(choice: ApprovalResolution): void {
     if (choice.decision === 'deny') onDecide('deny');
@@ -121,23 +137,13 @@
     {operation}
     policyVersion="bureau-review"
     idempotencyKey={`${review.id}:${review.round}`}
-    expiresAt={action?.expiresAt}
     {state}
     headingLevel={2}
     {question}
     context={source}
-    rememberScope={alwaysAsks ? undefined : 'the rest of this chat'}
     bind:reason={note}
     noteInitiallyOpen
-    resolving={deciding}
-    failure={outcome?.tone === 'danger'
-      ? { summary: outcome.title, detail: outcome.message }
-      : undefined}
-    {decidedBy}
-    decidedAt={resolution?.decidedAt}
-    decisionNote={resolution?.reason}
-    outcomeLabel={review.status === 'rejected' ? REVIEWS_COPY.decided.rejected : undefined}
-    notice={closedNotice}
+    {...optionalCardProps}
     onResolve={decide}
   />
   {#if outcome !== undefined && outcome.tone !== 'danger'}
