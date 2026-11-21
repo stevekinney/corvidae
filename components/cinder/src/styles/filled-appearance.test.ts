@@ -288,7 +288,7 @@ describe('Select appearance', () => {
     expect(fill).toContain('background-color: var(--cinder-surface-inset);');
     expect(fill).toContain('border-radius: var(--cinder-radius-lg);');
     expect(selectCss).toContain(".cinder-select[data-cinder-appearance='filled'],");
-    const height = ruleBody(selectCss, `${densityDefault('cinder-select')}[data-cinder-size='md']`);
+    const height = ruleBody(selectCss, `${densityDefault('cinder-select')}.select-size-medium`);
     expect(height).toContain('min-height: var(--cinder-control-height-lg);');
     expect(ruleBody(selectCss, '.cinder-select')).toContain(
       'border: 1px solid var(--cinder-control-border);',
@@ -334,25 +334,27 @@ describe('Select chevron and inline variant', () => {
     const { container } = render(Select, {
       props: { id: 'sized', label: 'Agent', options },
     } as never);
-    expect(container.querySelector('select')?.getAttribute('data-cinder-size')).toBe('md');
+    expect(container.querySelector('select')?.classList.contains('select-size-medium')).toBe(true);
   });
 
   test('an inline select takes the surrounding type, the sm height and an auto width', () => {
     const { container } = render(Select, {
       props: { id: 'inline', label: 'Sender', labelVisible: false, options, variant: 'inline' },
     } as never);
-    expect(container.querySelector('select')?.getAttribute('data-cinder-variant')).toBe('inline');
+    expect(container.querySelector('select')?.classList.contains('select-variant-inline')).toBe(
+      true,
+    );
     expect(
-      container.querySelector('.cinder-select-field')?.getAttribute('data-cinder-variant'),
-    ).toBe('inline');
+      container.querySelector('.cinder-select-field')?.classList.contains('select-variant-inline'),
+    ).toBe(true);
 
-    const body = ruleBody(selectCss, ".cinder-select[data-cinder-variant='inline']");
+    const body = ruleBody(selectCss, '.cinder-select.select-variant-inline');
     expect(body).toContain('font-size: inherit;');
     expect(body).toContain('font-weight: inherit;');
     expect(body).toContain('font-family: inherit;');
     expect(body).toContain('min-height: var(--cinder-control-height-sm);');
     expect(body).toContain('inline-size: auto;');
-    expect(ruleBody(selectCss, ".cinder-select-field[data-cinder-variant='inline']")).toContain(
+    expect(ruleBody(selectCss, '.cinder-select-field.select-variant-inline')).toContain(
       'display: inline-flex;',
     );
   });

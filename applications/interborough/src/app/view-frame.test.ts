@@ -330,9 +330,9 @@ describe('every view whose probe fails the page, when its probe fails', () => {
       expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
       // The error is the default one, with its disc, and Try again is its primary action.
       expect(container.querySelector('.cinder-error-state[data-cinder-variant]')).toBeNull();
-      expect(getByRole('button', { name: RETRY_LABEL }).getAttribute('data-cinder-variant')).toBe(
-        'primary',
-      );
+      expect(
+        getByRole('button', { name: RETRY_LABEL }).classList.contains('button-variant-primary'),
+      ).toBe(true);
     });
 
     if (view === 'storage') {
@@ -701,10 +701,10 @@ describe('the chat list, a new chat, and the agents', () => {
     // A primary New agent and a secondary Browse agents, both buttons, and no composer or checklist.
     const create = container.querySelector('a[href="/agents/new"]');
     expect(create?.textContent?.trim()).toBe('New agent');
-    expect(create?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(create?.classList.contains('button-variant-primary')).toBe(true);
     const browse = container.querySelector('a[href="/agents"]');
     expect(browse?.textContent?.trim()).toBe('Browse agents');
-    expect(browse?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(browse?.classList.contains('button-variant-secondary')).toBe(true);
     expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
     expect(container.querySelector('textarea, [data-testid="first-run"]')).toBeNull();
   });

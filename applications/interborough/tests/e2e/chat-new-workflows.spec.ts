@@ -293,9 +293,8 @@ test.describe('New chat from Workflows with no provider (COR-2285 V4)', () => {
     // it supersedes rows 24g and 24h's chip over the blocked row and its swap to Assistant.
     const state = page.locator('[data-chat-availability="unconfigured"]');
     await expect(state.getByRole('heading', { level: 2 })).toHaveText('Connect a model provider');
-    await expect(state.getByRole('button', { name: 'Connect provider' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(state.getByRole('button', { name: 'Connect provider' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(blockedRow(page)).toHaveCount(0);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);

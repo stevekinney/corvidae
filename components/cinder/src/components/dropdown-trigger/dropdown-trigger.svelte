@@ -16,6 +16,7 @@
     resolveActionVariant,
   } from '../../_internal/action-emphasis-context.ts';
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
+  import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import type { ButtonSize, ButtonVariant } from '../button/button.types.ts';
   import {
@@ -96,9 +97,13 @@
         ? neighbour
         : neighbour?.querySelector('.cinder-button:not(.cinder-dropdown-trigger)');
       if (!(button instanceof HTMLElement)) continue;
+      const variantClass = [...button.classList].find((name) => name.startsWith('button-variant-'));
+      const siblingSize = Object.entries(CONTROL_SIZE_NAMES).find(([, name]) =>
+        button.classList.contains(`button-size-${name}`),
+      )?.[0] as ButtonSize | undefined;
       return {
-        variant: button.dataset['cinderVariant'] as ButtonVariant | undefined,
-        size: button.dataset['cinderSize'] as ButtonSize | undefined,
+        variant: variantClass?.slice('button-variant-'.length) as ButtonVariant | undefined,
+        size: siblingSize,
       };
     }
     return { variant: undefined, size: undefined };
@@ -129,9 +134,13 @@
 <button
   {@attach attachTrigger}
   type="button"
-  class={classNames('cinder-dropdown-trigger', drawsAsButton && 'cinder-button', customClassName)}
-  data-cinder-variant={drawsAsButton ? resolvedVariant : undefined}
-  data-cinder-size={drawsAsButton ? resolvedSize : undefined}
+  class={classNames(
+    'cinder-dropdown-trigger',
+    drawsAsButton && 'cinder-button',
+    drawsAsButton && `button-variant-${resolvedVariant}`,
+    drawsAsButton && `button-size-${CONTROL_SIZE_NAMES[resolvedSize]}`,
+    customClassName,
+  )}
   data-cinder-compact={compact ? '' : undefined}
   data-cinder-hit-target={compact ? '44' : undefined}
   data-cinder-icon-only={iconOnly ? '' : undefined}

@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
 
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
@@ -56,10 +57,10 @@ describe('coarse pointer hit area', () => {
   });
 
   test('the layout box keeps the painted height of each size', () => {
-    for (const size of ['xs', 'sm', 'md', 'lg']) {
+    for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
       expect(coarse).toMatch(
         new RegExp(
-          `\\[data-cinder-size='${size}'\\]\\s*\\{\\s*min-height:\\s*var\\(--_cinder-painted-height-${size}\\);`,
+          `\\.button-size-${CONTROL_SIZE_NAMES[size]}\\s*\\{\\s*min-height:\\s*var\\(--_cinder-painted-height-${size}\\);`,
         ),
       );
     }
@@ -74,15 +75,9 @@ describe('an icon passed as the button’s own child', () => {
     // A split button's caret (the trigger drawn as a Button) keeps its own size.
     const direct = '> svg:not\\(\\.cinder-dropdown-trigger__caret\\)';
     expect(buttonCss).toMatch(new RegExp(`\\.cinder-button ${direct} \\{`));
-    expect(buttonCss).toMatch(
-      new RegExp(`\\[data-cinder-size='sm'\\] ${direct} \\{[^}]*0\\.875rem`),
-    );
-    expect(buttonCss).toMatch(
-      new RegExp(`\\[data-cinder-size='xs'\\] ${direct} \\{[^}]*0\\.75rem`),
-    );
-    expect(buttonCss).toMatch(
-      new RegExp(`\\[data-cinder-size='lg'\\] ${direct} \\{[^}]*1\\.25rem`),
-    );
+    expect(buttonCss).toMatch(new RegExp(`\\.button-size-small ${direct} \\{[^}]*0\\.875rem`));
+    expect(buttonCss).toMatch(new RegExp(`\\.button-size-extra-small ${direct} \\{[^}]*0\\.75rem`));
+    expect(buttonCss).toMatch(new RegExp(`\\.button-size-large ${direct} \\{[^}]*1\\.25rem`));
   });
 });
 

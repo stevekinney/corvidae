@@ -20,6 +20,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { parse, type AtRule, type Root, type Rule } from 'postcss';
+import { CONTROL_SIZE_NAMES } from '../_internal/control-size-names.ts';
 
 const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
 const ROOT_FONT_SIZE = 16;
@@ -165,7 +166,10 @@ const rows = {
 
 /** The base rule's declarations overlaid with the size rule's, as the cascade applies them. */
 async function sizedDeclarations(row: ControlRow, size: Size): Promise<Map<string, string>> {
-  const sized = `${row.base}[data-cinder-size='${size}']`;
+  const sized =
+    row === button || row === select
+      ? `${row.base}.${row === button ? 'button' : 'select'}-size-${CONTROL_SIZE_NAMES[size]}`
+      : `${row.base}[data-cinder-size='${size}']`;
   const merged = new Map([
     ...(await declarations(row.path, row.base)),
     ...(await declarations(row.path, sized)),

@@ -93,7 +93,7 @@ test('an unconfigured chat with no message centers a provider action in place of
   expect(timelineOf(container).style.display).toBe('none');
   expect(composerWrapperOf(container).style.display).toBe('none');
   const connect = buttonNamed(state, 'Connect provider')!;
-  expect(connect.getAttribute('data-cinder-variant')).toBe('primary');
+  expect(connect.classList.contains('button-variant-primary')).toBe(true);
   await fireEvent.click(connect);
   expect(connected).toBe(1);
 });
@@ -116,7 +116,7 @@ test('an unconfigured chat with messages keeps them readable and replaces only t
   expect(container.querySelector('textarea.chat-input-editor')).toBeNull();
   const connect = buttonNamed(container, 'Connect provider')!;
   expect(blocked.contains(connect)).toBe(true);
-  expect(connect.getAttribute('data-cinder-variant')).toBe('primary');
+  expect(connect.classList.contains('button-variant-primary')).toBe(true);
   await fireEvent.click(connect);
   expect(connected).toBe(1);
 });
@@ -226,8 +226,8 @@ describe('a canceled read', () => {
     expect(state.querySelector('.lucide-search')).toBeNull();
     const retry = buttonNamed(container, 'Retry')!;
     const list = buttonNamed(container, 'All conversations')!;
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
-    expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
+    expect(list.classList.contains('button-variant-secondary')).toBe(true);
     // The editor remains mounted and editable, but canceled is not presented as ongoing loading.
     const editor = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
     expect(editor.readOnly).toBe(false);
@@ -282,8 +282,8 @@ describe('a history that could not be loaded', () => {
     expect(state.textContent).toContain('HTTP 500');
     const retry = buttonNamed(container, 'Retry')!;
     const list = buttonNamed(container, 'All conversations')!;
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
-    expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
+    expect(list.classList.contains('button-variant-secondary')).toBe(true);
     expect(composerWrapperOf(container).style.display).toBe('none');
     expect(timelineOf(container).style.display).toBe('none');
 
@@ -320,7 +320,7 @@ describe('a deleted conversation', () => {
     expect(state.querySelector('.chat-availability-deleted-icon')).not.toBeNull();
     expect(state.querySelector('.lucide-search')).toBeNull();
     const list = buttonNamed(container, 'All conversations')!;
-    expect(list.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(list.classList.contains('button-variant-primary')).toBe(true);
     expect(composerWrapperOf(container).style.display).toBe('none');
 
     await fireEvent.click(list);

@@ -423,9 +423,9 @@ describe('EmptyState size', () => {
     const { getByRole } = render(EmptyState, {
       props: { title: 'No matches', kind: 'filtered', size: 'compact', onClearFilters: () => {} },
     });
-    expect(getByRole('button', { name: 'Clear filters' }).getAttribute('data-cinder-size')).toBe(
-      'sm',
-    );
+    expect(
+      getByRole('button', { name: 'Clear filters' }).classList.contains('button-size-small'),
+    ).toBe(true);
   });
 
   test('an unknown size falls back to default', () => {

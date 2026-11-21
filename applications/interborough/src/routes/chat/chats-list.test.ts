@@ -101,7 +101,7 @@ describe('the pane header', () => {
     const header = region.querySelector('header') as HTMLElement;
     const plus = within(header).getByRole('link', { name: 'New chat' });
     expect(plus.getAttribute('href')).toBe('/chats/new');
-    expect(plus.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(plus.classList.contains('button-variant-secondary')).toBe(true);
     expect(plus.textContent?.trim()).toBe('');
     // The tooltip says the same words as the accessible name.
     const tooltips = within(header).getAllByRole('tooltip', { hidden: true });
@@ -252,13 +252,17 @@ describe('the states of the list', () => {
     const state = title.closest('.cinder-empty-state') as HTMLElement;
     expect(state.textContent).toContain('Start one with an agent.');
     expect(
-      within(state).getByRole('link', { name: 'New chat' }).getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+      within(state)
+        .getByRole('link', { name: 'New chat' })
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // Nothing else on the page is a primary: not the "+", and not the pane beside the list.
-    expect(container.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
+    expect(container.querySelectorAll('.button-variant-primary')).toHaveLength(1);
     expect(
-      container.querySelector('header a[href="/chats/new"]')?.getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+      container
+        .querySelector('header a[href="/chats/new"]')
+        ?.classList.contains('button-variant-secondary'),
+    ).toBe(true);
     const pane = await findByRole('region', { name: 'Open chat' });
     expect(pane.textContent).toContain('No chat open');
   });
@@ -305,8 +309,10 @@ describe('the states of the list', () => {
     const state = title.closest('.cinder-error-state') as HTMLElement;
     expect(state.textContent).toContain('Interborough didn’t send them back.');
     expect(
-      within(state).getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+      within(state)
+        .getByRole('button', { name: 'Try again' })
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
     const pane = await findByRole('region', { name: 'Open chat' });
     expect(pane).not.toBeNull();
     // The list is not there to choose from, so the pane does not point at it.

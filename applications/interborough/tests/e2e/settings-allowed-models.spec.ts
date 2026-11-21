@@ -420,7 +420,7 @@ test.describe('Settings at the three widths', () => {
     await expect(page.getByRole('combobox', { name: 'Section' })).toHaveCount(0);
     const banner = page.getByTestId('settings-restart-summary');
     const restart = banner.getByRole('button', { name: 'Restart now' });
-    await expect(restart).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(restart).toContainClass('button-variant-secondary');
     const bannerBox = await banner.boundingBox();
     expect(await widthOf(restart)).toBeLessThan((bannerBox?.width ?? 0) / 2);
     await checkA11y('settings at 768px');

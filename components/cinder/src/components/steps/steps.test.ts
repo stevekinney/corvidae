@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -609,11 +610,11 @@ describe('Steps checklist — a quiet action leading a wrapped row (CSS contract
       );
     expect(rule, 'the quiet-leading pull-back rule').not.toBeNull();
     for (const variant of ['ghost', 'ghost-accent', 'ghost-danger']) {
-      expect(rule?.[1]).toContain(`[data-cinder-variant='${variant}']`);
+      expect(rule?.[1]).toContain(`.button-variant-${variant}`);
     }
     // An outlined or filled action is not pulled back: its face is what lines up.
-    expect(rule?.[1]).not.toContain("'secondary'");
-    expect(rule?.[1]).not.toContain("'primary'");
+    expect(rule?.[1]).not.toContain('.button-variant-secondary');
+    expect(rule?.[1]).not.toContain('.button-variant-primary');
     expect(rule?.[2]).toContain(
       'margin-inline-start: calc(-1 * (var(--_cinder-steps-action-padding) + 1px));',
     );
@@ -627,16 +628,18 @@ describe('Steps checklist — a quiet action leading a wrapped row (CSS contract
     expect(paddingFor('.cinder-steps__action > .cinder-button')).toBe(
       'var(--cinder-button-padding-x-sm)',
     );
-    for (const size of ['xs', 'md', 'lg']) {
-      expect(paddingFor(`.cinder-steps__action > .cinder-button[data-cinder-size='${size}']`)).toBe(
-        `var(--cinder-button-padding-x-${size})`,
-      );
+    for (const size of ['xs', 'md', 'lg'] as const) {
+      expect(
+        paddingFor(
+          `.cinder-steps__action > .cinder-button.button-size-${CONTROL_SIZE_NAMES[size]}`,
+        ),
+      ).toBe(`var(--cinder-button-padding-x-${size})`);
     }
     // The Button's own face: a 1px border, transparent on the quiet variants.
     const buttonCss = readFileSync(new URL('../button/button.css', import.meta.url), 'utf8');
     expect(buttonCss).toContain('border: 1px solid var(--cinder-button-border);');
     expect(buttonCss).toMatch(
-      /\.cinder-button\[data-cinder-size='sm'\] \{[^}]*padding: var\(--cinder-button-padding-y-sm\) var\(--cinder-button-padding-x-sm\);/,
+      /\.cinder-button\.button-size-small \{[^}]*padding: var\(--cinder-button-padding-y-sm\) var\(--cinder-button-padding-x-sm\);/,
     );
   });
 });

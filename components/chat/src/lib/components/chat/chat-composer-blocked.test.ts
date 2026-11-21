@@ -104,8 +104,8 @@ describe('a blocked composer', () => {
       'Use Assistant',
       'Connect a provider',
     ]);
-    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('ghost');
-    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(buttons[0]!.classList.contains('button-variant-ghost')).toBe(true);
+    expect(buttons[1]!.classList.contains('button-variant-secondary')).toBe(true);
 
     await fireEvent.click(buttons[1]!);
     await fireEvent.click(buttons[0]!);
@@ -172,7 +172,7 @@ describe('the live composer', () => {
     const view = render(ChatInput, { id: 'live-send' });
     const send = view.container.querySelector<HTMLButtonElement>('[data-chat-send]')!;
 
-    expect(send.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(send.classList.contains('button-variant-secondary')).toBe(true);
     expect(send.textContent?.trim()).toBe('');
     expect(send.querySelector('svg.lucide-send-horizontal')).not.toBeNull();
     expect(send.disabled).toBe(true);

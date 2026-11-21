@@ -256,9 +256,8 @@ test('leaving after typing asks first, with Keep editing focused', async ({ page
     'You have started a schedule. If you leave now, what you typed is lost.',
   );
   await expect(dialog.getByRole('button', { name: 'Keep editing' })).toBeFocused();
-  await expect(dialog.getByRole('button', { name: 'Discard and leave' })).toHaveAttribute(
-    'data-cinder-variant',
-    'danger',
+  await expect(dialog.getByRole('button', { name: 'Discard and leave' })).toContainClass(
+    'button-variant-danger',
   );
   await captureForDesignReview(page, { route: ROUTE, state: 'discard dialog', source: SOURCE });
   await checkA11y('new schedule discard dialog');

@@ -39,14 +39,14 @@ describe('PageHeader', () => {
 
     const action = getByRole('button', { name: 'Add a memory' });
     const create = getByRole('button', { name: 'New agent' });
-    expect(action.getAttribute('data-cinder-size')).toBe('xs');
-    expect(create.getAttribute('data-cinder-size')).toBe('xs');
+    expect(action.classList.contains('button-size-extra-small')).toBe(true);
+    expect(create.classList.contains('button-size-extra-small')).toBe(true);
 
     await rerender({ compactActions: false });
 
-    expect(action.getAttribute('data-cinder-size')).toBe('md');
-    expect(create.getAttribute('data-cinder-size')).toBe('md');
-    expect(action.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action.classList.contains('button-size-medium')).toBe(true);
+    expect(create.classList.contains('button-size-medium')).toBe(true);
+    expect(action.classList.contains('button-variant-secondary')).toBe(true);
     expect(action.hasAttribute('data-cinder-compact')).toBe(false);
   });
 
@@ -187,7 +187,8 @@ describe('PageHeader', () => {
     const { container } = render(Harness, { props: { withActions: true } });
     const buttons = container.querySelectorAll('.cinder-page-header__actions button');
     expect(buttons.length).toBe(3);
-    for (const button of buttons) expect(button.getAttribute('data-cinder-size')).toBe('xs');
+    for (const button of buttons)
+      expect(button.classList.contains('button-size-extra-small')).toBe(true);
     // The create "+" is the last action, in its own slot after the others, so a narrow header can
     // keep it beside the title while the rest move.
     const slots = [...container.querySelectorAll('.cinder-page-header__row > *')];
@@ -243,8 +244,8 @@ describe('PageHeader', () => {
   test('under an error header a primary action is secondary and still xs', () => {
     const { container } = render(Harness, { props: { withActions: true, error: true } });
     const primary = container.querySelector('.cinder-page-header__actions button');
-    expect(primary?.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(primary?.getAttribute('data-cinder-size')).toBe('xs');
+    expect(primary?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(primary?.classList.contains('button-size-extra-small')).toBe(true);
   });
 
   test('the title renders at the page-title token, which resolves to 24px', () => {
@@ -301,7 +302,7 @@ describe('PageHeader', () => {
       const { getByRole, container } = render(Harness);
 
       const create = getByRole('button', { name: 'New agent' });
-      expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(create.classList.contains('button-variant-secondary')).toBe(true);
       expect(create.hasAttribute('data-cinder-icon-only')).toBe(true);
       expect(create.querySelector('svg')).not.toBeNull();
       expect(container.querySelector('[role="tooltip"]')?.textContent).toBe('New agent');
@@ -341,7 +342,7 @@ describe('PageHeader', () => {
       const link = render(Harness, { props: { createHref: '/agents/new' } });
       const anchor = link.getByRole('link', { name: 'New agent' });
       expect(anchor.getAttribute('href')).toBe('/agents/new');
-      expect(anchor.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(anchor.classList.contains('button-variant-secondary')).toBe(true);
     });
 
     test('is inert under a stale region, described by its reason, and presses nothing', async () => {
@@ -369,27 +370,31 @@ describe('PageHeader', () => {
       const { getByRole } = render(Harness, { props: { error: true, withActions: true } });
 
       expect(
-        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
-      ).toBe('secondary');
+        getByRole('button', { name: 'Add a memory' }).classList.contains(
+          'button-variant-secondary',
+        ),
+      ).toBe(true);
       // Only primary is demoted; a danger button keeps its meaning.
-      expect(getByRole('button', { name: 'Delete' }).getAttribute('data-cinder-variant')).toBe(
-        'danger',
-      );
-      expect(getByRole('button', { name: 'New agent' }).getAttribute('data-cinder-variant')).toBe(
-        'secondary',
-      );
+      expect(
+        getByRole('button', { name: 'Delete' }).classList.contains('button-variant-danger'),
+      ).toBe(true);
+      expect(
+        getByRole('button', { name: 'New agent' }).classList.contains('button-variant-secondary'),
+      ).toBe(true);
     });
 
     test('leaves primary actions primary otherwise, and follows the flag', async () => {
       const { getByRole, rerender } = render(Harness, { props: { withActions: true } });
       expect(
-        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
-      ).toBe('primary');
+        getByRole('button', { name: 'Add a memory' }).classList.contains('button-variant-primary'),
+      ).toBe(true);
 
       await rerender({ withActions: true, error: true });
       expect(
-        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
-      ).toBe('secondary');
+        getByRole('button', { name: 'Add a memory' }).classList.contains(
+          'button-variant-secondary',
+        ),
+      ).toBe(true);
     });
   });
 

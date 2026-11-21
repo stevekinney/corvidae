@@ -45,7 +45,7 @@ for (const width of WIDTHS) {
     // Row 12y: two secondary buttons and no primary one.
     const actions = frame.locator('.cinder-empty-state-action > *');
     await expect(actions).toHaveText(['Back to Runs', 'Search everything']);
-    await expect(frame.locator('[data-cinder-variant="primary"]')).toHaveCount(0);
+    await expect(frame.locator('.button-variant-primary')).toHaveCount(0);
     // Row 12x: the neutral disc holds a search glyph, and the breadcrumb is in words.
     await expect(frame.locator('.cinder-empty-state svg.lucide-search')).toBeVisible();
     await expect(page.locator('header.weft-shell-topbar')).toContainText('Not found');
@@ -95,7 +95,7 @@ for (const width of WIDTHS) {
     // Row 13a: See your scopes and Back to Home, both secondary, and nothing that asks for access.
     await expect(frame.getByRole('link', { name: 'See your scopes' })).toBeVisible();
     await expect(frame.getByRole('link', { name: 'Back to Home' })).toBeVisible();
-    await expect(frame.locator('[data-cinder-variant="primary"]')).toHaveCount(0);
+    await expect(frame.locator('.button-variant-primary')).toHaveCount(0);
     await expect(frame.getByRole('button', { name: /request access/i })).toHaveCount(0);
     // Row 12z: the gate's content is centred in the outlet like the not-found page, not drawn at its top.
     await expect

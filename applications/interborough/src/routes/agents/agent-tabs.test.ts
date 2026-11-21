@@ -383,7 +383,7 @@ describe('the Hooks tab', () => {
     expect(view.getByText(HOOKS_COPY.agentTab.emptyDescription)).not.toBeNull();
     // The empty state's New hook is secondary, like the one over the rows (sweep S51).
     const action = view.getByRole('link', { name: HOOKS_COPY.newAction });
-    expect(action.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action.classList.contains('button-variant-secondary')).toBe(true);
     expect(action.getAttribute('href')).toContain('/hooks/new?agent=researcher');
   });
 
@@ -396,8 +396,10 @@ describe('the Hooks tab', () => {
 
     expect(view.getByText(HOOKS_COPY.agentTab.intro('Researcher'))).not.toBeNull();
     expect(
-      view.getByRole('link', { name: HOOKS_COPY.newAction }).getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+      view
+        .getByRole('link', { name: HOOKS_COPY.newAction })
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
     expect(view.getByText(HOOKS_COPY.row.on)).not.toBeNull();
     expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('true');
   });

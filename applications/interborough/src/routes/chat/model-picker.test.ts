@@ -205,9 +205,9 @@ describe('which models the picker offers', () => {
 
     await modelsListed();
     expect(shownPrefix(container)).toBe(COPY.label);
-    expect(container.querySelector('.cinder-select')?.getAttribute('data-cinder-variant')).toBe(
-      'ghost',
-    );
+    expect(
+      container.querySelector('.cinder-select')?.classList.contains('select-variant-ghost'),
+    ).toBe(true);
   });
 
   test('asks for the models of the session’s agent', async () => {

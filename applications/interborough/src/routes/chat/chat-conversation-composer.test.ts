@@ -138,7 +138,7 @@ describe('the live composer', () => {
       'Enter to send. Shift and Enter for a new line.',
     );
     const send = container.querySelector<HTMLButtonElement>('[data-chat-send]')!;
-    expect(send.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(send.classList.contains('button-variant-secondary')).toBe(true);
     expect(send.disabled).toBe(true);
     expect(row(container)).toBeNull();
   });
@@ -165,7 +165,7 @@ describe('a blocked composer', () => {
     expect(row(container)?.textContent).toContain('Connect a model provider');
     const buttons = [...row(container)!.querySelectorAll('a, button')];
     expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Connect provider']);
-    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(buttons[0]?.classList.contains('button-variant-primary')).toBe(true);
     expect(composer(container)).toBeNull();
     // The transcript is still there, and nothing stands in its place.
     expect(container.querySelector('[data-chat-availability]')).toBeNull();
@@ -209,7 +209,7 @@ describe('a blocked composer', () => {
     const connect = [...state.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === 'Connect provider',
     );
-    expect(connect?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(connect?.classList.contains('button-variant-primary')).toBe(true);
     expect(container.querySelector<HTMLElement>('.chat-input-wrapper')?.style.display).toBe('none');
     expect(row(container)).toBeNull();
   });

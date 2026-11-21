@@ -24,8 +24,8 @@ describe('header actions never grow the header', () => {
   for (const kind of ['card', 'section-heading'] as const) {
     test(`${kind}: a default-size button in the actions draws at xs, one in the body does not`, () => {
       const { getByTestId } = render(Harness, { props: { kind, withActions: true } });
-      expect(getByTestId('header-button').getAttribute('data-cinder-size')).toBe('xs');
-      expect(getByTestId('body-button').getAttribute('data-cinder-size')).toBe('md');
+      expect(getByTestId('header-button').classList.contains('button-size-extra-small')).toBe(true);
+      expect(getByTestId('body-button').classList.contains('button-size-medium')).toBe(true);
     });
   }
 
@@ -35,8 +35,8 @@ describe('header actions never grow the header', () => {
         props: { kind, withActions: true, underError: true },
       });
       const header = getByTestId('header-button');
-      expect(header.getAttribute('data-cinder-size')).toBe('xs');
-      expect(header.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(header.classList.contains('button-size-extra-small')).toBe(true);
+      expect(header.classList.contains('button-variant-secondary')).toBe(true);
     });
   }
 

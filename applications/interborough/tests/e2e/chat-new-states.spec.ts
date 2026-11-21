@@ -150,9 +150,8 @@ test.describe('New chat while its agents load (24o)', () => {
     await page.clock.runFor(9_700);
     const status = page.locator('.cinder-skeleton-status');
     await expect(status).toContainText('Still loading agents. This is taking longer than usual.');
-    await expect(status.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
-      'data-cinder-variant',
-      'ghost',
+    await expect(status.getByRole('button', { name: 'Cancel' })).toContainClass(
+      'button-variant-ghost',
     );
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -206,7 +205,7 @@ test.describe('New chat when the agents cannot be loaded (24p)', () => {
     ).toBeVisible();
     // The one primary is Try again; there is nothing to send to, so no composer is drawn.
     const retry = page.getByRole('button', { name: 'Try again' });
-    await expect(retry).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(retry).toContainClass('button-variant-primary');
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.locator('button[data-chat-send]')).toHaveCount(0);
     await expect(welcome(page)).toHaveCount(0);
@@ -238,10 +237,10 @@ test.describe('New chat with no agents (24q)', () => {
       ),
     ).toBeVisible();
     const create = page.getByRole('link', { name: 'New agent' });
-    await expect(create).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(create).toContainClass('button-variant-primary');
     await expect(create).toHaveAttribute('href', '/agents/new');
     const browse = page.getByRole('link', { name: 'Browse agents' });
-    await expect(browse).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(browse).toContainClass('button-variant-secondary');
     await expect(browse).toHaveAttribute('href', '/agents');
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.locator('[data-testid="first-run"]')).toHaveCount(0);
