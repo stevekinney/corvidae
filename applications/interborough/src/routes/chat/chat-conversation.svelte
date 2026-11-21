@@ -46,12 +46,13 @@
 
   import {
     Alert,
+    Badge,
     Banner,
     Button,
     Chip,
     ConfirmDialog,
+    EmptyState,
     PageHeader,
-    StatusDot,
     ToolCallPanel,
     VisuallyHidden,
     type ApprovalResolution,
@@ -73,7 +74,9 @@
   import { CircleHelp, GitBranch, Workflow } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+  import { useChatReadiness } from '../../app/chat-readiness.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { CHAT_READINESS_PATHS } from '../../app/first-run.ts';
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import { usePageDetails, usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { showToast } from '../../app/toast-host.svelte';
@@ -116,7 +119,12 @@
     loadPluginApp,
     pluginToolCaller,
   } from '../../lib/host-panels.ts';
-  import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
+  import {
+    approvalQuestion,
+    declaredSummary,
+    policyReasonOf,
+    reasonSaysAlways,
+  } from '../../lib/tool-text.ts';
   import { getBureauReview, listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
@@ -148,7 +156,6 @@
   import AgentSelect from './agent-select.svelte';
   import ComposerSettings from './composer-settings.svelte';
   import ContextMeter from './context-meter.svelte';
-  import ContextWindowRing from './context-window-ring.svelte';
   import SettingSelect from './setting-select.svelte';
   import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
@@ -172,11 +179,14 @@
     formatCallDuration,
     railCall,
     toolGroups,
+    approvalLapsed,
+    toolDisplayName,
     toolInfoByName,
     type ToolCallEntry,
   } from './tool-activity.ts';
   import { failedStopNoteId, withEndedLine, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
+  import { lapsedChats } from './lapsed-chats.svelte.ts';
   import SessionTasks from './session-tasks.svelte';
 
   interface ChatConversationProps {
@@ -419,6 +429,13 @@
       providers.data !== undefined &&
       !providers.data.providers.some((provider) => provider.connected),
   );
+  // A new chat with no agent it could work with says why and links to the missing step instead of
+  // drawing a composer (COR-2438), by the one readiness rule every place that starts a chat reads.
+  const readiness = useChatReadiness();
+  const chatMissing = $derived.by(() => {
+    const ready = readiness();
+    return choosing && ready !== undefined && ready !== 'ready' ? ready : undefined;
+  });
 
   // An agent that a disabled plugin ships (`plugin:name`) cannot run, and the composer says so with
   // the way back: enable the plugin and restart the host.
@@ -794,6 +811,8 @@
 
   let route = $state<HTMLElement | undefined>();
   let head = $state<HTMLElement | undefined>();
+  /** The header band's height on the route, for `.weft-chat-alerts` in `chat.css`. */
+  const HEAD_BLOCK_SIZE_PROPERTY = '--weft-chat-head-block-size';
   // The header is laid over the top of the conversation on a translucent ground, so the transcript
   // scrolls under it. Its height is the transcript's top inset (Chat's overlay inset property,
   // read by Chat for the first row, for scrolling to a row and for placing an approval), kept as
@@ -804,10 +823,10 @@
     if (element === undefined || owner === undefined || typeof ResizeObserver === 'undefined')
       return;
     const write = (): void => {
-      owner.style.setProperty(
-        CHAT_OVERLAY_INSET_START_PROPERTY,
-        `${element.getBoundingClientRect().height}px`,
-      );
+      const height = `${element.getBoundingClientRect().height}px`;
+      owner.style.setProperty(CHAT_OVERLAY_INSET_START_PROPERTY, height);
+      // The page's own copy, which the errors laid over the conversation sit under (COR-2438).
+      owner.style.setProperty(HEAD_BLOCK_SIZE_PROPERTY, height);
       approvalPlacement.headerChanged();
     };
     write();
@@ -816,6 +835,7 @@
     return () => {
       observer.disconnect();
       owner.style.removeProperty(CHAT_OVERLAY_INSET_START_PROPERTY);
+      owner.style.removeProperty(HEAD_BLOCK_SIZE_PROPERTY);
     };
   });
   /** The frames to wait for the approval's row to be drawn before giving up on bringing the person to it. */
@@ -1204,12 +1224,12 @@
   /** What a question that declares no schema takes: free text, answered in the composer. */
   const FREE_TEXT_SCHEMA = { type: 'string', title: CHAT_COPY.questionAnswerLabel } as const;
   let questionElement = $state<HTMLElement | undefined>();
-  // Whether the open question draws choices to pick, which the drawn buttons say. It is read again
+  // How many of the open question's choices have number keys. It is read again
   // for each question, because the page stays mounted while the open question changes.
-  let pickable = $state(false);
+  let numberedChoices = $state(0);
   $effect(() => {
     void session.humanRequests[0]?.interruptId;
-    pickable = choiceButtons(questionElement).length > 0;
+    numberedChoices = Math.min(9, choiceButtons(questionElement).length);
   });
 
   /** Whether an answer is held for its Undo window, which keeps the composer from taking a second. */
@@ -1311,11 +1331,8 @@
       const call = Object.values(session.conversation.messages).find(
         (row) => row.toolCall?.id === result.callId,
       )?.toolCall;
-      const reason = typeof message.content === 'string' ? message.content : undefined;
-      const summary = declaredSummary(
-        result.action.type === 'approval' ? result.action.message : undefined,
-        reason,
-      );
+      const content = typeof message.content === 'string' ? message.content : undefined;
+      const declared = result.action.type === 'approval' ? result.action.message : undefined;
       // The name the approval reports the tool by (`plugin:tool` for a plugin's tool), not the
       // provider's `plugin__tool` the model called it by (COR-1879); the call's name until the
       // Bureau's pending reviews have been read.
@@ -1328,6 +1345,12 @@
           review.approval.callId === result.callId,
       );
       const toolName = reviewed?.kind === 'tool-approval' ? reviewed.approval.toolName : call?.name;
+      // The policy's reason, from the review when it has been read, else from the parked row or the
+      // message the Bureau fell back to it with (COR-2438): never the question, and it says the mode.
+      const reviewedReason =
+        reviewed?.kind === 'tool-approval' ? reviewed.approval.reason : undefined;
+      const reason = policyReasonOf(reviewedReason, content, declared);
+      const summary = declaredSummary(declared, content, reviewedReason);
       const approvalKey =
         approvalKeyForResult(result) ?? session.parkedApprovalKeys.get(result.callId);
       const observedExpiry =
@@ -1355,11 +1378,13 @@
         // moment for an approval that was parked on a call.
         requestedAt: reviewed?.requestedAt ?? askedAt(message.createdAt),
         // A tool set to Always asks on every call, so allowing it for the chat is not offered.
-        alwaysAsks: reasonSaysAlways(
-          reviewed?.kind === 'tool-approval' ? reviewed.approval.reason : reason,
-        ),
+        alwaysAsks: reasonSaysAlways(reason),
+        // Asked by the tool's name as a person reads it ("Run Discover agents?"), not its identifier.
         question: approvalQuestion({
-          toolName: toolName ?? 'a tool',
+          toolName:
+            call === undefined
+              ? (toolName ?? 'a tool')
+              : toolDisplayName(call.name, toolInfo.get(call.name)?.title),
           arguments: call?.arguments,
           summary,
         }),
@@ -1369,7 +1394,26 @@
   const approvalsByCall = $derived(
     new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
-  function displayEntry(entry: ToolCallEntry): ToolCallEntry {
+  /**
+   * Whether what the run waits on is known and nothing is reading or deciding it now, so a call
+   * parked on an approval the run does not wait on can be told apart from one about to be.
+   */
+  const approvalsSettled = $derived(
+    session.historySettled && !session.streaming && !session.attaching && !deciding,
+  );
+  /** Whether `entry` waits on an approval no run waits on any more (COR-2438). */
+  function lapsed(entry: ToolCallEntry): boolean {
+    return approvalLapsed(entry, {
+      waiting: session.waitingApprovals,
+      refused: session.refusedApprovals,
+      reviewed: reviewedCalls,
+      parked: context.data?.activity === 'awaiting-input',
+      settled: approvalsSettled,
+    });
+  }
+  function displayEntry(original: ToolCallEntry): ToolCallEntry {
+    // A parked call no run waits on is shown as what it is: no Waiting badge, no Deny or Approve.
+    const entry = lapsed(original) ? { ...original, lapsed: true } : original;
     if (entry.railId !== undefined) return entry;
     // The rail keys its rows by this id, so an id that changed under a drawn row would remount it
     // and drop what the approver had ticked or typed: the first id a call is shown with stays.
@@ -1391,10 +1435,11 @@
   // A failure the transcript already says, on the row it belongs to, is not said again above it: a
   // message that never got an answer is marked "Not sent".
   const failureShownInTranscript = $derived(
-    session.failureWasTransport &&
-      Object.values(session.conversation.messages).some(
-        (row) => row.metadata['_deliveryStatus'] === 'failed',
-      ),
+    retryNoteId !== undefined ||
+      (session.failureWasTransport &&
+        Object.values(session.conversation.messages).some(
+          (row) => row.metadata['_deliveryStatus'] === 'failed',
+        )),
   );
   // The last row the transcript draws: a row that only carries a call's answer is drawn under the
   // call's own row, so it does not count, and a turn that ends on a call ends on the call's row.
@@ -1472,20 +1517,63 @@
   // Whether an approval holds the chat on its person, for the status and for what holds Archive.
   const approvalWaits = $derived(
     approvalHoldsChat(
-      [...activity.groups.values()].flatMap((group) => group.entries),
+      [...activity.groups.values()]
+        .flatMap((group) => group.entries)
+        .filter((entry) => !lapsed(entry)),
       context.data?.activity,
     ),
   );
   // The chat's state beside its title, in the shared status words: a person's turn first, then a
   // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
+  // The approval the chat was parked on lapsed and nothing else waits (COR-2438): the Bureau may
+  // still say the chat is parked on input, but no run goes and nobody can answer. The header says
+  // so and the chat list reads it from `lapsedChats`, so both say what the card says.
+  /**
+   * The calls drawn as no longer waiting, which Chat is told too: its result still asks, and Chat
+   * would otherwise keep reminding over the composer of an approval nobody can answer (COR-2438).
+   */
+  const lapsedCalls = $derived(
+    new Set(
+      [...activity.groups.values()]
+        .flatMap((group) => group.entries)
+        .filter((entry) => lapsed(entry))
+        .map((entry) => entry.callId),
+    ),
+  );
+  const parkedOnLapsed = $derived(
+    lapsedCalls.size > 0 &&
+      !approvalWaits &&
+      shownRequests.length === 0 &&
+      !session.streaming &&
+      context.data?.activity === 'awaiting-input',
+  );
+  $effect(() => {
+    // A fresh turn or a real wait revokes an earlier refusal.
+    const contextActivity = context.data?.activity;
+    if (
+      (contextActivity !== undefined && contextActivity !== 'awaiting-input') ||
+      (session.waitingApprovals?.size ?? 0) > 0 ||
+      session.humanRequests.length > 0
+    ) {
+      untrack(() => lapsedChats.delete(sessionId));
+    }
+  });
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (endedByRestart) return CHAT_COPY.status.ended;
     if (approvalWaits || shownRequests.length > 0) return CHAT_COPY.status.waiting;
-    if (runGoing) return CHAT_COPY.status.running;
+    if (runGoing && !parkedOnLapsed) return CHAT_COPY.status.running;
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
+  /** The Badge tone of each status word beside the title. */
+  function chatStatusTone(word: string): 'warning' | 'info' | 'danger' | 'neutral' | 'success' {
+    if (word === CHAT_COPY.status.waiting) return 'warning';
+    if (word === CHAT_COPY.status.running) return 'info';
+    if (word === CHAT_COPY.status.failed) return 'danger';
+    if (word === CHAT_COPY.status.ended) return 'neutral';
+    return 'success';
+  }
   // What holds Archive back in the More menu, in the order and the words of the status: the
   // person's turn first (an approval, or else a question), then a run going. The Bureau refuses to
   // archive a chat in either state, so the menu says why before it is pressed.
@@ -1713,6 +1801,18 @@
     }),
     undefined,
   );
+  /** The calls the Bureau's pending reviews of this chat hold, once they have been read. */
+  const reviewedCalls = $derived(
+    pendingReviews.data === undefined
+      ? undefined
+      : new Set(
+          pendingReviews.data.flatMap((review) =>
+            review.kind === 'tool-approval' && review.sessionId === sessionId
+              ? [review.approval.callId]
+              : [],
+          ),
+        ),
+  );
   // A stream that gave up while Interborough could not be reached is joined again once it answers,
   // so the person is not left to press Reconnect for a drop the banner already explained.
   let wasUnreachable = false;
@@ -1747,9 +1847,9 @@
           CHAT_COPY.tools.decided.elsewhere,
           questions.get(entry.callId) ??
             approvalQuestion({
-              toolName: entry.name,
+              toolName: entry.title ?? entry.name,
               arguments: entry.arguments,
-              summary: entry.decision?.asked,
+              summary: declaredSummary(entry.decision?.asked),
             }),
         ),
       )
@@ -1954,8 +2054,14 @@
     try {
       await session.controller.adapter.resolveToolApproval?.(toolCallId, resolution);
     } catch {
-      // The controller reported it, and the approval is still pending for another try.
+      // The controller reported it, and the approval is still pending for another try, or nothing
+      // waits on it any more and the chat is read again: so is its record, whose activity says
+      // whether it still waits on its person (COR-2438).
       decidedHere.delete(toolCallId);
+      if (session.refusedApprovals.has(toolCallId) && context.data?.activity === 'awaiting-input') {
+        lapsedChats.add(sessionId);
+      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
     } finally {
       deciding = false;
       // Whether it took effect or not, the approval is not what `/reviews` last listed, so the
@@ -2035,13 +2141,21 @@
 {/snippet}
 
 {#snippet headerStatus()}
-  {#if chatStatus !== undefined}
-    <StatusDot word={chatStatus} />
+  {@const status = approvalWaits ? CHAT_COPY.status.done : chatStatus}
+  {#if status !== undefined}
+    <!-- An approval shows its waiting Badge on the tool row. Reserve the heading's settled Badge
+         space so a long title keeps the same height when a refused decision ends the approval. -->
+    <Badge
+      variant={chatStatusTone(status)}
+      size="sm"
+      {...approvalWaits ? { class: 'weft-chat-heading__reserved-status', 'aria-hidden': true } : {}}
+      >{status}</Badge
+    >
   {/if}
 {/snippet}
 
+<!-- The context meter is the composer's alone, by Send (COR-2438): one meter in one place. -->
 {#snippet headerActions()}
-  <ContextWindowRing report={contextWindow.data} failed={contextWindow.isError} />
   <ChatMoreMenu
     {sessionId}
     title={displayTitle}
@@ -2085,26 +2199,44 @@
       <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
       {#if !choosing}
         <PageHeader
+          class="weft-chat-heading"
           data-testid="chat-header"
           title={markdownTitle}
+          titleText={displayTitle}
+          titleLines={1}
           headingLevel={1}
           narrowActions="beside-status"
           {...context.data?.parentContextId ? { description: details } : {}}
           {...gone ? {} : { actions: headerActions }}
-          {...gone || chatStatus === undefined || approvalWaits ? {} : { status: headerStatus }}
+          {...gone || chatStatus === undefined ? {} : { status: headerStatus }}
           statusPlacement="inline"
         />
       {/if}
-      <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
-      {#if !choosing && !endedByRestart}
+      <!-- The transcript already explains a stopped or failed reply. -->
+      {#if !choosing && !endedByRestart && retryNoteId === undefined}
         <SessionTasks
           {sessionId}
           streaming={session.streaming}
           headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
         />
       {/if}
+    </div>
 
-      {#if session.failure !== undefined && !failureShownInTranscript && !choosing}
+    <!-- What went wrong is laid over the top of the conversation, under the header, and is not part
+         of the header band whose height is the transcript's top inset: an error never moves a
+         message, the scroll position or the composer (COR-2438). Each error is one Alert that says
+         one thing, and a refused decision replaces the failure that was showing. -->
+    <div class="weft-chat-alerts" data-testid="chat-alerts">
+      {#if session.approvalNotice !== undefined && !choosing}
+        <Alert
+          class="weft-chat-alerts__decision"
+          variant="warning"
+          dismissible
+          onDismiss={() => session.dismissFailure()}
+        >
+          <p class="weft-chat-approval__message">{session.approvalNotice}</p>
+        </Alert>
+      {:else if session.failure !== undefined && !failureShownInTranscript && !choosing}
         <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
           <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
           <p class="weft-chat-approval__message">{session.failure}</p>
@@ -2167,261 +2299,294 @@
         </Alert>
       {/if}
     {/snippet}
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div class="weft-chat-surface" onclick={openNoteLink}>
-      <Chat
-        bind:this={chat}
-        id={`chat-${sessionId}`}
-        conversation={choosing ? unstartedConversation : shown}
-        adapter={chatAdapter}
-        {...mayRegenerate ? { onRegenerate: regenerateAnswer } : {}}
-        messageStatus={regenerationStatus}
-        {availability}
-        {...choosing ? { empty: newChatEmpty } : {}}
-        emptyTitle={CHAT_COPY.emptyTranscript.title}
-        {emptyDescription}
-        {emptyPrompts}
-        streaming={session.streaming && !choosing}
-        trailingAskPending={!session.streaming && session.humanRequests.length > 0}
-        surfaceMode="transparent"
-        scrollFadeVisible
-        variant="transcript"
-        notSent={connection.unreachable
-          ? {
-              summary: CHAT_COPY.notSent.unreachable,
-              retryDisabled: true,
-              retryNote: CHAT_COPY.notSent.retryNote,
-            }
-          : { summary: CHAT_COPY.notSent.online }}
-        disabled={session.disconnected || gone || answerHeld}
-        composerPlaceholder={answering
-          ? pickable
-            ? CHAT_COPY.composer.answerPlaceholder
-            : CHAT_COPY.questionAnswerLabel
-          : CHAT_COPY.composer.placeholder(agentShown)}
-        {composerStatus}
-        composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
-        composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
-        composerFooter={!choosing
-          ? undefined
-          : startFailure !== undefined
-            ? newChatFailed
-            : !phone.current && !fromWorkflows && !startingFirstMessage
-              ? newChatChoices
-              : undefined}
-        composerStarting={startingFirstMessage ? CHAT_COPY.newChatWelcome.starting : undefined}
-        clearComposerOnSubmit={!choosing}
-        composerPlacement={choosing && !phone.current ? 'centered' : 'docked'}
-        composerFormattingToolbar
-        composerAnswering={answering}
-        streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
-        capabilities={{
-          attachments: attachable && !gone,
-          // The transcript offers Branch on a message and no Edit: editing a sent message is a
-          // fork, which Branch on that message is.
-          editing: false,
-          quote: true,
-        }}
-        uploadAttachment={upload}
-        acceptedTypes={settings?.acceptedTypes ?? []}
-        maxFileSize={settings?.maxFileSize}
-        formatAttachmentError={chatAttachmentErrorMessage}
-      >
-        {#snippet trailing()}
-          {#each shownRequests as request (request.interruptId)}
-            <div class="weft-chat-question" data-interrupt={request.interruptId}>
-              <p class="weft-chat-question__prompt">
-                <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
-                {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
-              </p>
-              <div bind:this={questionElement} data-question-answer-region>
-                <ChatQuestion
-                  {...{ 'data-changes': true }}
-                  id={`chat-question-${request.interruptId}`}
-                  schema={request.schema ?? FREE_TEXT_SCHEMA}
-                  answerInComposer
-                  busy={session.attaching}
-                  uploadFile={uploadQuestionFile}
-                  undoMilliseconds={answerUndoMilliseconds()}
-                  onHoldChange={(held) => (answerHeld = held)}
-                  onSubmit={async (value) => {
-                    sentRequest = request;
-                    const taken = await session.answerQuestion(request.interruptId, value);
-                    // An answer the session did not take leaves the question open, not "answered".
-                    if (!taken) sentRequest = undefined;
-                    return taken;
-                  }}
-                />
-              </div>
-              {#if pickable}
-                <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
-              {/if}
-            </div>
-          {/each}
-        {/snippet}
-        {#snippet composerControls({ folded })}
-          {#if folded}
-            <ComposerSettings>{@render settingControls()}</ComposerSettings>
-          {:else}
-            {@render settingControls()}
-          {/if}
-        {/snippet}
-        {#snippet composerActions()}
-          {#if !choosing && usesModel}
-            <ContextMeter report={contextWindow.data} failed={contextWindow.isError} />
-          {/if}
-        {/snippet}
-        {#snippet messageActions({ message })}
-          {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
-          {@const branchAt = branchTargetOf(message)}
-          {#if replyStep !== undefined && !session.streaming}
-            {@const replyModel = replyModelName(message.metadata)}
-            {#if replyModel !== undefined}
-              <span class="weft-chat-model">{replyModel}</span>
-            {/if}
-            <ReplyDetails
-              runId={replyStep.runId}
-              step={replyStep.step}
-              usage={session.usage.get(replyStep.runId)}
-            />
-          {/if}
-          {#if branchAt !== undefined}
+    {#if chatMissing !== undefined}
+      <!-- A new chat that cannot work yet says why and links to the step it is missing, instead of
+           a composer that cannot send (COR-2438): every New chat lands here. -->
+      <div class="weft-chat-not-ready" data-testid="new-chat-not-ready">
+        <EmptyState
+          kind="first-use"
+          headingLevel={2}
+          title={CHAT_COPY.readiness[chatMissing].title}
+          description={CHAT_COPY.readiness[chatMissing].description}
+        >
+          {#snippet action()}
             <Button
-              data-changes
-              type="button"
-              class="chat-message-action-button"
-              size="xs"
-              variant="ghost"
-              aria-label={message.role === 'user'
-                ? CHAT_COPY.branch.before
-                : CHAT_COPY.branch.action}
-              disabled={branching}
-              onclick={() => void branchThrough(branchAt.messageId)}
-            >
-              <GitBranch class="cinder-icon-xs" />
-              {CHAT_COPY.branch.short}
-            </Button>
-          {/if}
-        {/snippet}
-        {#snippet noteAction(note: MessageNoteInfo)}
-          {#if note.id === retryNoteId}
-            <Button
-              data-changes
-              type="button"
+              href={router.href(CHAT_READINESS_PATHS[chatMissing])}
+              variant="primary"
               size="sm"
-              variant="secondary"
-              disabled={!session.canRetryTurn}
-              onclick={() => void retryTurn()}
-              label={CHAT_COPY.stopLine.retry}
-            />
-          {/if}
-        {/snippet}
-        {#snippet row({ message }, renderDefault)}
-          {@const group = activity.groups.get(message.id)}
-          {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
-          {#if group !== undefined}
-            <!-- ToolCalls is never keyed on its entries' states: a remount on each step would drop the
-              focus on the row a person is using and the panel's return target. -->
-            <ToolCalls
-              id={`tools-${message.id}`}
-              entries={group.entries.map(displayEntry)}
-              decided={decisionContext}
-              selectedId={selectedCallId}
-              onSelect={selectCall}
-              opensPanel={(entry) =>
-                chatToolPanelFor(entry) !== undefined && structuredResultText(entry) !== undefined}
-              endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
-              duration={group.durationMilliseconds === undefined
-                ? undefined
-                : formatCallDuration(group.durationMilliseconds)}
+              onclick={(event: MouseEvent) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                router.navigate(CHAT_READINESS_PATHS[chatMissing]);
+              }}
             >
-              {#snippet decision(entry)}
-                {@const asked = approvalsByCall.get(entry.callId)}
-                {@const expired =
-                  entry.state === 'expired' ||
-                  (entry.approvalExpiresAt !== undefined &&
-                    session.clock.now() >= entry.approvalExpiresAt)}
-                {#if entry.decision !== undefined || asked !== undefined}
-                  {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
-                    <ChatApproval
-                      id={`tools-${message.id}-${entry.callId}`}
-                      {entry}
-                      question={asked?.question ?? ''}
-                      source={agentShown}
-                      unavailableReason={agentUnavailable
-                        ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
-                        : undefined}
-                      providerNote={noProvider && availability?.kind !== 'unconfigured'
-                        ? CHAT_COPY.approval.continuesOnProvider(agentShown)
-                        : undefined}
-                      requestedAt={asked?.requestedAt}
-                      alwaysAsks={asked?.alwaysAsks}
-                      {...asked?.action?.expiresAt === undefined
-                        ? {}
-                        : { expiresAt: asked.action.expiresAt }}
-                      {...entry.approvalExpiresAt === undefined
-                        ? {}
-                        : { expiresAt: new Date(entry.approvalExpiresAt).toISOString() }}
-                      context={decisionContext}
-                      unreachable={connection.unreachable}
-                      onAskAgain={expired ? () => void askAgain(entry) : undefined}
-                      resolving={deciding || session.streaming
-                        ? (decidingAs ?? 'approve')
-                        : undefined}
-                      onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
-                    />
-                  {/key}
-                {/if}
-              {/snippet}
-              {#snippet mcpApp(entry)}
-                {@const panel = chatToolPanelFor(entry)}
-                {@const resultText = structuredResultText(entry)}
-                {#if panel !== undefined && entry.state === 'done' && resultText !== undefined}
-                  {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
-                  {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
-                  <McpApp
-                    resourceUri={panel.uri}
-                    title={panel.title}
-                    {loadResource}
-                    {onToolCall}
-                    hostContext={mcpHostContext}
-                    maxHeight={560}
-                    toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
-                    toolResult={{
-                      content: [],
-                      structuredContent: resultText,
+              {CHAT_COPY.readiness[chatMissing].action}
+            </Button>
+          {/snippet}
+        </EmptyState>
+      </div>
+    {:else}
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="weft-chat-surface" onclick={openNoteLink}>
+        <Chat
+          bind:this={chat}
+          id={`chat-${sessionId}`}
+          conversation={choosing ? unstartedConversation : shown}
+          adapter={chatAdapter}
+          {...mayRegenerate ? { onRegenerate: regenerateAnswer } : {}}
+          messageStatus={regenerationStatus}
+          {availability}
+          {...choosing ? { empty: newChatEmpty } : {}}
+          emptyTitle={CHAT_COPY.emptyTranscript.title}
+          {emptyDescription}
+          {emptyPrompts}
+          streaming={session.streaming && !choosing}
+          trailingAskPending={!session.streaming && session.humanRequests.length > 0}
+          lapsedApprovals={lapsedCalls}
+          surfaceMode="transparent"
+          scrollFadeVisible
+          variant="transcript"
+          notSent={connection.unreachable
+            ? {
+                summary: CHAT_COPY.notSent.unreachable,
+                retryDisabled: true,
+                retryNote: CHAT_COPY.notSent.retryNote,
+              }
+            : { summary: CHAT_COPY.notSent.online }}
+          disabled={session.disconnected || gone || answerHeld}
+          composerHint={false}
+          composerPlaceholder={answering
+            ? numberedChoices > 0
+              ? CHAT_COPY.composer.answerPlaceholder
+              : CHAT_COPY.questionAnswerLabel
+            : CHAT_COPY.composer.placeholder(agentShown)}
+          {composerStatus}
+          composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
+          composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
+          composerFooter={!choosing
+            ? undefined
+            : startFailure !== undefined
+              ? newChatFailed
+              : !phone.current && !fromWorkflows && !startingFirstMessage
+                ? newChatChoices
+                : undefined}
+          composerStarting={startingFirstMessage ? CHAT_COPY.newChatWelcome.starting : undefined}
+          clearComposerOnSubmit={!choosing}
+          composerPlacement={choosing && !phone.current ? 'centered' : 'docked'}
+          composerFormattingToolbar
+          composerAnswering={answering}
+          streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
+          capabilities={{
+            attachments: attachable && !gone,
+            // The transcript offers Branch on a message and no Edit: editing a sent message is a
+            // fork, which Branch on that message is.
+            editing: false,
+            quote: true,
+          }}
+          uploadAttachment={upload}
+          acceptedTypes={settings?.acceptedTypes ?? []}
+          maxFileSize={settings?.maxFileSize}
+          formatAttachmentError={chatAttachmentErrorMessage}
+        >
+          {#snippet trailing()}
+            {#each shownRequests as request (request.interruptId)}
+              <div class="weft-chat-question" data-interrupt={request.interruptId}>
+                <p class="weft-chat-question__prompt">
+                  <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
+                  {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+                </p>
+                <div bind:this={questionElement} data-question-answer-region>
+                  <ChatQuestion
+                    {...{ 'data-changes': true }}
+                    id={`chat-question-${request.interruptId}`}
+                    schema={request.schema ?? FREE_TEXT_SCHEMA}
+                    answerInComposer
+                    busy={session.attaching}
+                    uploadFile={uploadQuestionFile}
+                    undoMilliseconds={answerUndoMilliseconds()}
+                    onHoldChange={(held) => (answerHeld = held)}
+                    onSubmit={async (value) => {
+                      sentRequest = request;
+                      const taken = await session.answerQuestion(request.interruptId, value);
+                      // An answer the session did not take leaves the question open, not "answered".
+                      if (!taken) sentRequest = undefined;
+                      return taken;
                     }}
                   />
+                </div>
+                {#if numberedChoices > 0}
+                  <p class="weft-chat-question__hint">{CHAT_COPY.pickHint(numberedChoices)}</p>
                 {/if}
-              {/snippet}
-            </ToolCalls>
-            <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
-            {#each group.messageIds as rowId (rowId)}
-              {@const held = shown.messages[rowId]}
-              {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
-              {#each notes as note (note.id)}
-                <ChatNote
-                  {note}
-                  action={note.kind === 'stopped' && note.id === retryNoteId
-                    ? noteAction
-                    : undefined}
-                />
-              {/each}
+              </div>
             {/each}
-          {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
-            <!-- A message of only files has no bubble to show. A row with no file is Chat's own. A
+          {/snippet}
+          {#snippet composerControls({ folded })}
+            {#if folded}
+              <ComposerSettings>{@render settingControls()}</ComposerSettings>
+            {:else}
+              {@render settingControls()}
+            {/if}
+          {/snippet}
+          {#snippet composerActions()}
+            {#if !choosing && usesModel}
+              <ContextMeter report={contextWindow.data} failed={contextWindow.isError} />
+            {/if}
+          {/snippet}
+          {#snippet messageActions({ message })}
+            {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
+            {@const branchAt = branchTargetOf(message)}
+            {#if replyStep !== undefined && !session.streaming}
+              {@const replyModel = replyModelName(message.metadata)}
+              {#if replyModel !== undefined}
+                <span class="weft-chat-model">{replyModel}</span>
+              {/if}
+              <ReplyDetails
+                runId={replyStep.runId}
+                step={replyStep.step}
+                usage={session.usage.get(replyStep.runId)}
+              />
+            {/if}
+            {#if branchAt !== undefined}
+              <Button
+                data-changes
+                type="button"
+                class="chat-message-action-button"
+                size="xs"
+                variant="ghost"
+                aria-label={message.role === 'user'
+                  ? CHAT_COPY.branch.before
+                  : CHAT_COPY.branch.action}
+                disabled={branching}
+                onclick={() => void branchThrough(branchAt.messageId)}
+              >
+                <GitBranch class="cinder-icon-xs" />
+                {CHAT_COPY.branch.short}
+              </Button>
+            {/if}
+          {/snippet}
+          {#snippet noteAction(note: MessageNoteInfo)}
+            {#if note.id === retryNoteId}
+              <Button
+                data-changes
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!session.canRetryTurn}
+                onclick={() => void retryTurn()}
+                label={CHAT_COPY.stopLine.retry}
+              />
+            {/if}
+          {/snippet}
+          {#snippet row({ message }, renderDefault)}
+            {@const group = activity.groups.get(message.id)}
+            {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
+            {#if group !== undefined}
+              <!-- ToolCalls is never keyed on its entries' states: a remount on each step would drop the
+              focus on the row a person is using and the panel's return target. -->
+              <ToolCalls
+                id={`tools-${message.id}`}
+                entries={group.entries.map(displayEntry)}
+                decided={decisionContext}
+                selectedId={selectedCallId}
+                onSelect={selectCall}
+                opensPanel={(entry) =>
+                  chatToolPanelFor(entry) !== undefined &&
+                  structuredResultText(entry) !== undefined}
+                endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
+                duration={group.durationMilliseconds === undefined
+                  ? undefined
+                  : formatCallDuration(group.durationMilliseconds)}
+              >
+                {#snippet decision(entry)}
+                  {@const asked = approvalsByCall.get(entry.callId)}
+                  {@const expired =
+                    entry.state === 'expired' ||
+                    (entry.approvalExpiresAt !== undefined &&
+                      session.clock.now() >= entry.approvalExpiresAt)}
+                  {#if entry.decision !== undefined || asked !== undefined}
+                    {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
+                      <ChatApproval
+                        id={`tools-${message.id}-${entry.callId}`}
+                        {entry}
+                        question={asked?.question ?? ''}
+                        source={agentShown}
+                        unavailableReason={agentUnavailable
+                          ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
+                          : entry.lapsed === true
+                            ? CHAT_COPY.approval.lapsed
+                            : undefined}
+                        providerNote={noProvider && availability?.kind !== 'unconfigured'
+                          ? CHAT_COPY.approval.continuesOnProvider(agentShown)
+                          : undefined}
+                        requestedAt={asked?.requestedAt}
+                        alwaysAsks={asked?.alwaysAsks}
+                        {...asked?.action?.expiresAt === undefined
+                          ? {}
+                          : { expiresAt: asked.action.expiresAt }}
+                        {...entry.approvalExpiresAt === undefined
+                          ? {}
+                          : { expiresAt: new Date(entry.approvalExpiresAt).toISOString() }}
+                        context={decisionContext}
+                        unreachable={connection.unreachable}
+                        onAskAgain={expired ? () => void askAgain(entry) : undefined}
+                        resolving={deciding || session.streaming
+                          ? (decidingAs ?? 'approve')
+                          : undefined}
+                        onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
+                      />
+                    {/key}
+                  {/if}
+                {/snippet}
+                {#snippet mcpApp(entry)}
+                  {@const panel = chatToolPanelFor(entry)}
+                  {@const resultText = structuredResultText(entry)}
+                  {#if panel !== undefined && entry.state === 'done' && resultText !== undefined}
+                    {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
+                    {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
+                    <McpApp
+                      resourceUri={panel.uri}
+                      title={panel.title}
+                      {loadResource}
+                      {onToolCall}
+                      hostContext={mcpHostContext}
+                      maxHeight={560}
+                      toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
+                      toolResult={{
+                        content: [],
+                        structuredContent: resultText,
+                      }}
+                    />
+                  {/if}
+                {/snippet}
+              </ToolCalls>
+              <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
+              {#each group.messageIds as rowId (rowId)}
+                {@const held = shown.messages[rowId]}
+                {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
+                {#each notes as note (note.id)}
+                  <ChatNote
+                    {note}
+                    action={note.kind === 'stopped' && note.id === retryNoteId
+                      ? noteAction
+                      : undefined}
+                  />
+                {/each}
+              {/each}
+            {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
+              <!-- A message of only files has no bubble to show. A row with no file is Chat's own. A
                later call of a run of tool rows is shown with the first (`tool-activity.ts`). -->
-            {@render renderDefault()}
-          {/if}
-          <ChatAssets {assets} role={message.role === 'user' ? 'user' : 'assistant'} />
-        {/snippet}
-        {#snippet messagePart(part, renderDefault)}
-          {#if part.type !== 'tool-approval'}
-            {@render renderDefault(part)}
-          {/if}
-        {/snippet}
-      </Chat>
-    </div>
+              {@render renderDefault()}
+            {/if}
+            <ChatAssets {assets} role={message.role === 'user' ? 'user' : 'assistant'} />
+          {/snippet}
+          {#snippet messagePart(part, renderDefault)}
+            {#if part.type !== 'tool-approval'}
+              {@render renderDefault(part)}
+            {/if}
+          {/snippet}
+        </Chat>
+      </div>
+    {/if}
     <!-- Model, Effort and Permissions: the live session's, or, on a new chat, the person's choices
        before it has a session (applied once the first message has started it). Rendered once, in
        the row or folded into the one Settings control. -->

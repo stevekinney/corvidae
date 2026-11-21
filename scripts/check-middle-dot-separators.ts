@@ -90,7 +90,23 @@ const MIDDLE_DOT_PATTERN = new RegExp(
   ].join('|'),
   'i',
 );
+// In a stylesheet every CSS escape of the glyph counts: `\b7`, `\0b7` and `\00b7` all draw it in a
+// `content` value. Outside one, `\b7` with fewer than two zeros is usually a regular expression's
+// word boundary before a 7, so only stylesheets and Svelte `<style>` blocks are held to this one.
+const STYLESHEET_ESCAPE = /\\0{0,4}b7(?![0-9a-f])/i;
+const STYLE_OPEN = /<style[\s>]/i;
+const STYLE_CLOSE = /<\/style>/i;
 const ALLOW_MARKER = /middle-dot-allowed:\s*(\S.{18,}\S)/;
+
+/** What kind of file a source is, which decides which escapes of the glyph it can draw. */
+export type ScannedKind = 'stylesheet' | 'component' | 'other';
+
+/** The kind of file at `path`: a stylesheet, a component with `<style>` blocks, or anything else. */
+export function scannedKindOf(path: string): ScannedKind {
+  if (/\.(?:css|scss|pcss|postcss)$/i.test(path)) return 'stylesheet';
+  if (/\.(?:svelte|html|vue)$/i.test(path)) return 'component';
+  return 'other';
+}
 
 /** The failure message's advice: no glyph and no comma, a space plus a weight or colour step. */
 export const FAILURE_ADVICE =
@@ -103,12 +119,23 @@ export const FAILURE_ADVICE =
 
 export type MiddleDotViolation = { line: number; text: string };
 
-/** Every line of `source` that holds a middle dot, except one carrying an allow marker with a reason. */
-export function findMiddleDotSeparators(source: string): MiddleDotViolation[] {
+/**
+ * Every line of `source` that holds a middle dot, except one carrying an allow marker with a
+ * reason. A stylesheet, and the `<style>` blocks of a component, are also searched for every CSS
+ * escape of the glyph (`\b7`, `\0b7`), which a `content` value draws as the dot.
+ */
+export function findMiddleDotSeparators(
+  source: string,
+  kind: ScannedKind = 'other',
+): MiddleDotViolation[] {
   const lines = source.split('\n');
   const violations: MiddleDotViolation[] = [];
+  let inStyle = kind === 'stylesheet';
   lines.forEach((text, index) => {
-    if (!MIDDLE_DOT_PATTERN.test(text)) return;
+    if (kind === 'component' && STYLE_OPEN.test(text)) inStyle = true;
+    const styled = inStyle;
+    if (kind === 'component' && STYLE_CLOSE.test(text)) inStyle = false;
+    if (!MIDDLE_DOT_PATTERN.test(text) && !(styled && STYLESHEET_ESCAPE.test(text))) return;
     if (ALLOW_MARKER.test(text) || ALLOW_MARKER.test(lines[index - 1] ?? '')) return;
     violations.push({ line: index + 1, text: text.trim() });
   });
@@ -138,7 +165,7 @@ async function scan(): Promise<string[]> {
   for (const path of paths.toSorted()) {
     const source = await Bun.file(path).text();
     if (source.includes('\u0000')) continue;
-    for (const violation of findMiddleDotSeparators(source)) {
+    for (const violation of findMiddleDotSeparators(source, scannedKindOf(path))) {
       const text =
         violation.text.length > 120 ? `${violation.text.slice(0, 117)}...` : violation.text;
       findings.push(`${relative(root, path)}:${violation.line} - ${text}`);

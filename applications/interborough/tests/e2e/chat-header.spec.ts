@@ -9,10 +9,10 @@
  */
 import type { Page } from '@playwright/test';
 
-import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
 import { hideModelPicker, newThreadId, revealSettings, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -23,7 +23,8 @@ const VIEWPORTS = [
   { width: 1280, height: 800 },
 ] as const;
 
-const [SONNET, HAIKU] = MODEL_SWITCHER_MODELS;
+const SONNET_LABEL = 'Claude Sonnet 5';
+const HAIKU_LABEL = 'Claude Haiku 4.5';
 
 const model = (page: Page) => page.getByRole('combobox', { name: 'Model' });
 const effort = (page: Page) => page.getByRole('combobox', { name: 'Effort' });
@@ -53,13 +54,13 @@ for (const viewport of VIEWPORTS) {
     await open(page, request, 'demo:model-switcher');
     // A composer too narrow for the three values in full folds them into one Settings control; open it.
     await revealSettings(page, [
-      { name: 'Model', text: SONNET.model },
+      { name: 'Model', text: SONNET_LABEL },
       { name: 'Effort', text: 'Agent default' },
       { name: /Permissions/, text: 'On changes asks' },
     ]);
 
     // The composer says what the chat runs with before anything was changed.
-    await expect(model(page)).toContainText(SONNET.model);
+    await expect(model(page)).toContainText(SONNET_LABEL);
     await expect(effort(page)).toContainText('Agent default');
     await expect(permission(page)).toContainText('On changes asks');
     await checkA11y(`the chat composer, at ${viewport.width} pixels`);
@@ -71,8 +72,8 @@ for (const viewport of VIEWPORTS) {
     await expect(note(page)).toHaveText('Permissions Read-only applies to the next run.');
 
     // So does the model.
-    await choose(page, model(page), HAIKU.model);
-    await expect(model(page)).toContainText(HAIKU.model);
+    await choose(page, model(page), HAIKU_LABEL);
+    await expect(model(page)).toContainText(HAIKU_LABEL);
     await expect(model(page)).toBeEnabled();
 
     // A reload shows the chat kept both.
@@ -80,10 +81,10 @@ for (const viewport of VIEWPORTS) {
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await revealSettings(page, [
       { name: /Permissions/, text: 'Read-only' },
-      { name: 'Model', text: HAIKU.model },
+      { name: 'Model', text: HAIKU_LABEL },
     ]);
     await expect(permission(page)).toContainText('Read-only');
-    await expect(model(page)).toContainText(HAIKU.model);
+    await expect(model(page)).toContainText(HAIKU_LABEL);
     await checkA11y(`the chat composer after changes, at ${viewport.width} pixels`);
   });
 
@@ -95,11 +96,14 @@ for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
     await open(page, request, 'demo:model-switcher');
 
-    const ring = page.locator('.weft-context-ring');
-    await expect(ring).toBeVisible();
-    await expect(ring).toHaveAttribute('aria-label', /^Context window: .* Opens the breakdown$/);
+    // One meter, by Send in the composer, reading a percentage (COR-2438); the header has none.
+    await expect(page.locator('[data-testid="chat-header"] .weft-context-meter')).toHaveCount(0);
+    const meter = page.locator('.chat-input-footer-right .weft-context-meter');
+    await expect(meter).toBeVisible();
+    await expect(meter).toHaveAttribute('aria-label', /^Context window: .* Opens the breakdown$/);
+    await expect(meter.locator('.weft-context-meter__reading')).toHaveText(/^\d+%$/);
 
-    await ring.click();
+    await meter.click();
     const panel = page.getByTestId('context-window');
     await expect(panel).toBeVisible();
     await expect(panel.locator('[data-category]')).toHaveCount(5);
@@ -114,7 +118,7 @@ test('changes the effort, says when it applies, and keeps it across a reload', a
 }) => {
   await open(page, request, 'demo:model-switcher');
   await revealSettings(page, [
-    { name: 'Model', text: SONNET.model },
+    { name: 'Model', text: SONNET_LABEL },
     { name: 'Effort', text: 'Agent default' },
   ]);
 
@@ -126,7 +130,7 @@ test('changes the effort, says when it applies, and keeps it across a reload', a
   await page.reload();
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await revealSettings(page, [
-    { name: 'Model', text: SONNET.model },
+    { name: 'Model', text: SONNET_LABEL },
     { name: 'Effort', text: 'Low' },
   ]);
   await expect(effort(page)).toContainText('Low');
@@ -137,8 +141,8 @@ test('shows the model of an agent that allows one, or none, though it offers no 
   request,
 }) => {
   await open(page, request, SINGLE_MODEL_AGENT_NAME);
-  await revealSettings(page, [{ name: 'Model', text: SONNET.model }]);
-  await expect(model(page)).toContainText(SONNET.model);
+  await revealSettings(page, [{ name: 'Model', text: SONNET_LABEL }]);
+  await expect(model(page)).toContainText(SONNET_LABEL);
   await expect(model(page)).toBeDisabled();
 
   // A scripted agent runs on no model, so its composer has Permissions only.
@@ -218,6 +222,126 @@ for (const viewport of VIEWPORTS) {
     await expect(header(page).getByRole('heading', { level: 1 })).toHaveText('Quarterly plan');
     const renamed = await bureauCall(request, 'bureau.contexts.get', { contextId: threadId });
     expect(renamed.result).toMatchObject({ title: 'Quarterly plan' });
+  });
+}
+
+/**
+ * In one layout: the vertical centre of the first line box of the chat's title, measured on its
+ * words rather than the h1, how many lines show and whether words are cut off, the More menu's
+ * centre, the status Badge's box and tone, and the header band's rule against the route's edges.
+ */
+async function headerCentres(page: Page) {
+  return header(page).evaluate((root, moreLabel) => {
+    const heading = root.querySelector('h1');
+    if (heading === null) throw new Error('The header has no title.');
+    const headingBox = heading.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    const rects = [...range.getClientRects()].filter((rect) => rect.height > 0);
+    const first = rects[0];
+    if (first === undefined) throw new Error('The title has no line boxes.');
+    // A clamped title lays out its hidden lines too: only the lines inside the heading show. A line
+    // is inside when its centre is: a glyph box is taller than the title's tight line (28px against
+    // 27.6px at 1280), so the first hidden line's top sits just above the heading's bottom edge.
+    const shown = rects.filter((rect) => rect.top + rect.height / 2 < headingBox.bottom);
+    const more = [...root.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === moreLabel,
+    );
+    if (more === undefined) throw new Error('The More menu is missing.');
+    const moreBox = more.getBoundingClientRect();
+    const badge = root.querySelector('.cinder-page-header__status .cinder-badge');
+    const badgeBox = badge?.getBoundingClientRect();
+    const band = root.closest('.weft-chat-head');
+    const route = root.closest('.weft-chat-route');
+    const bandBox = band?.getBoundingClientRect();
+    const routeBox = route?.getBoundingClientRect();
+    return {
+      title: first.top + first.height / 2,
+      titleBottom: first.bottom,
+      headingBottom: headingBox.bottom,
+      lines: new Set(shown.map((rect) => Math.round(rect.top))).size,
+      cut: rects.length > shown.length || heading.scrollWidth > heading.clientWidth + 0.5,
+      more: moreBox.top + moreBox.height / 2,
+      status:
+        badgeBox === undefined
+          ? undefined
+          : {
+              centre: badgeBox.top + badgeBox.height / 2,
+              top: badgeBox.top,
+              tone: badge?.getAttribute('data-cinder-variant') ?? '',
+              dot: root.querySelector('.cinder-page-header__status .cinder-status-dot') !== null,
+            },
+      rule:
+        band === null || route === null || bandBox === undefined || routeBox === undefined
+          ? undefined
+          : {
+              width: getComputedStyle(band).borderBottomWidth,
+              left: bandBox.left - routeBox.left,
+              right: routeBox.right - bandBox.right,
+            },
+      boxed: getComputedStyle(root).borderTopWidth !== '0px',
+    };
+  }, MORE.label);
+}
+
+// COR-2438: the title keeps one line and takes the free space first; the More menu shares the
+// centre of its line, and the status Badge does too while it fits beside the title, or else sits
+// under it. No box frames the header, and its rule runs edge to edge of the conversation pane.
+// 768 and 375 are the narrow header, where the status sits under the one-line title and the More
+// menu keeps the title's line (the review captured it on the status's line, 30px lower).
+for (const width of [1280, 1920, 900, 768, 375]) {
+  test(`keeps the title to one line, the More menu and the status on its centre line or the status under it, at ${width} pixels`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const threadId = newThreadId('header-align');
+    await runToEnd(
+      request,
+      'demo:model-switcher',
+      threadId,
+      'Which agents are on this Bureau? Use your discover-agents tool to find out, then list each of them with what it does and who may run it.',
+    );
+    await page.goto(`/chats/${threadId}`);
+    await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+    await expect(moreButton(page)).toBeVisible();
+    await expect(
+      page.getByTestId('chat-header').locator('.cinder-page-header__status .cinder-badge'),
+    ).toHaveText('Done');
+
+    const measured = await headerCentres(page);
+    // 18a: one line, cut with an ellipsis, the full title in its tooltip.
+    expect(measured.lines).toBe(1);
+    expect(measured.cut).toBe(true);
+    // 18f and 15: the More menu centres on the title's first line.
+    expect(
+      Math.abs(measured.more - measured.title),
+      `More at ${measured.more}, the title's first line at ${measured.title}`,
+    ).toBeLessThanOrEqual(2);
+    // 18b: the status is a Badge, never a dot; beside the title it shares the line, or it is under.
+    expect(measured.status).toBeDefined();
+    expect(measured.status!.dot).toBe(false);
+    expect(measured.status!.tone).toBe('success');
+    if (measured.status!.top < measured.titleBottom) {
+      expect(Math.abs(measured.status!.centre - measured.title)).toBeLessThanOrEqual(2);
+    } else {
+      expect(measured.status!.top).toBeGreaterThanOrEqual(measured.headingBottom - 0.5);
+    }
+    // 18e: no box, and the rule spans the pane.
+    expect(measured.boxed).toBe(false);
+    expect(measured.rule).toBeDefined();
+    expect(measured.rule!.width).toBe('1px');
+    expect(Math.abs(measured.rule!.left)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(measured.rule!.right)).toBeLessThanOrEqual(0.5);
+    // 18d and 19: one meter, by Send, reading a percentage.
+    await expect(header(page).locator('.weft-context-meter, .weft-context-ring')).toHaveCount(0);
+    await expect(page.locator('.chat-input-footer-right .weft-context-meter')).toHaveCount(1);
+    await expect(page.locator('.chat-input-hint')).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: `header with a long title at ${width} pixels`,
+      source: 'tests/e2e/chat-header.spec.ts',
+    });
   });
 }
 

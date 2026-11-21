@@ -114,8 +114,8 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    * List header, above the rows: the title, the count, the create action, the search and the
    * filter. Put the title and the create action on their own row and the filter below at full
    * width, so the action never reads as the filter's submit button. The toggle that hides the list
-   * (`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and the
-   * header's first row, whatever it holds, starts after it.
+   * (`listCollapsible`) is not part of it: ListDetail draws it as a handle on the divider, so the
+   * header keeps its whole width.
    */
   header?: Snippet;
   /**
@@ -215,12 +215,13 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   maximumListWidth?: number;
   /**
    * Offers a toggle that hides the list pane while the panes sit side by side or one above the
-   * other, so the detail takes the whole width. The toggle is one control in one place, the start
-   * corner of the list's header, which is also where a narrow rail holds it once the list is hidden
-   * (no rail is drawn while the list shows), so it is always on screen, never beside the header's
-   * own actions, and does not move or lose focus as it flips. It is drawn with or without an open
-   * item, so its corner is never empty; hidden with nothing open, the detail shows its empty state.
-   * Below `pushBelow`, where one pane shows at a time, there is nothing to hide.
+   * other, so the detail takes the whole width. The toggle is one control: while the list shows, a
+   * handle on the divider inside the list pane, shown on hover and focus (always on a touch screen)
+   * and always reachable by keyboard, never in the header beside its title or its actions; once the
+   * list is hidden, the top of a narrow rail that holds its place, so the way back is always on
+   * screen. It stays mounted, so it keeps focus as it flips. It is drawn with or without an open
+   * item; hidden with nothing open, the detail shows its empty state. Below `pushBelow`, where one
+   * pane shows at a time, there is nothing to hide.
    * @default false
    */
   listCollapsible?: boolean;

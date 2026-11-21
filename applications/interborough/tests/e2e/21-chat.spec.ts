@@ -238,7 +238,7 @@ test.describe('a tool call', () => {
 
     const lookup = page.locator('[data-cinder-tool-call-row]').filter({ hasText: 'Lookup order' });
     await expect(lookup).toContainText('order-1001');
-    await expect(lookup).toContainText('status delivered');
+    await expect(lookup).toContainText('Status delivered');
     const box = await lookup.boundingBox();
     expect(box?.height ?? 999).toBeLessThanOrEqual(48);
     // Choosing the row opens what the call was given and what it answered in the call's panel,

@@ -8,23 +8,27 @@ Review earns its keep on product concurrency changes, one-way doors, and diffs a
 
 - The reviewer invokes no skills, including harness skills such as Claude Code's built-in `code-review`, which apply edits, and uses no file-editing tools. It records `git status --porcelain` and `git rev-parse HEAD` at the start and end, and the review fails if either differs.- The reviewer reads [the defect classes](defect-classes.md) first and starts where the worker's defect-class report says a class applies. For a wrapper, adapter, or delegation change it checks that every property of the wrapped object (approval policy, idempotency, gating, identity, context binding) survives.
 - A one-way-door review covers only the doors the change alters (a persisted format, a wire protocol, an authorization rule, a published surface) and runs after the primary review settles, unless the door is the change's main risk. A mechanical correction is verified at the economical tier.
-- A change to Interborough's interface or Cinder also carries the `design-reviewer` verdict AGENTS.md "Workflow" requires, which you obtain (see "Accepting a submission"); it sits beside the correctness review and replaces none of it.
+- A change to Interborough's interface or Cinder also carries the `design-reviewer` verdict AGENTS.md "Workflow" requires, which you obtain below; it sits beside the correctness review and replaces none of it.
 
 ## Accepting a submission
 
-A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.ts` is clean. Kill only processes you can attribute to this run by recorded PID. Acceptance authorizes delivery; a correction request is not acceptance, and the corrected head comes back as a new `ready-for-review`.
+A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.ts` is clean. Kill only processes you can attribute to this run by recorded PID. Acceptance authorizes delivery; a correction request is not acceptance, and a corrected head returns as a new `ready-for-review`.
 
 - Every acceptance criterion has one status (Implemented, Verified, Failed, Blocked, Not verified). A Failed one goes back as a correction, and an Implemented one needs its check run first. For a long criteria list, or one written outside this run, have the `stickler` agent audit it clause by clause.
-- An issue that names design rows: the worker runs no capture; it returns `ready-for-review` naming the rows it implemented and the screens it changed. You run `bun scripts/design-review-capture.ts` (in `applications/interborough`, one capture at a time, under host admission) and get one `row-id | verdict | evidence` line per row from the read-only `design-reviewer`. Only `matches`, or a `deferred` the issue records with a reason, passes; an `unverified` or failing row goes back to the worker as a correction. A departure from a board is a defect, never style.
-- A filtered gate speaks only for the workspaces it names; require evidence for every repository-level gate the change can reach. A green result can be a false witness (a replayed cache, an assertion whose subject no longer renders): assert on a captured exit status, and say whether it came from a fresh run or a replay.
+- An issue that names design rows: the worker runs no capture; it returns `ready-for-review` naming the rows it implemented and the screens it changed. You run `bun scripts/design-review-capture.ts` (in `applications/interborough`, one capture at a time, under host admission) and get one `row-id | verdict | evidence` line per row from the read-only `design-reviewer`. Only `matches`, or a `deferred` the issue records with a reason, passes; an `unverified` or failing row goes back as a correction. A departure from a board is a defect, never style.
+- A filtered gate speaks only for the workspaces it names; require evidence for every repository-level gate the change can reach. A green result can be a false witness (a replayed cache, an assertion whose subject no longer renders): assert on a captured exit status, and say whether it was a fresh run or a replay.
 - If a worker crosses its authority boundary, stop it, inspect the actual effects, and record the incident before recovery.
+
+## Delivery requests
+
+`delivery-request.ts prepare` writes the request `deliver.ts` lands from, records your approval, and dispatches its one bound run; `check` dry-runs landing's verification. Details, dead ends and the report ledger: [delivery requests](../../../../documentation/repository/delivery-requests.md).
 
 ## Exit codes
 
 `bun scripts/chef/deliver.ts` exits 0 merged, 1 at a named step, and 2 on usage; its header defines every step. The skill covers `threads`, `conflict`, `revert`, `guards`, `head`, and `merge`. The rest:
 
 - `mergeable`: GitHub's mergeability stayed `UNKNOWN`; launch it again shortly.
-- `issue`: the merge happened, and a Linear comment or state change failed for the named issue; repair that issue with `bun scripts/chef/linear.ts comment <ID> --file <md>` or `bun scripts/chef/linear.ts state <ID> Done`, and do not relaunch.
+- `issue`: merged, but a Linear write failed for the named issue; repair it with `bun scripts/chef/linear.ts comment <ID> --file <md>` or `bun scripts/chef/linear.ts state <ID> Done`, and do not relaunch.
 - A delivery removes its worktree, or prints `worktree kept: <why>`, logs the head in `tmp/chef/delivered-heads.log`, sweeps; close batches with `worktree.ts stale --remove`.
 
 A red `main` is a warning line in the report (`mainHealthWarning` in the JSON), never a refusal.
@@ -35,10 +39,10 @@ Run `bun scripts/chef/gate-run.ts triage <log> --base <sha>` first, where `<sha>
 
 For anything ambiguous (a task several changes touched, a failure in a file none of them changed, a load-sensitive test), run `bun scripts/chef/gate-run.ts control --candidate <dir> --base <dir> --command <shell>` under the same load. Candidate fails and base passes: the candidate caused it. Both fail the same way: it is pre-existing and gets its own issue. Inconclusive: widen the control. Never rerun a gate until it passes in place of a control.
 
-A full `validate` taken as an exception runs on GitHub once the head is accepted: push the branch, run `bun scripts/chef/targeted-run.ts` (its full run has its own concurrency group, so it never replaces a pending `main` run), and read it with `gh run list --workflow main.yml --branch <branch> --limit 1`.
+A full `validate` taken as an exception runs on GitHub: push the branch, run `bun scripts/chef/targeted-run.ts` (its full run never replaces a pending `main` run), and read it with `gh run list --workflow main.yml --branch <branch> --limit 1`.
 
 ## Preflights
 
-Before every correction dispatch or delivery, read `gh pr view <number> --json state,headRefOid,mergedAt,url` for a pull request, `bun scripts/chef/linear.ts read <ID> --json`, and the worktree's `git status --porcelain` and `git rev-parse HEAD`, and compare them with the note. If the change merged, the issue closed, or the head moved elsewhere, stop the stale dispatch and reconcile. Read threads with `bun scripts/chef/review-threads.ts list --pr <number>` and a gate verdict with `bun scripts/chef/gate-run.ts read <log> --json`.
+Before every correction dispatch or delivery, read `gh pr view <number> --json state,headRefOid,mergedAt,url` for a pull request, `bun scripts/chef/linear.ts read <ID> --json`, and the worktree's `git status --porcelain` and `git rev-parse HEAD`, and compare them with the note. If the change merged, the issue closed, or the head moved, stop the stale dispatch and reconcile. Read threads with `bun scripts/chef/review-threads.ts list --pr <number>` and a gate verdict with `bun scripts/chef/gate-run.ts read <log> --json`.
 
-Move an issue to Done only when its boundary is proven (publication, deployment, and adoption verified against the real artifact), with the comment shapes and read-back rule in [the Linear policy](linear-policy.md). Close a requested project only when every required child passes, and never close a whole project when only some of its issues were requested.
+Move an issue to Done only when its boundary is proven (publication, deployment, and adoption verified against the real artifact), with the comment shapes and read-back rule in [the Linear policy](linear-policy.md). Close a requested project only when every required child passes, never when only some of its issues were requested.
