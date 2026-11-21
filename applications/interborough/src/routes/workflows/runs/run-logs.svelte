@@ -69,7 +69,6 @@
       {:else if logs.data === undefined || logs.data.lines.length === 0}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={3}
           title={RUN_LOGS_COPY.emptyTitle}
           description={RUN_LOGS_COPY.emptyDescription}

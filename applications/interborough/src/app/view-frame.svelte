@@ -36,15 +36,7 @@
    */
   import { untrack, type Snippet } from 'svelte';
 
-  import {
-    Button,
-    EmptyState,
-    ErrorState,
-    PageHeader,
-    RelativeTime,
-    Skeleton,
-  } from '@lostgradient/cinder';
-  import { Bot, Inbox, Plus } from '@lucide/svelte';
+  import { ErrorState, PageHeader, RelativeTime, Skeleton } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
@@ -55,10 +47,12 @@
   import HealthFrame from '../routes/health/health-frame.svelte';
   import { getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
+  import { AGENT_EDITOR_COPY, AGENTS_COPY } from './copy/agents.ts';
   import { CHAT_COPY } from './copy/chat.ts';
   import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL } from './copy/views.ts';
   import { VIEW_COPY } from './copy/view-pages.ts';
   import ForbiddenState from './forbidden-state.svelte';
+  import ListPageEmpty from './list-page-empty.svelte';
   import NotFoundState from './not-found-state.svelte';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
@@ -261,15 +255,7 @@
     wasCreating = now;
   });
 
-  // The title says which view is locked. The scope that would open it is named small beneath: the
-  // engine scopes the view is gated on (any one opens it), else the scope the Bureau needs for the
-  // view's data, else nothing, because a refusal that names no scope is not guessed at.
   const forbiddenTitle = $derived(forbiddenCopy?.title ?? copy.forbidden.title);
-  const forbiddenRequirement = $derived(
-    definition.scopes.length > 0
-      ? definition.scopes.join(' or ')
-      : (forbiddenCopy?.requirement ?? copy.forbidden.requirement),
-  );
 
   function navigateTo(event: MouseEvent, href: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
@@ -347,57 +333,45 @@
     {#if refreshFailed && !connection.unreachable}
       {@render refreshError()}
     {/if}
+    <!-- The one list-page empty state (owner report, 2026-11-19): the view's own sidebar icon and its
+         action as a button, never a text link or the generic inbox. -->
+    {@const emptyAction = emptyCopy.action}
     {#if startsNewChat}
       <!-- No agent to start a chat with is the Agents first-use state, not a composer (design row 24q). -->
-      <EmptyState
-        class="weft-view__empty"
+      <ListPageEmpty
+        view="agents"
         title={emptyCopy.title}
         description={emptyCopy.description}
         headingLevel={1}
-        kind="first-use"
-      >
-        {#snippet icon()}<Bot size={28} aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          {#if emptyCopy.action}
-            {@const emptyAction = emptyCopy.action}
-            <div class="weft-view__actions">
-              <Button
-                variant="primary"
-                href={router.href(emptyAction.href)}
-                onclick={(event) => navigateTo(event, emptyAction.href)}
-              >
-                {#snippet leadingIcon()}<Plus size={16} aria-hidden="true" />{/snippet}
-                {emptyAction.label}
-              </Button>
-              <Button
-                variant="secondary"
-                href={router.href('/agents')}
-                onclick={(event) => navigateTo(event, '/agents')}>{CHAT_COPY.browseAgents}</Button
-              >
-            </div>
-          {/if}
-        {/snippet}
-      </EmptyState>
+        create={emptyAction === undefined
+          ? undefined
+          : {
+              label: emptyAction.label,
+              href: router.href(emptyAction.href),
+              onclick: (event) => navigateTo(event, emptyAction.href),
+            }}
+        secondary={[
+          {
+            label: CHAT_COPY.browseAgents,
+            href: router.href('/agents'),
+            onclick: (event) => navigateTo(event, '/agents'),
+          },
+        ]}
+      />
     {:else}
-      <EmptyState
-        class="weft-view__empty"
+      <ListPageEmpty
+        view={initial.view}
         title={emptyCopy.title}
         description={emptyCopy.description}
         headingLevel={1}
-        kind="first-use"
-      >
-        {#snippet icon()}<Inbox size={28} aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          {#if emptyCopy.action}
-            {@const emptyAction = emptyCopy.action}
-            <a
-              class="weft-view__action"
-              href={router.href(emptyAction.href)}
-              onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</a
-            >
-          {/if}
-        {/snippet}
-      </EmptyState>
+        create={emptyAction === undefined
+          ? undefined
+          : {
+              label: emptyAction.label,
+              href: router.href(emptyAction.href),
+              onclick: (event) => navigateTo(event, emptyAction.href),
+            }}
+      />
     {/if}
   {:else if state === 'not-found' && notFoundCopy}
     <!-- A fault can say the missing thing in its own words, such as a plugin that is disabled. -->
@@ -415,6 +389,19 @@
   {:else if state === 'unreachable'}
     {@render failure(CONNECTION_COPY.page.title, CONNECTION_COPY.page.description)}
   {:else}
-    <ForbiddenState title={forbiddenTitle} requirement={forbiddenRequirement} />
+    {@const agentsList = initial.pattern === '/agents'}
+    {#if agentsList}
+      <PageHeader
+        title={copy.label}
+        description={AGENTS_COPY.subtitle}
+        headingLevel={1}
+        createAction={{
+          label: AGENT_EDITOR_COPY.newAction,
+          href: router.href('/agents/new'),
+          onclick: (event) => navigateTo(event, '/agents/new'),
+        }}
+      />
+    {/if}
+    <ForbiddenState title={forbiddenTitle} headingLevel={agentsList ? 2 : 1} />
   {/if}
 </div>

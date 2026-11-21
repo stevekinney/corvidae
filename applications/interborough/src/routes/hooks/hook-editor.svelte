@@ -1198,17 +1198,14 @@
                     title={copy.workflow.none}
                     description={copy.workflow.noneDescription}
                     headingLevel={3}
-                  >
-                    {#snippet action()}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        href={router.href('/workflows/new')}
-                        onclick={(event) => leave(event, '/workflows/new')}
-                        >{copy.workflow.create}</Button
-                      >
-                    {/snippet}
-                  </EmptyState>
+                    actions={[
+                      {
+                        label: copy.workflow.create,
+                        href: router.href('/workflows/new'),
+                        onclick: (event) => leave(event, '/workflows/new'),
+                      },
+                    ]}
+                  />
                 {:else}
                   <Select
                     id="ib-hook-workflow"
@@ -1344,9 +1341,11 @@
             {/if}
           </section>
         </form>
-        <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
-          <HookDeliveries hookId={isNew ? undefined : hookId} events={hook?.events ?? []} />
-        </aside>
+        {#if !isNew}
+          <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
+            <HookDeliveries {hookId} events={hook?.events ?? []} />
+          </aside>
+        {/if}
       </div>
     {/if}
   </section>

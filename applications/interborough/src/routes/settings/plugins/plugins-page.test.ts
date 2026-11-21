@@ -271,8 +271,8 @@ describe('the list', () => {
     const { container, getByRole } = open('linear');
     await loaded(container, 'linear');
 
-    const dot = rowOf(container, 'typesafe')!.querySelector('[data-cinder-status]');
-    expect(dot?.getAttribute('data-cinder-status')).toBe('neutral');
+    const badge = rowOf(container, 'typesafe')!.querySelector('.cinder-badge');
+    expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
     expect(container.querySelector('[data-testid="plugins-count"]')?.textContent?.trim()).toBe(
       `${PLUGINS_COPY.listHeader.heading} 6`,
     );
@@ -342,7 +342,8 @@ describe('a plugin', () => {
     expect(getByRole('switch', { name: PLUGINS_COPY.enabled }).getAttribute('aria-checked')).toBe(
       'true',
     );
-    expect(detail.textContent).toContain('/home/.interborough/plugins/linear');
+    expect(detail.textContent).not.toContain('/home/.interborough/plugins/linear');
+    expect(getByRole('button', { name: PLUGINS_COPY.copyLocation })).not.toBeNull();
     expect(detail.textContent).toContain(PLUGINS_COPY.sourceKind.folder);
     const adds = detail.querySelector('[data-testid="plugin-adds"]')!;
     expect(adds.textContent).toContain(PLUGINS_COPY.contributionKinds['tool']!);
@@ -368,7 +369,7 @@ describe('a plugin', () => {
     await loaded(container, 'linear');
     expect(
       detailOf(container).querySelector('[data-testid="plugin-in-use"]')?.textContent,
-    ).toContain('In use. 1 agent, 2 schedules and 1 waiting run use Linear.');
+    ).toContain('1 agent, 2 schedules and 1 waiting run use Linear.');
 
     await fireEvent.click(rowOf(container, 'anthropic')!);
     await waitFor(() =>
@@ -379,7 +380,7 @@ describe('a plugin', () => {
         .querySelector('[data-plugin-detail="anthropic"] [data-testid="plugin-in-use"]')
         ?.textContent?.replaceAll(/\s+/g, ' ')
         .trim(),
-    ).toBe('In use. Nothing uses Anthropic yet.');
+    ).toBe('Nothing uses Anthropic yet.');
   });
 
   test('lists the skills it ships under Skills', async () => {
@@ -459,7 +460,8 @@ describe('a plugin', () => {
     const detail = detailOf(container);
     expect(detail.textContent).toContain(PLUGINS_COPY.status.needsSetup);
     const secret = detail.querySelector<HTMLElement>('[data-secret="typesafe-api-key"]')!;
-    expect(secret.textContent).toContain('typesafe-api-key');
+    expect(secret.textContent).toContain('Typesafe API key');
+    expect(secret.textContent).not.toContain('typesafe-api-key');
     expect(secret.textContent).toContain(PLUGINS_COPY.secrets.missing);
     // One way to add it: the secret's own action, not a second card for the same thing.
     expect(container.querySelector('[data-plugin-problem]')).toBeNull();
@@ -1590,14 +1592,14 @@ describe('problems', () => {
       ).not.toBeNull(),
     );
     expect(container.querySelector('[data-plugin-detail]')?.textContent).toContain(
-      '/home/plugins/linear',
+      PLUGINS_COPY.sourceKind.folder,
     );
 
     await fireEvent.click(getByRole('button', { name: 'Show both' }));
 
     await waitFor(() =>
       expect(container.querySelector('[data-plugin-detail]')?.textContent).toContain(
-        '@lostgradient/plugin-linear',
+        PLUGINS_COPY.sourceKind.package,
       ),
     );
   });

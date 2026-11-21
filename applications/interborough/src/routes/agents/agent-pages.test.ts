@@ -314,9 +314,11 @@ describe('the list of agents', () => {
       container.querySelector('[data-cinder-kind="first-use"] a[href="/settings/plugins"]')
         ?.textContent,
     ).toContain('Add a plugin');
-    // The header keeps its subtitle and its secondary "+".
+    // The header keeps its subtitle and its labelled New agent.
     expect(container.textContent).toContain('Agents run your chats, goals and schedules.');
-    expect(container.querySelector('a[aria-label="New agent"]')).not.toBeNull();
+    expect(container.querySelector('.cinder-page-header__create')?.textContent?.trim()).toBe(
+      'New agent',
+    );
   });
 
   test('offers a compact line for the first agent of your own when only the host’s agents exist', async () => {

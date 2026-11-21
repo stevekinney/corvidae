@@ -165,12 +165,12 @@ test.describe('the records pages', () => {
   test.describe('on the host whose console is the Bureau’s own engine', () => {
     test.use({ baseURL: E2E_BUREAU_URL });
 
-    test('Internal workflows is a table of the types the Bureau runs itself, each with a line on what it does, reached from the card under the list', async ({
+    test('Internal workflows is a table of the types the Bureau runs itself, each with a line on what it does, reached from the header beside New workflow', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/workflows');
-      await page.getByTestId('internal-workflows-card').click();
+      await page.getByTestId('internal-workflows-action').click();
 
       await expect(page).toHaveURL(/\/internal-workflows$/);
       await expect(

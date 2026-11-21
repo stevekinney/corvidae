@@ -39,7 +39,7 @@
     StackedListItem,
     Tooltip,
   } from '@lostgradient/cinder';
-  import { ChevronLeft, ChevronRight, Download, Plus, ShieldAlert } from '@lucide/svelte';
+  import { Brain, ChevronLeft, ChevronRight, Download, Plus, ShieldAlert } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
@@ -541,7 +541,6 @@
       {:else if quarantinedView && base.length === 0}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={2}
           title={MEMORY_COPY.quarantinedView.empty.title}
           description={MEMORY_COPY.quarantinedView.empty.description}
@@ -549,7 +548,6 @@
           {#snippet action()}
             <Button
               variant="secondary"
-              size="sm"
               href={router.href(viewPath(false))}
               onclick={(event: MouseEvent) => void switchView(event, false)}
               >{MEMORY_COPY.quarantinedView.empty.back}</Button
@@ -559,7 +557,6 @@
       {:else if narrowed && (applied === '' || base.length > 0)}
         <EmptyState
           kind="filtered"
-          size="compact"
           headingLevel={2}
           title={MEMORY_COPY.noFiltered.title}
           description={MEMORY_COPY.noFiltered.description}
@@ -569,7 +566,6 @@
       {:else if applied !== ''}
         <EmptyState
           kind="filtered"
-          size="compact"
           headingLevel={2}
           title={MEMORY_COPY.noMatch.title(applied)}
           description={MEMORY_COPY.noMatch.description}
@@ -579,13 +575,13 @@
       {:else}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={2}
           title={MEMORY_COPY.nothing.title}
           description={MEMORY_COPY.nothing.description}
         >
+          {#snippet icon()}<Brain aria-hidden="true" />{/snippet}
           {#snippet action()}
-            <Button data-changes variant="primary" size="sm" onclick={() => adding?.ask()}
+            <Button data-changes variant="primary" onclick={() => adding?.ask()}
               >{MEMORY_COPY.add.action}</Button
             >
           {/snippet}

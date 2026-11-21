@@ -101,7 +101,6 @@
           {#if routing === null}
             <EmptyState
               kind="first-use"
-              size="compact"
               headingLevel={4}
               title="No routing pointer yet"
               description="Until one is set, no build is chosen for unpinned traffic."

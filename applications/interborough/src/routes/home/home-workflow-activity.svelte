@@ -62,7 +62,7 @@
   }
 </script>
 
-<HomeCard title={copy.title}>
+<HomeCard title={copy.title} bare={!failed && feed.ready && feed.shown.length === 0}>
   {#if failed}
     <HomeCardError title={HOME_COPY.states.cardFailed.fleetActivity} onRetry={tryAgain} />
   {:else if !feed.ready}
@@ -78,8 +78,7 @@
   {:else if feed.shown.length === 0}
     <EmptyState
       kind="first-use"
-      layout="row"
-      headingLevel={3}
+      headingLevel={2}
       title={copy.empty.title}
       description={copy.empty.description}
     >

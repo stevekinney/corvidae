@@ -74,7 +74,6 @@
   {:else if diagnostics === null}
     <EmptyState
       kind="done"
-      size="compact"
       headingLevel={3}
       title="No accepted manifest"
       description="The server has no accepted manifest for this worker, so there is nothing to verify."
@@ -82,7 +81,6 @@
   {:else if diagnostics === undefined}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={3}
       title="No manifest evidence yet"
       description="This worker's accepted manifest has not been fetched, so there is nothing to verify yet."
@@ -90,7 +88,6 @@
   {:else if registry === undefined}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={3}
       title="No registry snapshot yet"
       description="No registry snapshot has been fetched to compare this worker's manifest with."
@@ -102,7 +99,6 @@
     {#if verification.workflows.length === 0}
       <EmptyState
         kind="done"
-        size="compact"
         headingLevel={3}
         title="No workflows advertised"
         description="This worker advertises no workflows."

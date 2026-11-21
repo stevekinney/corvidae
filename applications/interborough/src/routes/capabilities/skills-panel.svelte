@@ -15,10 +15,10 @@
     SearchField,
     SelectableRow,
   } from '@lostgradient/cinder';
-  import { Plus, Puzzle } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { listSkillCatalog } from '../../lib/bureau-skills.ts';
@@ -94,33 +94,26 @@
       >
     </Alert>
   {:else if all.length === 0 && hasSources}
-    <EmptyState
-      kind="first-use"
-      headingLevel={2}
+    <ListPageEmpty
+      view="capabilities"
       title={copy.skill.emptySources.title}
       description={copy.skill.emptySources.description}
     />
   {:else if all.length === 0}
-    <!-- First use (row 31y): the one primary button on the tab adds the plugin that brings skills. -->
-    <EmptyState
-      kind="first-use"
-      headingLevel={2}
+    <!-- First use (row 31y), as the one list-page first use (owner report, 2026-11-19): the one
+         primary button on the tab adds the plugin that brings skills. -->
+    <ListPageEmpty
+      view="capabilities"
       title={copy.skill.empty.title}
       description={copy.skill.empty.description}
+      create={{
+        label: copy.skill.empty.action.label,
+        href: router.href(copy.skill.empty.action.href),
+        onclick: addPlugin,
+        mutating: false,
+      }}
       data-testid="skills-first-use"
-    >
-      {#snippet icon()}<Puzzle size={28} aria-hidden="true" />{/snippet}
-      {#snippet action()}
-        <Button
-          variant="primary"
-          href={router.href(copy.skill.empty.action.href)}
-          onclick={addPlugin}
-        >
-          {#snippet leadingIcon()}<Plus size={16} aria-hidden="true" />{/snippet}
-          {copy.skill.empty.action.label}
-        </Button>
-      {/snippet}
-    </EmptyState>
+    />
   {:else}
     <div class="ib-capabilities__frame" data-shortcut-region="list-detail">
       <ListDetail
@@ -174,7 +167,6 @@
         {#snippet listEmpty()}
           <EmptyState
             kind="filtered"
-            size="compact"
             headingLevel={3}
             title={copy.skill.filtered.title}
             description={copy.skill.filtered.description}

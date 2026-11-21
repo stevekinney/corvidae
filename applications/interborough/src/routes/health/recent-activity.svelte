@@ -7,7 +7,8 @@
    * (owner, 2026-11-19). A line is a run, a schedule, a provider key, the server or a chat
    * (`recent-activity.ts`); step noise is the run's own timeline.
    */
-  import { Button, Skeleton, Text } from '@lostgradient/cinder';
+  import { Button, EmptyState, Skeleton, Text } from '@lostgradient/cinder';
+  import { Activity } from '@lucide/svelte';
 
   import { timesShowIn } from '../../lib/format/clock.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -27,6 +28,8 @@
   let { lines, total, failed = false, onRetry = undefined }: Props = $props();
 
   const AUDIT_PATH = '/health/audit';
+  /** Read and holding nothing: the empty state stands for the section, with no heading over it. */
+  const empty = $derived(!failed && lines !== undefined && lines.length === 0);
 
   function openAudit(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -37,16 +40,22 @@
   }
 </script>
 
-<section class="ib-recent-activity" aria-labelledby="ib-recent-activity-title">
-  <div class="ib-recent-activity__heading-row">
-    <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">{copy.title}</h2>
-    <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
-      {copy.auditLink(total)} ›
-    </a>
-  </div>
-  <p class="ib-recent-activity__zone" data-testid="recent-activity-zone">
-    {timesShowIn(Date.now())}.
-  </p>
+<section
+  class="ib-recent-activity"
+  aria-labelledby={empty ? undefined : 'ib-recent-activity-title'}
+  aria-label={empty ? copy.title : undefined}
+>
+  {#if !empty}
+    <div class="ib-recent-activity__heading-row">
+      <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">{copy.title}</h2>
+      <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
+        {copy.auditLink(total)} ›
+      </a>
+    </div>
+    <p class="ib-recent-activity__zone" data-testid="recent-activity-zone">
+      {timesShowIn(Date.now())}.
+    </p>
+  {/if}
 
   {#if failed}
     <div class="ib-recent-activity__note" role="alert">
@@ -62,7 +71,15 @@
       {/each}
     </div>
   {:else if lines.length === 0}
-    <p class="ib-recent-activity__note">{copy.empty}</p>
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title={copy.empty.title}
+      description={copy.empty.description}
+      data-testid="recent-activity-empty"
+    >
+      {#snippet icon()}<Activity aria-hidden="true" />{/snippet}
+    </EmptyState>
   {:else}
     <!-- A plain log line, not a list row: the text in regular weight and the time at the right.
          Cinder has no component for it, and a row's bold title is for something a person opens. -->
