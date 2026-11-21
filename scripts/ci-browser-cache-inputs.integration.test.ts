@@ -1,11 +1,30 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { analyzeSource, isCodeFile, resolveSpecifier } from './affected-tests-graph.ts';
-import { discoverWorkspaces, listTree } from './affected-tests.ts';
+import { discoverWorkspaces } from './affected-tests.ts';
 
 const root = resolve(import.meta.dir, '..');
+const listing = await runWithHangGuard([
+  'git',
+  '-C',
+  root,
+  'ls-files',
+  '-z',
+  '--cached',
+  '--others',
+  '--exclude-standard',
+]);
+if (listing.exitCode !== 0) throw new Error(listing.stderr.toString());
+const paths = new Set(
+  listing.stdout
+    .toString()
+    .split('\0')
+    .filter((path) => path.length > 0 && existsSync(resolve(root, path))),
+);
+const workspaces = discoverWorkspaces(root);
 
 describe.each([
   { job: 'fixtures', task: '//#ci:browser-fixtures', script: 'ci:browser-fixtures' },
@@ -30,8 +49,6 @@ describe.each([
       job === 'fixtures'
         ? 'scripts/browser-fixtures/scripts/prepare-manifest.ts'
         : 'applications/interborough/scripts/run-gated-browser-suite.ts';
-    const { paths } = listTree(root);
-    const workspaces = discoverWorkspaces(root);
     // Workspace source follows its `transit` dependency; the root has no workspace dependency on
     // its runner helpers, so those are the files this task must declare itself. `hang-guard.ts`
     // is the one non-root helper imported by the root process wrapper.
