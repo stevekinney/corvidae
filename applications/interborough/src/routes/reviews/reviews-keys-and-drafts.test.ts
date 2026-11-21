@@ -200,7 +200,7 @@ describe('a key never decides a review the person has not seen', () => {
   test('a second press behind the first waits for the next review to be seen', async () => {
     const frames: FrameRequestCallback[] = [];
     globalThis.requestAnimationFrame = (callback) => frames.push(callback);
-    const { container, findByRole } = open({ reviews: [first, second] });
+    const { container, findByRole, getByRole } = open({ reviews: [first, second] });
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
 
@@ -211,7 +211,7 @@ describe('a key never decides a review the person has not seen', () => {
     );
     // The first decision is settled, so only the wait for the next review to be seen holds the key.
     await waitFor(() =>
-      expect(container.querySelector('.ib-review-detail button')?.hasAttribute('disabled')).toBe(
+      expect(getByRole('button', { name: 'Approve', exact: true }).hasAttribute('disabled')).toBe(
         false,
       ),
     );

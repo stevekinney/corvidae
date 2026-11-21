@@ -568,7 +568,7 @@ describe('the approval’s details', () => {
     await openRow(container, 0);
     await findByText('bun run deploy');
     expect(container.textContent).toContain('dist/app.js');
-    expect(container.textContent).toContain(REVIEWS_COPY.operation.command);
+    expect(container.textContent).toContain('It wants to run Issue refund');
   });
 
   test('keeps the inbox usable when the operation lists one path twice', async () => {

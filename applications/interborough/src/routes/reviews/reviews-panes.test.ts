@@ -94,7 +94,7 @@ describe('an approval', () => {
     const { container, findByText } = open({ reviews: [approval] });
     await openFirst(container);
     await findByText('This call was given no input.');
-    expect(container.querySelector('.ib-tool__details')).toBeNull();
+    expect(container.querySelector('.cinder-payload-inspector')).toBeNull();
   });
 });
 

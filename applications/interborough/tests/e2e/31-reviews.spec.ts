@@ -10,6 +10,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
+import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
@@ -95,33 +96,42 @@ async function waitingRefund(
 }
 
 /** Captures an approval in the two board widths, restoring the suite's desktop viewport afterwards. */
-async function captureApprovalAtWidths(page: Page, state: string): Promise<void> {
+async function captureApprovalAtWidths(
+  page: Page,
+  state: string,
+  actions: readonly string[] = ['Deny', 'Approve'],
+): Promise<void> {
   const originalViewport = page.viewportSize();
   if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
-  for (const width of WIDTHS) {
-    await page.setViewportSize({ width, height: 900 });
-    const denial = paneOf(page).getByRole('button', { name: 'Deny' });
-    const approval = paneOf(page).getByRole('button', { name: 'Approve' });
-    await expect(denial).toBeVisible();
-    await expect(approval).toBeVisible();
-    if (width === 375) {
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-      ).toBe(true);
-      expect(
-        await denial.evaluate((element) => element.getBoundingClientRect().height),
-      ).toBeGreaterThanOrEqual(44);
-      expect(
-        await approval.evaluate((element) => element.getBoundingClientRect().height),
-      ).toBeGreaterThanOrEqual(44);
+  try {
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width === 375) {
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        ).toBe(true);
+      }
+      for (const name of actions) {
+        const action = paneOf(page).getByRole('button', { name, exact: true });
+        await expect(action).toBeVisible();
+        if (width === 375) {
+          await expect
+            .poll(async () => {
+              const box = await action.boundingBox();
+              return box === null ? 0 : Math.min(box.height, box.width);
+            })
+            .toBeGreaterThanOrEqual(44);
+        }
+      }
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state,
+        source: '31-reviews.spec.ts',
+      });
     }
-    await captureForDesignReview(page, {
-      route: '/reviews',
-      state,
-      source: '31-reviews.spec.ts',
-    });
+  } finally {
+    await page.setViewportSize(originalViewport);
   }
-  await page.setViewportSize(originalViewport);
 }
 
 test.describe('a tool approval', () => {
@@ -248,42 +258,95 @@ test.describe('a tool approval', () => {
     request,
   }) => {
     const threadId = newThreadId('reviews-capture-always');
-    await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
-    const review = await waitingReviewOf(request, threadId);
-    await page.route('**/jsonrpc', async (route) => {
-      const requestBody = route.request().postDataJSON() as { method?: string };
-      if (requestBody.method !== 'bureau.reviews.list') return route.fallback();
-      const response = await route.fetch();
-      const body = (await response.json()) as {
-        result?: { reviews?: Array<Record<string, unknown>> };
-      };
-      const reviews = body.result?.reviews;
-      if (reviews === undefined) return route.fulfill({ response });
-      await route.fulfill({
-        response,
-        json: {
-          ...body,
-          result: {
-            ...body.result,
-            reviews: reviews.map((candidate) =>
-              candidate['id'] === review.id
-                ? {
-                    ...candidate,
-                    approval: {
-                      ...(candidate['approval'] as Record<string, unknown>),
-                      reason: 'Tool "issue-refund" requires approval (mode: always).',
-                    },
-                  }
-                : candidate,
-            ),
-          },
-        },
+    const id = 'demo:tool-runner';
+    const tool = 'issue-refund';
+    const { hash, overrides, ownTools } = (await bureauCall(
+      request,
+      'bureau.agents.overrides.get',
+      {
+        id,
+      },
+    )) as { hash: string; overrides: Record<string, unknown>; ownTools: string[] };
+    expect(ownTools).toContain(tool);
+    const { hash: appliedHash } = (await bureauCall(request, 'bureau.agents.overrides.update', {
+      id,
+      expectedHash: hash,
+      overrides: { ...overrides, approvals: { [tool]: 'always' } },
+    })) as { hash: string };
+    try {
+      const readback = (await bureauCall(request, 'bureau.agents.overrides.get', {
+        id,
+      })) as { overrides: Record<string, unknown> };
+      expect(readback.overrides['approvals']).toMatchObject({ [tool]: 'always' });
+      await runToEnd(request, id, threadId, 'Refund order-1001');
+      const review = await waitingReviewOf(request, threadId);
+      await page.goto(inboxAt(review));
+      await expect(paneOf(page).getByRole('heading', { level: 2 })).toContainText('Refund');
+      await expect(paneOf(page).getByRole('checkbox')).toHaveCount(0);
+      await captureApprovalAtWidths(page, 'pending Always approval');
+    } finally {
+      await bureauCall(request, 'bureau.agents.overrides.update', {
+        id,
+        expectedHash: appliedHash,
+        overrides,
       });
-    });
-    await page.goto(inboxAt(review));
-    await expect(paneOf(page).getByRole('checkbox')).toHaveCount(0);
-    await captureApprovalAtWidths(page, 'pending Always approval');
+    }
   });
+
+  for (const [decision, active, other] of [
+    ['Approve', 'Approving…', 'Deny'],
+    ['Deny', 'Denying…', 'Approve'],
+  ] as const) {
+    test(`/reviews shared Reviews approval detail captures ${decision} held and failing`, async ({
+      page,
+      request,
+    }) => {
+      const { review, threadId } = await waitingRefund(page, request, 'reviews-capture-held');
+      const requests = recordResolves(page);
+      const release = Promise.withResolvers<void>();
+      let failedOnce = false;
+      const reason = 'The Bureau could not apply this decision.';
+      await page.route('**/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as {
+          method?: string;
+          id?: string;
+          params?: { id?: string };
+        };
+        if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id) {
+          return route.fallback();
+        }
+        if (failedOnce) return route.fallback();
+        failedOnce = true;
+        await release.promise;
+        await route.fulfill({
+          json: { jsonrpc: '2.0', id: call.id, error: { code: -32603, message: reason } },
+        });
+      });
+      const pane = paneOf(page);
+      try {
+        await pane.getByRole('button', { name: decision, exact: true }).click();
+        await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
+          'aria-busy',
+          'true',
+        );
+        await expect(pane.getByRole('button', { name: other, exact: true })).toBeDisabled();
+        await page.keyboard.press(decision === 'Approve' ? 'd' : 'a');
+        expect(requests).toHaveLength(1);
+        await captureApprovalAtWidths(page, `${decision} in flight`, [active, other]);
+      } finally {
+        release.resolve();
+      }
+      await expect(pane.getByText(REVIEWS_COPY.decisionFailed, { exact: true })).toBeVisible();
+      await expect(pane).toContainText(reason);
+      await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
+      await captureApprovalAtWidths(page, `${decision} failing`);
+      expect(refundRan(await threadMessages(request, threadId))).toBe(false);
+      expect(requests).toHaveLength(1);
+      await pane.getByRole('button', { name: decision, exact: true }).click();
+      await expect(rowOf(page, review)).toHaveCount(0);
+      expect(requests).toHaveLength(2);
+    });
+  }
 
   test('decided in the chat is gone from the inbox once the run goes on', async ({
     page,
@@ -356,19 +419,23 @@ test.describe('a tool approval', () => {
     await expect(page.getByText('1 run is waiting on you')).toHaveCount(0);
   });
 
-  test('is listed under Done once it is decided, with who decided it, and cannot be decided again', async ({
+  test('/reviews shared Reviews approval detail is listed under Done with its decision and note', async ({
     page,
     request,
   }) => {
     const { review } = await waitingRefund(page, request, 'reviews-done');
+    const note = 'Confirmed with the customer.';
+    await paneOf(page).getByRole('textbox', { name: 'Note Optional' }).fill(note);
     await paneOf(page).getByRole('button', { name: 'Approve' }).click();
     await expect(rowOf(page, review)).toHaveCount(0);
 
     await page.goto(inboxAt(review, 'done'));
     await expect(rowOf(page, review)).toContainText('Approved');
     await expect(paneOf(page)).toContainText('Approved');
+    await expect(paneOf(page)).toContainText(note);
     await expect(paneOf(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(paneOf(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
+    await captureApprovalAtWidths(page, 'no longer waiting with a decision', []);
     // Done is read through the same list, asked for what was resolved.
     await page.getByRole('radio', { name: /^Waiting/ }).click();
     await expect(page).not.toHaveURL(/tab=done/);

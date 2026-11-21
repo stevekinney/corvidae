@@ -241,7 +241,9 @@ describe('an approval', () => {
     expect(container.textContent).toContain('issue-refund');
     expect(container.textContent).toContain('Dangerous');
     expect(
-      getByText(REVIEWS_COPY.toolApproval, { selector: '.cinder-approval-card__detail-eyebrow' }),
+      getByText(REVIEWS_COPY.toolApproval, {
+        selector: '.cinder-approval-card__detail-eyebrow span',
+      }),
     ).not.toBeNull();
     expect(getByLabelText('Note Optional').getAttribute('placeholder')).toBe(
       REVIEWS_COPY.notePlaceholder,

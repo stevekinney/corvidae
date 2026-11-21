@@ -12,6 +12,7 @@
     type ApprovalState,
   } from '@lostgradient/cinder';
 
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
   import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
   import ReviewSource from './review-source.svelte';
@@ -48,9 +49,10 @@
   const action = $derived(
     review.approval.action.type === 'approval' ? review.approval.action : undefined,
   );
-  const operation = $derived.by(() => {
-    if (action === undefined) return { kind: 'other' } as const;
-    return { ...action.operation, argsPreview: review.approval.arguments };
+  const hasInput = $derived(Object.keys(review.approval.arguments).length > 0);
+  const operation = $derived({
+    ...(action?.operation ?? { kind: 'other' as const }),
+    argsPreview: hasInput ? review.approval.arguments : undefined,
   });
   const state = $derived<ApprovalState>(review.status === 'rejected' ? 'denied' : review.status);
   const resolution = $derived(review.resolution);
@@ -69,6 +71,9 @@
 <div data-kind="tool-approval" data-review={review.id}>
   {#snippet source()}
     <ReviewSource {review} {waiting} />
+    {#if !hasInput}
+      <p>{REVIEWS_COPY.noInput}</p>
+    {/if}
   {/snippet}
   <ApprovalCard
     layout="detail"
@@ -101,7 +106,7 @@
     decisionNote={resolution?.reason}
     onResolve={decide}
   />
-  {#if outcome !== undefined}
+  {#if outcome !== undefined && outcome.tone !== 'danger'}
     <Alert variant={outcome.tone}>
       <p class="ib-decision__failure">
         {outcome.title}{outcome.message === '' ? '' : `: ${outcome.message}`}
