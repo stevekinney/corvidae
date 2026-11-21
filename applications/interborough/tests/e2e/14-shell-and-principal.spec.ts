@@ -430,7 +430,8 @@ test('a tab left open past the old idle timeout keeps its event feed, and logs n
 });
 
 test.describe('a tab opened before the host was rebuilt', () => {
-  const agentListChunk = /\/assets\/agent-list-[^/]+\.js$/;
+  // The alert log appends Chromium’s line number to the same asset URL.
+  const agentListChunk = /\/assets\/agent-list-[^/]+\.js(?=$|:\d+\))/;
 
   test('reloads once when a route’s chunk is gone, and shows the route', async ({
     page,

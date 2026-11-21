@@ -286,7 +286,8 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(railRows(page).nth(3)).toContainText('Send email');
     await expect(railRows(page).nth(3)).toContainText('→ SMTP timeout after 10s');
     await expect(railRows(page).nth(4)).toContainText('Approved by you 9:58 AM');
-    await expect(railRows(page).nth(5)).toContainText('Waiting on you');
+    const waiting = railRows(page).nth(5).getByText('Waiting on you', { exact: true });
+    await expect(waiting).toHaveAttribute('data-cinder-variant', 'warning');
     // The approval is the waiting row's content, with Deny and Approve at its right.
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('heading', { level: 4 })).toHaveText(TOOL_CALL_TURN_QUESTION);
