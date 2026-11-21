@@ -1,7 +1,7 @@
 {
   "issue": "COR-2547",
   "branch": "worktree-agent-a90c799d2ed4fb4a6",
-  "checkedAt": "1573ee39368633124a6ffbab3afc7e2f4e371cab",
+  "checkedAt": "357e5a1b8682fd7ad713300aae5f1bd6316adad6",
   "briefVersion": "a0f718df2a68",
   "status": "READY",
   "criteria": [
@@ -43,7 +43,7 @@
     {
       "id": "AC8",
       "status": "met-on-branch",
-      "evidence": "NOT VERIFIED by the worker, recorded as implemented only: the report schema has no pending status and a READY report cannot hold not-met. The capture specification tests/e2e/confirm-dialog-states.spec.ts (24 states, captured at 1280/1920 and 375/320) is wired into scripts/design-review-capture.ts; the capture run and the design-review verdict are the coordinator's step and have not been run on this host."
+      "evidence": "NOT VERIFIED by the worker, recorded as implemented only: the report schema has no pending status and a READY report cannot hold not-met. The capture specification tests/e2e/confirm-dialog-states.spec.ts (24 states, captured at 1280/1920 and 375/320) is wired into scripts/design-review-capture.ts; the capture run and the design-review verdict are the coordinator's step and have not been run on this host. Design round 2 (owner, 2026-11-21): a lone Close beside a failure action is compact on a phone (modal.css exception marked by data-cinder-fault-only), with a Cinder test, README and a11y notes."
     },
     {
       "id": "AC9",
