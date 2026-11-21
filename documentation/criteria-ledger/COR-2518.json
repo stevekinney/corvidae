@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2518",
+  "branch": "chef/cor-2518-fault-policy",
+  "checkedAt": "7b567fea92b1afbc424481a09d8335a6f32666c0",
+  "briefVersion": "5e4e77e33b13",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/bureau/src/http/bureau-fault-policy.ts maps all seven codes (Record over BureauErrorCode, load-time check against BUREAU_ERROR_CODES); bureau-fault-policy.test.ts iterates BUREAU_ERROR_CODES and fails on a code without a non-EngineFailure fault"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bureauFaultPolicy is wired at create-bureau-handler.ts; the test raises each code through createOperationHandler, through the real bureau.reviews.resolve, bureau.tasks.respond, bureau.workflows.runs.cancel and runs.retry operations in strict mode (an undeclared fault would read EngineFailure), and through the real Bureau handler (bureau.contexts.rename)"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "test asserts a valid non-empty one-line remediation for all seven codes and the unprocessable and shutting-down forms; the strict pipeline test reads a string remediation from every operation answer for every code"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "every instanceof BureauError and code comparison under packages/bureau/src/http lives in the policy file (a2a and AG-UI mounts use bureauRefusalKind); bureau-fault-policy.test.ts globs the production files for instanceof BureauError, .code comparisons, case labels and code-list includes, and proves the patterns catch each shape"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "git diff origin/main...HEAD touches no file under packages/bureau/src/http/__fixtures__; wire-golden.test.ts passes unchanged; no operation declares a new fault"
+    }
+  ]
+}

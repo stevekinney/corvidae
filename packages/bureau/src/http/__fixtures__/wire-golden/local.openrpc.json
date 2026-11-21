@@ -1946,7 +1946,7 @@
       }
     },
     {
-      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), `attention` only the tasks whose `attention` lists that kind (`stalled` or `looping`), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `attention`, `engineRuns`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. The schedule tick’s runs and the instances of workflow files are listed too, read from the engine, for a caller that may read the deployment’s workflows. A principal holds at most 16 live listings, and starting another ends its oldest.",
+      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), `attention` only the tasks whose `attention` lists that kind (`stalled` or `looping`), `failedStep` only the tasks that failed at the step with that label (`failure.step.label`), `retrying` only the tasks with a step on a second or later try (`true`) or with none (`false`), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `attention`, `failedStep`, `retrying`, `engineRuns`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. The schedule tick’s runs and the instances of workflow files are listed too, read from the engine, for a caller that may read the deployment’s workflows. A principal holds at most 16 live listings, and starting another ends its oldest.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -2000,6 +2000,16 @@
           "schema": {
             "description": "Whether the schedule tick’s runs and the instances of workflow files, which the engine holds and no task record describes, are listed beside the tasks. Defaults to true for a caller that may read the deployment’s workflows; `false` lists only the tasks that have records, so a reader that wants an agent’s or a goal’s runs is not given its page slots to the engine’s. It never lists them for a caller that may not read them.",
             "type": "boolean"
+          }
+        },
+        {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Only the tasks that failed at the step with this label (`failure.step.label`): a tool’s name, `model` for a model step, or for a workflow run the engine’s `failedStep.label`. A label longer than 200 characters is compared as its first 200.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
           }
         },
         {
@@ -2057,6 +2067,14 @@
             "description": "Only the subordinate tasks of this run: the children an agent run started, the attempts of a goal run, or the steps of a workflow instance.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "`true`: only the tasks with a step on a second or later try (`retrying` on the task is set). `false`: only the tasks with none.",
+            "type": "boolean"
           }
         },
         {
@@ -2166,6 +2184,85 @@
                   },
                   "createdAt": {
                     "type": "string"
+                  },
+                  "failure": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "errorCode": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "errorKind": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "step": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "label"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "toolCall": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "callId": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "callId"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "errorCode",
+                          "errorKind",
+                          "toolCall"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "finishReason": {
                     "type": [
@@ -2456,6 +2553,31 @@
                   "owner": {
                     "type": "string"
                   },
+                  "retrying": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempt": {
+                            "maximum": 9007199254740991,
+                            "minimum": 2,
+                            "type": "integer"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "label",
+                          "attempt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "stalledSince": {
                     "type": [
                       "string",
@@ -2656,7 +2778,9 @@
                   "workflow",
                   "usage",
                   "attention",
-                  "stalledSince"
+                  "stalledSince",
+                  "failure",
+                  "retrying"
                 ],
                 "type": "object"
               },
@@ -2704,6 +2828,12 @@
             "description": "Whether the schedule tick’s runs and the instances of workflow files, which the engine holds and no task record describes, are listed beside the tasks. Defaults to true for a caller that may read the deployment’s workflows; `false` lists only the tasks that have records, so a reader that wants an agent’s or a goal’s runs is not given its page slots to the engine’s. It never lists them for a caller that may not read them.",
             "type": "boolean"
           },
+          "failedStep": {
+            "description": "Only the tasks that failed at the step with this label (`failure.step.label`): a tool’s name, `model` for a model step, or for a workflow run the engine’s `failedStep.label`. A label longer than 200 characters is compared as its first 200.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
           "limit": {
             "description": "The most tasks to return in one page, from 1 to 100. Defaults to 50.",
             "maximum": 100,
@@ -2740,6 +2870,10 @@
             "description": "Only the subordinate tasks of this run: the children an agent run started, the attempts of a goal run, or the steps of a workflow instance.",
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "`true`: only the tasks with a step on a second or later try (`retrying` on the task is set). `false`: only the tasks with none.",
+            "type": "boolean"
           },
           "siblingsOf": {
             "description": "Only the tasks that share a parent run with this task, this task excluded. A task that does not exist, that is not yours to read, or that has no parent run matches nothing.",
@@ -2857,6 +2991,85 @@
             },
             "createdAt": {
               "type": "string"
+            },
+            "failure": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "errorCode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "errorKind": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "step": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "label"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "toolCall": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "callId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "callId"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "errorCode",
+                    "errorKind",
+                    "toolCall"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "finishReason": {
               "type": [
@@ -3147,6 +3360,31 @@
             "owner": {
               "type": "string"
             },
+            "retrying": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attempt": {
+                      "maximum": 9007199254740991,
+                      "minimum": 2,
+                      "type": "integer"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "attempt"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "stalledSince": {
               "type": [
                 "string",
@@ -3347,7 +3585,9 @@
             "workflow",
             "usage",
             "attention",
-            "stalledSince"
+            "stalledSince",
+            "failure",
+            "retrying"
           ],
           "type": "object"
         }
@@ -3965,6 +4205,85 @@
                 "createdAt": {
                   "type": "string"
                 },
+                "failure": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "errorCode": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "errorKind": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "step": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "index": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "index",
+                                "label"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "toolCall": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "callId": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "callId"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "step",
+                        "errorCode",
+                        "errorKind",
+                        "toolCall"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "finishReason": {
                   "type": [
                     "string",
@@ -4254,6 +4573,31 @@
                 "owner": {
                   "type": "string"
                 },
+                "retrying": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attempt": {
+                          "maximum": 9007199254740991,
+                          "minimum": 2,
+                          "type": "integer"
+                        },
+                        "label": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "attempt"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "stalledSince": {
                   "type": [
                     "string",
@@ -4454,7 +4798,9 @@
                 "workflow",
                 "usage",
                 "attention",
-                "stalledSince"
+                "stalledSince",
+                "failure",
+                "retrying"
               ],
               "type": "object"
             },
@@ -4871,6 +5217,85 @@
                     "createdAt": {
                       "type": "string"
                     },
+                    "failure": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "errorCode": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "errorKind": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "step": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "label"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "toolCall": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "callId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "callId"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "step",
+                            "errorCode",
+                            "errorKind",
+                            "toolCall"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "finishReason": {
                       "type": [
                         "string",
@@ -5160,6 +5585,31 @@
                     "owner": {
                       "type": "string"
                     },
+                    "retrying": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "attempt": {
+                              "maximum": 9007199254740991,
+                              "minimum": 2,
+                              "type": "integer"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "label",
+                            "attempt"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stalledSince": {
                       "type": [
                         "string",
@@ -5360,7 +5810,9 @@
                     "workflow",
                     "usage",
                     "attention",
-                    "stalledSince"
+                    "stalledSince",
+                    "failure",
+                    "retrying"
                   ],
                   "type": "object"
                 },

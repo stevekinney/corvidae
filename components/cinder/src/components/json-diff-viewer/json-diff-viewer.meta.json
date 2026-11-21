@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Structural comparison of two JSON values: added, removed and changed entries at any depth, with unchanged entries collapsed and long levels paged.",
+  "tags": ["diff", "json", "compare"],
+  "useWhen": [
+    "Showing how two JSON values differ, such as one run's input against another's or a configuration before and after an edit.",
+    "Comparing structured payloads where which key or index changed matters more than line order."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Comparing text, source code or unified patches.",
+      "alternative": "source-diff-viewer"
+    },
+    {
+      "reason": "Showing one JSON value rather than a comparison.",
+      "alternative": "json-viewer"
+    }
+  ],
+  "related": ["source-diff-viewer", "json-viewer", "diff-statistics"]
+}

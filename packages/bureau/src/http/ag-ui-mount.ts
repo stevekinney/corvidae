@@ -76,7 +76,8 @@ import { createConversationHistory } from 'conversationalist';
 import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
-import { BureauError, ContextArchivedError } from '../bureau-errors.ts';
+import { ContextArchivedError } from '../bureau-errors.ts';
+import { bureauRefusalKind } from './bureau-fault-policy.ts';
 import { isDurableRunUnsettled } from '../durable-run-waits.ts';
 import type { Bureau, BureauInternals } from '../bureau-types/facade.ts';
 import type { BureauReviews } from '../bureau-types/reviews.ts';
@@ -935,10 +936,10 @@ function refusalFor(error: unknown, threadId: string): [AgUiErrorCode, string] {
   if (error instanceof ContextArchivedError) {
     return ['THREAD_ARCHIVED', `Thread "${threadId}" is archived`];
   }
-  if (error instanceof BureauError) {
-    if (error.code === 'NOT_FOUND')
-      return ['THREAD_NOT_FOUND', `Thread "${threadId}" was not found`];
-    if (error.code === 'BAD_REQUEST') return ['INVALID_INPUT', error.message];
+  const refusal = bureauRefusalKind(error);
+  if (refusal?.kind === 'not-found') {
+    return ['THREAD_NOT_FOUND', `Thread "${threadId}" was not found`];
   }
+  if (refusal?.kind === 'bad-request') return ['INVALID_INPUT', refusal.message];
   return ['RUN_FAILED', 'The run could not be started'];
 }

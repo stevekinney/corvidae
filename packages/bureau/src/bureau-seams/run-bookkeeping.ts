@@ -9,6 +9,7 @@ import type { BureauCore } from './core';
 import { BureauError } from '../bureau-errors';
 import type { BureauToolbox } from '../runtime-composition-types';
 import { detachBestEffortPromise } from '../bureau-construction-support';
+import { peekTaskFailure } from '../run-outcome-details';
 import { serializeUnknownError } from '../serialization';
 import { RunLoopingEvent, RunStalledEvent } from '../events';
 import { settledTaskState, type TaskUsage } from '../task-registry';
@@ -263,10 +264,15 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
       recordOf(detail['usage']),
       recordOf(detail['costEstimate'])['totalCost'],
     );
+    // COR-2531 — why the run failed, from what its own events said, kept on the task with the
+    // settlement. Read, not taken: the announcement of the settlement takes it for `run.error`.
+    const failedBecause =
+      status === 'failed' ? peekTaskFailure(core.runOutcomeDetails, action.runId) : undefined;
     void core.tasks
       .recordSettled(action.runId, {
         at: new Date(action.timestamp).toISOString(),
         status,
+        ...(failedBecause === undefined ? {} : { failure: failedBecause }),
         finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
         message:
           status === 'failed' && failure !== undefined && failure !== null

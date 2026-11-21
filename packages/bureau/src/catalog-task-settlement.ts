@@ -24,7 +24,13 @@ import type {
   CatalogRunRecoveryRecord,
 } from './catalog-run-recovery-record';
 import type { StoredTaskOrigin } from './task-origin';
-import { TASK_ARTIFACT_TEXT_LIMIT, type TaskAdmission, type TaskRegistry } from './task-registry';
+import type { TaskFailure } from './task-failure';
+import {
+  TASK_ARTIFACT_TEXT_LIMIT,
+  type TaskAdmission,
+  type TaskRegistry,
+  type TaskSettlement,
+} from './task-registry';
 import type { AgentInput } from '@lostgradient/operative';
 
 /** What a subordinate task's record is written from: the run's claim, and its stored origin. */
@@ -78,6 +84,12 @@ export interface CatalogTaskSettlerDependencies {
   readonly now: () => string;
   readonly ownerOf: (principal: string | undefined) => string;
   readonly originatingMessage: (input: AgentInput) => string | undefined;
+  /**
+   * Why the run failed, from what its own events said in this process (COR-2531), or `undefined`
+   * when none did (a run recovered from another process's, or one that did not fail). Read without
+   * removing it: the settlement's announcement takes it afterwards.
+   */
+  readonly failureOf?: ((runId: string) => TaskFailure | undefined) | undefined;
 }
 
 /** The hook listener that settles a catalog run's task, writing the record first when a recovered run has none. */
@@ -89,14 +101,17 @@ export function createCatalogTaskSettler({
   now,
   ownerOf,
   originatingMessage,
+  failureOf,
 }: CatalogTaskSettlerDependencies): (settlement: CatalogRunSettlement) => Promise<void> {
   return async (settlement) => {
     const content = settlement.status === 'completed' ? (settlement.content ?? '') : '';
-    const taskSettlement = {
+    const failure = settlement.status === 'failed' ? failureOf?.(settlement.runId) : undefined;
+    const taskSettlement: TaskSettlement = {
       at: now(),
       status: settlement.status,
       finishReason: settlement.finishReason,
       message: settlement.message,
+      ...(failure === undefined ? {} : { failure }),
       ...(content === ''
         ? {}
         : {
