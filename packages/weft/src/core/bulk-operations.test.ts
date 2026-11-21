@@ -1521,6 +1521,25 @@ describe('bulk workflow operations', () => {
     }
   });
 
+  it('keeps failedStep and retrying in the preview scope the audit record carries (COR-2530)', async () => {
+    const engine = new Engine();
+    engine.register(workflow({ name: 'echo' }).execute(echoWorkflow));
+    try {
+      const preview = await engine.cancelAll(
+        { status: 'running', failedStep: 'charge-card', retrying: false },
+        { dryRun: true, requestId: 'bulk-failed-step-preview' },
+      );
+      // The audit event's filterSummary is this same scope filter, so neither loses a condition.
+      expect(preview.scope.filter).toEqual({
+        status: 'running',
+        failedStep: 'charge-card',
+        retrying: false,
+      });
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
   it('rejects stale bulk confirmation tokens when the matched workflow set changes', async () => {
     const now = 1_000;
     const engine = new Engine({ getNow: () => now });

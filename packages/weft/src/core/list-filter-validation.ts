@@ -94,6 +94,10 @@ export const listFilterDescriptions = {
   executionDeadline: 'Return only workflows whose execution deadline falls within this time range.',
   failureCategory:
     'Return only failed workflows in this failure category, or in any of these categories.',
+  failedStep:
+    'Return only failed workflows that stopped at the step with this operation label (an activity name, for one).',
+  retrying:
+    'true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.',
 } as const;
 
 /**
@@ -140,6 +144,8 @@ export const listFilterObjectSchema = z
       .union([failureCategorySchema, z.array(failureCategorySchema).min(1)])
       .optional()
       .describe(listFilterDescriptions.failureCategory),
+    failedStep: z.string().min(1).optional().describe(listFilterDescriptions.failedStep),
+    retrying: z.boolean().optional().describe(listFilterDescriptions.retrying),
   })
   .strict();
 

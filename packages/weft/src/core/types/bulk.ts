@@ -67,6 +67,10 @@ export type BulkOperationFilterSummary = {
     gte?: AttributeFilterScalarValue;
     lte?: AttributeFilterScalarValue;
   }>;
+  /** The step a failed run stopped at, when the filter named one (COR-2530). */
+  failedStep?: string;
+  /** Whether the filter asked for runs that are retrying an activity, or for runs that are not. */
+  retrying?: boolean;
   limit?: number;
   offset?: number;
 };

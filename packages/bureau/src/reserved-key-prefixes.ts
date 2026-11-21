@@ -302,6 +302,10 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
     'an engine-driven finalizer’s input: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
   ),
   purgedButUnexercised(
+    'wf-retrying:',
+    'the activity a running workflow is retrying: written only while an activity is on its second attempt or later, and the engine’s purge deletes it by run id',
+  ),
+  purgedButUnexercised(
     'wf-teardown-needed:',
     'a finalizer’s owed-teardown marker: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
   ),
