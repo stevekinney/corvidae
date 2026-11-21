@@ -35,7 +35,6 @@ import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 
 import { discoverWorkspaces } from '../affected-tests.ts';
-import { withMergeLock } from './merge-gate.ts';
 import {
   defaultRunner,
   emitResult,
@@ -500,15 +499,19 @@ export async function run(
   dependencies: LandQueueDependencies = {
     runner: defaultRunner,
     readPlan: (path) => JSON.parse(readFileSync(path, 'utf8')) as EvidencePlan,
-    withLock: (options, action) =>
-      withMergeLock(
+    // Loaded when the command runs, not at import: `merge-gate.ts` reaches this module through
+    // `moved-base.ts`, and a static import here would make the two import each other.
+    withLock: async (options, action) => {
+      const { withMergeLock } = await import('./merge-gate.ts');
+      return withMergeLock(
         {
           worktree: options.worktree,
           command: 'land-queue',
           lockDirectory: options.lockDirectory,
         },
         action,
-      ),
+      );
+    },
   },
 ): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
