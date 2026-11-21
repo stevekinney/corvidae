@@ -53,7 +53,8 @@ const description = [
   'Ignore me.',
 ].join('\n');
 
-const pinnedBase = '4f46c230831feee0459eec754762ed7b317f4b51';
+// A synthetic commit keeps the unit suite independent of checkout depth and Git history.
+const pinnedBase = '1'.repeat(40);
 
 const issue = (text: string | null): IssueSummary => ({
   id: 'u1',
@@ -707,6 +708,7 @@ describe('run', () => {
         '--json',
       ],
       dependencies,
+      pinnedRunner(),
     );
     expect(result.code).toBe(0);
     const parsed = JSON.parse(result.output) as { path: string };
@@ -730,6 +732,7 @@ describe('run', () => {
           '--json',
         ],
         dependencies,
+        pinnedRunner(),
       );
       const parsed = JSON.parse(result.output) as { path: string; scratch: string };
       expect(parsed.scratch).toMatch(/\/scratch\/COR-7-[0-9a-f]{8}$/);
@@ -795,19 +798,21 @@ describe('run', () => {
   ];
 
   test('a batch issue blocked only by an earlier issue of the same batch is dispatchable', async () => {
-    const result = await run(batchArguments(), {
-      ...dependencies,
-      fetch: batchFetchWith(['COR-7']),
-    });
+    const result = await run(
+      batchArguments(),
+      { ...dependencies, fetch: batchFetchWith(['COR-7']) },
+      pinnedRunner(),
+    );
     expect(result.code).toBe(0);
     expect(readdirSync(sandbox)).toContain('COR-7_COR-8.md');
   });
 
   test('a refusal names each blocked issue and its outside blocker, without --json', async () => {
-    const result = await run(batchArguments(), {
-      ...dependencies,
-      fetch: batchFetchWith(['COR-7', 'COR-5']),
-    });
+    const result = await run(
+      batchArguments(),
+      { ...dependencies, fetch: batchFetchWith(['COR-7', 'COR-5']) },
+      pinnedRunner(),
+    );
     expect(result.code).toBe(1);
     expect(result.output).toContain('- COR-8: blocked by COR-5');
     expect(result.output).not.toContain('COR-7,');
@@ -869,6 +874,7 @@ describe('run', () => {
         ...dependencies,
         fetch: batchFetch,
       },
+      pinnedRunner(),
     );
     expect(result.code).toBe(1);
     expect(result.output).toContain('not dispatchable');
@@ -926,6 +932,7 @@ describe('run', () => {
         ...dependencies,
         fetch: answer(true),
       },
+      pinnedRunner(),
     );
     expect(result.code).toBe(1);
     expect(result.output).toContain('not dispatchable');
@@ -938,6 +945,7 @@ describe('run', () => {
         ...dependencies,
         fetch: answer(true),
       },
+      pinnedRunner(),
     );
     const parsed = JSON.parse(result.output) as {
       assignment: {
@@ -1202,6 +1210,7 @@ describe('run', () => {
         fetch: answer(false, claimComment('run-a', '2026-11-10T11:00:00Z')),
         now: justNow,
       },
+      pinnedRunner(),
     );
     expect(mine.code).toBe(0);
     const text = readFileSync(join(sandbox, 'COR-7.md'), 'utf8');
@@ -1232,6 +1241,7 @@ describe('run', () => {
           ...extra,
         ],
         held,
+        pinnedRunner(),
       );
       expect(result.code).toBe(1);
       expect(result.output).toContain('held by run run-a on branch cor-7-x');
@@ -1262,6 +1272,7 @@ describe('run', () => {
           fetch: answer(false, comments),
           now: justNow,
         },
+        pinnedRunner(),
       );
       expect(result.code).toBe(0);
     }
