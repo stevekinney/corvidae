@@ -457,7 +457,6 @@ test.describe('an agent-authored type', () => {
   for (const width of WIDTHS) {
     test(`leads with its agent, description, cadence and state, and its steps, and keeps its runs and the versions on tabs, at ${width} pixels`, async ({
       page,
-      request,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -491,8 +490,9 @@ test.describe('an agent-authored type', () => {
         `${SEEDED_WORKFLOWS.digest}.json`,
       );
       await openTab(root, WORKFLOW_COPY.page.tabs.code);
+      // Named relative to the home: a host path never shows (owner, 2026-11-19).
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, SEEDED_WORKFLOWS.digest),
+        `workflows/${SEEDED_WORKFLOWS.digest}.json`,
       );
       await openTab(root, WORKFLOW_COPY.page.tabs.overview);
 
@@ -557,7 +557,6 @@ test.describe('an invalid file', () => {
   for (const width of WIDTHS) {
     test(`shows its problem, its path, and delete and edit, with no definition, at ${width} pixels`, async ({
       page,
-      request,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -586,7 +585,7 @@ test.describe('an invalid file', () => {
       // Open Code leads to the file, read-only, with the banner and a way into the JSON editor.
       await root.getByRole('button', { name: WORKFLOW_COPY.page.problem.openCode }).click();
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, SEEDED_WORKFLOWS.broken),
+        `workflows/${SEEDED_WORKFLOWS.broken}.json`,
       );
       await expect(
         root.getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }),
@@ -858,7 +857,7 @@ test.describe('the editor', () => {
       const root = page.locator('[data-page="workflow-editor"]');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, 'e2e-editable'),
+        'workflows/e2e-editable.json',
       );
       await openJsonTab(root);
       const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
@@ -969,7 +968,7 @@ test.describe('the editor', () => {
     await expect(root.getByTestId('workflow-problem')).toContainText(
       'e2e-fixable.json can’t be read as a workflow:',
     );
-    await expect(root.getByTestId('workflow-file-path')).toHaveText(path);
+    await expect(root.getByTestId('workflow-file-path')).toHaveText('workflows/e2e-fixable.json');
     await checkA11y('an invalid file in the editor');
 
     await openJsonTab(root);
