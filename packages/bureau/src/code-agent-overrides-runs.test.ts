@@ -25,6 +25,8 @@ import { runTask } from './test';
 
 /** The built-in agent's own tools; a run's toolbox also holds the tools Bureau adds to every run. */
 const OWN_TOOLS = new Set(['lookup-order', 'issue-refund']);
+/** The numeric UUID suffix covers the call ID that tripped the output PII guardrail. */
+const REFUND_CALL_ID = 'tool-call-1-8284d5b4-a280-4121-8123-123456789012';
 /** The tools that ran, by name, in the order they ran. */
 const executed: string[] = [];
 /** What the built-in agent's own model was shown at each step. */
@@ -65,7 +67,7 @@ const ownGenerate: GenerateFunction = async ({ conversation, toolbox }) => {
     const { callId: _callId, ...echoed } = result;
     return { content: JSON.stringify(echoed), toolCalls: [] };
   }
-  return { content: '', toolCalls: [{ name: 'issue-refund', arguments: {} }] };
+  return { content: '', toolCalls: [{ id: REFUND_CALL_ID, name: 'issue-refund', arguments: {} }] };
 };
 
 const refunder = () =>

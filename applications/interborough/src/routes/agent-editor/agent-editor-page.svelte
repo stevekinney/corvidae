@@ -64,7 +64,11 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+  import {
+    AGENT_EDITOR_COPY,
+    AGENT_PAGE_COPY,
+    droppedBehaviorWords,
+  } from '../../app/copy/agents.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import {
     agentFaultOf,
@@ -713,14 +717,30 @@
     </div>
   {:else if editor !== undefined}
     {#if copiedFrom !== null}
+      {@const droppedBehaviors = source.data?.source === 'code' ? source.data.dropped : []}
       <p class="weft-agent-editor__copied" data-testid="agent-copied-from">
         {copy.copy.from(source.data?.name ?? copiedFrom)}
       </p>
-      {#if editor.droppedTools.length > 0}
+      {#if droppedBehaviors.length > 0 || editor.droppedTools.length > 0}
         <Alert variant="warning">
-          <p class="weft-agent-editor__alert-body" data-testid="agent-copy-dropped">
-            {copy.copy.droppedTools(editor.droppedTools)}
-          </p>
+          {#if droppedBehaviors.length > 0}
+            <p class="weft-agent-editor__alert-body">
+              {AGENT_PAGE_COPY.plugin.confirm.description}
+            </p>
+            <ul class="weft-agent-editor__issues" data-testid="agent-copy-dropped-behaviors">
+              {#each keyedByOccurrence(droppedBehaviors, (behavior) => behavior) as { key, item: behavior } (key)}
+                {@const words = droppedBehaviorWords(behavior)}
+                <li>
+                  <strong>{words.name}</strong>{#if words.effect !== null}{' '}{words.effect}{/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if editor.droppedTools.length > 0}
+            <p class="weft-agent-editor__alert-body" data-testid="agent-copy-dropped">
+              {copy.copy.droppedTools(editor.droppedTools)}
+            </p>
+          {/if}
         </Alert>
       {/if}
     {/if}

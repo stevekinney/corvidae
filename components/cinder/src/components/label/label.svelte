@@ -9,6 +9,7 @@
   let {
     for: forId,
     required = false,
+    optional = false,
     disabled = false,
     class: className,
     children,
@@ -28,5 +29,7 @@
          the accessible name stays clean: the field's own
          `required`/`aria-required` attribute is the single AT signal. -->
     <span class="cinder-_required-marker" aria-hidden="true"></span>
+  {:else if optional}
+    <span class="cinder-_optional-marker">Optional</span>
   {/if}
 </label>

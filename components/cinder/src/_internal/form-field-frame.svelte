@@ -28,6 +28,7 @@
     note,
     managed,
     required = false,
+    optional = false,
     disabled = false,
     class: className,
     controlClass,
@@ -71,6 +72,7 @@
       | { by?: string | undefined; reason?: string | undefined; message?: string | undefined }
       | undefined;
     required?: boolean | undefined;
+    optional?: boolean | undefined;
     disabled?: boolean | undefined;
     class?: string | undefined;
     controlClass?: string | undefined;
@@ -174,6 +176,8 @@
       {label}
       {#if required}
         <span class="cinder-_required-marker" aria-hidden="true"></span>
+      {:else if optional}
+        <span class="cinder-_optional-marker">Optional</span>
       {/if}
     </label>
   {/snippet}

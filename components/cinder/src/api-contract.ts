@@ -507,6 +507,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       labelVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      optional: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       appearance: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       inputAttachment: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
@@ -903,6 +904,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // context (`field.disabled`), so the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      optional: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       maxlength: { optional: true, type_kind: 'TSNumberKeyword', default: NO_DEFAULT },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       appearance: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
