@@ -1,44 +1,44 @@
 {
   "issue": "COR-2537",
   "branch": "worktree-agent-a73a2e4bcaadda058",
-  "checkedAt": "f14c6252d6f730135909b2533a1f3408d266a8fc",
-  "briefVersion": "75bafe738e23",
-  "status": "BLOCKED",
+  "checkedAt": "50f6079ce4d26ef29e8d21c457c185a90ef5cdb2",
+  "briefVersion": "2f617ebb0b5c",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
-      "status": "needs-decision",
-      "evidence": "not started; component name and slug conflict with the editor DiffViewer"
+      "status": "met-on-branch",
+      "evidence": "json-diff-viewer.test.ts 'renders one added, one removed and one changed row nested three levels deep' and 'collapses unchanged entries by default'; focused-checks exit 0"
     },
     {
       "id": "AC2",
-      "status": "needs-decision",
-      "evidence": "not started"
+      "status": "met-on-branch",
+      "evidence": "test 'each kind carries a text marker and a name' reads +, -, ~ with aria-labels; json-diff-viewer.a11y.md exists; accessibility describe in json-diff-viewer.test.ts passes (no component-level axe suite exists in the repository; the browser axe sweeps need CI)"
     },
     {
       "id": "AC3",
-      "status": "needs-decision",
-      "evidence": "not started"
+      "status": "met-on-branch",
+      "evidence": "tests 'compares arrays by index' and 'a value that changes type shows as one removed and one added entry' in json-diff-viewer.test.ts and the diff unit test"
     },
     {
       "id": "AC4",
-      "status": "needs-decision",
-      "evidence": "not started"
+      "status": "met-on-branch",
+      "evidence": "tests for two 1 MB flat objects, two 1 MB flat arrays and two 1 MB arrays of nested objects each assert querySelectorAll('*').length <= 1000 before any control; a render budget (900 elements) closes nested levels that do not fit"
     },
     {
       "id": "AC5",
-      "status": "needs-decision",
-      "evidence": "not started"
+      "status": "met-on-branch",
+      "evidence": "tests 'renders No differences for equal structures' and for equal primitives"
     },
     {
       "id": "AC6",
-      "status": "needs-decision",
-      "evidence": "panel kit exports no components today; meaning of 'exported from the panel kit' is unspecified"
+      "status": "met-on-branch",
+      "evidence": "test 'is exported from the Cinder entry point and re-exported from the panel kit' imports ../../index.ts and ../../panel/index.ts"
     },
     {
       "id": "AC7",
-      "status": "needs-decision",
-      "evidence": "directory diff-viewer collides with the editor component slug; discover.ts assertUniqueComponentSlugs throws"
+      "status": "met-on-branch",
+      "evidence": "components/cinder/src/components/json-diff-viewer/ with README usage example and applications/playground/src/examples/json-diff-viewer/*.example.svelte; discover.test.ts SIDEBAR_BASELINE includes json-diff-viewer and passed in focused-checks"
     }
   ]
 }
