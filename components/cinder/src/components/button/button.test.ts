@@ -272,6 +272,45 @@ describe('Button loading state', () => {
     }
   });
 
+  /** Stub the two width reads a button has: the rounded `offsetWidth` and the fractional rect. */
+  async function pinnedWith(offsetWidth: number, rectWidth: number): Promise<string> {
+    const offsetDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    const rectDescriptor = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      'getBoundingClientRect',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get: () => offsetWidth,
+    });
+    Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: rectWidth }),
+    });
+    try {
+      const { container, rerender } = render(Button, { props: { label: 'Save changes' } });
+      await rerender({ label: 'Save changes', loading: true });
+      return container.querySelector('button')!.style.inlineSize;
+    } finally {
+      if (offsetDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetDescriptor);
+      } else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+      if (rectDescriptor) {
+        Object.defineProperty(Element.prototype, 'getBoundingClientRect', rectDescriptor);
+      }
+    }
+  }
+
+  test('the pin keeps the fractional width, so the label never loses a fraction of a pixel to an ellipsis', async () => {
+    // The words are 82.40625px wide; `offsetWidth` says 82 and a pin that short clips the label
+    // to "Save chang…". The pin is the fractional width (116.40625px, not 116px).
+    expect(await pinnedWith(116, 116.40625)).toBe('116.40625px');
+  });
+
+  test('a transformed ancestor that skews the rect leaves the layout width as the pin', async () => {
+    expect(await pinnedWith(116, 100)).toBe('116px');
+  });
+
   /** An `offsetWidth` that is the pin while one is set, and the words' own width when none is. */
   function withNaturalWidths(natural: (text: string) => number, run: () => Promise<void>) {
     const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');

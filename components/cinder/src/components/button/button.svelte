@@ -117,10 +117,22 @@
   // Loading keeps the button as wide as it was just before when its words stay the same: the
   // spinner takes the leading icon's place (or sits ahead of the label, using the button's own
   // padding), so the box does not grow and the layout around it does not move. `$effect.pre`
-  // runs before the DOM update, so `offsetWidth` is still the resting width on the render that
-  // flips `loading`. When the same update also changes the words and the new ones do not fit
+  // runs before the DOM update, so the box is still the resting width on the render that flips
+  // `loading`. When the same update also changes the words and the new ones do not fit
   // the old width ("Create" becomes "Creating…"), the pin is let go so the label never spills
   // over the border.
+  /**
+   * The button's border-box width, fractional. `offsetWidth` rounds: the words of "Save changes"
+   * are 82.4px wide, `offsetWidth` says 82, and a pin 0.4px short of its words makes the label
+   * box overflow, so `text-overflow: ellipsis` cuts the label to "Save chang…". A transformed
+   * ancestor (a scaling dialog) skews `getBoundingClientRect` by more than a pixel; then the
+   * layout width `offsetWidth` is the better measure.
+   */
+  function layoutWidth(target: HTMLElement): number {
+    const fractional = target.getBoundingClientRect().width;
+    const rounded = target.offsetWidth;
+    return Math.abs(fractional - rounded) <= 1 ? fractional : rounded;
+  }
   let element = $state<HTMLElement | null>(null);
   let restingWidth = $state<number | undefined>(undefined);
   let restingText: string | undefined;
@@ -136,7 +148,7 @@
       return;
     }
     if (restingWidth === undefined && element && !fullWidth) {
-      const measured = element.offsetWidth;
+      const measured = layoutWidth(element);
       if (measured > 0) {
         restingWidth = measured;
         restingText = element.textContent ?? '';
@@ -154,7 +166,7 @@
     // the pin is let go and the button takes the width its content needs.
     const pinned = element.style.inlineSize;
     element.style.inlineSize = '';
-    const needed = element.offsetWidth;
+    const needed = layoutWidth(element);
     element.style.inlineSize = pinned;
     if (needed > restingWidth) pinReleased = true;
   });
