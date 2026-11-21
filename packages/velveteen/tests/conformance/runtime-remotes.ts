@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { join } from "node:path";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import type { RuntimeCase } from "./runtime-cases.ts";
 import type { RuntimeBoundary } from "./runtime-fixture.ts";
 
@@ -71,7 +72,7 @@ export function remoteFixtures(
   const navigation = JSON.stringify(
     join(root, "src/client/navigation-context.ts"),
   );
-  const split = process.env.VELVETEEN_REMOTE_SPLIT_BATCHES === "1";
+  const { remoteSplitBatches: split } = readVelveteenTestEnvironment();
   return {
     "src/routes/remote-v/+page.svelte": `<script lang="ts">
       import {onMount} from "svelte";

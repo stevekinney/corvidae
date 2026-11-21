@@ -20,6 +20,7 @@ export async function ensureStylesheets(urls: string[], signal: AbortSignal) {
         };
         const error = () => {
           cleanup();
+          link.remove();
           reject(new Error(`Stylesheet failed: ${href}`));
         };
         const abort = () => {

@@ -2,6 +2,7 @@ import { runWithHangGuard } from "@lostgradient/testing/hang-guard";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import { assertCleanSource } from "../reference/source-identity.ts";
 import {
   classifyScript,
@@ -12,9 +13,17 @@ import {
 
 const allowedOwners = new Set(["A", "B", "C", "D", "E", "F", "G", "H"]);
 
+const {
+  referenceKit,
+  inventoryAlterOwner: alterOwner,
+  inventoryRemoveOwner: removeOwner,
+  inventoryRemoveEntry: removeEntry,
+  inventoryRemoveScript: removeScript,
+  inventoryAlterScript: alterScript,
+  inventoryControls,
+} = readVelveteenTestEnvironment();
 const sourceRoot =
-  process.env.VELVETEEN_REFERENCE_KIT ??
-  resolve(import.meta.dirname, "../reference/upstream");
+  referenceKit ?? resolve(import.meta.dirname, "../reference/upstream");
 const ledger = JSON.parse(
   await readFile(resolve("tests/inventory/ledger.json"), "utf8"),
 ) as {
@@ -24,8 +33,6 @@ const ledger = JSON.parse(
   trackedTestFileCount: number;
   trackedTestFileListSha256: string;
 };
-const alterOwner = process.env.VELVETEEN_INVENTORY_ALTER_OWNER;
-const removeOwner = process.env.VELVETEEN_INVENTORY_REMOVE_OWNER;
 if (alterOwner) ledger.testFiles[0].owner = "unknown";
 if (removeOwner) ledger.packageScripts[0].owner = "";
 for (const entry of [...ledger.testFiles, ...ledger.packageScripts])
@@ -68,15 +75,14 @@ const files = processResult.stdout
   .filter((file) =>
     /(^|\/)(test|tests|spec|__tests__)(\/)|\.(test|spec)\./.test(file),
   )
-  .sort();
-if (process.env.VELVETEEN_INVENTORY_REMOVE_ENTRY)
-  files.splice(files.indexOf(process.env.VELVETEEN_INVENTORY_REMOVE_ENTRY), 1);
+  .toSorted();
+if (removeEntry) files.splice(files.indexOf(removeEntry), 1);
 if (ledger.trackedTestFileCount !== files.length) {
   throw new Error(
     `inventory count changed: expected ${ledger.trackedTestFileCount}, got ${files.length}`,
   );
 }
-const ledgerPaths = ledger.testFiles.map(({ path }) => path).sort();
+const ledgerPaths = ledger.testFiles.map(({ path }) => path).toSorted();
 if (
   ledgerPaths.length !== files.length ||
   ledgerPaths.some((file, index) => file !== files[index])
@@ -108,7 +114,7 @@ for (const path of packageResult.stdout
   .toString()
   .split("\0")
   .filter(Boolean)
-  .sort()) {
+  .toSorted()) {
   const manifest = JSON.parse(
     await readFile(resolve(sourceRoot, path), "utf8"),
   ) as { scripts?: Record<string, string> };
@@ -123,7 +129,7 @@ const actualFiles = await Promise.all(
 for (const entry of actualFiles)
   if (!allowedOwners.has(entry.owner) || entry.owner === "batch-ledger")
     throw new Error(`unknown feature owner for ${entry.path}: ${entry.owner}`);
-const expectedFiles = [...ledger.testFiles].sort((a, b) =>
+const expectedFiles = [...ledger.testFiles].toSorted((a, b) =>
   a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
 );
 if (expectedFiles.length !== actualFiles.length)
@@ -133,8 +139,6 @@ for (const [index, actual] of actualFiles.entries()) {
   if (JSON.stringify(expected) !== JSON.stringify(actual))
     throw new Error(`test-file ledger metadata differs for ${actual.path}`);
 }
-const removeScript = process.env.VELVETEEN_INVENTORY_REMOVE_SCRIPT;
-const alterScript = process.env.VELVETEEN_INVENTORY_ALTER_SCRIPT;
 const observedScripts = actualScripts
   .filter((entry) => `${entry.package}:${entry.name}` !== removeScript)
   .map((entry) =>
@@ -144,17 +148,17 @@ const observedScripts = actualScripts
         ? { ...entry, owner: "unknown" }
         : entry,
   );
-const expectedScripts = ledger.packageScripts.sort((a, b) =>
+const expectedScripts = ledger.packageScripts.toSorted((a, b) =>
   `${a.package}:${a.name}`.localeCompare(`${b.package}:${b.name}`),
 );
-const observedSorted = observedScripts.sort((a, b) =>
+const observedSorted = observedScripts.toSorted((a, b) =>
   `${a.package}:${a.name}`.localeCompare(`${b.package}:${b.name}`),
 );
 if (JSON.stringify(expectedScripts) !== JSON.stringify(observedSorted))
   throw new Error(
     "package test/check script ledger is incomplete or differs from source manifests",
   );
-if (!process.env.VELVETEEN_INVENTORY_CONTROLS) {
+if (!inventoryControls) {
   const controls = [
     {
       name: "remove-entry",

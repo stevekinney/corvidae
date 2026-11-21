@@ -148,7 +148,6 @@ describe('JsonEditor — bundle boundary', () => {
     const result = await Bun.build({
       entrypoints: [stylesheetPath],
       target: 'browser',
-      write: false,
     });
     const output = await result.outputs.find((file) => file.path.endsWith('.css'))?.text();
 

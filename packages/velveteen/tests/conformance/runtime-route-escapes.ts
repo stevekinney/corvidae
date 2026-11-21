@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import type { RuntimeCase } from "./runtime-cases.ts";
 import type { RuntimeBoundary } from "./runtime-fixture.ts";
 
@@ -34,7 +35,7 @@ export function routeEscapeFixtures(
 ): Record<string, string> {
   const doubleEncodeHashLink =
     boundary === "candidate" &&
-    process.env.VELVETEEN_ROUTE_ESCAPE_DOUBLE_ENCODE === "1";
+    readVelveteenTestEnvironment().routeEscapeDoubleEncode;
   const links = escapedRoutes
     .map(
       ({ name, pathname }) =>

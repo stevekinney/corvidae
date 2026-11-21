@@ -3,6 +3,7 @@ import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { createSveltePlugin } from "../../../src/compiler/index.ts";
 import { prepareGeneratedGraph } from "../../../src/development/index.ts";
+import { readVelveteenTestEnvironment } from "../../environment-configuration.ts";
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -20,7 +21,9 @@ const root = resolve(import.meta.dir, "../../..");
 const productionRoot = join(root, ".velveteen/candidate/production");
 const evidenceRoot = join(root, ".velveteen/evidence");
 const endpoint = () =>
-  Response.json({ status: process.env.VELVETEEN_ENDPOINT_STATUS ?? "ok" });
+  Response.json({
+    status: readVelveteenTestEnvironment().endpointStatus ?? "ok",
+  });
 const notFound = () => new Response("not found", { status: 404 });
 let artifact: string | undefined;
 let server: Bun.Server<undefined>;

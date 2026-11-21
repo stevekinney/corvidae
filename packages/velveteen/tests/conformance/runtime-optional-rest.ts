@@ -1,11 +1,12 @@
 import { expect, type Page } from "@playwright/test";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 
 export function optionalRestFixtures(
   boundary: "candidate" | "reference",
 ): Record<string, string> {
   const corrupt =
     boundary === "candidate" &&
-    process.env.VELVETEEN_OPTIONAL_REST_CORRUPT === "1";
+    readVelveteenTestEnvironment().optionalRestCorrupt;
   return {
     "src/routes/docs/[[section=section]]/[...path=docPath]/+page.server.ts": `export const load=({params})=>{const value={...params};${corrupt ? "if(value.path==='guide/install')value.path=value.path.split('/').slice(1).join('/');" : ""}return {label:'optional-rest',params:JSON.stringify(value),hasSection:Object.hasOwn(value,'section'),hasPath:Object.hasOwn(value,'path'),runs:globalThis.__optionalRestRuns=(globalThis.__optionalRestRuns??0)+1};};`,
     "src/routes/docs/[[section=section]]/[...path=docPath]/+page.ts":

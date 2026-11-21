@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { resolve } from "node:path";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import type { RuntimeBoundary } from "./runtime-fixture.ts";
 import type { RuntimeCase } from "./runtime-cases.ts";
 
@@ -15,10 +16,10 @@ export function customTransportFixtures(
   const argument = boundary === "reference" ? "value" : "value: string";
   const plainSnapshot =
     boundary === "candidate" &&
-    process.env.VELVETEEN_TRANSPORT_PLAIN_OBJECT === "1";
+    readVelveteenTestEnvironment().transportPlainObject;
   const plainAction =
     boundary === "candidate" &&
-    process.env.VELVETEEN_ACTION_TRANSPORT_PLAIN_OBJECT === "1";
+    readVelveteenTestEnvironment().actionTransportPlainObject;
   const transport =
     boundary === "reference"
       ? `import { TransportValue } from './lib/transport-value.js'; export const transport={TransportValue:{encode:(value)=>value instanceof TransportValue?[value.value]:false,decode:([value])=>new TransportValue(value)}};`
@@ -137,7 +138,10 @@ export const runtimeCustomTransport: RuntimeCase = {
     ).toHaveText("pending");
     expect(
       await page.evaluate(
-        async (release) => (await fetch(release, { method: "POST" })).status,
+        async (release) => {
+          const response = await fetch(release, { method: "POST" });
+          return response.status;
+        },
         path(url, "/release?key=q-transport-next"),
       ),
     ).toBe(200);

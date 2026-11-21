@@ -1,4 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import { dirname, join, resolve } from "node:path";
 import { actionFixtures } from "./runtime-actions-fixture.ts";
 import { optionalRestFixtures } from "./runtime-optional-rest.ts";
@@ -186,7 +187,7 @@ export async function writeRuntimeFixture(
     await rm(join(directory, stale), { force: true });
   if (
     boundary === "candidate" &&
-    process.env.VELVETEEN_LAYOUT_K_CORRUPT === "1"
+    readVelveteenTestEnvironment().layoutKCorrupt
   ) {
     const resetPage =
       files["src/routes/layout-k/(named)/branch/reset/+page@.svelte"];
@@ -207,13 +208,13 @@ export async function writeRuntimeFixture(
   });
   if (boundary === "reference")
     await rm(join(directory, ".svelte-kit"), { recursive: true, force: true });
-  if (boundary === "candidate" && process.env.VELVETEEN_RUNTIME_CORRUPT === "1")
+  if (boundary === "candidate" && readVelveteenTestEnvironment().runtimeCorrupt)
     files["src/routes/endpoint/+server.ts"] = files[
       "src/routes/endpoint/+server.ts"
     ].replace("value:'fetched'", "value:'wrong'");
   if (
     boundary === "candidate" &&
-    process.env.VELVETEEN_TYPED_MATCHER_CORRUPT === "1"
+    readVelveteenTestEnvironment().typedMatcherCorrupt
   )
     files["src/params.ts"] = files["src/params.ts"].replace(
       "Number(param)",

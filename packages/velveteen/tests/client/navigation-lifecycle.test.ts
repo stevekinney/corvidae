@@ -21,6 +21,12 @@ declare global {
   var lifecycleBeforeAttempts: number;
   var heldNavigation: Promise<void>;
   var lifecyclePopCount: number;
+  var lifecycleEvents: Array<{
+    stage: string;
+    routeId: string | null;
+    params: Record<string, unknown> | null;
+    to: string;
+  }>;
 }
 
 const diagnostics: string[] = [];
@@ -106,6 +112,39 @@ test("page identity preserves repeated replacements and ends retention without k
 
 for (const mode of ["development", "production"] as const)
   describe(`navigation lifecycle (${mode})`, () => {
+    if (mode === "development")
+      test("ordinary hooks expose route metadata after a server reroute", async () => {
+        runtime = await startNavigationLifecycleRuntime(mode);
+        browser = await chromium.launch({ headless: true });
+        page = await createPage(browser);
+        await page.goto(
+          new URL(`${runtime.basePath}/chat/new`, runtime.server.url).href,
+        );
+        const reroutedUrl = new URL(
+          `${runtime.basePath}/rerouted`,
+          runtime.server.url,
+        ).href;
+        await page.evaluate(() =>
+          globalThis.lifecycle.goto("/lifecycle-fixture/rerouted"),
+        );
+        await page.waitForURL("**/rerouted");
+        expect(await page.locator("[data-other]").textContent()).toBe("target");
+        expect(await page.evaluate(() => globalThis.lifecycleEvents)).toEqual([
+          {
+            stage: "before",
+            routeId: "/rerouted",
+            params: {},
+            to: reroutedUrl,
+          },
+          {
+            stage: "after",
+            routeId: "/other/[id]",
+            params: { id: "target" },
+            to: reroutedUrl,
+          },
+        ]);
+      });
+
     test("remounts by page identity, retains keepView, and ends retention on ordinary navigation", async () => {
       runtime = await startNavigationLifecycleRuntime(mode);
       browser = await chromium.launch({ headless: true });

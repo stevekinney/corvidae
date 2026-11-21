@@ -1,3 +1,4 @@
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import type { RuntimeBoundary } from "./runtime-fixture.ts";
 import { resolve } from "node:path";
 
@@ -14,7 +15,7 @@ export function addSnapshotFixtures(
       ? "import { afterNavigate, goto, onNavigate, snapshot } from '$app/navigation';"
       : `import { afterNavigate, onNavigate, snapshot, getNavigation } from ${JSON.stringify(resolve(root, "src/client/navigation-context.ts"))}; const { goto } = getNavigation();`;
   const corruptedRestore =
-    boundary === "candidate" && process.env.VELVETEEN_SNAPSHOT_CORRUPT === "1"
+    boundary === "candidate" && readVelveteenTestEnvironment().snapshotCorrupt
       ? "restore: () => { value = 'wrong restore value'; order = [...order, 'restore']; }"
       : "restore: (next) => { value = next; order = [...order, 'restore']; }";
   const branchLifecycle =
@@ -53,7 +54,7 @@ afterNavigate(() => {
     `<main data-snapshot-two><h1>Snapshot two</h1><a href="/runtime/snapshot-o/one">One</a></main>`,
   );
   const branchRestore =
-    boundary === "candidate" && process.env.VELVETEEN_SNAPSHOT_CORRUPT === "1"
+    boundary === "candidate" && readVelveteenTestEnvironment().snapshotCorrupt
       ? "restore: () => (value = 'wrong restore value')"
       : "restore: (next) => (value = next)";
   put(

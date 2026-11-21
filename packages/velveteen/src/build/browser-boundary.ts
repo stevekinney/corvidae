@@ -46,7 +46,9 @@ export function createBrowserBoundary(options: {
             return;
           throw error;
         }
-        if (!contains(project, path)) return;
+        // Canonical paths let linked first-party workspace sources remain subject to the
+        // boundary even when they resolve outside the application directory. Dependencies
+        // installed under node_modules retain their normal browser conditional resolution.
         const parts = relative(project, path).split(sep);
         if (parts.includes("node_modules")) return;
         const serverFile = /(?:^|[.+])server\./.test(basename(path));

@@ -23,6 +23,7 @@ declare global {
     options?: ClientOptions,
   ) => Promise<ClientApplication>;
   var registry: unknown;
+  var ensureStylesheets: typeof import("../../src/client/styles.ts").ensureStylesheets;
 }
 
 const payload = (url: string, value: string) => ({
@@ -73,7 +74,7 @@ beforeAll(async () => {
   );
   await Bun.write(
     join(temporary, "entry.ts"),
-    `import { startClient } from ${JSON.stringify(join(process.cwd(), "src/client/index.ts"))}; import Root from ${JSON.stringify(join(process.cwd(), "src/client/root.svelte"))}; import Page from './src/Page.svelte'; const manifest={version:1,nodes:[{id:'/',directory:'/',parentId:null,params:[],page:{component:'Page.svelte'}}],routes:[{id:'/',pattern:'^/(?:next|slow-a|fast)?$',params:[],node:0,leaf:0,ancestors:[0],layouts:[null],errors:[null]}]}; const registry={Root,nodes:[{page:async()=>({default:Page})}],manifest}; globalThis.registry=registry; globalThis.startClient=startClient; if(!location.search.includes('manual')) globalThis.client=await startClient(registry,{initial:JSON.parse(document.querySelector('#velveteen-data').textContent)});`,
+    `import { startClient } from ${JSON.stringify(join(process.cwd(), "src/client/index.ts"))}; import { ensureStylesheets } from ${JSON.stringify(join(process.cwd(), "src/client/styles.ts"))}; import Root from ${JSON.stringify(join(process.cwd(), "src/client/root.svelte"))}; import Page from './src/Page.svelte'; const manifest={version:1,nodes:[{id:'/',directory:'/',parentId:null,params:[],page:{component:'Page.svelte'}}],routes:[{id:'/',pattern:'^/(?:next|slow-a|fast)?$',params:[],node:0,leaf:0,ancestors:[0],layouts:[null],errors:[null]}]}; const registry={Root,nodes:[{page:async()=>({default:Page})}],manifest}; globalThis.registry=registry; globalThis.startClient=startClient; globalThis.ensureStylesheets=ensureStylesheets; if(!location.search.includes('manual')) globalThis.client=await startClient(registry,{initial:JSON.parse(document.querySelector('#velveteen-data').textContent)});`,
   );
   const built = await Bun.build({
     entrypoints: [join(temporary, "entry.ts")],
@@ -92,6 +93,8 @@ beforeAll(async () => {
         return new Response(bundle, {
           headers: { "content-type": "text/javascript" },
         });
+      if (url.pathname === "/broken.css")
+        return new Response("missing", { status: 404 });
       if (
         url.pathname === "/" &&
         !request.headers.get("accept")?.includes("application/x-velveteen-data")
@@ -183,6 +186,21 @@ test("invalidation sends only the tracked load keys", async () => {
   requests = [];
   await page.evaluate(() => globalThis.client.invalidate("/dep:count"));
   expect(requests.at(-1) ?? "").toContain("0:page");
+});
+
+test("failed stylesheets are removed so a subsequent retry can start cleanly", async () => {
+  await page.evaluate(async () => {
+    const controller = new AbortController();
+    await globalThis
+      .ensureStylesheets(["/broken.css"], controller.signal)
+      .catch(() => {});
+    if (document.querySelector('link[href$="/broken.css"]'))
+      throw new Error("Failed stylesheet link was retained");
+    await globalThis
+      .ensureStylesheets(["/broken.css"], controller.signal)
+      .catch(() => {});
+  });
+  expect(await page.locator('link[href$="/broken.css"]').count()).toBe(0);
 });
 
 test("CSR false leaves server HTML untouched and installs no client handlers", async () => {

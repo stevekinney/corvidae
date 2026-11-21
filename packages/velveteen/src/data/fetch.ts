@@ -180,7 +180,7 @@ export function createCapturedFetch(
         }
         const value = Reflect.get(target, property, target);
         if (
-          ["text", "json", "arrayBuffer", "blob", "formData"].includes(
+          ["text", "json", "arrayBuffer", "bytes", "blob", "formData"].includes(
             String(property),
           )
         )

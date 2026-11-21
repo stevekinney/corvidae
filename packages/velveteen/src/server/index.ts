@@ -156,6 +156,7 @@ export async function createApplication(options: ApplicationOptions) {
       branch: [{ node: null, role: "error" }],
       fetched: [],
     };
+    const reroutedEvents = new WeakSet<RequestEvent>();
     let page: ResolvedPage | undefined;
     const isData = dataRequest(request);
     const publicError = async (
@@ -285,6 +286,7 @@ export async function createApplication(options: ApplicationOptions) {
         const target = new URL(rerouted, event.url);
         if (target.origin !== url.origin)
           throw new TypeError("Reroute must remain on the same origin");
+        if (target.pathname !== pathname) reroutedEvents.add(event);
         pathname = target.pathname;
       }
       if (base && pathname !== base && !pathname.startsWith(`${base}/`))
@@ -408,14 +410,18 @@ export async function createApplication(options: ApplicationOptions) {
               );
               if (
                 !Array.isArray(parsed) ||
-                !parsed.every(
-                  (key) =>
-                    typeof key === "string" &&
-                    payload.nodes.some((node) => node.key === key),
-                )
+                !parsed.every((key) => typeof key === "string")
               )
                 throw new TypeError();
-              selection = parsed;
+              if (!reroutedEvents.has(event)) {
+                if (
+                  parsed.some(
+                    (key) => !payload.nodes.some((node) => node.key === key),
+                  )
+                )
+                  throw new TypeError();
+                selection = parsed;
+              }
             } catch {
               return new Response("Invalid load selection", { status: 400 });
             }

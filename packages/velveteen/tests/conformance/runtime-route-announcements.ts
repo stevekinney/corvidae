@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import { resolve } from "node:path";
 import type { RuntimeCase } from "./runtime-cases.ts";
 import type { RuntimeBoundary } from "./runtime-fixture.ts";
@@ -16,7 +17,7 @@ export function routeAnnouncementFixtures(
       : `import { getNavigation } from ${JSON.stringify(resolve(import.meta.dir, "../../src/client/navigation-context.ts"))}; const navigation = getNavigation();`;
   const staleTitle =
     boundary === "candidate" &&
-    process.env.VELVETEEN_ANNOUNCER_STALE_TITLE === "1";
+    readVelveteenTestEnvironment().announcerStaleTitle;
 
   return {
     "src/routes/announcements/+page.svelte": `<script lang="ts">

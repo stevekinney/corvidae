@@ -234,13 +234,12 @@ export async function startClient(
     const renderedUrl = settings.shallow
       ? currentUrl.href
       : settings.pop?.renderedUrl;
-    const historyUrl = renderedUrl
-      ? matchRoute(
-          registry.manifest,
-          address.pathname.slice(base.length) || "/",
-          registry.matchers,
-        )
-      : undefined;
+    const matchedUrl = matchRoute(
+      registry.manifest,
+      address.pathname.slice(base.length) || "/",
+      registry.matchers,
+    );
+    const historyUrl = renderedUrl ? matchedUrl : undefined;
     if (settings.shallow && !historyUrl)
       throw new Error(
         `Cannot shallow navigate to an unknown route: ${address}`,
@@ -259,8 +258,8 @@ export async function startClient(
       to: address,
       type: settings.type ?? "goto",
       shallow: shallow !== undefined,
-      params: historyUrl?.params ?? null,
-      routeId: historyUrl?.route.id ?? null,
+      params: matchedUrl?.params ?? null,
+      routeId: matchedUrl?.route.id ?? null,
     };
     const runHooks = !settings.refresh && !silentPop;
     const stageSnapshot = () =>
@@ -361,6 +360,8 @@ export async function startClient(
         report,
         invalidation,
       );
+      event.params = resolved.payload.params;
+      event.routeId = resolved.payload.routeId;
       await ensureStylesheets(resolved.payload.stylesheets, controller.signal);
       controller.signal.throwIfAborted();
       if (sequence !== version) return;

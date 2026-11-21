@@ -49,6 +49,28 @@ test("EF01: captured fetches replay exact consumed bodies without serializing cr
   ).toBe("https://app.test/api");
 });
 
+test("captured bytes replay without another network request", async () => {
+  const records: FetchRecord[] = [];
+  let count = 0;
+  const capture = createCapturedFetch(
+    async () => {
+      count++;
+      return new Response(new Uint8Array([0, 1, 2, 255]));
+    },
+    "https://app.test/",
+    records,
+  );
+  const capturedResponse = await capture("/bytes");
+  expect([...(await capturedResponse.bytes())]).toEqual([0, 1, 2, 255]);
+  const replay = createReplayFetch(records, "https://app.test/", async () => {
+    count++;
+    throw new Error("Unexpected hydration network");
+  });
+  const replayedResponse = await replay("/bytes");
+  expect([...(await replayedResponse.bytes())]).toEqual([0, 1, 2, 255]);
+  expect(count).toBe(1);
+});
+
 test("fetchKey distinguishes request credential and replay policy", async () => {
   const input = loadRequest(
     "/resource",

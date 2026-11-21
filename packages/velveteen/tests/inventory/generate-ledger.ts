@@ -6,10 +6,11 @@ import {
   classifyTestFile,
   type PackageScript,
 } from "./classify.ts";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 
+const { referenceKit } = readVelveteenTestEnvironment();
 const sourceRoot =
-  process.env.VELVETEEN_REFERENCE_KIT ??
-  resolve(import.meta.dirname, "../reference/upstream");
+  referenceKit ?? resolve(import.meta.dirname, "../reference/upstream");
 const run = (args: string[]) => {
   const result = Bun.spawnSync(args);
   if (result.exitCode !== 0) throw new Error(result.stderr.toString());
@@ -30,7 +31,7 @@ const tracked = run([
   .filter((file) =>
     /(^|\/)(test|tests|spec|__tests__)(\/)|\.(test|spec)\./.test(file),
   )
-  .sort();
+  .toSorted();
 const packagePaths = run([
   "git",
   "-C",
@@ -43,7 +44,7 @@ const packagePaths = run([
 ])
   .split("\0")
   .filter(Boolean)
-  .sort();
+  .toSorted();
 const scripts: PackageScript[] = [];
 for (const path of packagePaths) {
   const manifest = JSON.parse(

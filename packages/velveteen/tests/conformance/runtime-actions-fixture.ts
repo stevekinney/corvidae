@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 import type { RuntimeBoundary } from "./runtime-fixture.ts";
 export function actionFixtures(
   root: string,
@@ -31,7 +32,7 @@ export function actionFixtures(
     "src/routes/actions/default/+page.svelte": `<script>${enhance}let {form}=$props();</script><h1>Default action</h1><p data-result>{form?.message??'Empty'}</p><form method="POST" use:enhance><input aria-label="Name" name="name"/><button>Submit</button><button formaction="/runtime/actions?/save" name="operation" value="cross">Cross-page</button></form>`,
     "src/routes/actions/+server.ts": `export const POST=()=>new Response('Endpoint POST');`,
   };
-  if (boundary === "candidate" && process.env.VELVETEEN_ACTION_CORRUPT === "1")
+  if (boundary === "candidate" && readVelveteenTestEnvironment().actionCorrupt)
     files["src/routes/actions/+page.server.ts"] = files[
       "src/routes/actions/+page.server.ts"
     ].replace("message:'Saved '", "message:'Wrong '");

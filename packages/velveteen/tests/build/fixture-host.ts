@@ -6,6 +6,7 @@ import type { render } from "svelte/server";
 import { readProductionGeneration } from "../../src/build/publication.ts";
 import { createProductionAssetRoutes } from "../../src/build/serving.ts";
 import { matchRoute } from "../../src/routing/match.ts";
+import { readVelveteenTestEnvironment } from "../environment-configuration.ts";
 
 type ServerRegistry = {
   render: typeof render;
@@ -25,7 +26,7 @@ if (typeof document !== "undefined")
   throw new Error("SSR fixture must be DOM-free");
 const assets = createProductionAssetRoutes(
   generation,
-  process.env.VELVETEEN_FIXTURE_COMPRESSION === "true"
+  readVelveteenTestEnvironment().fixtureCompression
     ? { compression: true }
     : undefined,
 );
