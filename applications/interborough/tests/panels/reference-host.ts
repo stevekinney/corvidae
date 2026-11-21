@@ -13,9 +13,25 @@ import {
 
 type ToolHandler = (args: Record<string, unknown>) => unknown;
 
+/** A tool result exactly as the host answers it, errors and their structured content included. */
+type RawToolResult = {
+  content: { type: 'text'; text: string }[];
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
 type ReferenceHost = {
   calls: { name: string; arguments: Record<string, unknown> }[];
   handlers: Record<string, ToolHandler>;
+  /**
+   * Handlers whose answer is the whole tool result, consulted before `handlers`: a spec that
+   * forwards a call to a running host hands the panel what that host answered, an error and the
+   * fault's structured content included.
+   */
+  rawHandlers: Record<
+    string,
+    (args: Record<string, unknown>) => RawToolResult | Promise<RawToolResult>
+  >;
   mount(
     html: string,
     csp: McpUiResourceCsp,
@@ -57,6 +73,7 @@ let frame: HTMLIFrameElement | undefined;
 const host: ReferenceHost = {
   calls: [],
   handlers: {},
+  rawHandlers: {},
   initialized: false,
   async mount(html, csp, toolInput, title = 'Run inspector', hostContext) {
     frame = document.createElement('iframe');
@@ -82,6 +99,14 @@ const host: ReferenceHost = {
     };
     bridge.oncalltool = async (params): ReturnType<NonNullable<AppBridge['oncalltool']>> => {
       host.calls.push({ name: params.name, arguments: params.arguments ?? {} });
+      const raw = host.rawHandlers[params.name];
+      if (raw !== undefined) {
+        try {
+          return await raw(params.arguments ?? {});
+        } catch (error) {
+          return { isError: true, content: [{ type: 'text', text: String(error) }] };
+        }
+      }
       const handler = host.handlers[params.name];
       if (handler === undefined) {
         return { isError: true, content: [{ type: 'text', text: 'unknown tool' }] };

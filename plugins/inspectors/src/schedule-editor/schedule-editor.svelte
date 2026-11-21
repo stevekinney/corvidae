@@ -40,21 +40,25 @@
 
   const making = $derived(view.source === undefined);
   const cancelled = $derived(view.source?.status === 'cancelled');
-  const targets = $derived(
-    view.draft.targetKind === 'agent'
+  // The platform select shows its first option while nothing is chosen, so an option that says
+  // "Choose" stands for nothing, and the draft's empty target is a choice the control shows.
+  const targets = $derived([
+    {
+      value: '',
+      label: view.draft.targetKind === 'agent' ? 'Choose an agent' : 'Choose a workflow',
+    },
+    ...(view.draft.targetKind === 'agent'
       ? withCurrent(view.agents, view.draft.target)
-      : withCurrent(view.workflows, view.draft.target),
-  );
+      : withCurrent(view.workflows, view.draft.target)),
+  ]);
   const locked = $derived(view.busy || !view.connected);
   const calloutVariant = $derived(
     view.tone === 'danger' ? 'danger' : view.tone === 'success' ? 'success' : 'info',
   );
-  // An agent's text is asked only when it is new: a schedule keeps the text it sends.
+  // An agent's text is asked only when it is new, as a new schedule or a workflow made to run an
+  // agent has none: a schedule that runs an agent keeps the text it sends, whichever agent it runs.
   const asksText = $derived(
-    view.draft.targetKind === 'agent' &&
-      (making ||
-        view.source?.target.kind !== 'agent' ||
-        view.source.target.agentName !== view.draft.target),
+    view.draft.targetKind === 'agent' && (making || view.source?.target.kind !== 'agent'),
   );
 </script>
 
@@ -148,10 +152,7 @@
             id="schedule-target"
             label={view.draft.targetKind === 'agent' ? 'Agent' : 'Workflow'}
             options={targets}
-            value={view.draft.target === '' ? undefined : view.draft.target}
-            placeholder={view.draft.targetKind === 'agent'
-              ? 'Choose an agent'
-              : 'Choose a workflow'}
+            value={view.draft.target}
             error={view.errors.target}
             disabled={locked || cancelled}
             onValueChange={(next: string) => handlers.onEdit({ target: next })}

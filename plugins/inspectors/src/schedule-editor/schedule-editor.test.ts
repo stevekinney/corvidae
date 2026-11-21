@@ -147,6 +147,23 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     expect(workflow.container.querySelector('#schedule-input')).toBeNull();
   });
 
+  it('shows nothing chosen for a new schedule, never the first agent, and keeps a target the list lacks', () => {
+    const fresh = open((view) => showForm(view, null));
+    const picker = fresh.container.querySelector('#schedule-target') as HTMLSelectElement;
+    expect(picker.value).toBe('');
+    expect([...picker.options].map((option) => option.textContent)).toEqual([
+      'Choose an agent',
+      'Writer',
+      'Editor',
+    ]);
+    fresh.unmount();
+    const hidden = open((view) =>
+      showForm(view, { ...schedule, target: { kind: 'agent', agentName: 'secret' } }),
+    );
+    const kept = hidden.container.querySelector('#schedule-target') as HTMLSelectElement;
+    expect(kept.value).toBe('secret');
+  });
+
   it('draws a canceled schedule read-only and offers no way to save it', () => {
     const { container } = open((view) => showForm(view, { ...schedule, status: 'cancelled' }));
     expect(container.textContent).toContain('canceled, so it cannot be changed');

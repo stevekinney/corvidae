@@ -17,7 +17,10 @@
  *   handler as its authenticated caller. A `hostOnlyTools` entry is not an MCP tool: it goes to the
  *   Bureau's `/jsonrpc` surface as a direct call of the operation, and only when the operation is
  *   in the Bureau's `HOST_PANEL_OPERATIONS`; any other host-only name answers 403 and the Bureau is
- *   never called (COR-2208). Only authentication headers reach the in-process
+ *   never called (COR-2208). A host-only call runs inside Bureau's `runAsHostPanel` with the URI of
+ *   the panel the host served, so the Bureau's audit entry names the panel (COR-2545); the URI is
+ *   the host's own and travels in the call's in-process scope, never in a header or the body, so a
+ *   page cannot name another panel's. Only authentication headers reach the in-process
  *   verifier; caller-selected identity and workspace headers are discarded. A panel never
  *   calls a toolbox tool, so approval policy and idempotency, which belong to a run, do not apply.
  *
