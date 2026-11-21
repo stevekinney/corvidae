@@ -25,12 +25,17 @@ test.describe('Filled composed controls', () => {
       await page.goto(fixtureRoute(fixture.slug), { waitUntil: 'load' });
       const control = fixture.control(page);
       await expect(control).toHaveAttribute('data-cinder-appearance', 'filled');
-      await expect(control).toHaveCSS('min-height', '48px');
-      await expect(control).toHaveCSS('border-top-left-radius', '12px');
+      const frame =
+        fixture.slug === 'number-input'
+          ? page.locator('.cinder-input-group--filled').filter({ has: control })
+          : control;
+      await expect.poll(async () => (await frame.boundingBox())?.height).toBe(48);
+      await expect(frame).toHaveCSS('border-top-left-radius', '12px');
 
+      await expect(frame).toHaveCSS('box-shadow', 'none');
       await control.focus();
       await expect(control).toBeFocused();
-      await expect(control).toHaveCSS('box-shadow', /rgb/);
+      await expect(frame).toHaveCSS('box-shadow', /0px 0px 0px 2px/);
     });
   }
 });
