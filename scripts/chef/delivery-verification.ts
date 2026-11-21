@@ -1,7 +1,11 @@
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { createGitHubCiEvidenceProvider } from './ci-evidence-github.ts';
-import { ciEvidenceRequestKey, type CiEvidenceProvider } from './ci-evidence.ts';
+import {
+  ciEvidenceRequestKey,
+  type CiEvidenceProvider,
+  type CiEvidenceRequest,
+} from './ci-evidence.ts';
 import {
   batchVerificationPlanDigest,
   collectCompletionRecords,

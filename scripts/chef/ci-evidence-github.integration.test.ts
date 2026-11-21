@@ -66,8 +66,10 @@ function fixture(
     : undefined;
   if (reportDirectory !== undefined) {
     directories.push(reportDirectory);
+    const junitDirectory = join(reportDirectory, 'test-output', 'junit');
+    mkdirSync(junitDirectory, { recursive: true });
     writeFileSync(
-      join(reportDirectory, 'tests.xml'),
+      join(junitDirectory, 'tests.xml'),
       '<testsuite><testcase name="passes" file="scripts/chef/ci-evidence-github.integration.test.ts" /></testsuite>',
     );
   }
