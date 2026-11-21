@@ -361,6 +361,19 @@ scenarios.describe('prepare', () => {
     },
   );
 
+  scenarios.scenario('refuses changed frozen inputs before retry transport', async () => {
+    const setup = await harness();
+    await setup.prepared();
+    expect(
+      String(
+        await rejectionOf(
+          prepare({ ...setup.options, issues: ['COR-1', 'COR-2', 'COR-3'] }, setup.dependencies),
+        ),
+      ),
+    ).toContain('assignments read do not match');
+    expect(setup.dispatched).toHaveLength(1);
+  });
+
   scenarios.scenario(
     'dispatches the inputs landing binds: the request key, the batch plan digest and the base',
     async () => {
