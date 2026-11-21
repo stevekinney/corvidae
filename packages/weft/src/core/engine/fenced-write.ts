@@ -35,6 +35,7 @@
 
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
+import { prepareSharedActivityReceiptTransitions } from './checkpoint-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import { decodeEpoch } from './lease-codec.ts';
 import { emitWorkflowClaimLostWarning, handleDeposition } from './lease-deposition.ts';
@@ -96,7 +97,23 @@ const untrackedWrite: FencedWriteTracker = (write) => write;
  *   `workflowId: null`): unchanged from Step 2 — see {@link
  *   resolveFenceEpochOrHalt}.
  */
-async function fencedCommit(
+function fencedCommit(
+  internals: EngineInternals,
+  workflowId: string | null,
+  operations: BatchOperation[],
+  conditions: ConditionalBatchCondition[],
+  trackWrite: FencedWriteTracker = untrackedWrite,
+): Promise<FencedCommitResult> {
+  const shared = prepareSharedActivityReceiptTransitions(internals.storage, operations, conditions);
+  if (shared === undefined) {
+    return writeFencedBatch(internals, workflowId, operations, conditions, trackWrite);
+  }
+  return shared.then((prepared) =>
+    writeFencedBatch(internals, workflowId, prepared.operations, prepared.conditions, trackWrite),
+  );
+}
+
+async function writeFencedBatch(
   internals: EngineInternals,
   workflowId: string | null,
   operations: BatchOperation[],
