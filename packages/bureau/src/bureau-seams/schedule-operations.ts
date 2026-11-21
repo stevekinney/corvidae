@@ -20,6 +20,7 @@ import type {
   DurableScheduleDefinition,
   DurableScheduleUpdate,
   DurableWorkflowScheduleDefinition,
+  ScheduleActor,
   ScheduleRevisionGuard,
 } from '../bureau-types/schedules';
 import {
@@ -49,6 +50,7 @@ import {
   recoverRunWorkspaceAuthority,
   validateRunWorkspaceAuthority,
 } from '../run-authority.ts';
+import { markEventActor } from '../event-actor';
 import { markEventSource } from '../event-source';
 import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record';
 import { bureauNameOf, weftNameOf } from '../namespaced-identifier';
@@ -181,13 +183,24 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     // `createAgentSchedule`'s `AgentScheduledEvent` (`schedule.created`, AB-298)
     // straight onto it, exactly once for the fresh registration this call makes —
     // no separate dispatch needed here.
+    const actor = scheduleOptions?.actor;
     const scheduler = createAgentScheduler({
       engine: runtime.durable.engine,
-      // COR-1879: the internal variant a plugin's host API uses marks what it forwards.
+      // COR-1879: the internal variant a plugin's host API uses marks what it forwards. COR-2545: a
+      // caller who asked for the schedule is marked on its `schedule.created`, for the audit trail.
       emitter:
-        source === undefined
+        source === undefined && actor === undefined
           ? emitter
-          : { dispatch: (event) => emitter.dispatch(markEventSource(event, source)) },
+          : {
+              dispatch: (event) => {
+                const sourced = source === undefined ? event : markEventSource(event, source);
+                return emitter.dispatch(
+                  actor !== undefined && sourced instanceof AgentScheduledEvent
+                    ? markEventActor(sourced, actor)
+                    : sourced,
+                );
+              },
+            },
     });
     // COR-1952: a schedule a hook-started run creates records the hook before it exists, under an
     // id minted here, so no fire can run before its origin is readable.
@@ -289,6 +302,7 @@ export function createScheduleOperations<D extends AgentDefinitions>(
    */
   async function createWorkflowSchedule(
     definition: DurableWorkflowScheduleDefinition,
+    options?: Pick<CreateScheduleOptions, 'actor'>,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     const workflowInput: unknown = structuredClone(definition.workflowInput ?? null);
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
@@ -316,8 +330,13 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     );
     // The schedule exists from here, so its creation is announced before the locator read below
     // can fail: its audit trail then has a creation beside its pause, resume and cancel.
+    const created = new AgentScheduledEvent({
+      workflowType: definition.workflowType,
+      scheduleId,
+      spec,
+    });
     emitter.dispatch(
-      new AgentScheduledEvent({ workflowType: definition.workflowType, scheduleId, spec }),
+      options?.actor === undefined ? created : markEventActor(created, options.actor),
     );
     // The schedule is registered, so a read that fails or finds nothing loses only its locator.
     let summary;
@@ -659,6 +678,7 @@ export function createScheduleOperations<D extends AgentDefinitions>(
       kind,
       scheduleId,
       committedAtMs: runtimeServices.clock.now(),
+      ...(guard?.actor === undefined ? {} : { actor: pendingActorOf(guard.actor) }),
     };
     const key = scheduleTransitionKey(
       transition,
@@ -696,9 +716,12 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     // A scan's snapshot can be stale: another process's drain may have recorded and removed the
     // key since.
     if ((await runtime.durable!.engine.storage.get(key)) === null) return;
-    const { kind, scheduleId, committedAtMs } = transition;
+    const { kind, scheduleId, committedAtMs, actor } = transition;
     const recordKind = transition.reassignment === undefined ? kind : 'schedule.reassigned';
     const detail = { scheduleId, ...transition.reassignment };
+    // COR-2545: who asked is on the audit entry, and the panel they asked through is in its detail.
+    const auditDetail =
+      actor?.panelUri === undefined ? detail : { ...detail, panelUri: actor.panelUri };
     await core.eventHistoryInstance?.record(
       { kind: 'schedule', id: scheduleId },
       recordKind,
@@ -711,7 +734,8 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     await core.auditTrailInstance?.record({
       runId: `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`,
       type: recordKind,
-      detail,
+      detail: auditDetail,
+      ...(actor === undefined ? {} : { principal: actor.principal }),
       timestampMs: committedAtMs,
       dedupeKey: key,
     });
@@ -792,6 +816,14 @@ export function createScheduleOperations<D extends AgentDefinitions>(
         });
       }
     }
+  }
+
+  /** The actor as the pending record keeps it, with no key an absent panel would leave as `undefined`. */
+  function pendingActorOf(actor: ScheduleActor): { principal: string; panelUri?: string } {
+    return {
+      principal: actor.principal,
+      ...(actor.panelUri === undefined ? {} : { panelUri: actor.panelUri }),
+    };
   }
 
   /** What Weft's pause, resume, and cancel take for a guard: the revision, or nothing at all. */
@@ -1048,7 +1080,46 @@ export function createScheduleOperations<D extends AgentDefinitions>(
       ...targetFields,
       ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
+    await recordScheduleUpdated(scheduleId, update, guard?.actor);
     return true;
+  }
+
+  /**
+   * COR-2545 — the audit entry of a committed update: which schedule, which fields the caller named,
+   * who asked, and the panel they asked through. Weft's update takes no additional write, so this
+   * follows the commit, and a failure to record is diagnosed and never a failure of the update,
+   * which committed.
+   */
+  async function recordScheduleUpdated(
+    scheduleId: string,
+    update: DurableScheduleUpdate,
+    actor: ScheduleActor | undefined,
+  ): Promise<void> {
+    // Comma-joined, as an agent write names its changed keys: the audit projection keeps scalars.
+    const changedKeys = Object.entries(update)
+      .filter(([, value]) => value !== undefined)
+      .map(([name]) => name)
+      .toSorted()
+      .join(',');
+    try {
+      await core.auditTrailInstance?.record({
+        runId: `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`,
+        type: 'schedule.updated',
+        detail: {
+          scheduleId,
+          changedKeys,
+          ...(actor?.panelUri === undefined ? {} : { panelUri: actor.panelUri }),
+        },
+        ...(actor === undefined ? {} : { principal: actor.principal }),
+      });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Could not record the update of schedule "${scheduleId}" in the audit trail: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
   }
 
   /**
