@@ -425,7 +425,9 @@
 
   /* A page's own menu among the actions (a Dropdown trigger not drawn as a Button) is compact too,
      like every other header control, rather than the trigger's `md` height. */
-  .cinder-page-header__actions .cinder-dropdown-trigger:not(.cinder-button) {
+  :where(.cinder-page-header:not([data-cinder-regular-actions]))
+    .cinder-page-header__actions
+    .cinder-dropdown-trigger:not(.cinder-button) {
     min-block-size: var(--_cinder-compact-control-height);
     padding-block: 0;
   }
