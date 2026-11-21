@@ -2315,6 +2315,7 @@ export class Engine<
     filter: ListFilter | undefined,
     options: BulkOperationDryRunOptions,
   ): Promise<BulkOperationDryRunResult>;
+  /** Commit a confirmed preview, or purge matching terminal workflows immediately when no options are supplied. */
   async purge(filter?: ListFilter, options?: BulkOperationCommitOptions): Promise<PurgeResult>;
   async purge(
     filter?: ListFilter,

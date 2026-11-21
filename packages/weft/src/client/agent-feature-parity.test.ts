@@ -1,4 +1,5 @@
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { AUTHORIZATION_SCOPES } from '../authorization-scopes.ts';
 /**
  * Agent feature parity tests.
  *
@@ -7,7 +8,7 @@ import { waitForCondition } from '@lostgradient/testing/fake-timers';
  * (server mode). No agent capability is server-only or library-only.
  */
 
-import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { StreamReference } from '../core/context.ts';

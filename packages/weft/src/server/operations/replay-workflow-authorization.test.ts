@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { anonymousPrincipal, principalFromJwtClaims } from '@lostgradient/backchannel';
 import { executeOperation, signJWT } from '@lostgradient/backchannel/internals';
@@ -284,7 +285,10 @@ describe('weft.workflows.replay authorization parity', () => {
       'weft.workflows.replay',
       { workflowId, step: 2 },
       {
-        principal: principalFromJwtClaims({ sub: 'track-8-user', scope: 'workflows:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'track-8-user', scope: 'workflows:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry,

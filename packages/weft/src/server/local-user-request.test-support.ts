@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * Test-only entry points that send a request as the one user a server with no
  * authentication knows: the `unauthenticated-local` principal, which holds
@@ -18,7 +19,7 @@ import { unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 import { handleRequest, type HandlerOptions } from './handler.ts';
 
 /** The context `serve()` attaches to every request when it has no `auth`. */
-export const LOCAL_USER_AUTH_CONTEXT = unauthenticatedLocalAuthContext();
+export const LOCAL_USER_AUTH_CONTEXT = unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY);
 
 /**
  * `handleRequest` as the local user. An `authContext` in `options` still wins,

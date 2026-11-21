@@ -25,6 +25,7 @@
  * the JSON-RPC semantics come from the shared session.
  */
 
+import type { ScopeVocabulary } from './authorization-scope.ts';
 import { faultErrorData } from './fault-to-json-rpc.ts';
 import { splitNewlineDelimitedBuffer } from './json-rpc-framing.ts';
 import { JSON_RPC_ERROR_CODES, JSON_RPC_VERSION, type JsonRpcId } from './json-rpc-protocol.ts';
@@ -47,6 +48,7 @@ export type StdioSessionOptions = {
   readonly output: WritableStream<Uint8Array>;
   readonly admission: StdioAdmission;
   readonly registry: OperationRegistry;
+  readonly scopeVocabulary?: ScopeVocabulary;
   readonly engine: unknown;
   /** The host's workflow event feed, handed to `weft.workflows.subscribe` as `host.feed`. */
   readonly feed: unknown;
@@ -113,7 +115,7 @@ export async function runStdioSession(options: StdioSessionOptions): Promise<Std
     buffer = outcome.remainder;
   }
 
-  const principal: Principal = principalFromStdioLocal();
+  const principal: Principal = principalFromStdioLocal(options.scopeVocabulary);
   const session = createJsonRpcWebSocketSession({
     registry: options.registry,
     engine: options.engine,

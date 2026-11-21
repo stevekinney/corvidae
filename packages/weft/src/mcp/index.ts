@@ -16,11 +16,6 @@ export {
   type McpHttpRequestOptions,
 } from './http.ts';
 export {
-  createOperationMcpMount,
-  type OperationMcpMountOptions,
-  type OperationMcpResource,
-} from './operation-tools.ts';
-export {
   DEFAULT_MCP_MAX_BODY_BYTES,
   MCP_LEGACY_PROTOCOL_VERSION,
   MCP_PROTOCOL_VERSION,

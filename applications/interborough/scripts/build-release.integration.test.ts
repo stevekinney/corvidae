@@ -6,6 +6,7 @@ import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { CINDER_GENERATED_OUTPUTS } from '../../../scripts/ensure-cinder-generated.ts';
 import { digestOf } from '../src/host/panel-build.ts';
 import { prebuiltPanelSchema } from '../src/host/panel-mounts.ts';
 import {
@@ -111,6 +112,12 @@ async function releaseFixture(
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'interborough-release-fixture-'));
+  const generatedCinder = join(root, 'generated-cinder');
+  for (const file of CINDER_GENERATED_OUTPUTS) {
+    const target = join(generatedCinder, file);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, `fixture asset: ${file}`);
+  }
   const source = join(root, 'source');
   const dependencies = join(root, 'dependencies');
   const sdk = join(dependencies, '@lostgradient', 'interborough-plugin');
@@ -256,6 +263,7 @@ await new Promise(() => {});
     platform: 'darwin',
     architecture: 'arm64',
     runCommand: command,
+    generatedCinder,
     buildApplication: async (options) => {
       const outdir = options?.outdir;
       if (outdir === undefined) throw new Error('missing browser output');
@@ -744,6 +752,11 @@ describe('release arguments', () => {
         for (const file of Object.keys(files)) {
           expect(await Bun.file(join(runtime, name, file)).exists(), `${name}/${file}`).toBe(true);
         }
+      }
+      for (const file of CINDER_GENERATED_OUTPUTS) {
+        expect(await Bun.file(join(runtime, '@lostgradient', 'cinder', file)).text()).toBe(
+          `fixture asset: ${file}`,
+        );
       }
       // The staged files the host reads: the compiler and the panel kit's entry.
       expect(await Bun.file(join(runtime, 'svelte', 'compiler', 'index.js')).exists()).toBe(true);

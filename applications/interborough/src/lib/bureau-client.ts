@@ -389,7 +389,9 @@ export async function deleteContext(
 
 /** One page of sessions and the offset of the next page, or `null` on the last. */
 export type ContextPage = {
+  /** The contexts returned on this page. */
   readonly contexts: readonly ChatContext[];
+  /** The offset of the next page, when there is one. */
   readonly nextOffset: number | null;
 };
 

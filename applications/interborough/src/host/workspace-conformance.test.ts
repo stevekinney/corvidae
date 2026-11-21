@@ -1,4 +1,4 @@
-import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES, type WorkspaceMembership } from '@lostgradient/bureau';
 import {
@@ -9,7 +9,12 @@ import { definePlugin, type PluginSetupContext } from '@lostgradient/interboroug
 import { createAgent, createDefaultRuntimeServices, stopWhen } from '@lostgradient/operative';
 import anthropic from '@lostgradient/plugin-anthropic';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createLiveOperationRegistry, decode, KEYS } from '@lostgradient/weft';
+import {
+  AUTHORIZATION_SCOPES,
+  createLiveOperationRegistry,
+  decode,
+  KEYS,
+} from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';

@@ -260,7 +260,7 @@ describe('defineOperation (typed builder)', () => {
       outputSchema: z.object({}),
       access: {
         kind: 'scoped',
-        scopes: { kind: 'anyOf', scopes: callerScopes as ['workflows:read'] },
+        scopes: { kind: 'anyOf', scopes: callerScopes },
       },
       transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
@@ -287,7 +287,7 @@ describe('defineOperation (typed builder)', () => {
         kind: 'optionalAuth',
         authenticatedScopes: {
           kind: 'allOf',
-          scopes: callerScopes as ['workflows:write'],
+          scopes: callerScopes,
         },
       },
       transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
@@ -312,7 +312,7 @@ describe('defineOperation (typed builder)', () => {
       access: {
         kind: 'scopedAlternatives',
         alternatives: [
-          { kind: 'allOf', scopes: callerScopes as ['workflows:read'] },
+          { kind: 'allOf', scopes: callerScopes },
           { kind: 'anyOf', scopes: ['workflows:admin'] },
         ],
       },

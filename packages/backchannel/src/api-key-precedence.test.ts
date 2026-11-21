@@ -1,3 +1,4 @@
+import { TEST_SCOPE_VOCABULARY } from './scope-vocabulary.test-support.ts';
 /**
  * Phase 16 — API-key admission precedence truth table.
  *
@@ -42,7 +43,7 @@ describe('API-key admission — resolver absent', () => {
       apiKeys: ['static-key-1'],
       defaultApiKeyScopes: ['workflows:read'],
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('static-key-1'));
 
     expect(result.authenticated).toBe(true);
@@ -58,7 +59,7 @@ describe('API-key admission — resolver absent', () => {
     // scope for everything. A generic authenticator may serve a catalog of
     // authenticated-only operations, for which an unscoped key is valid.
     const config: AuthConfig = { apiKeys: ['static-key-2'] };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('static-key-2'));
 
     expect(result.authenticated).toBe(true);
@@ -80,7 +81,7 @@ describe('API-key admission — resolver absent', () => {
       apiKeys: ['static-key-3'],
       defaultApiKeyScopes: ['workflows:read'],
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('wrong-key'));
 
     expect(result.authenticated).toBe(false);
@@ -102,7 +103,7 @@ describe('API-key admission — resolver present', () => {
         return null;
       },
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('resolver-key'));
 
     expect(result.authenticated).toBe(true);
@@ -123,7 +124,7 @@ describe('API-key admission — resolver present', () => {
       apiKeys: ['static-key'],
       resolveApiKeyPrincipal: async () => null,
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('static-key'));
 
     expect(result.authenticated).toBe(false);
@@ -135,7 +136,7 @@ describe('API-key admission — resolver present', () => {
         throw new Error('secret-resolver-error-message');
       },
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('any-key'));
 
     expect(result.authenticated).toBe(false);
@@ -156,7 +157,7 @@ describe('API-key admission — resolver present', () => {
           ? principalFromApiKey({ subject: 'resolver-only', scopes: [] })
           : null,
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('resolver-only-key'));
 
     expect(result.authenticated).toBe(true);
@@ -173,7 +174,7 @@ describe('API-key admission — resolver present', () => {
           ? principalFromApiKey({ subject: 'bearer-subject', scopes: [] })
           : null,
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithBearer('bearer-resolver-key'));
 
     expect(result.authenticated).toBe(true);
@@ -212,7 +213,7 @@ describe('API-key admission — resolver present', () => {
           hasScope: () => false,
         }) as never, // Test-only shape to exercise the runtime guard
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('any-key'));
 
     expect(result.authenticated).toBe(false);
@@ -232,7 +233,7 @@ describe('API-key admission — resolver present', () => {
         return principal;
       },
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('any-key'));
 
     expect(result.authenticated).toBe(true);
@@ -268,7 +269,7 @@ describe('API-key admission — resolver present', () => {
           scopes: ['workflows:read', 'schedules:write'],
         }),
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('any-key'));
 
     expect(result.authenticated).toBe(true);
@@ -314,7 +315,7 @@ describe('API-key admission — resolver present', () => {
         hasScope: () => false,
       }),
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('any-key'));
 
     expect(result.authenticated).toBe(true);
@@ -347,7 +348,10 @@ describe('mTLS fallback regression (Bugbot round 5)', () => {
     const config: AuthConfig = {
       mtls: { ca: '', cert: '', key: '' },
     };
-    const auth = await createAuthenticator(config, { transportVerifiesClientCertificates: true });
+    const auth = await createAuthenticator(config, {
+      scopeVocabulary: TEST_SCOPE_VOCABULARY,
+      transportVerifiesClientCertificates: true,
+    });
     const request = new Request('http://localhost/v1/workflows', {
       method: 'GET',
       headers: { 'X-API-Key': 'stray-header' },
@@ -378,7 +382,7 @@ describe('deepFreeze cycle safety (Bugbot round 5)', () => {
         hasScope: () => false,
       }),
     };
-    const auth = await createAuthenticator(config);
+    const auth = await createAuthenticator(config, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     const result = await auth(requestWithKey('any-key'));
 
     expect(result.authenticated).toBe(true);
