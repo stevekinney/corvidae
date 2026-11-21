@@ -1,34 +1,34 @@
 {
   "issue": "COR-2537",
   "branch": "worktree-agent-a73a2e4bcaadda058",
-  "checkedAt": "286777e9629214c0a8748d44a10e025a42656ae1",
+  "checkedAt": "6e71bd585f8c7d1452b2e674239f033c214ee5de",
   "briefVersion": "2f617ebb0b5c",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "json-diff-viewer.test.ts three-level fixture and collapsed-unchanged tests; focused-checks exit 0 at 286777e962"
+      "evidence": "json-diff-viewer.test.ts three-level fixture and collapsed-unchanged tests; focused-checks exit 0 at 6e71bd585f"
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "marker test reads +, -, ~ with aria-labels; json-diff-viewer.a11y.md exists and its Touch targets section now describes the Button link xs hit target; accessibility tests pass, including every control being a link-variant xs Button with data-cinder-hit-target 44"
+      "evidence": "marker test reads +, -, ~ with aria-labels; json-diff-viewer.a11y.md exists; accessibility tests pass, including every control being a link-variant xs Button carrying its own class and data-cinder-hit-target 44"
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "tests 'compares arrays by index' and 'a value that changes type shows as one removed and one added entry'"
+      "evidence": "tests for arrays by index and for a type change as one removed and one added entry"
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "1 MB object, array and nested-object tests assert at most 1,000 elements before any control; the render budget counts the Button controls' elements; playground fixtures many-changes and render-budget exercise paging and the budget; paging label reads 'Show 200 more' with the total in the accessible name"
+      "evidence": "1 MB object, array and nested-object tests assert at most 1,000 elements before any control; playground examples many-changes and render-budget exercise paging and the budget"
     },
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "test asserts an inline compact EmptyState titled 'No differences'; DiffStatistics now reads 'No differences' too, asserted in both component tests"
+      "evidence": "test asserts a kind=done EmptyState titled 'No differences'; DiffStatistics reads the same words"
     },
     {
       "id": "AC6",
@@ -38,7 +38,7 @@
     {
       "id": "AC7",
       "status": "met-on-branch",
-      "evidence": "json-diff-viewer/ beside source-diff-viewer with README usage example; playground examples basic, type-change, many-changes, render-budget, identical; declared-examples and discover tests pass"
+      "evidence": "json-diff-viewer/ beside source-diff-viewer with README usage example; playground examples basic, type-change, many-changes, render-budget, identical, unchanged-open, long-key; discover and declared-examples tests pass"
     }
   ]
 }
