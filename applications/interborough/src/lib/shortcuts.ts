@@ -19,16 +19,6 @@
 /** How long after the first key of a sequence the next one still counts. */
 export const CHORD_WINDOW_MS = 1_000;
 
-/**
- * When a key was pressed, in the milliseconds `handleKey` compares against {@link CHORD_WINDOW_MS}:
- * the event's own time, which the browser stamps when the key arrives. The clock at the moment the
- * handler runs is wrong for a chord, because a page that is busy mounting (a chat opening beside
- * its list) holds the handler past the window and the second key finds the first one expired.
- */
-export function pressedAt(event: { readonly timeStamp: number }): number {
-  return event.timeStamp;
-}
-
 /** Where a shortcut acts: everywhere, on one route pattern, or inside one focus region. */
 export type ShortcutScope = 'global' | { readonly route: string } | { readonly region: string };
 

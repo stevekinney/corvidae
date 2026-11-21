@@ -510,21 +510,7 @@
   </div>
 {/snippet}
 
-<!-- Waiting keeps its own account of an open review the list no longer has (`reopenFirst` is off):
-     one that left without this page deciding it says so, and one being decided waits for the next. -->
-{#snippet missingDetail()}
-  {#if gone}
-    {@render goneDetail()}
-  {:else}
-    <EmptyState
-      kind="first-use"
-      title={REVIEWS_COPY.noReviewSelected}
-      description={REVIEWS_COPY.chooseReview}
-    />
-  {/if}
-{/snippet}
-
-{#if phase === 'ready' && visible.length === 0}
+{#if phase === 'ready' && visible.length === 0 && selectedKey === null && selection.read('review') === null}
   <!-- The one list-page empty state (owner report, 2026-11-19), with the Reviews icon. Nothing is
        made here, so it has no create action. -->
   {#if mode === 'waiting'}
@@ -572,8 +558,7 @@
         selectionParameter="review"
         selectionLocation={selection}
         storageKey="interborough-reviews"
-        {...gone ? { empty: goneDetail } : {}}
-        {...mode === 'waiting' ? { notFound: missingDetail } : {}}
+        notFound={gone ? goneDetail : undefined}
         {...mode === 'done' ? { groupBy: dayGroup } : {}}
       >
         {#snippet header()}

@@ -8,7 +8,6 @@ import { describe, expect, test } from 'bun:test';
 import {
   CHORD_WINDOW_MS,
   keysCollide,
-  pressedAt,
   scopesOverlap,
   ShortcutRegistry,
   type ShortcutContext,
@@ -501,21 +500,5 @@ describe('a letter held with ⌘', () => {
     expect(registry.handleKey({ key: 'Enter', ...held }, where, 2)).toBe(true);
     expect(registry.handleKey({ key: 'enter', ...held }, where, 3)).toBe(false);
     expect(ran).toEqual(['k', 'k', 'enter']);
-  });
-});
-
-describe('a chord read while the page is busy', () => {
-  test('counts the time each key was pressed, not the time its handler ran', () => {
-    const ran: string[] = [];
-    const registry = new ShortcutRegistry();
-    registry.register({ ...entry(['g', 'h'], 'global'), handler: () => ran.push('home') });
-
-    // Two keys 50 ms apart; the page was busy, so the second handler ran well past the window.
-    const first = { timeStamp: 1_000 };
-    const second = { timeStamp: 1_050 };
-
-    registry.handleKey(key('g'), NOWHERE, pressedAt(first));
-    expect(registry.handleKey(key('h'), NOWHERE, pressedAt(second))).toBe(true);
-    expect(ran).toEqual(['home']);
   });
 });
