@@ -1,0 +1,295 @@
+{
+  "upstream": {
+    "repository": "sveltejs/kit",
+    "sha": "a58e0a92c35dbeee161e96c733464dc7397e073a",
+    "package": "3.3.0"
+  },
+  "method": "Derived shared fixtures with literal assertions executed against pinned Kit and Velveteen; not a claim that full upstream tests have been ported. Unit/security/client cancellation cases supplement these oracle comparisons.",
+  "selectedCases": [
+    {
+      "id": "V-query-batching",
+      "source": "packages/kit/test/apps/async/test/client.test.js",
+      "test": [
+        "query.batch works",
+        "command does server-initiated single flight mutation (refresh)"
+      ],
+      "candidate": "tests/conformance/runtime-remotes.ts",
+      "intentionalDifference": "Kit server-renders the initial queries and returns a 404 document status for the missing member. Velveteen starts its cache reads on mount and keeps the document status 200. Both isolate that member's error and refresh cached rows with the same browser request counts.",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "V-progressive-forms",
+      "source": "packages/kit/test/apps/async/test/test.js",
+      "test": ["form works"],
+      "candidate": "tests/conformance/runtime-remotes.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "R-route-escapes",
+      "source": "packages/kit/src/core/sync/create_manifest_data/index.spec.js",
+      "test": ["encodes invalid characters"],
+      "candidate": "tests/conformance/runtime-route-escapes.ts",
+      "intentionalDifference": "The escaped Unicode static route takes precedence over its dynamic sibling in Velveteen. Pinned Kit selects the dynamic sibling for the same URL.",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "Q-transport-snapshots",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": ["persists function snapshots with transport support"],
+      "candidate": "tests/conformance/runtime-custom-transport.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "Q-custom-transport",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "A custom data type can be serialized/deserialized",
+        "works with streaming"
+      ],
+      "candidate": "tests/conformance/runtime-custom-transport.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "P-route-announcements",
+      "source": "packages/kit/test/apps/basics/test/playwright/cross-platform/client.test.js",
+      "test": [
+        "announces client-side navigation",
+        "applies generated component styles (hides announcer)"
+      ],
+      "candidate": "tests/conformance/runtime-route-announcements.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "O-shallow-routing",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "Adds state without changing the current URL",
+        "Shallow navigates to a new URL",
+        "Exposes the shallow target and runs navigation lifecycle hooks",
+        "Can cancel a shallow navigation",
+        "Shallow navigates and replaces the current history entry",
+        "Ends the current shallow routing context with a regular goto",
+        "Invalidates the rendered route after a shallow navigation",
+        "Does not navigate when going back to shallow route"
+      ],
+      "candidate": "tests/conformance/runtime-shallow.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "O-snapshots",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "restores snapshot after afterNavigate on popstate",
+        "restores snapshot after afterNavigate on reload",
+        "starts fresh when a pushed entry reuses an abandoned history index",
+        "captures and restores function snapshots on shallow navigations"
+      ],
+      "candidate": "tests/conformance/runtime-snapshots.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "M-optional-rest-matchers",
+      "source": "packages/kit/src/utils/routing.spec.js",
+      "test": [
+        "exec validates and transforms params with a standard schema",
+        "exec rejects params when a standard schema fails validation"
+      ],
+      "candidate": "tests/conformance/runtime-optional-rest.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "L-typed-matchers",
+      "source": "packages/kit/src/utils/routing.spec.js",
+      "test": [
+        "respects matchers",
+        "validates and transforms params with a standard schema",
+        "rejects params when a standard schema fails validation",
+        "respects matchers with hyphenated names",
+        "decodes params"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "K-layout-inheritance",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": ["resets layout"],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "E03-document",
+      "source": "packages/kit/test/apps/basics/test/vitest/server.spec.js",
+      "test": [
+        "HEAD with matching headers but without body",
+        "content negotiation: API requests hit endpoint, browser requests hit page"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "E03-errors",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "renders errors in the right layout",
+        "renders the closest error page"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "F01-hydration",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "does not repeat fetch on hydration when using Request object",
+        "load function is only called when necessary"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "F02-preload-invalidate",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "+layout.server.js does not re-run when downstream load functions are invalidated",
+        "+layout.js is re-run when shared dep is invalidated",
+        "data-sveltekit-preload-data"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "F01-modes",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "can use browser-only global on client-only page through ssr config in +page.js"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "E04-deferred",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "Works for server load functions (direct hit)",
+        "Works for server load functions (client nav)"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "F03-history",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "Preserves scroll and focus across popstate unless an intervening navigation resets them"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "F03-stale-refresh",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": [
+        "refreshAll finishing after navigation does not apply stale data"
+      ],
+      "candidate": "tests/conformance/runtime-races.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "F03-preload-race",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": ["data-sveltekit-preload does not abort ongoing navigation"],
+      "candidate": "tests/conformance/runtime-races.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "E04-rejection",
+      "source": "packages/kit/test/apps/basics/test/playwright/client.test.js",
+      "test": ["Works for server load functions (client nav)"],
+      "candidate": "tests/conformance/runtime-races.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "F03-nested-errors",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "renders errors in the right layout after client navigation",
+        "renders the closest error page"
+      ],
+      "candidate": "tests/conformance/runtime-races.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "G01-enhanced-error",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "cross-page action error renders the destination error boundary"
+      ],
+      "candidate": "tests/conformance/runtime-actions.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "G01-enhanced",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "Success data as form-data is returned",
+        "use:enhance button with formAction",
+        "cross-page action success navigates to action page"
+      ],
+      "candidate": "tests/conformance/runtime-actions.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "G01-native",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "Success data as form-data is returned",
+        "Success data as form-urlencoded is returned"
+      ],
+      "candidate": "tests/conformance/runtime-actions.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "G01-errors",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "submitting application/json should return http status code 415",
+        "submitting to a form action that does not exists, should return http status code 404"
+      ],
+      "candidate": "tests/conformance/runtime-actions.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "U-action-custom-transport",
+      "source": "packages/kit/test/apps/basics/test/playwright/test.js",
+      "test": [
+        "A custom data type can be serialized/deserialized on POST",
+        "A custom data type can be serialized/deserialized on POST with use:enhance"
+      ],
+      "candidate": "tests/conformance/runtime-action-transport.ts",
+      "modes": ["development", "production"]
+    },
+    {
+      "id": "H01-route-options",
+      "source": "packages/kit/test/apps/basics/test/playwright/cross-platform/test.js",
+      "test": [
+        "trailing slash server with config always",
+        "trailing slash server with config never",
+        "trailing slash server with config ignore and no trailing slash in URL",
+        "trailing slash server with config ignore and trailing slash in URL"
+      ],
+      "candidate": "tests/conformance/runtime-cases.ts",
+      "modes": ["development", "production"]
+    }
+  ],
+  "intentionalDifferences": [
+    "Explicit createApplication hook options replace Kit virtual hook discovery.",
+    "Svelte getNavigation context replaces $app/navigation; preload attributes use data-velveteen-.",
+    "Native request event signal and Bun-backed cookies supplement Web primitives.",
+    "Data uses same-URL Accept negotiation and inert devalue promise frames.",
+    "Reference production uses actual adapter-node output because pinned upstream documents Vite preview streaming buffering.",
+    "Enhanced forms share the page data protocol and full post-action load lifecycle; no separate action wire format.",
+    "Remote definitions are explicit host allowlists with validation and typed browser clients; experimental compiler-transformed remote modules remain in the owned unimplemented inventory.",
+    "Pinned Kit respond.js disables CSRF checks under __SVELTEKIT_DEV__; Velveteen requires same-origin forms in both development and production. G01-errors asserts reference development 200 with executed action, and candidate development plus both production targets 403 without action output."
+  ]
+}

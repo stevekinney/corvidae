@@ -62,7 +62,7 @@
   import MissedRunsRow from './missed-runs-row.svelte';
   import { readRunSchedules } from './missed-runs.ts';
   import RunListRow from './run-list-row.svelte';
-  import RunListStates from './run-list-states.svelte';
+  import RunListStates, { RUN_LIST_LOADING_DELAY_MILLISECONDS } from './run-list-states.svelte';
   import { runListFailure, runNoMatchDescription } from './run-list-states.ts';
   import {
     buildRunRows,
@@ -388,6 +388,16 @@
   // (the fallback timer asks again) end it, because it is the state of a list with nothing yet.
   let canceled = $state(false);
   const showCanceled = $derived(canceled && loading);
+  let filterBarRevealed = $state(false);
+  $effect(() => {
+    filterBarRevealed = false;
+    if (!loading) return;
+    // poll-reason: timer
+    const timer = setTimeout(() => {
+      filterBarRevealed = true;
+    }, RUN_LIST_LOADING_DELAY_MILLISECONDS);
+    return () => clearTimeout(timer);
+  });
   function cancelLoading(): void {
     canceled = true;
     void queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
@@ -448,6 +458,10 @@
       }}
     />
 
+    {#if !failed && !firstUse && (!loading || showCanceled || filterBarRevealed)}
+      {@render bar()}
+    {/if}
+
     {#if failed}
       <ErrorState
         bordered
@@ -463,9 +477,8 @@
             variant="secondary"
             href={router.href(TASK_COPY.list.loadFailed.healthPath)}
             onclick={(event) => open(event, TASK_COPY.list.loadFailed.healthPath)}
-          >
-            {TASK_COPY.list.loadFailed.checkHealth}
-          </Button>
+            label={TASK_COPY.list.loadFailed.checkHealth}
+          />
         {/snippet}
       </ErrorState>
     {:else if loading}
@@ -473,7 +486,6 @@
         kind={showCanceled ? 'canceled' : 'loading'}
         {now}
         {zone}
-        {bar}
         onCancel={cancelLoading}
         onRetry={retry}
       />
@@ -497,8 +509,6 @@
         ]}
       />
     {:else}
-      {@render bar()}
-
       {#if rows.length === 0}
         <EmptyState
           kind="filtered"

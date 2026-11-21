@@ -46,7 +46,7 @@ import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import { SIGNAL_NAME_MAXIMUM_LENGTH } from '../../workflow-host.ts';
-import { BureauError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
 import {
   type BureauWorkflows,
@@ -1277,9 +1277,7 @@ export const workflowsRunsCancelOperation = defineOperation<
       }
       return await workflows.cancel(input.runId);
     } catch (error) {
-      if (error instanceof BureauError && error.code === 'NOT_FOUND')
-        throw resourceNotFound('run', input.runId);
-      throw error;
+      throw bureauFaultOf(error, { notFound: { resource: 'run', identifier: input.runId } });
     }
   },
 });
@@ -1358,8 +1356,6 @@ export const workflowsRunsRetryOperation = defineOperation<
         ...(input.retryId === undefined ? {} : { retryId: input.retryId }),
       });
     } catch (error) {
-      if (error instanceof BureauError && error.code === 'NOT_FOUND')
-        throw resourceNotFound('run', input.runId);
       if (error instanceof WorkflowRetryRefusedError) {
         throw {
           code: 'Unprocessable',
@@ -1367,7 +1363,7 @@ export const workflowsRunsRetryOperation = defineOperation<
           data: { reason: error.code },
         } satisfies OperationFault;
       }
-      throw error;
+      throw bureauFaultOf(error, { notFound: { resource: 'run', identifier: input.runId } });
     }
   },
 });
@@ -1495,17 +1491,10 @@ export const workflowsStartOperation = defineOperation<
         } satisfies OperationFault;
       }
       if (error instanceof WorkflowApplyError) return faultOf(error, input.id);
-      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
-        throw resourceNotFound('workflow', input.id);
-      }
-      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
-        throw {
-          code: 'InvalidParams',
-          message: error.message,
-          data: { issues: [{ path: ['input'], message: error.message, code: 'custom' }] },
-        } satisfies OperationFault;
-      }
-      throw error;
+      throw bureauFaultOf(error, {
+        notFound: { resource: 'workflow', identifier: input.id },
+        invalidPath: ['input'],
+      });
     }
   },
 });
@@ -1648,14 +1637,7 @@ export const workflowsSignalOperation = defineOperation<
           data: { reason: error.code },
         } satisfies OperationFault;
       }
-      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
-        throw {
-          code: 'InvalidParams',
-          message: error.message,
-          data: { issues: [{ path: ['payload'], message: error.message, code: 'custom' }] },
-        } satisfies OperationFault;
-      }
-      throw error;
+      throw bureauFaultOf(error, { invalidPath: ['payload'] });
     }
   },
 });

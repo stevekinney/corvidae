@@ -48,6 +48,7 @@
   } from '../../lib/bureau-settings.ts';
   import { getHostSession } from '../../lib/host-session.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { inlineSegments } from './inline-markdown.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -401,7 +402,7 @@
   <SettingRow
     {id}
     label={settingLabel(name)}
-    identifier={name}
+    {...phoneViewport.current ? {} : { identifier: name }}
     {description}
     {...cause !== undefined || (embedding !== undefined && embedding.embedders.length === 1)
       ? { descriptionAction }

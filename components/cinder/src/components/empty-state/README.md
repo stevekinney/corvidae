@@ -30,6 +30,8 @@ Pick the `kind` that says why the view is empty. It sets the tint of the 48px di
 - `not-found`: the thing asked for doesn't exist. A neutral disc with a magnifying glass.
 - `disabled`: a setting the person chose (a disabled plugin) holds the content back, so it is not a warning. A neutral disc with a plug.
 
+The state sets its own sans face, so one placed inside a monospace region (a JSON or source viewer) still reads as prose rather than inheriting the region's font.
+
 A title says what is missing or what happened, never an instruction ("No hooks yet", not "Build your first hook"), and the sentence under it is one sentence, with contractions.
 
 ```svelte

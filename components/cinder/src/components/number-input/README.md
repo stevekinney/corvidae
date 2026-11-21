@@ -37,6 +37,7 @@ By default the number is reported when the field is left, when Enter is pressed,
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `adornment` | `string` | no | — | Optional non-interactive text rendered before the stepper controls. |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | The shared Input frame treatment. `filled` opts into the inset control surface. |
 | `class` | `string` | no | — |  |
 | `commitWhileTyping` | `boolean` | no | `false` | Reports each number as it is typed, not only when the field is left or Enter is pressed. Text that is not a number yet (such as `-`) is not reported and does not mark the field invalid until the field is left. Leaving the field reports nothing for a number, because it was reported as it was typed, so a value shown rounded is not changed by a visit. |
 | `description` | `string` | no | — |  |

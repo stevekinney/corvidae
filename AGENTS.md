@@ -67,7 +67,7 @@ Mechanics: [Turborepo stage mechanics](documentation/repository/turborepo-stage-
 
 The coordinator's rules are in [coordination](.agents/skills/chef/references/coordination.md); every brief carries the worker's part.
 
-- Host cap, three places (`scripts/host-sessions.ts`): an implementation agent takes one, its session one more while it has any. Read-only agents (no Edit or Write) take none, six at most; one Opus agent; two workers per run.
+- No host cap (owner decision, 2026-11-21): `scripts/host-sessions.ts` records each dispatch for `status`, the leases and the session fences, but never makes a dispatch wait or refuses one.
 - Batch work, one CI run per batch (owner decision, 2026-11-16): one worker takes consecutive issues on one branch, commits once per issue, pushes once, and the batch gets one CI run, review and merge.
 - Every implementation dispatch names the `chef-worker` agent type. A worker has no context ceiling: it works until its change is ready for review (owner decision, 2026-11-13).
 - A leased coordinator above about 200K tokens compacts at a batch boundary; a hook denies its dispatches until it does.

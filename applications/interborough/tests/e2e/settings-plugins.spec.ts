@@ -436,8 +436,15 @@ test.describe('Settings › Plugins', () => {
       }
     }
 
+    const layout = page.locator('.ib-plugins__frame > .cinder-list-detail');
     for (const width of [1280, 320, ...WIDE_DESKTOP_WIDTHS] as const) {
       await page.setViewportSize({ width, height: 900 });
+      // ListDetail measures its root and renders `stacked` below 600px, replacing the detail pane
+      // when that breakpoint flips. Wait for the new layout before scrolling the form.
+      await expect(layout).toHaveAttribute(
+        'data-cinder-layout',
+        width === 320 ? 'stacked' : 'split',
+      );
       if (width === 320) {
         const overflow = await page.evaluate(() => {
           const scroller = document.scrollingElement;

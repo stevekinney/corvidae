@@ -32,7 +32,7 @@ import { type DecisionRequest, DecisionSchemaError } from '@lostgradient/operati
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { ModelPolicyDeniedError } from '../../file-agent-generate.ts';
 import {
   DecisionSchemaRefusedError,
@@ -245,17 +245,7 @@ export const decisionsDecideOperation = defineOperation<
           data: { reason: error.code },
         } satisfies OperationFault;
       }
-      if (error instanceof BureauError) {
-        if (error.code === 'BAD_REQUEST') throw invalidParams('request', error.message);
-        if (error.code === 'NOT_CONFIGURED') {
-          throw {
-            code: 'UnsupportedCapability',
-            message: error.message,
-            data: { capability: 'generate' },
-          } satisfies OperationFault;
-        }
-      }
-      throw error;
+      throw bureauFaultOf(error, { invalidPath: ['request'], capability: 'generate' });
     }
   },
 });

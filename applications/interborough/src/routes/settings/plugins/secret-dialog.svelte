@@ -120,10 +120,14 @@
       </form>
     {/snippet}
     {#snippet footer()}
-      <Button variant="secondary" onclick={close} disabled={sending}>{copy.cancel}</Button>
-      <Button data-changes variant="primary" onclick={() => void submit()} loading={sending}
-        >{copy.save}</Button
-      >
+      <Button variant="secondary" onclick={close} disabled={sending} label={copy.cancel} />
+      <Button
+        data-changes
+        variant="primary"
+        onclick={() => void submit()}
+        loading={sending}
+        label={copy.save}
+      />
     {/snippet}
   </Modal>
 {/if}

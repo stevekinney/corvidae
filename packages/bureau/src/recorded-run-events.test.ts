@@ -209,6 +209,7 @@ describe('observeRecordedRunEvents (COR-2096)', () => {
       step: 2,
       errorCode: 'UNKNOWN',
       errorKind: 'generate',
+      stepLabel: 'model',
     });
   });
 

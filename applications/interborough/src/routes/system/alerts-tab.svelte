@@ -148,7 +148,7 @@
   const EDGE_COLOR: Readonly<Record<AlertRowState, string>> = {
     firing: 'var(--cinder-status-danger-solid)',
     resolved: 'var(--cinder-border)',
-    warning: 'var(--cinder-status-warning-solid)',
+    warning: 'var(--cinder-status-warning-indicator)',
     info: 'var(--cinder-border)',
   };
 

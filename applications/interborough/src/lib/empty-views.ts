@@ -32,13 +32,19 @@ function isFirstRead(query: Query): boolean {
  * it is cancelled first: its "empty" would otherwise stand, with the feed live and no timer to ask again.
  */
 export function invalidateEmptyViews(queryClient: QueryClient): void {
+  const firstReads = queryClient
+    .getQueryCache()
+    .findAll({ queryKey: VIEW_KEY_PREFIX, predicate: isFirstRead });
+  // Cancellation can restore an earlier error, so reuse the same query identities for the retry.
+  const firstReadFilters = {
+    queryKey: VIEW_KEY_PREFIX,
+    predicate: (query: Query) => firstReads.includes(query),
+  };
   void queryClient.invalidateQueries({
     queryKey: VIEW_KEY_PREFIX,
     predicate: (query) => isEmptyAnswer(query.state.data),
   });
   void queryClient
-    .cancelQueries({ queryKey: VIEW_KEY_PREFIX, predicate: isFirstRead })
-    .then(() =>
-      queryClient.invalidateQueries({ queryKey: VIEW_KEY_PREFIX, predicate: isFirstRead }),
-    );
+    .cancelQueries(firstReadFilters)
+    .then(() => queryClient.invalidateQueries(firstReadFilters));
 }

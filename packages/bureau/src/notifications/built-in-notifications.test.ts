@@ -36,6 +36,8 @@ const task = (change: Partial<TaskView> = {}): TaskView => ({
   usage: null,
   attention: [],
   stalledSince: null,
+  failure: null,
+  retrying: null,
   ...change,
 });
 
