@@ -1,44 +1,44 @@
 {
   "issue": "COR-2537",
   "branch": "worktree-agent-a73a2e4bcaadda058",
-  "checkedAt": "50f6079ce4d26ef29e8d21c457c185a90ef5cdb2",
+  "checkedAt": "286777e9629214c0a8748d44a10e025a42656ae1",
   "briefVersion": "2f617ebb0b5c",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "json-diff-viewer.test.ts 'renders one added, one removed and one changed row nested three levels deep' and 'collapses unchanged entries by default'; focused-checks exit 0"
+      "evidence": "json-diff-viewer.test.ts three-level fixture and collapsed-unchanged tests; focused-checks exit 0 at 286777e962"
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "test 'each kind carries a text marker and a name' reads +, -, ~ with aria-labels; json-diff-viewer.a11y.md exists; accessibility describe in json-diff-viewer.test.ts passes (no component-level axe suite exists in the repository; the browser axe sweeps need CI)"
+      "evidence": "marker test reads +, -, ~ with aria-labels; json-diff-viewer.a11y.md exists and its Touch targets section now describes the Button link xs hit target; accessibility tests pass, including every control being a link-variant xs Button with data-cinder-hit-target 44"
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "tests 'compares arrays by index' and 'a value that changes type shows as one removed and one added entry' in json-diff-viewer.test.ts and the diff unit test"
+      "evidence": "tests 'compares arrays by index' and 'a value that changes type shows as one removed and one added entry'"
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "tests for two 1 MB flat objects, two 1 MB flat arrays and two 1 MB arrays of nested objects each assert querySelectorAll('*').length <= 1000 before any control; a render budget (900 elements) closes nested levels that do not fit"
+      "evidence": "1 MB object, array and nested-object tests assert at most 1,000 elements before any control; the render budget counts the Button controls' elements; playground fixtures many-changes and render-budget exercise paging and the budget; paging label reads 'Show 200 more' with the total in the accessible name"
     },
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "tests 'renders No differences for equal structures' and for equal primitives"
+      "evidence": "test asserts an inline compact EmptyState titled 'No differences'; DiffStatistics now reads 'No differences' too, asserted in both component tests"
     },
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "test 'is exported from the Cinder entry point and re-exported from the panel kit' imports ../../index.ts and ../../panel/index.ts"
+      "evidence": "test imports JsonDiffViewer from src/index.ts and src/panel/index.ts"
     },
     {
       "id": "AC7",
       "status": "met-on-branch",
-      "evidence": "components/cinder/src/components/json-diff-viewer/ with README usage example and applications/playground/src/examples/json-diff-viewer/*.example.svelte; discover.test.ts SIDEBAR_BASELINE includes json-diff-viewer and passed in focused-checks"
+      "evidence": "json-diff-viewer/ beside source-diff-viewer with README usage example; playground examples basic, type-change, many-changes, render-budget, identical; declared-examples and discover tests pass"
     }
   ]
 }
