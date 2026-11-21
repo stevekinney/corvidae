@@ -6,8 +6,8 @@ const REPOSITORY_ROOT = resolve(APPLICATION_DIRECTORY, '..', '..');
 const PACKAGE_NAME = 'interborough';
 const PACKAGE_FILES = ['payload'] as const;
 
-export type PackageReleaseArguments = { readonly archive: string; readonly outdir: string };
-export type PackResult = {
+type PackageReleaseArguments = { readonly archive: string; readonly outdir: string };
+type PackResult = {
   readonly tarball: string;
   readonly integrity: string;
   readonly prefix: string;
@@ -36,7 +36,7 @@ export function parsePackageReleaseArguments(argv: readonly string[]): PackageRe
   return { archive: resolve(archive), outdir: resolve(outdir) };
 }
 
-async function run(command: readonly string[], cwd?: string): Promise<string> {
+async function run(command: string[], cwd = REPOSITORY_ROOT): Promise<string> {
   const child = Bun.spawn(command, { cwd, stdout: 'pipe', stderr: 'pipe' });
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
@@ -164,7 +164,7 @@ async function assertInstalled(prefix: string, version: string): Promise<void> {
     throw new Error(`Installed CLI version differs from manifest: ${stderr || stdout}`);
 }
 
-export async function packageRelease(
+async function packageRelease(
   argv: readonly string[] = process.argv.slice(2),
 ): Promise<PackResult> {
   const { archive, outdir } = parsePackageReleaseArguments(argv);

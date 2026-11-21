@@ -1,13 +1,26 @@
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 
 import { parsePackageReleaseArguments } from './package-release.ts';
 
 const script = join(import.meta.dir, 'package-release.ts');
+type WorkflowStep = {
+  name?: string;
+  run?: string;
+  uses?: string;
+  with?: { name?: string };
+};
+const workflow = Bun.YAML.parse(
+  await readFile(
+    resolve(import.meta.dir, '../../../.github/workflows/interborough-npm-release.yml'),
+    'utf8',
+  ),
+) as { jobs: Record<'package' | 'publish' | 'verify', { steps: WorkflowStep[] }> };
 
 const packaging = await (async () => {
   const root = await mkdtemp(join(tmpdir(), 'interborough-package-release-'));
@@ -131,4 +144,66 @@ test('refuses to reuse an output directory and preserves its contents', () => {
   expect(existingOutput.exitCode).toBe(1);
   expect(existingOutput.stderr).toContain('Package output already exists');
   expect(existingOutput.marker).toBe('existing output');
+});
+
+test('the package, publish and verify jobs use the same versioned artifact name', () => {
+  const name = 'interborough-${{ inputs.version }}-darwin-arm64-npm-package';
+  expect(
+    workflow.jobs.package.steps.find((step) => step.name === 'Upload tested package')?.with?.name,
+  ).toBe(name);
+  for (const job of [workflow.jobs.publish, workflow.jobs.verify])
+    expect(
+      job.steps.find((step) => step.uses?.startsWith('actions/download-artifact@'))?.with?.name,
+    ).toBe(name);
+});
+
+const publishDecisions = await (async () => {
+  const root = await mkdtemp(join(tmpdir(), 'interborough-package-publish-'));
+  try {
+    const publish = workflow.jobs.publish.steps.find(
+      (step) => step.name === 'Publish the tested tarball',
+    )?.run;
+    if (publish === undefined) throw new Error('The release workflow has no publish command');
+    const npm = join(root, 'npm');
+    // The probe exercises the workflow's shell command without invoking npm or the registry.
+    await writeFile(npm, '#!/bin/sh\nprintf "%s\\n" "$@"\n');
+    await chmod(npm, 0o755);
+    const packageDirectory = join(root, 'interborough-package');
+    await mkdir(packageDirectory);
+    const bytes = 'fixture tarball contents';
+    const integrity = 'sha512-' + createHash('sha512').update(bytes).digest('base64');
+    await writeFile(join(packageDirectory, 'package-result.json'), JSON.stringify({ integrity }));
+    const decisions: { version: string; tag: string | undefined; exitCode: number | null }[] = [];
+    for (const version of ['1.0.0', '1.0.0-beta.1', '1.0.0+build-note']) {
+      await writeFile(join(packageDirectory, `interborough-${version}.tgz`), bytes);
+      const child = await runWithHangGuard(['bash', '-e', '-o', 'pipefail', '-c', publish], {
+        env: {
+          ...process.env,
+          PATH: root + ':' + process.env['PATH'],
+          RUNNER_TEMP: root,
+          VERSION: version,
+        },
+      });
+      if (!child.success)
+        throw new Error(`Publish command failed for ${version}: ${child.stderr.toString()}`);
+      const arguments_ = child.stdout.toString().split('\n');
+      const tagPosition = arguments_.indexOf('--tag');
+      decisions.push({
+        version,
+        tag: tagPosition === -1 ? undefined : arguments_[tagPosition + 1],
+        exitCode: child.exitCode,
+      });
+    }
+    return decisions;
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+})();
+
+test('stable versions publish to latest and prereleases publish to next', () => {
+  expect(publishDecisions).toEqual([
+    { version: '1.0.0', tag: 'latest', exitCode: 0 },
+    { version: '1.0.0-beta.1', tag: 'next', exitCode: 0 },
+    { version: '1.0.0+build-note', tag: 'latest', exitCode: 0 },
+  ]);
 });

@@ -92,7 +92,7 @@ jobs:
       - name: Upload tested package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: interborough-$VERSION-darwin-arm64-npm-package
+          name: interborough-${{ inputs.version }}-darwin-arm64-npm-package
           path: |
             ${{ runner.temp }}/interborough-package/*.tgz
             ${{ runner.temp }}/interborough-package/package-result.json
@@ -126,15 +126,20 @@ jobs:
             echo "interborough@$VERSION already exists" >&2
             exit 1
           fi
-          if ! node -e 'const result = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (result.error?.code !== "E404") process.exit(1);' "$response"; then
+          if ! NPM_VERSION_RESPONSE="$response" node -e 'const result = JSON.parse(require("node:fs").readFileSync(process.env.NPM_VERSION_RESPONSE, "utf8")); if (result.error?.code !== "E404") process.exit(1);'; then
             cat "$diagnostics" >&2
             exit 1
           fi
       - name: Publish the tested tarball
         run: |
           package="$RUNNER_TEMP/interborough-package/interborough-$VERSION.tgz"
-          node -e 'const fs = require("node:fs"); const { createHash } = require("node:crypto"); const digest = createHash("sha512").update(fs.readFileSync(process.argv[1])).digest("base64"); const result = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); if ("sha512-" + digest !== result.integrity) process.exit(1);' "$package" "$RUNNER_TEMP/interborough-package/package-result.json"
-          npm publish "$package" --ignore-scripts --provenance --access public
+          NPM_TESTED_TARBALL="$package" NPM_PACKAGE_RECEIPT="$RUNNER_TEMP/interborough-package/package-result.json" \
+            node -e 'const fs = require("node:fs"); const { createHash } = require("node:crypto"); const digest = createHash("sha512").update(fs.readFileSync(process.env.NPM_TESTED_TARBALL)).digest("base64"); const result = JSON.parse(fs.readFileSync(process.env.NPM_PACKAGE_RECEIPT, "utf8")); if ("sha512-" + digest !== result.integrity) process.exit(1);'
+          case "${VERSION%%+*}" in
+            *-*) tag=next ;;
+            *) tag=latest ;;
+          esac
+          npm publish "$package" --tag "$tag" --ignore-scripts --provenance --access public
 
   verify:
     name: Verify public npm tarball, provenance and anonymous install
@@ -169,9 +174,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/interborough-registry"
           cd "$RUNNER_TEMP/interborough-registry"
           npm view "interborough@$VERSION" dist --json > registry-dist.json
-          node -e 'const fs = require("node:fs"); const registry = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const local = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); if (!registry.integrity || registry.integrity !== local.integrity || !registry.attestations) process.exit(1); console.log(registry.integrity);' registry-dist.json "$package_directory/package-result.json"
+          NPM_PACKAGE_RECEIPT="$package_directory/package-result.json" \
+            node -e 'const fs = require("node:fs"); const registry = JSON.parse(fs.readFileSync("registry-dist.json", "utf8")); const local = JSON.parse(fs.readFileSync(process.env.NPM_PACKAGE_RECEIPT, "utf8")); if (!registry.integrity || registry.integrity !== local.integrity || !registry.attestations) process.exit(1); console.log(registry.integrity);'
           npm pack "interborough@$VERSION" --ignore-scripts --json > registry-pack.json
-          downloaded="$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))[0].filename)' registry-pack.json)"
+          downloaded="$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync("registry-pack.json", "utf8"))[0].filename)')"
           cmp "$package_directory/interborough-$VERSION.tgz" "$downloaded"
           npm install --global --ignore-scripts --prefix "$RUNNER_TEMP/interborough-fresh-prefix" "interborough@$VERSION"
           printf '{"private":true}\n' > package.json
