@@ -121,7 +121,12 @@
           </Callout>
         {/if}
       </div>
-      <div class="cinder-confirm-dialog__actions">
+      <div
+        class="cinder-confirm-dialog__actions"
+        data-cinder-typed-destructive={destructive && normalizedTypeToConfirm !== undefined
+          ? ''
+          : undefined}
+      >
         <Button
           variant="secondary"
           class="cinder-confirm-dialog__cancel"

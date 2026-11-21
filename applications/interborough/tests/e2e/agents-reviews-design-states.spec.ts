@@ -37,6 +37,7 @@ import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
 import { E2E_SKILLS } from './skills-support.ts';
 import { bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
+import { createWorkflowFile, removeWorkflow } from './workflow-support.ts';
 
 const WIDTHS = designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 const SOURCE = 'agents-reviews-design-states.spec.ts';
@@ -131,21 +132,59 @@ for (const width of WIDTHS) {
     }) => {
       await page.setViewportSize({ width, height: 900 });
       const id = `e2e-design-shared-delete-${String(width)}`;
+      const workflow = `${id}-dependent`;
+      const workflowTitle = 'Shared delete dependent';
+      const threadId = newThreadId(id);
+      threads.push(threadId);
       let release: () => void = () => undefined;
       const held = new Promise<void>((resolve) => (release = resolve));
       try {
         await createAgentFile(request, id, { name: 'Shared delete agent' });
+        await createWorkflowFile(request, workflow, {
+          title: workflowTitle,
+          steps: [
+            { kind: 'activity', handler: 'agent', input: { agent: id, message: 'Review it' } },
+          ],
+        });
+        await runToEnd(request, id, threadId, 'Keep this chat');
 
         await page.goto(`/agents/${id}/edit`);
-        await page.getByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }).click();
+        const openEdit = page.getByRole('button', { name: AGENT_EDITOR_COPY.deleteAction });
+        await openEdit.click();
         const editDialog = page.getByRole('dialog', { name: 'Delete Shared delete agent?' });
-        await expect(editDialog).toBeVisible();
+        const editField = editDialog.getByLabel(`Type ${id} to confirm`);
+        const cancel = editDialog.getByRole('button', { name: 'Cancel', exact: true });
+        const confirm = editDialog.getByRole('button', {
+          name: AGENT_EDITOR_COPY.deleteDialog.confirm,
+          exact: true,
+        });
+        await expect(cancel).toBeFocused();
+        await expect(editField).toHaveValue('');
+        await page.keyboard.press('Escape');
+        await expect(editDialog).not.toBeVisible();
+        await openEdit.click();
+        await editField.fill(id);
+        await cancel.click();
+        await expect(editDialog).not.toBeVisible();
+        await openEdit.click();
+        await expect(cancel).toBeFocused();
+        await expect(editField).toHaveValue('');
+        await expect(editDialog).toContainText('Its 1 chat stays, read-only.');
+        await expect(editDialog).toContainText(`1 workflow (${workflowTitle})`);
+        if (width === 375) {
+          const [danger, safe] = await Promise.all([confirm.boundingBox(), cancel.boundingBox()]);
+          if (danger === null || safe === null)
+            throw new Error('Both phone actions must be visible.');
+          expect(danger.y + danger.height).toBeLessThan(safe.y);
+          expect(danger.x).toBeCloseTo(safe.x, 0);
+          expect(danger.width).toBeCloseTo(safe.width, 0);
+        }
         await captureForDesignReview(page, {
           route: '/agents/:agent/edit',
           state: 'shared agent delete open',
           source: SOURCE,
         });
-        await editDialog.getByLabel(`Type ${id} to confirm`).fill(id);
+        await editField.fill(id);
         await captureForDesignReview(page, {
           route: '/agents/:agent/edit',
           state: 'shared agent delete typed confirmed',
@@ -188,6 +227,8 @@ for (const width of WIDTHS) {
         await page.getByRole('button', { name: settingsCopy.deleteAction }).click();
         const settingsDialog = page.getByRole('dialog', { name: 'Delete Shared delete agent?' });
         await expect(settingsDialog).toBeVisible();
+        await expect(settingsDialog).toContainText('Its 1 chat stays, read-only.');
+        await expect(settingsDialog).toContainText(`1 workflow (${workflowTitle})`);
         await settingsDialog.getByLabel(`Type ${id} to confirm`).fill(id);
         await captureForDesignReview(page, {
           route: '/agents/:agent/settings',
@@ -205,6 +246,7 @@ for (const width of WIDTHS) {
       } finally {
         release();
         await page.unrouteAll({ behavior: 'wait' });
+        await removeWorkflow(request, workflow);
         await removeAgent(request, id);
       }
     });

@@ -48,8 +48,19 @@
     gap: var(--cinder-space-3);
   }
 
-  /* As a sheet the actions row takes Modal's one docked footer rule (modal.css): a compact Cancel
-   * and the confirmation filling the rest. */
+  /* A typed destructive sheet puts both actions on their own line. Cancel keeps initial focus. */
+  .cinder-modal[data-cinder-sheet='docked'].cinder-confirm-dialog
+    .cinder-confirm-dialog__actions[data-cinder-typed-destructive] {
+    flex-flow: column-reverse nowrap;
+    align-items: stretch;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'].cinder-confirm-dialog
+    .cinder-confirm-dialog__actions[data-cinder-typed-destructive]
+    > button {
+    flex: none;
+    inline-size: 100%;
+  }
 
   /* What each choice does: a checkbox, or the command about to run. */
   .cinder-confirm-dialog__options {
