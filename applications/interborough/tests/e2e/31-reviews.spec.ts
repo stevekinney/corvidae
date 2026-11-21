@@ -12,8 +12,8 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
-import { approveReview } from './reviews-support.ts';
 import {
+  approveReview,
   bureauCall,
   taskOfSession,
   threadMessages,

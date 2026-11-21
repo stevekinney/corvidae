@@ -33,9 +33,8 @@ import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
-import { approveReview } from './reviews-support.ts';
 import { E2E_SKILLS } from './skills-support.ts';
-import { bureauCall, waitingReviewOf } from './task-support.ts';
+import { approveReview, bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 const WIDTHS = [375, 1280] as const;

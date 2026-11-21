@@ -19,7 +19,6 @@ import {
 } from '../../lib/bureau-world.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
-import { approveRefund } from './review-approval.test-support.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
@@ -68,6 +67,13 @@ const QUESTION_KEY = `bureau:${QUESTION.id}`;
 /** The rows of the list. `data-review-row` lands on each row's primary button, so a row is what a click opens. */
 function rows(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[data-review-row]')];
+}
+
+async function approveRefund(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+): Promise<void> {
+  await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+  await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
 }
 
 /** The key of the row that holds focus, or `null` when focus is on no row. */

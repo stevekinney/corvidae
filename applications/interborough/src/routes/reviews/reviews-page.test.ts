@@ -21,7 +21,6 @@ import {
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
 import { shortcuts } from '../../lib/shortcuts.ts';
-import { approveRefund } from './review-approval.test-support.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
@@ -69,6 +68,13 @@ const QUESTION = humanWaitFixture({ sessionId: 'session-2', requestedAt: Date.no
 
 function rows(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[data-review-row]')];
+}
+
+async function approveRefund(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+): Promise<void> {
+  await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+  await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
 }
 
 /** Opens the row at `index`, as a click on it does. */
