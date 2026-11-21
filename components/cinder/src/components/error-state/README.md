@@ -39,6 +39,35 @@ The retry button is the primary action, with a refresh glyph, and the only prima
 </ErrorState>
 ```
 
+A fault that names its next step passes it as `remediation`. It is its own line right after the description, in the description's type, and sits inside the alert, so a screen reader reads what failed and then what to do. Pair it with `onRetry` when asking again can help:
+
+```svelte
+<script lang="ts">
+  import { ErrorState } from '@lostgradient/cinder';
+</script>
+
+<ErrorState
+  title="Couldn’t load runs"
+  description="Interborough didn’t answer. Your runs are safe; they’re stored on this machine."
+  remediation="Check that Interborough is running, then try again."
+  onRetry={() => console.log('retry')}
+/>
+```
+
+When asking again cannot help (a fault that is not retryable), omit `onRetry`: the remediation is then the only next step and no Try again button is drawn:
+
+```svelte
+<script lang="ts">
+  import { ErrorState } from '@lostgradient/cinder';
+</script>
+
+<ErrorState
+  title="Couldn’t start this run"
+  description="The workflow refers to a step that no longer exists. Nothing you did caused it."
+  remediation="Open the workflow and remove or replace the missing step, then start the run again."
+/>
+```
+
 The `neutral` tone is for a state where nothing failed, such as a missing page: a neutral disc with a search glyph, a plain group instead of an alert, and no retry:
 
 ```svelte
