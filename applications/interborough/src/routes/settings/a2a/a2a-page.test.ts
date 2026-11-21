@@ -314,14 +314,15 @@ describe('the agents that cannot be listed', () => {
 });
 
 describe('Recent calls', () => {
-  test('are a compact empty state when no remote call was made', async () => {
+  test('are the one empty state alone when no remote call was made, in no box and under no heading', async () => {
     const { view } = open();
 
     const empty = await view.findByTestId('a2a-calls-empty');
 
     expect(empty.textContent).toContain(A2A_COPY.recent.empty.title);
     expect(empty.textContent).toContain(A2A_COPY.recent.empty.description);
-    expect(empty.getAttribute('data-cinder-size')).toBe('compact');
+    expect(empty.closest('.cinder-form-section, [data-cinder-bordered], .cinder-card')).toBeNull();
+    expect(view.queryByRole('heading', { name: A2A_COPY.recent.heading })).toBeNull();
   });
 
   test('are a list of when, who and which agent answered, newest first, once calls were made', async () => {

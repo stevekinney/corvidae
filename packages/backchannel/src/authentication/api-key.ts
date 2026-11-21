@@ -2,6 +2,7 @@ import {
   filterRecognizedScopes,
   type AdditionalScopeSet,
   type AuthorizationScope,
+  type ScopeVocabulary,
 } from '../authorization-scope.ts';
 import {
   principalFromApiKey,
@@ -102,9 +103,10 @@ function deepFreeze<T>(value: T): T {
 function deepFreezeApiKeyPrincipal(
   principal: AuthenticatedPrincipal,
   additionalScopes: AdditionalScopeSet,
+  scopeVocabulary?: ScopeVocabulary,
 ): AuthenticatedPrincipal {
   const guardedScopes = immutableScopeSet(
-    new Set(filterRecognizedScopes([...principal.scopes], additionalScopes)),
+    new Set(filterRecognizedScopes([...principal.scopes], additionalScopes, scopeVocabulary)),
   );
   const frozen: AuthenticatedPrincipal = {
     method: 'api-key',
@@ -124,6 +126,7 @@ export async function tryAdmitApiKey(
   apiKeyEntries: ReadonlyArray<ConstantTimeApiKeyEntry<undefined>> | null,
   defaultApiKeyScopes: ReadonlyArray<AuthorizationScope>,
   additionalScopes: AdditionalScopeSet,
+  scopeVocabulary?: ScopeVocabulary,
 ): Promise<AuthResult | 'continue'> {
   if (resolver !== undefined) {
     let resolved: AuthenticatedPrincipal | null;
@@ -137,7 +140,7 @@ export async function tryAdmitApiKey(
       resolved = null;
     }
     if (resolved !== null && validateApiKeyPrincipalMethod(resolved)) {
-      const admitted = deepFreezeApiKeyPrincipal(resolved, additionalScopes);
+      const admitted = deepFreezeApiKeyPrincipal(resolved, additionalScopes, scopeVocabulary);
       return { authenticated: true, method: 'api-key', principal: admitted };
     }
     return { authenticated: false, error: 'No valid credentials provided' };
@@ -150,7 +153,7 @@ export async function tryAdmitApiKey(
       subject: SHARED_API_KEY_SUBJECT,
       scopes: defaultApiKeyScopes,
     });
-    const admitted = deepFreezeApiKeyPrincipal(principal, additionalScopes);
+    const admitted = deepFreezeApiKeyPrincipal(principal, additionalScopes, scopeVocabulary);
     return { authenticated: true, method: 'api-key', principal: admitted };
   }
   return 'continue';

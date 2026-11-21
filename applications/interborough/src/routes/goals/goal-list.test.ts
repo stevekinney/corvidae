@@ -303,7 +303,7 @@ describe('filters that match nothing', () => {
 });
 
 describe('nothing yet', () => {
-  test('is an empty state that is the page: the header and its "+" stay, with no filter bar and one primary button', async () => {
+  test('is the one list-page empty state: the header and its New goal stay, with no filter bar, and the state repeats New goal', async () => {
     const view = open([]);
 
     await view.findByRole('heading', { level: 2, name: GOALS_COPY.empty.title });
@@ -313,13 +313,18 @@ describe('nothing yet', () => {
     expect(view.queryByRole('search')).toBeNull();
     expect(frameState(view.container)).toBe('empty');
 
-    // The header's "+" and the state's primary button both make a goal; only the state's is primary.
+    // The header's and the state's New goal both make a goal, both labelled primaries.
     const makers = view.getAllByRole('button', { name: GOALS_COPY.newAction });
     expect(makers).toHaveLength(2);
+    for (const maker of makers) {
+      expect(maker.textContent?.trim()).toBe(GOALS_COPY.newAction);
+      expect(maker.classList.contains('button-variant-primary')).toBe(true);
+    }
     const stateButton = view.container.querySelector<HTMLElement>(
       '[data-cinder-kind="first-use"] button',
     );
-    expect(stateButton).not.toBeNull();
+    expect(stateButton?.closest('.cinder-empty-state')).not.toBeNull();
+    expect(stateButton?.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
     await fireEvent.click(stateButton as HTMLElement);
     expect(router.pathname).toBe('/goals/new');
   });

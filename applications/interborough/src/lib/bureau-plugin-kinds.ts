@@ -40,7 +40,9 @@ export function hookActionKindOf(
 
 /** Everything the running plugins contribute that a file or a hook can name. */
 export type ContributedKinds = {
+  /** The trigger kinds contributed by plugins. */
   readonly triggers: readonly ContributedTriggerKind[];
+  /** The reaction kinds contributed by plugins. */
   readonly reactions: readonly ContributedHookActionKind[];
 };
 

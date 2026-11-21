@@ -1,3 +1,4 @@
+import { TEST_SCOPE_VOCABULARY } from './scope-vocabulary.test-support.ts';
 /**
  * Tests for AuthenticatedPrincipal construction, scope derivation, and the
  * stable Principal discriminated union used across all transports.
@@ -18,10 +19,13 @@ import {
 
 describe('principalFromJwtClaims', () => {
   it('derives scopes from space-delimited `scope` claim', () => {
-    const principal = principalFromJwtClaims({
-      scope: 'workflows:read workflows:write',
-      sub: 'user-1',
-    });
+    const principal = principalFromJwtClaims(
+      {
+        scope: 'workflows:read workflows:write',
+        sub: 'user-1',
+      },
+      { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+    );
     expect(principal.method).toBe('jwt');
     expect(principal.hasScope('workflows:read')).toBe(true);
     expect(principal.hasScope('workflows:write')).toBe(true);
@@ -29,41 +33,53 @@ describe('principalFromJwtClaims', () => {
   });
 
   it('derives scopes from `scp` claim when `scope` is absent', () => {
-    const principal = principalFromJwtClaims({ scp: 'schedules:read', sub: 's' });
+    const principal = principalFromJwtClaims(
+      { scp: 'schedules:read', sub: 's' },
+      { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+    );
     expect(principal.hasScope('schedules:read')).toBe(true);
   });
 
   it('merges scopes from `permissions` array with scopes from the string claims', () => {
-    const principal = principalFromJwtClaims({
-      scope: 'workflows:read',
-      permissions: ['reviews:read', 'reviews:write'],
-      sub: 'reviewer',
-    });
+    const principal = principalFromJwtClaims(
+      {
+        scope: 'workflows:read',
+        permissions: ['reviews:read', 'reviews:write'],
+        sub: 'reviewer',
+      },
+      { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+    );
     expect(principal.hasScope('workflows:read')).toBe(true);
     expect(principal.hasScope('reviews:read')).toBe(true);
     expect(principal.hasScope('reviews:write')).toBe(true);
   });
 
   it('returns an empty scope set when no scope claim is present', () => {
-    const principal = principalFromJwtClaims({ sub: 'user-2' });
+    const principal = principalFromJwtClaims(
+      { sub: 'user-2' },
+      { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+    );
     expect(principal.hasScope('workflows:read')).toBe(false);
     expect(principal.scopes.size).toBe(0);
   });
 
   it('exposes the raw claims as-is and reads `subject` from `sub`', () => {
     const claims = { sub: 'abc', scope: 'workflows:read' };
-    const principal = principalFromJwtClaims(claims);
+    const principal = principalFromJwtClaims(claims, { scopeVocabulary: TEST_SCOPE_VOCABULARY });
     expect(principal.subject).toBe('abc');
     expect(principal.claims).toBe(claims);
   });
 
   it('ignores non-string `scope`, `scp`, and non-array `permissions` values', () => {
-    const principal = principalFromJwtClaims({
-      scope: 42,
-      scp: { weird: true },
-      permissions: 'oops',
-      sub: 's',
-    });
+    const principal = principalFromJwtClaims(
+      {
+        scope: 42,
+        scp: { weird: true },
+        permissions: 'oops',
+        sub: 's',
+      },
+      { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+    );
     expect(principal.scopes.size).toBe(0);
   });
 });
@@ -100,7 +116,7 @@ describe('principalFromMutualTls', () => {
 
 describe('principalFromStdioLocal', () => {
   it('produces a stdio-local principal with admin scopes', () => {
-    const principal = principalFromStdioLocal();
+    const principal = principalFromStdioLocal(TEST_SCOPE_VOCABULARY);
 
     expect(principal.method).toBe('stdio-local');
     expect(principal.subject).toBe('stdio-local');
@@ -124,7 +140,12 @@ describe('anonymousPrincipal', () => {
 describe('isCredentialBacked', () => {
   it('is true for a credential that names its caller distinctly', () => {
     expect(
-      isCredentialBacked(principalFromJwtClaims({ sub: 'alice', scope: 'workflows:read' })),
+      isCredentialBacked(
+        principalFromJwtClaims(
+          { sub: 'alice', scope: 'workflows:read' },
+          { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+        ),
+      ),
     ).toBe(true);
     expect(isCredentialBacked(principalFromApiKey({ subject: 'robot-1', scopes: [] }))).toBe(true);
     expect(isCredentialBacked(principalFromMutualTls({ subject: 'CN=client-1', scopes: [] }))).toBe(
@@ -142,12 +163,21 @@ describe('isCredentialBacked', () => {
   });
 
   it('is false for a credential that carries no subject at all', () => {
-    expect(isCredentialBacked(principalFromJwtClaims({ scope: 'workflows:read' }))).toBe(false);
+    expect(
+      isCredentialBacked(
+        principalFromJwtClaims(
+          { scope: 'workflows:read' },
+          { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+        ),
+      ),
+    ).toBe(false);
   });
 
   it('is false for host-minted and anonymous principals', () => {
-    expect(isCredentialBacked(principalFromUnauthenticatedLocal())).toBe(false);
-    expect(isCredentialBacked(principalFromStdioLocal())).toBe(false);
+    expect(isCredentialBacked(principalFromUnauthenticatedLocal(TEST_SCOPE_VOCABULARY))).toBe(
+      false,
+    );
+    expect(isCredentialBacked(principalFromStdioLocal(TEST_SCOPE_VOCABULARY))).toBe(false);
     expect(isCredentialBacked(anonymousPrincipal())).toBe(false);
   });
 });

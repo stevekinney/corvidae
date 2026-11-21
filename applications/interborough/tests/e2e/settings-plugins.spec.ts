@@ -97,10 +97,10 @@ test.describe('Settings › Plugins', () => {
       await expect(entry).toContainText('1.0.0');
       await expect(entry).not.toContainText('Built in');
     }
-    // A plugin that needs a key reads Needs setup, a neutral word.
+    // A plugin that needs a key has a neutral Needs setup badge.
     await expect(row(page, 'anthropic')).toContainText('Needs setup');
-    await expect(row(page, 'anthropic').locator('[data-cinder-status]').first()).toHaveAttribute(
-      'data-cinder-status',
+    await expect(row(page, 'anthropic').locator('.cinder-badge')).toHaveAttribute(
+      'data-cinder-variant',
       'neutral',
     );
     await expect(row(page, 'guardrails')).toContainText('Running');
@@ -110,7 +110,8 @@ test.describe('Settings › Plugins', () => {
     const opened = detail(page, 'guardrails');
     await expect(opened.getByRole('heading', { level: 3, name: 'Guardrails' })).toBeVisible();
     await expect(opened.getByRole('switch', { name: 'Enabled' })).toBeChecked();
-    await expect(opened).toContainText('@lostgradient/plugin-guardrails');
+    await expect(opened).not.toContainText('@lostgradient/plugin-guardrails');
+    await expect(opened.getByRole('button', { name: PLUGINS_COPY.copyLocation })).toBeVisible();
     await expect(opened).toContainText('Package plugin, loaded at startup');
     const adds = opened.getByTestId('plugin-adds');
     await expect(adds.locator('[data-contribution="guardrails:code-safety"]')).toBeVisible();
@@ -127,7 +128,9 @@ test.describe('Settings › Plugins', () => {
     await expect(groundingRow).not.toContainText('groundingThreshold');
     await expect(configuration.getByRole('button', { name: 'Save configuration' })).toBeVisible();
     await expect(configuration).toContainText(PLUGINS_COPY.configuration.note);
-    await expect(opened.getByTestId('plugin-in-use')).toContainText('In use.');
+    await expect(opened.getByTestId('plugin-in-use')).toHaveText(
+      PLUGINS_COPY.inUse.nothing('Guardrails'),
+    );
 
     await checkA11y('settings plugins at 1280px');
 
@@ -239,7 +242,8 @@ test.describe('Settings › Plugins', () => {
     const opened = detail(page, 'inspectors');
     await expect(opened.getByRole('heading', { level: 3, name: 'Inspectors' })).toBeVisible();
     await expect(opened.getByRole('switch', { name: 'Enabled' })).toBeChecked();
-    await expect(opened).toContainText('@lostgradient/plugin-inspectors');
+    await expect(opened).not.toContainText('@lostgradient/plugin-inspectors');
+    await expect(opened.getByRole('button', { name: PLUGINS_COPY.copyLocation })).toBeVisible();
     await expect(opened).toContainText('Package plugin, loaded at startup');
     await expect(opened.getByTestId('plugin-adds')).toBeVisible();
     await expect(page.getByText(PLUGINS_COPY.emptyDetail.title)).toHaveCount(0);
@@ -491,7 +495,7 @@ test.describe('Settings › Plugins', () => {
     const anthropic = detail(page, 'anthropic');
     await expect(anthropic).toContainText('Needs setup');
     const secret = anthropic.locator('[data-secret="anthropic-api-key"]');
-    await expect(secret).toContainText('anthropic-api-key');
+    await expect(secret).toContainText('Anthropic API key');
     await expect(secret).toContainText('Missing');
     const addKey = secret.getByRole('button', { name: /Add the key/ });
     await expect(addKey).toBeVisible();
@@ -520,10 +524,10 @@ test.describe('Settings › Plugins', () => {
     const anthropic = detail(page, 'anthropic');
     await expect(anthropic).not.toContainText('Needs setup');
     const secret = anthropic.locator('[data-secret="anthropic-api-key"]');
-    await expect(secret).toContainText('anthropic-api-key');
+    await expect(secret).toContainText('Anthropic API key');
     await expect(secret).toContainText('Set');
     await expect(secret).not.toContainText('Missing');
-    await expect(secret.getByRole('button', { name: 'Replace anthropic-api-key' })).toHaveText(
+    await expect(secret.getByRole('button', { name: 'Replace Anthropic API key' })).toHaveText(
       'Replace',
     );
     await expect(anthropic.getByTestId('plugin-secret-note')).toHaveCount(0);

@@ -1,0 +1,12 @@
+[loader]
+".md" = "text"
+
+[run]
+bun = true
+
+[test]
+# Every test file runs with the shared guard that fails a test which leaves a real timer behind.
+preload = ["@lostgradient/testing/real-timer-leak-guard"]
+# Other workspaces are consumed as source, so their modules load into this suite too; they are
+# measured by their own packages.
+coveragePathIgnorePatterns = ["../**"]

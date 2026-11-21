@@ -1,5 +1,6 @@
 import { HOOKS_COPY } from '../../routes/hooks/hook-copy.ts';
 import type { ViewName } from '../views.ts';
+import { AGENT_EDITOR_COPY, AGENTS_COPY } from './agents.ts';
 import { CHECKS_COPY } from './checks.ts';
 import { GOALS_COPY } from './goals.ts';
 import { PLUGIN_PAGE_COPY } from './plugin-pages.ts';
@@ -35,7 +36,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Chat is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Chat'), requirement: 'bureau.contexts:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Chat') },
     // A chat that is gone has nothing old to show: the page offers a new chat and the way back
     // (board ChatStates frame g).
     notFound: {
@@ -77,15 +78,17 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Loading agents',
       description: 'Asking the server which agents it has.',
     },
+    // The list draws its own first use under its header (`ownsStatesOnPatterns`), in these words.
     empty: {
-      title: 'No agents to show',
-      description: 'No agents are defined yet. Add one as a Markdown file in the agents directory.',
+      title: AGENTS_COPY.empty.title,
+      description: AGENTS_COPY.empty.description,
+      action: { label: AGENT_EDITOR_COPY.newAction, href: '/agents/new' },
     },
     error: {
       title: 'Agents are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Agents'), requirement: 'bureau.agents:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Agents') },
     notFound: {
       title: 'This agent doesn’t exist',
       description: NOT_FOUND_COPY.description,
@@ -117,11 +120,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Loading workflows',
       description: 'Reading the workflow definitions and their files.',
     },
+    // The list draws its own first use under its header (`pageOwnsEmptyOn`), in these words.
     empty: {
-      title: 'No workflows yet',
-      description:
-        'Chat with an agent that has the bureau:workflows-create tool, or add a JSON file to the workflows directory.',
-      action: { label: 'New workflow', href: '/workflows/new' },
+      title: WORKFLOW_COPY.list.empty.title,
+      description: WORKFLOW_COPY.list.empty.description,
+      action: { label: WORKFLOW_COPY.newAction, href: '/workflows/new' },
     },
     error: {
       title: 'Workflows are unavailable',
@@ -156,7 +159,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Runs are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Runs'), requirement: 'bureau.tasks:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Runs') },
   },
   checks: {
     label: CHECKS_COPY.title,
@@ -174,7 +177,6 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     forbidden: {
       title: FORBIDDEN_COPY.title(CHECKS_COPY.title),
-      requirement: CHECKS_COPY.forbiddenRequirement,
     },
   },
   schedules: {
@@ -197,7 +199,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Reviews are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Reviews'), requirement: 'bureau.reviews:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Reviews') },
   },
   workers: {
     label: 'Workers',
@@ -238,7 +240,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The audit trail is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('the audit log'), requirement: 'bureau.audit:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('the audit log') },
   },
   settings: {
     label: 'Settings',
@@ -250,7 +252,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Settings are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Settings'), requirement: 'bureau.settings:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Settings') },
   },
   capabilities: {
     label: 'Capabilities',
@@ -277,7 +279,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Goals are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Goals'), requirement: 'bureau.goals:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Goals') },
     notFound: {
       title: 'This goal doesn’t exist',
       description: NOT_FOUND_COPY.description,
@@ -294,7 +296,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: HOOKS_COPY.list.loadFailed.title,
       description: HOOKS_COPY.list.loadFailed.noAnswer,
     },
-    forbidden: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'bureau.hooks:read' },
+    forbidden: { title: FORBIDDEN_COPY.title('Hooks') },
     // The editor says the same when the hook is deleted while its page is open.
     notFound: HOOKS_COPY.editor.notFound,
   },

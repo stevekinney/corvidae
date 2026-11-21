@@ -790,19 +790,17 @@ test.describe('Home activity bands (COR-2227)', () => {
     await captureEachWidth(page, 'activity one beside full', ready);
   });
 
-  test('activity empty: each band says it has nothing yet, in one line', async ({ page }) => {
+  test('activity empty: each band is its empty state alone, under no band title', async ({
+    page,
+  }) => {
     await scriptFeeds(page, {
       fleet: { connections: [[REPLAY_COMPLETE]] },
       bureau: { connections: [[REPLAY_COMPLETE]] },
     });
     await openHome(page, 1280);
     const ready = async (current: Page) => {
-      await expect(workflow(current).getByRole('heading', { level: 3 })).toHaveText(
-        'No workflow activity yet',
-      );
-      await expect(agents(current).getByRole('heading', { level: 3 })).toHaveText(
-        'No agent activity yet',
-      );
+      await expect(workflow(current).getByRole('heading')).toHaveText(['No workflow activity yet']);
+      await expect(agents(current).getByRole('heading')).toHaveText(['No agent activity yet']);
     };
     await ready(page);
     await expect(workflow(page)).toContainText(

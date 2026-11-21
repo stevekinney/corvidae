@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * Internal shared helpers for the Service Worker bootstrap surface. Extracted
  * here so `index.ts` (low-level factories) and `setup.ts` (one-call helper)
@@ -28,7 +29,8 @@ export function resolveFetchHandlerOptions<
 >(handlerOptions: Options | undefined): Options & { readonly authContext: AuthContext } {
   return {
     ...handlerOptions,
-    authContext: handlerOptions?.authContext ?? unauthenticatedLocalAuthContext(),
+    authContext:
+      handlerOptions?.authContext ?? unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY),
   } as Options & { readonly authContext: AuthContext };
 }
 

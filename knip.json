@@ -71,6 +71,27 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/backchannel": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/authentication/credential-stores.test-d.ts",
+        "src/client/__fixtures__/remote-client-entry.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/authentication/credential-stores.test-d.ts!",
+        "!src/client/__fixtures__/remote-client-entry.ts!",
+        "!src/{scope-vocabulary,transport-conformance-framed,transport-conformance-http}.test-support.ts!"
+      ]
+    },
     "packages/velveteen": {
       "entry": [
         "bun-primitives.test.ts",

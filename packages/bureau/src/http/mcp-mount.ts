@@ -1,4 +1,8 @@
-import { createOperationMcpMount, type OperationMcpMountOptions } from '@lostgradient/weft';
+import {
+  createOperationMcpMount,
+  type OperationMcpMountOptions,
+} from '@lostgradient/backchannel-mcp';
+import { VERSION as WEFT_VERSION } from '@lostgradient/weft';
 import { type OperationHandlerMount } from '@lostgradient/backchannel';
 
 /**
@@ -44,6 +48,6 @@ export function createBureauMcpMount(
     ...(options.resources === undefined ? {} : { resources: options.resources }),
     ...(options.toolMeta === undefined ? {} : { toolMeta: options.toolMeta }),
     ...(options.defaultToolMeta === undefined ? {} : { defaultToolMeta: options.defaultToolMeta }),
-    serverInfo: { name: 'bureau', title: 'Bureau' },
+    serverInfo: { name: 'bureau', title: 'Bureau', version: WEFT_VERSION },
   });
 }

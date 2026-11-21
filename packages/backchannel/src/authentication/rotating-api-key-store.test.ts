@@ -1,4 +1,5 @@
 import { describe, expect, it, spyOn } from 'bun:test';
+import { TEST_SCOPE_VOCABULARY } from '../scope-vocabulary.test-support.ts';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAuthenticator } from './index.ts';
@@ -83,7 +84,10 @@ describe('createRotatingApiKeyStore', () => {
     await store.add('key-old', { subject: 'svc', scopes: ['workflows:read'] });
     await store.add('key-new', { subject: 'svc', scopes: ['workflows:read'] });
 
-    const auth = await createAuthenticator({ resolveApiKeyPrincipal: store.resolve });
+    const auth = await createAuthenticator(
+      { resolveApiKeyPrincipal: store.resolve },
+      { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+    );
 
     const oldResult = await auth(requestWithKey('key-old'));
     const newResult = await auth(requestWithKey('key-new'));

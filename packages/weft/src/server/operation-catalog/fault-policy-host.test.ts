@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * Strict-fault mode belongs to the host (COR-2473): Weft's live registry follows the environment
  * on every undeclared fault, and a handler whose host supplies nothing is strict.
@@ -46,7 +47,7 @@ describe('Weft live registry', () => {
         'weft.workflows.get',
         { workflowId: 'wf-1' },
         {
-          principal: principalFromStdioLocal(),
+          principal: principalFromStdioLocal(WEFT_SCOPE_VOCABULARY),
           host: {
             get: async () => {
               throw UNDECLARED;

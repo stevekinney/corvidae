@@ -25,6 +25,7 @@
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/backchannel-mcp": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",

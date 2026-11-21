@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * `weft.system.registry` operation + REST binding — unit tests.
  *
@@ -380,7 +381,10 @@ describe('GET /v1/registry — authorization', () => {
       'weft.system.registry',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'user', scope: 'workflows:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
@@ -401,7 +405,10 @@ describe('GET /v1/registry — authorization', () => {
       'weft.system.registry',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'user', scope: 'system:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'user', scope: 'system:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,

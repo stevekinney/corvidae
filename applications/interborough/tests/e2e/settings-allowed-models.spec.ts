@@ -77,17 +77,20 @@ async function restorePolicy(request: APIRequestContext, original: unknown) {
 }
 
 test.describe('Settings › Allowed models, no provider connected', () => {
-  test('is the empty page: a muted line with a link to Providers, then the preferences', async ({
+  test('is the empty page: the one empty state with a button to Providers, then the preferences', async ({
     page,
     checkA11y,
   }) => {
     await open(page, E2E_SHOWCASE_URL);
     await expect(page.getByRole('heading', { level: 1, name: 'Allowed models' })).toBeVisible();
     await expect(page.getByText(ALLOWED_MODELS_COPY.intro)).toBeVisible();
-    await expect(page.locator('main h2')).toHaveText(['Models', 'Preferences']);
-    await expect(page.getByText(ALLOWED_MODELS_COPY.models.description)).toBeVisible();
+    // The empty state stands for the Models section, under no "Models" heading (owner report, 2026-11-19).
+    await expect(page.locator('main h2')).toHaveText([
+      ALLOWED_MODELS_COPY.models.empty.title,
+      'Preferences',
+    ]);
     const empty = page.getByTestId('allowed-models-empty');
-    await expect(empty).toContainText(ALLOWED_MODELS_COPY.models.empty);
+    await expect(empty).toContainText(ALLOWED_MODELS_COPY.models.empty.description);
     await expect(empty.getByRole('link', { name: 'Go to Providers' })).toHaveAttribute(
       'href',
       '/settings/models',

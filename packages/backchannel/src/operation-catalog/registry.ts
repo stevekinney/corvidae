@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { OperationInterceptor } from './operation-interceptors.ts';
 
 import { snapshotOperationMetadata } from './operation-metadata.ts';
 import { UNSAFE_PROTOTYPE_KEYS } from './pipeline-helpers.ts';
@@ -102,25 +103,26 @@ function eraseHost<Host>(operation: RegistrableOperation<Host>): ErasedOperation
   return operation.dispatch as ErasedOperation['dispatch'];
 }
 
-/**
- * Puts the registry's fault policy on every dispatch, so no transport has to carry it. A context
- * that already names a policy keeps its own.
- */
-function withFaultPolicy(
-  dispatch: ErasedOperation['dispatch'],
-  faultPolicy: FaultPolicy | undefined,
-): ErasedOperation['dispatch'] {
-  if (faultPolicy === undefined) return dispatch;
-  return (rawInput, context) =>
-    dispatch(rawInput, context.faultPolicy === undefined ? { ...context, faultPolicy } : context);
-}
+/** Policies shared by every operation registered by this host. */
+export type OperationRegistryOptions = {
+  /** Classification and masking settings for operation faults. */
+  readonly faultPolicy?: FaultPolicy | undefined;
+  /** Ordered interceptors for authorized operation invocations. */
+  readonly interceptors?: readonly OperationInterceptor[] | undefined;
+};
 
 function freezeOperation<Host>(
   operation: RegistrableOperation<Host>,
-  faultPolicy: FaultPolicy | undefined,
+  { faultPolicy, interceptors }: OperationRegistryOptions,
 ): ErasedOperation {
   const metadata = snapshotOperationMetadata(operation);
-  const dispatch = withFaultPolicy(eraseHost(operation), faultPolicy);
+  const invoke = eraseHost(operation);
+  const dispatch: ErasedOperation['dispatch'] = (input, context) =>
+    invoke(input, {
+      ...context,
+      ...(context.faultPolicy === undefined && faultPolicy !== undefined ? { faultPolicy } : {}),
+      ...(interceptors === undefined ? {} : { interceptors }),
+    });
   if (operation.kind === 'stream' || operation.kind === 'subscription') {
     return Object.freeze({
       ...metadata,
@@ -141,8 +143,13 @@ function freezeOperation<Host>(
  */
 export function createOperationRegistry<Host = unknown>(
   operations: ReadonlyArray<RegistrableOperation<Host>>,
-  options: { readonly faultPolicy?: FaultPolicy | undefined } = {},
+  options: OperationRegistryOptions = {},
 ): OperationRegistry {
+  const policies = {
+    faultPolicy: options.faultPolicy,
+    interceptors:
+      options.interceptors === undefined ? undefined : Object.freeze([...options.interceptors]),
+  };
   const byName = new Map<string, ErasedOperation>();
   for (const operation of operations) {
     if (byName.has(operation.name)) {
@@ -153,7 +160,7 @@ export function createOperationRegistry<Host = unknown>(
     assertKindAndEventSchemaAgree(operation);
     assertDestructiveDeclared(operation);
     assertMcpMetadataAgrees(operation);
-    byName.set(operation.name, freezeOperation(operation, options.faultPolicy));
+    byName.set(operation.name, freezeOperation(operation, policies));
   }
   const ordered = Object.freeze([...byName.values()]);
   return {

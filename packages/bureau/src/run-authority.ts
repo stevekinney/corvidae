@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
@@ -29,7 +30,7 @@ import { ANONYMOUS_LOCAL_OWNER } from './owner-of-record.ts';
 /** Builds the transport principal represented by a Bureau run's owner record. */
 export function createRunPrincipal(owner: string | undefined): AuthenticatedPrincipal {
   if (owner === ANONYMOUS_LOCAL_OWNER) {
-    const local = principalFromUnauthenticatedLocal();
+    const local = principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY);
     const scopes = new Set([...local.scopes, ...BUREAU_SCOPES]);
     return Object.freeze({
       ...local,

@@ -422,7 +422,8 @@ describe('every view, in every state', () => {
       const { requests } = stub(view, 'content');
       const { container, unmount } = mount(view, { scopes: [] });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain(`requires ${VIEWS[view].scopes.join(' or ')}`);
+      expect(container.textContent).toContain('See your scopes');
+      for (const scope of VIEWS[view].scopes) expect(container.textContent).not.toContain(scope);
       expect(requests).toEqual([]);
       unmount();
       restore?.();
@@ -456,11 +457,13 @@ describe('the Health view', () => {
     }
   });
 
-  test('is forbidden for a principal holding neither scope, and names both', () => {
+  test('is forbidden for a principal holding neither scope and links to the scopes page', () => {
     const { requests } = stub('health', 'content');
     const { container } = mount('health', { scopes: ['schedules:read'] });
     expect(frame(container).dataset['state']).toBe('forbidden');
-    expect(container.textContent).toContain('requires system:read or workflows:read');
+    expect(container.textContent).toContain('See your scopes');
+    expect(container.textContent).not.toContain('system:read');
+    expect(container.textContent).not.toContain('workflows:read');
     expect(requests).toEqual([]);
   });
 });
@@ -705,7 +708,11 @@ describe('the chat list, a new chat, and the agents', () => {
     const browse = container.querySelector('a[href="/agents"]');
     expect(browse?.textContent?.trim()).toBe('Browse agents');
     expect(browse?.classList.contains('button-variant-secondary')).toBe(true);
-    expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
+    // The one list-page empty state, with the Agents icon (owner report, 2026-11-19).
+    const state = container.querySelector('[data-list-empty="agents"]');
+    expect(state?.classList.contains('cinder-empty-state')).toBe(true);
+    expect(state?.querySelectorAll('a.cinder-button')).toHaveLength(2);
+    expect(state?.querySelector('.cinder-empty-state-icon svg.lucide-bot')).not.toBeNull();
     expect(container.querySelector('textarea, [data-testid="first-run"]')).toBeNull();
   });
 
@@ -986,7 +993,8 @@ describe('the Workflows area', () => {
       const stub = world();
       const { container } = mount('workflows', { scopes: [], parameters, pattern });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain('requires workflows:read');
+      expect(container.textContent).toContain('See your scopes');
+      expect(container.textContent).not.toContain('workflows:read');
       expect(stub.calls).toEqual([]);
     });
 
