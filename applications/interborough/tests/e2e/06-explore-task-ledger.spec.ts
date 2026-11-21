@@ -6,6 +6,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 
+import { captureForDesignReview } from './design-review-capture.ts';
 import {
   E2E_BARRIER_URL,
   E2E_CANCELLATION_REASON,
@@ -142,17 +143,30 @@ test('an acknowledged cancellation is attributed to the owning attempt', async (
   page,
   checkA11y,
 }) => {
-  await openTask(page, E2E_CANCELLED_TASK_OPERATION_ID);
+  for (const viewport of [VIEWPORTS[0], VIEWPORTS[2]]) {
+    await page.setViewportSize(viewport);
+    await openTask(page, E2E_CANCELLED_TASK_OPERATION_ID);
 
-  const cancellation = region(page, 'Cancellation evidence');
-  await expect(cancellation.getByText('Acknowledged by owning attempt')).toBeVisible();
-  await expect(cancellation.getByText(/^Acknowledged by attempt 1 at \d{4}-/)).toBeVisible();
-  await expect(cancellation.getByText(E2E_CANCELLATION_REASON)).toBeVisible();
-  await expect(
-    page.getByRole('list', { name: 'Attempt history' }).getByText('Cancelled', { exact: true }),
-  ).toBeVisible();
+    const cancellation = region(page, 'Cancellation evidence');
+    await expect(cancellation.getByText('Acknowledged by owning attempt')).toBeVisible();
+    await expect(cancellation.getByText(/^Acknowledged by attempt 1 at \d{4}-/)).toBeVisible();
+    await expect(cancellation.getByText(E2E_CANCELLATION_REASON)).toBeVisible();
+    await expect(
+      page.getByRole('list', { name: 'Attempt history' }).getByText('Canceled', { exact: true }),
+    ).toBeVisible();
 
-  await checkA11y('workers—task with acknowledged cancellation');
+    await captureForDesignReview(page, {
+      route: '/health/workers (task ledger)',
+      state: 'acknowledged cancellation',
+      source: '06-explore-task-ledger.spec.ts',
+      async ready() {
+        const acknowledgement = cancellation.getByText('Acknowledged by owning attempt');
+        await acknowledgement.scrollIntoViewIfNeeded();
+        await expect(acknowledgement).toBeInViewport({ ratio: 1 });
+      },
+    });
+    await checkA11y(`workers—task with acknowledged cancellation at ${viewport.width}px`);
+  }
 });
 
 for (const theme of ['light', 'dark'] as const) {

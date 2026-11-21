@@ -1210,7 +1210,9 @@ describe('ApprovalCard', () => {
 
       expect(
         getByText(
-          `No approval actions are available because this request is ${state.replaceAll('_', ' ')}.`,
+          `No approval actions are available because this request is ${
+            state === 'cancelled' ? 'canceled' : state.replaceAll('_', ' ')
+          }.`,
         ),
       ).toBeTruthy();
       expect(
@@ -1221,6 +1223,26 @@ describe('ApprovalCard', () => {
       expect(queryByRole('group', { name: 'Approval actions' })).toBeNull();
       unmount();
     }
+  });
+
+  test('renders cancelled terminal copy with American spelling', () => {
+    const { getByText, getByRole } = render(ApprovalCard, {
+      ...approvalCardProps({ state: 'cancelled' }),
+    });
+
+    expect(getByText('Canceled')).toBeTruthy();
+    expect(
+      getByText('No approval actions are available because this request is canceled.'),
+    ).toBeTruthy();
+
+    const decision = render(ApprovalCard, {
+      ...approvalCardProps({ state: 'cancelled', layout: 'decision' }),
+    });
+    expect(
+      decision.getByRole('heading', {
+        name: /^Canceled before a decision:/,
+      }),
+    ).toBeTruthy();
   });
 });
 
