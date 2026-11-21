@@ -33,8 +33,6 @@ const PROVIDER_FAILURE = new AgentRunError('the provider failed', {
   code: 'UNKNOWN',
 });
 
-const TOOL_FAILURE = new AgentRunError('the tool failed', { kind: 'tool', code: 'UNKNOWN' });
-
 describe('run outcome details (COR-2095)', () => {
   it('hands an entry over once: take removes it', () => {
     const details = createRunOutcomeDetails();
