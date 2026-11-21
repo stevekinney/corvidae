@@ -8,6 +8,7 @@ import {
   HumanWaitParkedEvent,
   type HumanInputSchema,
 } from '@lostgradient/operative';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
@@ -29,11 +30,12 @@ function build(
   engine: Pick<RegistryAgnosticEngine, 'get'>,
   clock = { now: 1_000 },
   steps: readonly (typeof PARKED_STEP)[] = [PARKED_STEP],
+  liveRun?: NonNullable<ReturnType<RunHumanWaitsDependencies['store']['getRun']>>,
 ) {
   const diagnostics: Diagnostic[] = [];
   const dependencies: RunHumanWaitsDependencies = {
-    store: { getRun: () => undefined },
-    catalogRunIds: new Set(),
+    store: { getRun: (id) => (id === 'live-1' ? liveRun : undefined) },
+    catalogRunIds: new Set(liveRun === undefined ? [] : ['live-1']),
     runAttribution: new Map(),
     engine: () => engine as RegistryAgnosticEngine,
     checkpointSteps: async () => steps,
@@ -154,6 +156,25 @@ describe('a wait with an input schema (COR-1487)', () => {
       { id: 'human-wait:run-2:answer:0', prompt: 'Which?', inputSchema: schema },
     ]);
   });
+});
+
+it('hides an externally closed catalog review while the live run still holds the park event', async () => {
+  const { waits } = build(
+    { get: async () => ({ status: 'running', waitingForSignals: [] }) as never },
+    undefined,
+    [],
+    {
+      status: 'running',
+      actions: [
+        { type: HumanWaitParkedEvent.type, detail: { signalName: 'answer' }, timestamp: 1_000 },
+      ],
+    },
+  );
+  const [review] = waits.list();
+  expect(review).toMatchObject({ runId: 'live-1', signalName: 'answer' });
+  const rejection = await rejectionOf(waits.resolve({ id: review!.id, decision: 'approve' }));
+  expect(rejection).toMatchObject({ code: 'NOT_FOUND' });
+  expect(waits.list()).toEqual([]);
 });
 
 describe('rereadClosed', () => {

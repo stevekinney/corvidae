@@ -14,6 +14,7 @@ import type { ContextOperationRequest } from '../context.ts';
 import { ActivityStartedEvent } from '../events.ts';
 import { getWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { ActivityInterception } from '../interceptor.ts';
+import type { ActivityContext } from '../types/activity.ts';
 import { getActivityFunctionWithMetadata, resolveActivityFunction } from './activity-resolution.ts';
 import { beginExecutionAttempt } from './execution-attempts.ts';
 import {
@@ -913,11 +914,16 @@ describe('activity operation helpers', () => {
     const verify = mock(async (_result: unknown, context?: { phase?: string }) =>
       context?.phase === 'pre-dispatch-reconciliation' ? 'not-completed' : true,
     );
-    const secondExecute = mock(() => 'second-result');
+    let dispatched: ActivityContext | undefined;
+    const secondExecute = mock((_input: unknown, context?: ActivityContext) => {
+      dispatched = context;
+      return 'second-result';
+    });
     const replayActivity = Object.assign(secondExecute, { verify });
     const replayOperation = createActivityOperation({
       fn: replayActivity,
       operationId: 'replayed-after-not-completed',
+      workflowExecutionToken: 'owner-token',
       options: { idempotencyKey: 'crash-redo' },
     });
 
@@ -931,6 +937,7 @@ describe('activity operation helpers', () => {
     ).toBe('second-result');
 
     expect(secondExecute).toHaveBeenCalledTimes(1);
+    expect(dispatched?.activityAttemptToken).toMatch(/:2$/);
     expect(verify).toHaveBeenCalledWith(
       undefined,
       expect.objectContaining({ attempt: 1, phase: 'pre-dispatch-reconciliation' }),

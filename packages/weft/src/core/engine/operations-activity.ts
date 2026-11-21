@@ -30,7 +30,10 @@ import {
   parkDeferredAsyncActivity,
 } from './async-activity-completion.ts';
 import { deriveAsyncActivityToken } from './async-activity-records.ts';
-import { stageOperationSideEffects } from './checkpoint-side-effects.ts';
+import {
+  shareActivityReceiptTransition,
+  stageOperationSideEffects,
+} from './checkpoint-side-effects.ts';
 import { currentExecutionAttempt, type ExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
@@ -57,7 +60,15 @@ export type ActivityFunctionWithMetadata = ((...arguments_: unknown[]) => unknow
 type ActivityOperation = Extract<ContextOperationRequest, { type: 'activity' }>;
 
 /** Concurrent branches share a receipt only within the same execution attempt. */
-const keyedActivityResults = new WeakMap<ExecutionAttempt, Map<string, Promise<unknown>>>();
+type KeyedActivityResult = {
+  readonly value: unknown;
+  readonly receipt?: ReturnType<typeof buildActivityReconciliationTransitionSideEffects>;
+};
+
+const keyedActivityResults = new WeakMap<
+  ExecutionAttempt,
+  Map<string, Promise<KeyedActivityResult>>
+>();
 
 /**
  * Per-call execution options for one activity operation. Distinct from the
@@ -503,9 +514,15 @@ export async function executeActivityOperationResult(
         speculativeState,
         executionOptions,
       );
-    return executionAttempt === undefined || executionAttempt.abandoned
+    const outcome = await (executionAttempt === undefined ||
+    executionAttempt.abandoned ||
+    executionOptions.reconciliationCompletion === 'immediate-fenced'
       ? execute()
-      : runKeyedActivityOnce(executionAttempt, reference.key, execute);
+      : runKeyedActivityOnce(executionAttempt, reference.key, execute));
+    if (outcome.receipt !== undefined) {
+      stageOperationSideEffects(internals, workflowId, operation, outcome.receipt);
+    }
+    return outcome.value;
   }
 
   const result = await executeActivity(
@@ -552,7 +569,7 @@ async function executeKeyedActivityOperationResult(
   coordinatorSignal: AbortSignal | undefined,
   speculativeState: SpeculativeExecutionState | undefined,
   executionOptions: ActivityOperationExecutionOptions,
-): Promise<unknown> {
+): Promise<KeyedActivityResult> {
   const started = await resolveStartedActivityReconciliationRecord(
     internals,
     workflowId,
@@ -567,14 +584,14 @@ async function executeKeyedActivityOperationResult(
       started.completedResult,
       internals.options.payloadSizePolicy.maxBytes,
     );
-    return started.completedResult;
+    return { value: started.completedResult };
   }
   const result = await executeActivity(
     internals,
     workflowId,
     operation,
     callbacks,
-    operationAttempt,
+    started.attempt,
     coordinatorSignal,
     executionOptions.allowRemoteDispatch ?? true,
   );
@@ -596,6 +613,7 @@ async function executeKeyedActivityOperationResult(
     result,
     internals.options.getNow(),
   );
+  let receipt: KeyedActivityResult['receipt'];
   if (executionOptions.reconciliationCompletion === 'immediate-fenced') {
     const finishImmediateReconciliationCommit =
       executionOptions.beforeImmediateReconciliationCommit?.();
@@ -611,24 +629,19 @@ async function executeKeyedActivityOperationResult(
       finishImmediateReconciliationCommit?.();
     }
   } else {
-    stageOperationSideEffects(
-      internals,
-      workflowId,
-      operation,
-      buildActivityReconciliationTransitionSideEffects(reference, started, completedRecord),
-    );
+    receipt = buildActivityReconciliationTransitionSideEffects(reference, started, completedRecord);
   }
   if (!speculativeState) {
     clearLastHeartbeatForStep(internals, workflowId, getActivityStateKey(operation));
   }
-  return result;
+  return receipt === undefined ? { value: result } : { value: result, receipt };
 }
 
 function runKeyedActivityOnce(
   attempt: ExecutionAttempt,
   key: string,
-  execute: () => Promise<unknown>,
-): Promise<unknown> {
+  execute: () => Promise<KeyedActivityResult>,
+): Promise<KeyedActivityResult> {
   let activities = keyedActivityResults.get(attempt);
   if (activities === undefined) {
     activities = new Map();
@@ -636,7 +649,10 @@ function runKeyedActivityOnce(
   }
   const active = activities.get(key);
   if (active !== undefined) return active;
-  const result = execute();
+  const result = execute().then((outcome) => {
+    if (outcome.receipt !== undefined) shareActivityReceiptTransition(outcome.receipt);
+    return outcome;
+  });
   activities.set(key, result);
   void result.catch(() => {
     if (activities.get(key) === result) activities.delete(key);
