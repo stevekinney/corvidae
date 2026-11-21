@@ -308,6 +308,24 @@
     background: transparent;
   }
 
+  /* Programmatic initial focus stays visually quiet, while a body made keyboard-reachable by
+   * `overflowFade({ keyboardScrollable })` keeps a clipping-safe inset ring. */
+  .cinder-modal__body:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  .cinder-modal__body:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-modal__body:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
   /* The shared `.cinder-_scroll-fade` recipe (see `_scroll-fade.css`) fades
    * with an OPAQUE overlay painted in `--_cinder-scroll-fade-color`
    * (`--cinder-surface` here) by design — masking a container that paints
