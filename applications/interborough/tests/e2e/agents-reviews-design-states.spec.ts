@@ -623,11 +623,15 @@ test.describe('Agent shared FormActions', () => {
       await page.goto(`/agents/${id}/edit`);
       const actions = page.getByRole('group', { name: 'Form actions' });
       await expect(actions).toBeVisible();
+      const description = page.getByRole('textbox', { name: editorCopy.descriptionLabel });
+      await description.fill('Keep this form state while trying the agent.');
       await page.getByRole('button', { name: editorCopy.try.action }).click();
-      await expect(page.getByTestId('agent-try-panel')).toBeVisible();
-      await page.getByRole('button', { name: 'Close' }).click();
-      await expect(page.getByTestId('agent-try-panel')).toBeHidden();
+      const trial = page.getByRole('dialog', { name: editorCopy.try.title });
+      await expect(trial).toBeVisible();
+      await trial.getByRole('button', { name: editorCopy.try.closeSheet }).click();
+      await expect(trial).toBeHidden();
       await expect(actions).toBeVisible();
+      await expect(description).toHaveValue('Keep this form state while trying the agent.');
       await captureForDesignReview(page, {
         route: '/agents/:agent/edit',
         state: 'shared FormActions, Try it closed at 768',

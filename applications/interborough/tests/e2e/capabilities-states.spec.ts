@@ -126,6 +126,48 @@ async function sourcesAre(page: Page, change: (sources: Json[]) => Json[]): Prom
 }
 
 for (const width of WIDTHS) {
+  test(`/capabilities/connect: selected tools count in shared FormActions at ${width} pixels`, async ({
+    page,
+  }) => {
+    const connect = copy.source.connect;
+    await open(page, width, '/capabilities/connect');
+    const form = page.getByTestId('connect-form');
+    await form.getByRole('radio', { name: connect.kind.openapi }).check();
+    await form.getByRole('radio', { name: connect.specification.file }).check();
+    await form.locator('#connect-file').setInputFiles({
+      name: 'read-only-catalog.yaml',
+      mimeType: 'application/yaml',
+      buffer: Buffer.from(
+        [
+          'openapi: 3.1.0',
+          'info: { title: Read-only Catalog, version: "1" }',
+          'servers: [{ url: https://example.com }]',
+          'paths:',
+          '  /books:',
+          '    get: { operationId: listBooks, summary: List books }',
+          '  /authors:',
+          '    get: { operationId: listAuthors, summary: List authors }',
+          '',
+        ].join('\n'),
+      ),
+    });
+    const actions = form.getByRole('group', { name: 'Form actions' });
+    const summary = actions.getByTestId('connect-summary');
+    await expect(summary).toHaveText(connect.joins(2, 'Read-only Catalog'));
+    await expect(actions).toHaveCSS('position', 'sticky');
+    await form.getByRole('checkbox', { name: connect.chooseTools.onLabel('List books') }).uncheck();
+    await expect(summary).toHaveText(connect.joins(1, 'Read-only Catalog'));
+    await expect(actions.getByRole('button')).toHaveText([
+      connect.actions.cancel,
+      connect.actions.connectCount(1),
+    ]);
+    await captureForDesignReview(page, {
+      route: '/capabilities/connect',
+      state: 'shared FormActions',
+      source: SOURCE,
+    });
+  });
+
   // The sample world's own pages, under state names `responsive.spec.ts` (which captures the same
   // routes with stress data under the same file names) never writes.
   test(`the sample world's tools, sources and connect form, at ${width} pixels`, async ({

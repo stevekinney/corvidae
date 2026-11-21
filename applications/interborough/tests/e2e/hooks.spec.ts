@@ -130,7 +130,7 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
 });
 
 for (const width of WIDTHS) {
-  test(`[shared-form-actions] /hooks/new: the Check actions share Cinder FormActions at ${width} pixels`, async ({
+  test(`/hooks/new: the Check actions use shared FormActions at ${width} pixels`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
