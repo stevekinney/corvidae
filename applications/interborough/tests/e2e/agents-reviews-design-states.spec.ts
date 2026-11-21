@@ -145,7 +145,7 @@ for (const width of WIDTHS) {
           state: 'shared agent delete open',
           source: SOURCE,
         });
-        await editDialog.getByLabelText(`Type ${id} to confirm`).fill(id);
+        await editDialog.getByLabel(`Type ${id} to confirm`).fill(id);
         await captureForDesignReview(page, {
           route: '/agents/:agent/edit',
           state: 'shared agent delete typed confirmed',
@@ -188,7 +188,7 @@ for (const width of WIDTHS) {
         await page.getByRole('button', { name: settingsCopy.deleteAction }).click();
         const settingsDialog = page.getByRole('dialog', { name: 'Delete Shared delete agent?' });
         await expect(settingsDialog).toBeVisible();
-        await settingsDialog.getByLabelText(`Type ${id} to confirm`).fill(id);
+        await settingsDialog.getByLabel(`Type ${id} to confirm`).fill(id);
         await captureForDesignReview(page, {
           route: '/agents/:agent/settings',
           state: 'shared agent delete typed confirmed',
