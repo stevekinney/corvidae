@@ -322,7 +322,7 @@ test.describe('Settings › Models, provider connected', () => {
     await open(page, E2E_BASE_URL);
     const model = page.locator('[data-setting="decisions.model"]');
     await expect(model).toContainText(
-      MODELS_COPY.decisions.model.hostAndFallback('local', 'Claude Haiku 5.5'),
+      MODELS_COPY.decisions.model.hostAndFallback('Local', 'Claude Haiku 5.5'),
     );
     await checkA11y('settings models, host and fallback decision labels, at 1280px');
     await captureAtEveryWidth(page, 'decision-host-and-fallback');
@@ -919,14 +919,15 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     const dialog = await openManage(page);
     const baseUrl = dialog.getByLabel(/base ?url/i);
     await baseUrl.fill('https://proxy.example/v1');
-    await dialog.press('Escape');
+    await page.keyboard.press('Escape');
 
-    const confirm = page.getByRole('alertdialog', { name: MODELS_COPY.manageDialog.discardTitle });
+    const confirm = page.getByRole('dialog', { name: MODELS_COPY.manageDialog.discardTitle });
     await expect(confirm).toContainText(MODELS_COPY.manageDialog.discardDescription);
     await confirm.getByRole('button', { name: MODELS_COPY.manageDialog.keepEditing }).click();
+    await expect(confirm).toHaveCount(0);
     await expect(baseUrl).toHaveValue('https://proxy.example/v1');
 
-    await dialog.click({ position: { x: 2, y: 2 } });
+    await page.mouse.click(4, 4);
     await expect(confirm).toBeVisible();
     await captureAtEveryWidth(page, 'manage-discard-changes-confirm', async () => {
       await expect(confirm).toBeVisible();
