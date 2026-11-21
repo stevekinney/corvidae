@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2537",
+  "branch": "worktree-agent-a73a2e4bcaadda058",
+  "checkedAt": "52cb3c9e9767de4738bfdf7a71e0724ecdefeae3",
+  "briefVersion": "2f617ebb0b5c",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "json-diff-viewer.test.ts three-level fixture and collapsed-unchanged tests; focused-checks exit 0 at 52cb3c9e97"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "marker test reads +, -, ~ with aria-labels; json-diff-viewer.a11y.md exists; accessibility tests pass"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "tests for arrays by index and for a type change as one removed and one added entry"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "1 MB object, array and nested-object tests assert at most 1,000 elements before any control; many-changes and render-budget playground examples"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "test asserts a kind=done EmptyState titled 'No differences'"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "test imports JsonDiffViewer from src/index.ts and src/panel/index.ts"
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "json-diff-viewer/ beside source-diff-viewer with README usage example; playground examples including stacked-levels; discover and declared-examples tests pass"
+    }
+  ]
+}

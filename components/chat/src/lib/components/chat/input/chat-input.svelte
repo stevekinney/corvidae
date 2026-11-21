@@ -2954,12 +2954,16 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* The row never wraps: the host's selects shrink (a ghost select ellipsizes its value) or fold
-   * into one Settings control (`controls` is told when) before anything drops to a second line. */
+  /* The row never wraps. Settings selects keep their natural width until the composer folds
+   * them into one control, so the ghost fields cannot silently shorten their values. */
   .chat-input-footer-left {
     flex: 1 1 auto;
     flex-wrap: nowrap;
     min-inline-size: 0;
+  }
+
+  .chat-input-footer-left > :global(.cinder-select-field.select-variant-ghost) {
+    flex: none;
   }
 
   .chat-input-footer-right {
