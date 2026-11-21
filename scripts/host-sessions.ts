@@ -78,14 +78,18 @@ import {
   type OwnerRecord,
 } from './run-exclusively.ts';
 
-/** How many places the host has: implementation workers and their coordinators together. */
-export const hostPlaceCap = 3;
+/**
+ * How many places the host has: implementation workers and their coordinators together. There is
+ * no cap (owner decision, 2026-11-21): the ledger still records every dispatch for `status`, the
+ * leases and the session fences, but no dispatch waits for a place or is refused one.
+ */
+const hostPlaceCap = Number.POSITIVE_INFINITY;
 
 /** How long a dispatch waits for a place before it is denied. */
 export const placeWaitLimitMilliseconds = 20 * 60 * 1000;
 
 /** How often a waiting dispatch looks again. */
-export const placePollIntervalMilliseconds = 5_000;
+const placePollIntervalMilliseconds = 5_000;
 
 /** How often a hook looks again for the admission lock, which is held only while deciding. */
 export const admissionLockRetryMilliseconds = 100;
@@ -93,11 +97,11 @@ export const admissionLockRetryMilliseconds = 100;
 /** Set to text in one dispatch's description or prompt to admit that dispatch past the cap. */
 export const capBypassVariable = 'CORVIDAE_AGENT_CAP_BYPASS';
 
-/** How many Opus agents the host runs at once, whatever the place cap leaves free. */
-export const opusAgentCap = 1;
+/** How many Opus agents the host runs at once: no limit (owner decision, 2026-11-21). */
+export const opusAgentCap = Number.POSITIVE_INFINITY;
 
-/** How many read-only agents the host runs at once. They take no place under the host cap. */
-export const readOnlyAgentCap = 6;
+/** How many read-only agents the host runs at once: no limit (owner decision, 2026-11-21). */
+export const readOnlyAgentCap = Number.POSITIVE_INFINITY;
 
 /**
  * The agent types that are read-only when no definition says otherwise: Claude Code's built-in
@@ -482,7 +486,7 @@ export function describeSession(
 }
 
 /** The places as lines: a summary, then each session's. */
-export function describePlaces(
+function describePlaces(
   ledgers: readonly SessionLedger[],
   cap: number,
   now: number,
