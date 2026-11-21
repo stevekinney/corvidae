@@ -296,12 +296,17 @@ test.describe('the list of sessions', () => {
     // A page is twenty rows. The list loads the next page as the end comes into view, or when
     // Load more is pressed, so keep asking for it until the oldest of these chats is there.
     const oldest = list.getByRole('link', { name: new RegExp(`${label} chat 01`) });
-    await expect(async () => {
-      const more = list.getByRole('button', { name: 'Load more' });
-      if (await more.isVisible()) await more.click();
-      // load-proof: a miss only presses Load more again and tries again, so a slow host adds attempts, never a failure.
-      await expect(oldest).toBeVisible({ timeout: 1_000 });
-    }).toPass();
+    await expect
+      .poll(async () => {
+        if (await oldest.isVisible()) return true;
+        // The scroll sentinel can load the final page and remove the button while a pointer click
+        // waits for it. Find and activate the button in one browser turn, if it is still there.
+        await list.evaluate((pane) => {
+          pane.querySelector<HTMLButtonElement>('button.cinder-load-more__button')?.click();
+        });
+        return false;
+      })
+      .toBe(true);
     expect(await rows.count()).toBeGreaterThan(20);
   });
 

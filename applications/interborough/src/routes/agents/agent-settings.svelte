@@ -223,17 +223,20 @@
     seededHash = at;
   }
 
-  // The form is filled from the file, and again when the file's hash moves to one the form did
-  // not save, unless it holds changes: a read that lands mid-edit never overwrites them.
+  // A code agent's override hash can arrive before the definition that supplies restored values.
+  // Refill when either changes, while leaving a draft or an in-flight save alone.
   $effect(() => {
     const loaded = detail;
     if (!writable || loaded === undefined) return;
     const definition = loaded.definition;
     const at = loaded.hash;
     if (definition === null) return;
+    const next = settingsFormOf(definition);
     untrack(() => {
-      if (baseline !== undefined && (at === seededHash || dirty)) return;
-      fill(settingsFormOf(definition), at);
+      if (dirty || save.isPending) return;
+      if (baseline !== undefined && at === seededHash && changedParts(baseline, next).length === 0)
+        return;
+      fill(next, at);
     });
   });
 
@@ -633,8 +636,9 @@
                     href={router.href(SETTINGS_MODELS_PATH)}
                     variant="secondary"
                     size="sm"
-                    onclick={openSettings}>{copy.noProvider.action}</Button
-                  >
+                    onclick={openSettings}
+                    label={copy.noProvider.action}
+                  />
                 {/snippet}
               </Callout>
             {/if}
@@ -711,15 +715,17 @@
               variant="primary"
               size="sm"
               loading={save.isPending}
-              disabled={!dirty}>{copy.save}</Button
-            >
+              disabled={!dirty}
+              label={copy.save}
+            />
             <Button
               type="button"
               variant="secondary"
               size="sm"
               disabled={!dirty || save.isPending}
-              onclick={discard}>{copy.discard}</Button
-            >
+              onclick={discard}
+              label={copy.discard}
+            />
             <p class="ib-agent-note" data-testid="agent-settings-save-note">
               {copy.saveNote(nextVersion)}
             </p>
@@ -746,8 +752,9 @@
                 variant="ghost-danger"
                 size="sm"
                 disabled={hash === null || removal.isPending}
-                onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
-              >
+                onclick={() => (confirmingDelete = true)}
+                label={copy.deleteAction}
+              />
             {/snippet}
           </SectionHeading>
         </section>
@@ -775,8 +782,9 @@
                 variant="secondary"
                 size="sm"
                 loading={toggle.isPending}
-                onclick={() => toggle.mutate('enable')}>{copy.disable.enable}</Button
-              >
+                onclick={() => toggle.mutate('enable')}
+                label={copy.disable.enable}
+              />
             {/snippet}
           </SectionHeading>
         {:else}
@@ -794,8 +802,9 @@
                 variant="ghost-danger"
                 size="sm"
                 disabled={toggle.isPending}
-                onclick={() => (confirmingDisable = true)}>{copy.disable.action}</Button
-              >
+                onclick={() => (confirmingDisable = true)}
+                label={copy.disable.action}
+              />
             {/snippet}
           </SectionHeading>
         {/if}

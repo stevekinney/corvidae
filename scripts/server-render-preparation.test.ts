@@ -24,7 +24,8 @@ const ignoredPathSegment =
  * per-test limit under load and passes otherwise. `beforeAll` does not help:
  * bun applies the same timeout to hooks.
  *
- * Every test file therefore awaits `prepareSvelteServerSource` (or, for the
+ * Every test file therefore awaits `prepareSvelteServerSource`, or the explicit-source
+ * array form of `prepareSvelteServerSources` (or, for the
  * build-flag check, `prepareBuildFlagHydrationSafety`) at module scope, where
  * no timeout applies. The shared renderer caches that compilation, so the
  * calls inside tests only render.
@@ -52,7 +53,16 @@ function isPrepared(source: string, helper: string, argument: string): boolean {
     helper === 'checkBuildFlagHydrationSafety'
       ? 'prepareBuildFlagHydrationSafety'
       : '(?:prepareSvelteServerSource|prepareBuildFlagHydrationSafety)';
-  return new RegExp(`\\b${preparers}\\(\\s*${escapeForPattern(argument)}\\b`).test(source);
+  if (new RegExp(`\\b${preparers}\\(\\s*${escapeForPattern(argument)}\\b`).test(source)) {
+    return true;
+  }
+  if (helper === 'checkBuildFlagHydrationSafety') return false;
+  for (const [, argumentsList = ''] of source.matchAll(
+    /\bprepareSvelteServerSources\(\s*\[([^\][]*)\]/g,
+  )) {
+    if (argumentsList.split(',').some((entry) => entry.trim() === argument)) return true;
+  }
+  return false;
 }
 
 function isModuleScope(lines: readonly string[], line: number): boolean {
@@ -153,6 +163,23 @@ describe('server render preparation', () => {
     ].join('\n');
     expect(unpreparedServerRenders(source)).toEqual([
       'line 3: checkBuildFlagHydrationSafety(sourcePath) has no module-scope prepare',
+    ]);
+  });
+
+  test('matches plural preparations to the identifiers explicitly in their source array', () => {
+    const source = [
+      'await prepareSvelteServerSources([first,\n second, first]);',
+      'await prepareSvelteServerSources(otherSources);',
+      "test('ssr', async () => {",
+      '  await renderSvelteOnServer(first);',
+      '  await importSvelteOnServer(second);',
+      '  await renderSvelteOnServer(third);',
+      '  await checkBuildFlagHydrationSafety(first);',
+      '});',
+    ].join('\n');
+    expect(unpreparedServerRenders(source)).toEqual([
+      'line 7: renderSvelteOnServer(third) has no module-scope prepare',
+      'line 8: checkBuildFlagHydrationSafety(first) has no module-scope prepare',
     ]);
   });
 

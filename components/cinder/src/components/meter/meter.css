@@ -45,7 +45,7 @@
   }
 
   .cinder-meter__segment--state-low {
-    background: var(--cinder-status-warning-solid);
+    background: var(--cinder-status-warning-indicator);
     opacity: 0.32;
   }
 
@@ -155,7 +155,7 @@
   }
 
   .cinder-meter[data-cinder-state='low'] .cinder-meter__fill {
-    background: var(--cinder-status-warning-solid);
+    background: var(--cinder-status-warning-indicator);
   }
 
   .cinder-meter[data-cinder-state='optimum'] .cinder-meter__fill {

@@ -102,7 +102,7 @@
     />
   {/snippet}
   {#snippet footer()}
-    <Button variant="secondary" onclick={handleDismiss} disabled={submitting}>Cancel</Button>
+    <Button variant="secondary" onclick={handleDismiss} disabled={submitting} label="Cancel" />
     <Button data-changes variant="primary" onclick={handleDrain} loading={submitting}
       >{title}</Button
     >

@@ -95,8 +95,9 @@
     variant="primary"
     href={router.href(connectPath)}
     onclick={connect}
-    data-testid="agent-connect-provider">{copy.connectAction}</Button
-  >
+    data-testid="agent-connect-provider"
+    label={copy.connectAction}
+  />
 {/snippet}
 
 {#snippet steps()}
@@ -123,7 +124,7 @@
     </li>
     <li>
       <p class="weft-no-provider__text">{copy.restartStep}</p>
-      <Button variant="secondary" disabled={reloading} onclick={onReload}>{copy.reload}</Button>
+      <Button variant="secondary" disabled={reloading} onclick={onReload} label={copy.reload} />
     </li>
   </ol>
 {/snippet}

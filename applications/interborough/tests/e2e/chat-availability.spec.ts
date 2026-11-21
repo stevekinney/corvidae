@@ -102,7 +102,9 @@ for (const viewport of VIEWPORTS) {
       });
 
       await back.click();
-      await expect(page).toHaveURL(/\/chats$/);
+      if (viewport.width <= 375) await expect(page).toHaveURL(/\/chats$/);
+      else await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
+      await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
     });
   });
 }

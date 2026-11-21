@@ -2,7 +2,7 @@
 
 Codex runs the shared delivery sequence. This file holds Codex-only mechanics; shared outcome rules, including the brief's Delivery rule, live in the brief and Chef skill.
 
-Codex may report `chef-worker` unknown in a disposable project. Register it with `-c agents.chef-worker.description=...` and `-c agents.chef-worker.config_file=<absolute .codex/agents/chef-worker.toml>`. Verify fresh-child metadata names `chef-worker`, `gpt-5.6-terra`, and `medium`. Do not substitute a general-purpose role.
+Codex may report `chef-worker` unknown in a disposable project. Register it with `-c agents.chef-worker.description=...` and `-c agents.chef-worker.config_file=<absolute .codex/agents/chef-worker.toml>`. Verify fresh-child metadata names `chef-worker`, `gpt-6.1-terra`, and `medium`. Do not substitute a general-purpose role.
 
 1. Brief. Run `bun scripts/chef/brief.ts <ID> --repository stevekinney/corvidae --base <sha> --run <run> --json`; stop on refusal or blocker.
 2. Implement. Start `.codex/agents/chef-worker.toml` in its own worktree with the brief. It runs `bun scripts/chef/focused-checks.ts`, pushes one candidate, and returns head plus status.

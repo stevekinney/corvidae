@@ -18,12 +18,10 @@
   padding-block-start: 0;
 }
 
-/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+/* ListDetail scrolls each pane inside this height. Its divider separates the panes. */
 .ib-capabilities__frame {
   block-size: max(28rem, calc(100dvh - 18rem));
   min-inline-size: 0;
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
   overflow: hidden;
 }
 

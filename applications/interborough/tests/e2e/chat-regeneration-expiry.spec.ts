@@ -193,14 +193,6 @@ async function assertNoOverflow(page: Page): Promise<void> {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
 
-async function chatHeaderStatus(page: Page): Promise<string> {
-  const text = await page.getByTestId('chat-header').innerText();
-  return (
-    ['Waiting on you', 'Running', 'Failed', 'Ended', 'Done'].find((word) => text.includes(word)) ??
-    ''
-  );
-}
-
 async function reviewsNavigationCount(page: Page): Promise<number> {
   const link = page
     .getByRole('navigation', { name: 'Views' })
@@ -621,12 +613,9 @@ for (const viewport of VIEWPORTS) {
       await expect(expiredToolRow).toContainText('Expired');
       await expect(expiredToolRow).not.toContainText('Waiting on you');
       await expect(expiredToolRow).not.toContainText('Needs you');
-      // The run is still parked on input until the person presses Ask again or denies, so the
-      // header keeps saying the chat waits on them (owner decision, 2026-11-13); the card and the
-      // row carry the expiry.
-      await expect.poll(() => chatHeaderStatus(page)).toBe('Waiting on you');
-      // The navigation's count follows the review's expiry on its next refresh, not in the same
-      // turn as the card, so wait for it as the header status above is waited for.
+      // The expired card and tool row carry the review state. The header has no duplicate status.
+      await expect(page.getByTestId('chat-header')).not.toContainText('Waiting on you');
+      // The navigation's count follows the review's expiry on its next refresh.
       if (initialReviewsCount !== undefined) {
         await expect.poll(() => reviewsNavigationCount(page)).toBeLessThan(initialReviewsCount);
       }
@@ -739,7 +728,7 @@ for (const viewport of VIEWPORTS) {
       await expect(
         reloadedPendingApproval.getByRole('button', { name: 'Approve', exact: true }),
       ).toBeEnabled();
-      await expect.poll(() => chatHeaderStatus(page)).toBe('Waiting on you');
+      await expect(page.getByTestId('chat-header')).not.toContainText('Waiting on you');
       if (expiredReviewsCount !== undefined) {
         await expect.poll(() => reviewsNavigationCount(page)).toBe(expiredReviewsCount + 1);
       }

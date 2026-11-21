@@ -39,7 +39,7 @@ test('g then o opens Workers from anywhere, though the sidebar does not list it'
   ).toHaveCount(0);
   await page.keyboard.press('g');
   await page.keyboard.press('o');
-  await expect(page).toHaveURL(/\/health\/workers$/);
+  await expect(page).toHaveURL(/\/health\/workers(\?worker=[^&]+)?$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
 
   await page.keyboard.press('?');
@@ -84,7 +84,9 @@ test('a worker drains after a confirmation that says what happens, and then read
 }) => {
   await page.goto(`/health/workers?worker=${E2E_FLEET_WORKER_ID}`);
   await expect(detail(page)).toBeVisible();
-  await expect(detail(page).locator('.cinder-status-dot').first()).toContainText('Connected');
+  await expect(detail(page).locator('.ib-worker-detail__status .cinder-badge')).toContainText(
+    'Connected',
+  );
 
   await detail(page).getByRole('button', { name: 'Drain this worker' }).click();
   const dialog = page.getByRole('dialog', { name: /^Drain .*\?$/ });
@@ -95,7 +97,9 @@ test('a worker drains after a confirmation that says what happens, and then read
   await expect(dialog).toBeHidden();
   // The worker holds no task, so there is nothing to wait out: it has stopped, and Forget is all
   // there is to do with it.
-  await expect(detail(page).locator('.cinder-status-dot').first()).toContainText('Stopped');
+  await expect(detail(page).locator('.ib-worker-detail__status .cinder-badge')).toContainText(
+    'Stopped',
+  );
   await expect(detail(page).getByRole('button', { name: 'Forget this worker' })).toBeVisible();
   await expect(detail(page).getByRole('button', { name: 'Drain this worker' })).toHaveCount(0);
 
@@ -108,8 +112,11 @@ test('a worker the server does not list reads as closed, with the way back', asy
   await page.goto('/health/workers?worker=no-such-worker');
   await expect(page.getByRole('heading', { name: 'Worker closed' })).toBeVisible();
   await page.getByRole('button', { name: 'Back to all workers' }).click();
-  await expect(page.getByRole('heading', { name: 'Choose a worker' })).toBeVisible();
-  await expect(page).not.toHaveURL(/worker=/);
+  // Beside the list the first worker then opens (COR-2445): the pane never says "Choose a worker".
+  await expect(page.getByRole('heading', { name: 'Worker closed' })).toHaveCount(0);
+  await expect(page).toHaveURL(/worker=/);
+  await expect(page).not.toHaveURL(/worker=no-such-worker/);
+  await expect(page.getByRole('heading', { name: 'Choose a worker' })).toHaveCount(0);
 });
 
 test('a worker’s detail promotes and rolls back its deployment’s builds', async ({

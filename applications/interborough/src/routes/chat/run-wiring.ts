@@ -343,6 +343,8 @@ export type ChatRunWiring = {
    * a turn of its own, from the entries held, before anything new.
    */
   owedResumeIncomplete(): boolean;
+  /** Whether a local row's input belongs to a held answer rather than a standalone message. */
+  holdsAnswerRow(rowId: string): boolean;
   /**
    * The rows holding answers that no resume owes any longer, once: the mount took them, or the
    * question they answered is gone. The run holds each answer as a row of its own, so the typed
@@ -1738,6 +1740,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     releaseValue,
     owesResume: () => refusedResume && (decisions.size > 0 || answers.size > 0),
     owedResumeIncomplete: () => refusedResume && entriesOwed().incomplete,
+    holdsAnswerRow: (rowId) => [...answers.values()].some((answer) => answer.rowId === rowId),
     takeSettledAnswerRows() {
       return settledAnswerRows.splice(0);
     },

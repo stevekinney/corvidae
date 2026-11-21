@@ -362,7 +362,8 @@ describe('the owner predicate, with several principals', () => {
 describe('results', () => {
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
     const binding = workspaceAdministratorDirectory();
-    const served = await serve(undefined, binding);
+    const runtime = createManualRuntimeServices();
+    const served = await serveWorkflows(cleanups, { workspace: binding, runtime });
     await served.bureau.workflows!.create('digest', DEFINITION);
     const workspace = served.keyed;
     const listed = await rpc(
@@ -387,6 +388,8 @@ describe('results', () => {
       'operator-key',
     );
     const aliceRun = await rpc(workspace, 'bureau.workflows.start', { id: 'digest' }, 'alice-key');
+    // Give the second operator run a distinct timestamp so the ID tie-break cannot reorder it.
+    runtime.setTime(runtime.clock.now() + 1);
     const operatorRunAgain = await rpc(
       workspace,
       'bureau.workflows.start',

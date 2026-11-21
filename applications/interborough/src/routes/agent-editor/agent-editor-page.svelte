@@ -64,7 +64,11 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+  import {
+    AGENT_EDITOR_COPY,
+    AGENT_PAGE_COPY,
+    droppedBehaviorWords,
+  } from '../../app/copy/agents.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import {
     agentFaultOf,
@@ -583,13 +587,11 @@
       {#if editor !== undefined}
         <!-- Below 1024px Try it is this button beside the title, opening the sheet (rows 43t, 44a). -->
         {#if tryPlacement !== 'beside'}
-          <Button variant="secondary" onclick={() => (trying = true)}>
-            {copy.try.action}
-          </Button>
+          <Button variant="secondary" onclick={() => (trying = true)} label={copy.try.action} />
         {/if}
       {:else if noProvider}
         <!-- Nothing to save without a model, so Save is not here; Cancel stays (row 42a). -->
-        <Button variant="secondary" onclick={cancel}>{copy.cancelAction}</Button>
+        <Button variant="secondary" onclick={cancel} label={copy.cancelAction} />
       {/if}
       <!-- With the form on screen, its footer holds the delete; a file the form cannot show keeps it here. -->
       {#if deleteInHeader}
@@ -598,9 +600,8 @@
           variant="danger"
           disabled={busy}
           onclick={() => (confirmingDelete = true)}
-        >
-          {copy.deleteAction}
-        </Button>
+          label={copy.deleteAction}
+        />
       {/if}
     {/snippet}
   </PageHeader>
@@ -639,7 +640,7 @@
     <Alert variant="warning">
       <p class="weft-agent-editor__alert-title">{copy.stale.title}</p>
       <p class="weft-agent-editor__alert-body">{copy.stale.description}</p>
-      <Button variant="secondary" onclick={() => void reload()}>{copy.stale.action}</Button>
+      <Button variant="secondary" onclick={() => void reload()} label={copy.stale.action} />
     </Alert>
   {/if}
 
@@ -656,8 +657,8 @@
     <Alert variant="warning" data-testid="agent-save-timed-out">
       <p class="weft-agent-editor__alert-body">{copy.newAgent.timedOut}</p>
       {#snippet actions()}
-        <Button variant="secondary" data-changes onclick={submit}>{copy.newAgent.tryAgain}</Button>
-        <Button variant="ghost" onclick={cancel}>{copy.cancelAction}</Button>
+        <Button variant="secondary" data-changes onclick={submit} label={copy.newAgent.tryAgain} />
+        <Button variant="ghost" onclick={cancel} label={copy.cancelAction} />
       {/snippet}
     </Alert>
   {/if}
@@ -696,7 +697,7 @@
           </ul>
         {/if}
       {/if}
-      <Button variant="secondary" onclick={() => void reload()}>{copy.invalid.action}</Button>
+      <Button variant="secondary" onclick={() => void reload()} label={copy.invalid.action} />
     </Alert>
   {:else if noProvider}
     <AgentEditorNoProvider
@@ -713,14 +714,30 @@
     </div>
   {:else if editor !== undefined}
     {#if copiedFrom !== null}
+      {@const droppedBehaviors = source.data?.source === 'code' ? source.data.dropped : []}
       <p class="weft-agent-editor__copied" data-testid="agent-copied-from">
         {copy.copy.from(source.data?.name ?? copiedFrom)}
       </p>
-      {#if editor.droppedTools.length > 0}
+      {#if droppedBehaviors.length > 0 || editor.droppedTools.length > 0}
         <Alert variant="warning">
-          <p class="weft-agent-editor__alert-body" data-testid="agent-copy-dropped">
-            {copy.copy.droppedTools(editor.droppedTools)}
-          </p>
+          {#if droppedBehaviors.length > 0}
+            <p class="weft-agent-editor__alert-body">
+              {AGENT_PAGE_COPY.plugin.confirm.description}
+            </p>
+            <ul class="weft-agent-editor__issues" data-testid="agent-copy-dropped-behaviors">
+              {#each keyedByOccurrence(droppedBehaviors, (behavior) => behavior) as { key, item: behavior } (key)}
+                {@const words = droppedBehaviorWords(behavior)}
+                <li>
+                  <strong>{words.name}</strong>{#if words.effect !== null}{' '}{words.effect}{/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if editor.droppedTools.length > 0}
+            <p class="weft-agent-editor__alert-body" data-testid="agent-copy-dropped">
+              {copy.copy.droppedTools(editor.droppedTools)}
+            </p>
+          {/if}
         </Alert>
       {/if}
     {/if}

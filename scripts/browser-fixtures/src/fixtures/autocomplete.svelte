@@ -28,10 +28,13 @@
   }
 </script>
 
-<Autocomplete
-  id="field"
-  label="Destination city"
-  placeholder="Type a city"
-  {suggestionSource}
-  bind:value
-/>
+<section data-density="comfortable">
+  <Autocomplete
+    id="field"
+    label="Destination city"
+    placeholder="Type a city"
+    appearance="filled"
+    {suggestionSource}
+    bind:value
+  />
+</section>

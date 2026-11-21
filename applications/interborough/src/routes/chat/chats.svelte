@@ -47,6 +47,7 @@
     Skeleton,
     StackedListItem,
     StatusDot,
+    type ListDetailSelectionChange,
   } from '@lostgradient/cinder';
   import {
     Archive,
@@ -106,8 +107,11 @@
     router.current.route?.pattern === '/chats/new' ? crypto.randomUUID() : null,
   );
   const isNew = $derived(router.current.route?.pattern === '/chats/new');
+  // The outlet can still hold Chat for a tick after navigation leaves it.
+  const onChats = $derived(router.current.route?.pattern.startsWith('/chats') === true);
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
+  let automaticallyOpened = $state<string | null>(null);
   // The chats that are not archived. The archived ones are their own list, read only while their
   // view is shown, so a chat put away leaves All, Waiting on you and Done.
   const sessions = createInfiniteQuery(
@@ -301,11 +305,15 @@
   );
   const searching = $derived(search.trim() !== '');
 
-  // The open chat always has a row to open it in, so its pane is shown even when the Bureau has not
-  // (yet) said anything about it, or a search leaves it out of the list: the pane reports a chat
-  // that cannot be read in its own words.
+  // Automatic selection follows the filter. A directly opened chat, or one that just moved
+  // between the regular and archived lists, keeps its pane so the person can finish reading it.
+  const automaticChatInList = $derived(
+    openId !== null &&
+      openId === automaticallyOpened &&
+      (showingArchived ? archivedRows : allRows).some((row) => row.id === openId),
+  );
   const items = $derived<SessionRow[]>(
-    openId === null || visible.some((row) => row.id === openId)
+    openId === null || automaticChatInList || visible.some((row) => row.id === openId)
       ? visible
       : [
           allRows.find((row) => row.id === openId) ??
@@ -359,13 +367,15 @@
     return chatSessionPath(id, viewSearch(showingArchived));
   }
 
-  /** This address in the archived view, or out of it: the open chat stays open. */
+  /** Keep an explicitly chosen chat across views. An automatic selection belongs to its list. */
   function viewPath(archivedView: boolean): string {
     const parameters = new URLSearchParams(router.current.search);
     if (archivedView) parameters.set(VIEW_PARAMETER, ARCHIVED_VIEW);
     else parameters.delete(VIEW_PARAMETER);
     const query = parameters.toString();
-    return query === '' ? router.pathname : `${router.pathname}?${query}`;
+    const pathname =
+      automaticallyOpened !== null && automaticallyOpened === openId ? '/chats' : router.pathname;
+    return query === '' ? pathname : `${pathname}?${query}`;
   }
 
   /**
@@ -379,7 +389,9 @@
     }
     event.preventDefault();
     typed = '';
-    router.navigate(viewPath(archivedView));
+    const destination = viewPath(archivedView);
+    automaticallyOpened = null;
+    router.navigate(destination, { keep: true });
     await tick();
     const target = archivedView
       ? listPane?.querySelector<HTMLElement>('[data-chats-view-back]')
@@ -387,15 +399,18 @@
     target?.focus();
   }
 
-  /** Opens the chosen row's chat, or the list alone when Back clears the choice. */
-  function openChat(key: string | null): void {
+  /** Automatic selection keeps the current view and history entry. */
+  function openChat(key: string | null, change?: ListDetailSelectionChange): void {
     if (key === openId) return;
+    const automatic = change?.automatic === true;
+    automaticallyOpened = automatic ? key : null;
+    const options = automatic ? { replace: true, keep: true } : {};
     if (key !== null) {
-      router.navigate(chatPath(key));
+      router.navigate(chatPath(key), options);
       return;
     }
     const query = viewSearch(showingArchived).toString();
-    router.navigate(query === '' ? '/chats' : `/chats?${query}`);
+    router.navigate(query === '' ? '/chats' : `/chats?${query}`, options);
   }
 
   /**
@@ -461,7 +476,8 @@
       items={visible}
       key={(row: SessionRow) => row.id}
       aria-label={CHAT_COPY.sessionsTitle}
-      groupBy={(row: SessionRow) => chatDayGroup(row, clock(), zone, wide, phone.current)}
+      groupBy={(row: SessionRow) =>
+        chatDayGroup(row, clock(), zone, wide, phone.current, row.id === visible[0]?.id)}
     >
       {#snippet children(row: SessionRow)}
         {@const agent = agentName(row)}
@@ -524,9 +540,8 @@
           href={router.href('/chats/new')}
           variant="secondary"
           onclick={openNewChat}
-        >
-          {CHAT_COPY.newChat}
-        </Button>
+          label={CHAT_COPY.newChat}
+        />
       {/snippet}
     </EmptyState>
   {:else if listState === 'no-match'}
@@ -537,9 +552,7 @@
       description={CHAT_COPY.list.noMatchDescription}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.clearSearch}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.clearSearch} />
       {/snippet}
     </EmptyState>
   {:else if showingArchived}
@@ -569,9 +582,7 @@
       description={empty.description}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.showAll}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.showAll} />
       {/snippet}
     </EmptyState>
   {/if}
@@ -634,6 +645,7 @@
       detailLabel={CHAT_COPY.list.detailLabel}
       selectedKey={openId}
       onSelectedKeyChange={openChat}
+      openFirst={onChats && !isNew}
       selectionParameter={null}
       storageKey="interborough-chats"
       listCollapsible
@@ -714,9 +726,12 @@
         />
       {/snippet}
       {#snippet empty()}
-        {#if listState === 'first-use'}
-          <!-- The list's first use is the page's one empty state; the open chat's pane stays blank
-             rather than say "No chat open" beside it (owner report, 2026-11-19). -->
+        {#if listState === 'loading'}
+          <div class="ib-chats__loading-detail" data-chats-loading-detail aria-hidden="true">
+            <Skeleton lines={5} delay={300} />
+          </div>
+        {:else if listState === 'first-use' || listState === 'no-match' || listState === 'none' || listState === 'all-archived'}
+          <!-- The list already shows the empty state. -->
         {:else if noChats}
           <EmptyState
             kind="first-use"
@@ -742,9 +757,8 @@
                 href={router.href('/chats/new')}
                 variant="primary"
                 onclick={openNewChat}
-              >
-                {CHAT_COPY.newChat}
-              </Button>
+                label={CHAT_COPY.newChat}
+              />
             {/snippet}
           </EmptyState>
         {/if}

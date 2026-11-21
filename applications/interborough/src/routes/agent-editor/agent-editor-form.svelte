@@ -308,9 +308,14 @@
         </h2>
         <p class="weft-agent-form__note">{copy.edit.deleteBlock.description(savedName)}</p>
       </div>
-      <Button data-changes type="button" variant="danger" disabled={busy} onclick={onDelete}
-        >{copy.deleteAction}</Button
-      >
+      <Button
+        data-changes
+        type="button"
+        variant="danger"
+        disabled={busy}
+        onclick={onDelete}
+        label={copy.deleteAction}
+      />
     </section>
   {/if}
 
@@ -331,7 +336,7 @@
           {copy.edit.saved(savedRevision)}
         {/if}
       </p>
-      <Button type="button" variant="ghost" onclick={onCancel}>{copy.cancelAction}</Button>
+      <Button type="button" variant="ghost" onclick={onCancel} label={copy.cancelAction} />
       <Button data-changes type="submit" variant="primary" loading={saving}>
         {creating ? copy.createAction : copy.saveAction}
       </Button>
