@@ -237,13 +237,6 @@ describe('warning fills use the same indicator token', () => {
   const lowBand = ruleBody(meterCss, '.cinder-meter__segment--state-low {');
   const fills = [
     [
-      'Chat context ring',
-      ruleBody(
-        readFileSync(join(appDirectory, 'styles/chat.css'), 'utf8'),
-        ".weft-context-ring[data-tone='warning'] .weft-context-ring__fill {",
-      ),
-    ],
-    [
       'System alerts warning edge',
       ruleBody(
         readFileSync(join(appDirectory, 'routes/system/alerts-tab.svelte'), 'utf8'),

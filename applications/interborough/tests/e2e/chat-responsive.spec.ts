@@ -80,6 +80,15 @@ test('Warning indicator in Chat', async ({ page }) => {
   await expect(meter).toHaveAttribute('data-tone', 'warning');
   await expect(meter).toHaveAccessibleName(/80%/);
   await expect(meter.locator('[role="meter"]')).toHaveAttribute('data-cinder-state', 'low');
+  const indicator = await meter.evaluate((trigger) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--cinder-status-warning-indicator)';
+    trigger.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expect(meter.locator('.cinder-meter__fill')).toHaveCSS('background-color', indicator);
   await captureForDesignReview(page, {
     route: '/chats/:chat',
     state: 'context window 80% warning',
