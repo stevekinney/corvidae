@@ -463,8 +463,10 @@ describe('one list failing', () => {
       {},
     );
     await findByText('The Bureau broke.');
-    expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
-      'ready',
+    await waitFor(() =>
+      expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
+        'ready',
+      ),
     );
     expect(container.textContent).not.toContain(REVIEWS_COPY.allCaughtUp);
   });
