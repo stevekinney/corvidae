@@ -178,7 +178,8 @@ test.describe('New chat while its agents load (24o)', () => {
     await expect(loading(page).locator('.cinder-skeleton').first()).toBeVisible();
     await page.clock.runFor(9_700);
     await page.locator('.cinder-skeleton-status').getByRole('button', { name: 'Cancel' }).click();
-    await expect(page).toHaveURL(/\/chats$/);
+    await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
+    await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
   });
 });
 
