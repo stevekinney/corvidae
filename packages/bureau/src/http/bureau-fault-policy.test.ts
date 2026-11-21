@@ -100,6 +100,18 @@ describe('the Bureau fault policy', () => {
     }
   });
 
+  it('reads one mapping for the fault it builds and the refusal kind A2A and AG-UI read', () => {
+    // The refusal kind reads the code-to-fault record, and the fault comes from the builder's
+    // switch: the two agree for every code, so neither can drift from the other.
+    for (const code of BUREAU_ERROR_CODES) {
+      const built = faultOf(errorOf(code)).code;
+      const kind = bureauRefusalKind(errorOf(code))?.kind;
+      const expected =
+        built === 'NotFound' ? 'not-found' : built === 'InvalidParams' ? 'bad-request' : undefined;
+      expect(kind, code).toBe(expected);
+    }
+  });
+
   it('gives every code a remediation the wire accepts, and puts it on every fault it builds', () => {
     for (const code of BUREAU_ERROR_CODES) {
       const { remediation } = faultOf(errorOf(code));
