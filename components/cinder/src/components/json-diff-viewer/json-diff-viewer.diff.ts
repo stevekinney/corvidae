@@ -51,7 +51,7 @@ export const JSON_DIFF_PAGE_SIZE = 200;
  * nested levels add up, so a nested level opens by default only while its page still fits, and a
  * level shows fewer than a page when the budget runs out inside it.
  */
-export const JSON_DIFF_ELEMENT_BUDGET = 900;
+const JSON_DIFF_ELEMENT_BUDGET = 900;
 
 /** The elements a row showing a value creates: its item, marker, key and value. */
 const ELEMENTS_PER_ROW = 4;
