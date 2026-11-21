@@ -3,6 +3,7 @@ import type { Locator, Page } from '@playwright/test';
 import { fixtureEntry } from './layout-fixture.ts';
 
 const viewport = { name: 'desktop', width: 900, height: 900 } as const;
+const modalEntry = fixtureEntry('modal');
 
 async function expectFocusIndicator(element: Locator): Promise<void> {
   await expect(element).toBeFocused();
@@ -259,4 +260,55 @@ for (const theme of ['light', 'dark'] as const) {
       page.getByRole('list', { name: 'Incident timeline', exact: true }),
     ).not.toHaveAttribute('tabindex');
   });
+}
+
+for (const viewport of [
+  { name: 'phone', width: 375, height: 640 },
+  { name: 'desktop', width: 1280, height: 800 },
+] as const) {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`Modal body scrolls with the keyboard (${viewport.width}×${viewport.height}, ${theme})`, async ({
+      componentPage,
+    }, testInfo) => {
+      const page = await componentPage.open({
+        entry: modalEntry,
+        fixtureName: 'open',
+        theme,
+        viewport,
+      });
+      const scenario = new URL(page.url());
+      scenario.searchParams.set('keyboardScroll', '1');
+      await page.goto(scenario.toString(), { waitUntil: 'load' });
+
+      const body = page.locator('.cinder-modal__body');
+      const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+      const save = page.getByRole('button', { name: 'Save changes', exact: true });
+      const close = page.getByRole('button', { name: 'Close', exact: true });
+      await expect(body).toHaveAttribute('tabindex', '0');
+      await expect(body).toBeFocused();
+
+      await page.keyboard.press('Tab');
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(save).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(close).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expectFocusIndicator(body);
+      await testInfo.attach(`modal-body-focus-${viewport.width}-${theme}`, {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
+
+      const beforeScrollTop = await body.evaluate((element) => element.scrollTop);
+      await page.keyboard.down('PageDown');
+      try {
+        await expect
+          .poll(() => body.evaluate((element) => element.scrollTop))
+          .toBeGreaterThan(beforeScrollTop);
+      } finally {
+        await page.keyboard.up('PageDown');
+      }
+    });
+  }
 }

@@ -130,6 +130,31 @@ describe('Modal', () => {
       cleanupOverflowFade();
     }
   });
+  test('body joins the tab order only while its content overflows', () => {
+    const cleanupOverflowFade = installOverflowFadeTestEnvironment();
+    try {
+      const { container } = render(Modal, {
+        props: {
+          open: true,
+          title: 'Test Modal',
+          children: textSnippet('Modal body content'),
+        },
+      });
+      const body = requiredInstance(container.querySelector('.cinder-modal__body'), HTMLElement);
+
+      setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 160, scrollTop: 0 });
+      OverflowFadeResizeObserver.instances[0]?.trigger();
+      flushOverflowFadeAnimationFrames();
+      expect(body.getAttribute('tabindex')).toBe('0');
+
+      setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+      OverflowFadeResizeObserver.instances[0]?.trigger();
+      flushOverflowFadeAnimationFrames();
+      expect(body.getAttribute('tabindex')).toBe('-1');
+    } finally {
+      cleanupOverflowFade();
+    }
+  });
   test('body opts into the shared scroll-fade recipe with a surface-colored overlay, never a mask', async () => {
     const css = await Bun.file(new URL('./modal.css', import.meta.url)).text();
     expect(css).toMatch(
