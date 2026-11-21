@@ -1,7 +1,7 @@
 {
   "issue": "COR-2592",
   "branch": "steve/cor-2592-browser-shard-sharing",
-  "checkedAt": "dd1899882eaf53d475183baeff3be441bfb8ed12",
+  "checkedAt": "edb908ce9210762935e18d515f7e5ad052897bf2",
   "briefVersion": "7d0dd6382212",
   "status": "BLOCKED",
   "criteria": [
