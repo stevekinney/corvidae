@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 
@@ -21,7 +21,9 @@ const workflow = Bun.YAML.parse(
     resolve(import.meta.dir, '../../../.github/workflows/interborough-npm-release.yml'),
     'utf8',
   ),
-) as { jobs: Record<'package' | 'publish' | 'verify', { steps: WorkflowStep[] }> };
+) as {
+  jobs: Record<'package' | 'publish' | 'verify', { steps: WorkflowStep[]; 'runs-on': string }>;
+};
 
 const packaging = await (async () => {
   const root = await mkdtemp(join(tmpdir(), 'interborough-package-release-'));
@@ -58,28 +60,36 @@ const packaging = await (async () => {
     if (!tar.success) throw new Error(tar.stderr.toString());
 
     const output = join(root, 'output');
-    const pack = await runWithHangGuard(
-      [process.execPath, script, '--archive', archive, '--outdir', output],
-      { env: { ...process.env, npm_config_os: 'darwin', npm_config_cpu: 'arm64' } },
-    );
+    const pack = await runWithHangGuard([
+      process.execPath,
+      script,
+      '--archive',
+      archive,
+      '--outdir',
+      output,
+    ]);
     if (!pack.success)
       throw new Error((pack.stderr.length > 0 ? pack.stderr : pack.stdout).toString());
-    const result = JSON.parse(await readFile(join(output, 'package-result.json'), 'utf8'));
-    const manifest = JSON.parse(await readFile(join(output, 'package', 'package.json'), 'utf8'));
-    const installedSdk = join(
-      output,
-      'prefix',
-      'lib',
-      'node_modules',
-      'interborough',
-      'payload',
-      sdkPath,
-    );
+    const result = JSON.parse(await readFile(join(output, 'package-result.json'), 'utf8')) as {
+      tarball: string;
+      version: string;
+      integrity: string;
+    };
+    const packed = join(root, 'packed');
+    await mkdir(packed);
+    const unpack = await runWithHangGuard(['tar', '-xzf', result.tarball, '-C', packed]);
+    if (!unpack.success) throw new Error(unpack.stderr.toString());
+    const packageRoot = join(packed, 'package');
+    const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
+    const sdkInTarball = join(packageRoot, 'payload', sdkPath);
+    const binaryInTarball = join(packageRoot, 'payload', 'bin', 'interborough');
+    const executableStat = await stat(binaryInTarball);
     return {
       result,
       manifest,
-      generatedStyles: await readFile(join(installedSdk, 'generated.css'), 'utf8'),
-      ignoredMetadata: await Bun.file(join(installedSdk, '.gitignore')).exists(),
+      generatedStyles: await readFile(join(sdkInTarball, 'generated.css'), 'utf8'),
+      ignoredMetadata: await Bun.file(join(sdkInTarball, '.gitignore')).exists(),
+      executableMode: executableStat.mode,
     };
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -101,9 +111,10 @@ test('stages an archive as an install-script-free macOS arm64 npm package', () =
   expect(packaging.manifest.scripts).toBeUndefined();
 });
 
-test('installs generated runtime assets that nested ignore files would exclude', () => {
+test('packs generated runtime assets that nested ignore files would exclude', () => {
   expect(packaging.generatedStyles).toBe(':root { --fixture-color: red; }\n');
   expect(packaging.ignoredMetadata).toBe(false);
+  expect(packaging.executableMode & 0o111).toBe(0o111);
 });
 
 test('requires both package release inputs', () => {
@@ -145,6 +156,17 @@ test('refuses to reuse an output directory and preserves its contents', () => {
   expect(existingOutput.exitCode).toBe(1);
   expect(existingOutput.stderr).toContain('Package output already exists');
   expect(existingOutput.marker).toBe('existing output');
+});
+
+test('requires a native offline install and smoke before uploading the package', () => {
+  const { package: job } = workflow.jobs;
+  expect(job['runs-on']).toBe('macos-15');
+  const step = job.steps.findIndex((step) => step.name === 'Test offline install on macOS arm64');
+  const upload = job.steps.findIndex((step) => step.name === 'Upload tested package');
+  expect(step).toBeGreaterThanOrEqual(0);
+  expect(upload).toBeGreaterThan(step);
+  expect(job.steps[step]?.run).toContain('npm install --global --offline --ignore-scripts');
+  expect(job.steps[step]?.run).toContain('test-installed-release.ts');
 });
 
 test('the package, publish and verify jobs use the same versioned artifact name', () => {

@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 
 const APPLICATION_DIRECTORY = resolve(import.meta.dir, '..');
@@ -10,7 +10,6 @@ type PackageReleaseArguments = { readonly archive: string; readonly outdir: stri
 type PackResult = {
   readonly tarball: string;
   readonly integrity: string;
-  readonly prefix: string;
   readonly version: string;
 };
 
@@ -129,41 +128,6 @@ function assertPackedFiles(payloadFiles: readonly string[], packed: PackedPackag
   );
 }
 
-async function assertInstalled(prefix: string, version: string): Promise<void> {
-  const executable = join(prefix, 'bin', 'interborough');
-  const executableStat = await stat(executable);
-  if ((executableStat.mode & 0o111) === 0)
-    throw new Error('Offline npm install removed executable bit');
-  const sdk = join(
-    prefix,
-    'lib',
-    'node_modules',
-    PACKAGE_NAME,
-    'payload',
-    'share',
-    'interborough',
-    'plugin-runtime',
-    'node_modules',
-    '@lostgradient',
-    'interborough-plugin',
-    'package.json',
-  );
-  if (!(await Bun.file(sdk).exists()))
-    throw new Error('Offline npm install omitted the SDK runtime');
-  const child = Bun.spawn([executable, '--version'], {
-    env: { PATH: '/usr/bin:/bin', HOME: prefix, INTERBOROUGH_HOME: prefix },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  if (exitCode !== 0 || stdout.trim() !== version)
-    throw new Error(`Installed CLI version differs from manifest: ${stderr || stdout}`);
-}
-
 async function packageRelease(
   argv: readonly string[] = process.argv.slice(2),
 ): Promise<PackResult> {
@@ -180,7 +144,6 @@ async function packageRelease(
   }
   const extracted = join(outdir, 'archive');
   const staging = join(outdir, 'package');
-  const prefix = join(outdir, 'prefix');
   try {
     await mkdir(extracted, { recursive: true });
     await run(['tar', '-xzf', archive, '-C', extracted]);
@@ -212,18 +175,7 @@ async function packageRelease(
     assertPackedFiles(payloadFiles, entry);
     const tarball = join(outdir, basename(entry.filename));
     await rename(join(staging, entry.filename), tarball);
-    await run([
-      'npm',
-      'install',
-      '--global',
-      '--offline',
-      '--ignore-scripts',
-      '--prefix',
-      prefix,
-      tarball,
-    ]);
-    await assertInstalled(prefix, version);
-    const result = { tarball, integrity: entry.integrity, prefix, version };
+    const result = { tarball, integrity: entry.integrity, version };
     await Bun.write(join(outdir, 'package-result.json'), `${JSON.stringify(result, null, 2)}\n`);
     return result;
   } catch (error) {

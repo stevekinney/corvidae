@@ -73,14 +73,26 @@ jobs:
           bun scripts/test-installed-release.ts \
             --archive "$RUNNER_TEMP/interborough-release/interborough-$VERSION-darwin-arm64.tar.gz" \
             --evidence "$RUNNER_TEMP/interborough-evidence/archive"
-      - name: Pack and test offline install
+      - name: Pack macOS arm64 payload
         working-directory: applications/interborough
         run: |
           bun scripts/package-release.ts \
             --archive "$RUNNER_TEMP/interborough-release/interborough-$VERSION-darwin-arm64.tar.gz" \
             --outdir "$RUNNER_TEMP/interborough-package"
+      - name: Test offline install on macOS arm64
+        working-directory: applications/interborough
+        env:
+          CORVIDAE_EXPECTED_RELEASE_SHA: ${{ steps.release-inputs.outputs.source_sha }}
+        run: |
+          package_directory="$RUNNER_TEMP/interborough-package"
+          prefix="$package_directory/prefix"
+          npm install --global --offline --ignore-scripts --prefix "$prefix" "$package_directory/interborough-$VERSION.tgz"
+          executable="$prefix/bin/interborough"
+          test -x "$executable"
+          test -f "$prefix/lib/node_modules/interborough/payload/share/interborough/plugin-runtime/node_modules/@lostgradient/interborough-plugin/package.json"
+          test "$(env -i PATH=/usr/bin:/bin HOME="$prefix" INTERBOROUGH_HOME="$prefix" "$executable" --version)" = "$VERSION"
           bun scripts/test-installed-release.ts \
-            --command "$RUNNER_TEMP/interborough-package/prefix/bin/interborough" \
+            --command "$executable" \
             --evidence "$RUNNER_TEMP/interborough-evidence/offline-install"
       - name: Upload installed release evidence
         if: ${{ !cancelled() }}
