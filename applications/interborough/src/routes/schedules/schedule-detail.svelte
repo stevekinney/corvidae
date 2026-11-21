@@ -255,7 +255,7 @@
   {#if readGate.disabled}
     <EmptyState kind="first-use" title={copy.locked.title} description={readGate.title ?? ''}>
       {#snippet action()}
-        <Button variant="secondary" onclick={backToList}>{SCHEDULE_COPY.backToList}</Button>
+        <Button variant="secondary" onclick={backToList} label={SCHEDULE_COPY.backToList} />
       {/snippet}
     </EmptyState>
   {:else if detailQuery.isPending}

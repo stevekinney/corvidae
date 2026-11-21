@@ -633,9 +633,9 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-button-background` | `var(--cinder-surface-raised)` | Secondary (default) button fill. |
-| `--cinder-button-foreground` | `var(--cinder-text-default)` | Secondary (default) button label color. |
-| `--cinder-button-border` | `var(--cinder-border-control)` | Secondary (default) button border: `border.control` in both themes, so the edge reads heavier than a container's even though the structural tiers are faint, and becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`. |
+| `--cinder-button-background` | `var(--cinder-surface-raised)` | Secondary (default) button fill: the raised surface keeps a visible face without competing with the one primary action in the same group. |
+| `--cinder-button-foreground` | `var(--cinder-text-default)` | Secondary (default) button label color: default text stays legible on the raised fill in both themes and does not rely on the border for its meaning. |
+| `--cinder-button-border` | `var(--cinder-border-control)` | Secondary (default) button border: `border.control` separates its raised fill from the surrounding surface in both themes, reads heavier than a container edge, and becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`. |
 | `--cinder-button-radius` | `var(--cinder-radius-full)` | Default button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->

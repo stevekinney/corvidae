@@ -272,12 +272,16 @@
 
   {#snippet footer()}
     {#if phase === 'params'}
-      <Button variant="ghost" size="sm" onclick={onClose}>Cancel</Button>
-      <Button variant="primary" size="sm" disabled={!parametersValid} onclick={continueFromParams}>
-        Continue
-      </Button>
+      <Button variant="ghost" size="sm" onclick={onClose} label="Cancel" />
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={!parametersValid}
+        onclick={continueFromParams}
+        label="Continue"
+      />
     {:else if phase === 'preview' && preview}
-      <Button variant="ghost" size="sm" onclick={onClose}>Cancel</Button>
+      <Button variant="ghost" size="sm" onclick={onClose} label="Cancel" />
       {#if preview.matched > 0}
         <Button
           variant={destructive ? 'danger' : 'primary'}
@@ -290,9 +294,9 @@
         </Button>
       {/if}
     {:else if phase === 'result'}
-      <Button variant="primary" size="sm" onclick={onClose}>Close</Button>
+      <Button variant="primary" size="sm" onclick={onClose} label="Close" />
     {:else if phase === 'fault'}
-      <Button variant="ghost" size="sm" onclick={onClose}>Close</Button>
+      <Button variant="ghost" size="sm" onclick={onClose} label="Close" />
       <Button variant="secondary" size="sm" onclick={retryFromFault}>
         {faultMeansStalePreview ? 'Refresh preview' : 'Retry'}
       </Button>
