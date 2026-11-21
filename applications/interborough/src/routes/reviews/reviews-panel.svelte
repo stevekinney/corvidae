@@ -265,13 +265,22 @@
       if (key === selectedKey) linger(key);
     });
   });
-  // With nothing left to list the panes give way to the empty state, which cannot clear an address
-  // that still names a review.
+  let lastListedSelection: string | null = null;
+  $effect(() => {
+    if (selected !== undefined) lastListedSelection = selected.key;
+  });
+
+  // Clear a selection that was visible when its queue drains. A missing deep link keeps its detail.
   $effect(() => {
     if (phase !== 'ready' || visible.length > 0) return;
     untrack(() => {
+      const requested = selection.read('review');
+      if (lastListedSelection === null || (requested ?? selectedKey) !== lastListedSelection) {
+        return;
+      }
+      lastListedSelection = null;
       selectedKey = null;
-      if (selection.read('review') !== null) selection.write('review', null);
+      if (requested !== null) selection.write('review', null);
     });
   });
   $effect(() => {

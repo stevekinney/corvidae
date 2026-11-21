@@ -485,7 +485,7 @@
         <Banner preset="refresh-failed" dataUpdatedAt={trail.dataUpdatedAt} onRetry={retry} />
       {/if}
 
-      {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
+      {#if settledEmpty && recordMissing}
         <Alert variant="info">
           <p class="ib-audit__alert-body">
             {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
@@ -598,6 +598,20 @@
               {#key event.key}
                 <AuditDetail {event} lookups={lookups.current} {now} />
               {/key}
+            {/snippet}
+            {#snippet notFound()}
+              {#if !trail.isError && (trail.isFetchingNextPage || (trail.hasNextPage && searchedPages < RECORD_SEARCH_PAGES))}
+                <Skeleton lines={5} delay={LOADING_DELAY_MILLISECONDS} label={copy.loadingLabel} />
+              {:else}
+                <EmptyState
+                  kind="first-use"
+                  headingLevel={2}
+                  title={copy.recordNotFound.title}
+                  description={trail.hasNextPage
+                    ? copy.recordNotFound.more
+                    : copy.recordNotFound.end}
+                />
+              {/if}
             {/snippet}
             {#snippet empty()}
               <EmptyState

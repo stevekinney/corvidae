@@ -211,6 +211,11 @@ test.describe('Health › Storage on the sample world', () => {
       /^(?:\d+ keys?|Showing \d+ of \d+ keys\. Scroll to load more\.)$/,
     );
 
+    await search.fill('audit:v1:');
+    const nextKey = main.getByTestId('storage-key-name');
+    await expect(nextKey).toHaveText(/^audit:v1:/);
+    await expect(page).toHaveURL(/\/health\/storage$/);
+
     // A chosen group and typed text that part ways match nothing.
     await main.getByLabel('Group', { exact: true }).selectOption({ label: 'Chat sessions' });
     await expect(main.getByRole('heading', { name: 'No keys match' })).toBeVisible();

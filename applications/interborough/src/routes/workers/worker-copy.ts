@@ -90,6 +90,7 @@ export const WORKER_COPY = {
     },
   },
   detail: {
+    unnamed: 'Unnamed worker',
     forget: 'Forget this worker',
     drain: 'Drain this worker',
     resume: 'Resume this worker',

@@ -105,6 +105,20 @@ describe('arriving at the inbox', () => {
     expect(router.search.get('review')).toBe(QUESTION_KEY);
   });
 
+  test.each([
+    ['/reviews?review=missing-review', REVIEWS_COPY.noLongerWaiting.message],
+    [
+      '/reviews?tab=done&review=missing-review',
+      'This item is not in the list. It may have been removed.',
+    ],
+  ])('keeps a missing link in an empty queue on a phone at %s', async (address, message) => {
+    measuredAt(400);
+    const { findByText, queryByText } = open({}, address);
+    expect(await findByText(message)).not.toBeNull();
+    expect(router.search.get('review')).toBe('missing-review');
+    expect(queryByText('missing-review')).toBeNull();
+  });
+
   test('opens the latest decision in Done too, so the pane beside the list is never empty (COR-2445)', async () => {
     measuredAt(1200);
     const approved = toolApprovalFixture({

@@ -15,7 +15,6 @@ import { designReviewCaptureDirectory } from '../../scripts/environment-configur
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
-import { readBoxes } from './read-boxes.ts';
 import { expectTabOpen } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
@@ -325,7 +324,8 @@ test('a deployment with remote workers: the list, the open worker, its notice, f
 
   // 78k: the header, its status line and its one action.
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Reports worker');
-  await expect(detail(page).getByTestId('worker-id')).toHaveText('reports-worker');
+  await expect(detail(page).getByRole('button', { name: 'Copy the worker ID' })).toBeVisible();
+  await expect(detail(page).getByText('reports-worker', { exact: true })).toHaveCount(0);
   await expect(detail(page).getByTestId('worker-status-line')).toContainText(
     'Last heard from an hour ago',
   );
@@ -397,7 +397,7 @@ test('Drain asks first, saying what happens to the running and waiting work', as
 
   // 78w: a connected worker's header.
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Payments worker 1');
-  await expect(detail(page).getByTestId('worker-id')).toHaveText('payments-worker-1');
+  await expect(detail(page).getByRole('button', { name: 'Copy the worker ID' })).toBeVisible();
   await expect(detail(page).getByTestId('worker-status-line')).toHaveText(
     'Last heard from just now',
   );
@@ -591,7 +591,7 @@ test('the Waiting tab lists tasks in arrival order, a page at a time', async ({
   await expect(waiting).toHaveCount(6);
 });
 
-test('a long id wraps in the header with a Copy button, and the list cuts it from the middle', async ({
+test('a long worker ID can be copied from the detail and the list cuts it from the middle', async ({
   page,
   checkA11y,
 }) => {
@@ -623,23 +623,8 @@ test('a long id wraps in the header with a Copy button, and the list cuts it fro
   await expect(title.locator('.cinder-text__tail')).toBeVisible();
   await expect(rows(page).first()).toContainText('payments, 1 running');
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Payments worker EU');
-  await expect(detail(page).getByTestId('worker-id')).toContainText(id);
+  await expect(detail(page)).not.toContainText(id);
   await expect(detail(page).getByRole('button', { name: 'Copy the worker ID' })).toBeVisible();
-  // The id is a Cinder CopyableValue: Copy sits inside it, beside the id's last character, not on a
-  // line of its own under it (79g).
-  const { id: idBox, copy: copyBox } = await readBoxes(page, {
-    id: detail(page).getByTestId('worker-id'),
-    copy: detail(page).getByRole('button', { name: 'Copy the worker ID' }),
-  });
-  expect(copyBox.x).toBeGreaterThanOrEqual(idBox.x - 1);
-  expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(idBox.x + idBox.width + 1);
-  // The id is an inline box that spans its own lines, and the control is a taller atomic box that
-  // sits centred on the value's last line, so it overhangs the id's text box by a few pixels both
-  // ways. The control is on the value's last line when its centre is inside the id's text box: a
-  // control that wrapped onto a line of its own has its centre below it.
-  const copyCentre = copyBox.y + copyBox.height / 2;
-  expect(copyCentre).toBeGreaterThanOrEqual(idBox.y);
-  expect(copyCentre).toBeLessThanOrEqual(idBox.y + idBox.height);
   await expect(detail(page).getByTestId('worker-status-line')).toHaveText(
     'Last heard from just now',
   );

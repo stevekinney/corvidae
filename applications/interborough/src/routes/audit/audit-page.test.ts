@@ -774,14 +774,24 @@ describe('an address that names an event', () => {
       principal: 'system:host',
       detail: null,
     });
-    const { findByTestId } = open(
-      (params) =>
-        params['cursor'] === 'c1'
-          ? { records: [wanted], nextCursor: null }
-          : { records: [KEY_REMOVED], nextCursor: 'c1' },
-      {},
+    const laterPage = Promise.withResolvers<Page>();
+    const { findByTestId, findByText, queryByRole } = open(
+      FULL,
+      {
+        'bureau.audit.query': (params) => {
+          if (isProbe(params) || isTotal(params))
+            return { records: [KEY_REMOVED], nextCursor: null };
+          if (params['cursor'] === 'c1') return laterPage.promise;
+          return { records: [KEY_REMOVED], nextCursor: 'c1' };
+        },
+      },
       { at: `/health/audit?record=${encodeURIComponent(`${wanted.timestamp}#3`)}` },
     );
+
+    await findByText('Removed the Anthropic key');
+    await waitFor(() => expect(queries().some((query) => query['cursor'] === 'c1')).toBe(true));
+    expect(queryByRole('heading', { name: AUDIT_COPY.recordNotFound.title })).toBeNull();
+    laterPage.resolve({ records: [wanted], nextCursor: null });
 
     const detail = await findByTestId('audit-detail');
     await waitFor(() => expect(detail.querySelector('h3')?.textContent).toBe('Server started'));

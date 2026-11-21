@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
@@ -71,10 +71,12 @@ function renderDetail(
 }
 
 describe('a connected worker', () => {
-  test('is headed by its name with its id small beside it, Connected, and last heard from just now', () => {
+  test('shows the worker name, a Connected badge, and when it was last heard from', () => {
     const { view } = renderDetail(worker());
     expect(view.getByRole('heading', { level: 2 }).textContent).toBe('Payments worker 1');
-    expect(view.getByTestId('worker-id').textContent).toBe('payments-worker-1');
+    expect(view.queryByText('payments-worker-1')).toBeNull();
+    expect(view.getByRole('button', { name: 'Copy the worker ID' })).not.toBeNull();
+    expect(view.getByText('Connected').classList.contains('cinder-badge')).toBe(true);
     expect(view.getByTestId('worker-status-line').textContent).toBe('Last heard from just now');
     expect(view.getByTestId('worker-detail').dataset['status']).toBe('Connected');
   });
@@ -197,20 +199,17 @@ describe('a draining worker', () => {
 describe('a worker with a long id', () => {
   const id = 'payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68';
 
-  test('wraps the whole id under the heading with a Copy button', () => {
+  test('offers Copy without printing the identifier', () => {
     const { view } = renderDetail(worker({ id, name: 'Payments worker EU' }));
     expect(view.getByRole('heading', { level: 2 }).textContent).toBe('Payments worker EU');
-    expect(view.getByTestId('worker-id').textContent).toContain(id);
-    // The id is a Cinder CopyableValue, with its Copy button inside it, beside the last character.
-    expect(view.getByTestId('worker-id').classList.contains('cinder-copyable-value')).toBe(true);
-    expect(
-      within(view.getByTestId('worker-id')).getByRole('button', { name: 'Copy the worker ID' }),
-    ).not.toBeNull();
+    expect(view.queryByText(id)).toBeNull();
+    expect(view.getByRole('button', { name: 'Copy the worker ID' })).not.toBeNull();
   });
 
-  test('has no Copy button when the id is short enough to sit beside the heading', () => {
-    const { view } = renderDetail(worker());
-    expect(view.queryByRole('button', { name: 'Copy the worker ID' })).toBeNull();
+  test('keeps the identifier hidden when the worker has no name', () => {
+    const { view } = renderDetail(worker({ id, name: undefined }));
+    expect(view.getByRole('heading', { level: 2 }).textContent).toBe('Unnamed worker');
+    expect(view.queryByText(id)).toBeNull();
   });
 });
 
