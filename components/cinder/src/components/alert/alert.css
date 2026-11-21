@@ -186,6 +186,13 @@
     --_cinder-status-fg-chroma-dark: 0.12;
   }
 
+  .cinder-alert[data-cinder-variant='neutral'] {
+    --_cinder-alert-ring: var(--cinder-status-neutral-text);
+    --_cinder-status-base: var(--cinder-status-neutral-text);
+    --_cinder-status-fg-chroma-light: 0.04;
+    --_cinder-status-fg-chroma-dark: 0.04;
+  }
+
   .cinder-alert[data-cinder-variant='warning'] {
     --_cinder-alert-ring: var(--cinder-status-warning-text);
     --_cinder-status-base: var(--cinder-status-warning-solid);

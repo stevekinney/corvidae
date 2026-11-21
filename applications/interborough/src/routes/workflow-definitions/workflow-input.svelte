@@ -56,6 +56,8 @@
     testId?: string;
     /** Offers Edit as JSON and Back to form for a schema the form draws. */
     composed?: boolean;
+    /** Start with JSON when only the separately verified schema is available. */
+    rawOnly?: boolean;
     /** Told what the input holds as it changes: the form's draft, or whether the JSON text parses. */
     onChange?: (state: InputState) => void;
     /** Withholds Edit as JSON, while the page has made the input read-only (a start in flight). */
@@ -69,32 +71,34 @@
     jsonId = 'run-setup-json',
     testId = 'run-setup-input',
     composed = false,
+    rawOnly = false,
     onChange,
     locked = false,
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.runSetup;
 
-  /** The schema as the form mounted with it. */
-  const formSchema = untrack(() => formSchemaOf(schema));
+  /** Returning from a failed read can supply a newer schema without remounting the draft. */
+  const formSchema = $derived(formSchemaOf(schema));
   /** The schema the JSON editor's input is held to: the services may not check it themselves. */
-  const jsonSchema = untrack(() => declaredSchemaOf(schema));
+  const jsonSchema = $derived(declaredSchemaOf(schema));
   /** Whether the schema holds a value the JSON editor would print and must not. */
-  const concealed = untrack(() => schemaHoldsConcealedField(schema));
+  const concealed = $derived(schemaHoldsConcealedField(schema));
   /** Whether the drawn form can be swapped for the JSON editor. */
-  const offersJson = $derived(composed && formSchema !== undefined && !concealed);
+  const offersJson = $derived(composed && formSchema !== undefined && !concealed && !rawOnly);
 
   let jsonText = $state('');
   let jsonError = $state('');
   let issues = $state<readonly InputIssue[]>([]);
   /** Whether the JSON editor stands in for the drawn form. */
-  let editingJson = $state(false);
+  let editingJson = $state(untrack(() => rawOnly));
+  const showingJson = $derived(editingJson && !concealed);
   /** What the form holds: its seeded draft until an edit reports another, then what the JSON parsed to. */
   let draft = $state.raw<unknown>(
-    formSchema === undefined ? undefined : schemaFormInitialDraft(formSchema),
+    untrack(() => (formSchema === undefined ? undefined : schemaFormInitialDraft(formSchema))),
   );
   let region: HTMLElement | undefined;
-  let editor = $state<{ focusProblem: () => void }>();
+  let editor = $state<{ focusProblem: () => void; focusLine: (line: number) => void }>();
   /** The choices of the ask whose submit event has not been seen yet. */
   let asking: { readonly context: Context } | undefined;
   /**
@@ -114,11 +118,11 @@
     }
   });
   /** Where the text stops being JSON, which the way back names. */
-  const problem = $derived(editingJson ? locateJsonProblem(jsonText) : null);
+  const problem = $derived(showingJson ? locateJsonProblem(jsonText) : null);
   /** The way back is off while the text does not parse, or parses to something a form cannot hold. */
   const backBlocked = $derived(parsed === undefined || !isRecord(parsed.value));
   const inputState = $derived<InputState>(
-    editingJson ? { mode: 'json', valid: parsed !== undefined } : { mode: 'form', value: draft },
+    showingJson ? { mode: 'json', valid: parsed !== undefined } : { mode: 'form', value: draft },
   );
   $effect(() => {
     // The page's handler is not a dependency: only a change of what the input holds is told.
@@ -137,7 +141,7 @@
    * the workflow asks it to.
    */
   export function request(context: Context): void {
-    if (formSchema === undefined || editingJson) {
+    if (formSchema === undefined || showingJson) {
       void requestFromJson(context);
       return;
     }
@@ -158,7 +162,7 @@
   async function requestFromJson(context: Context): Promise<void> {
     const text = jsonText.trim();
     let input: unknown;
-    if (editingJson && text === '') {
+    if (showingJson && text === '' && jsonSchema !== undefined) {
       jsonError = copy.jsonRequired;
       return;
     }
@@ -167,7 +171,7 @@
         input = JSON.parse(text);
       } catch {
         // The editor marks the line, so the ask takes a person there instead of saying it twice.
-        if (editingJson) editor?.focusProblem();
+        if (showingJson) editor?.focusProblem();
         else jsonError = copy.invalidJson;
         return;
       }
@@ -184,7 +188,7 @@
 
   /** Puts a service's refusal of the input on the fields it names, or on the editor. */
   export function refuse(refused: readonly InputIssue[]): void {
-    if (formSchema !== undefined && !editingJson) issues = refused;
+    if (formSchema !== undefined && !showingJson) issues = refused;
     else jsonError = refused.map((issue) => issue.message).join(' ');
   }
 
@@ -219,6 +223,10 @@
     editingJson = true;
   }
 
+  export function focusJson(): void {
+    editor?.focusLine(1);
+  }
+
   function backToForm(): void {
     if (backBlocked) return;
     jsonError = '';
@@ -238,10 +246,10 @@
 </script>
 
 <div class="ib-workflow-input" bind:this={region} onsubmitcapture={noteSubmit} data-testid={testId}>
-  {#if composed && formSchema !== undefined}
+  {#if composed && formSchema !== undefined && !rawOnly}
     <div class="ib-workflow-input__lead" data-testid="run-setup-input-lead">
       <p class="ib-workflow-input__description">
-        {#if !editingJson}
+        {#if !showingJson}
           {copy.inputDescription}
         {:else if backBlocked}
           {copy.jsonEditingInvalid}
@@ -249,7 +257,7 @@
           {copy.jsonEditing}
         {/if}
       </p>
-      {#if editingJson}
+      {#if showingJson}
         <Button
           variant="ghost-accent"
           size="sm"
@@ -268,7 +276,7 @@
       {/if}
     </div>
   {/if}
-  {#if editingJson}
+  {#if showingJson}
     <JsonEditor
       bind:this={editor}
       id={jsonId}
@@ -276,6 +284,7 @@
       rows={12}
       value={jsonText}
       error={jsonError}
+      invalidStatusLabel="Invalid JSON"
       onValueChange={changeJson}
     />
   {:else if formSchema !== undefined}

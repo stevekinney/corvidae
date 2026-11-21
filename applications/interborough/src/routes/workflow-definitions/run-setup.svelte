@@ -22,14 +22,15 @@
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { getClient } from '../../lib/client.ts';
-  import { queryKeys } from '../../lib/query.ts';
+  import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { resolveWorkflow } from '../../lib/workflow-catalog.ts';
+  import { getDefinition, resolveWorkflow, type CatalogRow } from '../../lib/workflow-catalog.ts';
   import { resumeWorkflowFile } from '../../lib/workflow-files.ts';
   import { workflowRunSetupPath, workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import { loadModelAgents } from '../schedules/schedule-row-context.ts';
   import {
     agentNames,
+    jsonFallbackTarget,
     runSetupIdentity,
     runSetupTarget,
     runSetupTrigger,
@@ -49,6 +50,9 @@
 
   // One page belongs to one type: the outlet mounts a new page when the path changes.
   const type = untrack(() => router.current.params['workflow'] ?? '');
+  const catalogRow = queryClient
+    .getQueryData<readonly CatalogRow[]>(queryKeys.workflowCatalog.list())
+    ?.find((row) => row.name === type);
   const workflowPath = workflowTypePath(type);
   /** The workflow's Code tab, which marks the line a file that cannot load stops on. */
   const codePath = `${workflowPath}?tab=code`;
@@ -58,6 +62,7 @@
     () => ({
       queryKey: queryKeys.workflowCatalog.detail(type),
       queryFn: async ({ signal }) => (await resolveWorkflow(client, type, { signal })) ?? null,
+      retry: false,
     }),
     undefined,
   );
@@ -68,6 +73,45 @@
       : runSetupTarget(type, resolution.data),
   );
 
+  let retryingWithFallback = $state(false);
+  const detailUnavailable = $derived(
+    resolution.data === undefined && (resolution.isError || retryingWithFallback),
+  );
+  /** The code contract is read separately only after the detail read failed: catalog rows name code but do not carry its schema. */
+  const codeDefinition = createQuery(() => ({
+    queryKey: [...queryKeys.workflowCatalog.detail(type), 'fallback-definition'],
+    queryFn: async () => (await getDefinition(client, type)) ?? null,
+    enabled: detailUnavailable && catalogRow?.kind === 'code',
+    retry: false,
+  }));
+  /** Catalog metadata names the exact route's file; it never guesses a kind from the route itself. */
+  const fallback = $derived(
+    detailUnavailable
+      ? jsonFallbackTarget(catalogRow, codeDefinition.data ?? undefined)
+      : undefined,
+  );
+
+  async function retryDetail(): Promise<void> {
+    if (resolution.isFetching) return;
+    // TanStack moves an initial error back to pending on refetch. Keep the independently verified
+    // editor mounted while it does, so the input and its focus survive the retry.
+    retryingWithFallback = fallback !== undefined;
+    try {
+      const result = await resolution.refetch();
+      if (result.isSuccess) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.view(
+            'workflows',
+            workflowViewInstance('/workflows/:workflow/run', type),
+          ),
+          exact: true,
+        });
+      }
+    } finally {
+      retryingWithFallback = false;
+    }
+  }
+
   /** The form once it has shown, ready or paused, which a later answer does not take away. */
   let shown = $state<Extract<RunSetupTarget, { status: 'ready' | 'paused' }>>();
   $effect(() => {
@@ -75,22 +119,27 @@
     if (untrack(() => shown) !== undefined) return;
     if (next?.status === 'ready' || next?.status === 'paused') shown = next;
   });
+  const formTarget = $derived(
+    shown ??
+      (target?.status === 'ready' || target?.status === 'paused' ? target : undefined) ??
+      fallback,
+  );
 
   /** The file the Bureau holds for the type, or `undefined` for a type code registered. */
   const file = $derived(
     resolution.data?.kind === 'agent-authored' ? resolution.data.file : undefined,
   );
 
-  /** What the heading calls the workflow, which the route supplies at once and the file's title replaces. */
-  const identity = $derived(runSetupIdentity(type, resolution.data ?? undefined));
-  const trigger = $derived(runSetupTrigger(resolution.data ?? undefined));
+  /** Use the route's identity and any catalog metadata already read while the form loads. */
+  const identity = $derived(runSetupIdentity(type, resolution.data ?? undefined, catalogRow));
+  const trigger = $derived(runSetupTrigger(resolution.data ?? undefined, catalogRow));
   /** The When choice, which the form holds and the heading and the breadcrumb follow. */
   let whenChoice = $state('now');
   const scheduling = $derived(target?.status !== 'engine' && whenChoice === 'schedule');
   // The trail reads "Workflows › Release notes › Run", and "› Schedule" while On a schedule is chosen.
   usePageLabel(() => ({
     path: workflowPath,
-    label: resolution.data === undefined || resolution.data === null ? undefined : identity.name,
+    label: identity.name === type ? undefined : identity.name,
   }));
   usePageLabel(() => ({
     path: workflowRunSetupPath(type),
@@ -117,7 +166,8 @@
   });
 
   /** The agents the file's steps run, for whether one needs a model while no provider is connected. */
-  const agents = $derived(file?.state === 'ready' ? stepAgentsOf(file.steps) : []);
+  const readyFile = $derived(file ?? (fallback?.kind === 'file' ? catalogRow?.file : undefined));
+  const agents = $derived(readyFile?.state === 'ready' ? stepAgentsOf(readyFile.steps) : []);
   /**
    * The named agents that need a model while no provider is connected (the builder's read, so one
    * answers the other). A read that fails says nothing: a run is never said to be blocked on a guess.
@@ -138,7 +188,7 @@
 
   /** What the Input section holds: the form once it has shown, or why there is none yet. */
   const inputMode = $derived.by((): 'ready' | 'loading' | 'failed' | 'unreadable' => {
-    if (shown !== undefined) return 'ready';
+    if (formTarget !== undefined) return 'ready';
     if (target?.status === 'invalid') return 'unreadable';
     return resolution.isError ? 'failed' : 'loading';
   });
@@ -149,7 +199,7 @@
     if (target?.status === 'invalid') return 'invalid';
     // A paused file refuses a start, but a schedule of its own is the owner's choice
     // (`scheduleTargetOf`), so Create schedule stays on.
-    if (target?.status === 'paused' && !scheduling) return 'paused';
+    if ((target?.status === 'paused' || fallback?.paused) && !scheduling) return 'paused';
     if (blockedAgents.length > 0) return 'provider';
     return undefined;
   });
@@ -204,7 +254,7 @@
     </Alert>
   {:else if target?.status === 'paused'}
     <!-- Not amber: amber is for waiting on you and Needs attention. -->
-    <Alert variant="info" data-testid="run-setup-paused">
+    <Alert variant="neutral" data-testid="run-setup-paused">
       {copy.paused(identity.name)}
       {#snippet actions()}
         <Button
@@ -261,14 +311,15 @@
     <!-- A type nothing knows of is the frame's not-found state, so nothing is drawn for it here. -->
     <RunSetupForm
       {type}
-      kind={shown?.kind}
-      schema={shown?.schema}
+      kind={formTarget?.kind}
+      schema={formTarget?.schema}
       input={inputMode}
+      fallback={fallback !== undefined}
       {block}
       {identity}
       {trigger}
       {notice}
-      onRetry={() => void resolution.refetch()}
+      onRetry={() => void retryDetail()}
       bind:whenChoice
     />
   {/if}

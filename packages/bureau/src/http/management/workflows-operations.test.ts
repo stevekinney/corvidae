@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 import { createBureau } from '../../create-bureau.ts';
@@ -82,7 +83,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the twenty-one workflow operations, with their scopes registered', () => {
+  it('serves the twenty-two workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -99,6 +100,7 @@ describe('the operations list', () => {
       'bureau.workflows.impact',
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
+      'bureau.workflows.concurrency',
       'bureau.workflows.runs.cancel',
       'bureau.workflows.runs.retry',
       'bureau.workflows.runs.history',
@@ -209,6 +211,7 @@ const CALLS: readonly Call[] = [
     scope: 'read',
   },
   { method: 'bureau.workflows.runs.list', params: () => ({}), scope: 'read' },
+  { method: 'bureau.workflows.concurrency', params: () => ({}), scope: 'read' },
   { method: 'bureau.workflows.runs.get', params: () => ({ runId: 'digest-run' }), scope: 'read' },
   {
     method: 'bureau.workflows.runs.cancel',
@@ -303,7 +306,8 @@ describe('the owner predicate, with several principals', () => {
         } else if (
           call.method === 'bureau.workflows.create' ||
           call.method === 'bureau.workflows.validate' ||
-          call.method === 'bureau.workflows.catalog'
+          call.method === 'bureau.workflows.catalog' ||
+          call.method === 'bureau.workflows.concurrency'
         ) {
           expect(response.error?.data?.httpStatus).toBe(403);
         } else {
@@ -360,6 +364,50 @@ describe('the owner predicate, with several principals', () => {
 });
 
 describe('results', () => {
+  it('reads the durable engine concurrency snapshot and excludes a suspended run', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('suspended', {
+      trigger: FAST_SCHEDULE,
+      steps: [{ kind: 'await-signal', signal: 'go' }],
+    });
+    const engine = served.bureau.durableEngine()!;
+    await engine.start('suspended', null, { id: 'suspended-run' });
+    try {
+      await waitUntil(async () => (await engine.get('suspended-run'))?.status === 'running', {
+        message: 'the run to begin executing',
+      });
+      expect(await ownerRpc(served.owner, 'bureau.workflows.concurrency', {})).toMatchObject({
+        result: { max: 4, running: 1 },
+      });
+
+      await engine.suspend('suspended-run');
+      expect((await engine.get('suspended-run'))?.status).toBe('suspended');
+      expect(await ownerRpc(served.owner, 'bureau.workflows.concurrency', {})).toMatchObject({
+        result: { max: 4, running: 0 },
+      });
+    } finally {
+      await engine.cancel('suspended-run');
+    }
+  });
+
+  it('replays a manual start under one caller and workflow key without starting a second run', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('manual-once', {
+      ...DEFINITION,
+      trigger: { kind: 'signal', name: 'go' },
+    });
+    const input = { id: 'manual-once', idempotencyKey: 'run-setup-retry' };
+
+    const first = await ownerRpc(served.owner, 'bureau.workflows.start', input);
+    const replay = await ownerRpc(served.owner, 'bureau.workflows.start', input);
+
+    expect(first.error).toBeUndefined();
+    expect(replay.error).toBeUndefined();
+    expect(replay.result?.['runId']).toBe(first.result?.['runId']);
+    const runs = await served.bureau.durableEngine()!.list({ type: 'manual-once' });
+    expect(runs.items.map((run) => run.id)).toEqual([first.result?.['runId']]);
+  });
+
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
     const binding = workspaceAdministratorDirectory();
     const served = await serve(undefined, binding);
@@ -808,6 +856,44 @@ describe('results', () => {
     expect(listed.result?.['workflows']).toMatchObject([
       { id: 'broken', state: 'invalid', description: null, trigger: null, runs: null },
     ]);
+  });
+
+  it('reports the readable trigger of an invalid file without making the file runnable', async () => {
+    const served = await serve();
+    for (const [id, trigger] of [
+      ['broken-readable', { kind: 'signal', name: 'message-received' }],
+      ['broken-trigger', { kind: 'signal', name: 123 }],
+      [
+        'broken-schedule',
+        { kind: 'schedule', spec: '0 11 * * 5', input: { sample: 'only input' } },
+      ],
+    ] as const) {
+      await writeFile(
+        join(served.directory, `${id}.json`),
+        JSON.stringify({ name: id, description: false, trigger, steps: [AGENT_STEP] }),
+      );
+    }
+    const readable = await ownerRpc(served.owner, 'bureau.workflows.get', {
+      id: 'broken-readable',
+    });
+    const malformed = await ownerRpc(served.owner, 'bureau.workflows.get', {
+      id: 'broken-trigger',
+    });
+    expect(readable.result).toMatchObject({
+      state: 'invalid',
+      trigger: { kind: 'signal', name: 'message-received' },
+      steps: null,
+      listener: null,
+    });
+    expect(malformed.result).toMatchObject({ state: 'invalid', trigger: null });
+    const scheduled = await ownerRpc(served.owner, 'bureau.workflows.get', {
+      id: 'broken-schedule',
+    });
+    expect(scheduled.result?.['trigger']).toEqual({ kind: 'schedule', spec: '0 11 * * 5' });
+    const refused = await ownerRpc(served.owner, 'bureau.workflows.start', {
+      id: 'broken-readable',
+    });
+    expect(refused.error?.data?.httpStatus).toBe(404);
   });
 
   it('keeps the description through a pause and a resume, and replaces it on an update', async () => {
