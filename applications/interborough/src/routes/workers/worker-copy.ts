@@ -43,11 +43,9 @@ export const WORKER_COPY = {
       stopped: (finished: number): string => `Drained, finished its ${tasks(finished)}`,
     },
     /** What the empty detail pane says while no worker is open. */
-    pickTitle: 'Choose a worker',
-    pickDescription: 'Choose a worker from the list to see its queue, tasks, and what it serves.',
     closedTitle: 'Worker closed',
-    closedDescription: (id: string): string =>
-      `No worker with the ID ${id} is listed by the server. It was forgotten, or it never connected here.`,
+    closedDescription:
+      'The server does not list this worker. It may have been removed or never connected here.',
     backToList: 'Back to all workers',
   },
   /**
@@ -90,6 +88,7 @@ export const WORKER_COPY = {
     },
   },
   detail: {
+    unnamed: 'Unnamed worker',
     forget: 'Forget this worker',
     drain: 'Drain this worker',
     resume: 'Resume this worker',

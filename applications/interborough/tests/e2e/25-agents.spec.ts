@@ -84,7 +84,7 @@ test.describe('the list of agents', () => {
       .getByRole('link', { name: /^Memory of/ })
       .click();
 
-    await expect(page).toHaveURL(/\/agents\/demo%3Atool-runner\/memory$/);
+    await expect(page).toHaveURL(/\/agents\/demo%3Atool-runner\/memory(\?selected=[^&]+)?$/);
   });
 
   test('New chat opens a working new chat with that agent', async ({ page }) => {
@@ -122,7 +122,9 @@ test.describe('one agent', () => {
     const memory = frame.getByRole('tab', { name: /^Memory \d+\+?$/ });
     await expect(memory).toHaveCount(1);
     await memory.click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${TEXT_ECHO_AGENT_NAME}/memory$`));
+    await expect(page).toHaveURL(
+      new RegExp(`/agents/${TEXT_ECHO_AGENT_NAME}/memory(\\?selected=[^&]+)?$`),
+    );
   });
 
   test('lists the chats had with it, and no other agent’s, and New chat opens a new chat with it', async ({

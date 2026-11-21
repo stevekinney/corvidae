@@ -3,6 +3,7 @@
     ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
+    ListDetailSelectionChange,
     ListDetailSelectionLocation,
     ListDetailStorage,
   } from './list-detail.types.ts';
@@ -41,7 +42,7 @@
   import CompactActions from '../../_internal/compact-actions.svelte';
   import { Tooltip } from '../tooltip/index.ts';
   import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
-  import type { ListDetailProps } from './list-detail.types.ts';
+  import type { ListDetailProps, ListDetailSelectionChange } from './list-detail.types.ts';
 
   // The region declares the keys it handles from the same list an application's shortcut map reads.
   const LIST_DETAIL_KEY_SHORTCUTS = LIST_DETAIL_SHORTCUTS.map((shortcut) =>
@@ -65,6 +66,10 @@
     listFooter,
     header,
     openFirst = false,
+    reopenFirst = true,
+    notFound,
+    notFoundTitle = 'Not found',
+    notFoundDescription = 'This item is not in the list. It may have been removed.',
     selectedKey = $bindable(null),
     onSelectedKeyChange,
     selectionParameter = 'selected',
@@ -116,6 +121,7 @@
     const index = selectedKey === null ? -1 : keys.indexOf(selectedKey);
     return index === -1 ? undefined : { item: items[index] as T };
   });
+  const showsDetail = $derived(selectedEntry !== undefined || (openFirst && selectedKey !== null));
   // An unmeasured root (the server, the first paint) is treated as wide, so the stacked layout
   // never flashes before the width is known.
   const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
@@ -228,7 +234,7 @@
         untrack(() => {
           selectedKey = fromUrl;
           activeKey = fromUrl;
-          onSelectedKeyChange?.(fromUrl);
+          onSelectedKeyChange?.(fromUrl, { automatic: false });
         });
         return;
       }
@@ -236,14 +242,39 @@
     if (location.read(parameter) !== current) location.write(parameter, current);
   });
 
-  // With `openFirst`, an empty selection beside a list becomes the first item, once the width is
-  // known to be wide. It follows the effect above, so a key the URL names has been read by then.
+  // The open key the list last showed. An open key the list has shown and no longer does left it (a
+  // filter hid it); one it never showed is a link to something that is not there.
+  let shownKey: string | null = null;
   $effect(() => {
-    if (!openFirst || narrow || rootWidth === 0 || selectedKey !== null) return;
-    const first = keys[0];
-    if (first === undefined) return;
-    untrack(() => setSelection(first));
+    const current = selectedKey;
+    if (current !== null && keys.includes(current)) shownKey = current;
   });
+
+  // With `openFirst`, an empty selection beside a list becomes the first item drawn, once the width
+  // is known to be wide; an open item the list stops showing gives way to the new first one, or to
+  // nothing when the list is empty. It follows the effect above, so a key the URL names has been
+  // read by then, and a key the list never showed is left open, for its not-found detail.
+  $effect(() => {
+    if (!openFirst || loading || narrow || below || rootWidth === 0) return;
+    const current = selectedKey;
+    const listed = keys;
+    untrack(() => {
+      if (current !== null) {
+        if (listed.includes(current)) return;
+        if (!reopenFirst || shownKey !== current) return;
+      }
+      setSelection(firstDrawnKey(listed), true);
+    });
+  });
+
+  /** The key of the first row on screen, which a table that sorts its own rows decides, else the first item's. */
+  function firstDrawnKey(listed: readonly string[]): string | null {
+    for (const row of rowElements()) {
+      const rowKey = rowKeyAttribute(row);
+      if (rowKey !== null && listed.includes(rowKey)) return rowKey;
+    }
+    return listed[0] ?? null;
+  }
 
   function rowElements(): HTMLElement[] {
     return rootElement ? [...rootElement.querySelectorAll<HTMLElement>(ROW_SELECTOR)] : [];
@@ -274,11 +305,12 @@
     control?.focus();
   }
 
-  function setSelection(next: string | null): void {
+  function setSelection(next: string | null, automatic = false): void {
     if (next === selectedKey) return;
     selectedKey = next;
     if (next !== null) activeKey = next;
-    onSelectedKeyChange?.(next);
+    const change: ListDetailSelectionChange = { automatic };
+    onSelectedKeyChange?.(next, change);
   }
 
   async function open(rowKey: string): Promise<void> {
@@ -459,6 +491,12 @@
         </div>
       {:else if selectedEntry}
         {@render detail(selectedEntry.item)}
+      {:else if openFirst && selectedKey !== null}
+        {#if notFound}
+          {@render notFound(selectedKey)}
+        {:else}
+          <EmptyState title={notFoundTitle} description={notFoundDescription} />
+        {/if}
       {:else if empty}
         {@render empty()}
       {:else}
@@ -475,12 +513,12 @@
   class={classNames('cinder-list-detail', className)}
   data-cinder-layout={narrow ? 'stacked' : below ? 'below' : 'split'}
   data-cinder-flush-detail={flushDetail ? '' : undefined}
-  data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
+  data-cinder-showing={narrow ? (showsDetail ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
   data-cinder-toggle-slot={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
-    {#if selectedEntry}
+    {#if showsDetail}
       {@render detailPane()}
     {:else}
       {@render listPane()}

@@ -460,7 +460,8 @@ test.describe('the memory page', () => {
 
     await page.getByRole('tab', { name: new RegExp(`^${MEMORY_COPY.link}`) }).click();
 
-    await expect(page).toHaveURL(new RegExp(`${MEMORY_PATH}$`));
+    // Beside the list the first memory opens and is named (COR-2445).
+    await expect(page).toHaveURL(new RegExp(`${MEMORY_PATH}(\\?selected=[^&]+)?$`));
     await expect(frame(page)).toHaveAttribute('data-view', 'agents');
     await expect(page.getByTestId('agent-header')).toBeVisible();
   });

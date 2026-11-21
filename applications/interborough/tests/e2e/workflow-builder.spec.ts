@@ -101,7 +101,7 @@ test.describe('a workflow built from cards', () => {
     );
     await checkA11y('the builder at 1280px');
 
-    await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('E2E built');
+    await root.getByRole('textbox', { name: 'Title Optional', exact: true }).fill('E2E built');
     await expect(root.getByTestId('workflow-builder-id-line')).toContainText(id);
     await root.getByLabel(BUILDER.descriptionLabel, { exact: true }).fill('Built from cards.');
     await root.getByRole('radio', { name: BUILDER.triggers.signal }).click();
@@ -140,7 +140,9 @@ test.describe('a workflow built from cards', () => {
     await page.goto('/workflows/new');
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const root = creator(page);
-    await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('Morning Briefing');
+    await root
+      .getByRole('textbox', { name: 'Title Optional', exact: true })
+      .fill('Morning Briefing');
     await addStep(root, BUILDER.add.person);
     await root.getByLabel(BUILDER.stepName(step(2))).fill('Review the briefing');
     await expect(root.locator('[data-step-kind="person"]')).toContainText(

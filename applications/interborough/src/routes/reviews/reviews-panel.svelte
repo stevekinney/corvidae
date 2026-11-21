@@ -8,8 +8,8 @@
    * and never act in a field). J, K and Enter are ListDetail's own, and Enter also moves focus into
    * the open review's first control, and never decides it.
    *
-   * Waiting opens the oldest review on arrival when the panes sit side by side (ListDetail's
-   * `openFirst`), and writes it to the address. A decision opens the review after it and moves focus
+   * Both open their first review on arrival when the panes sit side by side (ListDetail's
+   * `openFirst`), and write it to the address. A decision opens the review after it and moves focus
    * to its row; a review that leaves the queue while it is open (the agent moved on) is said so in
    * its place, with one button to the next. Both are announced politely.
    */
@@ -265,13 +265,22 @@
       if (key === selectedKey) linger(key);
     });
   });
-  // With nothing left to list the panes give way to the empty state, which cannot clear an address
-  // that still names a review.
+  let lastListedSelection: string | null = null;
+  $effect(() => {
+    if (selected !== undefined) lastListedSelection = selected.key;
+  });
+
+  // Clear a selection that was visible when its queue drains. A missing deep link keeps its detail.
   $effect(() => {
     if (phase !== 'ready' || visible.length > 0) return;
     untrack(() => {
+      const requested = selection.read('review');
+      if (lastListedSelection === null || (requested ?? selectedKey) !== lastListedSelection) {
+        return;
+      }
+      lastListedSelection = null;
       selectedKey = null;
-      if (selection.read('review') !== null) selection.write('review', null);
+      if (requested !== null) selection.write('review', null);
     });
   });
   $effect(() => {
@@ -510,7 +519,7 @@
   </div>
 {/snippet}
 
-{#if phase === 'ready' && visible.length === 0}
+{#if phase === 'ready' && visible.length === 0 && selectedKey === null && selection.read('review') === null}
   <!-- The one list-page empty state (owner report, 2026-11-19), with the Reviews icon. Nothing is
        made here, so it has no create action. -->
   {#if mode === 'waiting'}
@@ -551,13 +560,14 @@
         loading={phase === 'loading'}
         loadingRows={3}
         loadingLabel={REVIEWS_COPY.loading}
-        openFirst={mode === 'waiting'}
+        openFirst
+        reopenFirst={mode !== 'waiting'}
         defaultListWidth={listWidth}
         bind:selectedKey
         selectionParameter="review"
         selectionLocation={selection}
         storageKey="interborough-reviews"
-        {...gone ? { empty: goneDetail } : {}}
+        {...gone ? { notFound: goneDetail } : {}}
         {...mode === 'done' ? { groupBy: dayGroup } : {}}
       >
         {#snippet header()}

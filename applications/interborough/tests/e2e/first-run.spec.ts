@@ -19,6 +19,7 @@
  */
 import type { Page } from '@playwright/test';
 
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
 import { MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -31,6 +32,8 @@ test.describe.configure({ mode: 'serial' });
 const KEY = 'e2e-first-run-key-that-must-never-be-printed';
 const AGENT_NAME = 'First run agent';
 const AGENT_IDENTIFIER = 'first-run-agent';
+const FIRST_USE_WIDTHS =
+  designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 
 /** Saves a key for Anthropic from Settings › Models, and waits for the page to say it is connected. */
 async function connectAnthropic(page: Page): Promise<void> {
@@ -47,7 +50,7 @@ async function connectAnthropic(page: Page): Promise<void> {
   expect(await page.content()).not.toContain(KEY);
 }
 
-for (const width of [375, 1280] as const) {
+for (const width of FIRST_USE_WIDTHS) {
   test(`a fresh installation shows the Agents first-use state on New chat, with no composer, at ${width} pixels (24q)`, async ({
     page,
     checkA11y,
@@ -81,6 +84,11 @@ for (const width of [375, 1280] as const) {
       clientWidth: element.clientWidth,
     }));
     expect(outlet.scrollWidth).toBeLessThanOrEqual(outlet.clientWidth);
+    await captureForDesignReview(page, {
+      route: '/chats/new',
+      state: 'first use, no agents',
+      source: 'first-run.spec.ts',
+    });
     await checkA11y(`New chat on a fresh installation at ${width}px`);
   });
 }
@@ -303,6 +311,15 @@ test('each step completes from its own signal, from connecting a provider to say
   await expect(homeSteps(page).nth(2)).toContainText('Waits for step 2: create an agent first.');
   await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
   await expect(page.getByTestId('home-counts')).toHaveCount(0);
+  for (const width of FIRST_USE_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'first run, chat waits for an agent',
+      source: 'first-run.spec.ts',
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   // New chat has no agent to start with yet, and leads to the agent form.
   await page.goto('/chats/new');

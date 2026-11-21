@@ -19,6 +19,7 @@
     rows = 4,
     disabled,
     required,
+    optional = false,
     class: customClassName,
     variant = 'default',
     appearance,
@@ -96,6 +97,7 @@
       {description}
       {error}
       required={field.required}
+      {optional}
       disabled={field.disabled}
       class="cinder-textarea-field"
       data-cinder-variant={variant}
@@ -117,6 +119,7 @@
     {description}
     {error}
     required={field.required}
+    {optional}
     disabled={field.disabled}
     class="cinder-textarea-field"
     data-cinder-variant={variant}

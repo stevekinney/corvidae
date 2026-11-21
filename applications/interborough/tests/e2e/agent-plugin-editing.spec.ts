@@ -12,13 +12,14 @@ import type { APIRequestContext, Page } from '@playwright/test';
 
 import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
-const WIDTHS = [375, 1280] as const;
+const WIDTHS = designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 const SOURCE = 'agent-plugin-editing.spec.ts';
 const ECHO = 'demo:echo';
 const settings = AGENT_PAGE_COPY.settings;
@@ -242,6 +243,14 @@ for (const width of WIDTHS) {
     await expect(
       page.locator(`[data-testid="agent-versions"] [data-revision="${String(first + 2)}"]`),
     ).toBeVisible();
+    await expect(page.getByRole('textbox', { name: settings.instructionsLabel })).toHaveValue(
+      'Answer in one short line.',
+    );
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/settings (a plugin’s code agent, Restore)',
+      state: 'restored settings form',
+      source: SOURCE,
+    });
   });
 
   test(`the Instructions tab of a plugin's code agent says where its instructions are changed, and the Access tab holds the Asks the agent states itself, at ${width} pixels`, async ({

@@ -6,6 +6,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { Window } from 'happy-dom';
+import { tick } from 'svelte';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
@@ -16,6 +17,7 @@ import { VIEW_COPY } from '../copy/view-pages.ts';
 import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy/views.ts';
 import { routes, type RouteDefinition } from '../routes.ts';
 import { CHUNK_RELOAD_KEY } from './chunk-reload.ts';
+import MountProbe from './route-mount-probe.fixture.svelte';
 import Harness from './route-outlet.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -55,7 +57,111 @@ function emptyGoals(): () => Promise<Response> {
     });
 }
 
+function observeRoutes(definitions: RouteDefinition[]) {
+  const table = routes as RouteDefinition[];
+  table.push(...definitions);
+  const initializations: string[] = [];
+  function record(event: Event): void {
+    if (event instanceof CustomEvent && typeof event.detail === 'string')
+      initializations.push(event.detail);
+  }
+  window.addEventListener('route-mount-probe', record);
+  return {
+    initializations,
+    dispose() {
+      window.removeEventListener('route-mount-probe', record);
+      for (const definition of definitions) table.splice(table.indexOf(definition), 1);
+    },
+  };
+}
+
 describe('the route outlet', () => {
+  test('does not mount the old route while the next loader is held', async () => {
+    const firstPath = '/mount-probe/first';
+    const secondPath = '/mount-probe/second';
+    const secondLoad = Promise.withResolvers<{ default: typeof MountProbe }>();
+    const first: RouteDefinition = {
+      pattern: firstPath,
+      kind: 'reading',
+      load: async () => ({ default: MountProbe }),
+    };
+    const second: RouteDefinition = {
+      pattern: secondPath,
+      kind: 'reading',
+      load: () => secondLoad.promise,
+    };
+    const { initializations, dispose } = observeRoutes([first, second]);
+    try {
+      landAt(firstPath);
+      const page = mount();
+      const firstInstance = await page.findByTestId('route-mount-probe');
+      expect(firstInstance.textContent).toBe(firstPath);
+      expect(initializations).toEqual([firstPath]);
+
+      router.navigate(`${firstPath}?mode=sample`, { replace: true });
+      await tick();
+      expect(page.getByTestId('route-mount-probe')).toBe(firstInstance);
+      expect(initializations).toEqual([firstPath]);
+
+      router.navigate(secondPath, { replace: true, keep: true });
+      await tick();
+      expect(page.getByTestId('route-mount-probe')).toBe(firstInstance);
+      expect(initializations).toEqual([firstPath]);
+      router.navigate(firstPath, { replace: true, keep: true });
+      await tick();
+
+      router.navigate(secondPath);
+      await page.findByRole('status', { name: 'Loading' });
+      await tick();
+      expect(page.queryByTestId('route-mount-probe')).toBeNull();
+      expect(initializations).toEqual([firstPath]);
+
+      secondLoad.resolve({ default: MountProbe });
+      const secondInstance = await page.findByTestId('route-mount-probe');
+      expect(secondInstance.textContent).toBe(secondPath);
+      expect(secondInstance).not.toBe(firstInstance);
+      expect(initializations).toEqual([firstPath, secondPath]);
+    } finally {
+      secondLoad.resolve({ default: MountProbe });
+      dispose();
+    }
+  });
+
+  test('ignores the chunk of a navigation that another route superseded', async () => {
+    const firstPath = '/mount-probe/first';
+    const secondPath = '/mount-probe/second';
+    const firstLoad = Promise.withResolvers<{ default: typeof MountProbe }>();
+    const started = Promise.withResolvers<void>();
+    const { initializations, dispose } = observeRoutes([
+      {
+        pattern: firstPath,
+        kind: 'reading',
+        load: () => {
+          started.resolve();
+          return firstLoad.promise;
+        },
+      },
+      { pattern: secondPath, kind: 'reading', load: async () => ({ default: MountProbe }) },
+    ]);
+    try {
+      landAt(firstPath);
+      const page = mount();
+      await started.promise;
+      expect(initializations).toEqual([]);
+
+      router.navigate(secondPath);
+      const second = await page.findByTestId('route-mount-probe');
+      expect(second.textContent).toBe(secondPath);
+      firstLoad.resolve({ default: MountProbe });
+      await tick();
+      expect(page.getByTestId('route-mount-probe')).toBe(second);
+      expect(initializations).toEqual([secondPath]);
+    } finally {
+      firstLoad.resolve({ default: MountProbe });
+      dispose();
+    }
+  });
+
   test('renders a view in its frame, empty once the Bureau answers', async () => {
     restore = installFetchImplementation(emptyGoals());
     landAt('/goals');

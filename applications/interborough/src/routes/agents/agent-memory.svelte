@@ -38,6 +38,7 @@
     Skeleton,
     StackedListItem,
     Tooltip,
+    type ListDetailSelectionChange,
   } from '@lostgradient/cinder';
   import { Brain, ChevronLeft, ChevronRight, Download, Plus, ShieldAlert } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
@@ -101,6 +102,13 @@
   );
   /** The open memory: the one the address names, so a link and a reload open it. */
   const selectedId = $derived(router.search.get('selected'));
+  let automaticallyOpened = $state<string | null>(null);
+  // The outlet unmounts this tab a tick after the address leaves it. In that tick no memory is named,
+  // and opening the first one would navigate back over the page the person went to.
+  const onMemory = $derived(
+    router.current.route?.pattern === '/agents/:agent/memory' &&
+      router.current.params['agent'] === agentId,
+  );
   /** What the last change said above the list: only a correction that landed. */
   let notice = $state<'corrected' | undefined>(undefined);
   /** A correction that was refused, with the text that was sent, until it is dismissed or retried. */
@@ -252,12 +260,19 @@
   );
   /**
    * The open memory when the list does not hold it: one a correction replaced, one the address
-   * names, or one the search or the kind filter hides. It leads the list so it stays visible. In
+   * names, or one the search or the kind filter hides after an explicit choice. It leads the
+   * list so it stays visible. An automatically opened row follows the filtered list. In
    * the quarantined view a memory the pages read do not hold still leads it, so its details can
    * say whether more pages are unread or it is not quarantined.
    */
   const pinned = $derived.by<MemoryRowData[]>(() => {
-    if (selectedId === null || shown.some((row) => row.id === selectedId)) return [];
+    if (
+      selectedId === null ||
+      automaticallyOpened === selectedId ||
+      shown.some((row) => row.id === selectedId)
+    ) {
+      return [];
+    }
     const known = base.find((row) => row.id === selectedId);
     return [{ kind: 'memory', id: selectedId, memory: known?.memory, score: null, pinned: true }];
   });
@@ -433,12 +448,12 @@
     refused = undefined;
   }
 
-  function open(id: string | null): void {
+  function open(id: string | null, change?: ListDetailSelectionChange): void {
     // The rows that are not memories (load more, the quarantined memories) open nothing.
     if (id === MORE_KEY) return;
     notice = undefined;
     resume = undefined;
-    select(id);
+    select(id, change?.automatic === true);
   }
 
   /**
@@ -446,8 +461,9 @@
    * replaces the entry and keeps the tab mounted: the address names what the tab already shows, so
    * what was typed stays typed.
    */
-  function select(id: string | null): void {
+  function select(id: string | null, automatic = false): void {
     if (id === selectedId) return;
+    automaticallyOpened = automatic ? id : null;
     router.navigate(viewPath(quarantinedView, id ?? undefined), { replace: true, keep: true });
   }
 </script>
@@ -634,6 +650,7 @@
         emptyDescription={MEMORY_COPY.nothingOpen.description}
         selectedKey={selectedId}
         onSelectedKeyChange={open}
+        openFirst={onMemory}
         selectionParameter={null}
         storageKey="interborough-memory"
       >
@@ -815,12 +832,11 @@
   }
 
   /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one: what
-     the window leaves under the agent's header and tab bar. */
+     the window leaves under the agent's header and tab bar. It draws no box: the list and the open
+     memory sit on the page, and ListDetail's divider is the one line between them. */
   .ib-memory__frame {
     block-size: max(28rem, calc(100dvh - 18rem));
     min-inline-size: 0;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
     overflow: hidden;
   }
 
