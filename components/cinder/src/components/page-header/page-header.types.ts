@@ -219,6 +219,13 @@ export type PageHeaderProps = Omit<
    * `title` is a snippet. A string `title` is used as it is.
    */
   titleText?: string;
+  /**
+   * How many lines the title may take before it ends in an ellipsis. With `1` the title keeps one
+   * line and takes the free space first: an inline `status` that no longer fits beside it moves under
+   * it, for a narrow pane such as a chat's conversation.
+   * @default 2
+   */
+  titleLines?: 1 | 2;
   /** Additional class names merged with `.cinder-page-header`. */
   class?: string;
 };
@@ -310,6 +317,12 @@ export interface PageHeaderSchemaProps {
   collapsedBar?: boolean;
   /** The title's plain text, for the full-title tooltip when `title` is a snippet. */
   titleText?: string;
+  /**
+   * How many lines the title may take before it ends in an ellipsis; with `1` an inline status that
+   * no longer fits beside the title moves under it.
+   * @default 2
+   */
+  titleLines?: 1 | 2;
   /** Additional class names merged with `.cinder-page-header`. */
   class?: string;
 }

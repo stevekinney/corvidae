@@ -102,8 +102,9 @@ describe('ToolCallRail row count and summary', () => {
     const row = rows(container).find(
       (candidate) => candidate.dataset['cinderToolCallRow'] === 'expired',
     );
-    expect(text(row ?? null)).toContain('Expired: Issue refund');
-    expect(text(row ?? null)).toContain('Approval expired');
+    // The neutral Badge after the name says it, so no hidden "Expired:" goes before the name.
+    expect(text(row ?? null)).toContain('Issue refund Approval expired');
+    expect(text(row ?? null)).not.toContain('Expired:');
     expect(row?.parentElement?.dataset['cinderStatus']).toBe('expired');
   });
 
@@ -270,9 +271,15 @@ describe('ToolCallRail rows', () => {
       markerOf('run').querySelector('.cinder-timeline-item__marker .cinder-spinner'),
     ).not.toBeNull();
     expect(text(byId('run').querySelector('.cinder-tool-call-rail__result'))).toBe('Running…');
-    expect(text(byId('wait').querySelector('.cinder-tool-call-rail__result'))).toBe(
-      'Waiting on you',
-    );
+    // COR-2438: waiting is a warning Badge right after the name, never words in the result column.
+    expect(byId('wait').querySelector('.cinder-tool-call-rail__result')).toBeNull();
+    const badge = byId('wait').querySelector('.cinder-tool-call-rail__name > .cinder-badge');
+    expect(text(badge)).toBe('Waiting on you');
+    expect(badge?.getAttribute('data-cinder-variant')).toBe('warning');
+    expect(
+      byId('wait').querySelector('.cinder-tool-call-rail__name-text')?.nextElementSibling,
+    ).toBe(badge);
+    expect(text(byId('wait').querySelector('.cinder-tool-call-rail__name-text'))).toBe('B');
     expect(text(byId('deny').querySelector('.cinder-tool-call-rail__result'))).toBe(
       'Denied by you',
     );
@@ -284,6 +291,32 @@ describe('ToolCallRail rows', () => {
     expect(text(byId('ok').querySelector('.cinder-tool-call-rail__result'))).toBe(
       'Approved by you 10:33 AM',
     );
+  });
+
+  // COR-2438: an approval nothing waits on any more read as plain words floating mid-row.
+  test('an approval that no longer waits is a neutral Badge right after the name, with its words', () => {
+    const calls: Call[] = [
+      { id: 'lapsed', name: 'Discover agents', status: 'expired', result: 'No longer waiting' },
+      { id: 'expired', name: 'Issue refund', status: 'expired' },
+    ];
+    const { container } = render(ToolCallRail, { props: { calls } });
+    for (const [id, words] of [
+      ['lapsed', 'No longer waiting'],
+      ['expired', 'Approval expired'],
+    ] as const) {
+      const row = requiredInstance(
+        container.querySelector(`[data-cinder-tool-call-row="${id}"]`),
+        HTMLElement,
+      );
+      expect(row.querySelector('.cinder-tool-call-rail__result')).toBeNull();
+      const badge = row.querySelector('.cinder-tool-call-rail__name > .cinder-badge');
+      expect(text(badge)).toBe(words);
+      expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
+      expect(row.querySelector('.cinder-tool-call-rail__name-text')?.nextElementSibling).toBe(
+        badge,
+      );
+      expect(text(row.querySelector('.cinder-tool-call-rail__name-text'))).not.toContain('Expired');
+    }
   });
 
   test('a failed call has one danger line with the quiet links for the handlers given', async () => {
@@ -406,6 +439,24 @@ describe('ToolCallRail rows', () => {
     (component as unknown as { focusCall: (id: string) => void }).focusCall('call-2');
     await tick();
     expect(document.activeElement).toBe(rows(container)[2] ?? null);
+  });
+
+  // COR-2438: the approval under a row first started at the content edge, then bled as the row's
+  // tint does, 6px outside the column at each end; it starts at the marker's edge and ends at the
+  // rail's, the column the messages and the composer keep.
+  test('nested content starts at the marker column and ends with the rail, without the row’s tint bleed', () => {
+    const rule = (selector: string) =>
+      cssText.match(new RegExp(`\\n  ${selector}\\s*\\{[^}]*\\}`))?.[0] ?? '';
+    const row = rule('\\.cinder-tool-call-rail__row').replaceAll(/\s+/g, ' ');
+    const nested = rule('\\.cinder-tool-call-rail__nested').replaceAll(/\s+/g, ' ');
+    // The row's box bleeds for its tint and pads it back, so its marker sits at the column's edge.
+    expect(row).toContain(
+      'padding: 0 var(--_cinder-tool-call-rail-bleed) 0 calc(var(--_cinder-tool-call-rail-indent) + var(--_cinder-tool-call-rail-bleed))',
+    );
+    expect(nested).toContain(
+      'margin: var(--cinder-space-1) 0 var(--cinder-space-1) calc(-1 * var(--_cinder-tool-call-rail-indent))',
+    );
+    expect(nested).not.toContain('--_cinder-tool-call-rail-bleed');
   });
 
   test('nested content draws under the rows that ask for it, whatever their status', () => {

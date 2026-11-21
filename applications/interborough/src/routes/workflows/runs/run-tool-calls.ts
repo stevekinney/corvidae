@@ -75,9 +75,9 @@ export function toolCallsOfRun(runId: string, messages: readonly unknown[]): Too
         state,
         summary:
           state === 'failed'
-            ? (result?.error?.message ?? resultSummary(result?.content))
+            ? (result?.error?.message ?? resultSummary(result?.content, call.function.name))
             : state === 'done'
-              ? resultSummary(result?.content)
+              ? resultSummary(result?.content, call.function.name)
               : '',
         result: result?.content,
       });

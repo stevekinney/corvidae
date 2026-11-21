@@ -388,7 +388,9 @@ export const INPUT_WIDE_CHARACTERS = 28;
  * Reads the arguments preview as the rows the approver reads in the open, one per field: "Order
  * ID" then "4471". Unlike the one-line summary, a nested value is written whole, as compact JSON
  * with any secret inside it masked, so nothing the call carries is out of reach. A preview that is
- * not a list or an object is one row labelled "Value"; an empty one has no rows.
+ * not a list or an object is one row labelled "Value". A call with no arguments (none at all, an
+ * empty object or list, an empty string or `null`) has no rows, so no Input is drawn for it rather
+ * than a row that says "Empty" (COR-2438).
  */
 export function describeInputRows(value: unknown): InputRow[] {
   const masked = maskSecrets(normalizeArgumentsPreviewValue(value));
@@ -396,6 +398,8 @@ export function describeInputRows(value: unknown): InputRow[] {
   if (entries.length === 0) {
     if (
       masked === undefined ||
+      masked === null ||
+      (typeof masked === 'string' && masked.trim() === '') ||
       (typeof masked === 'object' &&
         masked !== null &&
         !(masked instanceof Date) &&

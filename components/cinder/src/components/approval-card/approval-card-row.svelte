@@ -53,6 +53,10 @@
     outcomeTone: 'success' | 'neutral';
     /** The note the approver left with the decision. */
     decisionNote: string | undefined;
+    /** The approver's note while the card is pending. */
+    draftNote: string | undefined;
+    /** Reports edits to any draft the host keeps when the card is reopened. */
+    onDraftNoteChange: (value: string) => void;
     /** Where the note went, such as "Sent to the agent as the reason.". */
     decisionNoteCaption: string | undefined;
     /** Why Deny and Approve are off while the approval is pending. */
@@ -127,6 +131,8 @@
     outcomeTime,
     outcomeTone,
     decisionNote,
+    draftNote,
+    onDraftNoteChange,
     decisionNoteCaption,
     disabledReason,
     unavailableReason,
@@ -149,8 +155,9 @@
   const hintId = $derived(`${rootId}-arm-hint`);
   const disabledReasonId = $derived(`${rootId}-disabled-reason`);
 
-  let noteOpen = $state(false);
-  let note = $state('');
+  const noteOpenInitially = untrack(() => draftNote !== undefined);
+  let noteOpen = $state(noteOpenInitially);
+  let note = $state(untrack(() => draftNote ?? ''));
   let remember = $state(false);
   let armed = $state(false);
   // The note and the checkbox belong to one request. A different request must never inherit
@@ -162,7 +169,7 @@
     previousRequestKey = requestKey;
     note = '';
     remember = false;
-    noteOpen = false;
+    noteOpen = noteOpenInitially;
   });
 
   const isPending = $derived(approvalState === 'pending');
@@ -368,8 +375,15 @@
         <div class="cinder-approval-card__note">
           <Textarea
             id={noteId}
-            bind:value={note}
+            bind:value={
+              () => note,
+              (value) => {
+                note = value;
+                onDraftNoteChange(value);
+              }
+            }
             label="Note"
+            optional
             description="Saved with your decision. If you deny, the agent reads it as the reason."
             placeholder="Add a note for the agent or the record"
             rows={2}
@@ -397,6 +411,7 @@
             type="button"
             variant="secondary"
             size="sm"
+            data-cinder-approval-deny
             mutating
             disabled={isBusy && resolving !== 'deny'}
             aria-disabled={disabledReason === undefined ? undefined : 'true'}
