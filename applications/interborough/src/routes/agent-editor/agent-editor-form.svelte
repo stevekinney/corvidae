@@ -454,7 +454,7 @@
 
   /* On a short screen the bar ends the form instead of covering its fields with the shell chrome. */
   @media (max-height: 480px) {
-    .weft-agent-form__footer {
+    :global(.weft-agent-form__footer) {
       position: static;
     }
   }
