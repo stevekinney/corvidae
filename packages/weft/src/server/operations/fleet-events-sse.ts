@@ -23,6 +23,7 @@ import {
 } from '@lostgradient/backchannel/internals';
 import type { FleetEventEnvelope, FleetEventFeed } from '../fleet-event-feed.ts';
 import { EVENTS_READ_EVENT_TYPES } from '../runtime/client-visible-events.ts';
+import { weftFaultPolicy } from '../weft-fault-policy.ts';
 import { fleetEventEnvelopeSchema } from './event-stream-contracts.ts';
 
 type FleetEventsSseOutput = AsyncIterable<FleetEventEnvelope>;
@@ -191,7 +192,7 @@ function shapeFleetEventsSseSuccess(output: FleetEventsSseOutput, request: Reque
 }
 
 function shapeFleetEventsSseFault(fault: OperationFault): Response {
-  return shapeServerSentEventsFault(fault);
+  return shapeServerSentEventsFault(fault, weftFaultPolicy);
 }
 
 export const fleetEventsSseRestBinding: UnknownRestBinding = {
