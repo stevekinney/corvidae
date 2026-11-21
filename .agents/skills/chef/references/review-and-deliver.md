@@ -25,9 +25,9 @@ A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.t
 
 - `mergeable`: GitHub's mergeability stayed `UNKNOWN`; launch it again shortly.
 - `issue`: the merge happened, and a Linear comment or state change failed for the named issue; repair that issue with `bun scripts/chef/linear.ts comment <ID> --file <md>` or `bun scripts/chef/linear.ts state <ID> Done`, and do not relaunch.
-- A delivery removes its worktree, or prints `worktree kept: <why>`, logs the head in `tmp/chef/delivered-heads.log`, sweeps; close batches with `worktree.ts stale --remove`.
+- A delivery removes its worktree or prints `worktree kept: <why>`; close batches with `worktree.ts stale --remove`.
 
-A red `main` is a warning line in the report (`mainHealthWarning` in the JSON), never a refusal.
+A red `main` is a warning line in the report (`mainHealthWarning` in the JSON), never a refusal. A moved base never needs a new evidence run; only a `conflict` refuses it.
 
 ## Triaging a failed gate
 
@@ -35,7 +35,7 @@ Run `bun scripts/chef/gate-run.ts triage <log> --base <sha>` first, where `<sha>
 
 For anything ambiguous (a task several changes touched, a failure in a file none of them changed, a load-sensitive test), run `bun scripts/chef/gate-run.ts control --candidate <dir> --base <dir> --command <shell>` under the same load. Candidate fails and base passes: the candidate caused it. Both fail the same way: it is pre-existing and gets its own issue. Inconclusive: widen the control. Never rerun a gate until it passes in place of a control.
 
-A full `validate` taken as an exception runs on GitHub once the head is accepted: push the branch, run `bun scripts/chef/targeted-run.ts` (its full run has its own concurrency group, so it never replaces a pending `main` run), and read it with `gh run list --workflow main.yml --branch <branch> --limit 1`.
+A full `validate` taken as an exception runs on GitHub once the head is accepted: push the branch, run `bun scripts/chef/targeted-run.ts` (its own concurrency group never replaces a pending `main` run), and read it with `gh run list --workflow main.yml --branch <branch> --limit 1`.
 
 ## Preflights
 
