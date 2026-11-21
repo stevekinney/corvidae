@@ -1,7 +1,7 @@
 import {
   importSvelteOnServer,
   outcomeOf,
-  prepareSvelteServerSource,
+  prepareSvelteServerSources,
   rethrow,
 } from '@lostgradient/testing';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
@@ -17,7 +17,7 @@ const serverSourcePaths = [
   resolve(import.meta.dir, 'suggestion-part.svelte'),
 ];
 
-await Promise.all(serverSourcePaths.map((sourcePath) => prepareSvelteServerSource(sourcePath)));
+await prepareSvelteServerSources(serverSourcePaths);
 
 // Each probe is a real DOM-free server process, so they run here at module scope, off the
 // per-test clock, and every test rethrows whatever its scenario threw.
