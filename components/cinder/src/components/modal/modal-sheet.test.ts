@@ -259,6 +259,18 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     expect(modalCss.match(/wrap-reverse/g)).toHaveLength(1);
   });
 
+  // Owner decision, 2026-11-21 (COR-2547): the one exception to "a lone action fills the row" lives
+  // beside that rule, so ConfirmDialog still carries no footer layout of its own.
+  test('a lone Close beside a failure action is compact: the exception is in modal.css, marked by the row', () => {
+    expect(modalCss).toMatch(
+      /\.cinder-confirm-dialog__actions\[data-cinder-fault-only\]\s+> \* \{\s*flex: 0 0 auto;/,
+    );
+    expect(modalCss).toMatch(
+      /\.cinder-confirm-dialog__actions\[data-cinder-fault-only\] \{\s*justify-content: flex-end;/,
+    );
+    expect(confirmCss).not.toContain('data-cinder-fault-only]');
+  });
+
   test('cross-fades instead of sliding under reduced motion', () => {
     expect(modalCss).toContain(":root[data-reduced-motion='on']");
     expect(modalCss).toMatch(/\[data-cinder-closing\] \{\s*translate: none;/);

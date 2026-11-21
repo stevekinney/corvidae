@@ -122,7 +122,7 @@ Set `pending` while what the dialog confirms is still being worked out, such as 
 
 ## A different next step after a failure: `errorAction`
 
-By default a failure keeps the confirm button armed, so pressing it again is the retry. When that is the wrong next step, set `errorAction` to `{ label, onAction }`: the action is drawn in the failure callout and the confirm button is not drawn while the failure shows. Use it for a preview that must be counted again, or work that cannot be repeated as it was. `errorTone="warning"` draws a refusal nothing was done about, such as a stale preview, as a warning instead of a danger callout. Clear `error` and the confirm button returns.
+By default a failure keeps the confirm button armed, so pressing it again is the retry. When that is the wrong next step, set `errorAction` to `{ label, onAction }`: the action is drawn in the failure callout and the confirm button is not drawn while the failure shows. Use it for a preview that must be counted again, or work that cannot be repeated as it was. `errorTone="warning"` draws a refusal nothing was done about, such as a stale preview, as a warning instead of a danger callout. Clear `error` and the confirm button returns. Below the sheet breakpoint a lone action normally fills the footer row, but here Cancel (relabel it "Close" with `cancelLabel`) is the only button of the row and the callout's action is what leads, so Close is compact at the inline end instead of a full-width button that outweighs it (an owner exception to the lone-action rule, 2026-11-21). A dialog with nothing to confirm and no failure action keeps the full-width Close.
 
 ```svelte
 <ConfirmDialog

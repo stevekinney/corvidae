@@ -168,7 +168,10 @@
           </Callout>
         {/if}
       </div>
-      <div class="cinder-confirm-dialog__actions">
+      <div
+        class="cinder-confirm-dialog__actions"
+        data-cinder-fault-only={failure && errorAction ? '' : undefined}
+      >
         <Button
           variant="secondary"
           class="cinder-confirm-dialog__cancel"

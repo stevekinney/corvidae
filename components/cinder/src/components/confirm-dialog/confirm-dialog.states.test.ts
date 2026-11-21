@@ -551,6 +551,41 @@ describe('ConfirmDialog error action', () => {
     expect(actions()).toHaveLength(2);
   });
 
+  test('a fault that carries an action leaves Close compact on a phone, an exception to the lone-action rule (owner, 2026-11-21)', () => {
+    const faultOnly = render(ConfirmDialog, {
+      props: { ...failed, errorAction: { label: 'Refresh preview', onAction: () => {} } },
+    });
+    const row = requiredInstance(
+      faultOnly.container.querySelector('.cinder-confirm-dialog__actions'),
+      HTMLElement,
+    );
+    // Close is the only button of the row, and the action that leads is in the callout above it.
+    expect(row.querySelectorAll('button')).toHaveLength(1);
+    expect(row.hasAttribute('data-cinder-fault-only')).toBe(true);
+
+    // The rule that makes it compact sits in modal.css beside the docked "a lone action fills the
+    // row" it is the exception to, and is covered in modal-sheet.test.ts.
+    cleanup();
+
+    // A failure with no action of its own keeps both buttons, and a row that is lone because there
+    // is nothing to confirm keeps filling: neither is marked.
+    const armed = render(ConfirmDialog, { props: failed });
+    expect(
+      armed.container
+        .querySelector('.cinder-confirm-dialog__actions')
+        ?.hasAttribute('data-cinder-fault-only'),
+    ).toBe(false);
+    cleanup();
+    const nothingToConfirm = render(ConfirmDialog, {
+      props: { ...base, confirmVisible: false, cancelLabel: 'Close' },
+    });
+    expect(
+      nothingToConfirm.container
+        .querySelector('.cinder-confirm-dialog__actions')
+        ?.hasAttribute('data-cinder-fault-only'),
+    ).toBe(false);
+  });
+
   test('errorTone draws the callout as a warning, and danger by default', () => {
     const warning = render(ConfirmDialog, { props: { ...failed, errorTone: 'warning' } });
     expect(

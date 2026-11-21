@@ -65,7 +65,7 @@ On open, supporting screen readers announce:
 2. The accessible name (from `aria-labelledby`, the title).
 3. When `description` is provided: the description text (from `aria-describedby`).
 
-While `pending`, the skeleton's `pendingLabel` is announced once as a status and nothing describes the dialog. The failure region is mounted before any failure and is a live alert, so a failure that arrives, including one that carries an `errorAction`, is announced. Cancel stays enabled in both states. `errorAction` removes the confirm button while the failure shows; if that button held focus, the page decides where focus goes (the action in the callout, or the refreshed description), because the dialog does not move it.
+While `pending`, the skeleton's `pendingLabel` is announced once as a status and nothing describes the dialog. The failure region is mounted before any failure and is a live alert, so a failure that arrives, including one that carries an `errorAction`, is announced. Cancel stays enabled in both states. On a phone, when a failure carries an `errorAction`, Cancel is the only button of the footer row and is drawn compact at the inline end rather than full width, so the action in the callout leads in reading and focus order; it still reaches 44px through its hit area (`data-cinder-hit-target`) and keeps its label. `errorAction` removes the confirm button while the failure shows; if that button held focus, the page decides where focus goes (the action in the callout, or the refreshed description), because the dialog does not move it.
 
 ## Label Guidelines
 

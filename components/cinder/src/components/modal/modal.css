@@ -456,6 +456,22 @@
     flex: 0 0 auto;
   }
 
+  /* The one exception to "a lone action fills the row" (owner decision, 2026-11-21): a ConfirmDialog
+   * whose failure carries its own action (Retry, Refresh preview) leaves Cancel, labelled Close,
+   * the only button of the row. The callout above it holds the action that leads, so Close is
+   * compact at the inline end, not full width where it would outweigh that action. A row that is
+   * lone for another reason (nothing to confirm) still fills. ConfirmDialog marks the row. */
+  .cinder-modal[data-cinder-sheet='docked']
+    .cinder-confirm-dialog__actions[data-cinder-fault-only] {
+    justify-content: flex-end;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked']
+    .cinder-confirm-dialog__actions[data-cinder-fault-only]
+    > * {
+    flex: 0 0 auto;
+  }
+
   /* The body's fields are full 44px targets in the sheet. The selector repeats the input's own class
    * so it outranks the compact height without a cross-component custom property. The footer's
    * buttons are not: a phone button is drawn at its painted height and reaches 44px through the
