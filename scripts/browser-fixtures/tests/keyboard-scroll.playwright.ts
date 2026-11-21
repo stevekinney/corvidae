@@ -263,7 +263,7 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 for (const viewport of [
-  { name: 'phone', width: 375, height: 640 },
+  { name: 'mobile', width: 375, height: 640 },
   { name: 'desktop', width: 1280, height: 800 },
 ] as const) {
   for (const theme of ['light', 'dark'] as const) {

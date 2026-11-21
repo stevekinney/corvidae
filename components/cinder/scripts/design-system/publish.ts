@@ -181,7 +181,7 @@ export type IndexFacts = {
   /** An ISO 8601 time in UTC to the second, such as `2026-11-09T20:22:38Z`. */
   at: string;
   /** The creation record from this output directory's compatible prior index, when present. */
-  createdOnFiles?: CreatedOnFiles;
+  createdOnFiles?: CreatedOnFiles | undefined;
 };
 
 /** The system's index, `design-system.json`, which is published last. */
