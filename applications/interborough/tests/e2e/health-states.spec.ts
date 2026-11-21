@@ -24,7 +24,7 @@ const SOURCE = 'health-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 
 interface WarningFixtureWindow extends Window {
-  emitCheckpointSizeWarning(): void;
+  emitCheckpointSizeWarning?: () => void;
 }
 
 /** The problems `bureau.health.attention` lists, as the page reads them. */
@@ -213,6 +213,7 @@ async function answerCheckpointSizeWarning(page: Page): Promise<void> {
     await route.fulfill({ json: { jsonrpc: '2.0', id: request.id, result: { items: [] } } });
   });
   await page.addInitScript(() => {
+    const fixtureWindow: WarningFixtureWindow = window;
     const { preconnect } = window.fetch;
     const original = window.fetch.bind(window);
     window.fetch = Object.assign(
@@ -226,7 +227,7 @@ async function answerCheckpointSizeWarning(page: Page): Promise<void> {
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             controller.enqueue(encoder.encode('event: ping\ndata: {"replayComplete":true}\n\n'));
-            (window as WarningFixtureWindow).emitCheckpointSizeWarning = () => {
+            fixtureWindow.emitCheckpointSizeWarning = () => {
               const envelope = {
                 kind: 'checkpoint:size-warning',
                 sequence: 1,
@@ -319,7 +320,12 @@ test('Warning indicator in System alerts', async ({ page }) => {
 
   await expect(page.getByText('No alert activity since page load')).toBeVisible();
   await page.evaluate(() => {
-    (window as WarningFixtureWindow).emitCheckpointSizeWarning();
+    const fixtureWindow: WarningFixtureWindow = window;
+    const emitCheckpointSizeWarning = fixtureWindow.emitCheckpointSizeWarning;
+    if (emitCheckpointSizeWarning === undefined) {
+      throw new Error('The test alert feed has not connected.');
+    }
+    emitCheckpointSizeWarning();
   });
   const row = page.locator('.weft-alerts-tab__row').filter({ hasText: 'Checkpoint size warning' });
   await expect(row).toHaveCount(1);
