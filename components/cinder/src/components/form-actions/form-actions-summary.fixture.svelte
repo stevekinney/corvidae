@@ -28,6 +28,10 @@
   <span data-testid="saved-summary">Saved, Version 1</span>
 {/snippet}
 
+{#snippet longSummary()}
+  <span data-testid="long-summary">Connect is off while Interborough can’t be reached.</span>
+{/snippet}
+
 {#snippet end()}
   <Button type="button" variant="ghost" label="Cancel" />
   <Button type="button" variant="primary" label="Save" />
@@ -42,6 +46,12 @@
     data-testid="form-actions-45rem"
   >
     <FormActions {summary} start={start45} {end} />
+  </div>
+  <div
+    class="form-actions-summary__bar form-actions-summary__bar--long-summary"
+    data-testid="form-actions-long-summary"
+  >
+    <FormActions summary={longSummary} {end} />
   </div>
 </div>
 
@@ -59,6 +69,10 @@
 
   .form-actions-summary__bar--wide {
     inline-size: 45rem;
+  }
+
+  .form-actions-summary__bar--long-summary {
+    inline-size: 28.25rem;
   }
 
   .form-actions-summary__a2a {

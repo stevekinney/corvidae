@@ -59,6 +59,32 @@ async function expectReadableSummary(bar: Locator): Promise<void> {
   await expect(bar.getByRole('button', { name: 'Save' })).toBeVisible();
 }
 
+async function expectNoStartSummaryWraps(bar: Locator): Promise<void> {
+  const geometry = await bar.evaluate((element) => {
+    const actions = element.querySelector<HTMLElement>('.cinder-form-actions');
+    const summary = element.querySelector<HTMLElement>('.cinder-form-actions__summary');
+    const summaryText = element.querySelector<HTMLElement>('[data-testid="long-summary"]');
+    if (actions === null || summary === null || summaryText === null)
+      throw new Error('The no-start FormActions fixture did not render its summary.');
+
+    const range = document.createRange();
+    range.selectNodeContents(summaryText);
+    return {
+      actionWidth: actions.getBoundingClientRect().width,
+      scrollWidth: actions.scrollWidth,
+      lines: [...range.getClientRects()].filter((rect) => rect.width > 0).length,
+      summaryWidth: summary.getBoundingClientRect().width,
+      textWidth: range.getBoundingClientRect().width,
+    };
+  });
+
+  expect(geometry.lines).toBeGreaterThan(1);
+  expect(geometry.textWidth).toBeLessThanOrEqual(geometry.summaryWidth);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.actionWidth);
+  await expect(bar.getByRole('button', { name: 'Cancel' })).toBeVisible();
+  await expect(bar.getByRole('button', { name: 'Save' })).toBeVisible();
+}
+
 for (const theme of ['light', 'dark'] as const) {
   test(`FormActions keeps the saved summary readable beside a wrapping start slot (${theme})`, async ({
     componentPage,
@@ -74,5 +100,6 @@ for (const theme of ['light', 'dark'] as const) {
     });
     await expectReadableSummary(page.getByTestId('form-actions-30rem'));
     await expectReadableSummary(page.getByTestId('form-actions-45rem'));
+    await expectNoStartSummaryWraps(page.getByTestId('form-actions-long-summary'));
   });
 }
