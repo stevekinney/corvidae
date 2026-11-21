@@ -123,6 +123,8 @@ function hostOver(
     usage: null,
     attention: [] as never[],
     stalledSince: null,
+    failure: null,
+    retrying: null,
   };
   const tasks = options.taskGone
     ? { get: async () => undefined, ownerOf: async () => undefined }

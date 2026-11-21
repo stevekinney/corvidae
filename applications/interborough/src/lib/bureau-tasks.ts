@@ -59,8 +59,19 @@ export type TaskOpenWait = TaskView['openWaits'][number];
 /** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
 export type TaskView = Omit<
   BureauOutput<'bureau.tasks.get'>,
-  'origin' | 'wakeAt' | 'workflow' | 'usage' | 'attention' | 'stalledSince'
+  'origin' | 'wakeAt' | 'workflow' | 'usage' | 'attention' | 'stalledSince' | 'failure' | 'retrying'
 > & {
+  /**
+   * Why a failed task failed (COR-2531): the step (`index` and `label`, the failing tool's name or
+   * `model`), the error's code and kind, and the tool call that failed. `null` for a task that did
+   * not fail and for a failure nothing described; absent from a Bureau that does not report it.
+   */
+  readonly failure?: BureauOutput<'bureau.tasks.get'>['failure'] | undefined;
+  /**
+   * The step a running task is on a second or later try of (COR-2531): its `label` and `attempt`.
+   * `null` when none is, and absent from a Bureau that does not report it.
+   */
+  readonly retrying?: BureauOutput<'bureau.tasks.get'>['retrying'] | undefined;
   /**
    * What the run has used and cost so far, or in total once it ended (COR-2524): tokens, and
    * `costUsd` in US dollars, `null` rather than `0` when nothing was priced. Absent from a Bureau

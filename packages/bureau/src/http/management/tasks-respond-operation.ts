@@ -23,7 +23,7 @@
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, TaskRespondError } from '../../bureau-errors.ts';
+import { TaskRespondError } from '../../bureau-errors.ts';
 import { type TasksRespondInput, tasksRespondInput } from '../../tasks/respond-to-task.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauTasks, TaskRespondResult } from '../../bureau-types/tasks.ts';
@@ -70,8 +70,8 @@ export type BureauTasksRespondOperationHost = BureauOwnershipHost & {
  * `Unprocessable` with its reason, and the rest as `bureau.reviews.resolve` answers them.
  */
 function respondFault(error: unknown, taskId: string): unknown {
-  if (!(error instanceof BureauError)) return error;
-  if (error.code === 'NOT_FOUND') return resourceNotFound('task', taskId);
+  // A refusal that names a field, a reason or a resolved wait is never a missing task, which
+  // carries none of them; the missing task is answered by `reviewFault` below.
   if (error instanceof TaskRespondError && error.field !== undefined) {
     const { field } = error;
     return {
@@ -89,6 +89,7 @@ function respondFault(error: unknown, taskId: string): unknown {
                 code: issue.code,
               })),
       },
+      remediation: 'Correct the field the issue names and send the answer again.',
     } satisfies OperationFault;
   }
   // COR-2426: a wait already resolved carries the token `bureau.reviews.resolve` gives it.
@@ -97,6 +98,7 @@ function respondFault(error: unknown, taskId: string): unknown {
       code: 'Conflict',
       message: error.message,
       data: { reason: `${REVIEW_ALREADY_RESOLVED}: ${error.message}` },
+      remediation: 'The wait is already resolved and no longer waiting; read the task to see it.',
     } satisfies OperationFault;
   }
   if (error instanceof TaskRespondError && error.reason !== undefined) {
@@ -104,9 +106,10 @@ function respondFault(error: unknown, taskId: string): unknown {
       code: 'Unprocessable',
       message: error.message,
       data: { reason: error.reason },
+      remediation: 'Read the task to see which wait is open, and answer one it accepts.',
     } satisfies OperationFault;
   }
-  return reviewFault(error, taskId);
+  return reviewFault(error, taskId, 'task');
 }
 
 /**
