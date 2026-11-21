@@ -51,11 +51,11 @@ async function connectProvider(page: Page): Promise<void> {
   });
 }
 
-/** Opens the refund chat at 1280 pixels and waits until its transcript is drawn. */
-async function openRefundChat(page: Page): Promise<void> {
+/** Opens the refund chat and waits until its transcript is drawn. */
+async function openRefundChat(page: Page, viewport = { width: 1280, height: 900 }): Promise<void> {
   await connectProvider(page);
   await page.clock.setFixedTime(SAMPLE_NOW);
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize(viewport);
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await expect(page.locator('[data-approval-decision]')).toBeVisible();
@@ -96,8 +96,7 @@ test.describe('an open chat on the sample world', () => {
   test('opens the compact details popover from the breadcrumb: agent, started, settings and Copy session ID inside it (16u, 16v, COR-2438 16a to 16f)', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await openRefundChat(page);
+    await openRefundChat(page, { width: 1280, height: 800 });
     await trail(page).getByRole('button', { name: TITLE }).click();
     const details = page.getByTestId('chat-details');
     await expect(details).toBeVisible();
@@ -112,7 +111,8 @@ test.describe('an open chat on the sample world', () => {
     expect(await details.textContent()).not.toContain(String.fromCodePoint(0xb7));
     // The 4471 refund is a chat of its own, started when it was asked at 10:42 AM.
     await expect(details).toContainText(/Started\s*Today, 10:42 AM/);
-    await expect(details).toContainText(/Last active\s*10:4\d AM/);
+    // Last activity rounds to the same displayed minute as the start.
+    await expect(details).not.toContainText('Last active');
 
     const settings = details.getByTestId('chat-details-settings');
     await expect(settings).not.toContainText('As run');
@@ -164,15 +164,20 @@ test.describe('an open chat on the sample world', () => {
   test('opens the details as a bottom sheet with Copy session ID inside it at 375 pixels (COR-2438 16g)', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
-    await openRefundChat(page);
+    await openRefundChat(page, { width: 375, height: 812 });
     await trail(page).getByRole('button', { name: TITLE }).click();
     const details = page.getByTestId('chat-details');
     await expect(details).toBeVisible();
-    const copy = await details.getByRole('button', { name: 'Copy session ID' }).boundingBox();
-    expect(copy).not.toBeNull();
-    expect(copy!.x).toBeGreaterThanOrEqual(0);
-    expect(copy!.x + copy!.width).toBeLessThanOrEqual(375);
+    const sheet = page.getByRole('dialog', { name: TITLE });
+    await expect(sheet).toHaveAttribute('data-cinder-sheet', 'docked');
+    const boxes = await readBoxes(page, {
+      sheet,
+      copy: sheet.getByRole('button', { name: 'Copy session ID' }),
+    });
+    expect(boxes.sheet.y + boxes.sheet.height).toBeCloseTo(812, 0);
+    expect(boxes.copy.x).toBeGreaterThanOrEqual(boxes.sheet.x);
+    expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(boxes.sheet.x + boxes.sheet.width);
+    expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(375);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'details sheet at 375',

@@ -1549,8 +1549,12 @@
   $effect(() => {
     const id = sessionId;
     if (!parkedOnLapsed) return undefined;
-    lapsedChats.add(id);
-    return () => lapsedChats.delete(id);
+    // This effect publishes membership. Tracking the set's version during the add would make the
+    // cleanup delete and re-add the same chat until Svelte stops the effect.
+    untrack(() => lapsedChats.add(id));
+    return () => {
+      untrack(() => lapsedChats.delete(id));
+    };
   });
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
