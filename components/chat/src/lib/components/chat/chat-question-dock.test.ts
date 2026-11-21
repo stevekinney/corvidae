@@ -320,14 +320,14 @@ describe('a docked question', () => {
     const answer = buttons[buttons.length - 1]!;
     expect(buttons.indexOf(words)).toBeLessThan(buttons.indexOf(answer));
     // The visible words are the accessible name, with the glyph beside them.
-    expect(words.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(words.classList.contains('button-variant-ghost')).toBe(true);
     expect(words.textContent?.trim()).toBe('Reply in chat');
     expect(words.getAttribute('aria-label')).toBeNull();
     expect(words.querySelector('svg')).not.toBeNull();
     expect(words.closest('.cinder-tooltip-wrapper')).not.toBeNull();
     // The icon-only fallback is the secondary outline with the same name; it shows only when the
     // row cannot hold the words.
-    expect(icon.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(icon.classList.contains('button-variant-secondary')).toBe(true);
     expect(icon.getAttribute('data-cinder-icon-only')).toBe('');
     expect(icon.getAttribute('aria-label') ?? icon.textContent?.trim()).toBe('Reply in chat');
     // Both sit in the wrapper the row's fit marks compact (there is no layout here to measure; the
@@ -337,7 +337,7 @@ describe('a docked question', () => {
     expect(tip?.contains(icon)).toBe(true);
     expect(tip?.hasAttribute('data-chat-reply-compact')).toBe(false);
     expect(answer.textContent?.trim()).toBe('Answer');
-    expect(answer.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(answer.classList.contains('button-variant-primary')).toBe(true);
   });
 
   test('a choice only selects; Answer sends it, and the row keeps the receipt', async () => {

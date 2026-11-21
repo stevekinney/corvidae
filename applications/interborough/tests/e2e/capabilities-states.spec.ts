@@ -364,8 +364,8 @@ for (const width of WIDTHS) {
       await expect(
         page.getByRole('heading', { level: 2, name: copy.source.empty.title }),
       ).toBeVisible();
-      await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveCount(1);
-      await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveText(
+      await expect(page.locator('main .button-variant-primary')).toHaveCount(1);
+      await expect(page.locator('main .button-variant-primary')).toHaveText(
         copy.source.connect.action,
       );
       await captureForDesignReview(page, {
@@ -373,7 +373,7 @@ for (const width of WIDTHS) {
         state: 'sources first use',
         source: SOURCE,
       });
-      await page.locator('main [data-cinder-variant="primary"]').click();
+      await page.locator('main .button-variant-primary').click();
       await expect(page).toHaveURL(/\/capabilities\/connect$/);
     });
 

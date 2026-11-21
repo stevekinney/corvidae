@@ -239,7 +239,7 @@ describe('ErrorState actions', () => {
       props: { title: 'Failed', description: 'Nope.', onRetry: () => {} },
     });
     const button = getByRole('button', { name: 'Try again' });
-    expect(button.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(button.classList.contains('button-variant-primary')).toBe(true);
     expect(button.querySelector('svg')).not.toBeNull();
   });
 
@@ -254,8 +254,8 @@ describe('ErrorState actions', () => {
     ]);
     const row = container.querySelector('.cinder-error-state-action');
     expect(buttons.every((button) => row?.contains(button))).toBe(true);
-    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(buttons[1]?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(buttons[0]?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(buttons[1]?.classList.contains('button-variant-primary')).toBe(true);
   });
 
   test('retryIcon replaces the refresh glyph on the primary button', async () => {
@@ -264,9 +264,9 @@ describe('ErrorState actions', () => {
     const { getAllByRole, getByTestId } = render(RetryIconFixture);
     const [secondary, primary] = getAllByRole('button');
     expect(secondary?.textContent?.trim()).toBe('Back to chats');
-    expect(secondary?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(secondary?.classList.contains('button-variant-secondary')).toBe(true);
     expect(primary?.textContent?.trim()).toBe('New chat');
-    expect(primary?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(primary?.classList.contains('button-variant-primary')).toBe(true);
     expect(primary?.contains(getByTestId('pencil'))).toBe(true);
     expect(primary?.querySelectorAll('svg').length).toBe(1);
   });
@@ -398,7 +398,7 @@ describe('ErrorState row variant', () => {
       'true',
     );
     const button = getByRole('button', { name: 'Try again' });
-    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button.classList.contains('button-variant-secondary')).toBe(true);
     // The retry is a plain word: no refresh glyph unless the caller gives one.
     expect(button.querySelector('svg')).toBeNull();
     await fireEvent.click(button);
@@ -458,7 +458,7 @@ describe('compact size', () => {
     expect(container.querySelector('.cinder-error-state-icon')).not.toBeNull();
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
     const button = getByRole('button', { name: 'Try again' });
-    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button.classList.contains('button-variant-secondary')).toBe(true);
     expect(button.querySelector('svg')).toBeNull();
     await fireEvent.click(button);
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -472,8 +472,8 @@ describe('compact size', () => {
       plain.container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-size'),
     ).toBe(false);
     expect(
-      plain.getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+      plain.getByRole('button', { name: 'Try again' }).classList.contains('button-variant-primary'),
+    ).toBe(true);
     const flat = render(ErrorState, {
       props: { variant: 'flat', size: 'compact', title: 'Failed.', description: 'Nope.' },
     });
@@ -520,9 +520,9 @@ describe('ErrorState retryVariant', () => {
     const { getByRole } = render(ErrorState, {
       props: { title: 'Failed', description: 'Nope.', onRetry: () => {} },
     });
-    expect(getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant')).toBe(
-      'primary',
-    );
+    expect(
+      getByRole('button', { name: 'Try again' }).classList.contains('button-variant-primary'),
+    ).toBe(true);
   });
 
   test('is secondary when a section of a page asks for it, and still calls onRetry', async () => {
@@ -536,7 +536,7 @@ describe('ErrorState retryVariant', () => {
       },
     });
     const button = getByRole('button', { name: 'Try again' });
-    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button.classList.contains('button-variant-secondary')).toBe(true);
     await fireEvent.click(button);
     expect(onRetry).toHaveBeenCalledTimes(1);
   });

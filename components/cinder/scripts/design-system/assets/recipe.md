@@ -15,7 +15,7 @@ A design canvas that cannot mount the bundle, or that is plain HTML, still uses 
 
 ## Rules
 
-- Variants and sizes are attributes, never extra classes: `data-cinder-variant="primary"`, `data-cinder-size="md"`. An attribute with no value, such as `data-cinder-selected`, is a flag.
+- Button and Select use modifier classes such as `button-variant-primary` and `select-size-medium`. Other controls may use `data-cinder-variant` and `data-cinder-size`. An attribute with no value, such as `data-cinder-selected`, is a flag.
 - Every id on the page is unique, and an `aria-labelledby` or `for` points at a real id.
 - Icons are Lucide glyphs drawn inline at 16px with `stroke="currentColor"`, hidden with `aria-hidden="true"`. The meaning belongs in the visible label or an `aria-label`.
 - Hidden text uses `class="cinder-sr-only"`.
@@ -27,18 +27,16 @@ A design canvas that cannot mount the bundle, or that is plain HTML, still uses 
 One labelled primary per screen. Variants: `primary`, `secondary`, `ghost`, `ghost-accent`, `soft`, `danger`, `soft-danger`, `ghost-danger`. Sizes: `xs`, `sm`, `md`, `lg`. A link that looks like a button is an `a` with the same class.
 
 ```html
-<button type="button" class="cinder-button" data-cinder-variant="primary" data-cinder-size="md">
+<button type="button" class="cinder-button button-variant-primary button-size-medium">
   Save changes
 </button>
-<button type="button" class="cinder-button" data-cinder-variant="secondary" data-cinder-size="md">
+<button type="button" class="cinder-button button-variant-secondary button-size-medium">
   Cancel
 </button>
-<a href="#" class="cinder-button" data-cinder-variant="ghost" data-cinder-size="md">View history</a>
+<a href="#" class="cinder-button button-variant-ghost button-size-medium">View history</a>
 <button
   type="button"
-  class="cinder-button"
-  data-cinder-variant="ghost"
-  data-cinder-size="md"
+  class="cinder-button button-variant-ghost button-size-medium"
   data-cinder-icon-only
   aria-label="Add a place"
 >
@@ -175,16 +173,14 @@ A field is a label, a control and an error node that is always present. The cont
 A Select is the native `select` with `appearance: none`, and Cinder draws its own chevron in the `cinder-select-field__chevron` span after it. Always include that span: it is the only caret, and without it the control has none. The browser's own caret never shows.
 
 ```html
-<div class="cinder-form-field cinder-select-field" data-cinder-variant="default">
+<div class="cinder-form-field cinder-select-field select-variant-default">
   <label id="area-label" for="area" class="cinder-form-field__label cinder-select-field__label"
     >Neighbourhood</label
   >
   <span class="cinder-select-field__control">
     <select
       id="area"
-      class="cinder-_input-frame cinder-select"
-      data-cinder-size="md"
-      data-cinder-variant="default"
+      class="cinder-_input-frame cinder-select select-size-medium select-variant-default"
     >
       <option value="lodo" selected>LoDo</option>
       <option value="rino">RiNo</option>
@@ -211,9 +207,7 @@ A Section separates content by space under a heading and draws no box. Reach for
       <p class="cinder-section__description">The last seven days.</p>
     </div>
     <div class="cinder-section__actions">
-      <a href="#" class="cinder-button" data-cinder-variant="ghost" data-cinder-size="sm"
-        >See all</a
-      >
+      <a href="#" class="cinder-button button-variant-ghost button-size-small">See all</a>
     </div>
   </div>
   <div class="cinder-section__content">Content goes here.</div>
@@ -332,9 +326,7 @@ At most one tinted box per screen. A neutral callout carries no tint. Variants: 
     <p>The kitchen last confirmed it in March.</p>
   </div>
   <div class="cinder-callout__action">
-    <a href="#" class="cinder-button" data-cinder-variant="secondary" data-cinder-size="sm"
-      >Ask the kitchen</a
-    >
+    <a href="#" class="cinder-button button-variant-secondary button-size-small">Ask the kitchen</a>
   </div>
 </aside>
 ```
@@ -357,7 +349,7 @@ A page-wide message, with its actions and an optional dismiss button. Variants a
     <span class="cinder-banner__text">Three places moved their start to 4 pm.</span>
   </div>
   <div class="cinder-banner__actions">
-    <a href="#" class="cinder-button" data-cinder-variant="secondary" data-cinder-size="sm"
+    <a href="#" class="cinder-button button-variant-secondary button-size-small"
       >See what changed</a
     >
   </div>
@@ -517,12 +509,7 @@ A button in a page header's actions is drawn at `xs`, as `PageHeader` does, with
     </header>
     <div class="cinder-drawer__body cinder-_scroll-fade" tabindex="-1">Content goes here.</div>
     <div class="cinder-drawer__footer">
-      <button
-        type="button"
-        class="cinder-button"
-        data-cinder-variant="primary"
-        data-cinder-size="md"
-      >
+      <button type="button" class="cinder-button button-variant-primary button-size-medium">
         Apply
       </button>
     </div>

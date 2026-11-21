@@ -222,9 +222,9 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     // The composer is the one blocked row, not a banner.
     // Chat keeps the conversation and replaces only the composer (COR-2285 V4).
     await expect(blockedRow(page)).toContainText('Connect a model provider');
-    await expect(
-      blockedRow(page).getByRole('button', { name: 'Connect provider' }),
-    ).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(blockedRow(page).getByRole('button', { name: 'Connect provider' })).toContainClass(
+      'button-variant-primary',
+    );
     await expect(page.locator('[data-chat-availability]')).toHaveCount(0);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -458,9 +458,9 @@ test.describe('Chat not found (frame g: 19u)', () => {
 
     await expect(page.getByText('It may have been deleted, or the link is wrong.')).toBeVisible();
     const create = page.getByRole('link', { name: 'New chat' }).last();
-    await expect(create).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(create).toContainClass('button-variant-primary');
     const back = page.getByRole('link', { name: 'Back to chats' });
-    await expect(back).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(back).toContainClass('button-variant-secondary');
     await expect(page.getByRole('button', { name: 'Search everything' }).last()).toBeVisible();
 
     // The state is centred in the pane that holds the conversation.

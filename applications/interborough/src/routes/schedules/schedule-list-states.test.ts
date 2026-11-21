@@ -116,7 +116,7 @@ const headerCreate = (container: HTMLElement): HTMLElement => {
   return button;
 };
 const primaryButtons = (container: HTMLElement): HTMLElement[] => [
-  ...container.querySelectorAll<HTMLElement>('button[data-cinder-variant="primary"]'),
+  ...container.querySelectorAll<HTMLElement>('button.button-variant-primary'),
 ];
 const toolbar = (container: HTMLElement): Element | null =>
   container.querySelector('[aria-label="Filter schedules"]');
@@ -133,7 +133,7 @@ describe('nothing scheduled yet (row 70p)', () => {
     expect(rows(container)).toHaveLength(0);
 
     // The header's "+" stays secondary, and the state's button is the only primary.
-    expect(headerCreate(container).getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(headerCreate(container).classList.contains('button-variant-secondary')).toBe(true);
     const primaries = primaryButtons(container);
     expect(primaries).toHaveLength(1);
     expect(primaries[0]?.textContent?.trim()).toBe('New schedule');
@@ -201,7 +201,7 @@ describe('filtered to nothing (rows 70q and 70r)', () => {
     expect(state.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
     expect(within(state).getAllByRole('button')).toHaveLength(1);
     const clear = within(state).getByRole('button', { name: 'Clear filters' });
-    expect(clear.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(clear.classList.contains('button-variant-secondary')).toBe(true);
     expect(primaryButtons(container)).toHaveLength(0);
 
     await fireEvent.click(clear);
@@ -376,7 +376,7 @@ describe('a first load that failed (row 70w)', () => {
     expect(primaries).toHaveLength(1);
     expect(primaries[0]?.textContent?.trim()).toBe('Try again');
     const create = headerCreate(container);
-    expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(create.classList.contains('button-variant-secondary')).toBe(true);
     expect(create.getAttribute('aria-disabled')).toBe('true');
     const reason = container.querySelector(`#${create.getAttribute('aria-describedby') ?? 'none'}`);
     expect(reason?.textContent).toBe(SCHEDULE_COPY.newActionOffReason);

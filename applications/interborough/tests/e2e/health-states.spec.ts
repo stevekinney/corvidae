@@ -424,7 +424,7 @@ test('a deployment with a remote worker that stopped answering lists it second, 
     'href',
     '/health/workers?worker=reports-worker',
   );
-  await expect(action(page, 1, 'View worker')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 1, 'View worker')).toContainClass('button-variant-secondary');
   await expect(attentionRows(page).nth(2)).toContainText('Storage is over its warning level');
   await expect(attentionRows(page).nth(3)).toContainText('Daily summary missed 4 runs');
   // The checks say the same four problems.
@@ -484,7 +484,7 @@ test('a hook whose last delivery failed adds a row second, after the provider', 
   await expect(hook).toContainText(
     'hooks.slack.com answered 410 Gone on its last try at 10:42 AM.',
   );
-  await expect(action(page, 1, 'View hook')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 1, 'View hook')).toContainClass('button-variant-secondary');
   await expect(action(page, 1, 'View hook')).toHaveAttribute('href', '/hooks/notify-slack');
   await captureForDesignReview(page, {
     route: '/health',
@@ -533,7 +533,7 @@ test('a hook that gave up counts like one whose last delivery failed, and sits l
   await expect(hook).toContainText(
     'Stopped after 8 tries on Oct 30. The URL may have been removed.',
   );
-  await expect(action(page, 3, 'View hook')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 3, 'View hook')).toContainClass('button-variant-secondary');
   await captureForDesignReview(page, { route: '/health', state: 'hook-gave-up', source: SOURCE });
   await checkA11y('health with a hook that gave up');
 });
@@ -577,9 +577,8 @@ test('a plugin that did not load adds a row with Open Plugins, and the count is 
     'href',
     '/settings/plugins',
   );
-  await expect(plugin.getByRole('link', { name: 'Open Plugins' })).toHaveAttribute(
-    'data-cinder-variant',
-    'secondary',
+  await expect(plugin.getByRole('link', { name: 'Open Plugins' })).toContainClass(
+    'button-variant-secondary',
   );
   await expect(
     attentionRows(page).filter({ hasText: 'Storage is over its warning level' }),

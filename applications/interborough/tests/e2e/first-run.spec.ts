@@ -62,17 +62,15 @@ for (const width of [375, 1280] as const) {
         'An agent is a model with instructions and tools. Create one, or add a plugin that provides some.',
       ),
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(page.getByRole('link', { name: 'New agent' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
       'href',
       '/agents/new',
     );
-    await expect(page.getByRole('link', { name: 'Browse agents' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(page.getByRole('link', { name: 'Browse agents' })).toContainClass(
+      'button-variant-secondary',
     );
     // There is nothing to send to, so no composer, and the checklist belongs to Home.
     await expect(page.getByRole('textbox')).toHaveCount(0);
@@ -150,12 +148,11 @@ for (const width of [375, 1280] as const) {
     // chat entry point reads (owner, 2026-11-19).
     await expect(steps.nth(2)).toContainText('Waits for step 1: connect a provider first.');
     // Step 1's button is the only primary one.
-    await expect(
-      homeChecklist(page).locator('.cinder-button[data-cinder-variant="primary"]'),
-    ).toHaveText(['Connect a provider']);
-    await expect(steps.nth(1).getByRole('link', { name: 'Create an agent' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(homeChecklist(page).locator('.cinder-button.button-variant-primary')).toHaveText([
+      'Connect a provider',
+    ]);
+    await expect(steps.nth(1).getByRole('link', { name: 'Create an agent' })).toContainClass(
+      'button-variant-secondary',
     );
     // No Assistant is listed here, so none is offered.
     await expect(steps.nth(1).getByRole('button', { name: 'Use Assistant' })).toHaveCount(0);
@@ -301,7 +298,7 @@ test('each step completes from its own signal, from connecting a provider to say
   await expect(homeSteps(page).nth(0)).toContainText('Anthropic is connected.');
   await expect(
     homeSteps(page).nth(1).getByRole('link', { name: 'Create an agent' }),
-  ).toHaveAttribute('data-cinder-variant', 'primary');
+  ).toContainClass('button-variant-primary');
   await expect(homeChecklist(page)).toHaveAttribute('data-chat-waits-on', 'needs-agent');
   await expect(homeSteps(page).nth(2)).toContainText('Waits for step 2: create an agent first.');
   await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
@@ -323,9 +320,8 @@ test('each step completes from its own signal, from connecting a provider to say
   await page.goto('/');
   await expect(homeSteps(page).nth(1)).toContainText(`${AGENT_NAME} is ready to use.`);
   await expect(homeChecklist(page)).not.toHaveAttribute('data-chat-waits-on', /.+/);
-  await expect(homeSteps(page).nth(2).getByRole('link', { name: 'Start a chat' })).toHaveAttribute(
-    'data-cinder-variant',
-    'primary',
+  await expect(homeSteps(page).nth(2).getByRole('link', { name: 'Start a chat' })).toContainClass(
+    'button-variant-primary',
   );
   await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
   await captureForDesignReview(page, {

@@ -255,7 +255,9 @@ describe('the trigger status on a workflow’s page', () => {
       retryAt: new Date(Date.now() + 60_000).toISOString(),
     });
     await section(container);
-    expect(getByRole('button', { name: copy.retry }).getAttribute('data-cinder-size')).toBe('xs');
+    expect(
+      getByRole('button', { name: copy.retry }).classList.contains('button-size-extra-small'),
+    ).toBe(true);
   });
 
   test('counts the next try down while the page is open', async () => {

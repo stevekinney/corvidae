@@ -245,7 +245,7 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     expect(modalCss).toMatch(
       /\[data-cinder-sheet='docked'\] \.cinder-modal__body \.cinder-input\.cinder-input\s*\{\s*min-height:\s*var\(--cinder-touch-target-min\);/,
     );
-    expect(modalCss).not.toMatch(/__footer \.cinder-button\[data-cinder-size\]/);
+    expect(modalCss).not.toMatch(/__footer\s+\.cinder-button:is\(\s*\.button-size-/);
     expect(modalCss).not.toMatch(/__footer > \*\s*\{\s*inline-size:\s*100%;/);
     expect(modalCss).toMatch(/env\(safe-area-inset-bottom\)/);
   });
