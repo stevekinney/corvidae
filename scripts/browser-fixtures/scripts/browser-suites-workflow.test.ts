@@ -46,7 +46,9 @@ describe('the browser suites workflow', () => {
     const interborough = jobText('interborough');
     expect(interborough).toContain('concurrency:\n');
     expect(interborough).toContain('matrix.shard == 1');
-    expect(interborough).toContain('github.event.pull_request.head.repo.full_name == github.repository');
+    expect(interborough).toContain(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    );
     expect(interborough).toContain('github.event.pull_request.head.sha');
     expect(interborough).toContain('github.event.pull_request.base.sha');
     expect(interborough).toContain("github.event_name == 'workflow_dispatch'");
