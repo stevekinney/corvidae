@@ -1,14 +1,14 @@
 {
   "issue": "COR-2542",
   "branch": "worktree-agent-a8024d4f41b6e06c6",
-  "checkedAt": "9ed6a9cddc84bbac7b06ac5e76967645fdea7402",
+  "checkedAt": "e69956d722e6aeef88728e25434c3f699e126316",
   "briefVersion": "eff9351798b3",
   "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "ui://inspectors/run-timeline/v1 in plugins/inspectors/src/plugin.ts; model.ts lays bars out with stepWaterfall from @lostgradient/interborough-plugin/step-waterfall; model.test.ts proves the rows equal stepWaterfall's bars and say status, duration and tries; timeline.test.ts renders them; focused checks exit 0 at 9ed6a9cddc."
+      "evidence": "ui://inspectors/run-timeline/v1 in plugins/inspectors/src/plugin.ts; model.ts lays bars out with stepWaterfall from @lostgradient/interborough-plugin/step-waterfall; model.test.ts proves the rows equal stepWaterfall's bars and say status, duration and tries; timeline.test.ts renders them; focused checks exit 0 at 9ed6a9cddc (code unchanged by the later merge)."
     },
     {
       "id": "AC2",
