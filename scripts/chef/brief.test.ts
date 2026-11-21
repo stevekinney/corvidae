@@ -713,6 +713,7 @@ describe('run', () => {
     expect(result.code).toBe(0);
     const parsed = JSON.parse(result.output) as { path: string };
     expect(parsed.path).toBe(join(sandbox, 'COR-7.md'));
+    expect(readFileSync(parsed.path, 'utf8')).toContain(`Starting base: \`${pinnedBase}\``);
     expect(readFileSync(parsed.path, 'utf8')).toContain('## Charter rules');
     expect(readFileSync(parsed.path, 'utf8')).toContain('## Open blockers\n\nNone');
   });

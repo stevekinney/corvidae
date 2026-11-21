@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2488",
+  "branch": "steve/cor-2488-concurrent-dispatch-receipts",
+  "checkedAt": "bced7295e9a947ed3e12290a6b64e909207cd917",
+  "briefVersion": "b00084f78407",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/src/core/engine/mid-operation-side-effects.test.ts proves two nested ctx.all calls with one key execute once and persist one completed receipt. packages/weft/src/core/engine/operations-activity.test.ts proves a relaunch with the same run token re-verifies an unfinished durable receipt and commits completion without dispatching again. The first durable sibling slot commits the shared receipt even while the original nested branch waits, including when storage commits but loses the acknowledgement. Redispatch uses the reconciled attempt token."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "packages/bureau/src/run-human-waits.test.ts proves a timeout-cleared stale review is removed and resolves as NOT_FOUND, not CONFLICT. A stale live catalog review is hidden even when the still-running store has no restored wait."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/src/core/engine/side-effect-capture.test.ts covers reuse under a new parent and confirms a closed inherited capture is replaced."
+    }
+  ]
+}

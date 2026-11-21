@@ -669,6 +669,7 @@ function filesAndRules(options: BriefOptions, issues: readonly IssueSummary[]): 
     (command) => `- \`${command}\``,
   );
   return [
+    ...(options.base === undefined ? [] : [`Starting base: \`${options.base}\``, '']),
     '## Files',
     '',
     ...(paths.length > 0
