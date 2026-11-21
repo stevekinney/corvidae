@@ -15,8 +15,12 @@ import { executeMemory } from './cli-memory.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
 import { liveInstanceUrl } from './instance-record.ts';
 import { worktreeHomeFor } from './worktree-instance.ts';
-/** Version of the CLI JSON envelope. */
-export const CLI_SCHEMA_VERSION = 1;
+/**
+ * Version of the CLI JSON envelope. Version 2 (COR-2519) changed `error.code` from `CLI_<exit
+ * status>` to the server's `FaultCode`, or a named `CLI_` code for an error the CLI raised itself,
+ * and added `error.exitCode` and `error.remediation`.
+ */
+export const CLI_SCHEMA_VERSION = 2;
 /** Default loopback management endpoint. */
 export const CLI_DEFAULT_URL = 'http://127.0.0.1:7234';
 
@@ -68,6 +72,38 @@ export type Parsed = {
   readonly url?: string;
 };
 type CliFailure = Error & { status?: number; usage?: boolean; exitCode?: CliExitCode };
+
+/**
+ * Every `error.code` the CLI raises itself, by the exit status it comes with. A fault the server
+ * raised reports its own `FaultCode` instead; one that carried none (an HTTP error from a host
+ * route) falls back to the code of its exit status. `CLI_CONNECTION_FAILED` is the only code whose
+ * `retryable` is `true`.
+ */
+export const CLI_LOCAL_ERROR_CODES = Object.freeze({
+  failed: 'CLI_FAILED',
+  usage: 'CLI_USAGE',
+  authorization: 'CLI_AUTHORIZATION',
+  conflict: 'CLI_CONFLICT',
+  inputRequired: 'CLI_INPUT_REQUIRED',
+  connectionFailed: 'CLI_CONNECTION_FAILED',
+  outcomeUnknown: 'CLI_OUTCOME_UNKNOWN',
+  interrupted: 'CLI_INTERRUPTED',
+} as const);
+
+/** A named code for an error the CLI raised itself. */
+export type CliLocalErrorCode = (typeof CLI_LOCAL_ERROR_CODES)[keyof typeof CLI_LOCAL_ERROR_CODES];
+
+const LOCAL_ERROR_CODE_BY_EXIT: Readonly<Record<Exclude<CliExitCode, 0>, CliLocalErrorCode>> =
+  Object.freeze({
+    1: CLI_LOCAL_ERROR_CODES.failed,
+    2: CLI_LOCAL_ERROR_CODES.usage,
+    3: CLI_LOCAL_ERROR_CODES.authorization,
+    4: CLI_LOCAL_ERROR_CODES.conflict,
+    5: CLI_LOCAL_ERROR_CODES.inputRequired,
+    6: CLI_LOCAL_ERROR_CODES.connectionFailed,
+    7: CLI_LOCAL_ERROR_CODES.outcomeUnknown,
+    130: CLI_LOCAL_ERROR_CODES.interrupted,
+  });
 
 /** Injectable process boundaries used by the command client. */
 export type CliClientDependencies = {
@@ -1098,9 +1134,8 @@ function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): 
   return Object.assign(new Error(message), properties);
 }
 
-function isCliExitCode(value: unknown): value is CliExitCode {
+function isCliFailureExitCode(value: unknown): value is Exclude<CliExitCode, 0> {
   return (
-    value === 0 ||
     value === 1 ||
     value === 2 ||
     value === 3 ||
@@ -1365,22 +1400,89 @@ async function execute(
   throw Object.assign(new Error(`Unsupported command: ${parsed.command}`), { usage: true });
 }
 
+/** What a failed command reports: the fault's own words when the server raised one. */
+type FailureDetails = {
+  readonly exitCode: Exclude<CliExitCode, 0>;
+  readonly message: string;
+  /** The server's `FaultCode`. */
+  readonly faultCode?: string;
+  readonly retryable?: boolean;
+  readonly remediation?: string;
+  /** The request never reached a server that answered. */
+  readonly connectionFailed?: boolean;
+  readonly identifiers?: unknown;
+};
+
+/**
+ * The result of a failed command. JSON and JSONL print `{ schemaVersion, error: { code, exitCode,
+ * message, retryable, remediation? }, identifiers? }` on stdout; `code` is the server's
+ * `FaultCode` or a `CLI_` code from {@link CLI_LOCAL_ERROR_CODES}. Text prints the message on
+ * stderr, then a `Try:` line when the server sent a remediation. Exit codes are not changed here.
+ */
+function failureResult(output: OutputFormat, details: FailureDetails): CliResult {
+  const { exitCode, message, remediation } = details;
+  const code =
+    details.faultCode ??
+    (exitCode === 7
+      ? CLI_LOCAL_ERROR_CODES.outcomeUnknown
+      : details.connectionFailed === true
+        ? CLI_LOCAL_ERROR_CODES.connectionFailed
+        : LOCAL_ERROR_CODE_BY_EXIT[exitCode]);
+  const rendered = {
+    schemaVersion: CLI_SCHEMA_VERSION,
+    error: {
+      code,
+      exitCode,
+      message,
+      retryable: details.retryable ?? code === CLI_LOCAL_ERROR_CODES.connectionFailed,
+      ...(remediation === undefined ? {} : { remediation }),
+    },
+    ...(isRecord(details.identifiers) ? { identifiers: details.identifiers } : {}),
+  };
+  return {
+    stdout: output === 'text' && exitCode !== 5 && exitCode !== 130 ? '' : JSON.stringify(rendered),
+    stderr:
+      output === 'text' && remediation !== undefined ? `${message}\nTry: ${remediation}` : message,
+    exitCode,
+  };
+}
+
+/** The `--output` a command line asks for, read before it parses, so a usage error can honor it. */
+function requestedOutput(arguments_: readonly string[]): OutputFormat {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index];
+    const value =
+      argument === '--output'
+        ? arguments_[index + 1]
+        : argument?.startsWith('--output=') === true
+          ? argument.slice('--output='.length)
+          : undefined;
+    if (value === 'json' || value === 'jsonl') return value;
+  }
+  return 'text';
+}
+
 /** Execute one command through the host HTTP APIs. */
 export async function executeCli(
   arguments_: readonly string[],
   dependencies: CliClientDependencies = {},
 ): Promise<CliResult> {
   const parsed = parse(arguments_);
-  if ('exitCode' in parsed) return parsed;
+  if ('exitCode' in parsed)
+    return parsed.exitCode === 0
+      ? parsed
+      : failureResult(requestedOutput(arguments_), {
+          exitCode: parsed.exitCode,
+          message: parsed.stderr,
+        });
   try {
     const result = await execute(parsed, dependencies);
     if (result.metadata?.['error'] !== undefined) {
       const error = result.metadata['error'];
-      return {
-        stdout: '',
-        stderr: typeof error === 'string' ? error : JSON.stringify(error),
+      return failureResult(parsed.output, {
         exitCode: 3,
-      };
+        message: typeof error === 'string' ? error : JSON.stringify(error),
+      });
     }
     return {
       stdout:
@@ -1433,9 +1535,9 @@ export async function executeCli(
           'delete',
           'test',
         ].includes(parsed.arguments[0] ?? ''));
-    const exitCode: CliExitCode = dependencies.signal?.aborted
+    const exitCode: Exclude<CliExitCode, 0> = dependencies.signal?.aborted
       ? 130
-      : isRecord(error) && isCliExitCode(error['exitCode'])
+      : isRecord(error) && isCliFailureExitCode(error['exitCode'])
         ? error['exitCode']
         : usageError
           ? 2
@@ -1449,20 +1551,15 @@ export async function executeCli(
                   ? 7
                   : 1;
     const message = error instanceof Error ? error.message : String(error);
-    const renderedFailure = {
-      schemaVersion: CLI_SCHEMA_VERSION,
-      error: { code: `CLI_${exitCode}`, message, retryable: exitCode === 6 },
-      ...(isRecord(error) && isRecord(error['identifiers'])
-        ? { identifiers: error['identifiers'] }
-        : {}),
-    };
-    return {
-      stdout:
-        parsed.output === 'text' && exitCode !== 5 && exitCode !== 130
-          ? ''
-          : JSON.stringify(renderedFailure),
-      stderr: message,
+    const fault = isRecord(error) ? error : {};
+    return failureResult(parsed.output, {
       exitCode,
-    };
+      message,
+      ...(typeof fault['faultCode'] === 'string' ? { faultCode: fault['faultCode'] } : {}),
+      ...(typeof fault['retryable'] === 'boolean' ? { retryable: fault['retryable'] } : {}),
+      ...(typeof fault['remediation'] === 'string' ? { remediation: fault['remediation'] } : {}),
+      ...(fault['connectionFailed'] === true ? { connectionFailed: true } : {}),
+      ...(isRecord(fault['identifiers']) ? { identifiers: fault['identifiers'] } : {}),
+    });
   }
 }

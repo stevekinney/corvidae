@@ -1,6 +1,20 @@
+import type { FaultCode } from '@lostgradient/backchannel';
+
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
-type CliFailure = Error & { status?: number; exitCode?: number };
+/**
+ * An error the transport raises. `faultCode`, `retryable` and `remediation` are the server's own
+ * words, read from a JSON-RPC `error.data` or a REST error body; `connectionFailed` marks a request
+ * that never reached a server that answered.
+ */
+type CliFailure = Error & {
+  status?: number;
+  exitCode?: number;
+  faultCode?: FaultCode;
+  retryable?: boolean;
+  remediation?: string;
+  connectionFailed?: boolean;
+};
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -39,6 +53,30 @@ function redactCredentials(target: CliTarget, message: string): string {
     (redacted, credential) => redacted.split(credential).join('[redacted]'),
     message,
   );
+}
+
+/**
+ * What a server fault says about itself, read from a JSON-RPC `error.data` or a REST error body:
+ * `weftCode` is the coarse `FaultCode` only on JSON-RPC (a REST body carries the fine-grained
+ * `WeftErrorCode` there), so the code is read only when `faultCodeSource` says it is one.
+ */
+function faultFields(
+  target: CliTarget,
+  source: Record<string, unknown> | undefined,
+  faultCodeSource: boolean,
+): Partial<CliFailure> {
+  if (source === undefined) return {};
+  const weftCode = source['weftCode'];
+  const remediation = source['remediation'];
+  return {
+    ...(faultCodeSource && typeof weftCode === 'string' && weftCode !== ''
+      ? { faultCode: weftCode as FaultCode }
+      : {}),
+    ...(typeof source['retryable'] === 'boolean' ? { retryable: source['retryable'] } : {}),
+    ...(typeof remediation === 'string' && remediation !== ''
+      ? { remediation: redactCredentials(target, remediation) }
+      : {}),
+  };
 }
 
 function assertManagementBoundary(target: CliTarget, path: string): void {
@@ -85,6 +123,7 @@ export async function request(
     } catch (error) {
       if (isMutation(init?.method) && error instanceof DOMException && error.name === 'AbortError')
         throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
+      if (error instanceof TypeError) throw Object.assign(error, { connectionFailed: true });
       throw error;
     }
     const text = await response.text();
@@ -109,7 +148,10 @@ export async function request(
         isRecord(body) && typeof body['message'] === 'string'
           ? redactCredentials(target, body['message'])
           : `HTTP ${response.status}`,
-        { status: response.status },
+        {
+          status: response.status,
+          ...faultFields(target, isRecord(body) ? body : undefined, false),
+        },
       );
     if (isRecord(body) && isRecord(body['error'])) {
       const rpcError = body['error'];
@@ -121,6 +163,7 @@ export async function request(
       const data = isRecord(rpcError['data']) ? rpcError['data'] : undefined;
       const httpStatus = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : undefined;
       throw makeCliFailure(message, {
+        ...faultFields(target, data, true),
         ...(httpStatus === undefined ? {} : { status: httpStatus }),
         ...(httpStatus === undefined && (code === -32601 || code === -32602)
           ? { status: 400 }

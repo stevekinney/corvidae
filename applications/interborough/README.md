@@ -10,6 +10,31 @@ The installed `interborough` executable exposes its command registry in `src/hos
 
 Every command accepts `--help`; other flags are command-specific and are listed by `interborough <command> --help`, including a runnable example for the command and each accepted flag. The registry coverage test requires every listed command and flag to have help, example, and completion metadata, and the operation coverage map requires every catalog operation to name its concrete CLI action or an explicit Host/Bureau/Weft exclusion reason. The output is data-only, so scripts can consume the same contract without parsing prose.
 
+### Command errors
+
+Every JSON envelope carries `schemaVersion`, which is `2` (COR-2519). A failed command prints this on stdout under `--output json` and `--output jsonl` (one line), and the exit status says the same thing the shell sees:
+
+```json
+{
+  "schemaVersion": 2,
+  "error": {
+    "code": "Conflict",
+    "exitCode": 4,
+    "message": "The workflow changed under you.",
+    "retryable": false,
+    "remediation": "Re-read the workflow, then send the new revision."
+  }
+}
+```
+
+- `code`: the server's `FaultCode` (`NotFound`, `Conflict`, `Unavailable`, and the rest of Backchannel's closed list) when the server raised the fault. For an error the CLI raised itself, or an HTTP error from a host route that carried no fault, it is one of these named codes: `CLI_USAGE` (bad arguments, exit 2), `CLI_AUTHORIZATION` (exit 3), `CLI_CONFLICT` (exit 4), `CLI_INPUT_REQUIRED` (a prompt was needed and input is off, exit 5), `CLI_CONNECTION_FAILED` (no connection, or the request timed out, exit 1 or 6), `CLI_OUTCOME_UNKNOWN` (a mutation may or may not have happened, exit 7), `CLI_INTERRUPTED` (exit 130) and `CLI_FAILED` (any other failure, exit 1). Before version 2 `code` was `CLI_<exit status>`.
+- `exitCode`: the process exit status, which is unchanged. A script that branches on it keeps working.
+- `retryable`: the server's own value for a server fault, `true` only when repeating the identical call later can succeed. For an error raised in the CLI it is `true` only for `CLI_CONNECTION_FAILED`.
+- `remediation`: one line saying what to do next, present only when the server sent one. Text output prints the message on stderr, then a `Try:` line with it.
+- `identifiers`: beside `error`, present only for a command that has them to report, such as the pending interrupts of a chat run.
+
+Two golden files, `src/host/__fixtures__/cli-error-golden/server-fault.json` and `local-error.json`, pin the JSON error for one server fault and one local error.
+
 ## Running it
 
 Run every command from the repository root.

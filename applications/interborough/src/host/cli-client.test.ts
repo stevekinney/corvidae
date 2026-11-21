@@ -291,7 +291,7 @@ describe('Interborough command client', () => {
     );
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       data: {
         deployment: { identity: 'deployment-1', capability: 'available' },
         reachability: { reachable: true },
