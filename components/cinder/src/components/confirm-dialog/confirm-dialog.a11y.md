@@ -65,7 +65,7 @@ On open, supporting screen readers announce:
 2. The accessible name (from `aria-labelledby`, the title).
 3. When `description` is provided: the description text (from `aria-describedby`).
 
-While `pending`, the skeleton's `pendingLabel` is announced once as a status and nothing describes the dialog. The failure region is mounted before any failure and is a live alert, so a failure that arrives, including one that carries an `errorAction`, is announced. Cancel stays enabled in both states. When `errorAction` removes the confirm button that held focus, the dialog's own focus trap keeps focus inside the dialog; a page that wants it somewhere specific (the action, or the refreshed description) moves it itself.
+While `pending`, the skeleton's `pendingLabel` is announced once as a status and nothing describes the dialog. The failure region is mounted before any failure and is a live alert, so a failure that arrives, including one that carries an `errorAction`, is announced. Cancel stays enabled in both states. `errorAction` removes the confirm button while the failure shows; if that button held focus, the page decides where focus goes (the action in the callout, or the refreshed description), because the dialog does not move it.
 
 ## Label Guidelines
 

@@ -21,6 +21,8 @@ export const BULK_PURGE_COPY = {
     /** The first sentence: what happens, to how many, and that it cannot be reversed. */
     lead: (matched: number): string =>
       `Permanently deletes ${finishedWorkflows(matched)} matching this filter. This can't be undone.`,
+    /** The disabled confirm button while the count is in flight: no number to name yet. */
+    confirmWhileCounting: 'Purge',
     /** Under the lead: what a purge leaves alone. */
     kept: 'Workflows still running, or still running their cleanup step, are kept.',
     /** Above the ids the server named. */

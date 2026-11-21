@@ -11,8 +11,10 @@ import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
  * Default focus lands on the **cancel** button (`autofocus`) — the industry-standard
  * guard against accidental destructive confirms.
  *
- * For richer body content (markup, lists, multi-paragraph text), compose `<Modal>` +
- * `<Button>` directly. `aria-describedby` works best with short, plain-text descriptions.
+ * A list, a short note, or one or two labelled controls that change what the confirmation does go
+ * in `options`. For richer body content (a long form, several sections, multi-paragraph text),
+ * compose `<Modal>` + `<Button>` directly. `aria-describedby` works best with short, plain-text
+ * descriptions.
  */
 /** The action {@link ConfirmDialogProps.errorAction} offers in the failure callout. */
 type ConfirmDialogErrorAction = {

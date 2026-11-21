@@ -73,6 +73,8 @@
     readonly details?: Snippet<[BulkOperationDryRunResult]>;
     /** Said while the dry run is in flight. */
     readonly loadingLabel?: string;
+    /** The confirm button's label while there is no count to name yet. Defaults to "<Verb> workflows". */
+    readonly loadingConfirmLabel?: string;
     /** Said while the commit is in flight. */
     readonly committingNote?: string;
     /**
@@ -104,6 +106,7 @@
     lead,
     details,
     loadingLabel = 'Checking how many workflows match',
+    loadingConfirmLabel,
     committingNote = "Please keep this open until it finishes. Closing this doesn't cancel the server operation — it will keep running.",
     staleNotice,
     commitFailureNote,
@@ -276,7 +279,7 @@
     phase === 'params'
       ? 'Continue'
       : phase === 'loading'
-        ? `${verbLabel} workflows`
+        ? (loadingConfirmLabel ?? `${verbLabel} workflows`)
         : `${verbLabel} ${countLabel}`,
   );
 </script>

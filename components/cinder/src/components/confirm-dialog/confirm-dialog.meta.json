@@ -10,7 +10,7 @@
   ],
   "avoidWhen": [
     {
-      "reason": "Collecting structured input or multiple fields — compose a modal with form controls instead."
+      "reason": "Collecting a long form of many fields or sections — compose a modal with form controls instead. One or two labelled controls that change what the confirmation does belong in options."
     },
     { "reason": "Announcing a non-blocking result — use toast-region or banner." }
   ],

@@ -84,6 +84,7 @@
   {lead}
   {details}
   loadingLabel={BULK_PURGE_COPY.loading}
+  loadingConfirmLabel={BULK_PURGE_COPY.preview.confirmWhileCounting}
   committingNote={BULK_PURGE_COPY.committing}
   staleNotice={BULK_PURGE_COPY.stale}
   commitFailureNote={BULK_PURGE_COPY.failed.refreshNote}

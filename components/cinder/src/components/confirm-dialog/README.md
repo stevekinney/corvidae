@@ -27,7 +27,7 @@ The key distinction between ConfirmDialog and AlertDialog is _who initiates_ the
 
 ## Choosing something else
 
-- When the dialog body needs rich content beyond a list and a note (a form, several sections, markup around controls) — compose [`Modal`](../modal/README.md) directly instead. A plain list or a short note goes in `options`; see [A list or a note in `options`](#a-list-or-a-note-in-options).
+- When the dialog body needs rich content beyond a list, a note and a few labelled controls (a long form of many fields, several sections, markup around controls) — compose [`Modal`](../modal/README.md) directly instead. A plain list, a short note, or one or two labelled controls that change what the confirmation does (a checkbox, a reason field) go in `options`; see [A list or a note in `options`](#a-list-or-a-note-in-options).
 - When more than two actions are needed — use [`Modal`](../modal/README.md) with a custom `footer` snippet.
 - When the dialog is triggered by a system event or out-of-band condition requiring mandatory acknowledgement — use [`AlertDialog`](../alert-dialog/README.md) instead.
 - Non-blocking notifications — use a toast or inline alert that does not interrupt the flow.

@@ -48,7 +48,7 @@ describe('BulkPurgeDialog', () => {
     await waitFor(() => {
       expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
     });
-    // Irreversibility is in the lead sentence, at body size, not in a footnote.
+    // Irreversibility is in the lead sentence, the dialog's description, not in a footnote.
     expect(
       getByText(
         "Permanently deletes 47 finished workflows matching this filter. This can't be undone.",
@@ -357,7 +357,6 @@ describe('BulkPurgeDialog', () => {
   });
 
   test('while the preview loads or refreshes the footer keeps a live Cancel and a disabled Purge, and focus stays inside the dialog', async () => {
-    // The disabled button reads "Purge workflows" while there is no count to name yet.
     let dryRunCalls = 0;
     let closed = 0;
     let release: (value: BulkOperationDryRunResult) => void = () => {};
@@ -404,10 +403,7 @@ describe('BulkPurgeDialog', () => {
       expect(queryByRole('button', { name: 'Refresh preview' }) === null).toBe(true);
     });
     // Loading again: the footer is still there, Cancel works and Purge cannot be pressed.
-    const purge = requireElement(
-      getByRole('button', { name: 'Purge workflows' }),
-      HTMLButtonElement,
-    );
+    const purge = requireElement(getByRole('button', { name: 'Purge' }), HTMLButtonElement);
     expect(purge.disabled).toBe(true);
     const cancel = requireElement(getByRole('button', { name: 'Cancel' }), HTMLButtonElement);
     expect(cancel.disabled).toBe(false);
