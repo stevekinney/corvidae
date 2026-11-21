@@ -6,7 +6,11 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '@lostgradient/storage';
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
@@ -16,7 +20,7 @@ import { decode } from '../codec.ts';
 import { isParallelOperationCacheEntry } from '../context/parallel-cache-entry.ts';
 import { activity, workflow, type ActivityContext, type WorkflowContext } from '../types.ts';
 import { asyncActivityWorkflowPrefix } from './async-activity-records.ts';
-import { Engine } from './index.ts';
+import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from './index.ts';
 
 /** Whether slot `index` of the run's committed `ctx.all` entry is fulfilled. */
 async function hasCommittedSlot(storage: MemoryStorage, id: string, index: number) {
@@ -38,6 +42,33 @@ async function crashedCopy(storage: MemoryStorage): Promise<MemoryStorage> {
 async function statusOf(engine: Engine, id: string): Promise<string | undefined> {
   const state = await engine.get(id);
   return state?.status;
+}
+
+/** Applies the receipt with its first consuming checkpoint, then loses the acknowledgement. */
+class LostReceiptAcknowledgement extends MemoryStorage {
+  lostAcknowledgement = false;
+
+  override async conditionalBatch(
+    conditions: ConditionalBatchCondition[],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    const stored = await super.conditionalBatch(conditions, operations);
+    if (
+      stored &&
+      !this.lostAcknowledgement &&
+      operations.some((operation) => operation.key === KEYS.checkpoint('shared-first-consumer')) &&
+      operations.some(
+        (operation) =>
+          operation.type === 'put' &&
+          operation.key.startsWith(KEYS.activityReconciliationPrefix('shared-first-consumer')) &&
+          (decode(operation.value) as { status: string }).status === 'completed',
+      )
+    ) {
+      this.lostAcknowledgement = true;
+      throw new Error('success acknowledgement lost');
+    }
+    return stored;
+  }
 }
 
 describe('a ctx.all slot committed while a sibling waits carries its branch`s staged effects', () => {
@@ -122,6 +153,94 @@ describe('a ctx.all slot committed while a sibling waits carries its branch`s st
     await recovered.signal(id, 'go', 'went');
     expect(await handle!.result()).toEqual(['charged', 'went']);
     expect(charges).toBe(1);
+  });
+
+  for (const loss of [false, true]) {
+    it(`commits a shared keyed receipt when its first consumer settles outside the waiting nested branch (acknowledgement lost: ${loss})`, async () => {
+      const id = 'shared-first-consumer';
+      let executions = 0;
+      const charge = activity({
+        name: 'charge',
+        idempotencyKey: () => 'once',
+        execute: () => {
+          executions += 1;
+          return 'charged';
+        },
+      });
+      const definition = workflow({ name: id })
+        .activities({ charge })
+        .execute(async function* (ctx: WorkflowContext) {
+          return yield* ctx.all([
+            ctx.all([ctx.run(charge), ctx.waitForSignal('go')]),
+            ctx.run(charge),
+          ]);
+        });
+      const storage = loss ? new LostReceiptAcknowledgement() : new MemoryStorage();
+      let crashed: MemoryStorage;
+      {
+        await using original = new Engine({ storage });
+        original.register(definition);
+        const originalHandle = await original.start(id, null, { id });
+        await waitUntil(async () => hasCommittedSlot(storage, id, 1), {
+          message: 'the independent consumer to commit its slot',
+        });
+        expect(await hasCommittedSlot(storage, id, 0)).toBe(false);
+        crashed = await crashedCopy(storage);
+        if (storage instanceof LostReceiptAcknowledgement)
+          expect(storage.lostAcknowledgement).toBe(true);
+        await original.signal(id, 'go', 'went');
+        expect(await originalHandle.result()).toEqual([['charged', 'went'], 'charged']);
+      }
+      const receipts = [...crashed.snapshot()].filter(([key]) =>
+        key.startsWith(KEYS.activityReconciliationPrefix(id)),
+      );
+      expect(receipts.map(([, bytes]) => decode(bytes))).toMatchObject([
+        { status: 'completed', result: 'charged' },
+      ]);
+
+      await using recovered = new Engine({ storage: crashed });
+      recovered.register(definition);
+      const [handle] = await recovered.recoverAll();
+      await recovered.signal(id, 'go', 'went');
+      expect(await handle!.result()).toEqual([['charged', 'went'], 'charged']);
+      expect(executions).toBe(1);
+    });
+  }
+
+  it('shares a keyed activity receipt between concurrent calls in a nested ctx.all', async () => {
+    const id = 'nested-concurrent-receipt-run';
+    let executions = 0;
+    const charge = activity({
+      name: 'charge',
+      idempotencyKey: () => 'charge-1',
+      execute: () => {
+        executions += 1;
+        return 'charged';
+      },
+    });
+    const storage = new MemoryStorage();
+    await using engine = new Engine({ storage });
+    engine.register(
+      workflow({ name: 'nested-concurrent-receipt' })
+        .activities({ charge })
+        .execute(async function* (ctx: WorkflowContext) {
+          return yield* ctx.all([
+            ctx.all([ctx.run(charge), ctx.run(charge)]),
+            ctx.waitForSignal<string>('go'),
+          ]);
+        }),
+    );
+
+    const handle = await engine.start('nested-concurrent-receipt', null, { id });
+    await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](id);
+    await handle.signal('go', 'continued');
+
+    expect(await handle.result()).toEqual([['charged', 'charged'], 'continued']);
+    expect(executions).toBe(1);
+    const receipts = [...storage.snapshot()]
+      .filter(([key]) => key.startsWith(KEYS.activityReconciliationPrefix(id)))
+      .map(([, value]) => decode(value) as { status: string });
+    expect(receipts).toEqual([expect.objectContaining({ status: 'completed' })]);
   });
 
   it('never parks an async activity in a branch, so no resolution record is retired by a mid-operation commit', async () => {

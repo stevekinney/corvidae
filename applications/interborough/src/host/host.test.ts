@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { serveComposedJsonRpc } from './composed-json-rpc.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { deriveStartOverrideSigningSecret, startHost, type Host } from './host.ts';
 
@@ -322,6 +323,34 @@ describe('the relay to Weft’s server', () => {
     expect(answers.map((answer) => answer.id)).toEqual(['agents', 'storage', 'who']);
     for (const answer of answers) expect(answer.error).toBeUndefined();
     expect(answers[0]?.result).toHaveProperty('agents');
+  });
+
+  test('keeps earlier batch answers when the relay refuses a later call', async () => {
+    const response = await serveComposedJsonRpc(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        body: JSON.stringify([
+          { jsonrpc: '2.0', id: 'agents', method: 'bureau.agents.list' },
+          { jsonrpc: '2.0', id: 7, method: 'weft.storage.capabilities' },
+        ]),
+      }),
+      {
+        bureauMethods: new Set(['bureau.agents.list']),
+        authorizeEngine: async () => undefined,
+        refuseBureau: async () => undefined,
+        bureau: async () => Response.json({ jsonrpc: '2.0', id: 'agents', result: { agents: [] } }),
+        relay: async () => new Response('Bad Gateway', { status: 502 }),
+      },
+    );
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual([
+      { jsonrpc: '2.0', id: 'agents', result: { agents: [] } },
+      {
+        jsonrpc: '2.0',
+        id: 7,
+        error: { code: -32603, message: 'Upstream request refused', data: { status: 502 } },
+      },
+    ]);
   });
 
   test('derives the signing secret from the key without echoing it', () => {
