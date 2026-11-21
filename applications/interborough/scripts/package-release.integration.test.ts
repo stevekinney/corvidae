@@ -220,7 +220,7 @@ test('rehearses only a main push that changes the npm workflow', async () => {
   expect(releaseWorkflow).toContain(
     '  push:\n    branches: [main]\n    paths: [.github/workflows/interborough-npm-release.yml]',
   );
-  expect(releaseWorkflow).toContain("SOURCE_SHA: ${{ inputs.source_sha || github.sha }}");
+  expect(releaseWorkflow).toContain('SOURCE_SHA: ${{ inputs.source_sha || github.sha }}');
   expect(releaseWorkflow).toContain("VERSION: ${{ inputs.version || '0.0.0-candidate.0' }}");
   expect(releaseWorkflow).toContain(
     "PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",

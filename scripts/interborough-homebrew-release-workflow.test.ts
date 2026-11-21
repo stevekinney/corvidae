@@ -20,10 +20,14 @@ describe('Interborough Homebrew release workflow', () => {
   });
 
   test('rehearses only a main push that changes this workflow', () => {
-    expect(workflow).toContain('  push:\n    branches: [main]\n    paths: [.github/workflows/interborough-homebrew-release.yml]');
-    expect(workflow).toContain("SOURCE_SHA: ${{ inputs.source_sha || github.sha }}");
+    expect(workflow).toContain(
+      '  push:\n    branches: [main]\n    paths: [.github/workflows/interborough-homebrew-release.yml]',
+    );
+    expect(workflow).toContain('SOURCE_SHA: ${{ inputs.source_sha || github.sha }}');
     expect(workflow).toContain("VERSION: ${{ inputs.version || '0.0.0-candidate.0' }}");
-    expect(workflow).toContain("PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}");
+    expect(workflow).toContain(
+      "PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
+    );
     expect(workflow).toContain('version: ${{ steps.release-inputs.outputs.version }}');
   });
 
