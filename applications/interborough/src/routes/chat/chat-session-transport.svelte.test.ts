@@ -238,7 +238,7 @@ test('repairing a discarded refresh keeps the failed local message available to 
     }
     if (url !== `${AG_UI_PATH}/agents/assistant/run` || init?.method !== 'POST')
       return new Response('', { status: 404 });
-    submissions.push(String(init.body));
+    submissions.push(await new Response(init.body).text());
     if (submissions.length === 1) throw new TypeError('The network dropped the request');
     return sse([started, ...reply, finished]);
   });
