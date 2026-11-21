@@ -69,9 +69,9 @@
   }
 
   /* As a sheet the actions row takes Modal's one docked footer rule (modal.css): a compact Cancel
-   * and the confirmation filling the rest. */
-  * The one exception to its "a lone action fills the row", for a failure that carries its own
-   * action, is in modal.css beside the rule (`data-cinder-fault-only`). */
+   * and the confirmation filling the rest. The one exception to its "a lone action fills the row",
+   * for a failure that carries its own action, is in modal.css beside the rule
+   * (`data-cinder-fault-only`). */
 
   /* What each choice does: a checkbox, or the command about to run. */
   .cinder-confirm-dialog__options {
