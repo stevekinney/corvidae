@@ -93,13 +93,17 @@ function emptied(result: JsonRecord, method: string): JsonRecord {
   return next;
 }
 
-/** Makes every list the host answers empty. */
-async function emptyEveryList(page: Page): Promise<void> {
+/** Empties the lists while leaving a usable agent for a new chat on the empty Chat page. */
+async function emptyEveryList(page: Page, view: string): Promise<void> {
   await page.route(isBureauCall, async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
     const method = body.method ?? '';
     const lists = method.endsWith('.list') || method === 'bureau.agents.catalog';
-    if (!method.startsWith('bureau.') || !lists) {
+    if (
+      !method.startsWith('bureau.') ||
+      !lists ||
+      (view === 'chat' && method === 'bureau.agents.list')
+    ) {
       await route.fallback();
       return;
     }
@@ -125,7 +129,7 @@ async function openEmpty(
 ): Promise<void> {
   await page.emulateMedia({ colorScheme: theme });
   await page.setViewportSize({ width, height: width === 1920 ? 1080 : 900 });
-  await emptyEveryList(page);
+  await emptyEveryList(page, list.view);
   await page.goto(new URL(list.path, list.host).toString());
   await expect(page.locator(`main [data-list-empty="${list.view}"]`)).toBeVisible();
 }
@@ -156,20 +160,20 @@ for (const list of LIST_PAGES) {
         const main = page.locator('main');
         const state = main.locator(`[data-list-empty="${list.view}"]`);
 
-        // The header stays, with its create action as a labelled primary button.
+        // The heading stays. Chat puts its one action in the state, where it follows readiness.
         await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
+        const header = main.locator('.cinder-page-header');
         if (list.create !== null) {
-          const header = main.locator('.cinder-page-header');
-          const create = header.locator('.cinder-button').filter({ hasText: list.create });
+          const actionOwner = list.view === 'chat' ? state : header;
+          const create = actionOwner.locator('.cinder-button').filter({ hasText: list.create });
           await expect(create).toBeVisible();
           await expect(create).toHaveText(list.create);
           await expect(create).toContainClass('button-variant-primary');
           await expect(create).not.toHaveAttribute('data-cinder-icon-only', /.*/);
         }
         if (list.view === 'chat') {
-          await expect(main.locator('.cinder-page-header')).toContainText(
-            CHAT_COPY.list.description,
-          );
+          await expect(header).toContainText(CHAT_COPY.list.description);
+          await expect(header.getByRole('link', { name: CHAT_COPY.newChat })).toHaveCount(0);
           await expect(main.getByRole('region', { name: 'Open chat' })).toHaveCount(0);
           const { outlet, action } = await readBoxes(page, {
             outlet: main,

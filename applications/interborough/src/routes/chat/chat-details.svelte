@@ -1,23 +1,27 @@
 <script lang="ts">
   /**
-   * What the last breadcrumb of an open chat opens (board ChatPage frame b): the session (its whole
-   * identifier, with a button that copies it), the agent (a link, its identifier small and in
-   * monospace), when the chat started and was last active, and an "As run" group of what the chat
-   * ran with, in display names with the model's identifier small beside it.
+   * What the last breadcrumb of an open chat opens (board ChatPage frame b; owner review
+   * 2026-11-19): a compact list of the agent (a link, by name alone), when the chat started (and,
+   * on a row of its own, when it was last active, only when that differs), and the chat's settings
+   * by display name, the effort saying what it resolves to. Under the list a quiet "Copy session ID"
+   * action copies the session's identifier; the identifier itself is never a headline row.
    *
-   * It is plain data in and markup out: the page reads the session, the agent's models and the
-   * clock, and hands this what to say. A fact the page has not read yet is left out of the list
-   * rather than guessed, so the popover of a chat that could not be read still names the session and
-   * its agent.
+   * It is plain data in and markup out, except for the agent's definition, read only to say which
+   * effort an unset one resolves to. A fact the page has not read yet is left out of the list rather
+   * than guessed, so the popover of a chat that could not be read still names the agent and copies
+   * the session.
    */
-  import { CopyButton, DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
+  import { CopyButton } from '@lostgradient/cinder';
+  import { createQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import type { Effort, PermissionMode } from '../../lib/bureau-client.ts';
   import { dayAndTime, clockTime, calendarDay } from '../../lib/format/clock.ts';
+  import { queryKeys } from '../../lib/query.ts';
 
   interface ChatDetailsProps {
-    /** The session's identifier, shown whole. */
+    /** The session's identifier, which the quiet action at the bottom copies. */
     sessionId: string;
     /** The agent's identifier, as the address and the Bureau name it. */
     agent: string;
@@ -34,8 +38,8 @@
     /** The time the page is reading, in epoch milliseconds, which decides what "Today" means. */
     now: number;
     /**
-     * What the chat ran with. `undefined` until the session has been read, which leaves the "As run"
-     * group out; `model` is `null` when neither the chat nor its agent names one.
+     * What the chat runs with. `undefined` until the session has been read, which leaves the
+     * settings out; `model` is `null` when neither the chat nor its agent names one.
      */
     asRun?:
       | {
@@ -61,78 +65,90 @@
   const COPY = CHAT_COPY.details;
   const SETTINGS = CHAT_COPY.settings;
 
-  /** "Today, 10:30 AM, last active 10:45 AM", with the day named again when the chat moved on a later day. */
-  const started = $derived.by((): string | undefined => {
-    if (startedAt === null) return undefined;
-    const begun = dayAndTime(startedAt, now);
-    if (lastActiveAt === null) return begun;
-    const sameDay = calendarDay(lastActiveAt) === calendarDay(startedAt);
-    const active = sameDay ? clockTime(lastActiveAt) : dayAndTime(lastActiveAt, now);
-    return `${begun}, ${COPY.lastActive(active)}`;
+  // The agent's own effort, read only when the chat left its effort unset.
+  const definition = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.definition(agent),
+      queryFn: ({ signal }) => getAgentDefinition(agent, { signal }),
+      enabled: asRun !== undefined && asRun.effort === null,
+      retry: false,
+    }),
+    undefined,
+  );
+
+  const effortLabel = (effort: Effort | null | undefined): string | undefined =>
+    SETTINGS.effortOptions.find((option) => option.value === effort)?.label;
+
+  /** "Medium", or for an unset effort what it resolves to: "Medium, the agent's default". */
+  const effort = $derived.by((): string => {
+    const own = effortLabel(asRun?.effort);
+    if (own !== undefined) return own;
+    const data = definition.data;
+    if (data === undefined || data.definition === null) return COPY.unknownEffort;
+    const agentOwn = effortLabel(data.definition.effort);
+    return agentOwn === undefined ? COPY.modelEffort : COPY.agentEffort(agentOwn);
   });
 
-  const sessionItems = $derived<DescriptionListItem[]>([
-    { id: 'session', term: COPY.sessionId, definition: sessionValue },
-    { id: 'agent', term: COPY.agent, definition: agentValue },
-    ...(started === undefined ? [] : [{ id: 'started', term: COPY.started, definition: started }]),
-  ]);
+  /** "Today, 10:30 AM". */
+  const started = $derived(startedAt === null ? undefined : dayAndTime(startedAt, now));
 
-  const asRunItems = $derived<DescriptionListItem[]>(
-    asRun === undefined
-      ? []
-      : [
-          { id: 'model', term: COPY.model, definition: modelValue },
-          {
-            id: 'effort',
-            term: COPY.effort,
-            definition:
-              SETTINGS.effortOptions.find((option) => option.value === asRun.effort)?.label ??
-              SETTINGS.agentDefault,
-          },
-          {
-            id: 'permissions',
-            term: COPY.permissions,
-            definition:
-              SETTINGS.permissionOptions.find((option) => option.value === asRun.permissionMode)
-                ?.label ?? asRun.permissionMode,
-          },
-        ],
-  );
+  /**
+   * When the chat last changed, on a row of its own, or `undefined` when it is unreadable or reads
+   * the same as the start (the same minute): the day is named again only when it is a later day.
+   */
+  const lastActive = $derived.by((): string | undefined => {
+    if (startedAt === null || lastActiveAt === null) return undefined;
+    const sameDay = calendarDay(lastActiveAt) === calendarDay(startedAt);
+    if (sameDay && clockTime(lastActiveAt) === clockTime(startedAt)) return undefined;
+    return sameDay ? clockTime(lastActiveAt) : dayAndTime(lastActiveAt, now);
+  });
 </script>
 
-{#snippet sessionValue()}
-  <span class="weft-chat-details__identifier">
-    <code class="ib-identifier" data-testid="chat-details-session">{sessionId}</code>
-    <CopyButton
-      value={sessionId}
-      label={COPY.copySessionId}
-      copiedLabel={`${COPY.sessionId} copied`}
-    />
-  </span>
-{/snippet}
-
-{#snippet agentValue()}
-  <a class="weft-chat-details__agent" href={agentHref} onclick={onOpenAgent}>{agentLabel}</a>
-  <code class="ib-identifier weft-chat-details__small">{agent}</code>
-{/snippet}
-
-{#snippet modelValue()}
-  {#if asRun?.model}
-    {asRun.model.displayName}
-    {#if asRun.model.displayName !== asRun.model.model}
-      <code class="ib-identifier weft-chat-details__small">{asRun.model.model}</code>
-    {/if}
-  {:else}
-    {SETTINGS.agentDefault}
-  {/if}
-{/snippet}
-
 <div class="weft-chat-details" data-testid="chat-details">
-  <DescriptionList items={sessionItems} variant="two-column" />
-  {#if asRunItems.length > 0}
-    <section class="weft-chat-details__group" aria-labelledby="weft-chat-details-as-run">
-      <h3 class="weft-chat-details__heading" id="weft-chat-details-as-run">{COPY.asRun}</h3>
-      <DescriptionList items={asRunItems} variant="two-column" />
-    </section>
+  <dl class="weft-chat-details__list">
+    <div class="weft-chat-details__row">
+      <dt>{COPY.agent}</dt>
+      <dd>
+        <a class="weft-chat-details__agent" href={agentHref} onclick={onOpenAgent}>{agentLabel}</a>
+      </dd>
+    </div>
+    {#if started !== undefined}
+      <div class="weft-chat-details__row">
+        <dt>{COPY.started}</dt>
+        <dd>{started}</dd>
+      </div>
+    {/if}
+    {#if lastActive !== undefined}
+      <div class="weft-chat-details__row">
+        <dt>{COPY.lastActive}</dt>
+        <dd>{lastActive}</dd>
+      </div>
+    {/if}
+  </dl>
+  {#if asRun !== undefined}
+    <!-- What the chat runs with, as plain settings under a quiet rule, with no heading. -->
+    <dl class="weft-chat-details__list" data-testid="chat-details-settings">
+      <div class="weft-chat-details__row">
+        <dt>{COPY.model}</dt>
+        <dd>{asRun.model?.displayName ?? SETTINGS.agentDefault}</dd>
+      </div>
+      <div class="weft-chat-details__row">
+        <dt>{COPY.effort}</dt>
+        <dd>{effort}</dd>
+      </div>
+      <div class="weft-chat-details__row">
+        <dt>{COPY.permissions}</dt>
+        <dd>
+          {SETTINGS.permissionOptions.find((option) => option.value === asRun.permissionMode)
+            ?.label ?? asRun.permissionMode}
+        </dd>
+      </div>
+    </dl>
   {/if}
+  <div class="weft-chat-details__actions">
+    <CopyButton value={sessionId} label={COPY.copySessionId} copiedLabel={COPY.sessionIdCopied}>
+      {COPY.copySessionId}
+      {#snippet confirmation()}{COPY.sessionIdCopied}{/snippet}
+    </CopyButton>
+  </div>
 </div>

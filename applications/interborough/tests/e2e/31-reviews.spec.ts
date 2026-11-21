@@ -15,6 +15,7 @@ import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-sup
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
 import {
+  approveReview,
   bureauCall,
   taskOfSession,
   threadMessages,
@@ -261,7 +262,7 @@ test.describe('a tool approval', () => {
     await expect(page.locator('main').getByLabel('Live', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Workflow reviews', { exact: true })).toHaveCount(0);
     await checkA11y('a tool approval in the inbox');
-    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(page));
 
     await expect(rowOf(page, review)).toHaveCount(0);
     // The row going is not the evidence: the tool ran, and its result is in the conversation.
@@ -300,7 +301,17 @@ test.describe('a tool approval', () => {
 
     await note.fill('');
     await paneOf(page).getByRole('heading', { level: 2 }).click();
+    const risk = await paneOf(page)
+      .locator('[data-cinder-layout="row"]')
+      .getAttribute('data-cinder-risk');
     await page.keyboard.press('a');
+    if (risk === 'high') {
+      await expect(rowOf(page, approved.review)).toBeVisible();
+      await expect(
+        paneOf(page).getByRole('button', { name: 'Press again to approve' }),
+      ).toBeVisible();
+      await page.keyboard.press('a');
+    }
     await expect(rowOf(page, approved.review)).toHaveCount(0);
     await expect
       .poll(async () => refundRan(await threadMessages(request, approved.threadId)))
@@ -470,7 +481,7 @@ test.describe('a tool approval', () => {
     request,
   }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-inbox-first');
-    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(page));
     await expect(rowOf(page, review)).toHaveCount(0);
 
     // A chat opened afterwards reads the conversation the decision wrote into.
@@ -503,7 +514,7 @@ test.describe('a tool approval', () => {
 
     const inbox = await context.newPage();
     await inbox.goto(inboxAt(review));
-    await paneOf(inbox).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(inbox));
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
     // The page that was already open reads the decision within five seconds.
@@ -551,7 +562,7 @@ test.describe('a decision made in the inbox', () => {
 
     const inbox = await context.newPage();
     await inbox.goto(inboxAt(review));
-    await paneOf(inbox).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(inbox));
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);

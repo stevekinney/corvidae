@@ -71,6 +71,13 @@ function rows(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[data-review-row]')];
 }
 
+async function approveRefund(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+): Promise<void> {
+  await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+  await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
+}
+
 /** Opens the row at `index`, as a click on it does. */
 async function openRow(container: HTMLElement, index: number): Promise<void> {
   const row = rows(container)[index];
@@ -254,7 +261,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -272,7 +279,7 @@ describe('deciding a Bureau tool approval', () => {
     await fireEvent.click(
       await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
     );
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -290,7 +297,7 @@ describe('deciding a Bureau tool approval', () => {
     await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: '  Go ahead, but only this once.  ' },
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -311,7 +318,7 @@ describe('deciding a Bureau tool approval', () => {
     await fireEvent.click(
       await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
     );
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -352,7 +359,7 @@ describe('deciding a Bureau tool approval', () => {
     await fireEvent.click(
       await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
     );
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(REVIEWS_COPY.notRemembered.title);
   });
 
@@ -411,7 +418,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole } = open({ reviews: [APPROVAL, QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(2));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(rows(container).length).toBe(1));
     await findByRole('textbox', { name: /your answer/i });
     expect(router.search.get('review')).toBe(`bureau:${QUESTION.id}`);
@@ -435,7 +442,7 @@ describe('deciding a Bureau tool approval', () => {
     stub?.on('bureau.reviews.resolve', () => {
       throw new Error('The Bureau broke.');
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
     expect(rows(container).length).toBe(1);
     expect(container.textContent).not.toMatch(/Nothing (?:was refunded|changed)/);
@@ -472,9 +479,32 @@ describe('the keys that act on the open review', () => {
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
     press('a');
+    await findByRole('button', { name: 'Press again to approve' });
+    expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
+    press('a');
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toMatchObject({
       id: APPROVAL.id,
+      decision: 'approve',
+    });
+  });
+
+  test('A approves a reversible request in one press', async () => {
+    const reversibleApproval = toolApprovalFixture({
+      approval: {
+        ...APPROVAL.approval,
+        action: { type: 'approval', message: 'Look up this order?', risk: 'medium' },
+      },
+    });
+    const { container, findByRole, queryByText } = open({ reviews: [reversibleApproval] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await findByRole('heading', { name: 'Look up this order?' });
+    expect(queryByText("Can't be undone.")).toBeNull();
+    press('a');
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
+    expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toMatchObject({
+      id: reversibleApproval.id,
       decision: 'approve',
     });
   });
@@ -672,7 +702,7 @@ describe('a decision that took effect', () => {
       writeFails(world, decided.id);
       const reads = stub.callsTo('bureau.reviews.list').length;
 
-      await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+      await approveRefund(findByRole);
 
       // The refetch drops the decided review, and the warning is still on the page.
       await waitFor(() => expect(rows(container).length).toBe(others));
@@ -696,7 +726,7 @@ describe('a decision that took effect', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     writeFails(world, decided.id);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(REVIEWS_COPY.outcomeNotWritten.title);
 
     await fireEvent.click(await findByRole('button', { name: /dismiss/i }));
@@ -714,7 +744,7 @@ describe('a decision that took effect', () => {
         reason: 'Another resolver won.',
       });
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
   });
 });
@@ -739,7 +769,7 @@ describe('what became of a decision', () => {
     stub?.on('bureau.reviews.resolve', () => {
       throw new Error('The Bureau broke.');
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
 
     // The other review, opened, carries no trace of the first one's failure.
@@ -763,7 +793,7 @@ describe('a decision the Bureau gated again', () => {
       decision: 'approve',
       receipt: 'superseded',
     }));
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(REVIEWS_COPY.superseded);
     expect(rows(container).length).toBe(1);
   });
@@ -775,7 +805,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
     const { container, findByRole } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: approval.id,
@@ -796,7 +826,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
     });
     const reads = stub?.callsTo('bureau.reviews.list').length ?? 0;
 
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
 
     await findByText(new RegExp(REVIEWS_COPY.roundChanged.title));
     expect(container.textContent).toContain(REVIEWS_COPY.roundChanged.message);

@@ -157,6 +157,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-responsive.spec.ts',
   'tests/e2e/chat-tool-call-turn.spec.ts',
   'tests/e2e/chat-states.spec.ts',
+  // The owner's Always approval with no arguments at three widths in both themes, and a refused
+  // decision on one no longer waiting (COR-2438).
+  'tests/e2e/chat-approval-wide.spec.ts',
   'tests/e2e/chat-new.spec.ts',
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',

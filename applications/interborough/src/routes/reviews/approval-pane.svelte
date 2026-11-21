@@ -15,6 +15,8 @@
     type ApprovalState,
   } from '@lostgradient/cinder';
 
+  import { getConnection } from '../../app/connection.svelte.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
@@ -36,7 +38,7 @@
     readonly deciding: 'approve' | 'deny' | undefined;
     /** What became of the last decision, when it was not simply recorded. */
     readonly outcome: ReviewOutcome | undefined;
-    readonly onDecide: (decision: 'approve' | 'deny' | 'remember') => void;
+    readonly onDecide: (resolution: ApprovalResolution) => void;
   }
 
   let { review, note = $bindable(''), deciding, outcome, onDecide }: ApprovalPaneProps = $props();
@@ -52,16 +54,16 @@
     superseded: 'unavailable',
   } satisfies Record<BureauToolApproval['status'], ApprovalState>;
   const principalStore = getPrincipalStore();
+  const connection = getConnection();
   const waiting = $derived(review.status === 'pending');
+  const toolLabel = $derived(humanizeIdentifier(review.approval.toolName, { casing: 'sentence' }));
   const question = $derived(
     approvalQuestion({
-      toolName: review.approval.toolName,
+      toolName: toolLabel,
       arguments: review.approval.arguments,
       summary: declaredSummary(review.approval.action.message, review.approval.reason),
     }),
   );
-  /** The tool as a person says it ("Issue refund"), beside its identifier. */
-  const toolLabel = $derived(humanizeIdentifier(review.approval.toolName, { casing: 'sentence' }));
   /**
    * Whether the tool asks on every call (its mode is Always), which allowing it for the rest of the
    * chat would not change, so the choice is not offered.
@@ -94,7 +96,8 @@
   const resolution = $derived(review.resolution);
   const optionalCardProps = $derived({
     ...(action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
-    ...(alwaysAsks ? {} : { rememberScope: 'the rest of this chat' }),
+    ...(alwaysAsks ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }),
+    ...(connection.unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
     ...(deciding === undefined ? {} : { resolving: deciding }),
     ...(outcome?.tone === 'danger'
       ? { failure: { summary: outcome.title, detail: outcome.message } }
@@ -112,11 +115,6 @@
     ...(review.status === 'rejected' ? { outcomeLabel: REVIEWS_COPY.decided.rejected } : {}),
     ...(closedNotice === undefined ? {} : { notice: closedNotice }),
   } satisfies Partial<ApprovalCardProps>);
-
-  function decide(choice: ApprovalResolution): void {
-    if (choice.decision === 'deny') onDecide('deny');
-    if (choice.decision === 'approve') onDecide(choice.remember ? 'remember' : 'approve');
-  }
 </script>
 
 <div data-kind="tool-approval" data-review={review.id}>
@@ -144,7 +142,7 @@
     bind:reason={note}
     noteInitiallyOpen
     {...optionalCardProps}
-    onResolve={decide}
+    onResolve={onDecide}
   />
   {#if outcome !== undefined && outcome.tone !== 'danger'}
     <Alert variant={outcome.tone}>

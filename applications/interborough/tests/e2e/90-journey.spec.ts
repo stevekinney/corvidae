@@ -296,15 +296,11 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
 
   await expect(conversation(page).getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
-  // The call is a row of the tool rail, named for a person; its identifier is the tooltip drawn
-  // beside the row, which shows only on hover or focus.
+  // The tool rail names the workflow action in words.
   await expect(
     conversation(page)
-      .getByRole('tooltip', { includeHidden: true })
-      .filter({ hasText: /workflows-create/ })
-      .first()
-      .locator('xpath=..')
       .locator('[data-cinder-tool-call-row]')
+      .filter({ hasText: /Create workflow|Workflows create/i })
       .first(),
   ).toBeVisible();
   // The agent wrote the file, which the Bureau reports as an agent-authored workflow of its own.

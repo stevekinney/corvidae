@@ -104,6 +104,7 @@
     decidedBy,
     decidedAt,
     decisionNote,
+    draftNote = $bindable(),
     disabledReason,
     unavailableReason,
     resolving,
@@ -639,6 +640,8 @@
       {outcomeTone}
       {decisionNote}
       {decisionNoteCaption}
+      {draftNote}
+      onDraftNoteChange={(value) => (draftNote = value)}
       {disabledReason}
       {unavailableReason}
       {resolving}
@@ -818,6 +821,7 @@
           idBase={rootId}
           requestKey={idempotencyKey}
           toolName={tool.label ?? tool.name}
+          irreversible={tool.irreversible === true}
           {rememberScope}
           bind:reason
           {noteInitiallyOpen}

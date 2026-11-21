@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
+  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import { default as JsonEditor } from '../json-editor/index.ts';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
@@ -19,6 +20,8 @@
     requestKey: string;
     /** The tool's name as the approver reads it, written in the checkbox label. */
     toolName: string;
+    /** Whether approving requires a second press. */
+    irreversible?: boolean;
     /** The checkbox's scope ("the rest of this chat"), or `undefined` when the tool never offers it. */
     rememberScope: string | undefined;
     /** A host-owned decision note. */
@@ -42,6 +45,7 @@
     idBase,
     requestKey,
     toolName,
+    irreversible = false,
     rememberScope,
     reason = $bindable(''),
     noteInitiallyOpen = false,
@@ -56,6 +60,7 @@
   const reasonId = $derived(`${idBase}-resolution-reason`);
   const disabledReasonId = $derived(`${idBase}-disabled-reason`);
   const editRegionId = $derived(`${idBase}-edit-region`);
+  const armHintId = $derived(`${idBase}-arm-hint`);
 
   // The note waits behind "Add note"; once opened it stays open, so a typed note never hides.
   let noteOpen = $state(false);
@@ -63,6 +68,7 @@
     if (noteInitiallyOpen) noteOpen = true;
   });
   let rememberResolution = $state(false);
+  let approvalArmed = $state(false);
   let editingArguments = $state(false);
   let editedArgumentsText = $state('');
 
@@ -182,13 +188,17 @@
       <Button
         type="button"
         variant="secondary"
+        data-cinder-approval-deny
         mutating
         disabled={isBusy && resolving !== 'deny'}
         aria-disabled={disabledReason === undefined ? undefined : 'true'}
         loading={resolving === 'deny'}
         loadingStatus="Denying…"
         aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-        onclick={() => emitResolution('deny')}
+        onclick={() => {
+          approvalArmed = false;
+          emitResolution('deny');
+        }}
       >
         {resolving === 'deny' ? 'Denying…' : 'Deny'}
       </Button>
@@ -205,19 +215,40 @@
           Approve with edits
         </Button>
       {/if}
-      <Button
-        type="button"
-        variant="primary"
-        mutating
-        disabled={isBusy && resolving !== 'approve'}
-        aria-disabled={disabledReason === undefined ? undefined : 'true'}
-        loading={resolving === 'approve'}
-        loadingStatus="Approving…"
-        aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-        onclick={() => emitResolution('approve')}
-      >
-        {resolving === 'approve' ? 'Approving…' : 'Approve'}
-      </Button>
+      {#if irreversible}
+        <InlineConfirm
+          presentation="two-press"
+          bind:armed={approvalArmed}
+          confirmLabel="Approve"
+          armedHint="Reverts in 3 seconds."
+          armedEscapeHint="Escape cancels."
+          {requestKey}
+          mutating
+          disabled={isBusy}
+          blocked={disabledReason !== undefined}
+          loading={resolving === 'approve'}
+          loadingLabel="Approving…"
+          ariaDescribedBy={disabledReason === undefined ? armHintId : disabledReasonId}
+          hintClass="cinder-approval-card__arm-hint"
+          hintId={armHintId}
+          onConfirm={() => emitResolution('approve')}
+        />
+      {:else}
+        <Button
+          type="button"
+          variant="primary"
+          data-cinder-approval-approve
+          mutating
+          disabled={isBusy && resolving !== 'approve'}
+          aria-disabled={disabledReason === undefined ? undefined : 'true'}
+          loading={resolving === 'approve'}
+          loadingStatus="Approving…"
+          aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
+          onclick={() => emitResolution('approve')}
+        >
+          {resolving === 'approve' ? 'Approving…' : 'Approve'}
+        </Button>
+      {/if}
     </div>
   </div>
   {#if editingArguments && canEditArguments}

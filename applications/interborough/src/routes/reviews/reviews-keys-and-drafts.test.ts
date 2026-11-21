@@ -172,15 +172,22 @@ describe('a draft stays with the review it was typed on', () => {
 });
 
 describe('a key never decides a review the person has not seen', () => {
+  // These cases isolate the shortcut guard from the irreversible approval's confirmation.
+  const approval = {
+    ...toolApprovalFixture().approval,
+    action: { type: 'approval', risk: 'medium', operation: { kind: 'other' } },
+  } as const;
   const first = toolApprovalFixture({
     id: 'approval:run-1:call-1',
     runId: 'run-1',
     requestedAt: OLDER,
+    approval,
   });
   const second = toolApprovalFixture({
     id: 'approval:run-2:call-2',
     runId: 'run-2',
     requestedAt: NEWER,
+    approval,
   });
 
   test('a held key decides once at most, and not on its repeats', async () => {

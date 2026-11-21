@@ -25,21 +25,53 @@
   align-self: flex-start;
 }
 
-/* The details popover of an open chat (the last breadcrumb): the session, its agent, when it
- * started, and an "As run" group of what it ran with. */
+/* The details popover of an open chat (the last breadcrumb): a compact list as wide as its content
+ * (at most 360px), a muted label beside each value in the body colour at the compact list pitch,
+ * then the quiet Copy session ID action. Every control sits inside the popover's padding. */
 .weft-chat-details {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-3);
-  /* Wide enough that the terms sit beside their values: Cinder's list stacks them under 28rem. */
-  min-inline-size: min(32rem, calc(100vw - 4rem));
+  gap: var(--cinder-space-2);
+  inline-size: max-content;
+  /* At most 360px, and never wider than the screen less the popover's 8px margins and 12px padding
+   * a side. Not a percentage of the popover: the popover sizes to its content where it was first
+   * placed, so at 375 it shrank to the room right of the title and the Copy button ran past the
+   * screen's edge (to 398) instead of the popover moving left to fit (COR-2438, 16a and 16g). */
+  max-inline-size: min(22.5rem, calc(100vw - 2.5rem));
+  min-inline-size: 0;
   font-size: var(--cinder-text-sm);
 }
 
-.weft-chat-details__identifier {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--cinder-space-1);
+.weft-chat-details__list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--cinder-space-4);
+  row-gap: var(--cinder-space-1);
+  margin: 0;
+}
+
+/* The settings follow under a quiet rule, with no heading of their own. */
+.weft-chat-details__list + .weft-chat-details__list {
+  padding-block-start: var(--cinder-space-2);
+  border-block-start: 1px solid var(--cinder-border-muted);
+}
+
+.weft-chat-details__row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+}
+
+.weft-chat-details__row dt {
+  color: var(--cinder-text-muted);
+  font-weight: var(--cinder-font-normal);
+}
+
+.weft-chat-details__row dd {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--cinder-text-default);
   overflow-wrap: anywhere;
 }
 
@@ -48,81 +80,34 @@
   text-decoration: none;
 }
 
-.weft-chat-details__small {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-xs);
-}
-
-.weft-chat-details__group {
+.weft-chat-details__actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-2);
-  padding-block-start: var(--cinder-space-3);
-  border-block-start: 1px solid var(--cinder-border-muted);
+  min-inline-size: 0;
+  padding-block-start: var(--cinder-space-1);
 }
 
-.weft-chat-details__heading {
-  margin: 0;
-  padding-inline: var(--cinder-space-3);
-  font-size: var(--cinder-text-sm);
-  font-weight: 600;
-}
-
-/* The composer's context meter: a short bar and its percentage, on the control row beside Send. */
+/* The chat's one context meter (COR-2438): a ghost button on the composer's control row beside
+ * Send, holding a short bar and its percentage, which opens the breakdown. */
 .weft-context-meter {
-  display: inline-flex;
-  align-items: center;
   gap: var(--cinder-space-2);
   color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
+/* The bar carries Cinder's contrast rule (`border.contrast`, the edge of an indicator with no other
+ * boundary) as an outline around the Meter, so its edge clears the 3:1 a graphic needs against the
+ * composer in both themes and an empty window still reads as a meter: the inset fill alone was a
+ * near-black bar on a near-black ground in the dark theme. */
 .weft-context-meter__bar {
+  display: flex;
   inline-size: 2.25rem;
+  border-radius: var(--cinder-radius-full);
+  outline: 1px solid var(--cinder-border-contrast);
 }
 
 .weft-context-meter__unavailable {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-xs);
-}
-
-/* The context window's ring: a button with a ring and a reading. */
-.weft-context-ring {
-  gap: var(--cinder-space-2);
-}
-
-.weft-context-ring__svg {
-  inline-size: 1.25rem;
-  block-size: 1.25rem;
-  flex: none;
-}
-
-.weft-context-ring__track,
-.weft-context-ring__fill {
-  fill: none;
-  stroke-width: 3;
-}
-
-.weft-context-ring__track {
-  stroke: var(--cinder-border-muted);
-}
-
-.weft-context-ring__fill {
-  stroke: var(--cinder-accent-solid);
-}
-
-.weft-context-ring[data-tone='warning'] .weft-context-ring__fill {
-  stroke: var(--cinder-status-warning-indicator);
-}
-
-.weft-context-ring[data-tone='danger'] .weft-context-ring__fill {
-  stroke: var(--cinder-status-danger-solid);
-}
-
-.weft-context-ring__unavailable {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
 }
 
 .weft-context-window {
@@ -203,6 +188,57 @@
   padding-inline: max(var(--_ib-chat-inset), calc((100% - 47.5rem) / 2 + var(--_ib-chat-inset)));
 }
 
+/* No box around the header: one quiet rule under the band, edge to edge of the conversation pane,
+ * never inset with the column (COR-2438). A new chat's empty band draws none. */
+.weft-chat-head:has(*) {
+  border-block-end: 1px solid var(--cinder-border-muted);
+}
+
+.weft-chat-heading__reserved-status {
+  visibility: hidden;
+}
+
+/* The errors of the conversation lie over its top, directly under the header band, in the same
+ * column at the same inset. They are not in the band, whose height is the transcript's top inset,
+ * so an error that appears or goes moves no message and not the composer (COR-2438). Only the
+ * alerts themselves take the pointer; the transcript under the empty layer stays usable. */
+.weft-chat-alerts {
+  --_ib-chat-inset: var(--cinder-space-4);
+
+  position: absolute;
+  inset-block-start: var(--weft-chat-head-block-size, 0px);
+  inset-inline: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  box-sizing: border-box;
+  padding-inline: max(var(--_ib-chat-inset), calc((100% - 47.5rem) / 2 + var(--_ib-chat-inset)));
+  pointer-events: none;
+}
+
+.weft-chat-alerts:empty {
+  display: none;
+}
+
+.weft-chat-alerts > * {
+  pointer-events: auto;
+  box-shadow: var(--cinder-shadow-md);
+}
+
+/* Leave the centered transcript date and the latest message readable beneath the header. */
+.weft-chat-alerts > .weft-chat-alerts__decision {
+  align-self: start;
+  max-inline-size: min(100%, 21rem);
+  padding-block: var(--cinder-space-1);
+}
+
+@container weft-chat-route (max-width: 480px) {
+  .weft-chat-alerts {
+    --_ib-chat-inset: var(--cinder-space-3);
+  }
+}
+
 /* The loading placeholder for the heading stays in the flow above the conversation, where the real
  * header will be laid over it, so nothing moves under it while the chat loads. */
 .weft-chat-head.ib-chat-unavailable__heading {
@@ -217,6 +253,17 @@
 @container weft-chat-route (max-width: 480px) {
   .weft-chat-head {
     --_ib-chat-inset: var(--cinder-space-3);
+  }
+}
+
+/* On compact phones the breadcrumb already names the conversation. Keep the heading available
+ * to assistive technology and leave the visible band to the status and actions. */
+@media (max-width: 360px) {
+  .weft-chat-heading h1 {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    clip-path: inset(50%);
   }
 }
 
@@ -237,9 +284,6 @@
   gap: var(--cinder-space-2-5);
   min-inline-size: 0;
   padding: var(--cinder-space-3) var(--cinder-space-3-5);
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-raised);
 }
 
 .weft-chat-question__prompt,
@@ -356,6 +400,25 @@
   block-size: max(28rem, 100%);
   min-inline-size: 0;
   overflow: hidden;
+}
+
+/* A new chat that cannot work yet: why, and the missing step, centred where the composer would be. */
+.weft-chat-not-ready {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-block-size: 0;
+  padding: var(--cinder-space-6) var(--cinder-space-4);
+}
+
+/* With chats listed and none open, the pane says so quietly, centred, with no disc and no action. */
+.ib-chats__no-chat {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
 }
 
 /* The pane's header is ListDetail's column: the title and "+", then the search field and the status

@@ -78,10 +78,11 @@ import {
   validateDeliveryApproval,
   validateDeliveryCiEvidence,
   validateDeliveryVerification,
+  withDeliveryAuthorityFences,
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
-import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
+import { readExecutionSnapshot } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { describeVerified, type MainRunReader } from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
@@ -699,9 +700,9 @@ export async function mergeGate(
       lockPollIntervalMs: snapshot.lockPollIntervalMs,
     },
     () =>
-      withProviderTransitionLock(
+      withDeliveryAuthorityFences(
         partial.verification?.state ?? loaded.state,
-        loaded.request.authority.resource,
+        loaded.request,
         async () =>
           (await recoverPullRequestMerge(snapshot, partial, loaded)) ??
           mergeGateCore(snapshot, partial),

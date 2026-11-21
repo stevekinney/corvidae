@@ -1415,6 +1415,35 @@ describe('ApprovalCard card layout anatomy', () => {
 });
 
 describe('ApprovalCard row layout', () => {
+  // COR-2438: the owner's approval of a read-only tool with no arguments, from "Smoke tester",
+  // read "Discover agents bureau__discover-agents", then Reads, Approval from Smoke tester and
+  // 12 min ago with a middle dot between each, over "Input  Text Empty".
+  for (const argsPreview of [{}, '', undefined]) {
+    test(`a call with no arguments (${JSON.stringify(argsPreview) ?? 'undefined'}) draws no Input, no dot and no raw identifier`, () => {
+      const { container, queryByRole } = render(ApprovalCard, {
+        props: approvalCardProps({
+          layout: 'row',
+          question: 'Run Discover agents?',
+          tool: { name: 'bureau__discover-agents', label: 'Discover agents', risk: 'low' },
+          source: 'Smoke tester',
+          requestedAt: Date.now() - 12 * 60_000,
+          operation: { kind: 'other', argsPreview },
+        }),
+      });
+
+      expect(queryByRole('group', { name: 'Input' })).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__input')).toBeNull();
+      const text = container.textContent ?? '';
+      expect(text).not.toContain(String.fromCodePoint(0xb7));
+      expect(text).not.toContain('Empty');
+      expect(text).not.toContain('bureau__discover-agents');
+      expect(container.querySelector('code')).toBeNull();
+      expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
+        'Discover agents Reads Approval from Smoke tester 12 min ago',
+      );
+    });
+  }
+
   test('mounts when two argument keys humanize to the same label', () => {
     const { container } = render(ApprovalCard, {
       props: refundRow({
@@ -1803,7 +1832,13 @@ describe('ApprovalCard row layout', () => {
     test(`the ${layout} layout keeps its note closed behind Add note, beside Deny, and focuses it on open`, async () => {
       const onResolve = mock((_resolution: unknown) => undefined);
       const view = render(ApprovalCard, { props: refundRow({ layout, onResolve }) });
-      const noteLabel = layout === 'row' || layout === 'decision' ? 'Note' : 'Note Optional';
+      const noteLabels = {
+        row: 'Note Optional',
+        card: 'Note Optional',
+        detail: 'Note (optional)',
+        decision: 'Note',
+      };
+      const noteLabel = noteLabels[layout];
 
       expect(view.queryByRole('textbox', { name: /note/i })).toBeNull();
       expect(view.container.textContent).not.toContain('(optional)');
@@ -1834,11 +1869,11 @@ describe('ApprovalCard row layout', () => {
     const { getByLabelText, getByRole, getByText, queryByLabelText } = render(ApprovalCard, {
       props: refundRow({ onResolve }),
     });
-    expect(queryByLabelText('Note')).toBeNull();
+    expect(queryByLabelText('Note Optional')).toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Add note' }));
 
-    const field = requiredInstance(getByLabelText('Note'), HTMLTextAreaElement);
+    const field = requiredInstance(getByLabelText('Note Optional'), HTMLTextAreaElement);
     expect(field.placeholder).toBe('Add a note for the agent or the record');
     expect(
       getByText('Saved with your decision. If you deny, the agent reads it as the reason.'),
@@ -1865,18 +1900,18 @@ describe('ApprovalCard row layout', () => {
     });
     const view = render(ApprovalCard, { props });
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(view.getByLabelText('Note'), {
+    await fireEvent.input(view.getByLabelText('Note Optional'), {
       target: { value: 'Draft for the first.' },
     });
     await fireEvent.click(view.getByRole('checkbox'));
 
     await view.rerender({ ...props, consequence: 'Sends it back' });
-    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
       'Draft for the first.',
     );
 
     await view.rerender({ ...props, idempotencyKey: 'two' });
-    expect(view.queryByLabelText('Note')).toBeNull();
+    expect(view.queryByLabelText('Note Optional')).toBeNull();
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
   });
 
@@ -2239,7 +2274,8 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         expect(getByRole('article').getAttribute('data-cinder-state')).toBe('pending');
 
         await fireEvent.click(getByRole('button', { name: 'Approve' }));
-        if (layout === 'row') {
+        if (layout === 'row' || layout === 'detail') {
+          expect(onResolve).not.toHaveBeenCalled();
           await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
         }
         expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });

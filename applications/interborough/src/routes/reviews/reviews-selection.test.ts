@@ -69,6 +69,13 @@ function rows(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[data-review-row]')];
 }
 
+async function approveRefund(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+): Promise<void> {
+  await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+  await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
+}
+
 /** The key of the row that holds focus, or `null` when focus is on no row. */
 function focusedRowKey(): string | null {
   return (
@@ -151,7 +158,7 @@ describe('the segments', () => {
     await findByRole('radio', { name: /^Done\s*,\s*1$/ });
 
     await fireEvent.click(rows(container)[0]!);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByRole('radio', { name: /^Waiting\s*,\s*1$/ });
     await findByRole('radio', { name: /^Done\s*,\s*2$/ });
   });
@@ -163,7 +170,7 @@ describe('deciding a review', () => {
     const { container, findByLabelText, findByRole, findByTestId } = open({
       reviews: [APPROVAL, QUESTION],
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     await findByLabelText('Your answer');
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -190,7 +197,7 @@ describe('deciding a review', () => {
   test('is not announced as a review that is no longer waiting', async () => {
     measuredAt(1200);
     const { container, findByRole, queryByTestId } = open({ reviews: [APPROVAL, QUESTION] });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     expect(queryByTestId('review-gone')).toBeNull();
     expect(container.textContent).not.toContain(REVIEWS_COPY.noLongerWaiting.message);

@@ -156,6 +156,7 @@ describe('the count in the navigation', () => {
 
     await openFirst(container);
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1);
   });

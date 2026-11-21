@@ -107,6 +107,38 @@ describe('an approval in the chat', () => {
     ).not.toBeNull();
   });
 
+  // COR-2438: a tool that wrote no summary is asked about with the policy's reason as the message,
+  // while the row the call is parked on says something else, so the reason became the title and
+  // the mode it names went unread.
+  test('of a tool with no summary asks Run with the tool name, never the policy reason, and offers no grant for Always', async () => {
+    const reason = 'Tool "issue-refund" (dangerous tier) requires approval (mode: always).';
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
+      (url, init) => {
+        const served = approvalRun(url, init);
+        if (served === undefined || !url.includes('/agents/')) return served;
+        return served.text().then(
+          (body) =>
+            new Response(body.replace('"Refund order-1001?"', JSON.stringify(reason)), {
+              headers: { 'content-type': 'text/event-stream' },
+            }),
+        );
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByRole, queryByRole } = mount();
+
+    await askForApproval(container);
+
+    const heading = await findByRole('heading', { name: /\?$/, level: 4 });
+    expect(heading.textContent?.trim()).toBe('Run Issue refund with cents 4200?');
+    expect(container.querySelector('[data-approval-decision]')?.textContent).not.toContain(
+      'requires approval',
+    );
+    expect(queryByRole('checkbox', { name: /for the rest of this chat$/ })).toBeNull();
+    expect(await findByRole('button', { name: 'Approve' })).not.toBeNull();
+  });
+
   describe('when allowed for the rest of the chat (COR-1990)', () => {
     const settled = (fields: Record<string, unknown> = {}) => ({
       type: 'CUSTOM',

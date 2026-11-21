@@ -259,6 +259,8 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
      * note, and a caption saying where it went: "Sent to the agent as the reason." for a denial.
      */
     decisionNote?: string;
+    /** The pending note in the row layout. Providing a draft opens its field, even when empty. */
+    draftNote?: string | undefined;
     /** Why Deny and Approve are off while the approval is still pending, such as `Approving is off until Interborough is reachable`. Written above the actions and named by both buttons. */
     disabledReason?: string;
     /** Why an `unavailable` approval cannot be answered now, written beneath it. */

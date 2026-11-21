@@ -10,13 +10,12 @@ import {
   isDeliveryMergeObservation,
   validateDeliveryApproval,
   validateDeliveryMergeObservation,
+  withDeliveryAuthorityFences,
   type LoadedDeliveryVerification,
 } from './delivery-verification.ts';
 import {
   readExecutionSnapshot,
-  requireAuthority,
   updateDeliveryCloseout,
-  withProviderTransitionLock,
   type DeliveryCloseout,
 } from './execution-state.ts';
 import {
@@ -105,8 +104,7 @@ export async function closeDelivery(
   dependencies: Partial<DeliverDependencies>,
 ): Promise<DeliverReport> {
   const { request, state } = verification;
-  return withProviderTransitionLock(state, request.authority.resource, async () => {
-    requireAuthority(state, request.authority);
+  return withDeliveryAuthorityFences(state, request, async () => {
     const problem = validateDeliveryApproval(
       verification,
       { route: options.branch === undefined ? 'pull-request' : 'branch', action: 'merge' },

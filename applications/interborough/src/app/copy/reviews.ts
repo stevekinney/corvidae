@@ -148,9 +148,9 @@ export const REVIEWS_COPY = {
   },
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: 'Press 1 to 9 to pick a choice.',
+  noInput: 'This call was given no input.',
   /** What the open approval would run, and what it was given. */
   inputLabel: 'Input',
-  noInput: 'This call was given no input.',
   /** The shortcuts the `?` map lists for this page. */
   shortcutGroup: 'Reviews',
   approveShortcut: 'Approve the open review',

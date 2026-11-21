@@ -114,6 +114,11 @@ for (const name of NAMES) {
       // COR-2014 row 17s is a transient state: hold a choice, capture its inline Undo affordance,
       // then undo before the answer reaches the fixture host so the shared sample world is unchanged.
       if (name === '/chats/:chat (question waiting)' && (width === 375 || width === 1280)) {
+        const toolRow = page.locator('[data-cinder-tool-call-row]').filter({
+          hasText: 'Request human input',
+        });
+        await expect(toolRow).toContainText('Question asked');
+        await expect(toolRow).not.toContainText('Signal name');
         const staging = page.getByRole('radio', { name: /^Staging\b/, exact: false });
         await expect(staging).toBeVisible();
         // The text before the question is the agent talking to the person (owner decision of

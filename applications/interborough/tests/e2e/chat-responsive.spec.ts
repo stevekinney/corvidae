@@ -14,6 +14,7 @@ import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
 import { rewriteBureauAnswer } from './bureau-answer-support.ts';
+import { hideModelPicker, revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -63,6 +64,7 @@ const openChat = (page: Page) => page.getByRole('region', { name: 'Open chat' })
 const blockedRow = (page: Page) => page.locator('[data-chat-composer-status="blocked"]');
 
 test('Warning indicator in Chat', async ({ page }) => {
+  await connectProvider(page);
   await rewriteBureauAnswer(page, 'bureau.contexts.window', (answer) => ({
     ...answer,
     maxTokens: 100_000,
@@ -74,9 +76,19 @@ test('Warning indicator in Chat', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
 
-  const ring = page.locator('.weft-context-ring');
-  await expect(ring).toHaveAttribute('data-tone', 'warning');
-  await expect(ring).toHaveAccessibleName(/80%/);
+  const meter = page.locator('.weft-context-meter');
+  await expect(meter).toHaveAttribute('data-tone', 'warning');
+  await expect(meter).toHaveAccessibleName(/80%/);
+  await expect(meter.locator('[role="meter"]')).toHaveAttribute('data-cinder-state', 'low');
+  const indicator = await meter.evaluate((trigger) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--cinder-status-warning-indicator)';
+    trigger.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expect(meter.locator('.cinder-meter__fill')).toHaveCSS('background-color', indicator);
   await captureForDesignReview(page, {
     route: '/chats/:chat',
     state: 'context window 80% warning',
@@ -452,9 +464,10 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(read.more).not.toBeNull();
     expect(read.more!.height).toBeLessThanOrEqual(32.5);
     expect(read.title).not.toBeNull();
-    expect(read.title!.height).toBeLessThanOrEqual(30.5);
-    // The title switcher sits a little above the top bar's centre, so the top bar's trail must not
-    // clip its hit area vertically (CI run 43635945611 found it cut at the top).
+    // A medium Button's painted height, as the search field beside it (COR-2438).
+    expect(read.title!.height).toBeLessThanOrEqual(32.5);
+    // The top bar's trail must not clip the title switcher's hit area vertically (CI run
+    // 43635945611 found it cut at the top).
     for (const [name, control] of [
       ['More', read.more!],
       ['title switcher', read.title!],
@@ -473,6 +486,18 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
+    await expect(trail(page).getByRole('button', { name: REFUND })).toBeVisible();
+    const header = page.getByTestId('chat-header');
+    await expect(header.getByRole('heading', { level: 1, name: REFUND })).toHaveCSS(
+      'clip-path',
+      'inset(50%)',
+    );
+    await expect(header).not.toContainText('Waiting on you');
+    const waiting = openChat(page).getByText('Waiting on you', { exact: true }).filter({
+      visible: true,
+    });
+    await expect(waiting).toHaveCount(1);
+    await expect(waiting).toHaveAttribute('data-cinder-variant', 'warning');
     // Nothing was typed: the page focused the card by script as it opened, and a script focus draws
     // no ring unless the keyboard was the last input (the owner's comment on `grid-card-320`).
     await expect(row).toHaveCSS('outline-style', 'none');
@@ -845,12 +870,12 @@ test.describe('The composer at desktop width', () => {
     const composer = page.locator('.chat-input').first();
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
     const settings = page.getByRole('button', { name: 'Settings: Model, Effort and Permissions' });
-    await expect(
-      page
-        .getByRole('combobox', { name: /Permissions/ })
-        .or(settings)
-        .first(),
-    ).toBeVisible();
+    await revealSettings(page, [
+      { name: 'Model', text: 'Claude Sonnet 5.5' },
+      { name: 'Effort', text: 'Medium' },
+      { name: 'Permissions', text: 'On changes asks' },
+    ]);
+    await hideModelPicker(page);
     // Whatever stays in the row is drawn whole: nothing in it is clipped to an ellipsis.
     const clipped = await composer.locator('.chat-input-footer-left').evaluate((footer) =>
       [footer, ...footer.querySelectorAll<HTMLElement>('*')]
@@ -868,13 +893,12 @@ test.describe('The composer at desktop width', () => {
 });
 
 test.describe('Keyboard hints on a phone', () => {
-  test('a phone with a mouse names the number keys under a question and the Enter keys under the composer', async ({
-    page,
-  }) => {
+  test('a phone with a mouse names the two choice keys under the question', async ({ page }) => {
     await connectProvider(page);
     await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
     await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
-    await expect(page.getByText(CHAT_COPY.pickHint)).toBeVisible();
+    await expect(page.getByText('Press 1 to 2 to pick a choice.')).toBeVisible();
+    await expect(page.locator('.weft-chat-question')).toHaveCSS('border-top-style', 'none');
   });
 
   test.describe('on a touch-only device', () => {
@@ -886,13 +910,13 @@ test.describe('Keyboard hints on a phone', () => {
       await connectProvider(page);
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
       await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
-      await expect(page.getByText(CHAT_COPY.pickHint)).toHaveCount(1);
-      await expect(page.getByText(CHAT_COPY.pickHint)).toBeHidden();
+      await expect(page.getByText(CHAT_COPY.pickHint(2))).toHaveCount(1);
+      await expect(page.getByText(CHAT_COPY.pickHint(2))).toBeHidden();
 
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
       await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
-      await expect(page.locator('.chat-input-hint')).toHaveCount(1);
-      await expect(page.locator('.chat-input-hint')).toBeHidden();
+      // No hint under the composer at all, on any device (COR-2438).
+      await expect(page.locator('.chat-input-hint')).toHaveCount(0);
     });
   });
 });

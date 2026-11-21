@@ -86,12 +86,12 @@ describe('a refused answer', () => {
 });
 
 describe('an approval', () => {
-  test('given no input says so, rather than showing an empty list', async () => {
+  test('keeps the shared approval card free of an empty Input section', async () => {
     const approval = toolApprovalFixture({
       requestedAt: Date.now() - 1_000,
       approval: { ...toolApprovalFixture().approval, arguments: {} },
     });
-    const { container, findByText } = open({ reviews: [approval] });
+    const { container, findByRole, findByText, queryByRole } = open({ reviews: [approval] });
     await openFirst(container);
     await findByText('This call was given no input.');
     expect(container.querySelector('.cinder-payload-inspector')).toBeNull();

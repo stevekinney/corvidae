@@ -131,6 +131,7 @@ describe('a review that left while it was open', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    await fireEvent.click(getByRole('button', { name: 'Press again to approve' }));
 
     await until(() => expect(getByTestId('review-gone')).not.toBeNull());
     expect(getByTestId('review-gone').textContent).toContain(REVIEWS_COPY.noLongerWaiting.message);
@@ -164,6 +165,7 @@ describe('a review that left while it was open', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    await fireEvent.click(getByRole('button', { name: 'Press again to approve' }));
 
     await until(() => expect(container.textContent).toContain(REVIEWS_COPY.approvalFailed.approve));
     jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS + 5_000);

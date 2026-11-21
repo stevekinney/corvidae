@@ -15,6 +15,7 @@ import {
   recordMutationResult,
   registerDeliveryApproval,
   requireAuthority,
+  withProviderTransitionLock,
   type ExecutionStateStore,
 } from './execution-state.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
@@ -63,6 +64,39 @@ export interface DeliveryMergeObservation {
   state: 'pending-provider-outcome' | 'confirmed-merge';
   branch?: string;
   pullRequest?: number;
+}
+
+/** Every issue-only member remains held through prepare, check, and landing. */
+function requireDeliveryAuthorities(state: ExecutionStateStore, request: DeliveryRequest): void {
+  requireAuthority(state, request.authority);
+  for (const member of request.members) {
+    if (member.authority !== undefined) requireAuthority(state, member.authority);
+  }
+}
+
+/** Holds every approved authority in a stable order for one consequential provider transition. */
+export async function withDeliveryAuthorityFences<T>(
+  state: ExecutionStateStore,
+  request: DeliveryRequest,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const authorities = [
+    request.authority,
+    ...request.members.flatMap((member) => member.authority ?? []),
+  ];
+  const ordered = [
+    ...new Map(authorities.map((authority) => [authority.resource, authority])).values(),
+  ].toSorted((left, right) => left.resource.localeCompare(right.resource));
+  const enter = async (index: number): Promise<T> => {
+    if (index === ordered.length) return operation();
+    const authority = ordered[index];
+    if (authority === undefined) throw new Error('delivery authority fence is empty');
+    return withProviderTransitionLock(state, authority.resource, async () => {
+      requireAuthority(state, authority);
+      return enter(index + 1);
+    });
+  };
+  return enter(0);
 }
 
 function isCommit(value: unknown): value is string {
@@ -118,7 +152,7 @@ export async function recordDeliveryMergeObservation(
 ): Promise<void> {
   validateDeliveryMergeObservation(observation, verification.request);
   const state = partial.state ?? verification.state;
-  requireAuthority(state, verification.request.authority);
+  requireDeliveryAuthorities(state, verification.request);
   await recordMutationResult(
     state,
     verification.request.authority,
@@ -142,7 +176,7 @@ export async function prepareDeliveryVerification(
 ): Promise<void> {
   const request = readDeliveryRequest(verification.file, verification.digest);
   const state = deliveryState(verification, partial);
-  requireAuthority(state, request.authority);
+  requireDeliveryAuthorities(state, request);
   const approvedAssignments = structuredClone(assignments);
   if (approvedAssignments.length !== request.members.length)
     throw new Error('delivery approval does not match its accepted members');
@@ -195,7 +229,7 @@ export function loadDeliveryVerification(
 ): LoadedDeliveryVerification {
   const request = readDeliveryRequest(verification.file, verification.digest);
   const state = deliveryState(verification, partial);
-  requireAuthority(state, request.authority);
+  requireDeliveryAuthorities(state, request);
   return { request, file: verification.file, digest: verification.digest, state };
 }
 
@@ -207,7 +241,7 @@ export function validateDeliveryApproval(
 ): string | undefined {
   const { request } = verification;
   const state = partial.state ?? verification.state;
-  requireAuthority(state, request.authority);
+  requireDeliveryAuthorities(state, request);
   const operation = readExecutionSnapshot(state).operations[request.operationId];
   const approval = operation?.approval;
   if (approval === undefined) return 'delivery request has no coordinator approval binding';
