@@ -239,7 +239,10 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
   test('puts Hide chats on the divider inside the list pane, with its own icon, and starts the title on the search field’s edge, at 1280 pixels (COR-2438)', async ({
     page,
   }) => {
-    await openChats(page, 1280);
+    await openChats(page, 1280, `/chats/${SAMPLE_WORLD_THREADS.sayHello}`);
+    await expect(
+      page.getByRole('region', { name: 'Open chat' }).getByRole('heading', { name: 'Say hello' }),
+    ).toBeVisible();
     const read = await page.evaluate(() => {
       const pane = document.querySelector('.cinder-list-detail__list');
       const title = pane?.querySelector('.ib-chats__title h1, .ib-chats__title h2');
@@ -269,7 +272,9 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     // Its own icon, not the sidebar's panel icon.
     expect(read!.icon).not.toMatch(/panel-left/);
     // Reachable by keyboard, and shown once it has focus.
-    await page.getByRole('button', { name: 'Hide chats' }).focus();
+    const hide = page.getByRole('button', { name: 'Hide chats' });
+    await hide.focus();
+    await expect(hide).toBeFocused();
     await expect(page.locator('.cinder-list-detail__toggle')).toHaveCSS('opacity', '1');
   });
 });
