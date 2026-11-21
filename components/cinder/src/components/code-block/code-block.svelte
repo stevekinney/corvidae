@@ -15,7 +15,7 @@
   import {
     allowBreaksAtPunctuation,
     annotationToneClass,
-    breakPoints,
+    splitWords,
     decorateHighlightedLines,
     hangWrappedLines,
     keepFlagsWhole,
@@ -179,14 +179,18 @@
   </small>
 {/snippet}
 
-<!-- A wrapping block's text, with a break opportunity after each slash, dot, colon and hyphen that
-     ends a part of it. `<wbr>` is no character, so what is shown and copied is the code as written.
-     No whitespace around the pieces: inside a `pre` it would be text. -->
-{#snippet broken(text: string)}{@const pieces =
-    breakPoints(
-      text,
-    )}{#each pieces as piece, index (index)}{piece}{#if index < pieces.length - 1}<wbr
-      />{/if}{/each}{/snippet}
+<!-- A wrapping block's text. A word with a slash, dot, colon or hyphen in it is a box of its own, with
+     a break opportunity after each of them: it moves to the next row whole when it fits one, and
+     breaks at a slash only when it is wider than a row. `<wbr>` is no character, so what is shown
+     and copied is the code as written. No whitespace around the pieces: inside a `pre` it would be
+     text. -->
+{#snippet broken(
+  text: string,
+)}{#each splitWords(text) as run, runIndex (runIndex)}{#if run.pieces.length > 1}<span
+        class="cinder-code-block__word"
+        >{#each run.pieces as piece, index (index)}{piece}{#if index < run.pieces.length - 1}<wbr
+            />{/if}{/each}</span
+      >{:else}{run.text}{/if}{/each}{/snippet}
 
 {#snippet plainCode()}
   {#if hasLineFeatures}

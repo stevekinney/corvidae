@@ -160,13 +160,29 @@ export function breakPoints(text: string): string[] {
   return pieces;
 }
 
+/** The class a word takes when it has places to break, so a wrapping block keeps it in one box. */
+export const wordClass = 'cinder-code-block__word';
+
+/**
+ * Cuts `text` into its words and the whitespace between them, each word with the pieces it may break
+ * between: a word with one piece has no place to break and is drawn as plain text, and one with
+ * more is drawn in a box of its own (`wordClass`). The runs joined are exactly `text`.
+ */
+export function splitWords(text: string): { text: string; pieces: string[] }[] {
+  return text
+    .split(/(\s+)/)
+    .filter((run) => run !== '')
+    .map((run) => ({ text: run, pieces: /^\s/.test(run) ? [run] : breakPoints(run) }));
+}
+
 /** Text a block must leave as it is: a flag (one atomic box) and a note (prose, not code). */
 const KEEP_WHOLE = `.${flagClass}, small`;
 
 /**
- * Highlighted code is fresh DOM, so a break opportunity (`<wbr>`, which adds no character to the
- * copied text) can be placed after each of `breakPoints` in its text. A wrapping block uses it so
- * a long URL breaks at a slash or a dot and never inside a word. Flags and notes are left alone.
+ * Highlighted code is fresh DOM, so each word that has places to break can be put in a box of its
+ * own with a break opportunity (`<wbr>`, which adds no character to the copied text) after each
+ * piece. A wrapping block uses it so a long URL that fits a row moves to it whole, and one that is
+ * wider than a row breaks at a slash or a dot, never inside a word. Flags and notes are left alone.
  */
 export const allowBreaksAtPunctuation: Attachment<HTMLElement> = (container) => {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -174,22 +190,29 @@ export const allowBreaksAtPunctuation: Attachment<HTMLElement> = (container) => 
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     if (node instanceof Text && node.parentElement?.closest(KEEP_WHOLE) == null) nodes.push(node);
   }
-  const inserted: HTMLElement[] = [];
+  const boxes: HTMLElement[] = [];
   for (const node of nodes) {
-    const pieces = breakPoints(node.data);
-    if (pieces.length < 2) continue;
+    const runs = splitWords(node.data);
+    if (!runs.some((run) => run.pieces.length > 1)) continue;
     const fragment = document.createDocumentFragment();
-    for (const [index, piece] of pieces.entries()) {
-      fragment.append(piece);
-      if (index === pieces.length - 1) continue;
-      const opportunity = document.createElement('wbr');
-      inserted.push(opportunity);
-      fragment.append(opportunity);
+    for (const run of runs) {
+      if (run.pieces.length < 2) {
+        fragment.append(run.text);
+        continue;
+      }
+      const box = document.createElement('span');
+      box.className = wordClass;
+      for (const [index, piece] of run.pieces.entries()) {
+        box.append(piece);
+        if (index < run.pieces.length - 1) box.append(document.createElement('wbr'));
+      }
+      boxes.push(box);
+      fragment.append(box);
     }
     node.replaceWith(fragment);
   }
   return () => {
-    for (const opportunity of inserted) opportunity.remove();
+    for (const box of boxes) box.replaceWith(box.textContent);
   };
 };
 

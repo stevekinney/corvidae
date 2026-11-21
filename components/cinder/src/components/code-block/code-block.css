@@ -367,6 +367,20 @@
     vertical-align: top;
   }
 
+  /* A word with a slash, dot, colon or hyphen in it (a URL, a path) is one box, like a flag: one
+   * that fits a row moves to the next row whole, and one wider than a row breaks inside itself at
+   * its `<wbr>`s, which sit after each of those, and never inside a part. A part wider than the
+   * row still breaks inside itself. */
+  .cinder-code-block--wrap .cinder-code-block__word {
+    display: inline-block;
+    max-inline-size: 100%;
+    /* The word is a box of its own, so it does not inherit its line's hanging indent. */
+    text-indent: 0;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    vertical-align: top;
+  }
+
   /* A wrapped line hangs: the first row starts at the block's padding and every further row of the
    * same line is indented two characters past the line's own text, so the eye finds where one line
    * ends and the next begins. The line records how far its own text is indented (`code-block.svelte`

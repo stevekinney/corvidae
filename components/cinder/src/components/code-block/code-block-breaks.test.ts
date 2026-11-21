@@ -85,6 +85,25 @@ describe('breakPoints', () => {
   });
 });
 
+describe('splitWords', () => {
+  test('boxes a word that has places to break and leaves the rest, joining back to the text', () => {
+    const text = `claude  mcp add ${ENDPOINT}\tdone.`;
+    const runs = splitWords(text);
+    expect(runs.map((run) => run.text).join('')).toBe(text);
+    expect(runs.filter((run) => run.pieces.length > 1).map((run) => run.text)).toEqual([
+      ENDPOINT,
+      'done.',
+    ]);
+    // Whitespace is a run of its own and never a place inside a word.
+    expect(runs.filter((run) => /^\s+$/.test(run.text)).map((run) => run.text)).toEqual([
+      '  ',
+      ' ',
+      ' ',
+      '\t',
+    ]);
+  });
+});
+
 describe('CodeBlock — break opportunities in a wrapping block', () => {
   const command = `claude mcp add --transport http interborough ${ENDPOINT}`;
 
@@ -96,6 +115,11 @@ describe('CodeBlock — break opportunities in a wrapping block', () => {
     // A flag is one box, with no break opportunity inside it.
     expect(code?.querySelector('.cinder-code-block__flag wbr')).toBeNull();
     expect(code?.querySelector('.cinder-code-block__flag')?.textContent).toBe('--transport');
+    // The URL is one box that moves to the next row whole when it fits one; the other words, which
+    // have nowhere to break, are plain text.
+    const words = [...(code?.querySelectorAll('.cinder-code-block__word') ?? [])];
+    expect(words.map((word) => word.textContent)).toEqual([ENDPOINT]);
+    expect(words[0]?.querySelectorAll('wbr')).toHaveLength(breakPoints(ENDPOINT).length - 1);
   });
 
   test('plain code that does not wrap has no break opportunity', () => {
@@ -132,6 +156,7 @@ describe('CodeBlock — break opportunities in a wrapping block', () => {
       (candidate) => candidate.textContent?.includes('bureau'),
     );
     expect(token?.textContent).toBe(`"${ENDPOINT}"`);
+    expect(token?.querySelector('.cinder-code-block__word')?.textContent).toBe(`"${ENDPOINT}"`);
   });
 
   test('highlighted code of a block that does not wrap has no break opportunity', async () => {

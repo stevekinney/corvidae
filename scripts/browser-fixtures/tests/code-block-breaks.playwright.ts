@@ -60,14 +60,16 @@ async function read(page: Page, testId: string) {
       rows += 1;
       for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
         if (!(node instanceof Text)) continue;
-        for (const [index, character] of [...node.data].entries()) {
+        // The text is ASCII, so a UTF-16 unit is a character.
+        for (let index = 0; index < node.data.length; index += 1) {
+          const character = node.data.charAt(index);
           if (/\s/.test(character)) {
             spaceBetween = true;
             continue;
           }
           const range = document.createRange();
           range.setStart(node, index);
-          range.setEnd(node, index + character.length);
+          range.setEnd(node, index + 1);
           const rect = range.getClientRects()[0];
           if (rect === undefined) continue;
           if (previous !== undefined && rect.top - previous.top > rowHeight / 2) {

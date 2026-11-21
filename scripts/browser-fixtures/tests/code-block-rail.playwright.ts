@@ -4,8 +4,9 @@
  * the block. A copyable block named by a 40-character label has no horizontal scroll (the closed
  * tooltip panel inside the floating button's transformed row was a `max-content` box that the
  * block's clipped, scrollable box had to reach), and a wrapping block reserves the rail beside its
- * first row only, so every further row keeps the whole width and no text sits under the button.
- * Where a long URL breaks is `code-block-breaks.playwright.ts`'s (COR-2548).
+ * first row only, so every further row keeps the whole width and the rail never breaks a URL that
+ * would sit whole without it. Where a URL wider than a row breaks is
+ * `code-block-breaks.playwright.ts`'s (COR-2548).
  */
 
 import { loadManifest } from '@lostgradient/testing';
@@ -51,7 +52,7 @@ async function widths(page: Page, testId: string) {
  */
 async function readText(page: Page, testId: string, options: { fitToken?: number } = {}) {
   return page.getByTestId(testId).evaluate(
-    (host, { fitToken }) => {
+    (host, { fitToken, endpoint }) => {
       const button = host.querySelector('.cinder-copy-button');
       const code = host.querySelector('.cinder-code-block__code');
       const viewport = host.querySelector('.cinder-code-block__viewport');
@@ -89,6 +90,32 @@ async function readText(page: Page, testId: string, options: { fitToken?: number
           if (rect.width > 0) rects.push(rect);
         }
       }
+      /**
+       * The rows the endpoint occupies: one when it sits whole, more when a row breaks it. The
+       * endpoint is a box of its own (a word with slashes in it), so its rows are those of its text.
+       */
+      const endpointRowCount = () => {
+        const word = [...code.querySelectorAll('.cinder-code-block__word')].find(
+          (candidate) => candidate.textContent === endpoint,
+        );
+        if (word === undefined) return 0;
+        const endpointRange = document.createRange();
+        endpointRange.selectNodeContents(word);
+        return new Set(
+          [...endpointRange.getClientRects()]
+            .filter((rect) => rect.width > 0)
+            .map((rect) => Math.round(rect.top)),
+        ).size;
+      };
+      const endpointRows = endpointRowCount();
+      // The same block with its rail reserved at no width. A wrapped line hangs by two characters,
+      // so a row after the first is narrower than a full row and the endpoint can break at 320
+      // whatever the rail does; what the rail must not do is break it where it would sit whole.
+      const root = host.querySelector('.cinder-code-block');
+      if (!(root instanceof HTMLElement)) throw new Error('No code block.');
+      root.style.setProperty('--_cinder-code-block-float-reserve', '0px');
+      const endpointRowsWithoutRail = endpointRowCount();
+      root.style.removeProperty('--_cinder-code-block-float-reserve');
       const rows = new Map<number, number>();
       for (const rect of rects) {
         const top = Math.round(rect.top);
@@ -104,6 +131,8 @@ async function readText(page: Page, testId: string, options: { fitToken?: number
         buttonLeft: box.left,
         railLeft: meta.getBoundingClientRect().left,
         rowRights: ordered.map(([, right]) => right),
+        endpointRows,
+        endpointRowsWithoutRail,
         scrolls: viewport.scrollWidth > viewport.clientWidth,
         // Text whose middle is level with the button and that reaches into it. The second row's
         // glyphs may touch the button's transparent lower edge, which is 24px tall against a row
@@ -119,7 +148,7 @@ async function readText(page: Page, testId: string, options: { fitToken?: number
         }).length,
       };
     },
-    { fitToken: options.fitToken },
+    { fitToken: options.fitToken, endpoint: ENDPOINT },
   );
 }
 
@@ -150,8 +179,12 @@ for (const width of [320, 375]) {
     // The button's own box sits inside the rail, so it is not the edge a row would stop at.
     expect(Math.max(...reading.rowRights.slice(1))).toBeGreaterThan(reading.railLeft);
     expect(reading.scrolls).toBe(false);
-    // Where the endpoint breaks is `code-block-breaks.playwright.ts`'s: a block offers a break after
-    // each slash, so the rail no longer decides between breaking the endpoint and moving it whole.
+    // The rail never breaks the endpoint inside a word (…/bur | eau/mcp): it sits on as many rows
+    // as it would with no rail, which is one wherever a row after the first, indented by the hang,
+    // is wide enough for it (375). Where a wider one breaks is `code-block-breaks.playwright.ts`'s.
+    expect(reading.endpointRows).toBeGreaterThan(0);
+    expect(reading.endpointRows).toBe(reading.endpointRowsWithoutRail);
+    if (width === 375) expect(reading.endpointRows).toBe(1);
   });
 }
 
