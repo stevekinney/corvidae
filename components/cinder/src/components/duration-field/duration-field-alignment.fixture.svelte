@@ -35,10 +35,10 @@
   }
 
   .duration-field-alignment__row {
-    inline-size: 32rem;
+    inline-size: min(100%, calc(var(--cinder-content-width-narrow) * 0.8));
   }
 
   .duration-field-alignment__row--squeezed {
-    inline-size: 12rem;
+    inline-size: min(100%, calc(var(--cinder-content-width-narrow) * 0.3));
   }
 </style>
