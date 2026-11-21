@@ -476,7 +476,8 @@
       items={visible}
       key={(row: SessionRow) => row.id}
       aria-label={CHAT_COPY.sessionsTitle}
-      groupBy={(row: SessionRow) => chatDayGroup(row, clock(), zone, wide, phone.current)}
+      groupBy={(row: SessionRow) =>
+        chatDayGroup(row, clock(), zone, wide, phone.current, row.id === visible[0]?.id)}
     >
       {#snippet children(row: SessionRow)}
         {@const agent = agentName(row)}

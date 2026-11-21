@@ -39,6 +39,7 @@
     type SettingsSnapshot,
   } from '../../lib/bureau-settings.ts';
   import { getProviders, type ProviderModel } from '../../lib/host-providers.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
@@ -395,7 +396,7 @@
         <SettingRow
           id="weft-allowed-prefer"
           label={copy.preferences.prefer.label}
-          identifier={copy.preferences.prefer.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.preferences.prefer.identifier }}
           description={copy.preferences.prefer.description}
           disabled={held}
         >
@@ -417,7 +418,7 @@
         <SettingRow
           id="weft-allowed-effort"
           label={copy.preferences.effort.label}
-          identifier={copy.preferences.effort.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.preferences.effort.identifier }}
           description={copy.preferences.effort.description}
           disabled={held}
         >

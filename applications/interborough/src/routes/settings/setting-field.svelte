@@ -25,6 +25,7 @@
   import { SETTINGS_COPY } from '../../app/copy/settings.ts';
   import { getAgentCatalog, isAvailableModel } from '../../lib/agent-definitions.ts';
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { inlineSegments } from './inline-markdown.ts';
   import { modelDisplayName } from './models/format-model.ts';
@@ -261,7 +262,7 @@
   <SettingRow
     {id}
     {label}
-    identifier={name}
+    {...phoneViewport.current ? {} : { identifier: name }}
     {description}
     {...descriptionAction === undefined ? {} : { descriptionAction }}
     {...status === undefined ? {} : { status }}
