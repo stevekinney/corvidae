@@ -64,16 +64,11 @@ const regenerationModel =
     throw new Error('The regeneration proof model is not cataloged.');
   })();
 
-/**
- * The lifetime the retry's approval gets: long enough that the real clock running through page
- * loads under shard load can never expire it. The first approval keeps the real 20-second binding
- * expiry, which the spec waits out; the retry's expiry is never in play, so no wall-clock race
- * decides whether its Approve button is still attached.
- */
-const RETRY_APPROVAL_LIFETIME_MS = 60 * 60 * 1000;
-let approvalClockOffset = 0;
+/** The retry's frozen clock starts ahead of the real clock that the host uses to sweep reviews. */
+const RETRY_APPROVAL_CLOCK_OFFSET_MILLISECONDS = 60 * 60 * 1000;
 
 export function createRegenerationProofAgent() {
+  let retryApprovalTime: number | undefined;
   const expiringTool = createTool({
     name: EXPIRING_APPROVAL_TOOL,
     version: '1.0.0',
@@ -100,9 +95,11 @@ export function createRegenerationProofAgent() {
       const userTurns = conversation
         .getMessages()
         .filter((message) => message.role === 'user').length;
-      // The first request's approval expires on the real 20-second binding clock; every retry's
-      // approval is issued with a clock that reads an hour ahead, so it expires an hour later.
-      approvalClockOffset = userTurns > 1 ? RETRY_APPROVAL_LIFETIME_MS : 0;
+      // Let the first binding expire on the host's real clock. While the test reloads the retry,
+      // freeze its toolbox clock for both issuance and validation, with an expiry the host will
+      // leave alone. An offset on a moving clock would still let validation expire it in 20 seconds.
+      retryApprovalTime =
+        userTurns > 1 ? Date.now() + RETRY_APPROVAL_CLOCK_OFFSET_MILLISECONDS : undefined;
       return {
         content: '',
         toolCalls: [
@@ -118,7 +115,7 @@ export function createRegenerationProofAgent() {
       approvalSecret: 'e2e-expiring-approval-secret',
       approvalPolicy: { mode: 'on-mutation' },
       approvalBindingTtlMs: 20_000,
-      approvalNow: () => Date.now() + approvalClockOffset,
+      approvalNow: () => retryApprovalTime ?? Date.now(),
     }),
     stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
   });

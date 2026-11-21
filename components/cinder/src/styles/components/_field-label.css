@@ -19,6 +19,13 @@
     flex-shrink: 0;
   }
 
+  /* Optional is real label text so it joins the control's accessible name. It
+     inherits its label's font size, but stays visually secondary. */
+  .cinder-_optional-marker {
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-normal);
+  }
+
   /* Forced colors drop the background, so draw the dot with a border in the
      system text color instead. */
   @media (forced-colors: active) {

@@ -43,7 +43,7 @@ for (const width of WIDTHS) {
 
     await page.getByRole('button', { name: AUDIT_COPY.noMatches.clear }).click();
     await expect(events(page).first()).toBeVisible();
-    await expect(page).toHaveURL(/\/health\/audit$/);
+    await expect(page).toHaveURL(/\/health\/audit(\?record=[^&]+)?$/);
   });
 }
 

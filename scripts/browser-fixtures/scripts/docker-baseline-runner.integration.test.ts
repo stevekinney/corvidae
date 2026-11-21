@@ -160,10 +160,12 @@ describe('lockfile pins', () => {
 });
 
 describe('container command and run arguments', () => {
-  it('unpacks the archive, installs from the lockfile, and returns the suite status', () => {
+  it('prepares generated fixture inputs from the archive and returns the suite status', () => {
     const command = containerCommand('update', ['--grep', "it's"]);
+    const preparation =
+      'bun run --filter @lostgradient/cinder metadata && bun scripts/browser-fixtures/scripts/prepare-manifest.ts';
     expect(command).toStartWith(
-      "mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && find scripts/browser-fixtures/snapshots/chromium/linux -name '*.png' -delete && touch /tmp/baseline-marker && bun run test:browser:update -- ",
+      `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && ${preparation} && find scripts/browser-fixtures/snapshots/chromium/linux -name '*.png' -delete && touch /tmp/baseline-marker && bun run test:browser:update -- `,
     );
     expect(command).toContain(`-- '--reporter=line,json' '--grep' 'it'\\''s'`);
     expect(command.indexOf('status=$?')).toBeLessThan(command.indexOf('cp -R'));
@@ -174,6 +176,7 @@ describe('container command and run arguments', () => {
     // Regression (COR-1512): a matching baseline is never rewritten in place, so an
     // update must start from no baselines or unchanged ones look like orphans.
     expect(containerCommand('visual', [])).not.toContain('-delete');
+    expect(containerCommand('visual', [])).toContain(preparation);
     expect(containerCommand('visual', [])).toContain(
       "bun run test:browser:visual -- '--reporter=line,json'; status=$?",
     );

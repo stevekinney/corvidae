@@ -402,8 +402,12 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
       source: SOURCE,
     });
 
+    const newest = await page.locator('[data-chat]').first().getAttribute('data-chat');
+    expect(newest).not.toBeNull();
     await state.getByRole('button', { name: 'All conversations' }).click();
-    await expect(page).toHaveURL(/\/chats$/);
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`/chats/${encodeURIComponent(newest ?? '')}`);
   });
 });
 

@@ -69,7 +69,9 @@ test.describe('the chat list on the sample world', () => {
   }) => {
     await openChats(page);
     const header = list(page).locator('header');
-    await expect(header.getByRole('heading', { level: 1, name: 'Chats' })).toBeVisible();
+    // Beside the list the latest chat opens (COR-2445), whose title is the page's level-one
+    // heading, so the list's own heading is a level below it.
+    await expect(header.getByRole('heading', { name: 'Chats' })).toBeVisible();
     const plus = header.getByRole('link', { name: 'New chat' });
     // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
     await expect(plus).toContainClass('button-variant-primary');
@@ -159,6 +161,23 @@ test.describe('the chat list on the sample world', () => {
     await row(page, 'Say hello').getByRole('link').click();
     await expect(page).toHaveURL(/\/chats\/[^/]+$/);
     await expect(row(page, 'Say hello').getByRole('link')).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
+  });
+
+  test('opens the first chat the search finds when it hides the automatic selection', async ({
+    page,
+  }) => {
+    await openChats(page);
+    const hello = row(page, 'Say hello').getByRole('link');
+    await expect(page.locator('[data-chat]').first().getByRole('link')).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    await expect(hello).not.toHaveAttribute('aria-current', 'true');
+    const search = list(page).getByRole('searchbox', { name: 'Search chats' });
+    await search.fill('Say hello');
+    await expect(hello).toHaveAttribute('aria-current', 'true');
+    await expect(search).toBeFocused();
     await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
   });
 
@@ -457,6 +476,8 @@ test.describe('the states of the chat list', () => {
       state.getByRole('heading', { level: 3, name: 'No chats match “parcelly”' }),
     ).toBeVisible();
     await expect(state).toContainText('Check the spelling or try another word.');
+    await expect(page).toHaveURL(/\/chats$/);
+    await expect(page.getByRole('heading', { name: 'Pick a chat' })).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats', state: 'no results', source: SOURCE });
     await state.getByRole('button', { name: 'Clear search' }).click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
