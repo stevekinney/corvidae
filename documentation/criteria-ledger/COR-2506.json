@@ -1,14 +1,14 @@
 {
   "issue": "COR-2506",
   "branch": "steve/cor-2506-host-lock-accounting",
-  "checkedAt": "b7a11c29535fdaaee4c6321e08937c1ab3a030d5",
+  "checkedAt": "a8ed3b12410f15f423639422c3394a5651f65562",
   "briefVersion": "9d97c9af4b33",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Independent compatible-history oracle checked 8,861,952 three-dispatch prefixes and all two-dispatch cases, including both COR-2463 traces. Directed tests cover both delayed links after the same observation and retain the per-limit maximum across mixed worker, read-only and Opus dispatches."
+      "evidence": "Independent compatible-history oracle checked 8,861,952 three-dispatch prefixes and all two-dispatch cases, including both COR-2463 traces. Directed tests cover late released and expired dispatches, independently conservative worker, read-only and Opus counts, and delayed links resolving either assignment."
     },
     {
       "id": "AC2",
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "Lost-ledger bypass interleaving fails closed and passed the M7 integration probe."
+      "evidence": "A deterministic M7 integration probe removes the ledger before append. The actual Agent PreToolUse handler returns an explicit denial and records no admission in both ordinary and bypass modes."
     }
   ]
 }
