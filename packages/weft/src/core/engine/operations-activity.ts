@@ -31,6 +31,7 @@ import {
 } from './async-activity-completion.ts';
 import { deriveAsyncActivityToken } from './async-activity-records.ts';
 import { stageOperationSideEffects } from './checkpoint-side-effects.ts';
+import { currentExecutionAttempt, type ExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callActivityFunction } from './state-utilities.ts';
@@ -55,11 +56,8 @@ export type ActivityFunctionWithMetadata = ((...arguments_: unknown[]) => unknow
 
 type ActivityOperation = Extract<ContextOperationRequest, { type: 'activity' }>;
 
-/** Concurrent branches share one activity result for each durable receipt key until cleanup. */
-const keyedActivityResults = new WeakMap<
-  EngineInternals,
-  Map<string, Map<string, Promise<unknown>>>
->();
+/** Concurrent branches share a receipt only within the same execution attempt. */
+const keyedActivityResults = new WeakMap<ExecutionAttempt, Map<string, Promise<unknown>>>();
 
 /**
  * Per-call execution options for one activity operation. Distinct from the
@@ -484,12 +482,14 @@ export async function executeActivityOperationResult(
   const idempotencyKey = resolveActivityIdempotencyKey(activity, operation);
   const operationAttempt = getActivityAttempt(operation);
   if (idempotencyKey !== undefined) {
+    // A replay of the same durable run has a new attempt. It must reconcile the stored receipt.
+    const executionAttempt = currentExecutionAttempt(internals, workflowId);
     const reference = await buildActivityReconciliationReference(
       workflowId,
       operation.activityName,
       idempotencyKey,
     );
-    return runKeyedActivityOnce(internals, workflowId, reference.key, () =>
+    const execute = () =>
       executeKeyedActivityOperationResult(
         internals,
         workflowId,
@@ -502,8 +502,10 @@ export async function executeActivityOperationResult(
         coordinatorSignal,
         speculativeState,
         executionOptions,
-      ),
-    );
+      );
+    return executionAttempt === undefined || executionAttempt.abandoned
+      ? execute()
+      : runKeyedActivityOnce(executionAttempt, reference.key, execute);
   }
 
   const result = await executeActivity(
@@ -623,20 +625,14 @@ async function executeKeyedActivityOperationResult(
 }
 
 function runKeyedActivityOnce(
-  internals: EngineInternals,
-  workflowId: string,
+  attempt: ExecutionAttempt,
   key: string,
   execute: () => Promise<unknown>,
 ): Promise<unknown> {
-  let byWorkflow = keyedActivityResults.get(internals);
-  if (byWorkflow === undefined) {
-    byWorkflow = new Map();
-    keyedActivityResults.set(internals, byWorkflow);
-  }
-  let activities = byWorkflow.get(workflowId);
+  let activities = keyedActivityResults.get(attempt);
   if (activities === undefined) {
     activities = new Map();
-    byWorkflow.set(workflowId, activities);
+    keyedActivityResults.set(attempt, activities);
   }
   const active = activities.get(key);
   if (active !== undefined) return active;
@@ -646,10 +642,6 @@ function runKeyedActivityOnce(
     if (activities.get(key) === result) activities.delete(key);
   });
   return result;
-}
-
-export function forgetKeyedActivityResults(internals: EngineInternals, workflowId: string): void {
-  keyedActivityResults.get(internals)?.delete(workflowId);
 }
 
 async function finalizeActivityResult(
