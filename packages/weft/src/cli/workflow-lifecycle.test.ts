@@ -5,7 +5,7 @@ import { Engine, serve, workflow } from '../index.ts';
 import type { WorkflowCommand } from './types.ts';
 import { executeWorkflow } from './workflow-commands.ts';
 
-function createJsonRpcFixtureServer(resultFor: (method: string) => unknown) {
+function createJsonRpcFixtureServer(resultFor: (method: string, params?: unknown) => unknown) {
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
@@ -18,7 +18,7 @@ function createJsonRpcFixtureServer(resultFor: (method: string) => unknown) {
       return Response.json({
         jsonrpc: '2.0',
         id,
-        result: resultFor(method),
+        result: resultFor(method, 'params' in body ? body.params : undefined),
       });
     },
   });
@@ -78,6 +78,32 @@ describe('weft workflow start/get/events', () => {
         server: server.url,
       } satisfies WorkflowCommand);
       expect(missingItems).toEqual({ stdout: 'No workflows found.', exitCode: 0 });
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('sends --failed-step and --retrying to the list operation (COR-2530)', async () => {
+    const received: unknown[] = [];
+    const server = createJsonRpcFixtureServer((method, params) => {
+      if (method === 'weft.workflows.list') received.push(params);
+      return { items: [] };
+    });
+    try {
+      await executeWorkflow({
+        ...base,
+        action: 'ls',
+        server: server.url,
+        failedStep: 'charge-card',
+        retrying: true,
+      } satisfies WorkflowCommand);
+      await executeWorkflow({
+        ...base,
+        action: 'ls',
+        server: server.url,
+      } satisfies WorkflowCommand);
+
+      expect(received).toEqual([{ failedStep: 'charge-card', retrying: true }, {}]);
     } finally {
       await server.stop();
     }

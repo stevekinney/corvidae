@@ -28,6 +28,8 @@ const filterWithEveryField = {
   updatedAt: { gt: 3, lte: 4 },
   executionDeadline: { gte: 5, lte: 6 },
   failureCategory: ['timeout', 'cancellation'],
+  failedStep: 'charge-card',
+  retrying: true,
 } as const satisfies Required<ListFilter>;
 
 describe('buildWorkflowListSearchParams', () => {
@@ -40,6 +42,15 @@ describe('buildWorkflowListSearchParams', () => {
     );
     expect(params.get('limit')).toBe(String(limit));
     expect(params.get('offset')).toBe(String(offset));
+  });
+
+  test('sends retrying false, not just true, so a negation reaches the server', () => {
+    const params = buildWorkflowListSearchParams({ retrying: false });
+
+    expect(params.toString()).toBe('retrying=false');
+    expect(extractListFilterFromQuery(new URL(`http://localhost/?${params}`))).toEqual({
+      retrying: false,
+    });
   });
 
   test('sends a lone updatedAt window', () => {
