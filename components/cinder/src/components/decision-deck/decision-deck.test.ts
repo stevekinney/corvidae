@@ -571,8 +571,9 @@ describe('DecisionDeck stylesheet', () => {
   });
 
   test('reject and accept share one size and later is smaller', () => {
-    // COR-2452: drawn compact (36px and 32px), reaching 44px through Button's hit area.
-    expect(css).toMatch(/\[data-cinder-icon-only\] \{[^}]*inline-size: 2\.25rem/);
+    expect(css).toMatch(
+      /\[data-cinder-icon-only\] \{[^}]*inline-size: var\(--_cinder-decision-deck-action-face\)/,
+    );
     expect(css).toMatch(/\[data-decision-action='later'\] \{[^}]*inline-size: 2rem/);
     expect(css).not.toMatch(/\[data-decision-action='(?:accept|reject)'\] \{[^}]*inline-size/);
   });
