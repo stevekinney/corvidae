@@ -39,22 +39,6 @@ export type ApplyEvent = (state: SessionState, event: SessionEvent) => SessionSt
 /** One step: a hook event, or the next admission's survey, which expires what never started. */
 type Step = { readonly event: SessionEvent | 'survey'; readonly after: readonly number[] };
 
-/** Which of a kind's steps start its agent, end its place, and name its agent from `PostToolUse`. */
-type Roles = {
-  readonly start?: number;
-  readonly ends: readonly number[];
-  readonly launched?: number;
-};
-
-const roles: Readonly<Record<DispatchKind, Roles>> = {
-  background: { start: 1, ends: [2], launched: 3 },
-  foreground: { start: 1, ends: [2] },
-  'foreground-without-stop': { start: 1, ends: [2] },
-  failed: { ends: [1] },
-  expired: { start: 2, ends: [3] },
-  released: { start: 1, ends: [2, 3] },
-};
-
 function stepsOf(kind: DispatchKind, index: number, repeatStop: boolean): Step[] {
   const toolUseId = `t${index}`;
   const agentId = `a${index}`;
@@ -97,52 +81,169 @@ function stepsOf(kind: DispatchKind, index: number, repeatStop: boolean): Step[]
   return steps;
 }
 
-function hasDone(own: readonly boolean[], index: number | undefined): boolean {
-  return index !== undefined && own[index] === true;
+type ActualDispatch = {
+  readonly status: 'pending' | 'expired' | 'started' | 'ended';
+  readonly agentId?: string;
+};
+
+type ActualAgent = { readonly running: boolean; readonly dispatchId?: string };
+
+type CompatibleHistory = {
+  readonly dispatches: ReadonlyMap<string, ActualDispatch>;
+  readonly agents: ReadonlyMap<string, ActualAgent>;
+};
+
+const emptyHistory: CompatibleHistory = { dispatches: new Map(), agents: new Map() };
+
+function copyHistory(history: CompatibleHistory) {
+  return { dispatches: new Map(history.dispatches), agents: new Map(history.agents) };
 }
 
-function ended(kind: DispatchKind, own: readonly boolean[]): boolean {
-  return roles[kind].ends.some((index) => own[index] === true);
-}
-
-/**
- * The dispatches a survey expires, as the host sees them: admitted, ended by nothing, and with no
- * agent started for it or named by its `PostToolUse`.
- */
-function expiredBySurvey(
-  kinds: readonly DispatchKind[],
-  done: ReadonlyArray<readonly boolean[]>,
-): number[] {
-  const expired: number[] = [];
-  kinds.forEach((kind, index) => {
-    const own = done[index] ?? [];
-    const { start, launched } = roles[kind];
-    if (own[0] === true && !ended(kind, own) && !hasDone(own, start) && !hasDone(own, launched))
-      expired.push(index);
-  });
-  return expired;
-}
-
-/**
- * What the dispatches really hold once the flagged events happened: one place for each dispatch
- * admitted and not yet ended (failed, its agent's run over, or released), unless a survey expired it
- * before its agent started; and how many agents run.
- */
-function truth(
-  kinds: readonly DispatchKind[],
-  done: ReadonlyArray<readonly boolean[]>,
-  expired: readonly boolean[],
-) {
+function heldBy(history: CompatibleHistory): number {
   let held = 0;
-  let running = 0;
-  kinds.forEach((kind, index) => {
-    const own = done[index] ?? [];
-    if (own[0] !== true || ended(kind, own)) return;
-    const started = hasDone(own, roles[kind].start);
-    if (started || expired[index] !== true) held += 1;
-    if (started) running += 1;
+  for (const dispatch of history.dispatches.values()) {
+    if (dispatch.status === 'pending' || dispatch.status === 'started') held += 1;
+  }
+  for (const agent of history.agents.values()) {
+    if (agent.running && agent.dispatchId === undefined) held += 1;
+  }
+  return held;
+}
+
+/**
+ * Enumerates physical histories compatible with observed hooks. A `SubagentStart` lacks a tool-use
+ * identity, so it branches across every dispatch it could have started. Its greatest held count is
+ * the required safe reservation until `PostToolUse` supplies that missing link.
+ */
+function compatibleAfter(history: CompatibleHistory, event: SessionEvent): CompatibleHistory[] {
+  if (event.kind === 'admit') {
+    const next = copyHistory(history);
+    next.dispatches.set(event.toolUseId, { status: 'pending' });
+    return [next];
+  }
+  if (event.kind === 'expire') {
+    const next = copyHistory(history);
+    const dispatch = next.dispatches.get(event.toolUseId);
+    if (dispatch?.status === 'pending')
+      next.dispatches.set(event.toolUseId, { ...dispatch, status: 'expired' });
+    return [next];
+  }
+  if (event.kind === 'start') {
+    const known = history.agents.get(event.agentId);
+    if (known !== undefined) {
+      const next = copyHistory(history);
+      next.agents.set(event.agentId, { ...known, running: true });
+      return [next];
+    }
+    const linked = [...history.dispatches.entries()].find(
+      ([, dispatch]) => dispatch.agentId === event.agentId,
+    );
+    if (linked !== undefined) {
+      const [toolUseId, dispatch] = linked;
+      const next = copyHistory(history);
+      next.dispatches.set(toolUseId, { ...dispatch, status: 'started' });
+      next.agents.set(event.agentId, { running: true, dispatchId: toolUseId });
+      return [next];
+    }
+    const choices = [...history.dispatches.entries()].filter(
+      ([, dispatch]) =>
+        (dispatch.status === 'pending' || dispatch.status === 'expired') &&
+        dispatch.agentId === undefined,
+    );
+    if (choices.length === 0) {
+      const next = copyHistory(history);
+      next.agents.set(event.agentId, { running: true });
+      return [next];
+    }
+    return choices.map(([toolUseId, dispatch]) => {
+      const next = copyHistory(history);
+      next.dispatches.set(toolUseId, { ...dispatch, status: 'started', agentId: event.agentId });
+      next.agents.set(event.agentId, { running: true, dispatchId: toolUseId });
+      return next;
+    });
+  }
+  if (event.kind === 'stop') {
+    const next = copyHistory(history);
+    const agent = next.agents.get(event.agentId);
+    if (agent === undefined) {
+      const dispatch = [...next.dispatches.entries()].find(
+        ([, each]) => each.agentId === event.agentId,
+      );
+      if (dispatch !== undefined)
+        next.dispatches.set(dispatch[0], { ...dispatch[1], status: 'ended' });
+      return [next];
+    }
+    next.agents.set(event.agentId, { ...agent, running: false });
+    if (agent.dispatchId !== undefined) {
+      const dispatch = next.dispatches.get(agent.dispatchId);
+      if (dispatch !== undefined)
+        next.dispatches.set(agent.dispatchId, { ...dispatch, status: 'ended' });
+    }
+    return [next];
+  }
+  if (event.kind === 'failed') {
+    const dispatch = history.dispatches.get(event.toolUseId);
+    if (dispatch?.agentId !== undefined) return [];
+    const next = copyHistory(history);
+    if (dispatch !== undefined)
+      next.dispatches.set(event.toolUseId, { ...dispatch, status: 'ended' });
+    return [next];
+  }
+  if (event.kind === 'release') {
+    const next = copyHistory(history);
+    const dispatch = next.dispatches.get(event.target);
+    if (dispatch !== undefined) next.dispatches.set(event.target, { ...dispatch, status: 'ended' });
+    const agent = next.agents.get(event.target);
+    if (agent !== undefined) {
+      next.agents.set(event.target, { ...agent, running: false });
+      if (agent.dispatchId !== undefined) {
+        const owned = next.dispatches.get(agent.dispatchId);
+        if (owned !== undefined)
+          next.dispatches.set(agent.dispatchId, { ...owned, status: 'ended' });
+      }
+    }
+    return [next];
+  }
+  const dispatch = history.dispatches.get(event.toolUseId);
+  if (dispatch === undefined) return [history];
+  const agent = history.agents.get(event.agentId);
+  if (dispatch.agentId !== undefined && dispatch.agentId !== event.agentId) return [];
+  if (agent?.dispatchId !== undefined && agent.dispatchId !== event.toolUseId) return [];
+  const next = copyHistory(history);
+  const running = agent?.running === true;
+  next.dispatches.set(event.toolUseId, {
+    ...dispatch,
+    agentId: event.agentId,
+    status: event.kind === 'completed' || (agent !== undefined && !running) ? 'ended' : 'started',
   });
-  return { held, running };
+  if (event.kind === 'completed') {
+    if (agent !== undefined)
+      next.agents.set(event.agentId, { ...agent, running: false, dispatchId: event.toolUseId });
+  } else if (agent === undefined) {
+    next.agents.set(event.agentId, { running: true, dispatchId: event.toolUseId });
+  }
+  return [next];
+}
+
+function afterObservation(
+  histories: readonly CompatibleHistory[],
+  event: SessionEvent | 'survey',
+): CompatibleHistory[] {
+  if (event !== 'survey') {
+    return histories.flatMap((history) => compatibleAfter(history, event));
+  }
+  const expired = [...(histories[0]?.dispatches.keys() ?? [])].filter((toolUseId) =>
+    histories.every((history) => {
+      const dispatch = history.dispatches.get(toolUseId);
+      return dispatch?.status === 'pending' && dispatch.agentId === undefined;
+    }),
+  );
+  if (expired.length === 0) return [...histories];
+  return histories.map((history) => {
+    const next = copyHistory(history);
+    for (const toolUseId of expired) next.dispatches.set(toolUseId, { status: 'expired' });
+    return next;
+  });
 }
 
 function survey(state: SessionState, apply: ApplyEvent): SessionState {
@@ -161,16 +262,12 @@ function describeStep(event: SessionEvent | 'survey'): string {
 
 /**
  * Visits every interleaving of the dispatches' events, depth first, checking after every prefix
- * that the session holds exactly the admitted-or-running and never fewer than the running.
+ * that the session holds exactly the admitted-or-running.
  * Resolves to how many prefixes it checked and the first few that failed.
  *
- * After a survey only the second holds. A survey expires the dispatches the ledger shows pending,
- * and when start order gave a pending place to another agent, those are not the dispatches whose
- * agents never started; no event says which they were, so what an event after the survey should
- * leave held is not determined. Two such orders are known to miscount by one until a later event
- * or survey corrects them (COR-2463): an expired dispatch's agent that starts late takes another
- * pending dispatch's place, and a `PostToolUse` that corrects start order after a survey puts back
- * a pending place the survey had expired. The survey itself is checked exactly.
+ * The oracle carries the independent physical histories down each branch. A survey can expire a
+ * dispatch only when every history leaves it pending. A delayed name then selects the compatible
+ * histories for its actual dispatch (COR-2506).
  */
 export function exploreInterleavings(
   kinds: readonly DispatchKind[],
@@ -179,46 +276,39 @@ export function exploreInterleavings(
 ): { prefixes: number; failures: string[] } {
   const steps = kinds.map((kind, index) => stepsOf(kind, index, repeatStop));
   const done = steps.map((own) => own.map(() => false));
-  const expired = kinds.map(() => false);
   const failures: string[] = [];
   const trail: Array<SessionEvent | 'survey'> = [];
   let surveys = 0;
   let prefixes = 0;
-  const visit = (state: SessionState) => {
+  const visit = (state: SessionState, histories: readonly CompatibleHistory[]) => {
     for (const [dispatch, own] of steps.entries()) {
       const flags = done[dispatch];
       if (flags === undefined) continue;
       for (const [index, step] of own.entries()) {
         if (flags[index] === true || !step.after.every((before) => flags[before] === true))
           continue;
-        const surveyed = surveys > 0;
-        const expiredHere = step.event === 'survey' ? expiredBySurvey(kinds, done) : [];
-        const wasExpired = expiredHere.map((each) => expired[each] === true);
-        for (const each of expiredHere) expired[each] = true;
         if (step.event === 'survey') surveys += 1;
         flags[index] = true;
         trail.push(step.event);
         const next = step.event === 'survey' ? survey(state, apply) : apply(state, step.event);
         prefixes += 1;
-        const expected = truth(kinds, done, expired);
+        const nextHistories = afterObservation(histories, step.event);
+        const expected = Math.max(0, ...nextHistories.map(heldBy));
         const held = workerPlaces(next);
-        const wrong = held < expected.running || (!surveyed && held !== expected.held);
+        const wrong = held !== expected;
         if (wrong && failures.length < 3) {
           failures.push(
-            `${kinds.join(',')}: held ${held}, expected ${expected.held}: ${trail.map(describeStep).join(' ')}`,
+            `${kinds.join(',')}: held ${held}, expected ${expected}: ${trail.map(describeStep).join(' ')}`,
           );
         }
-        visit(next);
+        visit(next, nextHistories);
         trail.pop();
         flags[index] = false;
         if (step.event === 'survey') surveys -= 1;
-        expiredHere.forEach((each, position) => {
-          expired[each] = wasExpired[position] === true;
-        });
       }
     }
   };
-  visit(emptySession);
+  visit(emptySession, [emptyHistory]);
   return { prefixes, failures };
 }
 

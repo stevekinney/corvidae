@@ -338,11 +338,11 @@ describe('admitWorker', () => {
       request: request('B', '3'),
       waitLimitMilliseconds: 0,
     });
-    // One worker of A runs: A holds 2, B takes 2, past the cap of 3, so B still waits; but the
-    // stale admission is gone.
+    // The anonymous start could belong to either dispatch, so neither can be reclaimed without a
+    // link. A therefore holds both worker places and B still waits past the cap of 3.
     expect(admission.admitted).toBe(false);
-    expect(await workersOf(directory, 'session-A')).toBe(1);
-    expect(await places(directory)).toBe(2);
+    expect(await workersOf(directory, 'session-A')).toBe(2);
+    expect(await places(directory)).toBe(3);
   });
 
   test('skips a dead waiter ahead in the queue', async () => {
@@ -884,11 +884,11 @@ describe('release', () => {
       'released tool-2 in session session-A: 1 place(s)',
     ]);
     expect(await releasePlace(directory, 'agent-1', releaseOptions)).toEqual([
-      'released agent-1 in session session-A: 2 place(s)',
+      'released agent-1 in session session-A: 0 place(s)',
     ]);
     await handleHookEvent(dispatch('chef-worker', 'tool-3'), context(directory));
     expect(await releasePlace(directory, 'session-', releaseOptions)).toEqual([
-      'released session session-A: 2 place(s)',
+      'released session session-A: 3 place(s)',
     ]);
     expect(await places(directory)).toBe(0);
     const refusal = await releasePlace(directory, 'nothing-here', releaseOptions).then(

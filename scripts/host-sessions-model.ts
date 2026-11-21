@@ -1,14 +1,15 @@
+import { replayHistories } from './host-sessions-history.ts';
+import { advanceSessionHistory } from './host-sessions-transitions.ts';
+
 /**
  * The count of one Claude Code session's host places (COR-2455), as a pure fold over the hook
  * events the session's `chef-worker` dispatches produce, in the order they were recorded.
  *
- * Nothing is bound to a place. Within one session a worker's places are interchangeable, so the
- * session holds one place for each admitted dispatch whose agent has not started, and one for each
- * agent that runs: `pending + running`. Running is derived only from `SubagentStart` and
- * `SubagentStop` by `agent_id`, so no other event lowers it below what runs. `SubagentStart` carries
- * no `tool_use_id`, so which pending dispatch a start consumes is decided by order (the oldest one
- * no `PostToolUse` has named for another agent); a later `PostToolUse` that names the agent moves it
- * to its own dispatch. Only which dispatch shows as started depends on that guess, never the count.
+ * The session holds one place per admitted dispatch still pending and one per running agent.
+ * A SubagentStart names the agent and its type; it does not name its dispatch. The fold keeps the
+ * possible assignments consistent with that hook and later evidence, using the greatest possible
+ * count for each cap. PostToolUse links resolve an assignment; an unobserved link cannot decide
+ * which dispatch to expire. The maps present one compatible history for diagnostics.
  */
 
 export type DispatchStatus = 'pending' | 'started' | 'failed' | 'expired' | 'released' | 'finished';
@@ -109,205 +110,48 @@ export const neverStartedLimitMilliseconds = 10 * 60 * 1000;
 
 export const emptySession: SessionState = { dispatches: new Map(), agents: new Map() };
 
-type Draft = { dispatches: Map<string, Dispatch>; agents: Map<string, Agent> };
+type Observation = {
+  readonly initial: SessionState;
+  readonly events: readonly SessionEvent[];
+  readonly candidates: readonly SessionState[];
+};
 
-function draft(state: SessionState): Draft {
-  return { dispatches: new Map(state.dispatches), agents: new Map(state.agents) };
+const observations = new WeakMap<SessionState, Observation>();
+
+function candidatesOf(state: SessionState): readonly SessionState[] {
+  return observations.get(state)?.candidates ?? [state];
 }
 
-function update<T>(map: Map<string, T>, key: string, change: Partial<T>): void {
-  const current = map.get(key);
-  if (current !== undefined) map.set(key, { ...current, ...change });
-}
-
-/** The oldest pending dispatch no `PostToolUse` has named for another agent. */
-function unclaimedPending(state: Draft, agentId: string): Dispatch | undefined {
-  const type = state.agents.get(agentId)?.agentType;
-  let oldest: Dispatch | undefined;
-  let oldestOfType: Dispatch | undefined;
-  for (const dispatch of state.dispatches.values()) {
-    if (dispatch.status !== 'pending') continue;
-    if (dispatch.agentId === agentId) return dispatch;
-    if (dispatch.agentId !== undefined) continue;
-    oldest ??= dispatch;
-    // An agent takes the oldest pending dispatch of its own type, so an Opus place is never
-    // given to a Sonnet agent that merely started first.
-    if (type !== undefined && dispatch.agentType === type) oldestOfType ??= dispatch;
-  }
-  return oldestOfType ?? oldest;
+function project(observation: Observation): SessionState {
+  const selected = observation.candidates.reduce((maximum, candidate) =>
+    workerPlacesIn(candidate) > workerPlacesIn(maximum) ? candidate : maximum,
+  );
+  const result: SessionState = {
+    dispatches: new Map(selected.dispatches),
+    agents: new Map(selected.agents),
+  };
+  observations.set(result, observation);
+  return result;
 }
 
 /**
- * Gives `agentId`'s first run the place of a pending dispatch, the one named for it if any, and
- * resolves to whether there was one.
+ * Counts the greatest reservation supported by the observed prefix. A later named link can
+ * distinguish histories that counted alike before it arrived.
  */
-function takePending(state: Draft, agentId: string): boolean {
-  const dispatch = unclaimedPending(state, agentId);
-  if (dispatch === undefined) {
-    update(state.agents, agentId, { toolUseId: undefined });
-    return false;
-  }
-  update(state.dispatches, dispatch.toolUseId, {
-    status: 'started',
-    agentId,
-    linked: dispatch.agentId === agentId,
-  });
-  update(state.agents, agentId, { toolUseId: dispatch.toolUseId });
-  return true;
-}
-
-/** The agent that start order gave `toolUseId`, which may be the wrong one; undefined if none. */
-function guessedAgent(dispatch: Dispatch): string | undefined {
-  return dispatch.status === 'started' && !dispatch.linked ? dispatch.agentId : undefined;
-}
-
-/**
- * Records that `toolUseId`'s own `PostToolUse` named `agentId`: a dispatch the agent's start order
- * gave it goes back to pending, and an agent start order gave this dispatch looks for another.
- */
-function link(state: Draft, toolUseId: string, agentId: string): void {
-  const dispatch = state.dispatches.get(toolUseId);
-  if (dispatch === undefined || agentId === '') return;
-  if (dispatch.agentId === agentId) {
-    update(state.dispatches, toolUseId, { linked: true });
-    return;
-  }
-  const agent = state.agents.get(agentId);
-  if (agent?.toolUseId !== undefined && agent.toolUseId !== toolUseId) {
-    update(state.dispatches, agent.toolUseId, {
-      status: 'pending',
-      agentId: undefined,
-      linked: false,
-    });
-    update(state.agents, agentId, { toolUseId: undefined });
-  }
-  const displaced = guessedAgent(dispatch);
-  if (dispatch.status === 'pending' || displaced !== undefined) {
-    // The dispatch is claimed for its agent before a displaced agent looks for another.
-    const status = agent === undefined ? 'pending' : agent.running ? 'started' : 'finished';
-    update(state.dispatches, toolUseId, { status, agentId, linked: true });
-    if (agent !== undefined) update(state.agents, agentId, { toolUseId });
-  } else {
-    // Failed, expired, released or finished first: the agent keeps whatever it holds.
-    update(state.dispatches, toolUseId, { agentId, linked: true });
-  }
-  if (displaced !== undefined) takePending(state, displaced);
-}
-
-function stopRun(state: Draft, agentId: string): void {
-  const agent = state.agents.get(agentId);
-  if (agent?.running === true) update(state.agents, agentId, { running: false, overCap: false });
-}
-
-/** The session after one more event. Events a session has already seen change nothing. */
 export function applySessionEvent(state: SessionState, event: SessionEvent): SessionState {
-  const next = draft(state);
-  switch (event.kind) {
-    case 'admit': {
-      if (next.dispatches.has(event.toolUseId)) return state;
-      next.dispatches.set(event.toolUseId, {
-        toolUseId: event.toolUseId,
-        admittedAt: event.at,
-        description: event.description,
-        ...(event.issue === undefined ? {} : { issue: event.issue }),
-        dispatcher: event.dispatcher,
-        bypass: event.bypass === true,
-        ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
-        ...(event.opus === true ? { opus: true } : {}),
-        ...(event.readOnly === true ? { readOnly: true } : {}),
-        status: 'pending',
-        linked: false,
-      });
-      return next;
-    }
-    case 'start': {
-      const agent = next.agents.get(event.agentId);
-      // A start for a running agent (a teammate's next message) changes nothing.
-      if (agent?.running === true) return state;
-      if (agent !== undefined) {
-        // Resumed by `SendMessage`: a new run, which took no admission.
-        update(next.agents, event.agentId, {
-          running: true,
-          runs: agent.runs + 1,
-          overCap: event.overCap === true,
-        });
-        return next;
-      }
-      next.agents.set(event.agentId, {
-        agentId: event.agentId,
-        ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
-        ...(event.readOnly === true ? { readOnly: true } : {}),
-        startedAt: event.at,
-        running: true,
-        runs: 1,
-        overCap: false,
-      });
-      if (!takePending(next, event.agentId)) {
-        update(next.agents, event.agentId, { overCap: event.overCap === true });
-      }
-      return next;
-    }
-    case 'stop': {
-      if (!next.agents.has(event.agentId)) {
-        // Its start was never recorded: the launched dispatch that named it is over.
-        const named = [...next.dispatches.values()].find(
-          (dispatch) => dispatch.status === 'pending' && dispatch.agentId === event.agentId,
-        );
-        if (named === undefined) return state;
-        update(next.dispatches, named.toolUseId, { status: 'finished' });
-        return next;
-      }
-      stopRun(next, event.agentId);
-      return next;
-    }
-    case 'launched': {
-      link(next, event.toolUseId, event.agentId);
-      return next;
-    }
-    case 'completed': {
-      link(next, event.toolUseId, event.agentId);
-      // A foreground call that returned ended its agent's first run, whether or not its
-      // `SubagentStop` fired: an idempotent stop.
-      const agent = next.agents.get(event.agentId);
-      if (agent !== undefined && agent.runs === 1) stopRun(next, event.agentId);
-      const dispatch = next.dispatches.get(event.toolUseId);
-      if (dispatch?.status === 'pending')
-        update(next.dispatches, event.toolUseId, { status: 'finished' });
-      return next;
-    }
-    case 'failed': {
-      const dispatch = next.dispatches.get(event.toolUseId);
-      if (dispatch === undefined) return state;
-      const guessed = guessedAgent(dispatch);
-      if (dispatch.status !== 'pending' && guessed === undefined) return state;
-      update(next.dispatches, event.toolUseId, { status: 'failed', agentId: undefined });
-      // Start order gave this dispatch an agent; the failure says none started for it, so that
-      // agent's place is another pending dispatch's, if there is one.
-      if (guessed !== undefined) takePending(next, guessed);
-      return next;
-    }
-    case 'expire': {
-      const dispatch = next.dispatches.get(event.toolUseId);
-      if (dispatch?.status !== 'pending') return state;
-      update(next.dispatches, event.toolUseId, { status: 'expired' });
-      return next;
-    }
-    case 'release': {
-      const dispatch = next.dispatches.get(event.target);
-      if (dispatch?.status === 'pending') {
-        update(next.dispatches, event.target, { status: 'released' });
-      } else if (dispatch?.status === 'started' && dispatch.agentId !== undefined) {
-        stopRun(next, dispatch.agentId);
-      } else if (next.agents.has(event.target)) {
-        stopRun(next, event.target);
-      } else return state;
-      return next;
-    }
-  }
+  const previous = observations.get(state);
+  const initial = previous?.initial ?? state;
+  const events = [...(previous?.events ?? []), event];
+  const candidates = replayHistories(initial, events, advanceSessionHistory);
+  // A stale event contradicting every possible parse cannot replace the prior observation.
+  return candidates.length === 0 ? state : project({ initial, events, candidates });
 }
 
 export function foldSession(events: readonly SessionEvent[]): SessionState {
-  return events.reduce(applySessionEvent, emptySession);
+  const candidates = replayHistories(emptySession, events, advanceSessionHistory);
+  return candidates.length === 0
+    ? events.reduce(applySessionEvent, emptySession)
+    : project({ initial: emptySession, events: [...events], candidates });
 }
 
 /** Whether a running agent is read-only: by the dispatch it took, else by its own start. */
@@ -321,6 +165,10 @@ function agentReadOnly(state: SessionState, agent: Agent): boolean {
  * running implementation agent. Read-only agents take none (they count in {@link readOnlyAgents}).
  */
 export function workerPlaces(state: SessionState): number {
+  return Math.max(...candidatesOf(state).map(workerPlacesIn));
+}
+
+function workerPlacesIn(state: SessionState): number {
   let held = 0;
   for (const dispatch of state.dispatches.values()) {
     if (dispatch.status === 'pending' && dispatch.readOnly !== true) held += 1;
@@ -333,6 +181,10 @@ export function workerPlaces(state: SessionState): number {
 
 /** The read-only agents the session holds: pending dispatches and running agents. */
 export function readOnlyAgents(state: SessionState): number {
+  return Math.max(...candidatesOf(state).map(readOnlyAgentsIn));
+}
+
+function readOnlyAgentsIn(state: SessionState): number {
   let held = 0;
   for (const dispatch of state.dispatches.values()) {
     if (dispatch.status === 'pending' && dispatch.readOnly === true) held += 1;
@@ -358,6 +210,10 @@ export function sessionPlaces(state: SessionState): number {
  * on record and counts none.
  */
 export function opusPlaces(state: SessionState): number {
+  return Math.max(...candidatesOf(state).map(opusPlacesIn));
+}
+
+function opusPlacesIn(state: SessionState): number {
   let held = 0;
   for (const dispatch of state.dispatches.values()) {
     if (dispatch.opus === true && dispatch.status === 'pending') held += 1;
@@ -375,12 +231,22 @@ export function neverStarted(
   now: number,
   limit = neverStartedLimitMilliseconds,
 ): Dispatch[] {
-  return [...state.dispatches.values()].filter(
-    // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
-    // `SubagentStart` was recorded; it keeps its place until that agent's stop.
-    (dispatch) =>
-      dispatch.status === 'pending' &&
-      dispatch.agentId === undefined &&
-      now - dispatch.admittedAt >= limit,
-  );
+  const history = observations.get(state);
+  return [...state.dispatches.values()].filter((dispatch) => {
+    const pending = (each: Dispatch | undefined) =>
+      each?.status === 'pending' && each.agentId === undefined && now - each.admittedAt >= limit;
+    if (!pending(dispatch)) return false;
+    if (history === undefined) return true;
+    // Replaying with this ID distinguished tests every possible status for this specific dispatch.
+    const candidates = replayHistories(
+      history.initial,
+      history.events,
+      advanceSessionHistory,
+      dispatch.toolUseId,
+    );
+    return (
+      candidates.length > 0 &&
+      candidates.every((candidate) => pending(candidate.dispatches.get(dispatch.toolUseId)))
+    );
+  });
 }
