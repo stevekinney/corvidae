@@ -57,6 +57,10 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
   // An explicit opt-in the component documents (`edge="border"`, `divider`) is not a default.
   const OPT_IN = /\[data-cinder-(?:edge='border'|divider='true')\]/;
 
+  function rootSelector(name: string): RegExp {
+    return new RegExp(`^\\.cinder-${name}(?:\\.[-\\w]+|\\[[^\\]]+\\])*$`);
+  }
+
   function bordered(): string[] {
     const found: string[] = [];
     for (const name of readdirSync(COMPONENTS_ROOT)) {
@@ -65,8 +69,8 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
       const source = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, (c) =>
         ' '.repeat(c.length),
       );
+      const subject = rootSelector(name);
       for (const match of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-        const subject = new RegExp(`^\\.cinder-${name}(\\[[^\\]]+\\])*$`);
         const selectors = match[1]!.split(',').map((part) => part.replace(/\s+/g, ' ').trim());
         if (!selectors.some((selector) => subject.test(selector) && !OPT_IN.test(selector)))
           continue;
@@ -76,6 +80,13 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
     }
     return found;
   }
+
+  test('recognizes modifiers on a root while excluding its parts and descendants', () => {
+    const subject = rootSelector('example');
+    expect(subject.test(".cinder-example.example-variant-quiet[data-dense='true']")).toBe(true);
+    expect(subject.test('.cinder-example .example-variant-quiet')).toBe(false);
+    expect(subject.test('.cinder-example__label.example-variant-quiet')).toBe(false);
+  });
 
   test('only the named components draw a structural border on their root', () => {
     const unexpected = bordered().filter((name) => !(name in EXCEPTIONS));
