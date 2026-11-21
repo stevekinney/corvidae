@@ -214,9 +214,9 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       expect(bounds?.height).toBeLessThanOrEqual(36);
       await button.click({ trial: true });
     }
-    const reason = deck.getByRole('term').filter({ hasText: /^Reason$/ });
-    const reasonValue = reason.locator('xpath=following-sibling::dd');
-    await expect(reasonValue).not.toBeEmpty();
+    const reason = deck.locator('dt').filter({ hasText: /^Reason$/ });
+    const reasonValue = reason.locator('xpath=following-sibling::dd[1]');
+    await expect(reasonValue).toHaveText(/\S/);
     await reasonValue.scrollIntoViewIfNeeded();
     await expect(reasonValue).toBeInViewport({ ratio: 1 });
     await expect(irreversible).toBeInViewport({ ratio: 1 });
