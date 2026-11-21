@@ -34,7 +34,7 @@
 {#if showCanceled}
   <ApprovalCard
     id="approval-card-canceled"
-    layout="decision"
+    layout="row"
     headingLevel={4}
     question="Deploy the approved release?"
     tool={{ name: 'deploy-cloud', label: 'Deploy release', risk: 'medium' }}
