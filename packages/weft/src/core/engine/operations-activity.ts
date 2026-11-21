@@ -31,6 +31,7 @@ import {
 } from './async-activity-completion.ts';
 import { deriveAsyncActivityToken } from './async-activity-records.ts';
 import { stageOperationSideEffects } from './checkpoint-side-effects.ts';
+import { currentExecutionAttempt, type ExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callActivityFunction } from './state-utilities.ts';
@@ -54,6 +55,9 @@ export type ActivityFunctionWithMetadata = ((...arguments_: unknown[]) => unknow
   };
 
 type ActivityOperation = Extract<ContextOperationRequest, { type: 'activity' }>;
+
+/** Concurrent branches share a receipt only within the same execution attempt. */
+const keyedActivityResults = new WeakMap<ExecutionAttempt, Map<string, Promise<unknown>>>();
 
 /**
  * Per-call execution options for one activity operation. Distinct from the
@@ -478,84 +482,30 @@ export async function executeActivityOperationResult(
   const idempotencyKey = resolveActivityIdempotencyKey(activity, operation);
   const operationAttempt = getActivityAttempt(operation);
   if (idempotencyKey !== undefined) {
+    // A replay of the same durable run has a new attempt. It must reconcile the stored receipt.
+    const executionAttempt = currentExecutionAttempt(internals, workflowId);
     const reference = await buildActivityReconciliationReference(
       workflowId,
       operation.activityName,
       idempotencyKey,
     );
-    const started = await resolveStartedActivityReconciliationRecord(
-      internals,
-      workflowId,
-      operation,
-      reference,
-      activity,
-      idempotencyKey,
-      operationAttempt,
-    );
-    if ('completedResult' in started) {
-      validateActivityResultForReconciliation(
-        started.completedResult,
-        internals.options.payloadSizePolicy.maxBytes,
-      );
-      return started.completedResult;
-    }
-    const result = await executeActivity(
-      internals,
-      workflowId,
-      operation,
-      callbacks,
-      started.attempt,
-      coordinatorSignal,
-      executionOptions.allowRemoteDispatch ?? true,
-    );
-    validateActivityResultForReconciliation(result, internals.options.payloadSizePolicy.maxBytes);
-    await finalizeActivityResult(
-      internals,
-      workflowId,
-      operation,
-      result,
-      activity,
-      idempotencyKey,
-      started.attempt,
-      speculativeState,
-      true,
-    );
-    const completedRecord = createCompletedActivityReconciliationRecord(
-      started,
-      result,
-      internals.options.getNow(),
-    );
-    if (executionOptions.reconciliationCompletion === 'immediate-fenced') {
-      const finishImmediateReconciliationCommit =
-        executionOptions.beforeImmediateReconciliationCommit?.();
-      try {
-        await commitActivityReconciliationTransitionWithFencedWrite(
-          internals,
-          workflowId,
-          reference,
-          started,
-          completedRecord,
-        );
-      } finally {
-        finishImmediateReconciliationCommit?.();
-      }
-    } else {
-      // With the checkpoint that records this activity's result: for a branch of a coordinator that
-      // commits while its branches run, that branch's commit (`side-effect-capture.ts`).
-      stageOperationSideEffects(
+    const execute = () =>
+      executeKeyedActivityOperationResult(
         internals,
         workflowId,
         operation,
-        buildActivityReconciliationTransitionSideEffects(reference, started, completedRecord),
+        callbacks,
+        activity,
+        idempotencyKey,
+        operationAttempt,
+        reference,
+        coordinatorSignal,
+        speculativeState,
+        executionOptions,
       );
-    }
-    // Step succeeded durably: drop its tracked heartbeat. Guarded on the
-    // non-speculative path only — a speculative step can still roll back and
-    // re-run, so it relies on terminal cleanup to clear instead.
-    if (!speculativeState) {
-      clearLastHeartbeatForStep(internals, workflowId, getActivityStateKey(operation));
-    }
-    return result;
+    return executionAttempt === undefined || executionAttempt.abandoned
+      ? execute()
+      : runKeyedActivityOnce(executionAttempt, reference.key, execute);
   }
 
   const result = await executeActivity(
@@ -587,6 +537,110 @@ export async function executeActivityOperationResult(
     clearLastHeartbeatForStep(internals, workflowId, getActivityStateKey(operation));
   }
 
+  return result;
+}
+
+async function executeKeyedActivityOperationResult(
+  internals: EngineInternals,
+  workflowId: string,
+  operation: ActivityOperation,
+  callbacks: ActivityOperationCallbacks,
+  activity: ActivityFunctionWithMetadata | undefined,
+  idempotencyKey: string,
+  operationAttempt: number,
+  reference: Awaited<ReturnType<typeof buildActivityReconciliationReference>>,
+  coordinatorSignal: AbortSignal | undefined,
+  speculativeState: SpeculativeExecutionState | undefined,
+  executionOptions: ActivityOperationExecutionOptions,
+): Promise<unknown> {
+  const started = await resolveStartedActivityReconciliationRecord(
+    internals,
+    workflowId,
+    operation,
+    reference,
+    activity,
+    idempotencyKey,
+    operationAttempt,
+  );
+  if ('completedResult' in started) {
+    validateActivityResultForReconciliation(
+      started.completedResult,
+      internals.options.payloadSizePolicy.maxBytes,
+    );
+    return started.completedResult;
+  }
+  const result = await executeActivity(
+    internals,
+    workflowId,
+    operation,
+    callbacks,
+    operationAttempt,
+    coordinatorSignal,
+    executionOptions.allowRemoteDispatch ?? true,
+  );
+
+  validateActivityResultForReconciliation(result, internals.options.payloadSizePolicy.maxBytes);
+  await finalizeActivityResult(
+    internals,
+    workflowId,
+    operation,
+    result,
+    activity,
+    idempotencyKey,
+    started.attempt,
+    speculativeState,
+    true,
+  );
+  const completedRecord = createCompletedActivityReconciliationRecord(
+    started,
+    result,
+    internals.options.getNow(),
+  );
+  if (executionOptions.reconciliationCompletion === 'immediate-fenced') {
+    const finishImmediateReconciliationCommit =
+      executionOptions.beforeImmediateReconciliationCommit?.();
+    try {
+      await commitActivityReconciliationTransitionWithFencedWrite(
+        internals,
+        workflowId,
+        reference,
+        started,
+        completedRecord,
+      );
+    } finally {
+      finishImmediateReconciliationCommit?.();
+    }
+  } else {
+    stageOperationSideEffects(
+      internals,
+      workflowId,
+      operation,
+      buildActivityReconciliationTransitionSideEffects(reference, started, completedRecord),
+    );
+  }
+  if (!speculativeState) {
+    clearLastHeartbeatForStep(internals, workflowId, getActivityStateKey(operation));
+  }
+  return result;
+}
+
+function runKeyedActivityOnce(
+  attempt: ExecutionAttempt,
+  key: string,
+  execute: () => Promise<unknown>,
+): Promise<unknown> {
+  let activities = keyedActivityResults.get(attempt);
+  if (activities === undefined) {
+    activities = new Map();
+    keyedActivityResults.set(attempt, activities);
+  }
+  const active = activities.get(key);
+  if (active !== undefined) return active;
+  const result = execute();
+  activities.set(key, result);
+  void result.catch(() => {
+    if (activities.get(key) === result) activities.delete(key);
+  });
   return result;
 }
 

@@ -25,6 +25,7 @@ import {
   type UnknownRestBinding,
 } from '@lostgradient/backchannel/internals';
 import type { WorkflowStreamConnectionLease } from '../runtime/websocket-stream.ts';
+import { weftFaultPolicy } from '../weft-fault-policy.ts';
 import { type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
 import {
   workflowEventEnvelopeSchema,
@@ -218,7 +219,7 @@ function shapeWorkflowEventsSseFault(fault: OperationFault): Response {
   if (fault.code === 'InvalidParams' && fault.message === MAXIMUM_WORKFLOW_STREAMS_MESSAGE) {
     return shapeRestFault(fault, { status: 429 });
   }
-  return shapeServerSentEventsFault(fault);
+  return shapeServerSentEventsFault(fault, weftFaultPolicy);
 }
 
 function readSelector(request: Request): string | undefined {

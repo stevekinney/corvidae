@@ -15,6 +15,7 @@ import { ActivityStartedEvent } from '../events.ts';
 import { getWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { ActivityInterception } from '../interceptor.ts';
 import { getActivityFunctionWithMetadata, resolveActivityFunction } from './activity-resolution.ts';
+import { beginExecutionAttempt } from './execution-attempts.ts';
 import {
   executeActivity,
   executeActivityOperationResult,
@@ -650,6 +651,57 @@ describe('activity operation helpers', () => {
     expect(await readSingleActivityReconciliationRecord(storage, 'workflow:id')).toMatchObject({
       status: 'completed',
       result: 'immediate-result',
+    });
+  });
+
+  it('reconciles a keyed activity after the same engine relaunches before committing its receipt', async () => {
+    const workflowId = 'workflow-id';
+    const token = 'one-durable-run';
+    const storage = new MemoryStorage();
+    const internals = createInternals({ storage });
+    const options = { idempotencyKey: 'same-run-new-attempt' };
+    const callbacks = createCallbacks();
+    beginExecutionAttempt(internals as never, workflowId, token);
+    const first = await executeActivityOperationResult(
+      internals as never,
+      workflowId,
+      createActivityOperation({ fn: () => 'external-result', options }),
+      callbacks,
+    );
+    expect(first).toBe('external-result');
+    expect(await readSingleActivityReconciliationRecord(storage, workflowId)).toMatchObject({
+      status: 'started',
+    });
+
+    // The earlier attempt lost ownership before it could commit the staged completion.
+    internals.pendingAtomicWorkflowCommitSideEffects.delete(workflowId);
+    beginExecutionAttempt(internals as never, workflowId, token);
+    const verify = mock(async () => ({
+      status: 'completed-with-result' as const,
+      result: 'external-result',
+    }));
+    const redispatch = mock(() => {
+      throw new Error('The external action already completed');
+    });
+    const replay = await executeActivityOperationResult(
+      internals as never,
+      workflowId,
+      createActivityOperation({
+        operationId: 'replayed-operation',
+        fn: Object.assign(redispatch, { verify }),
+        options,
+      }),
+      callbacks,
+    );
+    expect(replay).toBe('external-result');
+    expect(verify).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ phase: 'pre-dispatch-reconciliation' }),
+    );
+    expect(redispatch).not.toHaveBeenCalled();
+    expect(await readSingleActivityReconciliationRecord(storage, workflowId)).toMatchObject({
+      status: 'completed',
+      result: 'external-result',
     });
   });
 

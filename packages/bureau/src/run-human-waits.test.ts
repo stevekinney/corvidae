@@ -41,7 +41,7 @@ function build(
     recordDecision: async () => undefined,
     checkDelivery: () => undefined,
     prepareDelivery: async (_review, payload) => ({ payload, audit: [] }),
-    createError: (message) => new Error(message),
+    createError: (message, code) => Object.assign(new Error(message), { code }),
     durableNotConfigured: () => new Error('no durable engine'),
     diagnose: (diagnostic) => {
       diagnostics.push(diagnostic);
@@ -214,5 +214,33 @@ describe('rereadClosed', () => {
     const { waits } = build(stillParked);
 
     expect(await waits.rereadClosed('run-9', GRACE)).toEqual({});
+  });
+});
+
+describe('resolve after the engine closed a review', () => {
+  it('answers NOT_FOUND and removes a timed-out review before a background refresh', async () => {
+    let waiting = true;
+    const { waits } = build({
+      get: async () =>
+        ({
+          status: 'running',
+          waitingForSignals: waiting ? ['answer'] : [],
+        }) as never,
+    });
+    await waits.attach('run-1', { agentName: 'asker' }, SERVICES);
+    const [review] = waits.list();
+    if (review === undefined) throw new Error('expected a pending review');
+
+    // The timeout path clears the engine wait before its asynchronous Bureau refresh runs.
+    waiting = false;
+    const result = await waits
+      .resolve({ id: review.id, decision: 'approve', principal: 'alice' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(result).toMatchObject({ code: 'NOT_FOUND' });
+    expect(waits.list()).toEqual([]);
   });
 });
