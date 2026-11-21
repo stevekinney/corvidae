@@ -14,6 +14,7 @@ import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
 import { rewriteBureauAnswer } from './bureau-answer-support.ts';
+import { hideModelPicker, revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -716,12 +717,12 @@ test.describe('The composer at desktop width', () => {
     const composer = page.locator('.chat-input').first();
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
     const settings = page.getByRole('button', { name: 'Settings: Model, Effort and Permissions' });
-    await expect(
-      page
-        .getByRole('combobox', { name: /Permissions/ })
-        .or(settings)
-        .first(),
-    ).toBeVisible();
+    await revealSettings(page, [
+      { name: 'Model', text: 'Claude Sonnet 5.5' },
+      { name: 'Effort', text: 'Medium' },
+      { name: 'Permissions', text: 'On changes asks' },
+    ]);
+    await hideModelPicker(page);
     // Whatever stays in the row is drawn whole: nothing in it is clipped to an ellipsis.
     const clipped = await composer.locator('.chat-input-footer-left').evaluate((footer) =>
       [footer, ...footer.querySelectorAll<HTMLElement>('*')]

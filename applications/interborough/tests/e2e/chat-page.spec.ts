@@ -16,7 +16,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
-import { revealSettings } from './chat-support.ts';
+import { hideModelPicker, revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -97,7 +97,8 @@ test.describe('an open chat on the sample world', () => {
     page,
   }) => {
     await openRefundChat(page, { width: 1280, height: 800 });
-    await expect(page.locator('#weft-chat-model')).toContainText('Claude Sonnet 5.5');
+    await revealSettings(page, [{ name: 'Model', text: 'Claude Sonnet 5.5' }]);
+    await hideModelPicker(page);
     await trail(page).getByRole('button', { name: TITLE }).click();
     const details = page.getByTestId('chat-details');
     await expect(details).toBeVisible();
