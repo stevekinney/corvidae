@@ -83,8 +83,10 @@ import {
 } from './delivery-verification.ts';
 import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
+import { describeVerified, type MainRunReader } from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
+import { acceptMovedBase } from './moved-base.ts';
 import {
   defaultRunner,
   emitResult,
@@ -96,6 +98,7 @@ import {
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { listThreads, ReviewThreadsError } from './review-threads.ts';
 import { totalUsage, type UsageTotals } from './transcript-usage.ts';
+import type { EvidencePlan } from './verification-plan.ts';
 
 export { UsageError };
 
@@ -142,6 +145,11 @@ export interface MergeGateReport {
   treesMatch: boolean | null;
   /** Set when `main`'s latest `main.yml` run failed or could not be read; a warning, never a refusal. */
   mainHealthWarning?: string;
+  /**
+   * The commits on `origin/<default>` since the evidence that main's own CI had already verified
+   * and the landing queue therefore did not count, one line per `main.yml` run. Absent when none.
+   */
+  verifiedOnMain?: string[];
   /** Whether the pull request was declared a repair of a red `main` (`--fixes-main`). */
   fixesMain?: boolean;
   /** The step that failed, or `null` when every step passed. */
@@ -160,6 +168,10 @@ export interface MergeGateDependencies {
   /** Blocks between fetch retries and mergeability reads; defaults to `Bun.sleepSync`. */
   sleep: (milliseconds: number) => void;
   verification: DeliveryVerificationDependencies;
+  /** The evidence plan of a changed-file list, read from `worktree`, for a moved base; a test supplies one. */
+  evidencePlan: (changed: string[], worktree: string) => EvidencePlan;
+  /** Main's own `main.yml` push runs, for a moved base; defaults to `gh run list`. */
+  mainRuns: MainRunReader;
 }
 
 interface PullRequestView {
@@ -324,13 +336,40 @@ async function mergeGateCore(
   const integrationTree = verificationTree.stdout.split('\n')[0]?.trim() ?? '';
   if (verificationTree.code !== 0 || !/^[0-9a-f]{40,64}$/.test(integrationTree))
     return fail('conflict', 'could not derive the current integration tree for verification.');
+  // The identity the verification chain attests: the actual base and tree, or, when main moved
+  // after the evidence, the attested ones, but only when the landing queue classified every new
+  // commit (outside the plan, or verified by a green `main.yml` push run on main) and Git shows the
+  // tree about to land is the attested tree plus exactly those commits (`moved-base.ts`). Any other
+  // movement keeps the actual values and is refused below as a stale base.
+  let attested = { base: report.base ?? '', tree: integrationTree };
+  let landed: { landedBase: string; landedTree: string } | undefined;
+  const { request } = verification;
+  if (report.base !== null && report.base !== request.base) {
+    const moved = acceptMovedBase({
+      runner,
+      worktree: options.worktree,
+      head,
+      base: report.base,
+      tree: integrationTree,
+      attested: { base: request.base, tree: request.integrationTree },
+      defaultBranch,
+      repository,
+      dependencies: partial,
+    });
+    if ('problem' in moved)
+      return fail('verification', `verification request has a stale base: ${moved.problem}`);
+    attested = { base: request.base, tree: request.integrationTree };
+    landed = { landedBase: report.base, landedTree: integrationTree };
+    const verifiedOnMain = describeVerified(moved.classified.verified);
+    if (verifiedOnMain.length > 0) report.verifiedOnMain = verifiedOnMain;
+  }
   const verificationProblem = validateDeliveryVerification(
     verification,
     {
       repository,
       revision: head,
-      base: report.base ?? '',
-      integrationTree,
+      base: attested.base,
+      integrationTree: attested.tree,
       route: 'pull-request',
       action: 'merge',
     },
@@ -383,8 +422,9 @@ async function mergeGateCore(
       route: 'pull-request',
       pullRequest: options.pr,
       reviewedHead: head,
-      base: report.base ?? '',
-      integrationTree,
+      base: attested.base,
+      integrationTree: attested.tree,
+      ...landed,
       state: 'pending-provider-outcome',
     },
     'unknown',
@@ -447,8 +487,9 @@ async function mergeGateCore(
       route: 'pull-request',
       pullRequest: options.pr,
       reviewedHead: head,
-      base: report.base ?? '',
-      integrationTree,
+      base: attested.base,
+      integrationTree: attested.tree,
+      ...landed,
       mergeCommit,
       state: 'confirmed-merge',
     },
@@ -544,8 +585,8 @@ async function recoverPullRequestMerge(
   if (
     fetched.code !== 0 ||
     expected.code !== 0 ||
-    tree !== receipt.integrationTree ||
-    expectedTree !== receipt.integrationTree
+    tree !== (receipt.landedTree ?? receipt.integrationTree) ||
+    expectedTree !== (receipt.landedTree ?? receipt.integrationTree)
   )
     return unresolved();
   await recordDeliveryMergeObservation(
@@ -679,6 +720,8 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
     lines.push(
       `WARNING main health: ${report.mainHealthWarning}${report.fixesMain === true ? ' Merged as the declared fix.' : ''}`,
     );
+  for (const verified of report.verifiedOnMain ?? [])
+    lines.push(`base moved, accepted without a new run: main commits ${verified}`);
   if (report.failedStep !== null) {
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
     if (report.merged)
