@@ -303,6 +303,11 @@ test('each step completes from its own signal, from connecting a provider to say
   await expect(homeSteps(page).nth(2)).toContainText('Waits for step 2: create an agent first.');
   await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
   await expect(page.getByTestId('home-counts')).toHaveCount(0);
+  await captureForDesignReview(page, {
+    route: '/',
+    state: 'first run, chat waits for an agent',
+    source: 'first-run.spec.ts',
+  });
 
   // New chat has no agent to start with yet, and leads to the agent form.
   await page.goto('/chats/new');
