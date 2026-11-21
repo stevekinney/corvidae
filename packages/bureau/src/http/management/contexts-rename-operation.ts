@@ -23,7 +23,8 @@ import {
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, BureauShuttingDownError } from '../../bureau-errors.ts';
+import { BureauShuttingDownError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
@@ -109,14 +110,7 @@ export const contextsRenameOperation = defineOperation<
           data: { reason: 'shutting-down' },
         } satisfies OperationFault;
       }
-      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
-        throw {
-          code: 'InvalidParams',
-          message: error.message,
-          data: { issues: [{ path: ['title'], message: error.message, code: 'custom' }] },
-        } satisfies OperationFault;
-      }
-      throw error;
+      throw bureauFaultOf(error, { invalidPath: ['title'] });
     }
     // The id holds another incarnation now (or none): the context authorized is gone.
     if (renamed === undefined) throw resourceNotFound('context', contextId);

@@ -48,11 +48,11 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import {
-  BureauError,
   ScheduleLocatorUnavailableError,
   UnknownScheduleAgentError,
   UnknownScheduleWorkflowError,
 } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { bureauNameOf } from '../../namespaced-identifier.ts';
 import { AGENT_SCHEDULE_WORKFLOW_TYPE } from '../../workflow-schedule.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
@@ -319,17 +319,12 @@ function faultOf(error: unknown, scheduleId: string): never {
       },
     } satisfies OperationFault;
   }
-  if (error instanceof BureauError) {
-    if (error.code === 'NOT_FOUND') throw resourceNotFound('schedule', scheduleId);
-    if (error.code === 'BAD_REQUEST') throw invalidParams('schedule', error.message);
-    if (error.code === 'NOT_CONFIGURED') {
-      throw {
-        code: 'UnsupportedCapability',
-        message: error.message,
-        data: { capability: 'generate' },
-      } satisfies OperationFault;
-    }
-  }
+  const bureauFault = bureauFaultOf(error, {
+    notFound: { resource: 'schedule', identifier: scheduleId },
+    invalidPath: ['schedule'],
+    capability: 'generate',
+  });
+  if (bureauFault !== error) throw bureauFault;
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     if (message.includes('not found')) throw resourceNotFound('schedule', scheduleId);

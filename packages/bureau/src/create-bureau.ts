@@ -3777,7 +3777,16 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1868: a child run's task is stopped by the topology that owns the child.
       cancelChild: async (child) => {
         const cancelled = await childTopology.children.cancel(child);
-        if (cancelled.outcome === 'failed') throw new BureauError(cancelled.reason, 'CONFLICT');
+        if (cancelled.outcome === 'failed') {
+          // The engine's own words describe its internals: they go to the operator's log, and the
+          // caller is told only that the child run could not be stopped (COR-2518).
+          diagnose({
+            level: 'warn',
+            scope: 'tasks',
+            message: `[bureau] Could not cancel a child run: ${cancelled.reason}`,
+          });
+          throw new BureauError('The child run could not be cancelled. Try again.', 'CONFLICT');
+        }
         return cancelled.outcome;
       },
       sleep: (milliseconds) =>
