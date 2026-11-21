@@ -139,7 +139,7 @@ test('a requested cancellation reads as awaiting acknowledgement, never as expir
   await checkA11y('workers—task with requested cancellation');
 });
 
-test('an acknowledged cancellation is attributed to the owning attempt', async ({
+test('/health/workers (task ledger): an acknowledged cancellation is attributed to the owning attempt', async ({
   page,
   checkA11y,
 }) => {
