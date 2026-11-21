@@ -306,7 +306,7 @@ export type A2ABureau = Pick<
 } & {
   readonly reviews: Pick<BureauReviews, 'get'>;
 } & {
-  readonly contexts: Pick<BureauContexts, 'get' | 'input'>;
+  readonly contexts: Pick<BureauContexts, 'get' | 'input' | 'inputsDeliveredBy'>;
 } & {
   readonly internals: FormsAuditInternals & {
     readonly taskRegistry: Pick<
@@ -1450,8 +1450,13 @@ export function createBureauA2ARequestHandler(
     stored: A2ASendResult,
   ): Promise<A2ASendResult> {
     if (stored.path !== 'input' || stored.reason !== undefined) return stored;
+    let view: TaskView;
     try {
-      const view = await ownTask(stored.taskId, owner);
+      view = await ownTask(stored.taskId, owner);
+    } catch {
+      return stored;
+    }
+    try {
       const command = parseContinuation(message, 'input', view, [], inputModes);
       if (command.path !== 'input') return stored;
       // The replay delivers the input it delivered, from the projection the first attempt recorded.
@@ -1459,7 +1464,21 @@ export function createBureauA2ARequestHandler(
       const outcome = await submitInput(message, view, owner, deadline, command, inbound);
       return { ...stored, state: inputReceiptState(outcome.receipt.state) };
     } catch {
-      return stored;
+      // A task that has ended takes no input, so the mailbox cannot be asked again; its run's
+      // durable delivery record still says whether this input reached it (COR-2550).
+      return (await deliveredByTask(view, message.messageId))
+        ? { ...stored, state: 'applied' }
+        : stored;
+    }
+  }
+
+  /** Whether the task's run took the input with this id into its conversation. */
+  async function deliveredByTask(view: TaskView, messageId: string): Promise<boolean> {
+    try {
+      const delivered = await bureau.contexts.inputsDeliveredBy(view.id, view.contextId);
+      return delivered.includes(messageId);
+    } catch {
+      return false;
     }
   }
 
