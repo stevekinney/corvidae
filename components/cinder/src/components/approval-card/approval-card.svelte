@@ -819,6 +819,7 @@
           {rememberScope}
           bind:reason
           {noteInitiallyOpen}
+          noteLabel="Note (optional)"
           {disabledReason}
           {resolving}
           {canEditArguments}

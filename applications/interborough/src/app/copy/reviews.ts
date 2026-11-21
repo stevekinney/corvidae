@@ -157,6 +157,10 @@ export const REVIEWS_COPY = {
   denyShortcut: 'Deny the open review',
   pickShortcut: (position: number): string => `Pick choice ${String(position)}`,
   decisionFailed: 'The decision was not recorded',
+  approvalFailed: {
+    approve: 'Couldn’t approve',
+    deny: 'Couldn’t deny',
+  },
   /**
    * The Bureau's answer when a decision took effect and only its write into the conversation
    * failed (`APPROVAL_OUTCOME_NOT_WRITTEN`). It is not a lost race, so it does not say the decision

@@ -381,10 +381,16 @@ for (const width of WIDTHS) {
         });
       });
       await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
-      const pane = page.locator('.ib-review-pane');
+      const pane = page.locator('.ib-reviews__detail');
       await expect(pane).toContainText('Refund order order-1001');
       await pane.getByRole('button', { name: 'Approve' }).click();
       await expect(page.getByTestId('review-gone')).toBeVisible();
+      await expect(page.getByTestId('review-gone')).toContainText(
+        REVIEWS_COPY.noLongerWaiting.message,
+      );
+      await expect(
+        pane.getByRole('button', { name: REVIEWS_COPY.noLongerWaiting.next, exact: true }),
+      ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/reviews',
         state: 'resolved elsewhere, row leaving',

@@ -140,6 +140,37 @@ async function useApprovalCaptureFixture(
   });
 }
 
+/** Set the actual demo tool's policy and restore its versioned override afterwards. */
+async function withAlwaysRefundMode(
+  request: APIRequestContext,
+  exercise: () => Promise<void>,
+): Promise<void> {
+  const id = 'demo:tool-runner';
+  const tool = 'issue-refund';
+  const { hash, overrides, ownTools } = (await bureauCall(request, 'bureau.agents.overrides.get', {
+    id,
+  })) as { hash: string; overrides: Record<string, unknown>; ownTools: string[] };
+  expect(ownTools).toContain(tool);
+  const { hash: appliedHash } = (await bureauCall(request, 'bureau.agents.overrides.update', {
+    id,
+    expectedHash: hash,
+    overrides: { ...overrides, approvals: { [tool]: 'always' } },
+  })) as { hash: string };
+  try {
+    const readback = (await bureauCall(request, 'bureau.agents.overrides.get', { id })) as {
+      overrides: Record<string, unknown>;
+    };
+    expect(readback.overrides['approvals']).toMatchObject({ [tool]: 'always' });
+    await exercise();
+  } finally {
+    await bureauCall(request, 'bureau.agents.overrides.update', {
+      id,
+      expectedHash: appliedHash,
+      overrides,
+    });
+  }
+}
+
 /** Starts a refund run that waits on its approval, and opens the inbox on it. */
 async function waitingRefund(
   page: Page,
@@ -241,7 +272,7 @@ test.describe('a tool approval', () => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-reject');
     const resolves = recordResolves(page);
     await paneOf(page)
-      .getByRole('textbox', { name: 'Note Optional', exact: true })
+      .getByRole('textbox', { name: 'Note (optional)', exact: true })
       .fill('Wrong customer.');
     await paneOf(page).getByRole('button', { name: 'Deny' }).click();
 
@@ -260,7 +291,7 @@ test.describe('a tool approval', () => {
   }) => {
     const approved = await waitingRefund(page, request, 'reviews-key-approve');
     // Typing an "a" or a "d" into the note is typing, not a decision.
-    const note = paneOf(page).getByRole('textbox', { name: 'Note Optional', exact: true });
+    const note = paneOf(page).getByRole('textbox', { name: 'Note (optional)', exact: true });
     await note.fill('');
     await note.press('a');
     await note.press('d');
@@ -278,7 +309,7 @@ test.describe('a tool approval', () => {
     const denied = await waitingRefund(page, request, 'reviews-key-deny');
     const resolves = recordResolves(page);
     await paneOf(page)
-      .getByRole('textbox', { name: 'Note Optional', exact: true })
+      .getByRole('textbox', { name: 'Note (optional)', exact: true })
       .fill('Not this one.');
     await paneOf(page).getByRole('heading', { level: 2 }).click();
     await page.keyboard.press('d');
@@ -321,31 +352,8 @@ test.describe('a tool approval', () => {
     page,
     request,
   }) => {
-    const threadId = newThreadId('reviews-capture-always');
-    const id = 'demo:tool-runner';
-    const tool = 'issue-refund';
-    const { hash, overrides, ownTools } = (await bureauCall(
-      request,
-      'bureau.agents.overrides.get',
-      {
-        id,
-      },
-    )) as { hash: string; overrides: Record<string, unknown>; ownTools: string[] };
-    expect(ownTools).toContain(tool);
-    const { hash: appliedHash } = (await bureauCall(request, 'bureau.agents.overrides.update', {
-      id,
-      expectedHash: hash,
-      overrides: { ...overrides, approvals: { [tool]: 'always' } },
-    })) as { hash: string };
-    try {
-      const readback = (await bureauCall(request, 'bureau.agents.overrides.get', {
-        id,
-      })) as { overrides: Record<string, unknown> };
-      expect(readback.overrides['approvals']).toMatchObject({ [tool]: 'always' });
-      await runToEnd(request, id, threadId, 'Refund order-1001');
-      const review = await waitingReviewOf(request, threadId);
-      await useApprovalCaptureFixture(page, review, REFUND_APPROVAL);
-      await page.goto(inboxAt(review));
+    await withAlwaysRefundMode(request, async () => {
+      await waitingRefund(page, request, 'reviews-capture-always', REFUND_APPROVAL);
       const pane = paneOf(page);
       await expect(pane.getByRole('heading', { level: 2 })).toHaveText(REFUND_APPROVAL.question);
       for (const label of ['Order ID', 'Amount', 'Reason']) {
@@ -353,15 +361,9 @@ test.describe('a tool approval', () => {
       }
       await expect(pane).toContainText('Arrived damaged');
       await expect(pane).toContainText("Can't be undone.");
-      await expect(paneOf(page).getByRole('checkbox')).toHaveCount(0);
+      await expect(pane.getByRole('checkbox')).toHaveCount(0);
       await captureApprovalAtWidths(page, 'pending Always approval');
-    } finally {
-      await bureauCall(request, 'bureau.agents.overrides.update', {
-        id,
-        expectedHash: appliedHash,
-        overrides,
-      });
-    }
+    });
   });
 
   for (const [decision, active, other] of [
@@ -372,56 +374,66 @@ test.describe('a tool approval', () => {
       page,
       request,
     }) => {
-      const { review, threadId } = await waitingRefund(
-        page,
-        request,
-        'reviews-capture-held',
-        REFUND_APPROVAL,
-      );
-      const requests = recordResolves(page);
-      const release = Promise.withResolvers<void>();
-      let failedOnce = false;
-      const reason = 'The Bureau could not apply this decision.';
-      await page.route('**/jsonrpc', async (route) => {
-        const call = route.request().postDataJSON() as {
-          method?: string;
-          id?: string;
-          params?: { id?: string };
-        };
-        if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id) {
-          return route.fallback();
-        }
-        if (failedOnce) return route.fallback();
-        failedOnce = true;
-        await release.promise;
-        await route.fulfill({
-          json: { jsonrpc: '2.0', id: call.id, error: { code: -32603, message: reason } },
-        });
-      });
-      const pane = paneOf(page);
-      try {
-        await pane.getByRole('button', { name: decision, exact: true }).click();
-        await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
-          'aria-busy',
-          'true',
+      await withAlwaysRefundMode(request, async () => {
+        const { review, threadId } = await waitingRefund(
+          page,
+          request,
+          'reviews-capture-held',
+          REFUND_APPROVAL,
         );
-        await expect(pane.getByRole('button', { name: other, exact: true })).toBeDisabled();
-        await page.keyboard.press(decision === 'Approve' ? 'd' : 'a');
+        const requests = recordResolves(page);
+        const release = Promise.withResolvers<void>();
+        let failedOnce = false;
+        const failureTitle =
+          REVIEWS_COPY.approvalFailed[decision === 'Approve' ? 'approve' : 'deny'];
+        const reason =
+          decision === 'Approve'
+            ? 'Interborough couldn’t reach the agent. Nothing was refunded.'
+            : 'Interborough couldn’t reach the agent. Nothing changed.';
+        await page.route('**/jsonrpc', async (route) => {
+          const call = route.request().postDataJSON() as {
+            method?: string;
+            id?: string;
+            params?: { id?: string };
+          };
+          if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id) {
+            return route.fallback();
+          }
+          if (failedOnce) return route.fallback();
+          failedOnce = true;
+          await release.promise;
+          await route.fulfill({
+            json: { jsonrpc: '2.0', id: call.id, error: { code: -32603, message: reason } },
+          });
+        });
+        const pane = paneOf(page);
+        await expect(pane.getByRole('checkbox')).toHaveCount(0);
+        try {
+          await pane.getByRole('button', { name: decision, exact: true }).click();
+          await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
+            'aria-busy',
+            'true',
+          );
+          await expect(pane.getByRole('button', { name: other, exact: true })).toBeDisabled();
+          await expect(pane.getByRole('checkbox')).toHaveCount(0);
+          await page.keyboard.press(decision === 'Approve' ? 'd' : 'a');
+          expect(requests).toHaveLength(1);
+          await captureApprovalAtWidths(page, `${decision} in flight`, [active, other]);
+        } finally {
+          release.resolve();
+        }
+        await expect(pane.getByText(failureTitle, { exact: true })).toBeVisible();
+        await expect(pane).toContainText(reason);
+        await expect(page.locator('.cinder-toast-region').getByText(reason)).toHaveCount(0);
+        await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
+        await expect(pane.getByRole('checkbox')).toHaveCount(0);
+        await captureApprovalAtWidths(page, `${decision} failing`);
+        expect(refundRan(await threadMessages(request, threadId))).toBe(false);
         expect(requests).toHaveLength(1);
-        await captureApprovalAtWidths(page, `${decision} in flight`, [active, other]);
-      } finally {
-        release.resolve();
-      }
-      await expect(pane.getByText(REVIEWS_COPY.decisionFailed, { exact: true })).toBeVisible();
-      await expect(pane).toContainText(reason);
-      await expect(page.locator('.cinder-toast-region').getByText(reason)).toHaveCount(0);
-      await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
-      await captureApprovalAtWidths(page, `${decision} failing`);
-      expect(refundRan(await threadMessages(request, threadId))).toBe(false);
-      expect(requests).toHaveLength(1);
-      await pane.getByRole('button', { name: decision, exact: true }).click();
-      await expect(rowOf(page, review)).toHaveCount(0);
-      expect(requests).toHaveLength(2);
+        await pane.getByRole('button', { name: decision, exact: true }).click();
+        await expect(rowOf(page, review)).toHaveCount(0);
+        expect(requests).toHaveLength(2);
+      });
     });
   }
 
@@ -502,7 +514,7 @@ test.describe('a tool approval', () => {
   }) => {
     const { review } = await waitingRefund(page, request, 'reviews-done', REFUND_APPROVAL);
     const note = 'Confirmed with the customer.';
-    await paneOf(page).getByRole('textbox', { name: 'Note Optional' }).fill(note);
+    await paneOf(page).getByRole('textbox', { name: 'Note (optional)' }).fill(note);
     await paneOf(page).getByRole('button', { name: 'Approve' }).click();
     await expect(rowOf(page, review)).toHaveCount(0);
 
@@ -512,7 +524,7 @@ test.describe('a tool approval', () => {
     await expect(paneOf(page)).toContainText(note);
     await expect(paneOf(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(paneOf(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
-    await captureApprovalAtWidths(page, 'no longer waiting with a decision', []);
+    await captureApprovalAtWidths(page, 'Done with decision and note', []);
     // Done is read through the same list, asked for what was resolved.
     await page.getByRole('radio', { name: /^Waiting/ }).click();
     await expect(page).not.toHaveURL(/tab=done/);

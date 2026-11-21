@@ -25,6 +25,7 @@
     reason?: string;
     /** Whether the note field starts open. */
     noteInitiallyOpen?: boolean;
+    noteLabel?: string;
     /** Why Deny and Approve are off, when they are. */
     disabledReason: string | undefined;
     /** The answer on its way, or `undefined` when none is. */
@@ -44,6 +45,7 @@
     rememberScope,
     reason = $bindable(''),
     noteInitiallyOpen = false,
+    noteLabel,
     disabledReason,
     resolving,
     canEditArguments,
@@ -146,8 +148,8 @@
       <Textarea
         id={reasonId}
         bind:value={reason}
-        label="Note"
-        optional
+        label={noteLabel ?? 'Note'}
+        optional={noteLabel === undefined}
         description="Saved with your decision. If you deny, the agent reads it as the reason."
         placeholder="Add a note"
         rows={2}

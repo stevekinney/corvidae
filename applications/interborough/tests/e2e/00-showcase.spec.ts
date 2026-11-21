@@ -347,7 +347,7 @@ for (const width of [375, 1280] as const) {
     await page.goto(
       `/reviews?review=${encodeURIComponent(`engine:${markdownReview?.reviewId ?? ''}`)}`,
     );
-    const pane = page.locator('.ib-review-pane');
+    const pane = page.locator('.ib-review-detail[data-kind="engine-review"]');
     await expect(pane.getByRole('heading', { name: 'Refund policy update' })).toBeVisible();
     await expect(pane.locator('[data-cinder-markdown-node="table"] td').first()).toHaveText(
       'Up to $25',
