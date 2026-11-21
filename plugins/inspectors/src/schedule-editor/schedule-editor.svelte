@@ -114,13 +114,9 @@
         {#if cancelled}
           <p>This schedule was canceled, so it cannot be changed.</p>
         {/if}
-        <form
-          class="schedule-form"
-          onsubmit={(event: SubmitEvent) => {
-            event.preventDefault();
-            handlers.onSave();
-          }}
-        >
+        <!-- A panel runs in a frame sandboxed to allow-scripts alone, where a form never submits, so
+             Save is a plain button with its own handler; the form only groups the fields. -->
+        <form class="schedule-form" onsubmit={(event: SubmitEvent) => event.preventDefault()}>
           <Input
             id="schedule-spec"
             label="When it runs"
@@ -221,9 +217,9 @@
             <Button
               id="schedule-save"
               variant="primary"
-              type="submit"
               label={making ? 'Create schedule' : 'Save changes'}
               disabled={locked || cancelled || view.stale}
+              onclick={handlers.onSave}
             />
             <Button
               id="schedule-back"

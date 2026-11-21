@@ -127,9 +127,14 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     });
     expect(calls).toEqual([`edit:${JSON.stringify({ spec: '6h' })}`]);
     expect(view.draft.spec).toBe('');
+    // A panel's frame is sandboxed to allow-scripts alone, where a form never submits: the save
+    // comes from the button's own click, and submitting the form saves nothing.
     await fireEvent.submit(container.querySelector('form') as HTMLFormElement);
+    expect(calls.at(-1)).not.toBe('save');
+    const create = getByRole('button', { name: 'Create schedule' });
+    expect(create.getAttribute('type')).not.toBe('submit');
+    await fireEvent.click(create);
     expect(calls.at(-1)).toBe('save');
-    expect(getByRole('button', { name: 'Create schedule' })).toBeTruthy();
   });
 
   it('asks for an agent’s text when it is new, and for a workflow’s JSON when it runs one', async () => {
