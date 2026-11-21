@@ -302,8 +302,11 @@ test.describe('schedule-editor-states: the list of schedules', () => {
       answers: { 'bureau.schedules.list': () => ({ schedules: [], nextOffset: null }) },
     });
     const ready = async () => {
-      await expect(app.getByText('There are no schedules yet.')).toBeVisible();
-      await expect(app.getByRole('button', { name: 'New schedule' })).toBeVisible();
+      await expect(app.getByRole('heading', { name: 'No schedules yet' })).toBeVisible();
+      // The empty state's one action makes a schedule: there is no second button beside it.
+      await expect(app.getByRole('button', { name: 'New schedule' })).toHaveCount(1);
+      // No status box is drawn while there is nothing to say.
+      await expect(app.locator('.cinder-callout')).toHaveCount(0);
     };
     await ready();
     await captureState(page, app, 'list-empty', ready);
@@ -356,9 +359,10 @@ test.describe('schedule-editor-states: one schedule', () => {
     await bureauCall(request, 'bureau.schedules.cancel', { scheduleId: id });
     const app = await open(page, request, { toolInput: { scheduleId: id } });
     const ready = async () => {
+      // Said once, in the status, and not again above the form.
       await expect(
         app.getByText('This schedule was canceled, so it cannot be changed.'),
-      ).toBeVisible();
+      ).toHaveCount(1);
       await expect(app.getByLabel('When it runs')).toBeDisabled();
       await expect(save(app)).toBeDisabled();
     };
@@ -402,7 +406,8 @@ test.describe('schedule-editor-states: a save', () => {
     await save(app).click();
     const ready = async () => {
       await expect(when).toHaveAttribute('aria-invalid', 'true');
-      await expect(status(app)).toContainText('Not saved');
+      // The Bureau's reason is on the field alone; the page only says to fix the fields.
+      await expect(status(app)).toHaveText('Not saved. Fix the fields that show a problem.');
     };
     await ready();
     await captureState(page, app, 'field-errors', ready);
@@ -459,6 +464,8 @@ test.describe('schedule-editor-states: a save', () => {
     await app.getByLabel('When it runs').fill('2h');
     await save(app).click();
     const ready = async () => {
+      await expect(status(app)).toHaveText('Saving the changes…');
+      await expect(save(app)).toHaveAttribute('aria-busy', 'true');
       await expect(save(app)).toBeDisabled();
       await expect(app.getByRole('button', { name: 'Back to schedules' })).toBeDisabled();
       await expect(app.getByLabel('When it runs')).toBeDisabled();
@@ -502,7 +509,8 @@ test.describe('schedule-editor-states: a save', () => {
     await app.getByRole('switch', { name: 'Paused' }).click();
     await save(app).click();
     const ready = async () => {
-      await expect(status(app)).toContainText('The part that did go through: saved the changes.');
+      // What landed and what did not, in the words of what was asked: never "not saved" beside "saved".
+      await expect(status(app)).toHaveText('Saved the changes. Pausing it failed: Failed.');
     };
     await ready();
     await captureState(page, app, 'half-saved', ready);
@@ -526,6 +534,9 @@ test.describe('schedule-editor-states: a save', () => {
         'The host did not answer, so the schedule may or may not',
       );
       await expect(save(app)).toBeDisabled();
+      // There is no schedule to read again, so the way on is the list.
+      await expect(app.getByRole('button', { name: 'Read it again' })).toHaveCount(0);
+      await expect(app.getByRole('button', { name: 'Back to schedules' })).toBeEnabled();
     };
     await ready();
     await captureState(page, app, 'did-not-answer', ready);
@@ -545,7 +556,8 @@ test.describe('schedule-editor-states: a save', () => {
     await app.getByRole('switch', { name: 'Paused' }).click();
     await save(app).click();
     const ready = async () => {
-      await expect(status(app)).toContainText('The host did not answer bureau.schedules.pause');
+      await expect(status(app)).toContainText('The host did not answer while pausing it.');
+      await expect(status(app)).not.toContainText('bureau.');
     };
     await ready();
     await captureState(page, app, 'did-not-answer-update', ready);

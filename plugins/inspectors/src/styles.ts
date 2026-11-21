@@ -42,5 +42,7 @@ export const SCHEDULE_EDITOR_STYLES = `${BASE_STYLES}
 .schedule-list{list-style:none;padding-inline-start:0}
 .schedule-list li{display:flex;align-items:center;justify-content:space-between;gap:var(--cinder-space-3);padding:var(--cinder-space-2) 0;border-top:1px solid var(--cinder-border-muted)}
 .schedule-list li span{min-width:0;overflow-wrap:anywhere}
-.schedule-form{display:flex;flex-direction:column;gap:var(--cinder-space-3);max-width:40rem}
+.panel-page{max-width:40rem}
+.editor-status[data-empty=true]{position:absolute;width:1px;height:1px;overflow:hidden}
+.schedule-form{display:flex;flex-direction:column;gap:var(--cinder-space-3)}
 `;

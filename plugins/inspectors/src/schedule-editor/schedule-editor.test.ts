@@ -76,10 +76,27 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     expect(calls).toEqual(['open:s<1>', 'new']);
   });
 
-  it('says so when there are no schedules, and still offers a new one', () => {
-    const { container, getByRole } = open();
-    expect(container.textContent).toContain('There are no schedules yet.');
-    expect(getByRole('button', { name: 'New schedule' })).toBeTruthy();
+  it('draws no schedules as an empty state whose one action makes a schedule', () => {
+    const { container, getAllByRole, getByRole, calls } = open();
+    expect(container.querySelector('.cinder-empty-state')).not.toBeNull();
+    expect(container.textContent).toContain('No schedules yet');
+    // The empty state's action is the only way to make one: no second button beside it.
+    expect(getAllByRole('button', { name: 'New schedule' })).toHaveLength(1);
+    (getByRole('button', { name: 'New schedule' }) as HTMLButtonElement).click();
+    expect(calls).toEqual(['new']);
+  });
+
+  it('draws no status box until there is something to say, and keeps the live region', async () => {
+    const { view, container } = open();
+    const region = container.querySelector('[role="status"][aria-live="polite"]');
+    expect(region).not.toBeNull();
+    expect(region?.querySelector('.cinder-callout')).toBeNull();
+    view.status = 'Saved the changes.';
+    await tick();
+    expect(region?.querySelector('.cinder-callout')).not.toBeNull();
+    view.status = '';
+    await tick();
+    expect(region?.querySelector('.cinder-callout')).toBeNull();
   });
 
   it('is built from Cinder components, so it takes the host theme through the kit', () => {
@@ -169,20 +186,29 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     expect(kept.value).toBe('secret');
   });
 
-  it('draws a canceled schedule read-only and offers no way to save it', () => {
-    const { container } = open((view) => showForm(view, { ...schedule, status: 'cancelled' }));
-    expect(container.textContent).toContain('canceled, so it cannot be changed');
+  it('draws a canceled schedule read-only, says so once, and offers no way to save it', () => {
+    const { container } = open((view) => {
+      showForm(view, { ...schedule, status: 'cancelled' });
+      view.status = 'This schedule was canceled, so it cannot be changed.';
+    });
+    const said = container.textContent.match(/canceled, so it cannot be changed/g) ?? [];
+    expect(said).toHaveLength(1);
     expect((container.querySelector('#schedule-spec') as HTMLInputElement).disabled).toBe(true);
     expect((container.querySelector('#schedule-save') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('offers to read a changed schedule again, and refuses a save until it is', async () => {
+  it('offers to read a changed schedule again as the primary action, and refuses a save until it is', async () => {
     const { view, container, calls } = open((state) => {
       showForm(state);
       state.stale = true;
     });
+    const reload = container.querySelector('#schedule-reload') as HTMLButtonElement;
+    expect(reload.className).toContain('button-variant-primary');
     expect((container.querySelector('#schedule-save') as HTMLButtonElement).disabled).toBe(true);
-    (container.querySelector('#schedule-reload') as HTMLButtonElement).click();
+    expect(
+      (container.querySelector('#schedule-save') as HTMLButtonElement).className,
+    ).not.toContain('button-variant-primary');
+    reload.click();
     expect(calls).toEqual(['reload']);
     view.stale = false;
     await tick();
@@ -190,14 +216,39 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     expect((container.querySelector('#schedule-save') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('offers nothing while a save is in flight', async () => {
+  it('offers no "Read it again" when no schedule was opened, and makes the way back primary', () => {
+    // A create the host never answered locks the form, and there is no schedule to read again.
+    const { container, calls } = open((state) => {
+      showForm(state, null);
+      state.stale = true;
+    });
+    expect(container.querySelector('#schedule-reload')).toBeNull();
+    expect(container.textContent).not.toContain('Read it again');
+    const back = container.querySelector('#schedule-back') as HTMLButtonElement;
+    expect(back.className).toContain('button-variant-primary');
+    expect((container.querySelector('#schedule-save') as HTMLButtonElement).disabled).toBe(true);
+    back.click();
+    expect(calls).toEqual(['back']);
+  });
+
+  it('shows the save in progress and offers nothing else while it is in flight', async () => {
     const { view, container } = open((state) => showForm(state));
     view.busy = true;
     await tick();
-    for (const id of ['schedule-save', 'schedule-back']) {
-      expect((container.querySelector(`#${id}`) as HTMLButtonElement).disabled, id).toBe(true);
-    }
+    const saving = container.querySelector('#schedule-save') as HTMLButtonElement;
+    expect(saving.getAttribute('aria-busy')).toBe('true');
+    expect(saving.getAttribute('aria-disabled')).toBe('true');
+    expect(saving.hasAttribute('data-cinder-loading')).toBe(true);
+    expect(container.textContent).toContain('Saving the changes…');
+    expect((container.querySelector('#schedule-back') as HTMLButtonElement).disabled).toBe(true);
     expect((container.querySelector('#schedule-spec') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('says a new schedule is being created while it is', async () => {
+    const { view, container } = open((state) => showForm(state, null));
+    view.busy = true;
+    await tick();
+    expect(container.textContent).toContain('Creating the schedule…');
   });
 
   it('announces its status in one polite live region', async () => {
@@ -206,7 +257,7 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     view.tone = 'success';
     await tick();
     const status = container.querySelector('[role="status"][aria-live="polite"]');
-    expect(status?.textContent).toBe('Saved the changes.');
+    expect(status?.textContent.trim()).toBe('Saved the changes.');
     expect(status?.getAttribute('data-tone')).toBe('success');
   });
 });

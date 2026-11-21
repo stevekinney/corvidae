@@ -29,6 +29,8 @@ export type SaveOutcome =
       readonly kind: 'refused';
       readonly id: string | undefined;
       readonly done: readonly string[];
+      /** The call the Bureau refused. */
+      readonly tool: string;
       readonly fault: CallFault;
     }
   | {
@@ -71,7 +73,7 @@ export async function runSavePlan(
       return { kind: 'unanswered', id, done, tool: step.tool };
     }
     if (answer.isError === true) {
-      return { kind: 'refused', id, done, fault: faultOfResult(answer) };
+      return { kind: 'refused', id, done, tool: step.tool, fault: faultOfResult(answer) };
     }
     const value = answer.structuredContent;
     if (creates && isScheduleView(value)) {

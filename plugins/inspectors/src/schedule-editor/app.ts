@@ -33,6 +33,7 @@ import {
   workflowOptionsOf,
   type ScheduleView,
 } from './model.ts';
+import { FIX_THE_FIELDS, saveMessage } from './save-message.ts';
 import { runSavePlan } from './save.ts';
 import ScheduleEditor from './schedule-editor.svelte';
 import { createEditorView } from './view.svelte.ts';
@@ -52,21 +53,6 @@ const DECLARED_TOOLS: ReadonlySet<string> = new Set([
   'bureau.workflows.list',
   'bureau.tasks.get',
 ]);
-
-/** What a call of a save did once it was written, for "The part that did go through: …". */
-const SAVED_PART: ReadonlyMap<string, string> = new Map([
-  ['bureau.schedules.create', 'created the schedule'],
-  ['bureau.schedules.update', 'saved the changes'],
-  ['bureau.schedules.pause', 'paused it'],
-  ['bureau.schedules.resume', 'resumed it'],
-]);
-
-/** The sentence that says which calls of a save were written before it stopped, or none. */
-function savedParts(done: readonly string[]): string {
-  return done.length === 0
-    ? ''
-    : ` The part that did go through: ${done.map((part) => SAVED_PART.get(part) ?? part).join(', ')}.`;
-}
 
 async function start(): Promise<void> {
   const root = document.getElementById('root');
@@ -163,7 +149,7 @@ async function start(): Promise<void> {
         show(schedule);
         say(
           schedule.status === 'cancelled'
-            ? 'This schedule was canceled.'
+            ? 'This schedule was canceled, so it cannot be changed.'
             : `Changing ${schedule.description ?? 'the schedule'}.`,
         );
       }
@@ -229,7 +215,7 @@ async function start(): Promise<void> {
     const problems = scheduleDraftErrors(view.draft, view.source);
     if (Object.keys(problems).length > 0) {
       view.errors = problems;
-      say('Not saved. Fix the fields that show a problem.', 'danger');
+      say(`Not saved. ${FIX_THE_FIELDS}`, 'danger');
       return;
     }
     const plan = scheduleSavePlan(view.draft, view.source);
@@ -240,6 +226,7 @@ async function start(): Promise<void> {
     view.busy = true;
     view.errors = {};
     const making = view.source === undefined;
+    say(making ? 'Creating the schedule…' : 'Saving the changes…');
     try {
       const outcome = await runSavePlan(plan, view.source, call);
       if (outcome.kind === 'saved') {
@@ -250,7 +237,6 @@ async function start(): Promise<void> {
         );
         return;
       }
-      const saved = savedParts(outcome.done);
       // What may have been written is read back, and the form is rebuilt from it: the draft and the
       // revision it is fenced by stay one pair, so a field another caller changed meanwhile is
       // shown, never sent back over their write under the newer revision.
@@ -264,29 +250,12 @@ async function start(): Promise<void> {
       if (outcome.kind === 'refused') {
         view.errors = outcome.fault.fields;
         view.stale = outcome.fault.currentRevision !== undefined;
-        const reason = view.stale
-          ? 'The schedule changed since it was opened. Read it again, then make the change again.'
-          : outcome.fault.message;
-        say(`Not saved: ${reason}${saved}`, 'danger');
-      } else if (outcome.kind === 'unreadable') {
-        say(
-          `Not saved: the Bureau's answer to ${outcome.tool} was not one this page reads.${saved}`,
-          'danger',
-        );
-      } else if (outcome.id === undefined) {
+      } else if (outcome.kind === 'unanswered' && outcome.id === undefined) {
         // A create the host never answered may have been written: another one would make a second,
         // so the form takes no save until the person goes back to the list and opens it again.
         view.stale = true;
-        say(
-          'The host did not answer, so the schedule may or may not have been made. Look at the list before trying again.',
-          'danger',
-        );
-      } else {
-        say(
-          `The host did not answer ${outcome.tool}, so the form was read again to show what the schedule holds. Check it before saving again.${saved}`,
-          'danger',
-        );
       }
+      say(saveMessage(outcome, view.stale), 'danger');
     } finally {
       view.busy = false;
     }

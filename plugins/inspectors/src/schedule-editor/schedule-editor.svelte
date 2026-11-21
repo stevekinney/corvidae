@@ -9,6 +9,7 @@
   import {
     Button,
     Callout,
+    EmptyState,
     Input,
     Section,
     Select,
@@ -74,14 +75,43 @@
 {:else}
   <main class="panel-page" aria-labelledby="schedule-editor-title">
     <Text as="h1" variant="h3" id="schedule-editor-title">Schedule editor</Text>
-    <Callout variant={calloutVariant}>
-      <p role="status" aria-live="polite" data-tone={view.tone}>{view.status}</p>
-    </Callout>
+    <!-- The live region is always there, so a message that arrives is announced; it draws a box only
+         when it has something to say. -->
+    <div
+      role="status"
+      aria-live="polite"
+      class="editor-status"
+      data-tone={view.tone}
+      data-empty={view.status === ''}
+    >
+      {#if view.status !== ''}
+        <Callout variant={calloutVariant}>{view.status}</Callout>
+      {/if}
+    </div>
 
     {#if view.screen === 'choose'}
       <Section title="Schedules">
         {#if view.schedules.length === 0}
-          <p>There are no schedules yet.</p>
+          <EmptyState
+            kind="first-use"
+            title="No schedules yet"
+            description="Make one to run an agent or a workflow on a cadence."
+            headingLevel={3}
+            actions={[
+              {
+                label: 'New schedule',
+                variant: 'primary',
+                onclick: handlers.onNew,
+                ...(locked
+                  ? {
+                      inertReason: view.connected
+                        ? 'Wait for the schedule to finish opening'
+                        : 'This host does not let the page call tools',
+                    }
+                  : {}),
+              },
+            ]}
+          />
         {:else}
           <ul aria-label="Schedules" class="panel-list schedule-list">
             {#each view.schedules as schedule (schedule.id)}
@@ -98,22 +128,19 @@
               </li>
             {/each}
           </ul>
+          <div class="panel-actions">
+            <Button
+              id="new-schedule"
+              variant="primary"
+              label="New schedule"
+              disabled={locked}
+              onclick={handlers.onNew}
+            />
+          </div>
         {/if}
-        <div class="panel-actions">
-          <Button
-            id="new-schedule"
-            variant="primary"
-            label="New schedule"
-            disabled={locked}
-            onclick={handlers.onNew}
-          />
-        </div>
       </Section>
     {:else}
       <Section title={making ? 'New schedule' : 'Change schedule'}>
-        {#if cancelled}
-          <p>This schedule was canceled, so it cannot be changed.</p>
-        {/if}
         <!-- A panel runs in a frame sandboxed to allow-scripts alone, where a form never submits, so
              Save is a plain button with its own handler; the form only groups the fields. -->
         <form class="schedule-form" onsubmit={(event: SubmitEvent) => event.preventDefault()}>
@@ -205,10 +232,13 @@
             onValueChange={(next: boolean) => handlers.onEdit({ paused: next })}
           />
           <div class="panel-actions">
-            {#if view.stale}
+            <!-- "Read it again" opens the schedule the form was made from, so it is offered only
+                 when there is one; after a create the host never answered there is none, and the
+                 way on is the list. While the form is stale, the way on is the primary button. -->
+            {#if view.stale && view.source !== undefined}
               <Button
                 id="schedule-reload"
-                variant="secondary"
+                variant="primary"
                 label="Read it again"
                 disabled={locked}
                 onclick={handlers.onReload}
@@ -216,14 +246,16 @@
             {/if}
             <Button
               id="schedule-save"
-              variant="primary"
+              variant={view.stale ? 'secondary' : 'primary'}
               label={making ? 'Create schedule' : 'Save changes'}
-              disabled={locked || cancelled || view.stale}
+              disabled={!view.connected || cancelled || view.stale}
+              loading={view.busy}
+              loadingStatus={making ? 'Creating the schedule…' : 'Saving the changes…'}
               onclick={handlers.onSave}
             />
             <Button
               id="schedule-back"
-              variant="secondary"
+              variant={view.stale && view.source === undefined ? 'primary' : 'secondary'}
               label="Back to schedules"
               disabled={view.busy}
               onclick={handlers.onBack}

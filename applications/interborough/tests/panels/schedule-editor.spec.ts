@@ -309,7 +309,11 @@ test.describe('the schedule editor MCP App against the running host', () => {
     await expect(when).toHaveAccessibleDescription(new RegExp(escapeForPattern(message)));
     // The error is the cadence field's alone.
     await expect(app.getByLabel('Description')).not.toHaveAttribute('aria-invalid', 'true');
-    await expect(app.getByRole('status')).toContainText('Not saved');
+    // One save error, in one place: the Bureau's reason is the field's, and the page only says so.
+    await expect(app.getByRole('status')).toHaveText(
+      'Not saved. Fix the fields that show a problem.',
+    );
+    await expect(app.getByRole('status')).not.toContainText(message);
     const unchanged = await readBack(request, id);
     expect(unchanged.revision).toBe(1);
   });

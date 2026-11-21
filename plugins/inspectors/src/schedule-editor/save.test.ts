@@ -113,6 +113,7 @@ describe('the calls of one save', () => {
       kind: 'refused',
       id: 's1',
       done: [],
+      tool: 'bureau.schedules.update',
       fault: {
         message: 'Not a cron expression',
         fields: { spec: 'Not a cron expression' },
@@ -137,6 +138,7 @@ describe('the calls of one save', () => {
       kind: 'refused',
       id: 's1',
       done: ['bureau.schedules.update'],
+      tool: 'bureau.schedules.pause',
       fault: { currentRevision: 6 },
     });
   });
@@ -156,6 +158,7 @@ describe('the calls of one save', () => {
       kind: 'refused',
       id: 'made',
       done: ['bureau.schedules.create'],
+      tool: 'bureau.schedules.pause',
     });
   });
 
