@@ -185,48 +185,50 @@ function summarizeBulkFilter(filter: ListFilter): BulkOperationFilterSummary {
   if (filter.status !== undefined) {
     summary.status = Array.isArray(filter.status) ? uniqueSorted(filter.status) : filter.status;
   }
-  if (filter.type !== undefined) {
-    summary.type = filter.type;
-  }
-  if (filter.scheduleId !== undefined) {
-    summary.scheduleId = filter.scheduleId;
-  }
+  copyDefinedFields(summary, filter, ['type', 'scheduleId']);
   const normalizedTags = normalizeWorkflowTags(filter.tags);
   if (normalizedTags !== undefined) {
     summary.tags = normalizedTags;
   }
   if (filter.attributes !== undefined) {
-    summary.attributes = filter.attributes
-      .map((attribute) => ({
-        key: searchAttributeName(attribute.key),
-        ...(attribute.value === undefined
-          ? {}
-          : { value: Array.isArray(attribute.value) ? [...attribute.value] : attribute.value }),
-        ...(attribute.gt === undefined ? {} : { gt: attribute.gt }),
-        ...(attribute.lt === undefined ? {} : { lt: attribute.lt }),
-        ...(attribute.gte === undefined ? {} : { gte: attribute.gte }),
-        ...(attribute.lte === undefined ? {} : { lte: attribute.lte }),
-      }))
-      .toSorted((left, right) =>
-        computeSemanticHash(left).localeCompare(computeSemanticHash(right)),
-      );
+    summary.attributes = summarizeAttributeFilters(filter.attributes);
   }
   // Every condition that chose the runs is kept, so the preview and the audit record say what
   // the operation acted on, never a wider filter than it matched.
-  if (filter.failedStep !== undefined) {
-    summary.failedStep = filter.failedStep;
-  }
-  if (filter.retrying !== undefined) {
-    summary.retrying = filter.retrying;
-  }
-  if (filter.limit !== undefined) {
-    summary.limit = filter.limit;
-  }
-  if (filter.offset !== undefined) {
-    summary.offset = filter.offset;
-  }
+  copyDefinedFields(summary, filter, ['failedStep', 'retrying', 'limit', 'offset']);
 
   return summary;
+}
+
+/** The fields of a bulk filter copied as they are: each one set, in the order named, so the summary
+ * keeps one key order for its digest. */
+function copyDefinedFields(
+  summary: BulkOperationFilterSummary,
+  filter: ListFilter,
+  keys: readonly ('type' | 'scheduleId' | 'failedStep' | 'retrying' | 'limit' | 'offset')[],
+): void {
+  for (const key of keys) {
+    const value = filter[key];
+    if (value !== undefined) Object.assign(summary, { [key]: value });
+  }
+}
+
+/** The attribute conditions of a bulk filter, each copied and in a stable order. */
+function summarizeAttributeFilters(
+  attributes: NonNullable<ListFilter['attributes']>,
+): NonNullable<BulkOperationFilterSummary['attributes']> {
+  return attributes
+    .map((attribute) => ({
+      key: searchAttributeName(attribute.key),
+      ...(attribute.value === undefined
+        ? {}
+        : { value: Array.isArray(attribute.value) ? [...attribute.value] : attribute.value }),
+      ...(attribute.gt === undefined ? {} : { gt: attribute.gt }),
+      ...(attribute.lt === undefined ? {} : { lt: attribute.lt }),
+      ...(attribute.gte === undefined ? {} : { gte: attribute.gte }),
+      ...(attribute.lte === undefined ? {} : { lte: attribute.lte }),
+    }))
+    .toSorted((left, right) => computeSemanticHash(left).localeCompare(computeSemanticHash(right)));
 }
 
 function resolveBulkOperationRequestId(
