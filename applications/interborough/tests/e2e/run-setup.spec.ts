@@ -25,6 +25,15 @@ import {
 const COPY = WORKFLOW_COPY.runSetup;
 const WIDTHS = [375, 1280] as const;
 const SOURCE = 'run-setup.spec.ts';
+const RELEASE_INPUT_PROPERTIES = {
+  branch: {
+    type: 'string',
+    title: 'Branch',
+    description: 'The branch to release from.',
+    examples: ['such as main'],
+  },
+  since: { type: 'string', title: 'Since', format: 'date' },
+} as const;
 
 const area = (page: Page) => page.locator('[data-view="workflows"]');
 const setup = (page: Page) => page.locator('[data-page="run-setup"]');
@@ -75,10 +84,7 @@ async function createReleaseSetup(request: Parameters<typeof createWorkflowFile>
     steps: [{ kind: 'await-signal', signal: `${id}-wait` }],
     inputSchema: {
       type: 'object',
-      properties: {
-        branch: { type: 'string', title: 'Branch', examples: ['such as main'] },
-        since: { type: 'string', title: 'Since', format: 'date' },
-      },
+      properties: RELEASE_INPUT_PROPERTIES,
       required: ['branch'],
     },
   });
@@ -104,7 +110,7 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
     checkA11y,
   }) => {
     const id = 'e2e-setup-layout';
-    await createWaiting(request, id);
+    await createReleaseSetup(request, id);
     // The footer reads the Bureau's executing-run snapshot. The fixture host owns no such runs
     // here, so the layout state has a free slot; the at-limit state is captured separately below.
     await page.route('**/jsonrpc', async (route) => {
@@ -120,23 +126,53 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
         json: { jsonrpc: '2.0', id: body.id, result: { max: 4, running: 0 } },
       });
     });
-    for (const width of WIDTHS) {
+    for (const width of [320, ...WIDTHS]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/workflows/${id}/run`);
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
-      await expect(page.getByRole('heading', { level: 1, name: COPY.title(id) })).toBeVisible();
+      await expect(
+        page.getByRole('heading', { level: 1, name: COPY.title('Release notes') }),
+      ).toBeVisible();
       await expect(setup(page).getByRole('heading', { level: 2 })).toHaveText([
         COPY.inputHeading,
         COPY.whenHeading,
       ]);
-      await expect(setup(page).getByLabel('Topic')).toBeVisible();
-      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(COPY.summaryNow());
-      await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeVisible();
-      await captureForDesignReview(page, {
-        route: '/workflows/:workflow/run',
-        state: '57f-required-form-and-58a-58c-schema',
-        source: SOURCE,
+      await setup(page)
+        .getByLabel(/^Branch/)
+        .fill('main');
+      await setup(page)
+        .getByLabel(/^Since/)
+        .fill('2026-10-23');
+      await expect(setup(page).getByText('The branch to release from.')).toBeVisible();
+      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+        'Runs once, right away, on main since Oct 23.',
+      );
+      const options = setup(page).getByRole('region', { name: COPY.optionsRegion });
+      const timing = options.getByText(COPY.nowDescription, { exact: true });
+      await expect(footer(page)).toBeInViewport({ ratio: 1 });
+      await timing.scrollIntoViewIfNeeded();
+      await expect(timing).toBeInViewport({ ratio: 1 });
+      await expect(footer(page)).toBeInViewport({ ratio: 1 });
+      const [optionsBox, footerBox] = await Promise.all([
+        options.boundingBox(),
+        footer(page).boundingBox(),
+      ]);
+      expect(optionsBox).not.toBeNull();
+      expect(footerBox).not.toBeNull();
+      if (optionsBox !== null && footerBox !== null) {
+        expect(optionsBox.y + optionsBox.height).toBeLessThanOrEqual(footerBox.y);
+      }
+      await options.evaluate((element) => {
+        element.scrollTop = 0;
       });
+      await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeVisible();
+      if (width !== 320) {
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow/run',
+          state: '57f-required-form-and-58a-58c-schema',
+          source: SOURCE,
+        });
+      }
       await checkA11y(`run setup at ${width}px`);
     }
   });
@@ -146,12 +182,14 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
     request,
   }) => {
     const id = 'e2e-setup-invalid';
-    await createWaiting(request, id);
+    await createReleaseSetup(request, id);
     await page.goto(`/workflows/${id}/run`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await setup(page).getByLabel('Topic').fill('ab');
+    await expect(setup(page).getByPlaceholder('such as main')).toHaveValue('');
     await footer(page).getByRole('button', { name: COPY.startAction }).click();
-    await expect(setup(page).getByLabel('Topic')).toHaveAttribute('aria-invalid', 'true');
+    await expect(setup(page).getByLabel(/^Branch/)).toHaveAttribute('aria-invalid', 'true');
+    await expect(setup(page).getByText('Branch is required.', { exact: true })).toBeVisible();
+    await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeEnabled();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/run$`));
     await captureForDesignReview(page, {
       route: '/workflows/:workflow/run',
@@ -173,33 +211,51 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
       inputSchema: {
         type: 'object',
         properties: {
-          ...Object.fromEntries(
-            [
-              'Target',
-              'Audience',
-              'Template',
-              'Version',
-              'Channel',
-              'Reviewer',
-              'Milestone',
-              'Format',
-            ].map((name) => [name.toLowerCase(), { type: 'string', title: name }]),
-          ),
-          branch: { type: 'string', title: 'Branch', default: 'main' },
-          options: {
+          branch: { ...RELEASE_INPUT_PROPERTIES.branch, default: 'main' },
+          since: { ...RELEASE_INPUT_PROPERTIES.since, default: '2026-10-23' },
+          target: { type: 'string', title: 'Target' },
+          audience: { type: 'string', title: 'Audience' },
+          filters: {
             type: 'object',
-            title: 'Options',
-            properties: { draft: { type: 'boolean', title: 'Draft', default: true } },
+            title: 'Filters',
+            properties: Object.fromEntries(
+              ['Labels', 'Authors', 'Paths'].map((title) => [
+                title.toLowerCase(),
+                { type: 'array', title, items: { type: 'string' } },
+              ]),
+            ),
+          },
+          advanced: {
+            type: 'object',
+            title: 'Advanced',
+            properties: {
+              draftOnly: { type: 'boolean', title: 'Draft only', default: true },
+              dryRun: { type: 'boolean', title: 'Dry run', default: false },
+              pullRequestLimit: { type: 'integer', title: 'Pull request limit', default: 100 },
+              ...Object.fromEntries(
+                ['Template', 'Version', 'Channel', 'Reviewer', 'Milestone', 'Format'].map(
+                  (title) => [title.toLowerCase(), { type: 'string', title }],
+                ),
+              ),
+            },
           },
         },
-        required: ['branch'],
+        required: ['branch', 'since'],
       },
     });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/workflows/${id}/run`);
-    await expect(setup(page).getByLabel(/^Branch/)).toBeVisible();
+    await expect(setup(page).getByLabel(/^Branch/)).toHaveValue('main');
+    await expect(setup(page).getByLabel(/^Since/)).toHaveValue('2026-10-23');
     await expect(setup(page).getByLabel('Find a field')).toBeVisible();
-    await expect(setup(page).getByRole('button', { name: /^Options/ })).toBeVisible();
+    for (const group of ['Filters', 'Advanced']) {
+      await expect(
+        setup(page).getByRole('button', { name: new RegExp(`^${group}`) }),
+      ).toHaveAttribute('aria-expanded', 'false');
+    }
+    await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+      'Runs once, right away, on main since Oct 23.',
+    );
     await captureForDesignReview(page, {
       route: '/workflows/:workflow/run',
       state: '58a-58c-large-schema',
@@ -243,7 +299,7 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
     request,
   }) => {
     const id = 'e2e-setup-refused-start';
-    await createWaiting(request, id);
+    await createReleaseSetup(request, id);
     await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { id?: unknown; method?: string };
       if (body.method !== 'bureau.workflows.start') return route.fallback();
@@ -257,11 +313,21 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
     });
     await page.goto(`/workflows/${id}/run`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await setup(page).getByLabel('Topic').fill('weather');
+    await setup(page)
+      .getByLabel(/^Branch/)
+      .fill('main');
+    await setup(page)
+      .getByLabel(/^Since/)
+      .fill('2026-10-23');
     await footer(page).getByRole('button', { name: COPY.startAction }).click();
     const failure = setup(page).getByTestId('run-setup-failure');
     await expect(failure).toContainText(COPY.startFailed);
     await expect(failure).toContainText(COPY.nothingStarted);
+    await expect(setup(page).getByLabel(/^Branch/)).toHaveValue('main');
+    await expect(setup(page).getByLabel(/^Since/)).toHaveValue('2026-10-23');
+    await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+      'Runs once, right away, on main since Oct 23.',
+    );
     await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeEnabled();
     await expect(setup(page).getByRole('button', { name: 'Try again' })).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -288,14 +354,20 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
     const id = 'e2e-setup-paused';
     created.add(id);
     await createWorkflowFile(request, id, {
+      title: 'Triage inbox',
       paused: true,
       trigger: { kind: 'manual' },
       description: 'Sorts new messages into the right folder and flags anything urgent.',
-      inputSchema: { type: 'object', properties: { topic: { type: 'string', title: 'Topic' } } },
     });
     await page.goto(`/workflows/${id}/run`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await expect(setup(page).getByTestId('run-setup-paused')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: COPY.title('Triage inbox') }),
+    ).toBeVisible();
+    await expect(setup(page).getByTestId('run-setup-no-form')).toBeVisible();
+    await expect(setup(page).getByTestId('run-setup-paused')).toContainText(
+      'Triage inbox is paused.',
+    );
     await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeDisabled();
     await captureForDesignReview(page, {
       route: '/workflows/:workflow/run',
