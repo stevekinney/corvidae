@@ -78,8 +78,19 @@
     readonly loadingConfirmLabel?: string;
     /** Said, in place of the lead, when the count is zero. Defaults to the sentence for "workflows". */
     readonly nothingMatches?: string;
-    /** A sentence under the server's message for a commit fault that is not stale, such as what to do next. */
-    readonly commitFailureNote?: string;
+    /**
+     * What the operation does, without a count, for a dialog whose dry run failed and so has none.
+     * Defaults to the sentence for the five actions.
+     */
+    readonly purpose?: string;
+    /** The filter summary of the workflows the dialog acts on, known before the dry run, for the same dialog. */
+    readonly filterChip?: string;
+    /**
+     * Our own title for a commit fault that is not stale, in place of "Couldn’t <verb> the
+     * workflows", such as a purge's "may be part done, so refresh". The server's message is never
+     * the title: it is the body.
+     */
+    readonly commitFailedTitle?: string;
     /**
      * What a commit fault that is not stale offers. `same-token` sends the same commit again, which
      * is safe when the fault left the matched set alone. `new-preview` counts again, for an
@@ -104,7 +115,9 @@
     loadingLabel = 'Checking how many workflows match',
     loadingConfirmLabel,
     nothingMatches = BULK_DIALOG_COPY.nothingMatches('workflows', 'do'),
-    commitFailureNote,
+    purpose = BULK_DIALOG_COPY.purpose,
+    filterChip = '',
+    commitFailedTitle,
     commitRetry = 'same-token',
   }: BulkActionDialogProps = $props();
 
@@ -226,7 +239,7 @@
     if (phase !== 'fault') return undefined;
     if (faultOrigin === 'loading') {
       return {
-        title: undefined,
+        title: BULK_DIALOG_COPY.dryRunFailed,
         body: faultMessage,
         tone: 'danger' as const,
         action: { label: 'Retry', onAction: reloadPreview },
@@ -241,8 +254,8 @@
       };
     }
     return {
-      title: commitFailureNote === undefined ? undefined : faultMessage,
-      body: commitFailureNote ?? faultMessage,
+      title: commitFailedTitle ?? BULK_DIALOG_COPY.commitFailed(verb),
+      body: faultMessage,
       tone: 'danger' as const,
       action:
         commitRetry === 'new-preview'
@@ -256,9 +269,12 @@
   const faultKeepsPreview = $derived(
     phase === 'fault' && faultOrigin === 'committing' && preview !== null,
   );
+  /** A dry run that failed has no count, but the dialog still says what it is for, and for which workflows. */
+  const faultKeepsPurpose = $derived(phase === 'fault' && faultOrigin === 'loading');
   const showsDescription = $derived(
     (phase === 'preview' && preview !== null) ||
       faultKeepsPreview ||
+      faultKeepsPurpose ||
       phase === 'committing' ||
       (phase === 'result' && result !== null),
   );
@@ -266,6 +282,7 @@
     (phase === 'params' && parameters !== undefined) ||
       (phase === 'preview' && preview !== null) ||
       (faultKeepsPreview && chip.length > 0) ||
+      (faultKeepsPurpose && filterChip.length > 0) ||
       phase === 'committing' ||
       (phase === 'result' && result !== null && (!!result.note || result.errors.length > 0)),
   );
@@ -301,7 +318,9 @@
 {/snippet}
 
 {#snippet phaseDescription()}
-  {#if (phase === 'preview' || phase === 'fault') && preview}
+  {#if faultKeepsPurpose}
+    <span>{purpose}</span>
+  {:else if (phase === 'preview' || faultKeepsPreview) && preview}
     <!-- Focusable by script only: after a reload, focus lands here so the new count is read. -->
     <span tabindex="-1" bind:this={leadElement}>
       {#if preview.matched === 0}
@@ -323,7 +342,9 @@
 {#snippet phaseOptions()}
   {#if phase === 'params'}
     {@render parameters?.()}
-  {:else if phase === 'fault' && preview}
+  {:else if faultKeepsPurpose}
+    <p><code>{filterChip}</code></p>
+  {:else if faultKeepsPreview}
     <p><code>{chip}</code></p>
   {:else if phase === 'preview' && preview}
     {#if chip.length > 0}

@@ -483,7 +483,7 @@ describe('BulkPurgeDialog', () => {
     await waitFor(() => {
       expect(getByText('Purge deleted 30 workflows and failed for 17.')).not.toBeNull();
     });
-    expect(getByText('Refresh the preview to see what is left.')).not.toBeNull();
+    expect(getByText(/Refresh the preview to see what is left\./)).not.toBeNull();
     // The same-token retry is gone: nothing in the dialog sends the commit a second time.
     expect(queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(purgeCalls).toBe(1);
@@ -518,7 +518,7 @@ describe('BulkPurgeDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Purge 47 workflows' }));
 
     await waitFor(() => {
-      expect(getByText('Refresh the preview to see what is left.')).not.toBeNull();
+      expect(getByText(/Refresh the preview to see what is left\./)).not.toBeNull();
     });
     expect(getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
     // Only the server's Conflict, raised before anything is touched, may say nothing was purged.

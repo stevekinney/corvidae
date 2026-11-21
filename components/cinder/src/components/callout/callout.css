@@ -260,6 +260,13 @@
     gap: var(--cinder-space-2);
   }
 
+  /* `stacked-start`: the same row under the message, but it begins at the leading content edge, so
+   * a notice whose action is the next step (Retry, Refresh preview) leads instead of trailing. */
+  .cinder-callout--stacked-start-action > .cinder-callout__action {
+    justify-self: start;
+    justify-content: flex-start;
+  }
+
   /* An action container whose snippet rendered nothing takes no row and no gap. */
   .cinder-callout__action:empty {
     display: none;

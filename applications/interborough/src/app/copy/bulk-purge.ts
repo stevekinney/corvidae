@@ -38,6 +38,9 @@ export const BULK_PURGE_COPY = {
    * counts what is left instead of pressing the same purge again.
    */
   failed: {
-    refreshNote: 'Refresh the preview to see what is left.',
+    /** Our title for it; the server's message, which says how many were deleted, is the body. */
+    title: 'The purge may be part done. Refresh the preview to see what is left.',
   },
+  /** What a purge does, said without a count, for a dialog whose dry run failed. */
+  purpose: "Permanently deletes the finished workflows matching this filter. This can't be undone.",
 } as const;

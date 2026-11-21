@@ -452,9 +452,14 @@
 
   .cinder-modal[data-cinder-sheet='docked']
     :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
-    > :not(:last-child) {
+    > :not(:last-child, :has(+ [data-cinder-button-status]:last-child)) {
     flex: 0 0 auto;
   }
+
+  /* A button that is loading mounts a status region (`data-cinder-button-status`, a visually hidden
+   * live region) after itself, so the confirmation is not the last child while the region is
+   * there. The region is not an action: the button before it is still the confirmation, and
+   * still fills, so it keeps its width when it starts to load (196px, not 151px). */
 
   /* The one exception to "a lone action fills the row" (owner decision, 2026-11-21): a ConfirmDialog
    * whose failure carries its own action (Retry, Refresh preview) leaves Cancel, labelled Close,
@@ -477,7 +482,9 @@
    * buttons are not: a phone button is drawn at its painted height and reaches 44px through the
    * Button's own hit area (`data-cinder-hit-target`), so two of them never take a quarter of the
    * screen. */
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__body .cinder-input.cinder-input {
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__body, .cinder-confirm-dialog__footer)
+    .cinder-input.cinder-input {
     min-height: var(--cinder-touch-target-min);
   }
 

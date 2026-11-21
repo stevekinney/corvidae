@@ -77,7 +77,9 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
   destructive?: boolean;
   /**
    * When set, renders a labelled text input and disables the confirm button until the
-   * trimmed input matches this value case-insensitively.
+   * trimmed input matches this value case-insensitively. The input sits in the footer, above the
+   * buttons it gates and outside the scrolling body, so a long description or list never pushes it
+   * out of view and it is always in view with the confirm button.
    */
   typeToConfirm?: string;
   /** Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. */

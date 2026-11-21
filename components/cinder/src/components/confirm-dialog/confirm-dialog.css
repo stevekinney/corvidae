@@ -61,6 +61,11 @@
     margin-block-end: var(--cinder-space-3);
   }
 
+  /* The typed confirmation is the footer's, above the buttons it gates, a step above them. */
+  .cinder-confirm-dialog__footer > .cinder-input-field {
+    margin-block-end: var(--cinder-space-3);
+  }
+
   .cinder-confirm-dialog__actions {
     display: flex;
     align-items: center;

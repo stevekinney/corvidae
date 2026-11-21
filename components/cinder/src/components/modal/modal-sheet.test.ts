@@ -238,12 +238,16 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     expect(flat).toContain(`${shared} { flex-wrap: wrap-reverse;`);
     expect(flat).toContain(`${shared} > * { flex: 1 1 auto; }`);
     // Every action but the confirmation keeps its own width: a middle action does not grow.
-    expect(flat).toContain(`${shared} > :not(:last-child) { flex: 0 0 auto; }`);
+    // A loading button's hidden status region follows it, and is not an action: the confirmation
+    // before it still fills, so it keeps its width when it starts to load (design round 2, item 4).
+    expect(flat).toContain(
+      `${shared} > :not(:last-child, :has(+ [data-cinder-button-status]:last-child)) { flex: 0 0 auto; }`,
+    );
     expect(modalCss).not.toContain('column-reverse');
     // The body's fields are full 44px targets; the footer's buttons are drawn compact and reach
     // 44px through their hit area, so no sheet rule sets a height on them.
     expect(modalCss).toMatch(
-      /\[data-cinder-sheet='docked'\] \.cinder-modal__body \.cinder-input\.cinder-input\s*\{\s*min-height:\s*var\(--cinder-touch-target-min\);/,
+      /\[data-cinder-sheet='docked'\]\s+:is\(\.cinder-modal__body, \.cinder-confirm-dialog__footer\)\s+\.cinder-input\.cinder-input\s*\{\s*min-height:\s*var\(--cinder-touch-target-min\);/,
     );
     expect(modalCss).not.toMatch(/__footer\s+\.cinder-button:is\(\s*\.button-size-/);
     expect(modalCss).not.toMatch(/__footer > \*\s*\{\s*inline-size:\s*100%;/);

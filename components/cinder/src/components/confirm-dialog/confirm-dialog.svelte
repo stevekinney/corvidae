@@ -78,6 +78,37 @@
     if (pending) typedConfirmation = '';
   });
 
+  let actionsElement: HTMLElement | undefined;
+  let failureElement: HTMLElement | undefined;
+  let confirmWasShown = untrack(() => confirmShown);
+  let confirmHadFocus = false;
+
+  // When the confirm button goes away (a failure that carries its own action, or nothing left to
+  // confirm) while it holds focus, focus would fall to <body> and a keyboard or screen-reader user
+  // loses their place exactly when the failure is announced. Read before the DOM changes whether
+  // it held focus, and after, move it to the failure's action, or to Cancel when there is none.
+  $effect.pre(() => {
+    const shown = confirmShown;
+    if (!shown && confirmWasShown) {
+      const active = document.activeElement;
+      confirmHadFocus =
+        actionsElement !== undefined &&
+        active instanceof HTMLElement &&
+        actionsElement.contains(active) &&
+        !active.classList.contains('cinder-confirm-dialog__cancel');
+    }
+    confirmWasShown = shown;
+  });
+
+  $effect(() => {
+    if (confirmShown || !confirmHadFocus) return;
+    confirmHadFocus = false;
+    const target =
+      failureElement?.querySelector<HTMLElement>('button') ??
+      actionsElement?.querySelector<HTMLElement>('.cinder-confirm-dialog__cancel');
+    target?.focus();
+  });
+
   function handleCancel() {
     if (busy) return;
     // Mirror Modal's dismiss() ordering: state first, then callback. No try/catch —
@@ -135,17 +166,6 @@
     {/if}
   {/if}
 
-  {#if normalizedTypeToConfirm !== undefined && !pending}
-    <Input
-      id={typedConfirmationId}
-      class="cinder-confirm-dialog__typed-confirmation"
-      bind:value={typedConfirmation}
-      label={normalizedTypeToConfirmLabel ?? `Type "${normalizedTypeToConfirm}" to confirm`}
-      autocomplete="off"
-      readonly={busy}
-    />
-  {/if}
-
   {#snippet footer()}
     <div class="cinder-confirm-dialog__footer">
       <!--
@@ -154,13 +174,13 @@
         short phone the body scrolls, and a failure inside it would be a faded strip under the
         footer with the next step out of view.
       -->
-      <div class="cinder-confirm-dialog__failure" role="alert">
+      <div class="cinder-confirm-dialog__failure" role="alert" bind:this={failureElement}>
         {#if failure}
           <Callout
             variant={errorTone}
             semantic="note"
             class="cinder-confirm-dialog__error"
-            actionLayout="stacked"
+            actionLayout="stacked-start"
             {...errorTitle ? { title: errorTitle } : {}}
             {...errorAction ? { action: failureAction } : {}}
           >
@@ -168,9 +188,25 @@
           </Callout>
         {/if}
       </div>
+      <!--
+        The typed confirmation sits with the buttons it gates, outside the scrolling body, so the
+        field and the confirm button are always in view together: a long list above them scrolls
+        under the footer, and the field is never half hidden by it.
+      -->
+      {#if normalizedTypeToConfirm !== undefined && !pending}
+        <Input
+          id={typedConfirmationId}
+          class="cinder-confirm-dialog__typed-confirmation"
+          bind:value={typedConfirmation}
+          label={normalizedTypeToConfirmLabel ?? `Type "${normalizedTypeToConfirm}" to confirm`}
+          autocomplete="off"
+          readonly={busy}
+        />
+      {/if}
       <div
         class="cinder-confirm-dialog__actions"
         data-cinder-fault-only={failure && errorAction ? '' : undefined}
+        bind:this={actionsElement}
       >
         <Button
           variant="secondary"
@@ -184,7 +220,7 @@
             variant={destructive ? 'danger' : 'primary'}
             disabled={!typedConfirmationMatches || !confirmEnabled || pending}
             loading={busy}
-            {...busy ? { loadingStatus: busyLabel ?? confirmLabel } : {}}
+            loadingStatus={busyLabel ?? confirmLabel}
             {...confirmIcon ? { leadingIcon: confirmIcon } : {}}
             onclick={handleConfirm}
           >

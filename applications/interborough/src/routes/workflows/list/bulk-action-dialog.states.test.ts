@@ -8,6 +8,7 @@ import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 import { HttpClientError } from '@lostgradient/weft';
 
 import { BULK_DIALOG_COPY } from '../../../app/copy/bulk-dialog.ts';
+import { BULK_PURGE_COPY } from '../../../app/copy/bulk-purge.ts';
 import BulkActionDialog from './bulk-action-dialog.svelte';
 import BulkPurgeDialog from './bulk-purge-dialog.svelte';
 import type { BulkCommitSummary } from './bulk-result-summary.ts';
@@ -338,7 +339,54 @@ describe('a fault keeps what was asked (design round 1, B3)', () => {
     expect(view.queryByRole('textbox')).toBeNull();
   });
 
-  test('a failed dry run has no count to keep, so its body is empty and takes no room', async () => {
+  test('a failed dry run has no count, but keeps what it is for and the filter, known before it', async () => {
+    const view = render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        filterChip: 'status:failed',
+        runDryRun: async () => {
+          throw new HttpClientError(500, 'Internal server error');
+        },
+        runCommit: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll('.cinder-callout')).toHaveLength(1);
+    });
+    expect(view.getByText(BULK_DIALOG_COPY.purpose)).not.toBeNull();
+    expect(view.getByText('status:failed')).not.toBeNull();
+    // No count to name: nothing in it says "matching workflows" with a number.
+    expect(view.queryByText(/\d+ matching workflow/)).toBeNull();
+  });
+
+  test('a failed dry run with no filter to show still has its purpose, and no empty chip', async () => {
+    const view = render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        runDryRun: async () => {
+          throw new HttpClientError(500, 'Internal server error');
+        },
+        runCommit: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+    await waitFor(() => {
+      expect(view.getByText(BULK_DIALOG_COPY.purpose)).not.toBeNull();
+    });
+    expect(document.querySelector('.cinder-confirm-dialog__options code')).toBeNull();
+  });
+});
+
+describe('every fault has our own title, and the server message is the body (design round 2, item 5)', () => {
+  const callout = (): HTMLElement =>
+    requireElement(document.querySelector('.cinder-callout'), HTMLElement);
+  const titleOf = (): string | null | undefined =>
+    callout().querySelector('.cinder-callout__title')?.textContent;
+
+  test('a failed dry run', async () => {
     render(BulkActionDialog, {
       props: {
         title: 'Bulk cancel',
@@ -353,8 +401,47 @@ describe('a fault keeps what was asked (design round 1, B3)', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('.cinder-callout')).toHaveLength(1);
     });
-    const body = requireElement(document.querySelector('.cinder-modal__body'), HTMLElement);
-    expect(body.children).toHaveLength(0);
+    expect(titleOf()).toBe(BULK_DIALOG_COPY.dryRunFailed);
+    expect(callout().textContent).toContain('Internal server error');
+  });
+
+  test('a failed commit in a bulk action names the verb', async () => {
+    const view = render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        runDryRun: async () => preview(),
+        runCommit: async () => {
+          throw new HttpClientError(500, 'Internal server error');
+        },
+        onClose: () => {},
+      },
+    });
+    await typeAndConfirm(view, ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
+    await waitFor(() => {
+      expect(document.querySelectorAll('.cinder-callout')).toHaveLength(1);
+    });
+    expect(titleOf()).toBe(BULK_DIALOG_COPY.commitFailed('cancel'));
+    expect(titleOf()).not.toContain('Internal server error');
+  });
+
+  test('a partly done purge has the purge title, with the server message under it', async () => {
+    const view = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview({ action: 'purge' }),
+        runPurge: async () => {
+          throw new HttpClientError(500, 'Purge deleted 30 workflows and failed for 17.');
+        },
+        onClose: () => {},
+      },
+    });
+    await typeAndConfirm(view, PURGE_PHRASE, 'purge 47 workflows', 'Purge 47 workflows');
+    await waitFor(() => {
+      expect(document.querySelectorAll('.cinder-callout')).toHaveLength(1);
+    });
+    expect(titleOf()).toBe(BULK_PURGE_COPY.failed.title);
+    expect(titleOf()).not.toContain('Purge deleted 30');
+    expect(view.getByText('Purge deleted 30 workflows and failed for 17.')).not.toBeNull();
   });
 });
 

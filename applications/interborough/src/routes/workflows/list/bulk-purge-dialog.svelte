@@ -42,9 +42,11 @@
     readonly onClose: () => void;
     /** Fired once purge actually succeeds — see `bulk-action-dialog.svelte`'s identical prop doc for why this is distinct from `onClose`. */
     readonly onSuccess?: () => void;
+    /** The filter summary of the workflows to purge, shown when the count itself failed. */
+    readonly filterChip?: string;
   }
 
-  let { runDryRun, runPurge, onClose, onSuccess }: BulkPurgeDialogProps = $props();
+  let { runDryRun, runPurge, onClose, onSuccess, filterChip = '' }: BulkPurgeDialogProps = $props();
 
   /** Names the sample list by the sentence that introduces it. */
   const sampleIntroId = $props.id();
@@ -85,6 +87,8 @@
   loadingLabel={BULK_PURGE_COPY.loading}
   loadingConfirmLabel={BULK_PURGE_COPY.preview.confirmWhileCounting}
   nothingMatches={BULK_DIALOG_COPY.nothingMatches('finished workflows', 'purge')}
-  commitFailureNote={BULK_PURGE_COPY.failed.refreshNote}
+  purpose={BULK_PURGE_COPY.purpose}
+  {filterChip}
+  commitFailedTitle={BULK_PURGE_COPY.failed.title}
   commitRetry="new-preview"
 />
