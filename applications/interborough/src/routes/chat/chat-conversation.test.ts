@@ -2204,7 +2204,7 @@ describe('the files on a row', () => {
   });
 
   test('still shows a row that has no text of its own and no file, such as a tool call', async () => {
-    const { findByText } = reload([
+    const { container, findByText } = reload([
       { id: 'u1', role: 'user', content: 'Look it up' },
       {
         id: 'a1',
@@ -2221,7 +2221,10 @@ describe('the files on a row', () => {
       { id: 'a2', role: 'assistant', content: 'Done.' },
     ]);
 
-    expect(await findByText('Lookup order')).not.toBeNull();
+    await findByText('Done.');
+    expect(container.querySelector('[data-cinder-tool-call-row]')?.textContent).toContain(
+      'Lookup order',
+    );
   });
 
   test('shows only the files of a message that is only files, with no empty bubble', async () => {
@@ -2250,7 +2253,7 @@ describe('the files on a row', () => {
   const TOOL_STEP_ASSET = { index: 0, assetId: 'step-image', mediaType: 'image/png' };
 
   test('shows an asset a step with tool calls and no text returned, after a reload, and keeps the tool call', async () => {
-    const { container, findByText } = reload([
+    const { container } = reload([
       { id: 'u1', role: 'user', content: 'Draw it' },
       {
         id: 'step-0',
@@ -2264,11 +2267,13 @@ describe('the files on a row', () => {
       { id: 'a2', role: 'assistant', content: 'Done.' },
     ]);
 
-    expect(await findByText('Lookup order')).not.toBeNull();
     await waitFor(() =>
       expect(
         container.querySelector('img[src="/bureau/assets/step-image/content"]'),
       ).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-cinder-tool-call-row]')?.textContent).toContain(
+      'Lookup order',
     );
   });
 
@@ -2326,11 +2331,13 @@ describe('the files on a row', () => {
 
     await sendMessage(container, 'Draw it');
 
-    expect(await findByText('Lookup order')).not.toBeNull();
     await waitFor(() =>
       expect(
         container.querySelector('img[src="/bureau/assets/step-image/content"]'),
       ).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-cinder-tool-call-row]')?.textContent).toContain(
+      'Lookup order',
     );
   });
 
