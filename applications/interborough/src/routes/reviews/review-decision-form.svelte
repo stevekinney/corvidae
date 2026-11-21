@@ -203,8 +203,12 @@
 
     <Textarea
       id={`review-feedback-${reviewId}`}
-      label={feedbackRequired ? 'Feedback' : 'Feedback (optional for approve)'}
-      description="A note for the workflow and future reviewers."
+      label="Feedback"
+      optional={!feedbackRequired}
+      required={feedbackRequired}
+      description={overallDecision === undefined
+        ? 'Choose an overall decision to see whether feedback is required.'
+        : 'A note for the workflow and future reviewers.'}
       bind:value={feedback}
       rows={3}
     />

@@ -22,6 +22,7 @@
     trailing,
     managed,
     required = false,
+    optional = false,
     disabled = false,
     class: className,
     children,
@@ -42,6 +43,7 @@
   {note}
   {managed}
   {required}
+  {optional}
   {disabled}
   class={classNames(className)}
   controlClass={trailing ? 'cinder-form-field__control--row' : undefined}

@@ -82,6 +82,20 @@ describe('ReviewDecisionForm — unsectioned', () => {
     expect(submissions).toEqual([{ decision: 'approved', reviewer: 'ops@example.com' }]);
   });
 
+  test('updates the feedback marker when the overall decision is chosen', async () => {
+    const { getByRole, getByLabelText, getByText } = render(ReviewDecisionForm, {
+      props: { reviewId: 'r1', sectionKeys: [], submitting: false, onSubmit: () => {} },
+    });
+
+    expect(getByLabelText('Feedback Optional')).not.toBeNull();
+    expect(
+      getByText('Choose an overall decision to see whether feedback is required.'),
+    ).not.toBeNull();
+
+    await fireEvent.click(getByRole('radio', { name: 'Reject' }));
+    expect(getByLabelText('Feedback')).not.toBeNull();
+  });
+
   test('reject requires feedback before submit is enabled', async () => {
     const submissions: ReviewDecisionSubmission[] = [];
     const { getByRole, getByLabelText } = render(ReviewDecisionForm, {

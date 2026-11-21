@@ -17,6 +17,7 @@
 import type { APIRequestContext, Page, Route } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 
 import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { MEMORY_COPY } from '../../src/app/copy/memory.ts';
@@ -37,7 +38,7 @@ import { E2E_SKILLS } from './skills-support.ts';
 import { bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
-const WIDTHS = [375, 1280] as const;
+const WIDTHS = designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 const SOURCE = 'agents-reviews-design-states.spec.ts';
 const settingsCopy = AGENT_PAGE_COPY.settings;
 

@@ -609,7 +609,7 @@ export const WORKFLOW_COPY = {
     builderTab: 'Builder',
     jsonTab: 'JSON',
     /** The workflow's `title`, the name a person reads. */
-    titleLabel: 'Title (optional)',
+    titleLabel: 'Title',
     titlePlaceholder: 'e.g. Morning briefing',
     /** The workflow's identifier, the file's `name`. */
     idLabel: 'ID',

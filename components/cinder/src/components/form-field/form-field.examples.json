@@ -20,6 +20,12 @@
       "title": "Form field with error",
       "description": "Error state wires aria-invalid and aria-describedby on the wrapped control.",
       "code": "<script lang=\"ts\">\n  import { FormField } from '@lostgradient/cinder';\n  import { Input } from '@lostgradient/cinder';\n  let email = $state('not-an-email');\n</script>\n\n<FormField\n  id=\"email\"\n  label=\"Email address\"\n  description=\"We'll never share your email.\"\n  error=\"Enter a valid email address.\"\n  required\n>\n  <Input id=\"email\" bind:value={email} type=\"email\" placeholder=\"you@example.com\" />\n</FormField>\n"
+    },
+    {
+      "id": "optional-labels",
+      "title": "Optional labels",
+      "description": "A standalone Label and FormField both expose Optional as real label text.",
+      "code": "<script lang=\"ts\">\n  import { FormField, Input, Label } from '@lostgradient/cinder';\n\n  let timezone = $state('');\n  let nickname = $state('');\n</script>\n\n<div>\n  <Label for=\"timezone\" optional>Timezone</Label>\n  <Input id=\"timezone\" bind:value={timezone} />\n</div>\n\n<FormField id=\"nickname\" label=\"Nickname\" optional>\n  <Input id=\"nickname\" bind:value={nickname} />\n</FormField>\n"
     }
   ]
 }

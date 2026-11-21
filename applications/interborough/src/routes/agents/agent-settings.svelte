@@ -223,17 +223,20 @@
     seededHash = at;
   }
 
-  // The form is filled from the file, and again when the file's hash moves to one the form did
-  // not save, unless it holds changes: a read that lands mid-edit never overwrites them.
+  // A code agent's override hash can arrive before the definition that supplies restored values.
+  // Refill when either changes, while leaving a draft or an in-flight save alone.
   $effect(() => {
     const loaded = detail;
     if (!writable || loaded === undefined) return;
     const definition = loaded.definition;
     const at = loaded.hash;
     if (definition === null) return;
+    const next = settingsFormOf(definition);
     untrack(() => {
-      if (baseline !== undefined && (at === seededHash || dirty)) return;
-      fill(settingsFormOf(definition), at);
+      if (dirty || save.isPending) return;
+      if (baseline !== undefined && at === seededHash && changedParts(baseline, next).length === 0)
+        return;
+      fill(next, at);
     });
   });
 
