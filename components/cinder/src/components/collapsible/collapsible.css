@@ -156,6 +156,21 @@
     background: transparent;
   }
 
+  /* The compact trigger keeps its drawn height. Its touch area extends only vertically. */
+  @media (any-pointer: coarse) {
+    .cinder-collapsible[data-cinder-variant='flat'] > .cinder-collapsible__trigger:not(:disabled) {
+      position: relative;
+    }
+
+    .cinder-collapsible[data-cinder-variant='flat']
+      > .cinder-collapsible__trigger:not(:disabled)::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
+  }
+
   /* A flat disclosure heads a section of a flat page, so its label reads as a heading. */
   .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__label {
     font-weight: var(--cinder-font-semibold);
