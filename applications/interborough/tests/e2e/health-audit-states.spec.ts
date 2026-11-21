@@ -157,6 +157,27 @@ for (const width of WIDTHS) {
       await expect(main.getByLabel('Period', { exact: true })).toHaveValue('7d');
     });
 
+    test('an unavailable event in an empty Audit log has one missing detail and a way back', async ({
+      page,
+    }) => {
+      await answerAudit(page, () => NOTHING);
+      await open(page, width, '/health/audit?record=missing-record');
+      const main = page.locator('main');
+      const missing = main.getByRole('heading', { name: 'Event not found' });
+      await expect(missing).toBeVisible();
+      await expect(main.locator('.cinder-empty-state')).toHaveCount(1);
+      await expect(main.getByText('missing-record', { exact: true })).toHaveCount(0);
+      await captureForDesignReview(page, {
+        route: '/health/audit',
+        state: 'missing event on empty log',
+        source: SOURCE,
+      });
+
+      await main.getByRole('button', { name: 'Back to Audit log' }).click();
+      await expect(page).toHaveURL(/\/health\/audit$/);
+      await expect(main.getByRole('heading', { name: 'Nothing recorded yet' })).toBeVisible();
+    });
+
     test('a search with no match keeps what was typed, names it, and Clear filters resets the search too', async ({
       page,
       checkA11y,

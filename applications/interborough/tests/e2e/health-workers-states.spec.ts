@@ -545,6 +545,7 @@ test('a filter that matches nothing keeps the text and closes the worker it hide
   // "First" follows the filter (COR-2445): with no worker left in the list, none stays open.
   await expect.poll(() => new URL(page.url()).searchParams.get('worker')).toBeNull();
   await expect(detail(page)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Choose a worker' })).toHaveCount(0);
   await captureForDesignReview(page, {
     route: '/health/workers',
     state: 'filter-no-match',

@@ -43,8 +43,6 @@ export const WORKER_COPY = {
       stopped: (finished: number): string => `Drained, finished its ${tasks(finished)}`,
     },
     /** What the empty detail pane says while no worker is open. */
-    pickTitle: 'Choose a worker',
-    pickDescription: 'Choose a worker from the list to see its queue, tasks, and what it serves.',
     closedTitle: 'Worker closed',
     closedDescription:
       'The server does not list this worker. It may have been removed or never connected here.',

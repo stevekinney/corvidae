@@ -388,6 +388,20 @@
   onDestroy(() => exportController?.abort());
 </script>
 
+{#snippet missingRecord(standalone: boolean)}
+  <EmptyState
+    kind="not-found"
+    headingLevel={2}
+    title={copy.recordNotFound.title}
+    description={trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
+    actions={standalone
+      ? [{ label: copy.recordNotFound.back, variant: 'secondary', onclick: () => go({}) }]
+      : []}
+  >
+    {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+  </EmptyState>
+{/snippet}
+
 <HealthFrame active="audit">
   <section class="ib-audit" aria-label={VIEW_COPY.audit.label} data-page="audit">
     <!-- While the log on screen is old, the controls that change something are held, each described
@@ -485,14 +499,6 @@
         <Banner preset="refresh-failed" dataUpdatedAt={trail.dataUpdatedAt} onRetry={retry} />
       {/if}
 
-      {#if settledEmpty && recordMissing}
-        <Alert variant="info">
-          <p class="ib-audit__alert-body">
-            {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
-          </p>
-        </Alert>
-      {/if}
-
       {#if failedFirstLoad && loadFailure !== undefined}
         <ErrorState
           bordered
@@ -527,7 +533,9 @@
           />
         </div>
       {:else if settledEmpty}
-        {#if logIsEmpty}
+        {#if recordMissing}
+          {@render missingRecord(true)}
+        {:else if logIsEmpty}
           <EmptyState
             kind="first-use"
             headingLevel={2}
@@ -603,14 +611,7 @@
               {#if !trail.isError && (trail.isFetchingNextPage || (trail.hasNextPage && searchedPages < RECORD_SEARCH_PAGES))}
                 <Skeleton lines={5} delay={LOADING_DELAY_MILLISECONDS} label={copy.loadingLabel} />
               {:else}
-                <EmptyState
-                  kind="first-use"
-                  headingLevel={2}
-                  title={copy.recordNotFound.title}
-                  description={trail.hasNextPage
-                    ? copy.recordNotFound.more
-                    : copy.recordNotFound.end}
-                />
+                {@render missingRecord(false)}
               {/if}
             {/snippet}
             {#snippet empty()}

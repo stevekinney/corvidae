@@ -734,9 +734,8 @@
           <div class="ib-chats__loading-detail" data-chats-loading-detail aria-hidden="true">
             <Skeleton lines={5} delay={300} />
           </div>
-        {:else if listState === 'first-use'}
-          <!-- The list's first use is the page's one empty state; the open chat's pane stays blank
-             rather than say "No chat open" beside it (owner report, 2026-11-19). -->
+        {:else if listState === 'first-use' || listState === 'no-match' || listState === 'none' || listState === 'all-archived'}
+          <!-- The list already shows the empty state. -->
         {:else if noChats}
           <EmptyState
             kind="first-use"

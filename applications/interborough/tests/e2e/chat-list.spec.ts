@@ -477,6 +477,7 @@ test.describe('the states of the chat list', () => {
     ).toBeVisible();
     await expect(state).toContainText('Check the spelling or try another word.');
     await expect(page).toHaveURL(/\/chats$/);
+    await expect(page.getByRole('heading', { name: 'Pick a chat' })).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats', state: 'no results', source: SOURCE });
     await state.getByRole('button', { name: 'Clear search' }).click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);

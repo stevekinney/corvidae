@@ -100,8 +100,6 @@
     key={(worker: WorkerSummary) => worker.id}
     label={copy.list.title}
     detailLabel={copy.list.detailLabel}
-    emptyTitle={copy.list.pickTitle}
-    emptyDescription={copy.list.pickDescription}
     openFirst
     selectionParameter="worker"
     {selectionLocation}
@@ -124,6 +122,7 @@
     {#snippet listBody({ selectedKey: openKey })}
       {#if shown.length === 0}
         <EmptyState
+          class="ib-workers__empty"
           kind={filter.trim() === '' ? 'first-use' : 'filtered'}
           headingLevel={3}
           title={filter.trim() === ''
@@ -176,12 +175,7 @@
       />
     {/snippet}
     {#snippet empty()}
-      <EmptyState
-        kind="first-use"
-        headingLevel={2}
-        title={copy.list.pickTitle}
-        description={copy.list.pickDescription}
-      />
+      <!-- The list already shows the empty state. -->
     {/snippet}
     {#snippet detail(worker)}
       {#snippet tasksOf()}{@render queueTasks(worker)}{/snippet}
@@ -200,6 +194,10 @@
 </div>
 
 <style>
+  :global(.ib-workers__empty) {
+    padding-inline: var(--cinder-density-pad-inline);
+  }
+
   .ib-workers__head {
     display: flex;
     flex-direction: column;
