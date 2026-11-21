@@ -105,6 +105,7 @@ describe('weft.workflows.result.get', () => {
     expect(await response.json()).toEqual({
       error: 'Workflow "does-not-exist" not found',
       data: { resource: 'workflow', identifier: 'does-not-exist' },
+      retryable: false,
     });
   });
 
@@ -125,7 +126,7 @@ describe('weft.workflows.result.get', () => {
 
     expect(response.status).toBe(422);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'workflow failed' });
+    expect(await response.json()).toEqual({ error: 'workflow failed', retryable: false });
   });
 
   it('returns 422 with the default failure message when a failed workflow has no error text', async () => {
@@ -152,7 +153,7 @@ describe('weft.workflows.result.get', () => {
 
     expect(response.status).toBe(422);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Workflow failed' });
+    expect(await response.json()).toEqual({ error: 'Workflow failed', retryable: false });
   });
 
   it('returns 422 when the workflow was cancelled', async () => {
@@ -175,7 +176,7 @@ describe('weft.workflows.result.get', () => {
 
     expect(response.status).toBe(422);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Workflow cancelled' });
+    expect(await response.json()).toEqual({ error: 'Workflow cancelled', retryable: false });
   });
 
   it('returns 504 when waiting for a running workflow result times out', async () => {
@@ -204,7 +205,10 @@ describe('weft.workflows.result.get', () => {
 
       expect(response.status).toBe(504);
       expect(response.headers.get('content-type')).toBe('application/json');
-      expect(await response.json()).toEqual({ error: 'Timeout waiting for workflow result' });
+      expect(await response.json()).toEqual({
+        error: 'Timeout waiting for workflow result',
+        retryable: true,
+      });
     } finally {
       engine.getHandle = originalGetHandle;
     }
@@ -243,7 +247,10 @@ describe('weft.workflows.result.get', () => {
       );
 
       expect(response.status).toBe(504);
-      expect(await response.json()).toEqual({ error: 'Timeout waiting for workflow result' });
+      expect(await response.json()).toEqual({
+        error: 'Timeout waiting for workflow result',
+        retryable: true,
+      });
       expect(setTimeoutSpy.mock.calls.some(([, milliseconds]) => milliseconds === 30_000)).toBe(
         true,
       );
@@ -283,7 +290,7 @@ describe('weft.workflows.result.get', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 
   it('clears the race timer on the result win path', async () => {

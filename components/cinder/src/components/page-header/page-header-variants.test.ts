@@ -138,14 +138,16 @@ describe('PageHeader decisions (COR-2320)', () => {
       props: { withDecisions: true, overflow: [{ label: 'Cancel run', decision: true }] },
     });
     for (const name of ['Approve', 'Deny', 'Cancel run']) {
-      expect(getByRole('button', { name }).getAttribute('data-cinder-size')).toBe('xs');
+      expect(getByRole('button', { name }).classList.contains('button-size-extra-small')).toBe(
+        true,
+      );
     }
   });
 
-  test('the overflow button never makes the header taller than its title (COR-2337)', () => {
+  test('the overflow button uses the title-aligned height for compact actions (COR-2337)', () => {
     const trigger = declarationsFor(
       stylesheet,
-      '.cinder-page-header__actions .cinder-page-header__overflow',
+      ':where(.cinder-page-header:not([data-cinder-regular-actions])) .cinder-page-header__actions .cinder-page-header__overflow',
     );
     expect(trigger.get('block-size')).toBe('var(--_cinder-compact-control-height)');
     expect(trigger.get('min-block-size')).toBe('var(--_cinder-compact-control-height)');
@@ -299,9 +301,9 @@ describe('PageHeader hero (COR-2320)', () => {
       true,
     );
     // Beneath the title the buttons keep their own size; only a header's side actions are compact.
-    expect(getByRole('button', { name: 'Find a spot' }).getAttribute('data-cinder-size')).toBe(
-      'md',
-    );
+    expect(
+      getByRole('button', { name: 'Find a spot' }).classList.contains('button-size-medium'),
+    ).toBe(true);
     expect(container.querySelector('.cinder-page-header__actions')).toBeNull();
   });
 
@@ -384,7 +386,7 @@ describe('PageHeader hero (COR-2320)', () => {
 
   test('on accent and night the primary is a white fill with an indigo label', () => {
     const primary =
-      /\.cinder-button\[data-cinder-variant='primary'\]:not\(:disabled, \[aria-disabled='true'\]\) \{([^}]*)\}/.exec(
+      /\.cinder-button\.button-variant-primary:not\(:disabled, \[aria-disabled='true'\]\) \{([^}]*)\}/.exec(
         stylesheet,
       )?.[1];
     expect(primary).toBeDefined();
@@ -396,10 +398,10 @@ describe('PageHeader hero (COR-2320)', () => {
     expect(contrastRatio(wcagLuminance(label), wcagLuminance(fill))).toBeGreaterThanOrEqual(4.5);
     // The rule is scoped to the two dark bands, and the hover and press keep the white face.
     expect(stylesheet).toMatch(
-      /:is\(\.cinder-page-header\[data-cinder-tone='accent'\], \.cinder-page-header\[data-cinder-tone='night'\]\)\s*\.cinder-button\[data-cinder-variant='primary'\]:not/,
+      /:is\(\.cinder-page-header\[data-cinder-tone='accent'\], \.cinder-page-header\[data-cinder-tone='night'\]\)\s*\.cinder-button\.button-variant-primary:not/,
     );
-    expect(stylesheet).toMatch(/\.cinder-button\[data-cinder-variant='primary'\]:hover/);
-    expect(stylesheet).toMatch(/\.cinder-button\[data-cinder-variant='primary'\]:active/);
+    expect(stylesheet).toMatch(/\.cinder-button\.button-variant-primary:hover/);
+    expect(stylesheet).toMatch(/\.cinder-button\.button-variant-primary:active/);
   });
 
   test('the accent and night bands draw a white focus ring for filled and outlined controls', () => {
@@ -413,7 +415,7 @@ describe('PageHeader hero (COR-2320)', () => {
 
   test('on accent and night the secondary and the segmented-control track are translucent', () => {
     expect(stylesheet).toMatch(
-      /\.cinder-button\[data-cinder-variant='secondary'\]:not\(:disabled, \[aria-disabled='true'\]\) \{[^}]*background: oklch\(100% 0 0 \/ 0\.\d+\)/,
+      /\.cinder-button\.button-variant-secondary:not\(:disabled, \[aria-disabled='true'\]\) \{[^}]*background: oklch\(100% 0 0 \/ 0\.\d+\)/,
     );
     expect(stylesheet).toMatch(
       /\.cinder-segmented-control:not\(\[data-cinder-variant='tablist'\]\) \{[^}]*background: oklch\(100% 0 0 \/ 0\.\d+\)/,

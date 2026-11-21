@@ -22,12 +22,12 @@ test('the address breaks across lines and the control sits on the last of them',
       if (control === null) throw new Error('the copy control is missing');
       // The address as drawn: the text before the last character, and the last character.
       const range = document.createRange();
-      const head = root.firstChild;
+      const head = root.querySelector('.cinder-copyable-value__part');
       const last = root.querySelector('.cinder-copyable-value__end')?.firstChild;
-      if (head === null || head === undefined || last === null || last === undefined) {
+      if (head === null || last === null || last === undefined) {
         throw new Error('the address text is missing');
       }
-      range.setStart(head, 0);
+      range.setStartBefore(head);
       range.setEnd(last, last.textContent?.length ?? 0);
       const lines = [...range.getClientRects()].filter((rect) => rect.width > 0);
       const lastLine = lines.reduce((lowest, rect) =>

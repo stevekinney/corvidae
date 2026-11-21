@@ -1,12 +1,15 @@
 <script lang="ts">
   /**
    * Recent activity: the latest nine things that happened, one line each (two at most, then Show all) with the time at the right,
-   * under a heading that names the zone ("Recent activity (Central time)"), as Storage's column does, and a link to the whole
-   * audit log with the number of events it holds. A line is a run, a schedule, a provider key, the
-   * server or a chat (`recent-activity.ts`); step noise is the run's own timeline.
+   * under its heading, with the sentence every page uses for the zone its times are in, the viewer's
+   * own ("Times show in Mountain time (MST)", `timesShowIn`, as Home's date line says it), and a link
+   * to the whole audit log with the number of events it holds. No parentheses and no middle dots
+   * (owner, 2026-11-19). A line is a run, a schedule, a provider key, the server or a chat
+   * (`recent-activity.ts`); step noise is the run's own timeline.
    */
   import { Button, Skeleton, Text } from '@lostgradient/cinder';
 
+  import { timesShowIn } from '../../lib/format/clock.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HEALTH_ACTIVITY_COPY as copy } from './health-copy.ts';
   import type { ActivityLine } from './recent-activity.ts';
@@ -36,13 +39,14 @@
 
 <section class="ib-recent-activity" aria-labelledby="ib-recent-activity-title">
   <div class="ib-recent-activity__heading-row">
-    <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">
-      {copy.title} <span class="ib-recent-activity__zone">({copy.zone})</span>
-    </h2>
+    <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">{copy.title}</h2>
     <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
       {copy.auditLink(total)} ›
     </a>
   </div>
+  <p class="ib-recent-activity__zone" data-testid="recent-activity-zone">
+    {timesShowIn(Date.now())}.
+  </p>
 
   {#if failed}
     <div class="ib-recent-activity__note" role="alert">
@@ -96,9 +100,9 @@
   }
 
   .ib-recent-activity__zone {
+    margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-    font-weight: 400;
   }
 
   .ib-recent-activity__audit {

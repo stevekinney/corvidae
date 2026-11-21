@@ -64,6 +64,7 @@ describe('faultToHttpResponse', () => {
       error: 'workflow "wf-1" not found',
       weftCode: 'WorkflowNotFoundError',
       data: { resource: 'workflow', identifier: 'wf-1' },
+      retryable: false,
     });
   });
 
@@ -81,6 +82,7 @@ describe('faultToHttpResponse', () => {
       data: {
         issues: [{ path: ['workflowId'], message: 'required', code: 'invalid_type' }],
       },
+      retryable: false,
     });
   });
 
@@ -96,10 +98,14 @@ describe('faultToHttpResponse', () => {
       data: { subscriptionId: 'private-subscription-id', droppedCount: 17 },
     });
 
-    expect(await unauthorized.json()).toEqual({ error: 'authentication required' });
+    expect(await unauthorized.json()).toEqual({
+      error: 'authentication required',
+      retryable: false,
+    });
     expect(await overflow.json()).toEqual({
       error: 'subscription overflow',
       data: { droppedCount: 17 },
+      retryable: false,
     });
   });
 
@@ -118,18 +124,62 @@ describe('faultToHttpResponse', () => {
     expect(await replacement.json()).toEqual({
       error: 'workflow replaced',
       data: { reason: 'workflow-replaced' },
+      retryable: false,
     });
-    expect(await privateConflict.json()).toEqual({ error: 'private conflict' });
+    expect(await privateConflict.json()).toEqual({ error: 'private conflict', retryable: false });
   });
 
-  it('masks EngineFailure to the exact canonical bytes', async () => {
+  it('masks EngineFailure to the exact canonical bytes: the message, retryable false, no remediation', async () => {
     const response = faultToHttpResponse({
       code: 'EngineFailure',
       message: 'database password leaked by implementation detail',
       data: {},
+      remediation: 'Restart the database with the password in the environment.',
     });
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe('{"error":"Internal server error"}');
+    expect(await response.text()).toBe('{"error":"Internal server error","retryable":false}');
+  });
+
+  it('carries retryable always and remediation when the fault sets one', async () => {
+    const limited = faultToHttpResponse({
+      code: 'RateLimited',
+      message: 'slow down',
+      data: { retryAfterSeconds: 2 },
+      remediation: 'Wait two seconds, then send the same request.',
+    });
+    const stale = faultToHttpResponse({
+      code: 'StaleRevision',
+      message: 'stale',
+      data: { currentRevision: 2 },
+    });
+
+    expect(await limited.json()).toEqual({
+      error: 'slow down',
+      data: { retryAfterSeconds: 2 },
+      retryable: true,
+      remediation: 'Wait two seconds, then send the same request.',
+    });
+    expect(await stale.json()).toEqual({
+      error: 'stale',
+      data: { currentRevision: 2 },
+      retryable: false,
+    });
+  });
+
+  it('drops a remediation that is not one line of at most 500 characters', async () => {
+    for (const remediation of ['two\nlines', 'tab\there', 'x'.repeat(501), '']) {
+      const response = faultToHttpResponse({
+        code: 'NotFound',
+        message: 'missing',
+        data: { resource: 'workflow' },
+        remediation,
+      });
+      expect(await response.json()).toEqual({
+        error: 'missing',
+        data: { resource: 'workflow' },
+        retryable: false,
+      });
+    }
   });
 });

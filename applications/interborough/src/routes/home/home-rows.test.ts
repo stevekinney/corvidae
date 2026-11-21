@@ -383,6 +383,25 @@ describe('recent chats', () => {
     });
   });
 
+  // Owner, 2026-11-19: a recent chat row repeated its title as its snippet.
+  test('never says a chat’s title twice: a latest message that is the title, or the title cut short, is left out', () => {
+    const rows = recentChatRows(
+      [
+        contextFixture('same', { title: 'Plan the launch', lastMessagePreview: 'Plan the launch' }),
+        contextFixture('cut', {
+          title: 'Summarize the quarterly…',
+          lastMessagePreview: 'Summarize the quarterly report for the board',
+        }),
+        contextFixture('other', { title: 'Plan', lastMessagePreview: 'Plan B is ready.' }),
+      ],
+      new Map(),
+      new Set(),
+      HOME_NOW,
+      ZONE,
+    );
+    expect(rows.map((row) => row.latest)).toEqual([undefined, undefined, 'Plan B is ready.']);
+  });
+
   test('words a chat by its activity, its latest run and how it ended', () => {
     const word = (overrides: Parameters<typeof contextFixture>[1], failed = false) =>
       chatStatusWord(contextFixture('c', overrides), failed ? new Set(['c']) : new Set());

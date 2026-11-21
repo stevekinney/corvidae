@@ -5,6 +5,7 @@ import type {
   SharedCommandOutcome_2d8e5749,
   SharedCommandOutcome_69ccd5e0,
   SharedConflictOutcome_e9582f9b,
+  SharedDryRunEffectsTarget_b07628bd,
   SharedFailureOutcome_707f27ea,
   SharedOutcomeReason_1cc511c4,
   SharedOutcomeSessionId_442a0186,
@@ -17,35 +18,46 @@ export type ContextsOperationTypes = {
       'Conflict' | 'InvalidParams' | 'NotFound' | 'Unavailable' | 'UnsupportedCapability';
   };
   'bureau.contexts.delete': {
-    readonly input: { readonly contextId: string; readonly waitMilliseconds?: number };
-    readonly output: {
+    readonly input: {
       readonly contextId: string;
-      readonly reason?: 'shutting-down';
-      readonly receipt:
-        | 'applied'
-        | 'rejected'
-        | 'cleanup-pending'
-        | 'cleaned-up'
-        | 'cleanup-failed'
-        | 'cleanup-unresolved'
-        | 'unknown-outcome';
-      readonly tasks?: ReadonlyArray<{
-        readonly cleanup:
-          | 'cancel-requested'
-          | 'canceled'
-          | 'cleanup-pending'
-          | 'cleaned-up'
-          | 'cleanup-failed'
-          | 'cleanup-unresolved'
-          | 'unknown-outcome';
-        readonly taskId: string;
-      }>;
+      readonly dryRun?: boolean;
+      readonly waitMilliseconds?: number;
     };
+    readonly output:
+      | SharedDryRunEffectsTarget_b07628bd
+      | {
+          readonly contextId: string;
+          readonly reason?: 'shutting-down';
+          readonly receipt:
+            | 'applied'
+            | 'rejected'
+            | 'cleanup-pending'
+            | 'cleaned-up'
+            | 'cleanup-failed'
+            | 'cleanup-unresolved'
+            | 'unknown-outcome';
+          readonly tasks?: ReadonlyArray<{
+            readonly cleanup:
+              | 'cancel-requested'
+              | 'canceled'
+              | 'cleanup-pending'
+              | 'cleaned-up'
+              | 'cleanup-failed'
+              | 'cleanup-unresolved'
+              | 'unknown-outcome';
+            readonly taskId: string;
+          }>;
+        };
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.contexts.forgetgrants': {
-    readonly input: { readonly contextId: string; readonly tools: ReadonlyArray<string> };
-    readonly output: { readonly forgotten: ReadonlyArray<string> };
+    readonly input: {
+      readonly contextId: string;
+      readonly dryRun?: boolean;
+      readonly tools: ReadonlyArray<string>;
+    };
+    readonly output:
+      SharedDryRunEffectsTarget_b07628bd | { readonly forgotten: ReadonlyArray<string> };
     readonly faults: 'InvalidParams' | 'NotFound' | 'Unavailable' | 'UnsupportedCapability';
   };
   'bureau.contexts.fork': {

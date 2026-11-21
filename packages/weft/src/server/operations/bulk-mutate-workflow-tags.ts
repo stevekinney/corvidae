@@ -26,7 +26,10 @@ import {
   bulkOperatorAccessPolicy,
   parseBulkOperationControlFromBody,
 } from './bulk-operation-controls.ts';
-import { validatedListFilterFromBulkInput } from './bulk-operation-helpers.ts';
+import {
+  staleConfirmationFault,
+  validatedListFilterFromBulkInput,
+} from './bulk-operation-helpers.ts';
 
 const bulkMutateWorkflowTagsInput = z
   .object({
@@ -55,11 +58,13 @@ export const bulkMutateWorkflowTagsOperation = defineOperation({
     'more characters, or failureCategory together with status); an unscoped filter is ' +
     'rejected with InvalidParams. Run it first with `dryRun: true` to preview the matches and ' +
     'receive a `confirmationToken`, then repeat the same request with that token to ' +
-    'commit. Requires workflows:admin.',
+    'commit; a commit whose token no longer matches is refused with `Conflict`, so run the ' +
+    'preview again. Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkMutateWorkflowTagsInput,
   outputSchema: bulkTagOutputSchema,
+  producibleFaults: ['Conflict'],
   access: bulkOperatorAccessPolicy,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
@@ -88,7 +93,7 @@ export const bulkMutateWorkflowTagsOperation = defineOperation({
       );
     } catch (error) {
       if (error instanceof BulkOperationConfirmationError) {
-        throw invalidParamsFault(error.message);
+        throw staleConfirmationFault(error);
       }
       throw engineFailureFault(faultMessage(error));
     }

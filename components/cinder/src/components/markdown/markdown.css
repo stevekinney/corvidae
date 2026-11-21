@@ -1,0 +1,81 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * MARKDOWN
+ *
+ * The table scroller inside rendered Markdown: one hairline frame around a table that scrolls
+ * along its inline axis, with a cue that names the columns out of view. The rules for the table's
+ * own cells live beside the shared Markdown rhythm in `styles/utilities.css`, a later layer.
+ * ======================================== */
+
+  /* The raw text that stands in while a math render is pending keeps the source's line breaks. */
+  .cinder-markdown-pending {
+    white-space: pre-wrap;
+  }
+
+  /* One hairline frames a rendered code block. A host that streams can restyle the open fence. */
+  [data-cinder-markdown-node='code-block'] .cinder-code-block {
+    border: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-markdown-table {
+    display: grid;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  /* The cue sits outside the cells, at the inline end above the table, so it never covers text. Its
+   * margin is in `styles/utilities.css`, beside the paragraph rhythm it overrides. */
+  .cinder-markdown-table-cue {
+    justify-self: end;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    text-align: start;
+  }
+
+  /* One hairline container: the table's own outer cell borders are hidden so they do not double it. */
+  .cinder-markdown-table-frame {
+    position: relative;
+    min-inline-size: 0;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    overflow: hidden;
+  }
+
+  /* A fade at the inline end says the table continues; it clears once the end is in view. */
+  .cinder-markdown-table-frame[data-fade-end]::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    inline-size: var(--cinder-space-8);
+    background: linear-gradient(to right, transparent, var(--cinder-surface));
+    pointer-events: none;
+  }
+
+  .cinder-markdown-table-frame[data-fade-end]:dir(rtl)::after {
+    background: linear-gradient(to left, transparent, var(--cinder-surface));
+  }
+
+  .cinder-markdown-table-scroller {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  /* The frame clips with `overflow: hidden`, so the ring is painted inset, on the frame's edge. */
+  .cinder-markdown-table-scroller:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-markdown-table-scroller:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+
+    .cinder-markdown-table-frame[data-fade-end]::after {
+      display: none;
+    }
+  }
+}

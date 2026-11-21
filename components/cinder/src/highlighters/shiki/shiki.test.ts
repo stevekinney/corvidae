@@ -112,6 +112,17 @@ describe('shikiHighlighter — happy path', () => {
     expect(dualThemeApplied).toBe(true);
   });
 
+  test('the dual-theme form writes both colors as variables and no inline color', async () => {
+    const highlight = shikiHighlighter({
+      theme: { light: 'github-light', dark: 'github-dark' },
+    });
+    const html = await highlight('const x = 1;', 'javascript');
+    expect(html).toMatch(/--shiki-light:#[0-9A-Fa-f]{6}/);
+    expect(html).toMatch(/--shiki-dark:#[0-9A-Fa-f]{6}/);
+    // An inline `color:` would beat the stylesheet's `light-dark()` rule and pin the light color.
+    expect(html).not.toMatch(/style="(?:[^"]*;)?color:/);
+  });
+
   test('returns Shiki root <pre> markup without tabindex so CodeBlock keeps a single scroll focus target', async () => {
     const highlight = shikiHighlighter();
     const html = await highlight('const x = 1;', 'javascript');
@@ -493,6 +504,7 @@ describe('shikiHighlighter — import strategy (issue #773)', () => {
     const highlight = shikiHighlighter();
     const html = await highlight('```typescript\nconst x: number = 1;\n```\n', 'markdown');
     expect(html.startsWith('<pre')).toBe(true);
+    // The default is a dual theme, which writes each color as `--shiki-light`, not `color`.
     // Without the embedded grammar loaded, Shiki tokenizes the fenced
     // region as one flat run — every token shares Markdown's single plain-
     // text color. With `typescript` loaded, `const`/`number` get the
@@ -503,7 +515,7 @@ describe('shikiHighlighter — import strategy (issue #773)', () => {
     // always the same color — a weaker assertion this regression would slip
     // through).
     const colors = new Set(
-      Array.from(html.matchAll(/color:#[0-9A-Fa-f]{6}/g), (match) => match[0]),
+      Array.from(html.matchAll(/--shiki-light:#[0-9A-Fa-f]{6}/g), (match) => match[0]),
     );
     expect(colors.size).toBeGreaterThan(1);
   });

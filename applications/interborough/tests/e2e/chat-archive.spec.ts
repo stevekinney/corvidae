@@ -104,12 +104,12 @@ for (const viewport of VIEWPORTS) {
       await expect(composer(page)).toHaveCount(0);
       const newChat = bar.getByRole('link', { name: CHAT_COPY.composer.newChat, exact: true });
       await expect(newChat).toHaveAttribute('href', '/chats/new');
-      await expect(newChat).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(newChat).toContainClass('button-variant-secondary');
       const unarchive = bar.getByRole('button', {
         name: CHAT_COPY.composer.unarchive,
         exact: true,
       });
-      await expect(unarchive).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(unarchive).toContainClass('button-variant-primary');
       // The conversation is still there to read.
       await expect(
         page.getByText('Hello', { exact: true }).filter({ visible: true }).first(),

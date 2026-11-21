@@ -151,12 +151,12 @@ describe('Banner presets: tone, name and words', () => {
 });
 
 describe('Banner presets: actions', () => {
-  test('a retrying preset offers Retry now, with a refresh glyph, and calls onRetry', async () => {
+  test('a retrying preset offers Try again, with a refresh glyph, and calls onRetry', async () => {
     const onRetry = mock(() => {});
     const { root } = renderPreset('unreachable', { onRetry });
-    expect(actionLabels(root)).toEqual(['Retry now']);
+    expect(actionLabels(root)).toEqual(['Try again']);
     const button = root.querySelector<HTMLButtonElement>('.cinder-banner__actions button');
-    expect(button?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button?.classList.contains('button-variant-secondary')).toBe(true);
     expect(button?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
     await fireEvent.click(button as HTMLButtonElement);
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -166,23 +166,27 @@ describe('Banner presets: actions', () => {
     expect(renderPreset('offline').root.querySelector('.cinder-banner__actions')).toBeNull();
   });
 
-  test('stopped makes Retry now the primary action', () => {
+  test('stopped makes Try again the primary action', () => {
     const { root } = renderPreset('stopped', { onRetry: () => {} });
     expect(
-      root.querySelector('.cinder-banner__actions button')?.getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+      root
+        .querySelector('.cinder-banner__actions button')
+        ?.classList.contains('button-variant-primary'),
+    ).toBe(true);
   });
 
   test('retryVariant moves the emphasis for a page whose retries have stopped', () => {
     const { root } = renderPreset('unreachable', { onRetry: () => {}, retryVariant: 'primary' });
     expect(
-      root.querySelector('.cinder-banner__actions button')?.getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+      root
+        .querySelector('.cinder-banner__actions button')
+        ?.classList.contains('button-variant-primary'),
+    ).toBe(true);
   });
 
-  test('reconnecting keeps Retry now', () => {
+  test('reconnecting keeps Try again', () => {
     expect(actionLabels(renderPreset('reconnecting', { onRetry: () => {} }).root)).toEqual([
-      'Retry now',
+      'Try again',
     ]);
   });
 
@@ -203,8 +207,8 @@ describe('Banner presets: actions', () => {
     const [health, restart] = [
       ...root.querySelectorAll<HTMLElement>('.cinder-banner__actions button'),
     ];
-    expect(restart?.getAttribute('data-cinder-variant')).toBe('primary');
-    expect(health?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(restart?.classList.contains('button-variant-primary')).toBe(true);
+    expect(health?.classList.contains('button-variant-secondary')).toBe(true);
     await fireEvent.click(restart as HTMLElement);
     await fireEvent.click(health as HTMLElement);
     expect(onRestart).toHaveBeenCalledTimes(1);
@@ -222,7 +226,7 @@ describe('Banner presets: actions', () => {
       onRetry: () => {},
       actions: createRawSnippet(() => ({ render: () => '<button>Details</button>' })),
     });
-    expect(actionLabels(root)).toEqual(['Retry now', 'Details']);
+    expect(actionLabels(root)).toEqual(['Try again', 'Details']);
   });
 });
 

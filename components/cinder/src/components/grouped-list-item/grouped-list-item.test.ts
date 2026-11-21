@@ -162,7 +162,7 @@ describe('GroupedListItem', () => {
     expect(buttons[0]?.hasAttribute('data-changes')).toBe(true);
     expect(buttons[1]?.hasAttribute('data-changes')).toBe(false);
     for (const button of buttons) {
-      expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(button.classList.contains('button-variant-secondary')).toBe(true);
     }
   });
 

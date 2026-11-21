@@ -339,6 +339,26 @@ export class UnknownScheduleAgentError extends BureauError {
   }
 }
 
+/**
+ * A schedule named a workflow that is neither a code workflow a plugin contributed nor a ready,
+ * unpaused workflow file (COR-2546), the targets `bureau.workflows.start` accepts. It is a
+ * {@link BureauError}, so the management plane answers it as a client error; the name is on
+ * `workflowType`.
+ */
+export class UnknownScheduleWorkflowError extends BureauError {
+  /** The identifier no startable workflow resolves. */
+  readonly workflowType: string;
+
+  constructor(workflowType: string) {
+    super(
+      `Unknown workflow "${workflowType}": a schedule can only run a workflow that can be started`,
+      'NOT_FOUND',
+    );
+    this.name = 'UnknownScheduleWorkflowError';
+    this.workflowType = workflowType;
+  }
+}
+
 export function toBadRequest(message: string): never {
   throw new BureauError(message, 'BAD_REQUEST');
 }

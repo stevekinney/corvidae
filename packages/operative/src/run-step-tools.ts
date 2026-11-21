@@ -25,7 +25,10 @@ import {
 import type { ErrorRecoveryAction } from './hooks/types';
 import { modelFacingToolResult } from './human-wait-parks';
 import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
-import { runScopedExecutionContext } from './run-scoped-execution-context';
+import {
+  CHILD_EVENT_EMITTER_EXECUTION_KEY,
+  runScopedExecutionContext,
+} from './run-scoped-execution-context';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
 import {
@@ -344,6 +347,12 @@ export async function executeTools(
                   // COR-2106 — the run-scoped fields come from the one function a host also uses
                   // to resume a parked call, so a field added there reaches both.
                   ...runScopedContext,
+                  // COR-2526 — the run's own emitter, for a delegation to announce its child on when
+                  // its tool was built with no `parentContext` of its own (see
+                  // `CHILD_EVENT_EMITTER_EXECUTION_KEY`).
+                  ...(emitter instanceof EventTarget
+                    ? { [CHILD_EVENT_EMITTER_EXECUTION_KEY]: emitter }
+                    : {}),
                   ...(deps.requestChildWait !== undefined && deps.runId !== undefined
                     ? {
                         durableChildWait: (request: { childRunId: string; toolCallId: string }) => {

@@ -281,15 +281,25 @@ export async function commitBulkTags(
 }
 
 // ---------------------------------------------------------------------------
-// Purge — no dry-run/confirmation-token protocol (module doc, plan §0
-// Ground Truth vs actual `purge-workflows.ts` source; see
-// `bulk-purge-dialog.svelte`).
+// Purge — follows the same dry-run / confirmation-token protocol as the
+// operations above (COR-2521). The server commits a purge only with the token
+// of a dry run of the same filter, and deletes exactly the workflows that dry
+// run named; see `bulk-purge-dialog.svelte`.
 // ---------------------------------------------------------------------------
 
-export async function purgeWorkflows(
+export async function dryRunPurge(
   client: Operations,
   filter: BulkListFilterInput,
+): Promise<BulkOperationDryRunResult> {
+  const input: PurgeInput = { ...filter, dryRun: true };
+  return parseDryRunResult(await client.operations['weft.workflows.purge'](input));
+}
+
+export async function commitPurge(
+  client: Operations,
+  filter: BulkListFilterInput,
+  confirmationToken: string,
 ): Promise<PurgeResult> {
-  const input: PurgeInput = { ...filter };
+  const input: PurgeInput = { ...filter, confirmationToken };
   return parsePurgeResult(await client.operations['weft.workflows.purge'](input));
 }

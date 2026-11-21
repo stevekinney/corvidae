@@ -1,3 +1,5 @@
+import { RETRY_LABEL } from './views.ts';
+
 /** `text` with its first letter capitalized, to open a sentence: "step 3" reads "Step 3". */
 function capitalized(text: string): string {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
@@ -78,6 +80,8 @@ export const WORKFLOW_COPY = {
       hintBefore: 'Or add a file to',
       /** Where the files are when the host does not say. */
       hintDirectory: '~/.interborough/workflows',
+      /** The Copy button beside that directory, the one place it shows. */
+      copyDirectory: 'Copy workflow folder',
     },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */
@@ -189,8 +193,9 @@ export const WORKFLOW_COPY = {
       lastStartedRun: (time: string): string => `Last started a run at ${time}.`,
       /** The code of a failed trigger, last on the line: "(code start-failed)". */
       code: 'code',
-      retry: 'Retry now',
-      /** A refused configuration is not tried again until it changes, so the page offers Edit, not Retry now. */
+      /** A failed trigger is tried again at once: the one label every page's retry has (COR-2489). */
+      retry: RETRY_LABEL,
+      /** A refused configuration is not tried again until it changes, so the page offers Edit, not a retry. */
       edit: 'Edit',
       retrying: 'Retrying the trigger…',
       retryFailed: 'The trigger could not be retried.',

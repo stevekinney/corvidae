@@ -161,6 +161,7 @@ describe('weft.reviews.decision.submit', () => {
     expect(await response.json()).toEqual({
       error:
         'Field "sectionDecisions" must be a record mapping section names to "approved" or "rejected"',
+      retryable: false,
     });
   });
 
@@ -182,6 +183,7 @@ describe('weft.reviews.decision.submit', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Invalid decision "maybe". Must be one of: approved, rejected, needs-changes',
+      retryable: false,
     });
   });
 
@@ -227,6 +229,7 @@ describe('weft.reviews.decision.submit', () => {
       expect(await response.json()).toEqual({
         error: 'review not found',
         data: { resource: 'review', identifier: 'rev-missing' },
+        retryable: false,
       });
     } finally {
       engine.submitReview = originalSubmitReview;
@@ -254,7 +257,7 @@ describe('weft.reviews.decision.submit', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.submitReview = originalSubmitReview;
     }

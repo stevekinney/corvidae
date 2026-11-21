@@ -324,6 +324,12 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
     options: { readonly disabledBy: string },
   ): Promise<AgentDisabledToggle | undefined>;
   /**
+   * Whether {@link disable} would act on the agent `id`: the catalog lists it, and not as
+   * `unavailable`. The one check `disable` makes before it writes, readable without writing, so a
+   * dry run of a disable refuses an agent exactly as the real call does.
+   */
+  canDisable(id: string): boolean;
+  /**
    * COR-2429 — enable the agent `id` again, so every lookup holds it as before, resolving whether
    * this call changed anything. Resolves `undefined`, writing nothing, when the catalog lists no
    * agent `id`; enabling an agent that is not disabled writes nothing and resolves
@@ -691,6 +697,12 @@ export function createAgentCatalog<D extends AgentDefinitions>(
   const effectiveOf = (name: string, agent: AnyRunnableAgent): AnyRunnableAgent =>
     effectiveEntry(name, agent)?.agent ?? agent;
 
+  /** The check `disable` makes before it writes: the catalog lists the agent, and not as `unavailable`. */
+  const disableTargetExists = (id: string): boolean => {
+    const listing = catalog.list().find((candidate) => candidate.id === id);
+    return listing !== undefined && listing.state !== 'unavailable';
+  };
+
   const catalog: BureauAgentCatalog<D> = {
     // Same cast rationale as above: `byName.get(name)!.agent` is genuinely
     // `D[TName]` for a `TName` the caller supplied, but the `Map`'s own
@@ -795,9 +807,9 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       // without a second read.
       return { ...detail, fromNow: await versionNow(from.agent) };
     },
+    canDisable: disableTargetExists,
     async disable(id, disableOptions) {
-      const listing = catalog.list().find((candidate) => candidate.id === id);
-      if (listing === undefined || listing.state === 'unavailable') return undefined;
+      if (!disableTargetExists(id)) return undefined;
       return gate.disable(id, disableOptions);
     },
     async enable(id) {

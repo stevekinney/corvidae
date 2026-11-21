@@ -342,6 +342,7 @@ describe('bureau event projection coverage', () => {
       'sourceId',
       'artifactDigest',
       'agentName',
+      'target',
       'status',
       'reason',
       'rule',

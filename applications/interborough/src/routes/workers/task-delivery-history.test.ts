@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import TaskDeliveryHistory from './task-delivery-history.svelte';
 import TaskEvidenceHarness from './task-evidence-harness.test-harness.svelte';
@@ -151,7 +152,7 @@ describe('TaskDeliveryHistory — a failed read', () => {
       droppedCount: 0,
       deliveries: [],
     });
-    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     expect(await view.findByText('No results submitted')).not.toBeNull();
   });
 });

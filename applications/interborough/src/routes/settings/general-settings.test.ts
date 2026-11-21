@@ -23,6 +23,11 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import {
+  forbiddenVisibleText,
+  PATH_ALLOWED_SELECTOR,
+  visibleTextOutsideCopyControls,
+} from '../../lib/visible-text-rules.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 import {
   installSettingsBureau,
@@ -603,29 +608,31 @@ describe('the preferences of this browser', () => {
   });
 });
 
-describe('where the host keeps its state, on a host of each mode', () => {
+// Owner, 2026-11-19: Settings listed three derived host paths and every provider's secret
+// reference. One row, the data folder, with its Copy button; no secret reference renders.
+describe('the one host fact Settings shows, on a host of each mode', () => {
   test.each(['local', 'remote'] as const)(
-    'names each place in the words of a %s host',
+    'is the data folder in a copy control on a %s host, and no other path or secret reference',
     async (mode) => {
       const view = open(servedSettings(), { hostMode: mode });
       await view.findByRole('group', READY);
-      const words = mode === 'remote' ? SETTINGS_COPY.remote.hostPaths : SETTINGS_COPY.hostPaths;
-      const section = view.container.querySelector<HTMLElement>('.weft-general__paths');
-      await waitFor(() => expect(section?.querySelector('dl')).not.toBeNull());
-      expect(section?.querySelector('h2')?.textContent?.trim()).toBe(words.title);
-      const text = section?.textContent ?? '';
-      if (mode === 'remote') {
-        for (const location of [
-          STUB_REMOTE_AGENT_DIRECTORY,
-          STUB_REMOTE_WORKFLOW_DIRECTORY,
-          STUB_REMOTE_CONFIGURATION_FILE,
-          ...STUB_REMOTE_PROVIDERS.map((provider) => provider.secretFile),
-        ]) {
-          expect(text).toContain(location);
-        }
-      } else {
-        expect(text).not.toContain('s3://');
+      const folder = await view.findByTestId('settings-data-folder');
+      expect(folder.classList.contains('cinder-copyable-value')).toBe(true);
+      expect(folder.closest('[data-setting="data-folder"]')).not.toBeNull();
+      expect(view.container.textContent).toContain(SETTINGS_COPY.about.dataFolder);
+      expect(view.container.textContent).not.toContain('Where the host keeps');
+      expect(view.container.textContent).not.toContain('workspace:');
+      for (const location of [
+        STUB_REMOTE_AGENT_DIRECTORY,
+        STUB_REMOTE_WORKFLOW_DIRECTORY,
+        STUB_REMOTE_CONFIGURATION_FILE,
+        ...STUB_REMOTE_PROVIDERS.map((provider) => provider.secretFile),
+      ]) {
+        expect(view.container.textContent).not.toContain(location);
       }
+      expect(
+        forbiddenVisibleText(visibleTextOutsideCopyControls(view.container, PATH_ALLOWED_SELECTOR)),
+      ).toEqual([]);
     },
   );
 });

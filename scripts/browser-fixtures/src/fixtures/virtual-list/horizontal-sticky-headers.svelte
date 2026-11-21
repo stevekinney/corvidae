@@ -32,12 +32,32 @@
 >
   {#snippet row(item, context)}
     <div
-      style={item.isHeader
-        ? 'display: flex; align-items: center; justify-content: center; inline-size: 120px; block-size: 96px; padding-inline: var(--cinder-space-3); background: var(--cinder-surface-raised); font-weight: 600; border-inline-end: 1px solid var(--cinder-border);'
-        : 'display: flex; align-items: center; justify-content: center; inline-size: 120px; block-size: 64px; padding-inline: var(--cinder-space-3); border-inline-end: 1px solid var(--cinder-border);'}
+      class={[
+        'virtual-item padding-inline-3',
+        item.isHeader ? 'sticky-header background-surface-raised' : 'virtual-row',
+      ]}
       data-index={context.index}
     >
       <span>{item.label}</span>
     </div>
   {/snippet}
 </VirtualList>
+
+<style>
+  .virtual-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 120px;
+    border-inline-end: 1px solid var(--cinder-border);
+  }
+
+  .sticky-header {
+    block-size: 96px;
+    font-weight: 600;
+  }
+
+  .virtual-row {
+    block-size: 64px;
+  }
+</style>

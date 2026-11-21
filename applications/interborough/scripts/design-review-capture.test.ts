@@ -9,27 +9,70 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { rejectionOf } from '@lostgradient/testing';
 import {
   captureForDesignReview,
+  DESIGN_REVIEW_PHONE,
+  designReviewSlug,
+  designReviewWorld,
   nextFrame,
   withPointerCleanup,
 } from '../tests/e2e/design-review-capture.ts';
+import { E2E_FIRST_RUN_PORT, E2E_PORT, E2E_SHOWCASE_PORT } from '../tests/e2e/e2e-constants.ts';
 import {
   captureCount,
   captureDesignReview,
   capturedRoutes,
+  HOME_STATES_CAPTURED_ON_A_PHONE,
   hostEnvironment,
   parseArguments,
   portIsFree,
   probeSocketHandlers,
+  REVIEW_WIDTH_ORDER,
   routesMissingFromTitles,
   SHOWCASE_SPECIFICATION_PATHS,
   specificationsThatRanNothing,
+  writeReviewOrder,
   type CaptureEnvironment,
 } from './design-review-capture.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
 const NOW = new Date('2026-11-02T08:30:00.000Z');
+
+// COR-2489: Home's states were recorded only at 1280.
+describe('Home’s states on a phone', () => {
+  test('lists the five states captured at 320 and 375 as well as 1280', () => {
+    expect([...HOME_STATES_CAPTURED_ON_A_PHONE]).toEqual([
+      'loading',
+      'still loading',
+      'one card fails',
+      'nothing waiting',
+      'something needs you',
+    ]);
+    const options = parseArguments([], NOW);
+    if (typeof options === 'string') throw new Error(options);
+    expect(options.specifications.some((path) => path.endsWith('tests/e2e/home.spec.ts'))).toBe(
+      true,
+    );
+  });
+
+  test('home.spec.ts captures each of them with the phone as well, and the phone is 375 wide', async () => {
+    const specification = await readFile(
+      new URL('../tests/e2e/home.spec.ts', import.meta.url),
+      'utf8',
+    );
+    const source = specification.replaceAll(/\s+/g, ' ');
+    for (const state of HOME_STATES_CAPTURED_ON_A_PHONE) {
+      expect(source, state).toContain(
+        `captureForDesignReviewWithPhone(page, { route: '/', state: '${state}',`,
+      );
+      expect(source, state).not.toContain(
+        `captureForDesignReview(page, { route: '/', state: '${state}',`,
+      );
+    }
+    expect(DESIGN_REVIEW_PHONE.width).toBe(375);
+  });
+});
 
 describe('parseArguments', () => {
   test('captures every specification in both schemes into a time-stamped directory by default', () => {
@@ -57,6 +100,7 @@ describe('parseArguments', () => {
       'tests/e2e/settings-allowed-models.spec.ts',
       'tests/e2e/settings-models.spec.ts',
       'tests/e2e/settings-a2a.spec.ts',
+      'tests/e2e/settings-mcp.spec.ts',
       'tests/e2e/settings-plugins.spec.ts',
       'tests/e2e/settings-data-and-retention.spec.ts',
       'tests/e2e/api-reference.spec.ts',
@@ -80,6 +124,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/checks-states.spec.ts',
       'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       // The view states are a showcase specification too, run once where first listed.
@@ -132,6 +177,7 @@ describe('parseArguments', () => {
       'tests/e2e/settings-allowed-models.spec.ts',
       'tests/e2e/settings-models.spec.ts',
       'tests/e2e/settings-a2a.spec.ts',
+      'tests/e2e/settings-mcp.spec.ts',
       'tests/e2e/settings-plugins.spec.ts',
       'tests/e2e/settings-data-and-retention.spec.ts',
       'tests/e2e/api-reference.spec.ts',
@@ -155,6 +201,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/checks-states.spec.ts',
       'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
@@ -191,6 +238,7 @@ describe('parseArguments', () => {
       'tests/e2e/settings-allowed-models.spec.ts',
       'tests/e2e/settings-models.spec.ts',
       'tests/e2e/settings-a2a.spec.ts',
+      'tests/e2e/settings-mcp.spec.ts',
       'tests/e2e/settings-plugins.spec.ts',
       'tests/e2e/settings-data-and-retention.spec.ts',
       'tests/e2e/api-reference.spec.ts',
@@ -214,6 +262,7 @@ describe('parseArguments', () => {
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
+      'tests/e2e/checks-states.spec.ts',
       'tests/e2e/capabilities-states.spec.ts',
       'tests/e2e/goals-list-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
@@ -430,6 +479,44 @@ describe('captureCount', () => {
     await writeFile(join(directory, 'manifest.jsonl'), '{"a":1}\n\n  \n{"a":2}\n');
     expect(await captureCount(directory)).toBe(2);
   });
+
+  // Owner, 2026-11-19: review leads with 1920 and 1280, then 768 and 375, in both themes.
+  test('writes the review order: 1920 and 1280 first, then 768 and 375, light before dark', async () => {
+    const line = (route: string, width: number, colorScheme: 'light' | 'dark') =>
+      JSON.stringify({ route, width, colorScheme });
+    await writeFile(
+      join(directory, 'manifest.jsonl'),
+      [
+        line('/', 375, 'light'),
+        line('/', 768, 'dark'),
+        line('/', 1280, 'dark'),
+        line('/', 320, 'light'),
+        line('/', 1920, 'light'),
+        line('/', 1280, 'light'),
+        line('/health', 1280, 'light'),
+        line('/', 768, 'light'),
+        line('/', 375, 'dark'),
+      ].join('\n'),
+    );
+    expect(await writeReviewOrder(directory)).toBe(9);
+    const written = await readFile(join(directory, 'review-order.jsonl'), 'utf8');
+    const order = written
+      .trim()
+      .split('\n')
+      .map((text) => JSON.parse(text) as { route: string; width: number; colorScheme: string });
+    expect(order.map((entry) => `${entry.route}@${entry.width}/${entry.colorScheme}`)).toEqual([
+      '/@1920/light',
+      '/@1280/light',
+      '/health@1280/light',
+      '/@1280/dark',
+      '/@768/light',
+      '/@768/dark',
+      '/@375/light',
+      '/@375/dark',
+      '/@320/light',
+    ]);
+    expect(REVIEW_WIDTH_ORDER).toEqual([1920, 1280, 768, 375]);
+  });
 });
 
 describe('captureForDesignReview readiness', () => {
@@ -451,6 +538,8 @@ describe('captureForDesignReview readiness', () => {
       locator() {
         return {
           evaluate: async () => 1,
+          // No rendered Markdown on this page, so the Markdown paint wait returns at once.
+          count: async () => 0,
         };
       },
     };
@@ -473,6 +562,17 @@ describe('captureForDesignReview readiness', () => {
         'screenshot',
         'viewport:1280x900',
         'ready',
+        // The 1280 capture is repeated at 1920 by 1080, with its own stretch for the whole page.
+        'viewport:1920x1080',
+        'ready',
+        'screenshot',
+        'viewport:1920x1081',
+        'ready',
+        'screenshot',
+        'viewport:1920x1080',
+        'ready',
+        'viewport:1280x900',
+        'ready',
       ]);
     } finally {
       if (previousCapture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
@@ -482,6 +582,108 @@ describe('captureForDesignReview readiness', () => {
       else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previousScheme;
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('capture file names', () => {
+  const capture = { route: '/runs', state: 'ready', source: 'runs-states.spec.ts' };
+
+  test('say which specification and which world a screen is from', () => {
+    expect(designReviewSlug(capture, 1920, 'dark', 'sample-world')).toBe(
+      'runs-states--sample-world--runs--ready--1920--dark',
+    );
+  });
+
+  test('differ for two specifications, two worlds and two tabs of one route and state', () => {
+    const names = [
+      designReviewSlug(capture, 1280, 'light', 'sample-world'),
+      designReviewSlug(
+        { ...capture, source: '00-showcase.spec.ts' },
+        1280,
+        'light',
+        'sample-world',
+      ),
+      designReviewSlug(capture, 1280, 'light', 'stress'),
+      designReviewSlug({ ...capture, tab: 'skills' }, 1280, 'light', 'sample-world'),
+    ];
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test('read the world from the host that served the page', () => {
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_SHOWCASE_PORT}/runs`, 'x.spec.ts')).toBe(
+      'sample-world',
+    );
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_FIRST_RUN_PORT}/`, 'x.spec.ts')).toBe(
+      'first-run',
+    );
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_PORT}/runs`, 'responsive.spec.ts')).toBe(
+      'stress',
+    );
+    expect(designReviewWorld(`http://127.0.0.1:${E2E_PORT}/runs`, '15-view-states.spec.ts')).toBe(
+      'e2e-host',
+    );
+  });
+
+  describe('when a specification captures twice', () => {
+    /** Runs `run` with the capture directory and light scheme set, and restores both afterwards. */
+    async function withCapture(run: (directory: string) => Promise<void>): Promise<void> {
+      const directory = await mkdtemp(join(tmpdir(), 'design-review-names-'));
+      const previousCapture = process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+      const previousScheme = process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+      process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = directory;
+      process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'light';
+      try {
+        await run(directory);
+      } finally {
+        if (previousCapture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+        else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = previousCapture;
+        if (previousScheme === undefined)
+          delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+        else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previousScheme;
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+    const tablet = {
+      viewportSize: () => ({ width: 768, height: 900 }),
+      async setViewportSize() {},
+      async screenshot() {},
+      url: () => `http://127.0.0.1:${E2E_PORT}/runs`,
+      evaluate: async () => ({ viewport: { width: 768, height: 900 } }),
+      locator: () => ({ count: async () => 0, evaluate: async () => 0 }),
+    };
+
+    test('under one name, fails instead of overwriting the first screen', async () => {
+      await withCapture(async () => {
+        await captureForDesignReview(tablet as never, capture);
+        const rejection = await rejectionOf(captureForDesignReview(tablet as never, capture));
+        expect(String(rejection)).toContain(
+          'Two design-review captures resolve to runs-states--e2e-host--runs--ready--768--light',
+        );
+      });
+    });
+
+    test('under two states, keeps both', async () => {
+      await withCapture(async (directory) => {
+        await captureForDesignReview(tablet as never, capture);
+        await captureForDesignReview(tablet as never, { ...capture, state: 'empty' });
+        expect(await captureCount(directory)).toBe(2);
+      });
+    });
+
+    test('at 1280, also writes the 1920 capture, and takes the specification’s own 1920 as the same screen', async () => {
+      await withCapture(async (directory) => {
+        const desktop = { ...tablet, viewportSize: () => ({ width: 1280, height: 900 }) };
+        await captureForDesignReview(desktop as never, capture);
+        const wide = { ...tablet, viewportSize: () => ({ width: 1920, height: 1080 }) };
+        await captureForDesignReview(wide as never, capture);
+        const manifest = await readFile(join(directory, 'manifest.jsonl'), 'utf8');
+        const widths = manifest
+          .trim()
+          .split('\n')
+          .map((line) => (JSON.parse(line) as { width: number }).width);
+        expect(widths).toEqual([1280, 1920]);
+      });
+    });
   });
 });
 
@@ -641,6 +843,72 @@ describe('captureDesignReview', () => {
     expect(calls.commands).toEqual([]);
   });
 
+  test('runs a shard whose specification titles its tests as templates, whatever the filter says', async () => {
+    // The view states title most tests `${view} is ${outcome}…`, which only exists once it runs, so
+    // a shard holding that file runs Playwright for any filter (the shard once skipped itself for
+    // '/capabilities' and the run captured nothing of what it named).
+    const { calls, environment } = standIn({ manifestLines: 2 });
+    const shardOfStates = [1, 2, 3, 4, 5, 6].find((index) => {
+      const options = parseArguments(['--shard', `${index}/6`]);
+      return (
+        typeof options !== 'string' &&
+        options.specifications.includes('tests/e2e/15-view-states.spec.ts')
+      );
+    });
+    expect(
+      await captureDesignReview(
+        [
+          '--out',
+          directory,
+          '--scheme',
+          'light',
+          '--shard',
+          `${shardOfStates}/6`,
+          '--grep',
+          'Skills tab',
+        ],
+        environment,
+      ),
+    ).toBe(0);
+    expect(calls.commands).toHaveLength(1);
+  });
+
+  test('exits 0 for a shard of a filtered run that captured nothing, and records it', async () => {
+    const { environment } = standIn({ exitCodes: [1] });
+    expect(
+      await captureDesignReview(
+        [
+          '--out',
+          directory,
+          '--scheme',
+          'light',
+          '--shard',
+          '1/6',
+          '--grep',
+          'nothing-has-this-title',
+        ],
+        environment,
+      ),
+    ).toBe(0);
+    const summary = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    expect(summary.captures).toBe(0);
+    expect(summary.shard).toEqual({ index: 1, count: 6 });
+  });
+
+  test('still exits 1 for a whole run, or an unfiltered shard, that captured nothing', async () => {
+    const { environment } = standIn({ exitCodes: [1, 1] });
+    expect(await captureDesignReview(['--out', directory, '--scheme', 'light'], environment)).toBe(
+      1,
+    );
+    const second = standIn({ exitCodes: [1] });
+    expect(
+      await captureDesignReview(
+        ['--out', directory, '--scheme', 'light', '--shard', '2/6'],
+        second.environment,
+      ),
+    ).toBe(1);
+  });
+
   test('runs Playwright once per scheme with the capture variables and writes a clean summary', async () => {
     const { calls, environment } = standIn({ manifestLines: 3 });
     const out = join(directory, 'nested', 'capture');
@@ -681,6 +949,7 @@ describe('captureDesignReview', () => {
     expect(summary).toEqual({
       out,
       captures: 3,
+      shard: null,
       specifications: ['tests/e2e/15-view-states.spec.ts'],
       grep: 'agents',
       runs: [
@@ -780,6 +1049,16 @@ describe('captureDesignReview', () => {
     const summary = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
     expect(summary.clean).toBe(false);
     expect(summary.grep).toBeNull();
+  });
+
+  test('runs a shard whose --grep JavaScript cannot read, rather than throwing', async () => {
+    const { environment } = standIn({ manifestLines: 2 });
+    expect(
+      await captureDesignReview(
+        ['--out', directory, '--scheme', 'light', '--shard', '1/6', '--grep', '('],
+        environment,
+      ),
+    ).toBe(0);
   });
 
   test('answers 1 when nothing was captured', async () => {

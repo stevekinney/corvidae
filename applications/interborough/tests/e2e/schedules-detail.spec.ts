@@ -62,10 +62,7 @@ for (const width of WIDTHS) {
     await expect(main.locator('.cinder-page-header')).toContainText(/Missed runs\s*4/);
     // The actions: secondary Edit and Run now, and the menu.
     for (const name of ['Edit', 'Run now']) {
-      await expect(main.getByRole('button', { name })).toHaveAttribute(
-        'data-cinder-variant',
-        'secondary',
-      );
+      await expect(main.getByRole('button', { name })).toContainClass('button-variant-secondary');
     }
     await expect(main.getByRole('button', { name: 'More actions' })).toBeVisible();
     // On a phone the title has the whole row and the actions drop to a row of their own under it
@@ -271,13 +268,11 @@ test('the menu holds Delete schedule only, below its button, and deleting asks f
   await expect(dialog).toContainText(
     'It stops running and its upcoming runs are removed. Past runs stay on Runs. This can’t be undone.',
   );
-  await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
-    'data-cinder-variant',
-    'secondary',
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toContainClass(
+    'button-variant-secondary',
   );
-  await expect(dialog.getByRole('button', { name: 'Delete schedule' })).toHaveAttribute(
-    'data-cinder-variant',
-    'danger',
+  await expect(dialog.getByRole('button', { name: 'Delete schedule' })).toContainClass(
+    'button-variant-danger',
   );
   await captureForDesignReview(page, {
     route: '/schedules/:schedule',
@@ -322,7 +317,7 @@ test('Run now on Release notes digest says so in a toast that opens the run, and
 
   await expect(main.getByRole('link', { name: 'Open file' })).toBeVisible();
   const runNow = main.getByRole('button', { name: 'Run now' });
-  await expect(runNow).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(runNow).toContainClass('button-variant-secondary');
   await expect(main.getByRole('button', { name: 'Edit' })).toHaveCount(0);
   await expect(main.getByRole('button', { name: 'More actions' })).toHaveCount(0);
 
@@ -695,9 +690,8 @@ for (const width of WIDTHS) {
     await expect(main.locator('.cinder-callout')).toHaveCount(0);
     // The only actions: Open file and Run now, both secondary.
     await expect(main.getByRole('link', { name: 'Open file' })).toBeVisible();
-    await expect(main.getByRole('button', { name: 'Run now' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(main.getByRole('button', { name: 'Run now' })).toContainClass(
+      'button-variant-secondary',
     );
     await expect(main.getByRole('button', { name: 'Edit' })).toHaveCount(0);
     await expect(main.getByRole('button', { name: 'More actions' })).toHaveCount(0);
@@ -828,7 +822,7 @@ for (const width of WIDTHS) {
     await expect(main.getByRole('link', { name: 'Open file' })).toBeVisible();
     const runNow = main.getByRole('button', { name: 'Run now' });
     await expect(runNow).toBeEnabled();
-    await expect(runNow).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(runNow).toContainClass('button-variant-secondary');
     await expect(main.getByRole('button', { name: 'Edit' })).toHaveCount(0);
     await expect(main.getByRole('button', { name: 'More actions' })).toHaveCount(0);
     const note = main.getByTestId('schedule-run-now-second');

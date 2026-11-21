@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, tick } from 'svelte';
 import { resetScrollLock } from '../../_internal/overlay.ts';
@@ -126,6 +127,54 @@ describe('Modal focus containment', () => {
     // With open=false the panel is absent — no focus trap is active.
     const panel = container.querySelector('.cinder-modal__panel');
     expect(panel).toBeNull();
+  });
+  test('focus moves to the dialog body when the focused control is removed from the DOM', async () => {
+    // A control that replaces itself (a "Refresh" button that starts a reload and unmounts) used to
+    // drop focus to <body>, outside the dialog, which a keyboard user reads as the dialog closing
+    // and a screen reader as nowhere. The browser fires no blur on removal, so the trap watches
+    // for the focused element leaving the panel.
+    const childrenWithButtons = createRawSnippet(() => ({
+      render: () => `<div><button id="vanishing">Refresh</button></div>`,
+      setup: () => {},
+    }));
+    const { container } = render(Modal, {
+      props: { open: true, title: 'Recovery test', children: childrenWithButtons },
+    });
+    await tick();
+
+    const vanishing = requiredInstance(container.querySelector('#vanishing'), HTMLButtonElement);
+    const body = requiredInstance(container.querySelector('.cinder-modal__body'), HTMLElement);
+    vanishing.focus();
+    expect(document.activeElement).toBe(vanishing);
+
+    vanishing.remove();
+
+    await waitUntil(() => document.activeElement === body, {
+      message: 'focus to move to the dialog body after the focused control was removed',
+    });
+    expect(container.querySelector('.cinder-modal__panel')?.contains(document.activeElement)).toBe(
+      true,
+    );
+  });
+  test('removing a control that does not hold focus leaves focus where it was', async () => {
+    const childrenWithButtons = createRawSnippet(() => ({
+      render: () =>
+        `<div><button id="staying">Stay</button><button id="unfocused">Gone</button></div>`,
+      setup: () => {},
+    }));
+    const { container } = render(Modal, {
+      props: { open: true, title: 'Recovery test', children: childrenWithButtons },
+    });
+    await tick();
+
+    const staying = requiredInstance(container.querySelector('#staying'), HTMLButtonElement);
+    staying.focus();
+    container.querySelector('#unfocused')?.remove();
+    // Let the observer's callback run before asserting that it did nothing.
+    await tick();
+    await Promise.resolve();
+
+    expect(document.activeElement).toBe(staying);
   });
   test('focus trap wraps even when modal has no explicit children buttons (uses close button)', async () => {
     // The close button is always the last tabbable element. The body (tabindex=-1) is programmatically

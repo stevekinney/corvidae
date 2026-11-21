@@ -93,9 +93,11 @@ for (const theme of ['light', 'dark'] as const) {
     expect(full.copy!.right).toBeGreaterThan(full.language!.right);
     expect(full.root.right - full.copy!.right).toBeLessThanOrEqual(8);
 
-    // Copy alone still sits at the inline end.
+    // Copy alone still sits at the inline end. It floats, and the floating inset is the coarse hit
+    // area's overhang past the 24px face (10px), so the whole 44px target stays inside the clipped
+    // block.
     const copyOnly = await read(page, 'copy-only');
-    expect(copyOnly.root.right - copyOnly.copy!.right).toBeLessThanOrEqual(8);
+    expect(copyOnly.root.right - copyOnly.copy!.right).toBeLessThanOrEqual(10);
     // Neither: no bar at all.
     const neither = await read(page, 'neither');
     expect(neither.bar).toBeNull();

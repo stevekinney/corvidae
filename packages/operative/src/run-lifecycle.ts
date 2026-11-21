@@ -2,7 +2,12 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { Conversation } from 'conversationalist';
 
-import { type AccumulatedCost, estimateCost, getModelPricing } from './cost-estimation';
+import {
+  type AccumulatedCost,
+  estimateCost,
+  getModelPricing,
+  reportedAccumulatedCost,
+} from './cost-estimation';
 import {
   AbortAgentRunError,
   type AgentRunError,
@@ -42,12 +47,18 @@ export function computeCostEstimate(
 ): RunResult['costEstimate'] {
   if (!costEstimation) return undefined;
   if (!getModelPricing(costEstimation.model, costEstimation.pricing)) return undefined;
+  // A run whose every request was on a model with no price has no known cost, which is not the
+  // run total priced at its own model.
+  if (accumulatedCost && reportedAccumulatedCost(accumulatedCost) === undefined) return undefined;
   if (accumulatedCost) {
     // The sum of every request priced on its own usage (`accumulateUsage`), so a long-prompt tier
     // applies to exactly the requests that crossed it and the estimate matches what the cost
     // budget monitor saw per step.
     return {
-      ...accumulatedCost,
+      promptCost: accumulatedCost.promptCost,
+      completionCost: accumulatedCost.completionCost,
+      cacheWriteCost: accumulatedCost.cacheWriteCost,
+      cacheReadCost: accumulatedCost.cacheReadCost,
       totalCost:
         accumulatedCost.promptCost +
         accumulatedCost.completionCost +

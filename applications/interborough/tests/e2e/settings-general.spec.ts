@@ -64,6 +64,7 @@ test.describe('Settings › General', () => {
       'Models',
       'Allowed models',
       'A2A',
+      'MCP',
       'Plugins',
       'Data and retention',
       'API reference',
@@ -781,9 +782,8 @@ test.describe('Settings › General, the Embedder row', () => {
     await expect(dialog).toContainText(
       'The 3 memories embedded so far are thrown away. Search keeps using Text hashing, and nothing else changes.',
     );
-    await expect(dialog.getByRole('button', { name: 'Cancel switch' })).toHaveAttribute(
-      'data-cinder-variant',
-      'danger',
+    await expect(dialog.getByRole('button', { name: 'Cancel switch' })).toContainClass(
+      'button-variant-danger',
     );
     await captureEmbedder(page, 'embedder-cancel-confirm');
     await dialog.getByRole('button', { name: 'Keep switching' }).click();

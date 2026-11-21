@@ -157,7 +157,7 @@ export type ButtonProps = SharedHtmlAttributes &
      * Marks a button that changes something (Edit, Save, Delete, a header "+"). Inside a stale
      * `<StaleRegion>` it goes inert: `aria-disabled`, still focusable, ignoring the press, and
      * described by the region's reason ("Off until it’s back"). It returns by itself when the
-     * region stops being stale. A button that only reads (a link, Retry now) leaves this off and
+     * region stops being stale. A button that only reads (a link, Try again) leaves this off and
      * stays live.
      */
     mutating?: boolean;
@@ -168,6 +168,15 @@ export type ButtonProps = SharedHtmlAttributes &
      * @default false
      */
     quiet?: boolean;
+    /**
+     * A quiet button that starts a line under text: it is pulled back by its inline padding and
+     * its 1px transparent border, so its words start on the text edge above it, and only its hover
+     * tint and ring reach past. It has no effect unless the variant is `ghost`, `ghost-accent` or
+     * `ghost-danger` with a label. Set it on the button that starts its line, never on one after
+     * another control.
+     * @default false
+     */
+    flush?: boolean;
     /** DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.
      *  If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead.
      *  The button sizes an SVG icon at 1em of its text, so it follows `size`; pass no size. */
@@ -235,6 +244,15 @@ export interface ButtonSchemaProps {
    * @default false
    */
   quiet?: boolean;
+  /**
+   * A quiet button that starts a line under text: it is pulled back by its inline padding and
+   * its 1px transparent border, so its words start on the text edge above it, and only its hover
+   * tint and ring reach past. It has no effect unless the variant is `ghost`, `ghost-accent` or
+   * `ghost-danger` with a label. Set it on the button that starts its line, never on one after
+   * another control.
+   * @default false
+   */
+  flush?: boolean;
   /** Render as an anchor `<a>` element with this href. */
   href?: string;
   /** Visible text label. Must be non-empty if provided. */

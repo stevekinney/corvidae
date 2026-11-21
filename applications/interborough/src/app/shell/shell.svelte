@@ -39,6 +39,7 @@
   import {
     askAgainAfterOutage,
     CONNECTION_MAX_ATTEMPTS,
+    CONNECTION_RETRY_LABEL,
     connectionBannerPreset,
     ConnectionMonitor,
     provideConnection,
@@ -295,6 +296,7 @@
           shiftKey: event.shiftKey,
           editable,
           repeat: event.repeat,
+          timeStamp: event.timeStamp,
         },
         {
           routePattern: router.current.route?.pattern ?? null,
@@ -355,10 +357,12 @@
       <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet,
            and so does a page that has nothing to show but the unreachable state, which says it in place.
            The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
-           answering with its countdown, or the retries stopped. Retry now is always there. A page
-           that draws it under its own header (`claimBanner`) leaves it to the page. -->
+           answering with its countdown, or the retries stopped. The retry is always there, in the
+           app's one word for it (`CONNECTION_RETRY_LABEL`). A page that draws it under its own
+           header (`claimBanner`) leaves it to the page. -->
       <Banner
         preset={connectionBannerPreset(connection)}
+        retryLabel={CONNECTION_RETRY_LABEL}
         dataUpdatedAt={connection.lastHealthyAt}
         retryInSeconds={connection.retryInSeconds}
         attempt={connection.browserOffline || connection.attempt === 0

@@ -57,7 +57,10 @@ describe('weft.workflows.tags.add', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Field "tags" must not contain empty tags' });
+    expect(await response.json()).toEqual({
+      error: 'Field "tags" must not contain empty tags',
+      retryable: false,
+    });
   });
 
   it('returns 404 when the engine reports that the workflow was not found', async () => {
@@ -81,6 +84,7 @@ describe('weft.workflows.tags.add', () => {
       expect(await response.json()).toEqual({
         error: 'workflow not found',
         data: { resource: 'workflow', identifier: 'missing' },
+        retryable: false,
       });
     } finally {
       engine.addTags = originalAddTags;
@@ -105,7 +109,7 @@ describe('weft.workflows.tags.add', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.addTags = originalAddTags;
     }

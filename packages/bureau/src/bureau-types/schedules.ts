@@ -63,6 +63,24 @@ export interface BureauSchedules {
   ): Promise<ScheduleSummary | undefined>;
 
   /**
+   * Register a durable recurring schedule that starts a workflow instead of an agent (COR-2546),
+   * via `engine.schedule(...)`: a code workflow a plugin contributed, which receives
+   * `definition.workflowInput` as its input, or a workflow file, which receives the trigger
+   * envelope `{ kind: 'schedule', scheduleId, input }` with `workflowInput` as its `input`, as the
+   * file's own schedule does. The schedule's owner is recorded in its Weft `metadata`, never in the
+   * input the workflow receives. A workflow that is neither a contributed code workflow nor a
+   * ready, unpaused workflow file rejects with `UnknownScheduleWorkflowError`, and an input the
+   * workflow's `inputSchema` refuses with `WorkflowInputInvalidError`, both before anything is
+   * stored. It does not check who may start the workflow, so the caller answers to
+   * `bureau.workflows.start`'s authorization first. Under a workspace it rejects with `CONFLICT`.
+   * Returns `undefined` when no durable engine is composed, and throws
+   * `ScheduleLocatorUnavailableError` as {@link BureauSchedules.create} does.
+   */
+  createWorkflow(
+    definition: DurableWorkflowScheduleDefinition,
+  ): Promise<ScheduleSummary | undefined>;
+
+  /**
    * Retrieve a durable schedule by id. Returns `null` when the schedule does not
    * exist, `undefined` when no durable engine is composed.
    */
@@ -92,8 +110,14 @@ export interface BureauSchedules {
   /**
    * Cancel and permanently delete a durable schedule. Returns `true` on success,
    * `undefined` when no durable engine is composed. `guard` as for {@link BureauSchedules.pause}.
+   * With `guard.dryRun` it makes the checks the cancel makes (a workflow file's schedule, a
+   * missing one, a stale `expectedRevision`) and refuses as the cancel refuses, then cancels
+   * nothing and writes and records nothing.
    */
-  cancel(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+  cancel(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard & { readonly dryRun?: boolean | undefined },
+  ): Promise<true | undefined>;
 
   /**
    * Change a durable schedule's cadence, description, and overlap policy (COR-1482), and the agent,
@@ -264,6 +288,18 @@ export interface ScheduleRevisionGuard {
 export interface DurableScheduleUpdate {
   /** The schedule's new cadence: a cron expression or a Weft duration shorthand, as at creation. */
   readonly spec: string;
+  /**
+   * The workflow each fire starts from now on (COR-2546), replacing the agent or the workflow the
+   * schedule ran. It is judged as at {@link BureauSchedules.createWorkflow}, and cannot be given
+   * with `agentName`, `input`, `sessionId`, or `continueChat`. Without `workflowInput`, a different
+   * workflow starts with a `null` input.
+   */
+  readonly workflowType?: string | undefined;
+  /**
+   * The input the workflow receives from now on (COR-2546): any JSON value, `null` included.
+   * Given alone, it changes the input of a schedule that already runs a workflow.
+   */
+  readonly workflowInput?: unknown;
   readonly description?: string | undefined;
   readonly overlap?: 'skip' | 'allow' | undefined;
   /**
@@ -294,6 +330,29 @@ export interface DurableScheduleUpdate {
    * was when omitted; an interval `spec` is always read as UTC.
    */
   readonly timeZone?: string | undefined;
+}
+/**
+ * Parameters for registering a schedule that starts a workflow via
+ * {@link BureauSchedules.createWorkflow}.
+ */
+export interface DurableWorkflowScheduleDefinition {
+  /** Human-readable operator description stored with the schedule. */
+  description?: string;
+  /** The workflow each fire starts: a `plugin:name` code workflow, or a workflow file's identifier. */
+  workflowType: string;
+  /** The JSON input the workflow receives each fire. Omitted, it receives none (`null`). */
+  workflowInput?: unknown;
+  /** Cron expression or weft duration shorthand, as for {@link DurableScheduleDefinition.spec}. */
+  spec: string;
+  /** Overlap policy when a prior fire is still running. Defaults to `'skip'`. */
+  overlap?: 'skip' | 'allow';
+  /** The IANA time zone a cron `spec` is read in, as for {@link DurableScheduleDefinition.timeZone}. */
+  timeZone?: string;
+  /**
+   * The schedule's owner of record, written once into the schedule's Weft `metadata`. Omitted, the
+   * schedule is owned by `anonymous:local`.
+   */
+  principal?: string;
 }
 export interface DurableScheduleDefinition {
   /** Human-readable operator description stored with the schedule. */

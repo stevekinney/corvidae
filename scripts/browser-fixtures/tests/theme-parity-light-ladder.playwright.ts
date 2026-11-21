@@ -50,7 +50,7 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
       });
       const raisedL = await paintedL(
         page,
-        ".cinder-button[data-cinder-variant='secondary']",
+        '.cinder-button.button-variant-secondary',
         'backgroundColor',
       );
       expect(
@@ -79,7 +79,7 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
     try {
       const page = await context.newPage();
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
-      const secondarySelector = ".cinder-button[data-cinder-variant='secondary']";
+      const secondarySelector = '.cinder-button.button-variant-secondary';
       const fillL = await paintedL(page, secondarySelector, 'backgroundColor');
       const borderL = await paintedL(page, secondarySelector, 'borderTopColor');
       expect(
@@ -97,7 +97,7 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
     try {
       const page = await context.newPage();
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
-      const primarySelector = ".cinder-button[data-cinder-variant='primary']";
+      const primarySelector = '.cinder-button.button-variant-primary';
       const accent = await paintedOklch(page, primarySelector, 'backgroundColor');
       expect(
         accent.L,
@@ -173,7 +173,7 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
         lightPage.goto(themeFixtureRoute, { waitUntil: 'load' }),
         darkPage.goto(themeFixtureRoute, { waitUntil: 'load' }),
       ]);
-      const primarySelector = ".cinder-button[data-cinder-variant='primary']";
+      const primarySelector = '.cinder-button.button-variant-primary';
       for (const page of [lightPage, darkPage]) {
         const raw = await page
           .locator(primarySelector)
@@ -207,7 +207,7 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
         if (colorScheme === 'dark')
           await page.addInitScript(() => localStorage.setItem('browser-fixture-theme', 'dark'));
         await page.goto(themeFixtureRoute, { waitUntil: 'load' });
-        const primarySelector = ".cinder-button[data-cinder-variant='primary']";
+        const primarySelector = '.cinder-button.button-variant-primary';
         const ratio = await page
           .locator(primarySelector)
           .first()

@@ -3391,6 +3391,7 @@ describe('createDurableEventProducer()', () => {
         payload: {
           scheduleId: 'sched-1',
           agentName: 'triage',
+          target: { kind: 'agent', agentName: 'triage' },
           spec: { cron: '* * * * *' },
           sessionId: 'sess-1',
         },
@@ -3426,11 +3427,42 @@ describe('createDurableEventProducer()', () => {
     expect(calls[0]).toEqual({
       owner: { kind: 'schedule', id: 'sched-1' },
       kind: 'schedule.created',
-      payload: { scheduleId: 'sched-1', agentName: 'triage', spec: { every: '5m' } },
+      payload: {
+        scheduleId: 'sched-1',
+        agentName: 'triage',
+        target: { kind: 'agent', agentName: 'triage' },
+        spec: { every: '5m' },
+      },
       // AB-388: see the sibling test's own comment above.
       emittedAtMs: 1577836800000,
     });
     expect(calls[0]?.payload).not.toHaveProperty('sessionId');
+
+    await producer.dispose();
+  });
+
+  it('records the schedule.created of a schedule of a workflow with its target and no agentName (COR-2546)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchScheduleCreated } = createFakeBureauEventSurface();
+    const { history, calls } = createRecordingHistory();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchScheduleCreated(
+      new AgentScheduledEvent({
+        workflowType: 'kit:echo',
+        scheduleId: 'sched-1',
+        spec: { every: '5m' },
+      }),
+    );
+    await runtime.deferred.drain();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.payload).toEqual({
+      scheduleId: 'sched-1',
+      target: { kind: 'workflow', workflowType: 'kit:echo' },
+      spec: { every: '5m' },
+    });
+    expect(calls[0]?.payload).not.toHaveProperty('agentName');
 
     await producer.dispose();
   });

@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2549",
+  "branch": "worktree-agent-af5a6f7bd55e621b1",
+  "checkedAt": "91873222bd65324b1ddf8c900f38f5357e813e05",
+  "briefVersion": "5d391c9e854f",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Trace of run 44666052080 (artifact playwright-interborough-4), copy at tmp/chef/interborough/round-1/COR-2549-error-context.md: press('g') started at 979136 ms and took 836 ms; press('d') started at 980142 ms, 1006 ms after, over CHORD_WINDOW_MS (1000). Screencast frames stop 979170 to 980005: the renderer stalled painting the storage key table, which the frame's data-state=ready (the probe) precedes. No element carries [active] in the page snapshot, so focus was not on an editable target or region. Cause: chord window expired across a main-thread stall, not focus. Inferential: no probe run pins the g handler time."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "ShortcutKey.timeStamp: handleKey measures the window on KeyboardEvent.timeStamp (shell.svelte passes it) instead of when the listener ran, so a quick G D whose second key is queued behind a stall is kept. Test 'measures the chord window on when the browser received each press' in src/lib/shortcuts.test.ts fails with the old behavior (verified by temporarily setting pressedAtMs = nowMs: 1 fail) and passes now. This is not the CI fix: Playwright's own presses were over a second apart."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "tests/e2e/audit-support.ts expectAuditSettled checks the URL before the row-or-empty locator."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "targeted-run.ts has no --repeat-each option and rejects spec inputs that are not tests/e2e/<name>.spec.ts, so 20 repeats cannot be dispatched through it. Dispatched the standard targeted run (44800519157) running the spec once. The test fix: G D now waits for storage-count and the Group select options, the state the page is busy with."
+    }
+  ]
+}

@@ -167,6 +167,23 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
+/**
+ * Purge the way the server requires it: a dry run of `body` first, then the commit with that
+ * preview's confirmation token. Resolves the commit's response.
+ */
+async function purgeWithPreview(engine: Engine, body: Record<string, unknown> | undefined) {
+  const preview = await json(
+    await handleRequest(request('POST', '/v1/workflows/purge', { ...body, dryRun: true }), engine),
+  );
+  return handleRequest(
+    request('POST', '/v1/workflows/purge', {
+      ...body,
+      confirmationToken: confirmationTokenFromPreview(preview),
+    }),
+    engine,
+  );
+}
+
 function confirmationTokenFromPreview(preview: unknown): string {
   const token = (preview as { confirmationToken?: unknown }).confirmationToken;
   if (typeof token !== 'string') {
@@ -393,7 +410,10 @@ describe('handleRequest', () => {
         engine,
       );
       expect(missingTypeResponse.status).toBe(400);
-      expect(await json(missingTypeResponse)).toEqual({ error: 'Missing required field: type' });
+      expect(await json(missingTypeResponse)).toEqual({
+        error: 'Missing required field: type',
+        retryable: false,
+      });
 
       const invalidCronResponse = await handleRequest(
         request('POST', '/v1/schedules', {
@@ -422,6 +442,7 @@ describe('handleRequest', () => {
       expect(response.status).toBe(400);
       expect(await json(response)).toEqual({
         error: 'Query parameter "status" must be one of active, paused, cancelled',
+        retryable: false,
       });
     });
 
@@ -436,6 +457,7 @@ describe('handleRequest', () => {
       expect(invalidLimitResponse.status).toBe(400);
       expect(await json(invalidLimitResponse)).toEqual({
         error: 'Query parameter "limit" must be a positive integer',
+        retryable: false,
       });
 
       const invalidOffsetResponse = await handleRequest(
@@ -446,6 +468,7 @@ describe('handleRequest', () => {
       expect(invalidOffsetResponse.status).toBe(400);
       expect(await json(invalidOffsetResponse)).toEqual({
         error: 'Query parameter "offset" must be a non-negative integer',
+        retryable: false,
       });
     });
 
@@ -796,20 +819,102 @@ describe('handleRequest', () => {
     );
     await waitForStartedWorkflowsToComplete(engine);
 
+    const response = await purgeWithPreview(engine, {
+      filter: {
+        status: 'completed',
+        type: 'echo',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual(expect.objectContaining({ deleted: 2 }));
+    expect(await engine.get('purge-keep')).toBeNull();
+    expect(await engine.get('purge-delete')).toBeNull();
+  });
+
+  it('POST /v1/workflows/purge with dryRun previews the matches and deletes nothing', async () => {
+    engine = createEngine();
+    await handleRequest(
+      request('POST', '/v1/workflows', { type: 'echo', input: 'keep', id: 'purge-preview-a' }),
+      engine,
+    );
+    await handleRequest(
+      request('POST', '/v1/workflows', { type: 'echo', input: 'keep', id: 'purge-preview-b' }),
+      engine,
+    );
+    await waitForStartedWorkflowsToComplete(engine);
+
     const response = await handleRequest(
       request('POST', '/v1/workflows/purge', {
-        filter: {
-          status: 'completed',
-          type: 'echo',
-        },
+        filter: { status: 'completed' },
+        dryRun: true,
+        requestId: 'purge-preview',
       }),
       engine,
     );
 
     expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ deleted: 2 });
-    expect(await engine.get('purge-keep')).toBeNull();
-    expect(await engine.get('purge-delete')).toBeNull();
+    expect(await json(response)).toEqual(
+      expect.objectContaining({
+        dryRun: true,
+        action: 'purge',
+        matched: 2,
+        requestId: 'purge-preview',
+        sampleWorkflowIds: ['purge-preview-a', 'purge-preview-b'],
+        confirmationToken: expect.any(String),
+      }),
+    );
+    expect(await engine.get('purge-preview-a')).not.toBeNull();
+    expect(await engine.get('purge-preview-b')).not.toBeNull();
+  });
+
+  it('POST /v1/workflows/purge refuses a commit with no token, and with a token for another filter', async () => {
+    engine = createEngine();
+    await handleRequest(
+      request('POST', '/v1/workflows', { type: 'echo', input: 'keep', id: 'purge-token-a' }),
+      engine,
+    );
+    await waitForStartedWorkflowsToComplete(engine);
+
+    const withoutToken = await handleRequest(
+      request('POST', '/v1/workflows/purge', { filter: { status: 'completed' } }),
+      engine,
+    );
+    expect(withoutToken.status).toBe(400);
+    expect(await json(withoutToken)).toEqual({
+      error: 'Field "confirmationToken" is required after a dry run',
+      retryable: false,
+    });
+
+    const preview = await json(
+      await handleRequest(
+        request('POST', '/v1/workflows/purge', {
+          filter: { type: 'echo' },
+          dryRun: true,
+        }),
+        engine,
+      ),
+    );
+    const otherFilter = await handleRequest(
+      request('POST', '/v1/workflows/purge', {
+        filter: { type: 'other' },
+        confirmationToken: confirmationTokenFromPreview(preview),
+      }),
+      engine,
+    );
+    // The token names the workflows another filter selects: a conflict with the preview, not a
+    // malformed request, so the caller is told to preview again.
+    expect(otherFilter.status).toBe(409);
+    const staleBody = (await json(otherFilter)) as {
+      error: string;
+      retryable: boolean;
+      remediation?: string;
+    };
+    expect(staleBody.error).toContain('Run the preview again');
+    // The conflict is not retryable as sent, and says what to change as a field, not only in text.
+    expect(staleBody.retryable).toBe(false);
+    expect(staleBody.remediation).toContain('Run the preview again');
+    expect(await engine.get('purge-token-a')).not.toBeNull();
   });
 
   it('POST /v1/workflows/purge accepts an empty request body', async () => {
@@ -820,10 +925,10 @@ describe('handleRequest', () => {
     );
     await waitForStartedWorkflowsToComplete(engine);
 
-    const response = await handleRequest(request('POST', '/v1/workflows/purge'), engine);
+    const response = await purgeWithPreview(engine, undefined);
 
     expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ deleted: 1 });
+    expect(await json(response)).toEqual(expect.objectContaining({ deleted: 1 }));
     expect(await engine.get('purge-empty-body')).toBeNull();
   });
 
@@ -847,15 +952,13 @@ describe('handleRequest', () => {
     expect(nonObjectBodyResponse.status).toBe(400);
     expect(await json(nonObjectBodyResponse)).toEqual({
       error: 'Request body must be a JSON object',
+      retryable: false,
     });
 
-    const omittedFilterResponse = await handleRequest(
-      request('POST', '/v1/workflows/purge', { note: 'ignored' }),
-      engine,
-    );
+    const omittedFilterResponse = await purgeWithPreview(engine, { note: 'ignored' });
 
     expect(omittedFilterResponse.status).toBe(200);
-    expect(await json(omittedFilterResponse)).toEqual({ deleted: 1 });
+    expect(await json(omittedFilterResponse)).toEqual(expect.objectContaining({ deleted: 1 }));
     expect(await engine.get('purge-no-filter')).toBeNull();
   });
 
@@ -878,20 +981,17 @@ describe('handleRequest', () => {
     await engine.setAttributes('purge-filter-2', { bucket: 'target' });
     await engine.setAttributes('purge-filter-3', { bucket: 'other' });
 
-    const response = await handleRequest(
-      request('POST', '/v1/workflows/purge', {
-        filter: {
-          status: 'completed',
-          attributes: [{ key: 'bucket', value: 'target' }],
-          offset: 1,
-          limit: 1,
-        },
-      }),
-      engine,
-    );
+    const response = await purgeWithPreview(engine, {
+      filter: {
+        status: 'completed',
+        attributes: [{ key: 'bucket', value: 'target' }],
+        offset: 1,
+        limit: 1,
+      },
+    });
 
     expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ deleted: 1 });
+    expect(await json(response)).toEqual(expect.objectContaining({ deleted: 1 }));
     expect(await engine.get('purge-filter-1')).not.toBeNull();
     expect(await engine.get('purge-filter-2')).toBeNull();
     expect(await engine.get('purge-filter-3')).not.toBeNull();
@@ -921,6 +1021,7 @@ describe('handleRequest', () => {
     expect(invalidAttributesResponse.status).toBe(400);
     expect(await json(invalidAttributesResponse)).toEqual({
       error: 'Field "filter.attributes[0].key" must be a non-empty string',
+      retryable: false,
     });
 
     const invalidStatusResponse = await handleRequest(
@@ -934,14 +1035,12 @@ describe('handleRequest', () => {
     expect(invalidStatusResponse.status).toBe(400);
     expect(await json(invalidStatusResponse)).toEqual({
       error: 'Field "filter.status" must be a string or an array of strings',
+      retryable: false,
     });
 
-    const missingFilterResponse = await handleRequest(
-      request('POST', '/v1/workflows/purge', { note: 'no filter here' }),
-      engine,
-    );
+    const missingFilterResponse = await purgeWithPreview(engine, { note: 'no filter here' });
     expect(missingFilterResponse.status).toBe(200);
-    expect(await json(missingFilterResponse)).toEqual({ deleted: 0 });
+    expect(await json(missingFilterResponse)).toEqual(expect.objectContaining({ deleted: 0 }));
 
     const nonObjectBodyResponse = await handleRequest(
       request('POST', '/v1/workflows/purge', ['not-an-object']),
@@ -950,6 +1049,7 @@ describe('handleRequest', () => {
     expect(nonObjectBodyResponse.status).toBe(400);
     expect(await json(nonObjectBodyResponse)).toEqual({
       error: 'Field "filter" must be an object',
+      retryable: false,
     });
   });
 
@@ -1101,6 +1201,7 @@ describe('handleRequest', () => {
       expect(response.status).toBe(422);
       expect(await json(response)).toEqual({
         error: 'Bulk delete matches non-terminal workflows',
+        retryable: false,
       });
       expect(await engine.get('bulk-route-delete-completed')).not.toBeNull();
       expect(await engine.get('bulk-route-delete-running')).not.toBeNull();
@@ -1257,6 +1358,7 @@ describe('handleRequest', () => {
       expect(response.status).toBe(400);
       expect(await json(response)).toEqual({
         error: 'Field "operation" must be "add" or "remove"',
+        retryable: false,
       });
     });
 
@@ -1273,6 +1375,7 @@ describe('handleRequest', () => {
       expect(await json(missingFilterResponse)).toEqual({
         error:
           'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+        retryable: false,
       });
 
       const emptyTagsResponse = await handleRequest(
@@ -1287,6 +1390,7 @@ describe('handleRequest', () => {
       expect(await json(emptyTagsResponse)).toEqual({
         error:
           'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+        retryable: false,
       });
 
       const emptyAttributesResponse = await handleRequest(
@@ -1301,6 +1405,7 @@ describe('handleRequest', () => {
       expect(await json(emptyAttributesResponse)).toEqual({
         error:
           'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+        retryable: false,
       });
 
       const blankAttributeKeyResponse = await handleRequest(
@@ -1315,6 +1420,7 @@ describe('handleRequest', () => {
       expect(await json(blankAttributeKeyResponse)).toEqual({
         error:
           'Field "filter" must include at least one of status, type, scheduleId, tags, attributes, idPrefix (≥3 chars), or failureCategory paired with status',
+        retryable: false,
       });
     });
   });
@@ -1828,7 +1934,10 @@ describe('handleRequest', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Field "id" must be a string' });
+    expect(await json(response)).toEqual({
+      error: 'Field "id" must be a string',
+      retryable: false,
+    });
 
     engine.start = originalStart;
   });
@@ -1883,7 +1992,7 @@ describe('handleRequest', () => {
     expect(response.status).toBe(500);
     // EngineFailure is masked to a generic body; the raw engine message
     // never reaches REST clients.
-    expect(await json(response)).toEqual({ error: 'Internal server error' });
+    expect(await json(response)).toEqual({ error: 'Internal server error', retryable: false });
 
     engine.cancel = originalCancel;
   });
@@ -1938,7 +2047,7 @@ describe('handleRequest', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await json(response)).toEqual({ error: 'Internal server error' });
+    expect(await json(response)).toEqual({ error: 'Internal server error', retryable: false });
 
     engine.signal = originalSignal;
   });
@@ -2081,7 +2190,7 @@ describe('handleRequest', () => {
     const response = await handleRequest(request('GET', `/v1/workflows/${id}/result`), engine);
 
     expect(response.status).toBe(500);
-    expect(await json(response)).toEqual({ error: 'Internal server error' });
+    expect(await json(response)).toEqual({ error: 'Internal server error', retryable: false });
 
     engine.getHandle = originalGetHandle;
   });
@@ -3074,7 +3183,7 @@ describe('handleRequest', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await json(response)).toEqual({ error: 'Internal server error' });
+      expect(await json(response)).toEqual({ error: 'Internal server error', retryable: false });
 
       engine.submitReview = originalSubmitReview;
     });
@@ -3292,7 +3401,7 @@ describe('handleRequest', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await json(response)).toEqual({ error: 'Internal server error' });
+      expect(await json(response)).toEqual({ error: 'Internal server error', retryable: false });
 
       engine.query = originalQuery;
     });
@@ -3530,6 +3639,7 @@ describe('handleRequest', () => {
       expect(response.status).toBe(400);
       expect(await json(response)).toEqual({
         error: `Invalid after query parameter: ${after}`,
+        retryable: false,
       });
     }
   });
@@ -3545,6 +3655,7 @@ describe('handleRequest', () => {
     expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       error: 'Invalid after query parameter: ',
+      retryable: false,
     });
   });
 
@@ -3732,6 +3843,7 @@ describe('handleRequest', () => {
         expect(response.status).toBe(400);
         expect(await json(response)).toEqual({
           error: `Invalid Last-Event-ID header: ${lastEventId}`,
+          retryable: false,
         });
       }
     });
@@ -3757,6 +3869,7 @@ describe('handleRequest', () => {
       expect(response.status).toBe(400);
       expect(await json(response)).toEqual({
         error: 'Invalid Last-Event-ID header: ',
+        retryable: false,
       });
     });
   });
@@ -3772,7 +3885,7 @@ describe('handleRequest', () => {
     const response = await handleRequest(request('GET', '/v1/workflows'), engine);
 
     expect(response.status).toBe(500);
-    expect(await json(response)).toEqual({ error: 'Internal server error' });
+    expect(await json(response)).toEqual({ error: 'Internal server error', retryable: false });
 
     engine.list = originalList;
   });
@@ -3887,6 +4000,7 @@ describe('handleRequest', () => {
       data: {
         issues: [{ path: ['step'], message: 'Invalid step: abc', code: 'custom' }],
       },
+      retryable: false,
     });
   });
 
@@ -4017,7 +4131,10 @@ describe('handleRequest', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Invalid step: 9007199254740992' });
+    expect(await json(response)).toEqual({
+      error: 'Invalid step: 9007199254740992',
+      retryable: false,
+    });
   });
 
   it('GET /v1/workflows/:id/checkpoints/:step returns 400 for a numeric step outside the safe integer range', async () => {
@@ -4040,6 +4157,7 @@ describe('handleRequest', () => {
           },
         ],
       },
+      retryable: false,
     });
   });
 
@@ -4072,7 +4190,7 @@ describe('handleRequest', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Invalid JSON body' });
+    expect(await json(response)).toEqual({ error: 'Invalid JSON body', retryable: false });
   });
 
   it('POST /v1/workflows/:id/fork returns 400 for non-object JSON bodies', async () => {
@@ -4084,7 +4202,10 @@ describe('handleRequest', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await json(response)).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await json(response)).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
   });
 
   it('POST /v1/workflows/:id/fork returns 400 for invalid fromStep values', async () => {
@@ -4098,6 +4219,7 @@ describe('handleRequest', () => {
     expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       error: 'Field "fromStep" must be a non-negative safe integer',
+      retryable: false,
     });
   });
 
@@ -4117,6 +4239,7 @@ describe('handleRequest', () => {
     expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       error: 'Checkpoint not found at step 999 for workflow "wf-source"',
+      retryable: false,
     });
   });
 
@@ -4129,6 +4252,7 @@ describe('handleRequest', () => {
     expect(await json(response)).toEqual({
       error: 'Workflow "missing" not found',
       data: { resource: 'workflow' },
+      retryable: false,
     });
   });
 
@@ -4146,6 +4270,7 @@ describe('handleRequest', () => {
     expect(await json(response)).toEqual({
       error: 'Checkpoint not found for workflow "wf-source"',
       data: { resource: 'checkpoint' },
+      retryable: false,
     });
 
     engine.fork = originalFork;
@@ -4164,7 +4289,7 @@ describe('handleRequest', () => {
 
       expect(response.status).toBe(500);
       expect(response.headers.get('Content-Type')).toContain('application/json');
-      expect(await json(response)).toEqual({ error: 'Internal server error' });
+      expect(await json(response)).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.fork = originalFork;
     }

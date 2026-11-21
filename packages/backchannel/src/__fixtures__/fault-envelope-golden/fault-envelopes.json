@@ -18,6 +18,8 @@
           ]
         },
         "error": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "WorkflowNotFoundError"
       },
       "headers": {
@@ -38,6 +40,8 @@
         ],
         "missingWorkflowCount": 1,
         "reason": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "samplesTruncated": true,
         "sourceValidationReasons": [
           "unregistered-source-kind"
@@ -50,7 +54,8 @@
   "EngineFailure": {
     "http": {
       "body": {
-        "error": "Internal server error"
+        "error": "Internal server error",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -61,6 +66,7 @@
       "code": -32099,
       "data": {
         "httpStatus": 500,
+        "retryable": false,
         "weftCode": "EngineFailure"
       },
       "message": "golden"
@@ -69,7 +75,9 @@
   "Forbidden": {
     "http": {
       "body": {
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -81,6 +89,8 @@
       "data": {
         "httpStatus": 403,
         "reason": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "Forbidden"
       },
       "message": "golden"
@@ -101,6 +111,8 @@
           ]
         },
         "error": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "WorkflowNotFoundError"
       },
       "headers": {
@@ -121,6 +133,8 @@
             ]
           }
         ],
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "InvalidParams"
       },
       "message": "golden"
@@ -132,7 +146,9 @@
         "data": {
           "method": "golden"
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -144,6 +160,8 @@
       "data": {
         "httpStatus": 404,
         "method": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "MethodNotFound"
       },
       "message": "golden"
@@ -157,6 +175,8 @@
           "resource": "golden"
         },
         "error": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "WorkflowNotFoundError"
       },
       "headers": {
@@ -169,7 +189,9 @@
       "data": {
         "httpStatus": 404,
         "identifier": "golden",
+        "remediation": "golden",
         "resource": "golden",
+        "retryable": false,
         "weftCode": "NotFound"
       },
       "message": "golden"
@@ -178,7 +200,9 @@
   "NotImplemented": {
     "http": {
       "body": {
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -189,6 +213,8 @@
       "code": -32025,
       "data": {
         "httpStatus": 501,
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "NotImplemented"
       },
       "message": "golden"
@@ -200,7 +226,9 @@
         "data": {
           "maxBytes": 1
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -212,6 +240,8 @@
       "data": {
         "httpStatus": 413,
         "maxBytes": 1,
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "PayloadTooLarge"
       },
       "message": "golden"
@@ -223,7 +253,9 @@
         "data": {
           "retryAfterSeconds": 1
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": true
       },
       "headers": {
         "content-type": "application/json",
@@ -235,7 +267,9 @@
       "code": -32027,
       "data": {
         "httpStatus": 429,
+        "remediation": "golden",
         "retryAfterSeconds": 1,
+        "retryable": true,
         "weftCode": "RateLimited"
       },
       "message": "golden"
@@ -248,7 +282,9 @@
           "currentRevision": "golden",
           "expectedRevision": "golden"
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -261,6 +297,8 @@
         "currentRevision": "golden",
         "expectedRevision": "golden",
         "httpStatus": 409,
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "StaleRevision"
       },
       "message": "golden"
@@ -272,7 +310,9 @@
         "data": {
           "droppedCount": 1
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -284,6 +324,8 @@
       "data": {
         "droppedCount": 1,
         "httpStatus": 500,
+        "remediation": "golden",
+        "retryable": false,
         "subscriptionId": "golden",
         "weftCode": "SubscriptionOverflow"
       },
@@ -297,7 +339,9 @@
           "operationName": "golden",
           "updateId": "golden"
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": true
       },
       "headers": {
         "content-type": "application/json"
@@ -309,6 +353,8 @@
       "data": {
         "httpStatus": 504,
         "operationName": "golden",
+        "remediation": "golden",
+        "retryable": true,
         "updateId": "golden",
         "weftCode": "Timeout"
       },
@@ -318,7 +364,9 @@
   "Unauthorized": {
     "http": {
       "body": {
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -330,6 +378,8 @@
       "data": {
         "httpStatus": 401,
         "reason": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "Unauthorized"
       },
       "message": "golden"
@@ -341,7 +391,9 @@
         "data": {
           "retryAfterSeconds": 1
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": true
       },
       "headers": {
         "content-type": "application/json",
@@ -354,7 +406,9 @@
       "data": {
         "httpStatus": 503,
         "reason": "golden",
+        "remediation": "golden",
         "retryAfterSeconds": 1,
+        "retryable": true,
         "weftCode": "Unavailable"
       },
       "message": "golden"
@@ -363,7 +417,9 @@
   "Unprocessable": {
     "http": {
       "body": {
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -375,6 +431,8 @@
       "data": {
         "httpStatus": 422,
         "reason": "golden",
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "Unprocessable"
       },
       "message": "golden"
@@ -386,7 +444,9 @@
         "data": {
           "capability": "golden"
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -398,6 +458,8 @@
       "data": {
         "capability": "golden",
         "httpStatus": 501,
+        "remediation": "golden",
+        "retryable": false,
         "weftCode": "UnsupportedCapability"
       },
       "message": "golden"
@@ -412,7 +474,9 @@
           ],
           "transport": "http-rest"
         },
-        "error": "golden"
+        "error": "golden",
+        "remediation": "golden",
+        "retryable": false
       },
       "headers": {
         "content-type": "application/json"
@@ -423,6 +487,8 @@
       "code": -32030,
       "data": {
         "httpStatus": 501,
+        "remediation": "golden",
+        "retryable": false,
         "supported": [
           "http-rest"
         ],

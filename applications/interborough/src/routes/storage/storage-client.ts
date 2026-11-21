@@ -26,6 +26,8 @@
 import { isFaultCode, type FaultCode } from '@lostgradient/backchannel';
 import { HttpClientError, type HttpClient } from '@lostgradient/weft';
 
+import { faultAdviceOf, type FaultAdvice } from '../../lib/faults.ts';
+
 /** The slice of `HttpClient` this module needs — its resolved connection, never a typed operation. */
 export type StorageConnection = Pick<HttpClient, 'baseUrl' | 'headers'>;
 
@@ -118,7 +120,9 @@ function encodeCondition(condition: StorageConditionInput): unknown {
  * `code` field, for every fault code, not only the masked `EngineFailure`
  * case. So `faultCode` is realistically always `undefined` here in
  * practice; the structured-body branch below is kept only for
- * forward-compatibility should that change upstream. Callers that need to
+ * forward-compatibility should that change upstream. In either shape the body
+ * also carries the fault's `retryable` and, when set, `remediation` at its top
+ * level, which the thrown error keeps. Callers that need to
  * distinguish fault codes for storage errors key off
  * `HttpClientError.status` instead — `classifyFault` (`../../lib/faults.ts`) already does the same
  * status-based fallback for any error with no `faultCode`.
@@ -151,7 +155,7 @@ function parseFlatErrorBody(errorField: unknown): { message: string } | undefine
 
 async function parseStorageErrorBody(
   response: Response,
-): Promise<{ message: string; faultCode?: FaultCode }> {
+): Promise<{ message: string; faultCode?: FaultCode } & FaultAdvice> {
   let body: unknown;
   try {
     body = await response.json();
@@ -160,15 +164,21 @@ async function parseStorageErrorBody(
   }
 
   const errorField = isRecord(body) ? body['error'] : undefined;
-  return (
-    parseStructuredErrorBody(errorField) ??
-    parseFlatErrorBody(errorField) ?? { message: fallbackErrorMessage(response) }
-  );
+  // The fault's `retryable` and `remediation` sit at the top of the body, beside `error`, in both
+  // shapes of it.
+  return {
+    ...(parseStructuredErrorBody(errorField) ??
+      parseFlatErrorBody(errorField) ?? { message: fallbackErrorMessage(response) }),
+    ...faultAdviceOf(body),
+  };
 }
 
 async function throwStorageError(response: Response): Promise<never> {
-  const { message, faultCode } = await parseStorageErrorBody(response);
-  throw new HttpClientError(response.status, message, faultCode === undefined ? {} : { faultCode });
+  const { message, faultCode, ...advice } = await parseStorageErrorBody(response);
+  throw new HttpClientError(response.status, message, {
+    ...(faultCode === undefined ? {} : { faultCode }),
+    ...advice,
+  });
 }
 
 /** `GET /v1/storage/:key`. A missing key resolves `null` (mirrors `HttpClient`'s own GET-404-is-null convention), never throws for "not found". */

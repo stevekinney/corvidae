@@ -78,6 +78,7 @@ describe('weft.workflows.streams.sse', () => {
     expect(response.status).toBe(406);
     expect(await response.json()).toEqual({
       error: 'Accept header must include text/event-stream',
+      retryable: false,
     });
   });
 
@@ -94,6 +95,7 @@ describe('weft.workflows.streams.sse', () => {
     expect(await response.json()).toEqual({
       error: 'Workflow "missing-wf" not found',
       data: { resource: 'workflow', identifier: 'missing-wf' },
+      retryable: false,
     });
   });
 
@@ -142,6 +144,7 @@ describe('weft.workflows.streams.sse', () => {
     expect(await response.json()).toEqual({
       error: 'Workflow "missing-wf" not found',
       data: { resource: 'workflow', identifier: 'missing-wf' },
+      retryable: false,
     });
   });
 
@@ -161,6 +164,7 @@ describe('weft.workflows.streams.sse', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Invalid Last-Event-ID header: not-a-number',
+      retryable: false,
     });
   });
 
@@ -182,7 +186,7 @@ describe('weft.workflows.streams.sse', () => {
         { operationRegistry: registry, restBindings: bindings },
       );
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.getStreamChunks = original;
     }

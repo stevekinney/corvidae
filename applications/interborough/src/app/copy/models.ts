@@ -60,7 +60,8 @@ export const MODELS_COPY = {
     },
     keyLabel: 'API key',
     keyPlaceholder: 'Paste your API key',
-    keyHelp: 'Saved to ~/.interborough/secrets when you connect, readable only by you.',
+    /** Where or how a key is stored is never said (owner, 2026-11-19): no path, no secret reference. */
+    keyHelp: 'Tested with the provider before it is saved.',
     getKey: 'Where do I get one?',
     keyRequired: 'Enter the key.',
     /** Under the field while Connect, or Test, asks the provider. */

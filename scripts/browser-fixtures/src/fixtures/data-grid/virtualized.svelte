@@ -87,6 +87,12 @@
   virtualizeColumns
   rowHeight={32}
   aria-label="Virtualized activity log"
-  style="max-block-size: 420px;"
+  class="virtualized-fixture-data-grid"
   getRowAriaLabel={(entry) => `${entry.id}, ${entry.severity}, ${entry.message}`}
 />
+
+<style>
+  :global(.virtualized-fixture-data-grid) {
+    max-block-size: 420px;
+  }
+</style>

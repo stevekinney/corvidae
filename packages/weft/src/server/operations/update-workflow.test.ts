@@ -151,7 +151,10 @@ describe('weft.workflows.update', () => {
       );
 
       expect(response.status).toBe(422);
-      expect(await response.json()).toEqual({ error: 'workflow rejected update' });
+      expect(await response.json()).toEqual({
+        error: 'workflow rejected update',
+        retryable: false,
+      });
     } finally {
       engine.submitCoordinatedUpdate = originalSubmit;
     }
@@ -176,6 +179,7 @@ describe('weft.workflows.update', () => {
       expect(await response.json()).toEqual({
         error:
           'Cannot send update to workflow "workflow-123": workflow is in terminal state "completed"',
+        retryable: false,
       });
     } finally {
       engine.submitCoordinatedUpdate = originalSubmit;
@@ -200,6 +204,7 @@ describe('weft.workflows.update', () => {
       expect(response.status).toBe(422);
       expect(await response.json()).toEqual({
         error: 'Update "rename" rejected by validator: name must be a string',
+        retryable: false,
       });
     } finally {
       engine.submitCoordinatedUpdate = originalSubmit;
@@ -251,6 +256,7 @@ describe('weft.workflows.update', () => {
       expect(await response.json()).toEqual({
         error: 'Update update-123 timed out after 2000ms',
         data: { updateId: 'update-123' },
+        retryable: true,
       });
     } finally {
       engine.submitCoordinatedUpdate = originalSubmit;
@@ -309,7 +315,7 @@ describe('weft.workflows.update', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
       expect(response.headers.get('Content-Type')).toContain('application/json');
     } finally {
       engine.submitCoordinatedUpdate = originalSubmit;

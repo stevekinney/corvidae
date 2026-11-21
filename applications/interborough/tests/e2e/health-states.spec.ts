@@ -269,21 +269,14 @@ for (const width of WIDTHS) {
     await answerRunsStarted(page, { started: 14, before: 11, seconds: 72 });
     await page.goto('/health');
     const main = page.locator('main');
-    const card = main.getByTestId('needs-attention');
 
-    // 76u: one row, a green check tile, the two lines, no count chip and no action.
-    await expect(attentionRows(page)).toHaveCount(1);
-    await expect(attentionRows(page).first()).toContainText('Nothing needs attention');
-    await expect(attentionRows(page).first()).toContainText(
-      'Storage, schedules, providers and hooks are fine.',
-    );
-    await expect(card.locator('h2')).toHaveText('Needs attention');
-    await expect(attentionCount(page)).toHaveCount(0);
-    await expect(card.locator('a, button')).toHaveCount(0);
-    await expect(card.locator('.cinder-stacked-list-item__leading-tile')).toHaveAttribute(
-      'data-cinder-tone',
-      'success',
-    );
+    // 76u: no card says nothing (owner, 2026-11-19): one quiet line, with no box, count or action,
+    // and no empty space under it.
+    await expect(main.getByTestId('needs-attention')).toHaveCount(0);
+    const clear = main.getByTestId('needs-attention-clear');
+    await expect(clear).toHaveText('Nothing needs attention.');
+    await expect(clear.locator('a, button')).toHaveCount(0);
+    expect(await clear.evaluate((element) => element.closest('.cinder-card') === null)).toBe(true);
 
     // 76t: the sidebar has no Reviews count, and the Health dot says nothing needs attention.
     // The sidebar is a drawer on a phone, so it is read where it is on the page.
@@ -298,7 +291,7 @@ for (const width of WIDTHS) {
     // 76v: Recent activity with its audit link, three cards, and Advanced collapsed at the foot.
     await expect(main.getByRole('heading', { level: 2, name: /^Recent activity/ })).toBeVisible();
     await expect(
-      main.getByRole('link', { name: /^Open audit log \(1,240 events\)/ }),
+      main.getByRole('link', { name: /^All 1,240 events in the audit log/ }),
     ).toBeVisible();
     // Only what this world did: the refund that was done, and the server's start.
     const lines = main.locator('[data-activity]');
@@ -354,10 +347,10 @@ for (const width of WIDTHS) {
 
     // 76w: the heading, the storage line and the tabs are real from the start.
     await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-    await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite in');
+    await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite');
     await expect(main.getByRole('button', { name: 'Storage details' })).toBeVisible();
 
-    // The skeleton shows once the 300 ms have gone; the counts' labels and the card headings are text.
+    // The skeleton shows once the 300 ms have gone; the card headings are text.
     const card = main.getByTestId('needs-attention');
     await expect(card.locator('.cinder-skeleton-row')).toHaveCount(3);
     // Each row's dot sits beside its title bar, at a phone's width too, not stacked under it (76x).
@@ -365,16 +358,13 @@ for (const width of WIDTHS) {
     const bar = await card.locator('.cinder-skeleton-title-bar').first().boundingBox();
     expect(Math.abs((dot?.y ?? 0) - (bar?.y ?? 100))).toBeLessThan(8);
     expect(dot?.x ?? 0).toBeLessThan(bar?.x ?? 0);
+    // 76x: no count is drawn as a placeholder, and none reads zero (owner, 2026-11-19: a count is a
+    // tile only when it is not zero).
     const counts = main.getByRole('group', { name: 'Health counts' });
-    await expect(counts.locator('.cinder-statistic__label')).toHaveText([
-      'Running now',
-      'Needs you',
-      'Failed in 24 hours',
-      'Missed schedule runs (7 days)',
-    ]);
-    // 76x: a placeholder block stands where each count will be, never a zero.
-    await expect(counts.locator('.cinder-skeleton')).toHaveCount(4);
-    await expect(counts.locator('.cinder-statistic__value')).toHaveText(['', '', '', '']);
+    await expect(counts.locator('.cinder-skeleton')).toHaveCount(0);
+    for (const value of await counts.locator('.cinder-statistic__value').allTextContents()) {
+      expect(value.trim()).not.toBe('0');
+    }
     await expect(card.locator('h2')).toHaveText('Needs attention');
     await expect(attentionCount(page)).toHaveCount(0);
     await expect(main.getByTestId('metric-cards').locator('h2')).toHaveText([
@@ -434,7 +424,7 @@ test('a deployment with a remote worker that stopped answering lists it second, 
     'href',
     '/health/workers?worker=reports-worker',
   );
-  await expect(action(page, 1, 'View worker')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 1, 'View worker')).toContainClass('button-variant-secondary');
   await expect(attentionRows(page).nth(2)).toContainText('Storage is over its warning level');
   await expect(attentionRows(page).nth(3)).toContainText('Daily summary missed 4 runs');
   // The checks say the same four problems.
@@ -494,7 +484,7 @@ test('a hook whose last delivery failed adds a row second, after the provider', 
   await expect(hook).toContainText(
     'hooks.slack.com answered 410 Gone on its last try at 10:42 AM.',
   );
-  await expect(action(page, 1, 'View hook')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 1, 'View hook')).toContainClass('button-variant-secondary');
   await expect(action(page, 1, 'View hook')).toHaveAttribute('href', '/hooks/notify-slack');
   await captureForDesignReview(page, {
     route: '/health',
@@ -543,7 +533,7 @@ test('a hook that gave up counts like one whose last delivery failed, and sits l
   await expect(hook).toContainText(
     'Stopped after 8 tries on Oct 30. The URL may have been removed.',
   );
-  await expect(action(page, 3, 'View hook')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 3, 'View hook')).toContainClass('button-variant-secondary');
   await captureForDesignReview(page, { route: '/health', state: 'hook-gave-up', source: SOURCE });
   await checkA11y('health with a hook that gave up');
 });
@@ -587,9 +577,8 @@ test('a plugin that did not load adds a row with Open Plugins, and the count is 
     'href',
     '/settings/plugins',
   );
-  await expect(plugin.getByRole('link', { name: 'Open Plugins' })).toHaveAttribute(
-    'data-cinder-variant',
-    'secondary',
+  await expect(plugin.getByRole('link', { name: 'Open Plugins' })).toContainClass(
+    'button-variant-secondary',
   );
   await expect(
     attentionRows(page).filter({ hasText: 'Storage is over its warning level' }),

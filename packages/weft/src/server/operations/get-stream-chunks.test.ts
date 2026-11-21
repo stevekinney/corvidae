@@ -114,6 +114,7 @@ describe('weft.workflows.streams.chunks', () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
         error: `Invalid after query parameter: ${badValue}`,
+        retryable: false,
       });
     },
   );
@@ -134,6 +135,7 @@ describe('weft.workflows.streams.chunks', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: `Invalid after query parameter: ${badValue}`,
+      retryable: false,
     });
   });
 
@@ -147,7 +149,10 @@ describe('weft.workflows.streams.chunks', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid after query parameter: ' });
+    expect(await response.json()).toEqual({
+      error: 'Invalid after query parameter: ',
+      retryable: false,
+    });
   });
 
   it('rejects an `after` that is neither a string nor a number over JSON-RPC', async () => {
@@ -221,7 +226,7 @@ describe('weft.workflows.streams.chunks', () => {
         { operationRegistry: registry, restBindings: bindings },
       );
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.getStreamChunks = original;
     }

@@ -5,6 +5,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import RealmsTab from './realms-tab.svelte';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
@@ -91,7 +92,7 @@ describe('RealmsTab', () => {
           typeof call.init?.body === 'string' && call.init.body.includes('weft.realms.diagnostics'),
       ).length ?? 0;
     const readsBeforeRetry = reads();
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(reads()).toBeGreaterThan(readsBeforeRetry));
     unmount();
   });

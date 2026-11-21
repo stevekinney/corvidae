@@ -75,10 +75,24 @@ export function lockedPrefix(key: string, managedPrefix: string): string {
 }
 
 const UUID = /\b([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+/** A Crockford ULID, such as a workspace's id: no ULID is read in full in a row (owner, 2026-11-19). */
+const ULID = /(?<![0-9A-Za-z])([0-7][0-9A-HJKMNP-TV-Z]{7})[0-9A-HJKMNP-TV-Z]{18}(?![0-9A-Za-z])/g;
 
-/** `key` with each UUID in it cut to its first eight characters and an ellipsis. */
+/** `key` with each UUID and ULID in it cut to its first eight characters and an ellipsis. */
 export function abbreviateKey(key: string): string {
-  return key.replace(UUID, '$1…');
+  return key.replace(UUID, '$1…').replace(ULID, '$1…');
+}
+
+/**
+ * `key` as the table's Key column shows it: without the group's prefix, which the Group column
+ * beside it already gives (owner, 2026-11-19: "fleet-event:0000000004" sat beside "fleet-event:"),
+ * and with each UUID cut short. A key that is in no group, or is nothing but its prefix, is shown
+ * whole.
+ */
+export function keyInItsGroup(key: string): string {
+  const group = keyGroup(key);
+  const rest = group === undefined ? key : key.slice(group.length);
+  return abbreviateKey(rest === '' ? key : rest);
 }
 
 /** The longest key the pane shows without saying how long it is. */

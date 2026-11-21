@@ -49,6 +49,7 @@ export {
 export { bindFeedLifetime } from './bind-feed-lifetime.ts';
 export type { DiscoveryInfo } from './discovery-info.ts';
 export { isFaultCode, type FaultCode } from './fault-code.ts';
+export { staleRevisionFault } from './fault-wire-safety.ts';
 export {
   authContextToPrincipal,
   unauthenticatedLocalAuthContext,
@@ -96,7 +97,7 @@ export {
   type UnknownKeyPolicy,
 } from './operation-catalog/types.ts';
 export { findUndescribedOperations } from './operation-description-audit.ts';
-export { staleRevisionFault, type OperationFault } from './operation-fault.ts';
+export type { OperationFault } from './operation-fault.ts';
 export {
   defineOperation,
   type OperationDefinitionInput,

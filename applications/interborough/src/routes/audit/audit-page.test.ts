@@ -303,7 +303,7 @@ describe('the table', () => {
     expect(getByPlaceholderText('Search by actor, action or target')).not.toBeNull();
     expect(getByTestId('audit-count').textContent).toBe('4 events');
     const exportButton = getByRole('button', { name: AUDIT_COPY.exportAction });
-    expect(exportButton.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(exportButton.classList.contains('button-variant-secondary')).toBe(true);
     expect(exportButton.querySelector('svg')).not.toBeNull();
     // The count reads before Export in the document, so the button ends the row.
     expect(
@@ -321,6 +321,19 @@ describe('the table', () => {
     }));
     const count = await findByTestId('audit-count');
     await waitFor(() => expect(count.textContent).toBe('1,240 events'));
+  });
+
+  // Owner, 2026-11-19: a count is metadata outside the table, never one of its rows.
+  test('says what it has loaded outside the table, never as a row of it', async () => {
+    const { container, findByTestId } = open(() => ({
+      records: [KEY_REMOVED, STARTED],
+      nextCursor: null,
+      total: 2,
+    }));
+    const footer = await findByTestId('audit-footer');
+    const table = container.querySelector('table');
+    expect(table?.contains(footer)).toBe(false);
+    expect(footer.closest('table, tfoot, tbody')).toBeNull();
   });
 });
 
@@ -942,7 +955,7 @@ describe('who may see it', () => {
     expect(container.querySelector('[data-page="health"]')).not.toBeNull();
     expect(container.querySelector('[role="search"]')).toBeNull();
     const retry = getByRole('button', { name: RETRY_LABEL });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
     expect(retry.querySelector('svg')).not.toBeNull();
     expect(container.querySelector('.cinder-error-state a')).toBeNull();
     expect(container.textContent).not.toContain('Check Health');
@@ -971,7 +984,7 @@ describe('who may see it', () => {
 });
 
 describe('a refresh that fails over events on screen', () => {
-  test('keeps the events under the shared banner, holds only Export, and Retry now reads again', async () => {
+  test('keeps the events under the shared banner, holds only Export, and Try again reads again', async () => {
     let failing = false;
     stub = installBureauStub({
       'bureau.audit.query': (params) => {
@@ -1000,7 +1013,7 @@ describe('a refresh that fails over events on screen', () => {
     await queryClient?.invalidateQueries({ queryKey: ['audit', 'list'] });
     const banner = await view.findByRole('region', { name: 'Refresh problem' });
 
-    // Row 83a: the shared preset's words, with a Retry now and no dismiss.
+    // Row 83a: the shared preset's words, with a Try again and no dismiss.
     expect(banner.textContent).toContain('Couldn’t refresh this page.');
     expect(banner.textContent).toMatch(/Showing what loaded as of .+\./);
     expect(banner.textContent).not.toMatch(/Retrying in|attempt/);
@@ -1023,11 +1036,11 @@ describe('a refresh that fails over events on screen', () => {
       ),
     ).toBeNull();
     expect(
-      view.getByRole('button', { name: 'Retry now' }).getAttribute('aria-disabled'),
+      view.getByRole('button', { name: 'Try again' }).getAttribute('aria-disabled'),
     ).toBeNull();
 
     failing = false;
-    await fireEvent.click(view.getByRole('button', { name: 'Retry now' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Try again' }));
     await waitFor(() =>
       expect(view.queryByRole('region', { name: 'Refresh problem' }) === null).toBe(true),
     );

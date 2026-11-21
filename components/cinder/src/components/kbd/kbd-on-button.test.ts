@@ -62,7 +62,7 @@ describe('Kbd inside a Button', () => {
 
   for (const variant of variants) {
     test(`${variant}: has no variant-specific hint rule that could restore a border or fill`, () => {
-      expect(kbdCss).not.toContain(`[data-cinder-variant='${variant}'] .cinder-kbd`);
+      expect(kbdCss).not.toContain(`.button-variant-${variant} .cinder-kbd`);
     });
   }
 

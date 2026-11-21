@@ -118,6 +118,7 @@ import {
   agentsReferencesOperation,
 } from './management/agent-references-operation.ts';
 import { findAgentReferences } from '../agent-references.ts';
+import { type BureauDryRunHost, dryRunEffectsOf } from './management/dry-run-references.ts';
 import {
   type BureauContextsInputOperationHost,
   contextsInputOperation,
@@ -253,6 +254,10 @@ import {
   tasksInspectOperation,
 } from './management/tasks-inspect-operation.ts';
 import {
+  type BureauRunsTimelineOperationHost,
+  runsTimelineOperation,
+} from './management/runs-timeline-operation.ts';
+import {
   type BureauEventsCatalogOperationHost,
   eventsCatalogOperation,
 } from './management/events-catalog-operation.ts';
@@ -356,6 +361,7 @@ export type BureauHandlerSource = Pick<
   readonly schedules: Pick<
     BureauSchedules,
     | 'create'
+    | 'createWorkflow'
     | 'get'
     | 'list'
     | 'pause'
@@ -405,6 +411,7 @@ export type BureauHandlerSource = Pick<
     | 'duplicate'
     | 'try'
     | 'disable'
+    | 'canDisable'
     | 'enable'
   >;
 };
@@ -422,6 +429,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAttentionOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
+  BureauRunsTimelineOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
@@ -455,7 +463,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAssetsOperationHost &
   BureauDecisionsOperationHost &
   BureauSettingsOperationHost &
-  BureauSkillsOperationHost;
+  BureauSkillsOperationHost &
+  BureauDryRunHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -847,6 +856,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksListOperation,
   tasksGetOperation,
   tasksInspectOperation,
+  runsTimelineOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -1339,6 +1349,8 @@ export function buildBureauHandlerHost(
     },
     tasks: bureau.internals.taskRegistry,
     inspect: (id, options) => bureau.tasks.inspect(id, options),
+    // The engine's own timeline of a run, read by `bureau.runs.timeline` after it has authorized.
+    runTimeline: async (runId) => bureau.durableEngine()?.getTimeline(runId),
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),
@@ -1401,6 +1413,7 @@ export function buildBureauHandlerHost(
       tools: () => bureau.agents.tools(),
       loadArtifact: skills?.loadArtifact ?? createSkillArtifactLoader({}),
     },
+    dryRun: dryRunEffectsOf(bureau),
     workflows: bureau.workflows,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);
@@ -1413,6 +1426,7 @@ export function buildBureauHandlerHost(
     formatEvent: bureau.formatEvent,
     schedules: {
       create: bureau.schedules.create,
+      createWorkflow: bureau.schedules.createWorkflow,
       get: bureau.schedules.get,
       list: bureau.schedules.list,
       pause: bureau.schedules.pause,

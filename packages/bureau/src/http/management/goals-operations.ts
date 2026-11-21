@@ -38,7 +38,7 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import type { BureauGoalCreateOutcome, BureauGoalUpdateOutcome } from '../../goal-types.ts';
-import { attemptAgentName, type GoalState } from '../../goal-state.ts';
+import { attemptAgentName, isTerminalGoalStatus, type GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import type { Bureau } from '../../bureau-types/facade.ts';
 import {
@@ -56,6 +56,7 @@ import {
   unknownKeyPolicy,
 } from './management-schemas.ts';
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+import { dryRunField, dryRunResult, effect, orDryRun } from './dry-run.ts';
 
 /** What the goal operations read from the handler's `host`. */
 export type BureauGoalsOperationHost = BureauOwnershipHost &
@@ -786,6 +787,7 @@ const cancelInput = z.object({
     .describe(
       'The goal’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.',
     ),
+  dryRun: dryRunField,
 });
 
 const cancelOutput = z.object({
@@ -802,28 +804,59 @@ const cancelOutput = z.object({
   revision: z.number().int(),
 });
 
+const cancelAnswer = orDryRun(cancelOutput);
+
+/** The fault a goal answers when its `revision` is not the one the caller expected. */
+function staleGoalFault(
+  goalRunId: string,
+  currentRevision: number,
+  expectedRevision: number | undefined,
+): OperationFault {
+  return {
+    code: 'StaleRevision',
+    message: `Goal "${goalRunId}" is at revision ${currentRevision}, not the expected revision ${String(expectedRevision)}`,
+    data: {
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
+      currentRevision,
+    },
+  };
+}
+
 export const goalsCancelOperation = defineOperation<
   typeof cancelInput,
-  typeof cancelOutput,
+  typeof cancelAnswer,
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.cancel',
   authorize: authorizeWorkspaceOperation('bureau.goals.cancel'),
   mcpExposable: false,
+  supportsDryRun: true,
   summary: 'Cancel a goal',
   description:
-    'Cancels one of the caller’s own goals; a caller holding `bureau.goals:write` cancels any owner’s, and anyone else is answered `NotFound`. The goal’s controller and its attempt’s run are stopped, and the receipt’s `outcome` says how far that has got: it is an answer about durable state read back, never about a request merely sent. `expectedRevision`, when given, is compared inside the store’s compare-and-swap that records the cancellation: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal. A repeated cancel has the same effect.',
+    'Cancels one of the caller’s own goals; a caller holding `bureau.goals:write` cancels any owner’s, and anyone else is answered `NotFound`. The goal’s controller and its attempt’s run are stopped, and the receipt’s `outcome` says how far that has got: it is an answer about durable state read back, never about a request merely sent. `expectedRevision`, when given, is compared inside the store’s compare-and-swap that records the cancellation: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal. A repeated cancel has the same effect. With `dryRun: true` nothing is cancelled and no event or audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the attempt runs the cancel would stop, and a goal that is missing, not the caller’s, or at another `revision` than `expectedRevision` answers the fault the real call answers.',
   destructive: true,
   tags: ['Goals'],
   inputSchema: cancelInput,
-  outputSchema: cancelOutput,
+  outputSchema: cancelAnswer,
   producibleFaults: ['InvalidParams', 'NotFound', 'StaleRevision', 'Unavailable'],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    await goalFor(host, principal, input.goalRunId, 'bureau.goals:write');
+    const goal = await goalFor(host, principal, input.goalRunId, 'bureau.goals:write');
+    if (input.dryRun === true) {
+      if (input.expectedRevision !== undefined && input.expectedRevision !== goal.revision) {
+        throw staleGoalFault(input.goalRunId, goal.revision, input.expectedRevision);
+      }
+      // An attempt that has not completed is a run the cancel stops; a goal that ended has none.
+      const running = isTerminalGoalStatus(goal.status)
+        ? 0
+        : goal.attempts.filter((attempt) => attempt.completedAt === undefined).length;
+      return dryRunResult({ kind: 'goal', id: input.goalRunId }, [
+        effect('runs-in-progress', running),
+      ]);
+    }
     // The predicate has decided who may cancel, so the Bureau's trusted call is used.
     const outcome = await host.goals.cancel(input.goalRunId, {
       ...(input.reason === undefined ? {} : { reason: input.reason }),
@@ -839,16 +872,7 @@ export const goalsCancelOperation = defineOperation<
           data: { reason: 'goal-record-unreadable' },
         } satisfies OperationFault;
       case 'stale-revision':
-        throw {
-          code: 'StaleRevision',
-          message: `Goal "${input.goalRunId}" is at revision ${outcome.goal.revision}, not the expected revision ${String(input.expectedRevision)}`,
-          data: {
-            ...(input.expectedRevision === undefined
-              ? {}
-              : { expectedRevision: input.expectedRevision }),
-            currentRevision: outcome.goal.revision,
-          },
-        } satisfies OperationFault;
+        throw staleGoalFault(input.goalRunId, outcome.goal.revision, input.expectedRevision);
       default:
         return {
           goalRunId: input.goalRunId,

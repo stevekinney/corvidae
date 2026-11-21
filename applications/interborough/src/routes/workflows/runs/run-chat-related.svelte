@@ -5,6 +5,7 @@
    * when it started. A chat with no other run says so. A run the engine holds has its own related
    * runs (`run-related.svelte`), the ones it started and the ones started alongside it.
    */
+  import { Section } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
@@ -53,8 +54,7 @@
 </script>
 
 {#if tasks.isSuccess}
-  <section class="ib-run-related" aria-labelledby="ib-run-related-chat" data-section="related-chat">
-    <h2 id="ib-run-related-chat" class="ib-run__heading-2">{RUN_DETAIL_COPY.related.heading}</h2>
+  <Section title={RUN_DETAIL_COPY.related.heading} data-section="related-chat">
     {#if others.length === 0}
       <p class="ib-run__note">{RUN_DETAIL_COPY.related.noneInChat}</p>
     {:else}
@@ -70,5 +70,5 @@
         {/each}
       </ul>
     {/if}
-  </section>
+  </Section>
 {/if}

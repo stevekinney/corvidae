@@ -7,7 +7,7 @@ import {
 } from './workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-839 — Bureau's v1 MCP adapter: the official MCP SDK client, in both
- * protocol eras, lists the twenty-two "observe and steer" tools and calls them as
+ * protocol eras, lists the twenty-three "observe and steer" tools and calls them as
  * the authenticated caller, through the catalog pipeline and each operation's
  * owner predicate.
  */
@@ -36,6 +36,7 @@ const V1_TOOLS = [
   'bureau.reviews.get',
   'bureau.reviews.list',
   'bureau.reviews.resolve',
+  'bureau.runs.timeline',
   'bureau.schedules.get',
   'bureau.schedules.list',
   'bureau.tasks.cancel',
@@ -99,7 +100,7 @@ async function startRun(opened: OpenedBureau, principal: string) {
 }
 
 describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => {
-  it('lists exactly the twenty-two v1 tools', async () => {
+  it('lists exactly the twenty-three v1 tools', async () => {
     const opened = await open();
     const client = await connect(opened.handler, 'alice-key', mode);
     expect(client.getNegotiatedProtocolVersion()).toBe(version);
@@ -160,6 +161,38 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
       () => opened.bureau.tasks.detail(run.id)?.status !== 'running',
       `run ${run.id} was not cancelled`,
     );
+  });
+
+  it('takes `dryRun` on the cancel tool: the tool previews the cancel and the task keeps running (COR-2522)', async () => {
+    const opened = await open();
+    const run = await startRun(opened, OWNER.alice);
+    const alice = await connect(opened.handler, 'alice-key', mode);
+
+    const { tools } = await alice.listTools();
+    const tool = tools.find((candidate) => candidate.name === 'bureau.tasks.cancel');
+    expect(tool?.inputSchema).toMatchObject({ properties: { dryRun: { type: 'boolean' } } });
+    expect(tool?.inputSchema.required ?? []).not.toContain('dryRun');
+
+    const previewed = await alice.callTool({
+      name: 'bureau.tasks.cancel',
+      arguments: { taskId: run.id, dryRun: true },
+    });
+    expect(previewed.isError).toBeFalsy();
+    expect(previewed.structuredContent).toEqual({
+      dryRun: true,
+      target: { kind: 'task', id: run.id },
+      effects: [{ kind: 'runs-in-progress', count: 1 }],
+    });
+    expect(opened.bureau.tasks.detail(run.id)?.status).toBe('running');
+
+    // A dry run of a task the caller may not touch is the fault the real call answers.
+    const bob = await connect(opened.handler, 'bob-key', mode);
+    const hidden = await bob.callTool({
+      name: 'bureau.tasks.cancel',
+      arguments: { taskId: run.id, dryRun: true },
+    });
+    expect(hidden.isError).toBe(true);
+    expect(hidden.structuredContent).toMatchObject({ code: 'NotFound', retryable: false });
   });
 
   it('inspects a task: liveness, children, and nothing of its content', async () => {

@@ -10,6 +10,8 @@
    * global via `src/styles/foundation.css`) rather than duplicating the CSS.
    */
   import { Badge, Button } from '@lostgradient/cinder';
+
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import {
     CircleSlash,
     CircleX,
@@ -65,7 +67,7 @@
     <Badge variant={tone}>{FAULT_TREATMENT_TITLE[treatment.kind]}</Badge>
     <p class="weft-fault-boundary__message">{treatment.message}</p>
     {#if onRetry}
-      <Button size="sm" variant="secondary" label="Retry" onclick={onRetry} />
+      <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={onRetry} />
     {/if}
   </div>
 

@@ -3,8 +3,10 @@
   /* ========================================
  * SPOTLIGHT
  *
- * The one focal value of a screen: 32px bold, default text colour (never the accent), with a
- * caveat line (14px, warning text) directly under it. Liveness is a status dot and word above the value.
+ * The one focal value of a screen: 32px bold in the accent's text colour, so the screen's focus
+ * carries Cinder's colour (owner decision 2026-11-16, COR-2489), with a caveat line (14px, warning
+ * text) directly under it. Liveness is a status dot and word above the value. The value is never
+ * underlined and never a link, so its colour does not make it read as one.
  * ======================================== */
 
   .cinder-spotlight {
@@ -19,7 +21,7 @@
     font-weight: var(--cinder-font-bold);
     line-height: 1.1;
     font-variant-numeric: tabular-nums;
-    color: var(--cinder-text-default);
+    color: var(--cinder-accent-text);
     text-wrap: balance;
   }
 

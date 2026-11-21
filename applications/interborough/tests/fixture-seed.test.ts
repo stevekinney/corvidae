@@ -59,6 +59,7 @@ describe('seed', () => {
     // Runs that wait by design.
     expect(byType.get('long-sleeper')).toEqual(['running']);
     expect(byType.get('review-gate')).toEqual(['running']);
+    expect(byType.get('markdown-review')).toEqual(['running']);
     expect(byType.get('signal-stepped')).toEqual(['running']);
     expect(byType.get('ship-package-async')).toEqual(['running']);
     expect(byType.get('monitor-delivery')).toEqual(['running']);

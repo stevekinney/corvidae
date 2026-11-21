@@ -13,7 +13,6 @@ import {
   providerOf,
   referenceTotals,
   restartBackWords,
-  secretsDirectory,
   sourceKind,
   sourceWord,
   standingNames,
@@ -129,12 +128,7 @@ describe('what a plugin adds and what names it', () => {
     expect(inUseSentence(standing({ name: 'a', status: 'needs-setup' }))).toBeUndefined();
   });
 
-  test('says where a secret is kept and which model provider a plugin is', () => {
-    expect(secretsDirectory('/Users/steve/.interborough/secrets/anthropic-api-key')).toBe(
-      '~/.interborough/secrets',
-    );
-    expect(secretsDirectory('/srv/state/secrets/key')).toBe('/srv/state/secrets');
-    expect(secretsDirectory('ANTHROPIC_API_KEY')).toBe('ANTHROPIC_API_KEY');
+  test('says which model provider a plugin is', () => {
     expect(
       providerOf(
         standing({

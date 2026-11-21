@@ -47,11 +47,11 @@
     "hover": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.9712, 0.0144, 256.02]
+        "components": [0.9664, 0.0168, 256.19]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%)"
+          "cssRecipe": "color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 7%)"
         }
       }
     },
@@ -76,14 +76,14 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.004, 265]
+        "components": [0.971, 0.006, 265]
       }
     },
     "translucent": {
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.004, 265],
+        "components": [0.971, 0.006, 265],
         "alpha": 0.9
       },
       "$extensions": {
@@ -113,10 +113,74 @@
     "faint": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.92, 0.003, 255]
+        "components": [0.885, 0.004, 255]
       }
     },
     "$root": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.2, 0.02, 255],
+        "alpha": 0.16
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 84%)"
+        }
+      }
+    },
+    "control": {
+      "$root": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
+          "alpha": 0.5
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 50%)"
+          }
+        }
+      },
+      "hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
+          "alpha": 0.6
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 40%)"
+          }
+        }
+      }
+    },
+    "contrast": {
+      "$root": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
+          "alpha": 0.66
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 34%)"
+          }
+        }
+      },
+      "hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
+          "alpha": 0.76
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 24%)"
+          }
+        }
+      }
+    },
+    "muted": {
       "$value": {
         "colorSpace": "oklch",
         "components": [0.2, 0.02, 255],
@@ -128,79 +192,15 @@
         }
       }
     },
-    "control": {
-      "$root": {
-        "$value": {
-          "colorSpace": "oklch",
-          "components": [0.2, 0.02, 255],
-          "alpha": 0.32
-        },
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)"
-          }
-        }
-      },
-      "hover": {
-        "$value": {
-          "colorSpace": "oklch",
-          "components": [0.2, 0.02, 255],
-          "alpha": 0.42
-        },
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 58%)"
-          }
-        }
-      }
-    },
-    "contrast": {
-      "$root": {
-        "$value": {
-          "colorSpace": "oklch",
-          "components": [0.2, 0.02, 255],
-          "alpha": 0.48
-        },
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 52%)"
-          }
-        }
-      },
-      "hover": {
-        "$value": {
-          "colorSpace": "oklch",
-          "components": [0.2, 0.02, 255],
-          "alpha": 0.58
-        },
-        "$extensions": {
-          "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 42%)"
-          }
-        }
-      }
-    },
-    "muted": {
-      "$value": {
-        "colorSpace": "oklch",
-        "components": [0.2, 0.02, 255],
-        "alpha": 0.05
-      },
-      "$extensions": {
-        "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 95%)"
-        }
-      }
-    },
     "strong": {
       "$value": {
         "colorSpace": "oklch",
         "components": [0.2, 0.02, 255],
-        "alpha": 0.15
+        "alpha": 0.24
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 85%)"
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 76%)"
         }
       }
     }
@@ -216,7 +216,7 @@
     "subtle": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.5, 0.01, 265]
+        "components": [0.47, 0.01, 265]
       }
     },
     "disabled": {
@@ -232,7 +232,7 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.2, 0.018, 245]
+        "components": [0.17, 0.018, 245]
       }
     }
   },
@@ -371,11 +371,11 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.62, 0.16, 272]
+        "components": [0.612, 0.16, 272]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.62 0.16 h)"
+          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.612 0.16 h)"
         }
       }
     },
@@ -777,11 +777,11 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.965, 0.035, 148]
+          "components": [0.965, 0.055, 148]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "oklch(96.5% 0.035 148)"
+            "cssRecipe": "oklch(96.5% 0.055 148)"
           }
         }
       },
@@ -803,7 +803,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.456, 0.05, 151.329]
+          "components": [0.4452, 0.05, 151.329]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -885,7 +885,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.5776, 0.05, 75.641]
+          "components": [0.5668, 0.05, 75.641]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -988,7 +988,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4368, 0.05, 25.392]
+          "components": [0.426, 0.05, 25.392]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -1070,7 +1070,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.424, 0.05, 238.535]
+          "components": [0.4132, 0.05, 238.535]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -1189,13 +1189,26 @@
       "background": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.2, 0.018, 245],
+          "components": [0.17, 0.018, 245],
           "alpha": 0.08
         },
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 92%)"
           }
+        }
+      }
+    }
+  },
+  "selected": {
+    "background": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.8944, 0.0528, 258.74]
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-accent-solid), var(--cinder-surface) 78%)"
         }
       }
     }

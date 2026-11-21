@@ -122,9 +122,9 @@ describe('the select’s options', () => {
     const { container } = mount({ current: 'high' });
 
     expect(shownPrefix(container)).toBe(SETTINGS.effort);
-    expect(container.querySelector('.cinder-select')?.getAttribute('data-cinder-variant')).toBe(
-      'ghost',
-    );
+    expect(
+      container.querySelector('.cinder-select')?.classList.contains('select-variant-ghost'),
+    ).toBe(true);
   });
 
   test('gives each option its help line when the setting has them', async () => {

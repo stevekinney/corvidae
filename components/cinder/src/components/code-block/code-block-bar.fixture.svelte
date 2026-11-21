@@ -30,6 +30,10 @@ const message = greet('world');`;
 <style>
   .code-block-bar {
     display: grid;
+    /* One track that may shrink to the viewport. An `auto` track is as wide as its widest item's
+     * min-content, and the scrolling block's unbroken line is about 900px, so at desktop the page
+     * grew to 843px and on a phone the copy controls were cut off. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--cinder-space-4);
     max-inline-size: 36rem;
     padding: var(--cinder-space-4);

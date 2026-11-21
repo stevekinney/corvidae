@@ -1,11 +1,13 @@
 import type { WorkflowWorkerBindingRecord } from '../../worker/versioning-policy.ts';
 import type { AtomicStateOptions } from '../atomic-state.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
+import type { WeftErrorCode } from '../weft-error.ts';
 import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import type { ActivityCallOptions } from './activity.ts';
 import type { CheckpointState } from './checkpoint.ts';
 import type { TerminationReason } from './history-policy.ts';
-import type { FailureCategory, WorkflowId, WorkflowStatus } from './identity.ts';
+import type { FailureCategory, ForkLineage, WorkflowId, WorkflowStatus } from './identity.ts';
+import type { WorkflowFailedStep, WorkflowRetrying } from './workflow-failure.ts';
 import type { WorkflowOperation } from './workflow-function.ts';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +42,10 @@ export interface WorkflowState {
    * `engine.list({ attributes: [{ key: 'failureCategory', value: 'application' }] })`
    */
   failureCategory?: FailureCategory | null;
+  /** The {@link WeftErrorCode} of the Weft error that failed this workflow, stored in the failure write. */
+  errorCode?: WeftErrorCode;
+  /** The step the failed run was on (the one the timeline marks failed), stored in the failure write. */
+  failedStep?: WorkflowFailedStep;
   /**
    * Distinct reason a workflow reached its terminal state, beyond the
    * {@link WorkflowStatus} itself. Currently populated only when the history
@@ -154,16 +160,6 @@ export interface RestartLineage {
   workflowId: WorkflowId;
   workflowExecutionToken?: string;
   replacedAt: number;
-}
-
-/**
- * Lineage metadata recorded when a workflow was created by forking another
- * workflow at a checkpoint boundary. Absent on workflows started normally via
- * {@link Engine.start}. Available on {@link WorkflowState.forkedFrom}.
- */
-export interface ForkLineage {
-  workflowId: WorkflowId;
-  step: number;
 }
 
 /**
@@ -414,6 +410,14 @@ export interface WorkflowSummary {
   executionDeadline?: number;
   /** Failure category if set on the workflow state. */
   failureCategory?: FailureCategory;
+  /** The step a failed run stopped at, from {@link WorkflowState.failedStep}. */
+  failedStep?: WorkflowFailedStep;
+  /**
+   * The activity a running workflow is retrying, from attempt 2 (in the backoff before it and
+   * while it runs) until it settles or its retries run out; the one on the highest attempt when
+   * several retry at once.
+   */
+  retrying?: WorkflowRetrying;
 }
 
 // ---------------------------------------------------------------------------

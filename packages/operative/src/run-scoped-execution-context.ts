@@ -17,6 +17,16 @@ import { readBureauInvariants, withBureauInvariants } from './bureau-invariants'
 import type { RunOptions } from './types';
 
 /**
+ * COR-2526 — the `executionContext` key under which a step hands its tool calls the run's own
+ * emitter. A subagent tool built with no `parentContext` announces the child it dispatches on it,
+ * so the run's liveness reads the delegation as a wait on that child (`wireChildWaitLiveness`),
+ * where a tool built with a `parentContext` announces on that context's emitter. Part of the step,
+ * not of the run-scoped set a host rebuilds to resume a parked call: a resumed call is no longer
+ * inside the step whose tool call the run's liveness is timing.
+ */
+export const CHILD_EVENT_EMITTER_EXECUTION_KEY = 'childEventEmitter';
+
+/**
  * What a run's options contribute to its tool calls' `executionContext`. `StepDeps` carries the same
  * fields, so the step reads them from its deps and a host reads them from the options it built.
  */

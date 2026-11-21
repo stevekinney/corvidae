@@ -11,7 +11,7 @@
 <Rating id={fieldId} bind:value={score} label="Rate this article" />
 
 {#if score > 0}
-  <p style="margin-top: var(--cinder-space-3); color: var(--cinder-text-muted);">
+  <p class="margin-block-start-3 text-muted">
     You rated this {score} of 5.
   </p>
 {/if}

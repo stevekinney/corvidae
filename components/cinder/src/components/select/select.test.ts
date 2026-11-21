@@ -502,46 +502,104 @@ describe('Select — ghost variant', () => {
     const { container } = render(Select, {
       props: { id: 'ghost-native', label: 'Agent', options: defaultOptions, variant: 'ghost' },
     });
-    expect(container.querySelector('select')?.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(container.querySelector('select')?.classList.contains('select-variant-ghost')).toBe(
+      true,
+    );
     expect(
-      container.querySelector('.cinder-select-field')?.getAttribute('data-cinder-variant'),
-    ).toBe('ghost');
+      container.querySelector('.cinder-select-field')?.classList.contains('select-variant-ghost'),
+    ).toBe(true);
   });
 
   test('the default variant is the bordered select', () => {
     const { container } = render(Select, {
       props: { id: 'bordered', label: 'Agent', options: defaultOptions },
     });
-    expect(container.querySelector('select')?.getAttribute('data-cinder-variant')).toBe('default');
+    expect(container.querySelector('select')?.classList.contains('select-variant-default')).toBe(
+      true,
+    );
   });
 
   test('ghost has no border or fill at rest, a neutral hover tint and the chevron kept', () => {
     const styles = readSelectStyles();
-    const rest = styles.slice(styles.indexOf(".cinder-select[data-cinder-variant='ghost'] {"));
+    const rest = styles.slice(styles.indexOf('.cinder-select.select-variant-ghost {'));
     const restBlock = rest.slice(0, rest.indexOf('}'));
     expect(restBlock).toContain('background-color: transparent');
     expect(restBlock).toContain('border-color: transparent');
-    expect(styles).toContain("cinder-select[data-cinder-variant='ghost']:hover:not(:disabled)");
+    expect(styles).toContain('.cinder-select.select-variant-ghost:hover:not(:disabled)');
+    expect(styles).toContain(".cinder-select.select-variant-ghost[aria-expanded='true']");
     expect(styles).toContain('color-mix(in oklch, var(--cinder-border-ink), transparent 94%)');
     // The chevron is repositioned, never removed.
-    expect(styles).toContain(
-      ".cinder-select[data-cinder-variant='ghost'] + .cinder-select-field__chevron",
-    );
+    expect(styles).toContain('.cinder-select.select-variant-ghost + .cinder-select-field__chevron');
     expect(styles).not.toMatch(/ghost'\] \+ \.cinder-select-field__chevron \{[^}]*display:\s*none/);
   });
 
   test('a ghost select can shrink inside a flex row and caps its trigger at the field, so a composer at phone width never overflows (row 02u)', () => {
     const styles = readSelectStyles();
     const fieldBlock = styles
-      .slice(styles.indexOf(".cinder-select-field[data-cinder-variant='ghost'] {"))
+      .slice(styles.indexOf('.cinder-select-field.select-variant-ghost {'))
       .split('}')[0];
     expect(fieldBlock).toContain('min-inline-size: 0');
     expect(fieldBlock).toContain('max-inline-size: 100%');
     const controlBlock = styles
-      .slice(styles.indexOf(".cinder-select-field[data-cinder-variant='ghost'] .cinder-select {"))
+      .slice(styles.indexOf('.cinder-select-field.select-variant-ghost .cinder-select {'))
       .split('}')[0];
     expect(controlBlock).toContain('max-inline-size: 100%');
     expect(controlBlock).toContain('min-inline-size: 0');
+  });
+
+  // COR-2489: on Home's Start a chat the quiet Select's text started 11px inside the field edge (its
+  // 10px inline padding and a 1px transparent border), out of line with the text above it.
+  test('a ghost select that leads its row has a zero text inset: the pull-back is its padding and border', () => {
+    const styles = readSelectStyles();
+    const rest = styles.slice(styles.indexOf('.cinder-select.select-variant-ghost {'));
+    const restBlock = rest.slice(0, rest.indexOf('}'));
+    const leadingPadding = /padding-inline:\s*(var\(--cinder-pad-control\))\s/.exec(restBlock)?.[1];
+    expect(leadingPadding).toBe('var(--cinder-pad-control)');
+    // Every select is drawn inside a 1px border, transparent on the ghost.
+    const base = styles.slice(styles.indexOf('.cinder-select {'));
+    expect(base.slice(0, base.indexOf('}'))).toContain(
+      'border: 1px solid var(--cinder-control-border)',
+    );
+
+    const flush =
+      /\.cinder-select-field\.select-variant-ghost\[data-cinder-flush\]\s+\.cinder-select-field__control \{([^}]*)\}/.exec(
+        styles,
+      )?.[1];
+    expect(flush).toContain(`margin-inline-start: calc(-1 * (${leadingPadding} + 1px));`);
+    // Opt-in, and the control moves, not the field, so a label or a message keeps the edge and a
+    // ghost select after another control keeps its place.
+    expect(styles).not.toMatch(
+      /\.cinder-select-field\.select-variant-ghost(:first-child)? \{[^}]*margin-inline-start/,
+    );
+  });
+
+  test('flush marks only a ghost select, and is off by default', () => {
+    const flush = render(Select, {
+      props: {
+        id: 'flush',
+        label: 'Agent',
+        options: defaultOptions,
+        variant: 'ghost',
+        flush: true,
+      },
+    });
+    expect(
+      flush.container.querySelector('.cinder-select-field')?.hasAttribute('data-cinder-flush'),
+    ).toBe(true);
+    flush.unmount();
+    const plain = render(Select, {
+      props: { id: 'plain', label: 'Agent', options: defaultOptions, variant: 'ghost' },
+    });
+    expect(
+      plain.container.querySelector('.cinder-select-field')?.hasAttribute('data-cinder-flush'),
+    ).toBe(false);
+    plain.unmount();
+    const bordered = render(Select, {
+      props: { id: 'bordered', label: 'Agent', options: defaultOptions, flush: true },
+    });
+    expect(
+      bordered.container.querySelector('.cinder-select-field')?.hasAttribute('data-cinder-flush'),
+    ).toBe(false);
   });
 
   test('the ghost focus ring wraps the whole control through the shared ring, border transparent', () => {

@@ -8,7 +8,7 @@ export type StepsOrientation = 'horizontal' | 'vertical';
  *
  * - `'stepper'`: the ordered wizard indicator, a navigation landmark with markers and connectors.
  *   Which step is current comes from `currentStep`.
- * - `'checklist'`: a bordered card of rows, each with a marker, a label, a description and an
+ * - `'checklist'`: a grouped list of rows, each with a marker, a label, a description and an
  *   `action`, under an optional `heading` and a "N of M done" counter. Steps complete in any
  *   order: a step is done when its `done` is set, and the current step is the first one that
  *   isn't.
@@ -79,7 +79,7 @@ export type StepsProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
   currentStep?: number;
   /**
    * Which list the steps render as: `'stepper'` is the ordered wizard indicator, `'checklist'` is
-   * a card of rows that each carry an action, and `'status'` is a list of progress by step.
+   * a grouped list of rows that each carry an action, and `'status'` is a list of progress by step.
    * @default "stepper"
    */
   variant?: StepsVariant;
@@ -89,8 +89,8 @@ export type StepsProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
    */
   orientation?: StepsOrientation;
   /**
-   * Title of the `'checklist'` card, such as "Get started". It sits at the start of the card's
-   * header row, with the counter at the end, and names the section.
+   * Title of the `'checklist'` list, such as "Get started". It sits at the start of the line above
+   * the rows, with the counter at the end, and names the section.
    */
   heading?: string;
   /**

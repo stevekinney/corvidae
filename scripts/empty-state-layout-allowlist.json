@@ -18,8 +18,6 @@
   "applications/interborough/src/routes/chat/reply-details.svelte": 1,
   "applications/interborough/src/routes/health/recent-activity.svelte": 1,
   "applications/interborough/src/routes/home/home-agent-activity.svelte": 1,
-  "applications/interborough/src/routes/home/home-needs-attention.svelte": 1,
-  "applications/interborough/src/routes/home/home-recent-chats.svelte": 1,
   "applications/interborough/src/routes/home/home-workflow-activity.svelte": 1,
   "applications/interborough/src/routes/hooks/hook-deliveries.svelte": 3,
   "applications/interborough/src/routes/schedules/schedule-runs.svelte": 1,

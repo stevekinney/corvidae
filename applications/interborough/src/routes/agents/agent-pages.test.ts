@@ -450,9 +450,12 @@ describe('the list of agents, and the agent editor', () => {
     expect(row?.getAttribute('data-state')).toBe('invalid');
     expect(row?.textContent).toContain('unknown-model');
     expect(row?.textContent).toContain('The model is not in the catalog.');
+    // The path relative to the Interborough home, as the editor names it: a host path never shows
+    // in a row (owner, 2026-11-19).
     expect(row?.querySelector('[data-testid="agent-file-path"]')?.textContent).toBe(
-      '/home/tester/.interborough/agents/broken.md',
+      'agents/broken.md',
     );
+    expect(row?.textContent).not.toContain('/home/tester');
     // A file that loaded is listed once, by `bureau.agents.list`, and never as invalid.
     expect(container.querySelectorAll('[data-agent="researcher"]')).toHaveLength(1);
     expect(container.querySelector('[data-agent="researcher"]')?.getAttribute('data-state')).toBe(
@@ -473,7 +476,7 @@ describe('the list of agents, and the agent editor', () => {
     expect(router.pathname).toBe('/agents/broken/edit');
   });
 
-  test('shows an invalid agent’s location as a remote host gave it, with no introduction', async () => {
+  test('shows an invalid agent’s path relative to the home on a remote host too, with no introduction', async () => {
     const served = bureau(
       {
         'bureau.agents.list': () => ({ agents: [AGENT, FILE_AGENT] }),
@@ -490,8 +493,8 @@ describe('the list of agents, and the agent editor', () => {
 
     await findByText(AGENT_EDITOR_COPY.invalidBadge);
     const path = container.querySelector('[data-agent="broken"] [data-testid="agent-file-path"]');
-    expect(path?.textContent).toBe(`${STUB_REMOTE_AGENT_DIRECTORY}broken.md`);
-    expect(path?.textContent).toMatch(/^s3:\/\//);
+    expect(path?.textContent).toBe('agents/broken.md');
+    expect(container.textContent).not.toContain(STUB_REMOTE_AGENT_DIRECTORY);
     expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.remote.fileLabel);
   });
 

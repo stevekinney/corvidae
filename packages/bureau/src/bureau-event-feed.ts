@@ -97,7 +97,9 @@ import {
   RunTripwireRecordedEvent,
   ToolErrorRecordedEvent,
   ToolPolicyDeniedRecordedEvent,
+  RunLoopingEvent,
   RunSettledEvent,
+  RunStalledEvent,
   RunRemovedEvent,
 } from './events.ts';
 import {
@@ -290,6 +292,8 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'run.tripwire': 'published',
   'run.guardrail': 'published',
   'budget.threshold': 'published',
+  'run.stalled': 'published',
+  'run.looping': 'published',
   'tool.policy-denied': 'published',
   'tool.error': 'published',
   'multiagent.child-workflow.started': 'published',
@@ -520,6 +524,15 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   projection(RunRegisteredEvent.type, isInstance(RunRegisteredEvent), (event) => ({
     runId: event.runId,
   })),
+  projection(RunStalledEvent.type, isInstance(RunStalledEvent), (event) => ({
+    runId: event.runId,
+    since: event.since,
+  })),
+  projection(RunLoopingEvent.type, isInstance(RunLoopingEvent), (event) => ({
+    runId: event.runId,
+    since: event.since,
+    level: event.level,
+  })),
   projection(RunSettledEvent.type, isInstance(RunSettledEvent), (event) =>
     definedFields({
       runId: event.runId,
@@ -571,6 +584,7 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   })),
   projection(AgentScheduledEvent.type, isInstance(AgentScheduledEvent), (event) => ({
     agentName: event.agentName,
+    target: event.scheduleTarget,
     scheduleId: event.scheduleId,
     sessionId: event.sessionId,
   })),

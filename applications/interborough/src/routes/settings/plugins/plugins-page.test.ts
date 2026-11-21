@@ -346,13 +346,11 @@ describe('a plugin', () => {
     expect(detail.textContent).toContain(PLUGINS_COPY.sourceKind.folder);
     const adds = detail.querySelector('[data-testid="plugin-adds"]')!;
     expect(adds.textContent).toContain(PLUGINS_COPY.contributionKinds['tool']!);
-    // The title the plugin gave, with the identifier (and no version) small beside it.
+    // The contribution uses its display title.
     expect(adds.querySelector('[data-contribution="linear:create-issue"]')?.textContent).toContain(
       'Create an issue',
     );
-    expect(adds.querySelector('[data-contribution="linear:create-issue"]')?.textContent).toContain(
-      'linear:create-issue',
-    );
+    expect(adds.textContent).not.toContain('linear:create-issue');
     // A name with no title is the identifier as words.
     expect(adds.querySelector('[data-contribution="linear:sync-issue"]')?.textContent).toContain(
       'Sync issue',
@@ -470,8 +468,10 @@ describe('a plugin', () => {
     ).not.toBeNull();
     expect(secret.textContent).toContain(PLUGINS_COPY.secrets.add);
     expect(detail.querySelector('[data-testid="plugin-secret-note"]')?.textContent?.trim()).toBe(
-      PLUGINS_COPY.secrets.note('/home/.bungalow/secrets', 'TypeSafe', false),
+      PLUGINS_COPY.secrets.note('TypeSafe', false),
     );
+    // Where or how the key is stored never renders (owner, 2026-11-19).
+    expect(detail.textContent).not.toMatch(/workspace:|\/secrets|\.bungalow/);
     // Nothing to put in use while it cannot run.
     expect(container.querySelector('[data-testid="plugin-in-use"]')).toBeNull();
   });
@@ -901,8 +901,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('danger');
+        .classList.contains('button-variant-danger'),
+    ).toBe(true);
     // Cinder draws the list: it sits directly in the dialog's options, with no wrapper of the page's.
     expect(
       dialog.querySelector('[data-testid="plugin-disable-impacts"]')?.parentElement?.className,
@@ -980,8 +980,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // One question, which confirms with the one press: no second step.
     await fireEvent.click(
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
@@ -1024,8 +1024,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('danger');
+        .classList.contains('button-variant-danger'),
+    ).toBe(true);
     // Disabling is never blocked on a read: the question still confirms.
     await fireEvent.click(
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
@@ -1219,8 +1219,8 @@ describe('restarting', () => {
     await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('reconnecting'));
     expect(card.textContent).toContain('Attempt 1 of 8.');
     expect(container.querySelector('[data-testid="restart-back"]')).toBeNull();
-    // Retry now probes at once, without waiting out the minute the countdown has left.
-    await fireEvent.click(within(card).getByRole('button', { name: 'Retry now' }));
+    // Try again probes at once, without waiting out the minute the countdown has left.
+    await fireEvent.click(within(card).getByRole('button', { name: 'Try again' }));
     await backBanner(container);
   });
 

@@ -102,7 +102,12 @@ describe('workflow errors thrown behind a default createBureauHandler', () => {
   it('WorkflowAlreadyExistsError answers Conflict', async () => {
     expect(await errorOf(new WorkflowAlreadyExistsError('wf-1'))).toEqual({
       code: -32021,
-      data: { httpStatus: 409, reason: 'resource already exists', weftCode: 'Conflict' },
+      data: {
+        httpStatus: 409,
+        reason: 'resource already exists',
+        retryable: false,
+        weftCode: 'Conflict',
+      },
       message: 'conflict',
     });
   });
@@ -111,7 +116,7 @@ describe('workflow errors thrown behind a default createBureauHandler', () => {
     const error = new WorkflowNotRegisteredError('missing-type');
     expect(await errorOf(error)).toEqual({
       code: -32602,
-      data: { httpStatus: 400, issues: [], weftCode: 'InvalidParams' },
+      data: { httpStatus: 400, issues: [], retryable: false, weftCode: 'InvalidParams' },
       message: error.message,
     });
   });
@@ -119,7 +124,7 @@ describe('workflow errors thrown behind a default createBureauHandler', () => {
   it('WorkflowNotFoundError answers NotFound', async () => {
     expect(await errorOf(new WorkflowNotFoundError('wf-1'))).toEqual({
       code: -32020,
-      data: { httpStatus: 404, resource: 'workflow', weftCode: 'NotFound' },
+      data: { httpStatus: 404, resource: 'workflow', retryable: false, weftCode: 'NotFound' },
       message: 'not found',
     });
   });

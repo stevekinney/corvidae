@@ -57,8 +57,16 @@
    `createAnchoredOverlayExitState` / `waitForTransitionCompletion`), not the
    instant it stops being shown — see OVERLAY-POLICY.md § "Transition
    lifecycle". `aria-hidden` (set directly by the component) still flips
-   immediately for assistive tech; only the visual `visibility` waits. */
+   immediately for assistive tech; only the visual `visibility` waits.
+
+   A closed panel also takes no part in layout (`display: none`). It is `position: fixed` and, while
+   closed, sits inside its wrapper rather than in the body, so an ancestor with a `transform`, a
+   `filter` or containment is its containing block: `visibility` alone leaves a `max-content` box
+   at that ancestor's edge, and the ancestor scrolls sideways to reach it. `display: none` still
+   leaves the panel a valid `aria-describedby` target. `data-cinder-visible` is set before the
+   panel is positioned and outlives the fade-out, so the open and close paths are unchanged. */
   .cinder-tooltip:not([data-cinder-visible]) {
+    display: none;
     visibility: hidden;
   }
 

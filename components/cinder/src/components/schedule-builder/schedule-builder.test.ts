@@ -608,7 +608,7 @@ describe('ScheduleBuilder', () => {
       expect(overlap.selectedOptions[0]?.textContent?.trim()).toBe('Skip this one');
       expect(catchUp.selectedOptions[0]?.textContent?.trim()).toBe('Don’t catch up on missed runs');
       // Plain bordered selects, not the ghost variant.
-      expect(overlap.getAttribute('data-cinder-variant')).not.toBe('ghost');
+      expect(overlap.classList.contains('select-variant-default')).toBe(true);
       expect(policies.contains(overlap) && policies.contains(catchUp)).toBe(true);
     });
 

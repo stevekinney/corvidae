@@ -6,7 +6,7 @@ export interface Box {
 }
 /** One control the page shows: a button, a link, a field, or another widget a person operates. */
 export interface ControlFact {
-  /** The tag and first class, with a Cinder size when it has one: `button.cinder-button[size=md]`. */
+  /** The tag and first class, with a Cinder size when it has one: `button.cinder-button[size=medium]`. */
   readonly name: string;
   readonly kind: 'button' | 'link' | 'field' | 'other';
   /** The visible label, collapsed and cut to sixty characters; empty for an icon-only control. */

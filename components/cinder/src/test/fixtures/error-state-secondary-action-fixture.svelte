@@ -13,7 +13,7 @@
   <ErrorState
     title="Couldn’t load runs"
     description="Interborough didn’t answer."
-    retryLabel="Retry now"
+    retryLabel="Try again"
     onRetry={() => {}}
     secondaryAction={openHealth}
   />

@@ -1069,7 +1069,7 @@ describe('steps repeated for each item', () => {
     const described = document.getElementById(emptyAdd.getAttribute('aria-describedby') ?? '');
     expect(described?.textContent).toContain(WORKFLOW_COPY.builder.problems.emptyList);
     // It is drawn at the painted height of a small Button, as every Add a case is.
-    expect(emptyAdd.getAttribute('data-cinder-size')).toBe('sm');
+    expect(emptyAdd.classList.contains('button-size-small')).toBe(true);
 
     await fireEvent.input(field(container, 'workflow-builder-step-2-over'), {
       target: { value: 'files' },

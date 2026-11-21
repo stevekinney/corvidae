@@ -268,7 +268,7 @@ export const tasksInspectOperation = defineOperation<
       schemaVersion: TASK_INSPECTION_SCHEMA_VERSION,
       taskId: input.taskId,
       canCancel: await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'),
-      task: { ...task, openWaits: [...task.openWaits] },
+      task: { ...task, openWaits: [...task.openWaits], attention: [...task.attention] },
       liveness: projectLiveness(inspection.liveness),
       children: inspection.children.map((child) => ({
         runId: child.childRunId,

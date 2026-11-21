@@ -77,7 +77,7 @@
     </TableBody>
   </Table>
 
-  <Table caption="Build history" style="min-inline-size: 48rem">
+  <Table caption="Build history" class="table-fixture-table">
     <TableHeader>
       <TableRow>
         <TableHeaderCell>Name</TableHeaderCell>
@@ -115,7 +115,7 @@
 
   <!-- A Table inside a Card (COR-2449): frameless by default, since the card is the frame, and
        beside it the `framed` opt-in that draws the table's own frame within the card. -->
-  <div data-testid="table-in-card" class="table-in-card">
+  <div data-testid="table-in-card" class="table-in-card gap-6 margin-block-start-6">
     <div data-testid="table-in-card-flat">
       <Card title="Contributors">
         <Table caption="Contributors in a card">
@@ -166,7 +166,9 @@
 
   .table-in-card {
     display: grid;
-    gap: var(--cinder-space-6);
-    margin-block-start: var(--cinder-space-6);
+  }
+
+  :global(.table-fixture-table) {
+    min-inline-size: 48rem;
   }
 </style>

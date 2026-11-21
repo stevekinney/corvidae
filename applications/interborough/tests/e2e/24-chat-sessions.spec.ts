@@ -29,7 +29,7 @@ const composer = (page: Page) => page.getByRole('textbox');
  * is a secondary icon button of the same name.
  */
 const newChatAction = (page: Page) =>
-  page.getByRole('link', { name: 'New chat' }).and(page.locator('[data-cinder-variant="primary"]'));
+  page.getByRole('link', { name: 'New chat' }).and(page.locator('.button-variant-primary'));
 
 // A new chat with no `?agent=` starts with the host's default agent, the barrier agent
 // (`E2E_DEFAULT_AGENT`), which holds its run until the barrier is released. A spec that sends to it

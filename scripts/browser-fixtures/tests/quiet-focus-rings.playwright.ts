@@ -66,7 +66,7 @@ const TIGHT_DEFAULT_CASES: readonly RingCase[] = [
     label: 'secondary Button',
     slug: 'button',
     expected: 'tight',
-    target: (page) => page.locator('button.cinder-button[data-cinder-variant="secondary"]').first(),
+    target: (page) => page.locator('button.cinder-button.button-variant-secondary').first(),
   },
   {
     label: 'Input',
@@ -118,14 +118,14 @@ const FILLED_CASES: readonly RingCase[] = [
     slug: 'button',
     fixtureName: 'primary',
     expected: 'gap',
-    target: (page) => page.locator('.cinder-button[data-cinder-variant="primary"]'),
+    target: (page) => page.locator('.cinder-button.button-variant-primary'),
   },
   {
     label: 'danger Button',
     slug: 'button',
     fixtureName: 'danger',
     expected: 'gap',
-    target: (page) => page.locator('.cinder-button[data-cinder-variant="danger"]'),
+    target: (page) => page.locator('.cinder-button.button-variant-danger'),
   },
   {
     label: 'checked Checkbox',
@@ -251,9 +251,8 @@ const FILLED_CASES: readonly RingCase[] = [
     prepare: async (page) => {
       await page.locator('.chat-input textarea').first().fill('Hello');
       await expect(page.locator('.chat-input-send').first()).toBeEnabled();
-      await expect(page.locator('.chat-input-send').first()).toHaveAttribute(
-        'data-cinder-variant',
-        'primary',
+      await expect(page.locator('.chat-input-send').first()).toContainClass(
+        'button-variant-primary',
       );
     },
     walkFrom: (page) => page.locator('.chat-input textarea').first(),
@@ -291,7 +290,7 @@ const UNFILLED_CASES: readonly RingCase[] = [
     slug: 'button',
     fixtureName: 'primary',
     expected: 'tight',
-    target: (page) => page.locator('.cinder-button[data-cinder-variant="primary"]'),
+    target: (page) => page.locator('.cinder-button.button-variant-primary'),
     prepare: (_page, target) => setAttributes(target, { 'aria-disabled': 'true' }),
   },
 ];

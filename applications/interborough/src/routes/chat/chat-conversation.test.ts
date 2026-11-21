@@ -150,7 +150,7 @@ describe('a new chat', () => {
     const select = await findByRole('combobox', { name: 'Agent' });
     expect(select.closest('.chat-input-header')).not.toBeNull();
     expect(select.closest('.ib-agent-select')).not.toBeNull();
-    expect(select.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(select.classList.contains('select-variant-ghost')).toBe(true);
     // The greeting is the page's title: there is no header, and so no agent control in one.
     expect(container.querySelector('[data-testid="chat-header"]')).toBeNull();
     // The agent first, then the one setting a scripted agent has, and the Send beside it.

@@ -70,9 +70,9 @@ describe('the forbidden page', () => {
       'Back to Home',
     ]);
     for (const button of buttons) {
-      expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(button.classList.contains('button-variant-secondary')).toBe(true);
     }
-    expect(container.querySelector('[data-cinder-variant="primary"]')).toBeNull();
+    expect(container.querySelector('.button-variant-primary')).toBeNull();
     expect(queryByRole('button', { name: /request/i })).toBeNull();
     expect(queryByRole('link', { name: /request/i })).toBeNull();
     expect(getByRole('link', { name: 'See your scopes' }).getAttribute('href')).toBe(

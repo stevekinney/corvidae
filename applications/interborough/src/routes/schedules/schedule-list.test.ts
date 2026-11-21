@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
   codeDefinition,
@@ -181,7 +182,7 @@ describe('the heading and the header action', () => {
     expect(container.textContent).toMatch(/Runs that start on a timetable\. Times are in .+\./);
     const create = await findByRole('button', { name: 'New schedule' });
     expect(create.textContent?.trim()).toBe('');
-    expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(create.classList.contains('button-variant-secondary')).toBe(true);
     await fireEvent.click(create);
     expect(router.pathname).toBe('/schedules/new');
   });
@@ -410,7 +411,7 @@ describe('a workflow filter and a Bureau that did not say what the schedules sta
   test('says so over the rows it has, and Retry asks again', async () => {
     const world = sampleWorld({ failBureauSchedules: true, failBureauFiles: true });
     const { container, findByRole } = open('/schedules', world);
-    const retry = await findByRole('button', { name: 'Retry' });
+    const retry = await findByRole('button', { name: RETRY_LABEL });
     expect(container.textContent).toContain(SCHEDULE_COPY.overlayFailed.title);
     world.failBureauSchedules = false;
     world.failBureauFiles = false;

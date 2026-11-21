@@ -6,6 +6,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { diagnosticItem, EMPTY_DIAGNOSTICS_SUMMARY } from './index-actions.test-support.ts';
 import TaskEvidenceHarness from './task-evidence-harness.test-harness.svelte';
 import WorkerDiagnosticsSection from './worker-diagnostics-section.svelte';
@@ -90,7 +91,7 @@ describe('WorkerDiagnosticsSection', () => {
       items: [],
       summary: EMPTY_DIAGNOSTICS_SUMMARY,
     });
-    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     expect(await view.findByText('No diagnostics for this worker')).not.toBeNull();
   });
 });
