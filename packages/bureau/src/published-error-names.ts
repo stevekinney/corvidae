@@ -174,6 +174,11 @@ export function publishableErrorCode(code: unknown, fallback: string): string {
   return typeof code === 'string' && IDENTIFIER.test(code) ? code : fallback;
 }
 
+/** The error code to publish: `code` when it is an identifier, otherwise nothing. */
+export function publishableOptionalErrorCode(code: unknown): string | undefined {
+  return typeof code === 'string' && IDENTIFIER.test(code) ? code : undefined;
+}
+
 /**
  * The finish reason to publish: `reason` when it is a member of the finish-reason enum, otherwise
  * `fallback`. A child's failure can carry a rejection's message where its finish reason would be.

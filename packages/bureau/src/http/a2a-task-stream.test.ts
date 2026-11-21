@@ -34,6 +34,8 @@ const VIEW: TaskView = {
   usage: null,
   attention: [],
   stalledSince: null,
+  failure: null,
+  retrying: null,
 };
 
 function envelope(sequence: number, kind: string, payload: unknown = {}): DurableEventEnvelope {

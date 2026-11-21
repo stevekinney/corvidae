@@ -116,6 +116,7 @@ describe('attachRunEventFeed and the outcome details (COR-2095)', () => {
         record() {
           throw new Error('recorder down');
         },
+        recordRetrying() {},
       },
       onError: (error, kind) => reported.push([error, kind]),
     });
