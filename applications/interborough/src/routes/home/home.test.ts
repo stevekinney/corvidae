@@ -20,6 +20,7 @@ import {
   test,
 } from 'bun:test';
 import { Window } from 'happy-dom';
+import { readFileSync } from 'node:fs';
 
 import { FIRST_RUN_SAID_HELLO_KEY } from '../../app/first-run.ts';
 import {
@@ -82,9 +83,22 @@ async function open(
 ) {
   installed = installHome(world);
   const rendered = render(HomeHarness, { props: { client: installed.client, workspace } } as never);
-  await rendered.findByTestId('home-date');
+  await drawn(rendered.container);
   return rendered;
 }
+
+/** Waits until Home is drawn: the overview's date line, or the first-run checklist, the whole page. */
+async function drawn(container: HTMLElement): Promise<void> {
+  await waitFor(() => {
+    if (container.querySelector('[data-testid="home-date"], [data-testid="home-first-run"]'))
+      return;
+    throw new Error('Home is not drawn yet');
+  });
+}
+
+/** A Cinder button's form: its variant and its size. */
+const buttonForm = (button: Element) =>
+  [...button.classList].filter((name) => /^button-(variant|size)-/.test(name));
 
 /** The text of a card's rows, after the rows have been read. */
 function cardOf(container: HTMLElement, title: string): HTMLElement {
@@ -105,8 +119,9 @@ describe('Home', () => {
   });
 
   // COR-2329: the content-first Home leads with one Spotlight and one quiet count, not four tiles.
-  test('leads with a Spotlight that says how many reviews wait on you, and one count under it', async () => {
-    const { getByTestId } = await open();
+  // Owner, 2026-11-19: a count is shown only when it is not zero.
+  test('leads with a Spotlight that says how many reviews wait on you, and no count at zero', async () => {
+    const { container, getByTestId } = await open();
     await waitFor(() =>
       expect(
         getByTestId('home-spotlight')
@@ -114,21 +129,44 @@ describe('Home', () => {
           ?.textContent?.trim(),
       ).toBe('2 need you'),
     );
-    const counts = getByTestId('home-counts');
-    expect(counts.getAttribute('data-cinder-variant')).toBe('plain');
-    await waitFor(() => {
-      const stats = [...counts.querySelectorAll('.cinder-statistic')].map((stat) =>
-        stat.textContent?.replaceAll(/\s+/g, ' ').trim(),
-      );
-      expect(stats).toEqual(['Failed in 24 hours 0']);
-    });
-    // A dot stands only before a count above zero.
-    expect(counts.querySelector('[data-cinder-attention]')).toBeNull();
+    await waitFor(() => expect(cardOf(container, 'Needs you')).toBeDefined());
+    await quietFor(50);
+    expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();
     // The Spotlight comes before the Needs you list, the first thing the page says.
     const needsYou = getByTestId('home-spotlight').compareDocumentPosition(
       cardOf(document.body, 'Needs you'),
     );
     expect(needsYou & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // COR-2489 (owner decision 2026-11-16): the count sat between the Spotlight and the list it
+  // titles. It renders after the list, in the markup and in the order the layout shows it.
+  test('renders "Failed in 24 hours" after the Needs you list the Spotlight titles', async () => {
+    const { container, findByTestId, getByTestId } = await open(sampleHomeWorld({ failedRuns: 3 }));
+    const list = cardOf(container, 'Needs you');
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
+    const counts = await findByTestId('home-counts');
+    expect(counts.getAttribute('data-cinder-variant')).toBe('plain');
+    expect(getByTestId('home-focus').contains(counts)).toBe(false);
+    expect(
+      list.compareDocumentPosition(counts) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the count follows the list',
+    ).toBeTruthy();
+    expect(
+      getByTestId('home-spotlight').compareDocumentPosition(list) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // On screen too: the count's slot is placed right after the list's, before Running now, in the
+    // one-column order a phone uses, and follows it in the wide column's markup.
+    const slot = counts.closest('.ib-home__counts');
+    const listSlot = list.closest('.ib-home__needs-you');
+    expect(slot).not.toBeNull();
+    expect(listSlot?.nextElementSibling).toBe(slot);
+    const layout = readFileSync(new URL('./home-layout.svelte', import.meta.url), 'utf8');
+    const orderOf = (name: string) =>
+      new RegExp(`\\.ib-home__${name} \\{\\s*order: (\\d+);`).exec(layout)?.[1];
+    expect(orderOf('counts')).toBe(orderOf('needs-you'));
+    expect(Number(orderOf('counts'))).toBeLessThan(Number(orderOf('running')));
   });
 
   test('reads the recent chats without the archived ones, which are put away (COR-2285 V5)', async () => {
@@ -156,8 +194,8 @@ describe('Home', () => {
   });
 
   test('puts a dot before the count when runs failed in the last day', async () => {
-    const { getByTestId } = await open(sampleHomeWorld({ failedRuns: 3 }));
-    const counts = getByTestId('home-counts');
+    const { findByTestId } = await open(sampleHomeWorld({ failedRuns: 3 }));
+    const counts = await findByTestId('home-counts');
     await waitFor(() =>
       expect(counts.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Failed in 24 hours 3'),
     );
@@ -166,24 +204,24 @@ describe('Home', () => {
     );
   });
 
-  test('says the count as a dash for a caller who may not read runs', async () => {
-    installed = installHome(sampleHomeWorld());
-    const { findByTestId, getByTestId } = render(HomeHarness, {
+  test('shows no count to a caller who may not read runs', async () => {
+    installed = installHome(sampleHomeWorld({ failedRuns: 3 }));
+    const { container } = render(HomeHarness, {
       props: {
         client: installed.client,
         scopes: AUTHORIZATION_SCOPES.filter((scope) => scope !== 'workflows:read'),
       },
     } as never);
-    await findByTestId('home-counts');
-    await waitFor(() =>
-      expect(getByTestId('home-counts').textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-        'Failed in 24 hours —',
-      ),
-    );
+    await drawn(container);
+    await waitFor(() => expect(cardOf(container, 'Needs you')).toBeDefined());
+    await quietFor(50);
+    expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();
   });
 
   test('keeps the Spotlight and the count when the problems cannot be read, and never claims all is well', async () => {
-    const { container, getByTestId } = await open(sampleHomeWorld({ attentionRefused: true }));
+    const { container, getByTestId, findByTestId } = await open(
+      sampleHomeWorld({ attentionRefused: true, failedRuns: 2 }),
+    );
     await waitFor(() =>
       expect(
         getByTestId('home-spotlight')
@@ -191,13 +229,13 @@ describe('Home', () => {
           ?.textContent?.trim(),
       ).toBe('2 need you'),
     );
+    const counts = await findByTestId('home-counts');
     await waitFor(() =>
-      expect(getByTestId('home-counts').textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-        'Failed in 24 hours 0',
-      ),
+      expect(counts.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Failed in 24 hours 2'),
     );
-    // Needs attention could not be read, so it says nothing about the host being fine.
-    expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
+    // Needs attention could not be read, so it says so in its own place and never that all is well.
+    const attention = await waitFor(() => cardOf(container, 'Needs attention'));
+    await waitFor(() => expect(attention.textContent).toContain('Couldn’t load system problems.'));
   });
 
   test('lists the reviews waiting on you, oldest first, with the button that opens each (01f, 01g)', async () => {
@@ -313,6 +351,12 @@ describe('Home', () => {
     expect(within(card).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',
     );
+    // The link is the section's action, beside its heading, as it is with nothing listed (COR-2489).
+    expect(
+      within(card.querySelector('.cinder-section__actions') as HTMLElement).getByRole('link', {
+        name: 'Open Health',
+      }),
+    ).toBeDefined();
     // The provider notice is the third row alone: no banner or alert says it again.
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).not.toContain('Connect a model provider to chat');
@@ -380,55 +424,29 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     });
   };
 
-  test('says nothing needs you in the Spotlight, and reads zero with no dot (01s)', async () => {
-    const { getByTestId } = await open(calm());
-    await waitFor(() =>
-      expect(
-        getByTestId('home-spotlight')
-          .querySelector('.cinder-spotlight__value')
-          ?.textContent?.trim(),
-      ).toBe('Nothing needs you'),
-    );
-    const counts = getByTestId('home-counts');
-    await waitFor(() =>
-      expect(counts.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Failed in 24 hours 0'),
-    );
-    expect(counts.querySelector('[data-cinder-attention]')).toBeNull();
-  });
-
-  test('lets "Nothing needs you" stand alone with the link to Reviews beside it, and no second line says it (01t)', async () => {
-    const { container, getByTestId } = await open(calm());
-    await waitFor(() =>
-      expect(
-        getByTestId('home-spotlight')
-          .querySelector('.cinder-spotlight__value')
-          ?.textContent?.trim(),
-      ).toBe('Nothing needs you'),
-    );
-    const link = within(getByTestId('home-focus')).getByRole('link', { name: 'Open Reviews' });
-    expect(link.getAttribute('href')).toBe('/reviews');
-    expect(within(container).getAllByRole('link', { name: 'Open Reviews' })).toHaveLength(1);
-    // COR-2329: "Nothing needs you" and "Nothing is waiting on you" said it twice in a row.
+  // Owner, 2026-11-19: no card says nothing, and no tile reads zero. With nothing waiting the page
+  // says so in one quiet line, and the space goes to what has content.
+  test('says nothing needs you in one quiet line, with no Spotlight, no count and no card (01s, 01t)', async () => {
+    const { container, findByTestId } = await open(calm());
+    const line = await findByTestId('home-nothing-needs-you');
+    expect(line.textContent?.trim()).toBe('Nothing needs you.');
+    expect(line.getAttribute('role')).toBe('status');
+    expect(container.querySelector('[data-testid="home-spotlight"]')).toBeNull();
+    await waitFor(() => expect(cardOf(container, 'Recent chats')).toBeDefined());
+    await quietFor(50);
+    expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();
     expect(container.querySelector('[data-home-card="Needs you"]')).toBeNull();
     expect(container.textContent).not.toContain('Nothing is waiting on you');
   });
 
-  test('keeps the Needs attention heading over one line with the link to Health (01u)', async () => {
-    const { container, getByTestId } = await open(calm());
-    const line = await waitFor(() => getByTestId('attention-clear'));
-    // Cinder's empty state in its row layout: no line drawn by the page.
-    const empty = within(line).getByRole('group', { name: 'Nothing needs attention' });
-    expect(empty.getAttribute('data-cinder-layout')).toBe('row');
-    expect(empty.textContent).toContain('Storage, schedules, providers and hooks are fine.');
-    expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
-      '/health',
-    );
-    // The section's heading stays over it (COR-2329: without it the line read as part of the
-    // section above), and the link is in the line, not also beside the heading.
-    const card = cardOf(container, 'Needs attention');
-    expect(card.contains(line)).toBe(true);
-    expect(within(card).getByRole('heading', { level: 2, name: 'Needs attention' })).toBeDefined();
-    expect(within(card).getAllByRole('link', { name: 'Open Health' })).toHaveLength(1);
+  test('draws no Needs attention section when nothing needs attention (01u)', async () => {
+    const { container } = await open(calm());
+    await waitFor(() => expect(cardOf(container, 'Recent chats')).toBeDefined());
+    await quietFor(50);
+    expect(container.querySelector('[data-home-card="Needs attention"]')).toBeNull();
+    expect(container.textContent).not.toContain('Nothing needs attention');
+    // Only the one quiet line says nothing needs the person.
+    expect(container.querySelectorAll('[data-quiet-line]')).toHaveLength(1);
   });
 
   test('says each chat Done, with what happened on line two (01v)', async () => {
@@ -456,9 +474,9 @@ describe('Home’s Start a chat card (01k)', () => {
       'Ask an agent to do something',
     );
     await waitFor(() => expect(shownLabel(card)).toContain('Assistant'));
-    expect(card.querySelector('[data-cinder-variant="ghost"]')).not.toBeNull();
+    expect(card.querySelector('.cinder-select.select-variant-ghost')).not.toBeNull();
     const send = within(card).getByRole('button', { name: 'Send' });
-    expect(send.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(send.classList.contains('button-variant-primary')).toBe(true);
     expect(send.querySelector('svg')).not.toBeNull();
     expect((send as HTMLButtonElement).disabled).toBe(false);
     // Assistant is scripted, so Send is live with no provider connected.
@@ -511,6 +529,58 @@ describe('Home’s Start a chat card (01k)', () => {
     expect(card.querySelector('[data-chat-composer-status="blocked"]')).toBeNull();
   });
 
+  test('with no agent and no provider says to connect a provider first, never a box whose Send does nothing (COR-2438 21c)', async () => {
+    const { getByTestId } = await open(sampleHomeWorld({ noAgents: true }));
+    const card = getByTestId('home-start-chat');
+    const state = await waitFor(() => within(card).getByTestId('home-start-chat-not-ready'));
+    expect(state.textContent).toContain('Connect a provider first');
+    expect(
+      within(state).getByRole('link', { name: 'Connect a provider' }).getAttribute('href'),
+    ).toBe('/settings/models');
+    expect(card.querySelector('textarea')).toBeNull();
+  });
+
+  test('with a provider and no agent says to create an agent (COR-2438 21c)', async () => {
+    const { getByTestId } = await open(
+      sampleHomeWorld({ noAgents: true, providerConnected: true }),
+    );
+    const card = getByTestId('home-start-chat');
+    const state = await waitFor(() => within(card).getByTestId('home-start-chat-not-ready'));
+    expect(within(state).getByRole('link', { name: 'Create an agent' }).getAttribute('href')).toBe(
+      '/agents/new',
+    );
+    expect(card.querySelector('textarea')).toBeNull();
+  });
+
+  // COR-2489: "Connect a provider" is drawn in one button form per context: a secondary small
+  // button in a Needs attention row and in the blocked composer, and the checklist's primary small
+  // button while its step is current.
+  test('draws Connect a provider in one button form per context', async () => {
+    const { container, getByTestId } = await open();
+    const card = getByTestId('home-start-chat');
+    await waitFor(() => expect(shownLabel(card)).toContain('Assistant'));
+    await chooseOption(card, 'Tool runner', 'home-start-chat-agent');
+    const composer = await waitFor(() =>
+      within(card).getByRole('link', { name: 'Connect a provider' }),
+    );
+    const attention = cardOf(container, 'Needs attention');
+    const row = await waitFor(() =>
+      within(attention).getByRole('link', { name: 'Connect a provider' }),
+    );
+    expect(buttonForm(row)).toEqual(['button-variant-secondary', 'button-size-small']);
+    expect(buttonForm(composer)).toEqual(['button-variant-secondary', 'button-size-small']);
+  });
+
+  test('draws the checklist’s Connect a provider as its one primary small button', async () => {
+    const { container } = await open(freshInstallation());
+    const step = within(stepOf(container, 'provider')).getByRole('link', {
+      name: 'Connect a provider',
+    });
+    expect(buttonForm(step)).toEqual(['button-variant-primary', 'button-size-small']);
+    // The checklist stands in for the notice, so the step is the only Connect a provider there.
+    expect(within(container).getAllByRole('link', { name: 'Connect a provider' })).toHaveLength(1);
+  });
+
   test('a model agent is not blocked once a provider holds a key', async () => {
     const { getByTestId } = await open(sampleHomeWorld({ providerConnected: true }));
     const card = getByTestId('home-start-chat');
@@ -543,20 +613,44 @@ function stepOf(container: HTMLElement, id: 'provider' | 'agent' | 'chat'): HTML
 const words = (element: Element) => element.textContent?.replaceAll(/\s+/g, ' ').trim();
 
 describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () => {
-  test('leads with the welcome line and a hidden Home heading, in place of the date line (01z, 13c, 14d)', async () => {
-    const { getByRole, getByTestId, queryByText } = await open(freshInstallation());
-    expect(getByTestId('home-date').textContent?.trim()).toBe(
-      'Welcome. Three steps to your first chat.',
+  // Owner, 2026-11-19: "Welcome. Three steps to your first chat." over a box titled "Get started"
+  // said it twice. One real heading at the page title's size leads, with one sentence under it.
+  test('leads with one visible heading and one sentence, and no date line, welcome line or second heading', async () => {
+    const { container, getAllByRole, getByRole, getByTestId, queryByText } =
+      await open(freshInstallation());
+    const firstRun = getByTestId('home-first-run');
+    const heading = getByRole('heading', { level: 1, name: 'Set up Interborough' });
+    expect(heading.classList.contains('cinder-sr-only')).toBe(false);
+    expect(firstRun.contains(heading)).toBe(true);
+    expect(getAllByRole('heading')).toEqual([heading]);
+    expect(firstRun.querySelector('.ib-home-first-run__lead')?.textContent?.trim()).toBe(
+      'Connect a model, choose an agent, then say hello.',
     );
+    expect(container.querySelector('[data-testid="home-date"]')).toBeNull();
     expect(queryByText(/Times show in/)).toBeNull();
-    const heading = getByRole('heading', { level: 1, name: 'Home' });
-    expect(heading.classList.contains('cinder-sr-only')).toBe(true);
+    expect(queryByText(/Welcome\./)).toBeNull();
+    expect(queryByText('Get started')).toBeNull();
+    // The checklist is named by the page's heading; no "0 of 3 done" counter.
+    expect(firstRun.getAttribute('aria-labelledby')).toBe(heading.id);
+    expect(container.querySelector('.cinder-steps__header')).toBeNull();
+    expect(container.textContent).not.toMatch(/of 3 done/);
   });
 
-  test('shows "Get started" reading 0 of 3 done, with the three steps in order (01y, 13f)', async () => {
-    const { container, getByRole } = await open(freshInstallation());
-    const checklist = getByRole('heading', { level: 2, name: 'Get started' });
-    expect(words(checklist.closest('.cinder-steps') as Element)).toContain('0 of 3 done');
+  // Owner, 2026-11-19: the steps sat in a box two thirds of the width with the rest empty.
+  test('lays the first run out at the page’s reading width, centred, with no box around it', () => {
+    const source = readFileSync(new URL('./home-first-run.svelte', import.meta.url), 'utf8');
+    const rule = /\.ib-home-first-run \{([^}]*)\}/.exec(source)?.[1] ?? '';
+    expect(rule).toContain('max-inline-size: var(--cinder-content-width-reading);');
+    expect(rule).toContain('margin-inline: auto;');
+    expect(rule).not.toMatch(/border|background|box-shadow/);
+    expect(source).toMatch(/\.ib-home-first-run__intro \{[^}]*text-align: center;/);
+    expect(source).toMatch(
+      /\.ib-home-first-run__title \{[^}]*font-size: var\(--cinder-text-page-title\);/,
+    );
+  });
+
+  test('shows the three steps in order, as numbered circles (01y, 13f)', async () => {
+    const { container } = await open(freshInstallation());
     expect(words(stepOf(container, 'provider'))).toBe(
       '1 Connect a provider Agents need a model provider before they can answer. Connect a provider',
     );
@@ -571,25 +665,25 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
   test('step 1 holds the only primary button; the others are secondary, and the link is quiet (13g, 01y)', async () => {
     const { container } = await open(freshInstallation());
     const primaries = [...container.querySelectorAll('.cinder-steps .cinder-button')].filter(
-      (button) => button.getAttribute('data-cinder-variant') === 'primary',
+      (button) => button.classList.contains('button-variant-primary'),
     );
     expect(primaries.map(words)).toEqual(['Connect a provider']);
     const agent = stepOf(container, 'agent');
     expect(
       within(agent)
         .getByRole('button', { name: 'Use Assistant' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('ghost-accent');
+        .classList.contains('button-variant-ghost-accent'),
+    ).toBe(true);
     expect(
       within(agent)
         .getByRole('link', { name: 'Create an agent' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
     expect(
       within(stepOf(container, 'chat'))
         .getByRole('link', { name: 'Start a chat' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
   });
 
   test('each button goes where its step is done: Models, a new agent, and New chat with Assistant (02a, 13g, 14c)', async () => {
@@ -613,46 +707,39 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     expect(router.search.get('agent')).toBe('assistant');
   });
 
-  test('hides the counts, Needs you, the composer and the provider row; step 1 stands in for it (01z, 13d, 13j, 14e)', async () => {
+  // Owner, 2026-11-19: a first run shows only the getting-started steps.
+  test('shows only the steps: no counts, Needs you, composer, Needs attention, Recent chats or activity (01z, 13d, 13j, 14e)', async () => {
     const { container, queryByRole, queryByText } = await open(freshInstallation());
+    await quietFor(50);
     expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();
-    expect(container.querySelector('[data-home-card="Needs you"]')).toBeNull();
+    expect(container.querySelector('[data-testid="home-focus"]')).toBeNull();
+    expect(container.querySelector('[data-home-card]')).toBeNull();
     expect(container.querySelector('[data-testid="home-start-chat"]')).toBeNull();
-    expect(container.querySelector('[data-home-card="Needs attention"]')).toBeNull();
-    expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
+    expect(container.querySelector('[data-testid="home-activity"]')).toBeNull();
+    expect(container.querySelector('.cinder-empty-state')).toBeNull();
+    expect(container.querySelector('.cinder-statistic')).toBeNull();
     expect(queryByText('No model provider connected')).toBeNull();
     // No banner: nothing in the page is an alert.
     expect(queryByRole('alert')).toBeNull();
     expect(queryByText(/Connect a model provider/)).toBeNull();
+    const page = container.querySelector('[data-page="home"]');
+    expect(page?.getAttribute('data-mode')).toBe('checklist');
+    expect(page?.children).toHaveLength(1);
+    expect(page?.firstElementChild?.getAttribute('data-testid')).toBe('home-first-run');
   });
 
-  test('keeps a problem that is not the provider, under Needs attention (13d)', async () => {
+  test('shows only the steps even while another problem is listed (13d)', async () => {
     const { container } = await open(
       freshInstallation({ attention: SAMPLE_ATTENTION, schedules: [DAILY_SUMMARY] }),
     );
-    const card = cardOf(container, 'Needs attention');
-    await waitFor(() => expect(within(card).getAllByRole('listitem')).toHaveLength(2));
-    expect(card.textContent).not.toContain('No model provider connected');
-  });
-
-  test('says there are no chats yet under the checklist, with a chat icon and no All chats link (02b, 13h, 14d)', async () => {
-    const { container } = await open(freshInstallation());
-    const card = cardOf(container, 'Recent chats');
-    await waitFor(() =>
-      expect(within(card).getByRole('group', { name: 'No chats yet' })).toBeDefined(),
-    );
-    expect(words(card)).toBe(
-      'Recent chats No chats yet Your chats appear here once you send a first message.',
-    );
-    expect(card.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
-    expect(within(card).queryByRole('link', { name: 'All chats' })).toBeNull();
-    expect(within(card).getByRole('heading', { level: 3, name: 'No chats yet' })).toBeDefined();
+    await quietFor(50);
+    expect(container.querySelector('[data-home-card="Needs attention"]')).toBeNull();
   });
 
   test('keys off whether a chat happened, not off the providers: a chat ends the checklist with no provider (14c)', async () => {
     const { container, getByTestId } = await open(sampleHomeWorld());
     expect(container.querySelector('[data-testid="home-first-run"]')).toBeNull();
-    expect(getByTestId('home-counts')).toBeDefined();
+    expect(getByTestId('home-date')).toBeDefined();
     // The provider notice is back in Needs attention, where it blocks something.
     await waitFor(() =>
       expect(cardOf(container, 'Needs attention').textContent).toContain(
@@ -661,7 +748,7 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     );
   });
 
-  test('counts an archived chat as a chat that happened: no checklist, though Recent chats leaves it out (COR-2285 V5)', async () => {
+  test('counts an archived chat as a chat that happened: no checklist, and Recent chats, which leaves it out, draws nothing (COR-2285 V5)', async () => {
     const world = freshInstallation();
     installed = installHome(world);
     const archivedChat = {
@@ -676,13 +763,14 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     const { findByTestId, container } = render(HomeHarness, {
       props: { client: installed.client },
     } as never);
-    await findByTestId('home-counts');
+    await findByTestId('home-date');
 
     expect(container.querySelector('[data-testid="home-first-run"]')).toBeNull();
-    const card = cardOf(container, 'Recent chats');
-    await waitFor(() =>
-      expect(within(card).getByRole('group', { name: 'No chats yet' })).toBeDefined(),
-    );
+    // Recent chats appears once a chat it lists exists; it never says there are none.
+    await waitFor(() => expect(container.querySelector('[data-home-card]')).not.toBeNull());
+    await quietFor(50);
+    expect(container.querySelector('[data-home-card="Recent chats"]')).toBeNull();
+    expect(container.textContent).not.toContain('No chats yet');
   });
 
   test('a chat list that cannot be read shows the overview, not a checklist it cannot vouch for', async () => {
@@ -694,7 +782,7 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     const { findByTestId, container } = render(HomeHarness, {
       props: { client: installed.client },
     } as never);
-    await findByTestId('home-counts');
+    await findByTestId('home-date');
     expect(container.querySelector('[data-testid="home-first-run"]')).toBeNull();
   });
 
@@ -704,12 +792,12 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
     window.localStorage.removeItem(key);
     try {
       const first = await open(sampleHomeWorld(), identity);
-      await first.findByTestId('home-counts');
+      await first.findByTestId('home-date');
       await waitUntil(() => window.localStorage.getItem(key) === 'true');
       cleanup();
       installed?.restore();
       const second = await open(freshInstallation(), identity);
-      await second.findByTestId('home-counts');
+      await second.findByTestId('home-date');
       expect(second.container.querySelector('[data-testid="home-first-run"]')).toBeNull();
     } finally {
       window.localStorage.removeItem(key);
@@ -719,37 +807,86 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
 
 describe('Home’s checklist on a host with no Assistant', () => {
   /** A host whose only agents are ones that need a model: Assistant comes from a plugin or the host. */
-  async function withoutAssistant() {
-    const world = freshInstallation();
+  async function withoutAssistant(
+    overrides: Partial<HomeWorld> = {},
+    agents: readonly string[] = ['tool-runner'],
+    hidden: readonly string[] = [],
+  ) {
+    const world = freshInstallation(overrides);
     installed = installHome(world);
     installed.stub.on('bureau.agents.list', () => ({
-      agents: [
-        {
-          name: 'tool-runner',
-          displayName: 'tool-runner',
-          description: null,
-          definitionRevision: 1,
-          kind: 'code',
-          a2a: false,
-          media: { modalities: {}, mimeFamilies: [], mediaLimits: [] },
-        },
-      ],
+      agents: agents.map((name) => ({
+        name,
+        displayName: name,
+        description: null,
+        definitionRevision: 1,
+        kind: 'code',
+        a2a: false,
+        ...(hidden.includes(name) ? { visibility: 'hidden' } : {}),
+        media: { modalities: {}, mimeFamilies: [], mediaLimits: [] },
+      })),
     }));
     const rendered = render(HomeHarness, { props: { client: installed.client } } as never);
-    await rendered.findByTestId('home-date');
+    await drawn(rendered.container);
     return rendered;
   }
 
-  test('offers no Use Assistant, and Start a chat opens New chat to pick an agent', async () => {
-    const { container } = await withoutAssistant();
+  /** Step 3's button, live or held. */
+  const startChat = (container: HTMLElement) =>
+    within(stepOf(container, 'chat')).getByRole(
+      stepOf(container, 'chat').querySelector('a') === null ? 'button' : 'link',
+      { name: 'Start a chat' },
+    );
+
+  test('does not offer a hidden Assistant in the checklist', async () => {
+    const { container } = await withoutAssistant(
+      { providerConnected: true },
+      ['assistant'],
+      ['assistant'],
+    );
+    const step = stepOf(container, 'agent');
+    expect(within(step).queryByRole('button', { name: 'Use Assistant' })).toBeNull();
+    expect(words(step)).not.toContain('Assistant');
+    expect(within(step).getByRole('link', { name: 'Create an agent' })).toBeDefined();
+    expect(words(stepOf(container, 'chat'))).toContain('Waits for step 2: create an agent first.');
+  });
+
+  // Owner, 2026-11-19: a step that cannot be done yet is shown as waiting on the earlier step, not
+  // as an active button, by the readiness rule every New chat entry point reads.
+  test('offers no Use Assistant, and Start a chat waits on step 1 while no agent can answer', async () => {
+    const { container, getByTestId } = await withoutAssistant();
     const agent = stepOf(container, 'agent');
     expect(within(agent).queryByRole('button', { name: 'Use Assistant' })).toBeNull();
     expect(within(agent).getByRole('link', { name: 'Create an agent' })).toBeDefined();
-    expect(
-      within(stepOf(container, 'chat'))
-        .getByRole('link', { name: 'Start a chat' })
-        .getAttribute('href'),
-    ).toBe('/chats/new');
+    await waitFor(() =>
+      expect(getByTestId('home-first-run').getAttribute('data-chat-waits-on')).toBe(
+        'needs-provider',
+      ),
+    );
+    const held = startChat(container);
+    expect(held.tagName).toBe('BUTTON');
+    expect((held as HTMLButtonElement).disabled).toBe(true);
+    expect(held.classList.contains('button-variant-secondary')).toBe(true);
+    expect(words(stepOf(container, 'chat'))).toContain(
+      'Waits for step 1: connect a provider first.',
+    );
+  });
+
+  test('Start a chat waits on step 2 while a provider is connected and no agent is offered', async () => {
+    const { container, getByTestId } = await withoutAssistant({ providerConnected: true }, []);
+    await waitFor(() =>
+      expect(getByTestId('home-first-run').getAttribute('data-chat-waits-on')).toBe('needs-agent'),
+    );
+    expect((startChat(container) as HTMLButtonElement).disabled).toBe(true);
+    expect(words(stepOf(container, 'chat'))).toContain('Waits for step 2: create an agent first.');
+  });
+
+  test('Start a chat comes alive once its prerequisite is done, and opens New chat to pick an agent', async () => {
+    const { container, getByTestId } = await withoutAssistant({ providerConnected: true });
+    await waitFor(() =>
+      expect(getByTestId('home-first-run').hasAttribute('data-chat-waits-on')).toBe(false),
+    );
+    expect(startChat(container).getAttribute('href')).toBe('/chats/new');
   });
 });
 
@@ -763,23 +900,19 @@ describe('Home with only a keyless provider (COR-2414)', () => {
     expect(within(provider).queryByRole('link')).toBeNull();
     expect(container.textContent).not.toContain('No model provider connected');
     expect(container.textContent).not.toContain('Connect a model provider');
-
-    const card = getByTestId('home-start-chat');
-    await waitFor(() => expect(shownLabel(card)).toContain('Assistant'));
-    await chooseOption(card, 'Tool runner', 'home-start-chat-agent');
     // The providers are read in a later turn than the agents: a reader that took the keyless
-    // provider for none would have drawn the blocked row by now.
+    // provider for none would hold Start a chat by now.
     await quietFor(100);
-    expect(card.querySelector('textarea')).not.toBeNull();
-    expect(card.querySelector('[data-chat-composer-status="blocked"]')).toBeNull();
+    expect(getByTestId('home-first-run').hasAttribute('data-chat-waits-on')).toBe(false);
+    expect(
+      within(stepOf(container, 'chat')).getByRole('link', { name: 'Start a chat' }),
+    ).toBeDefined();
   });
 });
 
 describe('Home’s checklist as steps are done (14e, 14j)', () => {
-  test('with a provider connected the checklist skips to step 2 and the composer comes back (14e, 14j)', async () => {
-    const { container, getByTestId } = await open(freshInstallation({ providerConnected: true }));
-    expect(getByTestId('home-date').textContent?.trim()).toBe('Welcome. Two steps left.');
-    expect(words(container.querySelector('.cinder-steps') as Element)).toContain('1 of 3 done');
+  test('with a provider connected the checklist skips to step 2, and the steps stay the whole page (14e, 14j)', async () => {
+    const { container } = await open(freshInstallation({ providerConnected: true }));
     const provider = stepOf(container, 'provider');
     expect(words(provider)).toContain('Anthropic is connected.');
     expect(provider.getAttribute('data-cinder-state')).toBe('complete');
@@ -789,45 +922,33 @@ describe('Home’s checklist as steps are done (14e, 14j)', () => {
     expect(
       within(stepOf(container, 'agent'))
         .getByRole('link', { name: 'Create an agent' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
-    const card = getByTestId('home-start-chat');
-    // It sits under the checklist, in the checklist's own column.
-    expect(card.closest('.ib-home__main')).toBe(
-      getByTestId('home-first-run').closest('.ib-home__main'),
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
+    // Only the current step's action is primary.
+    const primaries = [...container.querySelectorAll('.cinder-steps .cinder-button')].filter(
+      (button) => button.classList.contains('button-variant-primary'),
     );
-    expect(card.closest('.ib-home__main')).not.toBeNull();
-    expect(
-      getByTestId('home-first-run').compareDocumentPosition(card) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(card.querySelector('textarea')).not.toBeNull();
-    await waitFor(() => expect(shownLabel(card)).toContain('Assistant'));
-    expect((within(card).getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    expect(primaries.map(words)).toEqual(['Create an agent']);
+    expect(container.querySelector('[data-testid="home-start-chat"]')).toBeNull();
   });
 
-  test('after steps 1 and 2 it says one step left, and Start a chat is primary (14j)', async () => {
-    const { container, getByTestId } = await open(
+  test('after steps 1 and 2 Start a chat is primary (14j)', async () => {
+    const { container } = await open(
       freshInstallation({ providerConnected: true, fileAgent: true }),
     );
-    expect(getByTestId('home-date').textContent?.trim()).toBe('Welcome. One step left.');
-    expect(words(container.querySelector('.cinder-steps') as Element)).toContain('2 of 3 done');
     expect(words(stepOf(container, 'agent'))).toBe(
       'Completed Create an agent, or start from Assistant Researcher is ready to use.',
     );
     expect(
       within(stepOf(container, 'chat'))
         .getByRole('link', { name: 'Start a chat' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
-    expect(getByTestId('home-start-chat')).toBeDefined();
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();
   });
 
   test('Use Assistant does step 2, which then says Assistant is ready to use', async () => {
-    const { container, getByTestId } = await open(freshInstallation({ providerConnected: true }));
+    const { container } = await open(freshInstallation({ providerConnected: true }));
     await fireEvent.click(
       within(stepOf(container, 'agent')).getByRole('button', { name: 'Use Assistant' }),
     );
@@ -837,18 +958,16 @@ describe('Home’s checklist as steps are done (14e, 14j)', () => {
       ),
     );
     expect(stepOf(container, 'agent').getAttribute('data-cinder-state')).toBe('complete');
-    expect(getByTestId('home-date').textContent?.trim()).toBe('Welcome. One step left.');
     // Step 3 is next, so its button is the primary.
     expect(
       within(stepOf(container, 'chat'))
         .getByRole('link', { name: 'Start a chat' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
   });
 
   test('steps are done in any order: step 2 first leaves step 1 current', async () => {
-    const { container, getByTestId } = await open(freshInstallation({ fileAgent: true }));
-    expect(getByTestId('home-date').textContent?.trim()).toBe('Welcome. Two steps left.');
+    const { container } = await open(freshInstallation({ fileAgent: true }));
     expect(stepOf(container, 'agent').getAttribute('data-cinder-state')).toBe('complete');
     expect(stepOf(container, 'provider').getAttribute('data-cinder-state')).toBe('current');
     // No provider, so no composer.
@@ -915,14 +1034,8 @@ describe('Home’s Running now (01w, 01x)', () => {
 
   test('is gone at zero, and a run waiting on a person is not listed (01x)', async () => {
     const waiting = taskFixture({ id: 'run-waiting', status: 'input-required' });
-    const { container, getByTestId } = await open(running([waiting]));
-    await waitFor(() =>
-      expect(
-        getByTestId('home-spotlight')
-          .querySelector('.cinder-spotlight__value')
-          ?.textContent?.trim(),
-      ).toBe('Nothing needs you'),
-    );
+    const { container, findByTestId } = await open(running([waiting]));
+    await findByTestId('home-nothing-needs-you');
     expect(container.querySelector('[data-home-card="Running now"]')).toBeNull();
   });
 

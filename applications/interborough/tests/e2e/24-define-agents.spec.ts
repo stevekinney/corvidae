@@ -410,18 +410,17 @@ test.describe('a new agent on a host with no model provider', () => {
         page.getByRole('heading', { level: 2, name: copy.noProvider.title }),
       ).toBeVisible();
 
-      // The paths are this installation's own, as the host says them.
-      await expect(page.getByTestId('provider-configuration-file')).toHaveText(
+      // The configuration file is this installation's own, shown in a copy control; where or how a
+      // key is stored never renders (owner, 2026-11-19).
+      await expect(page.getByTestId('provider-configuration-file')).toContainText(
         paths.configurationFile,
       );
       expect(paths.configurationFile).toMatch(/configuration\.json$/);
       for (const provider of paths.providers) {
-        await expect(page.locator(`[data-provider="${provider.name}"]`)).toContainText(
-          provider.secretFile,
-        );
+        await expect(editor(page)).not.toContainText(provider.secretFile);
       }
       await expect(editor(page)).toContainText('"plugins"');
-      await expect(editor(page)).toContainText('chmod 600');
+      await expect(editor(page)).toContainText(copy.noProvider.secretStep);
 
       // No form: nothing to fill in, nothing to choose, nothing to save.
       await expect(editor(page).getByRole('textbox')).toHaveCount(0);
@@ -827,7 +826,10 @@ test.describe('the list of agents', () => {
       await expect(broken).toHaveAttribute('data-state', 'invalid');
       await expect(broken).toContainText('unknown-model');
       await expect(broken).toContainText(copy.invalidBadge);
-      await expect(broken.getByTestId('agent-file-path')).toHaveText(path);
+      // Named relative to the home: a host path never shows in a row (owner, 2026-11-19).
+      await expect(broken.getByTestId('agent-file-path')).toHaveText(
+        'agents/e2e-invalid-listed.md',
+      );
       // A file that loads is listed once, as an agent, and not as an invalid file.
       await expect(page.locator('[data-agent="e2e-listed"]')).toHaveCount(1);
       await expect(page.locator('[data-agent="e2e-listed"]')).not.toHaveAttribute(

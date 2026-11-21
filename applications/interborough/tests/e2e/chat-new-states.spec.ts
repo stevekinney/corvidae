@@ -14,6 +14,8 @@ import {
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
+import type { AgentSummary } from '../../src/lib/bureau-client.ts';
 import { connectProviderWithModels } from './chat-states-support.ts';
 import { expectComposerSelects } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -150,9 +152,8 @@ test.describe('New chat while its agents load (24o)', () => {
     await page.clock.runFor(9_700);
     const status = page.locator('.cinder-skeleton-status');
     await expect(status).toContainText('Still loading agents. This is taking longer than usual.');
-    await expect(status.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
-      'data-cinder-variant',
-      'ghost',
+    await expect(status.getByRole('button', { name: 'Cancel' })).toContainClass(
+      'button-variant-ghost',
     );
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -179,7 +180,8 @@ test.describe('New chat while its agents load (24o)', () => {
     await expect(loading(page).locator('.cinder-skeleton').first()).toBeVisible();
     await page.clock.runFor(9_700);
     await page.locator('.cinder-skeleton-status').getByRole('button', { name: 'Cancel' }).click();
-    await expect(page).toHaveURL(/\/chats$/);
+    await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
+    await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
   });
 });
 
@@ -206,7 +208,7 @@ test.describe('New chat when the agents cannot be loaded (24p)', () => {
     ).toBeVisible();
     // The one primary is Try again; there is nothing to send to, so no composer is drawn.
     const retry = page.getByRole('button', { name: 'Try again' });
-    await expect(retry).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(retry).toContainClass('button-variant-primary');
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.locator('button[data-chat-send]')).toHaveCount(0);
     await expect(welcome(page)).toHaveCount(0);
@@ -238,16 +240,51 @@ test.describe('New chat with no agents (24q)', () => {
       ),
     ).toBeVisible();
     const create = page.getByRole('link', { name: 'New agent' });
-    await expect(create).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(create).toContainClass('button-variant-primary');
     await expect(create).toHaveAttribute('href', '/agents/new');
     const browse = page.getByRole('link', { name: 'Browse agents' });
-    await expect(browse).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(browse).toContainClass('button-variant-secondary');
     await expect(browse).toHaveAttribute('href', '/agents');
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.locator('[data-testid="first-run"]')).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats/new', state: 'no agents', source: SOURCE });
     await checkA11y('New chat with no agents');
   });
+});
+
+test('New chat skips a hidden Assistant when choosing its default agent', async ({ page }) => {
+  await page.route('**/jsonrpc', async (route) => {
+    const call = route.request().postDataJSON() as { method?: string } | null;
+    if (call?.method !== 'bureau.agents.list') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const body = (await response.json()) as { result: { agents: AgentSummary[] } };
+    const runner = body.result.agents.find((agent) => agent.name === 'tool-runner');
+    if (runner === undefined) throw new Error('The showcase is missing Tool runner');
+    const hidden: AgentSummary = {
+      ...runner,
+      name: 'assistant',
+      displayName: 'Hidden Assistant',
+      visibility: 'hidden',
+    };
+    await route.fulfill({ response, json: { ...body, result: { agents: [hidden, runner] } } });
+  });
+  await connectProviderWithModels(page);
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  const widths = designReviewCaptureDirectory() === undefined ? [375] : [1280, 768, 375];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/chats/new');
+    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText(/tool runner/i);
+    await expect(page.getByText('Hidden Assistant', { exact: true })).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/chats/new',
+      state: 'hidden Assistant omitted',
+      source: SOURCE,
+    });
+  }
 });
 
 test.describe('New chat when the first message cannot be sent (24c, 24r, 24s)', () => {

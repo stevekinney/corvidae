@@ -77,41 +77,41 @@ function stateOf(view: ReturnType<typeof renderRoute>): string | undefined {
 }
 
 describe('Workers route with no connected worker (rows 78c to 78e)', () => {
-  test('says where work runs under the heading "Workers", with no tabs, no zero cards and no live toggle', async () => {
+  test('says where work runs in the empty state alone, with no section heading, no tabs, no zero cards and no live toggle', async () => {
     scripted = emptyFleet();
 
     const view = renderRoute();
 
-    expect(await view.findByRole('heading', { level: 3, name: EMPTY_TITLE })).not.toBeNull();
+    expect(await view.findByRole('heading', { level: 2, name: EMPTY_TITLE })).not.toBeNull();
     expect(stateOf(view)).toBe('empty');
     expect(view.getByRole('heading', { level: 1, name: 'Health' })).not.toBeNull();
-    expect(view.getByRole('heading', { level: 2, name: 'Workers' })).not.toBeNull();
-    expect(view.getByTestId('workers-summary').textContent).toBe(
-      'Work runs inside Interborough, 0 running, 0 waiting',
-    );
+    // No "Workers" heading and summary line above the state saying the same thing (owner report,
+    // 2026-11-19).
+    expect(view.queryByRole('heading', { level: 2, name: 'Workers' })).toBeNull();
+    expect(view.queryByTestId('workers-summary')).toBeNull();
     expect(view.getByText(copy.empty.description)).not.toBeNull();
     expect(workersTabs(view).length).toBe(0);
     expect(view.queryByText('Total workers')).toBeNull();
     expect(view.queryByLabelText('Live')).toBeNull();
   });
 
-  test('is a bordered Cinder empty state whose one button is secondary and opens the guide in a new tab', async () => {
+  test('is Cinder’s one unboxed empty state whose one button opens the guide in a new tab', async () => {
     scripted = emptyFleet();
 
     const view = renderRoute();
 
-    await view.findByRole('heading', { level: 3, name: EMPTY_TITLE });
+    await view.findByRole('heading', { level: 2, name: EMPTY_TITLE });
     const region = view.getByTestId('workers-state');
-    expect(region.querySelector('.cinder-empty-state[data-cinder-bordered]')).not.toBeNull();
+    const state = region.querySelector('.cinder-empty-state');
+    expect(state).not.toBeNull();
+    expect(state?.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
     const link = view.getByRole('link', { name: copy.empty.howToConnect });
     expect(link.getAttribute('href')).toBe(copy.empty.guideAddress);
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toContain('noopener');
-    expect(link.querySelector('svg')).not.toBeNull();
-    expect(link.getAttribute('data-cinder-variant')).toBe('secondary');
-    // The page's only action: nothing else to press, and nothing primary.
+    expect(link.classList.contains('cinder-button')).toBe(true);
+    // The page's only action: nothing else to press.
     expect(region.querySelectorAll('a, button')).toHaveLength(1);
-    expect(region.querySelector('[data-cinder-variant="primary"]')).toBeNull();
   });
 
   test('draws no worker row, no status word, no alert, and no Advanced disclosure (row 78e)', async () => {
@@ -119,7 +119,7 @@ describe('Workers route with no connected worker (rows 78c to 78e)', () => {
 
     const view = renderRoute();
 
-    await view.findByRole('heading', { level: 3, name: EMPTY_TITLE });
+    await view.findByRole('heading', { level: 2, name: EMPTY_TITLE });
     const region = view.getByTestId('workers-state');
     expect(view.container.querySelector('[data-worker-row], [data-status-word]')).toBeNull();
     expect(region.querySelector('.cinder-status-dot')).toBeNull();
@@ -193,7 +193,7 @@ describe('Workers route while the workers are being read (rows 78x and 78y)', ()
       'Still loading. This is taking longer than usual.',
     );
     const cancel = within(region).getByRole('button', { name: 'Cancel' });
-    expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(cancel.classList.contains('button-variant-ghost')).toBe(true);
     // Not a banner, and not an alert: the line is the skeleton's own status.
     expect(region.querySelector('.cinder-banner, [role="alert"]')).toBeNull();
   });
@@ -222,7 +222,7 @@ describe('Workers route while the workers are being read (rows 78x and 78y)', ()
     gate.resolve({ items: [], deployments: [], routingPolicy: 'least-loaded' });
     await fireEvent.click(view.getByRole('button', { name: copy.failed.tryAgain }));
 
-    expect(await view.findByRole('heading', { level: 3, name: EMPTY_TITLE })).not.toBeNull();
+    expect(await view.findByRole('heading', { level: 2, name: EMPTY_TITLE })).not.toBeNull();
     expect(stateOf(view)).toBe('empty');
   });
 });
@@ -265,7 +265,7 @@ describe('Workers route when the workers could not be read (row 78z)', () => {
     const view = renderRoute();
 
     const retry = await view.findByRole('button', { name: copy.failed.tryAgain });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
     expect(retry.querySelector('svg')).not.toBeNull();
     expect(view.container.querySelector('.cinder-error-state a')).toBeNull();
   });

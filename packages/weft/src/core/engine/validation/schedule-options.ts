@@ -1,3 +1,4 @@
+import { isJSONValue } from '../../json.ts';
 import { canonicalTimeZone, isValidTimeZone } from '../../schedule.ts';
 import { parseDuration } from '../../scheduler.ts';
 import { coerceStartWorkflowId } from '../../start-workflow-validation.ts';
@@ -27,12 +28,14 @@ type NormalizedScheduleOptions = Required<Pick<ScheduleOptions, 'overlap' | 'bac
   jitterMs?: number;
   timeZone?: string;
   revisionPolicy?: ScheduleRevisionPolicy;
+  metadata?: Record<string, unknown>;
 };
 
 type NormalizedScheduleUpdateOptions = {
   workflowType?: string;
   input?: unknown;
   description?: string;
+  metadata?: Record<string, unknown>;
   overlap?: ScheduleOverlapPolicy;
   backfill?: boolean;
   jitterMs?: number;
@@ -68,6 +71,9 @@ export function normalizeScheduleOptions(
         'options.revisionPolicy',
       ),
     }),
+    ...(options.metadata !== undefined && {
+      metadata: normalizeScheduleMetadata(options.metadata),
+    }),
   };
 }
 
@@ -81,9 +87,6 @@ export function normalizeScheduleUpdateOptions(
 
   return {
     ...normalizeScheduleRunFields(options),
-    ...(options.description !== undefined && {
-      description: normalizeScheduleDescription(options.description),
-    }),
     ...(options.overlap !== undefined && { overlap: normalizeScheduleOverlap(options.overlap) }),
     ...(options.backfill !== undefined && {
       backfill: normalizeScheduleBackfill(options.backfill),
@@ -101,6 +104,42 @@ export function normalizeScheduleUpdateOptions(
       ),
     }),
   };
+}
+
+/**
+ * A schedule's metadata: a plain JSON object, never an array, a class instance or a non-JSON value.
+ * The result is a deep copy, validated as a copy: the engine awaits storage before it writes, and a
+ * caller that changes the object it passed meanwhile must not change what is stored.
+ */
+export function normalizeScheduleMetadata(metadata: unknown): Record<string, unknown> {
+  if (isScheduleMetadata(metadata)) {
+    try {
+      const snapshot: unknown = structuredClone(metadata);
+      if (isScheduleMetadata(snapshot)) return snapshot;
+    } catch {
+      // A value the platform cannot copy is not JSON; the refusal below names it.
+    }
+  }
+  throw new Error('options.metadata must be a plain JSON object when provided');
+}
+
+/**
+ * `options` with its metadata replaced by a validated copy, for an engine method to take before its
+ * first await. Without metadata, or with options that are not an object, they come back as they were
+ * (later validation refuses the latter).
+ */
+export function snapshotScheduleMetadata<TOptions extends { metadata?: unknown }>(
+  options: TOptions | undefined,
+): TOptions | undefined {
+  if (typeof options !== 'object' || options === null || options.metadata === undefined) {
+    return options;
+  }
+  return { ...options, metadata: normalizeScheduleMetadata(options.metadata) };
+}
+
+/** Whether `value` is a plain JSON object: not `null`, an array, a class instance or a non-JSON value. */
+export function isScheduleMetadata(value: unknown): value is Record<string, unknown> {
+  return isJSONValue(value) && typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function normalizeScheduleRevisionPolicy(
@@ -126,15 +165,24 @@ function normalizeScheduleTimeZone(timeZone: unknown): string {
   return canonicalTimeZone(timeZone);
 }
 
-/** The workflow type and input an update moves a schedule to, when it names them. */
+/**
+ * The workflow type and input an update moves a schedule to, and the description and metadata it
+ * gives it, when it names them.
+ */
 function normalizeScheduleRunFields(
   options: ScheduleUpdateOptions,
-): Pick<NormalizedScheduleUpdateOptions, 'workflowType' | 'input'> {
+): Pick<NormalizedScheduleUpdateOptions, 'workflowType' | 'input' | 'description' | 'metadata'> {
   return {
     ...(options.workflowType !== undefined && {
       workflowType: normalizeScheduleWorkflowType(options.workflowType),
     }),
     ...(options.input !== undefined && { input: options.input }),
+    ...(options.description !== undefined && {
+      description: normalizeScheduleDescription(options.description),
+    }),
+    ...(options.metadata !== undefined && {
+      metadata: normalizeScheduleMetadata(options.metadata),
+    }),
   };
 }
 

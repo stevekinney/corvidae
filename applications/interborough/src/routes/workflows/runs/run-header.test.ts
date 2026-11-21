@@ -222,6 +222,14 @@ describe('the run page header', () => {
     expect(view.getByRole('button', { name: 'More actions' })).not.toBeNull();
   });
 
+  test('draws More actions square at the size of the buttons beside it (COR-2489 design round)', () => {
+    const view = renderHeader({ task: taskFixture({ id: 'run-1', status: 'completed' }) });
+    const more = view.getByRole('button', { name: 'More actions' });
+    expect(more.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(more.hasAttribute('data-cinder-compact')).toBe(true);
+    expect(more.classList.contains('button-size-extra-small')).toBe(true);
+  });
+
   test('a task offers Cancel run beside More, and the engine’s own cancel is not offered twice', async () => {
     const view = renderHeader({
       task: taskFixture({ id: 'run-1', status: 'working' }),
@@ -385,14 +393,17 @@ describe('the run page header', () => {
     expect(unwired.queryByRole('menuitem', { name: 'Restart' })).toBeNull();
   });
 
-  test('Copy run ID puts the ID on the clipboard', async () => {
+  test('names the workflow as the heading and keeps its run identifier in Copy run ID', async () => {
     const written: string[] = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: async (text: string) => void written.push(text) },
     });
     const toasts = render(ToastHost);
-    const view = renderHeader();
+    const view = renderHeader({ title: 'Release notes', titleIsIdentifier: false });
+    const heading = view.getByRole('heading', { level: 1, name: 'Release notes' });
+    expect(heading.textContent?.trim()).toBe('Release notes');
+    expect(heading.querySelector('code')).toBeNull();
 
     await openMenu(view);
     await fireEvent.click(view.getByRole('menuitem', { name: 'Copy run ID' }));

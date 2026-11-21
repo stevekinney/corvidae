@@ -167,12 +167,47 @@ describe('the list', () => {
     expect(await findByText('No workers match “billing”')).not.toBeNull();
     expect(queryByText('Workers are matched by name and queue.')).not.toBeNull();
     expect(summaryElement.textContent).toBe(summary);
-    // The open worker stays open.
-    const detail = await findByTestId('worker-detail');
-    expect(detail.textContent).toContain('Payments worker 1');
 
     await fireEvent.click(await findByRole('button', { name: 'Clear filter' }));
     expect(queryByText('No workers match “billing”')).toBeNull();
+  });
+
+  test('beside the list, "first" follows the filter: one that hides the open worker opens the new first, and one that hides every worker closes it', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      scripted = new ScriptedFetch();
+      routeHappyPaths(scripted, { workers: [PAYMENTS, GONE] });
+      router.navigate('/health/workers?worker=payments-worker-1', { replace: true });
+
+      const { findByTestId, findByRole, queryByTestId } = renderRoute();
+      await findByTestId('workers-summary');
+      await waitFor(() =>
+        expect(
+          (queryByTestId('worker-detail')?.textContent ?? '').includes('Payments worker 1'),
+        ).toBe(true),
+      );
+      const field = await findByRole('searchbox', { name: 'Filter workers' });
+
+      await fireEvent.input(field, { target: { value: 'reports' } });
+      await waitFor(() => expect(router.search.get('worker')).toBe('reports-worker'));
+
+      await fireEvent.input(field, { target: { value: 'billing' } });
+      await waitFor(() => expect(router.search.get('worker')).toBeNull());
+      expect(queryByTestId('worker-detail')).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
   });
 
   test('filters by queue', async () => {

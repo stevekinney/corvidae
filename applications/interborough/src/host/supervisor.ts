@@ -17,6 +17,11 @@
  * supervisor sees the same code in both modes. A source change restarts the host inside
  * `bun --watch` without involving the supervisor.
  *
+ * `dev` run in a linked git worktree gives its host a home under that worktree's `tmp/` and a free
+ * port, each unless `INTERBOROUGH_HOME` or `INTERBOROUGH_PORT` is set (`worktree-instance.ts`,
+ * COR-2540; `--showcase` derives only the port, its home being its own already). It chooses them once and hands them to every host it starts, so a restart comes back on
+ * the same address.
+ *
  * SIGINT and SIGTERM go to the child, and the supervisor exits once it has gone. A supervisor that
  * is killed outright (SIGKILL) cannot forward anything and leaves its child running.
  *
@@ -37,6 +42,13 @@ import {
 } from './launch-command.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
 import { SHOWCASE_FLAG } from './showcase.ts';
+import {
+  deriveInstanceEnvironment,
+  derivedInstanceMessage,
+  linkedWorktreeRoot,
+  operatingSystemFreePort,
+  type GitReader,
+} from './worktree-instance.ts';
 
 /** The two ways to run the host: `serve` for production, `dev` for the watching development host. */
 export type SupervisorMode = 'serve' | 'dev';
@@ -161,6 +173,16 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
   }
 }
 
+/** What {@link runSupervisor} asks about the checkout it runs in, each part replaceable by a test. */
+export type WorktreeProbe = {
+  /** The directory whose checkout is asked about. Defaults to the working directory, where `bun run dev` was run. */
+  readonly directory?: string;
+  /** The git lookup. Defaults to the machine's git. */
+  readonly read?: GitReader;
+  /** Picks the port a linked worktree's host listens on. Defaults to one the operating system says is free. */
+  readonly freePort?: () => number | Promise<number>;
+};
+
 /**
  * Why `serve` must not start on the build in `buildDirectory`, or `undefined` when it may: the
  * build is missing, or it was made from a commit or an uncommitted tree that is no longer the
@@ -200,6 +222,7 @@ export async function runSupervisor(
     argv: process.argv,
     cwd: process.cwd(),
   }),
+  worktree: WorktreeProbe = {},
 ): Promise<number> {
   const [mode, ...rest] = argumentsList;
   let entry: string | undefined;
@@ -227,7 +250,20 @@ export async function runSupervisor(
   const command = hostCommand(mode, entry, pluginPaths, showcase);
   // Recorded once, when the supervisor starts, and handed to every host it runs (COR-2009).
   const childEnvironment = { ...environment, ...launchCommandEnvironment(launch) };
-  if (mode === 'dev') return supervise({ command, environment: childEnvironment });
+  if (mode === 'dev') {
+    // A linked git worktree runs its own host (COR-2540). The home and the port are chosen once,
+    // here, and handed to every host this supervisor starts, so a restart or a `--watch` reload
+    // comes back on the same address the open pages and the instance record already name.
+    const instance = await deriveInstanceEnvironment(
+      childEnvironment,
+      linkedWorktreeRoot(worktree.directory ?? process.cwd(), worktree.read),
+      worktree.freePort ?? operatingSystemFreePort,
+      // The showcase host has a home of its own, per worktree already, so only its port is derived.
+      { home: !showcase },
+    );
+    if (instance.derived !== undefined) console.info(derivedInstanceMessage(instance.derived));
+    return supervise({ command, environment: instance.environment });
+  }
   return supervise({
     command,
     environment: childEnvironment,

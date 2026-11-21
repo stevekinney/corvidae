@@ -35,10 +35,11 @@ function open(path: string) {
 }
 
 describe('the start picker for a caller who may not read the engine', () => {
-  test('/runs/new says the engine’s scope is needed', async () => {
+  test('/runs/new links to the current scopes', async () => {
     const view = open('/runs/new');
 
     await view.findByRole('heading', { level: 1, name: VIEW_COPY.runs.forbidden.title });
-    expect(view.getByText('requires workflows:read')).not.toBeNull();
+    expect(view.getByRole('link', { name: 'Back to Home' })).not.toBeNull();
+    expect(view.queryByText(/workflows:read/)).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * `weft.system.metrics` operation + REST binding — unit tests.
  *
@@ -104,7 +105,7 @@ describe('weft.system.metrics — default export (no collector)', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 });
 
@@ -215,7 +216,7 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
     );
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: 'no credentials' });
+    expect(await response.json()).toEqual({ error: 'no credentials', retryable: false });
   });
 
   it('shapes Forbidden fault as 403 via the REST fault shaper', async () => {
@@ -244,7 +245,7 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
     );
 
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: 'insufficient scope' });
+    expect(await response.json()).toEqual({ error: 'insufficient scope', retryable: false });
   });
 
   it('uses the fallback HTTP mapper for non-special-cased faults', async () => {
@@ -273,7 +274,7 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
     );
 
     expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({ error: 'cannot process' });
+    expect(await response.json()).toEqual({ error: 'cannot process', retryable: false });
   });
 
   it('returns Unauthorized when called with no credentials via executeOperation', async () => {
@@ -304,7 +305,10 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
       'weft.system.metrics',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'user', scope: 'workflows:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
@@ -329,7 +333,10 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
       'weft.system.metrics',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'user', scope: 'system:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'user', scope: 'system:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry,

@@ -33,6 +33,7 @@ import {
 import type { QueryKey } from '@tanstack/svelte-query';
 
 import type { MissedFire, RunNowOutcome } from '../../lib/bureau-schedules.ts';
+import { faultAdviceOf } from '../../lib/faults.ts';
 
 export function scheduleDetailQueryKey(id: string): QueryKey {
   return ['schedules', 'detail', id] as const;
@@ -252,6 +253,7 @@ async function postOccurrence(
   throw new HttpClientError(response.status, message, {
     ...(weftCode === undefined ? {} : { weftCode }),
     ...(data === undefined ? {} : { data }),
+    ...faultAdviceOf(data),
   });
 }
 

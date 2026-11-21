@@ -64,7 +64,10 @@ describe('start-workflow — validation precedence', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Missing required field: type' });
+    expect(await response.json()).toEqual({
+      error: 'Missing required field: type',
+      retryable: false,
+    });
   });
 
   // --- adjacent pair: type before id ---
@@ -76,7 +79,10 @@ describe('start-workflow — validation precedence', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Missing required field: type' });
+    expect(await response.json()).toEqual({
+      error: 'Missing required field: type',
+      retryable: false,
+    });
   });
 
   // --- adjacent pair: id before executionTimeout ---
@@ -157,6 +163,9 @@ describe('start-workflow — validation precedence', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Missing required field: type' });
+    expect(await response.json()).toEqual({
+      error: 'Missing required field: type',
+      retryable: false,
+    });
   });
 });

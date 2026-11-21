@@ -39,14 +39,14 @@ describe('PageHeader', () => {
 
     const action = getByRole('button', { name: 'Add a memory' });
     const create = getByRole('button', { name: 'New agent' });
-    expect(action.getAttribute('data-cinder-size')).toBe('xs');
-    expect(create.getAttribute('data-cinder-size')).toBe('xs');
+    expect(action.classList.contains('button-size-extra-small')).toBe(true);
+    expect(create.classList.contains('button-size-extra-small')).toBe(true);
 
     await rerender({ compactActions: false });
 
-    expect(action.getAttribute('data-cinder-size')).toBe('md');
-    expect(create.getAttribute('data-cinder-size')).toBe('md');
-    expect(action.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action.classList.contains('button-size-medium')).toBe(true);
+    expect(create.classList.contains('button-size-medium')).toBe(true);
+    expect(action.classList.contains('button-variant-secondary')).toBe(true);
     expect(action.hasAttribute('data-cinder-compact')).toBe(false);
   });
 
@@ -165,6 +165,30 @@ describe('PageHeader', () => {
     ).toBe('true');
   });
 
+  test('clamps the title to two lines by default, and to one line that lets an inline status drop under it with titleLines 1 (COR-2438)', () => {
+    const plain = render(PageHeader, { props: { title: 'Runs' } });
+    expect(
+      plain.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-title-lines'),
+    ).toBe(false);
+    cleanup();
+    const single = render(PageHeader, { props: { title: 'Runs', titleLines: 1 } });
+    expect(
+      single.container
+        .querySelector('.cinder-page-header')
+        ?.getAttribute('data-cinder-title-lines'),
+    ).toBe('1');
+    const line =
+      stylesheet.match(
+        /\.cinder-page-header\[data-cinder-title-lines='1'\] \.cinder-page-header__title-line\s*\{[^}]*\}/,
+      )?.[0] ?? '';
+    expect(line).toContain('flex-wrap: wrap;');
+    const title =
+      stylesheet.match(
+        /\.cinder-page-header\[data-cinder-title-lines='1'\] \.cinder-page-header__title\s*\{[^}]*\}/,
+      )?.[0] ?? '';
+    expect(title).toContain('line-clamp: 1;');
+  });
+
   test('is flush with the content below by default, and insets only when asked (COR-2448)', () => {
     const { container } = render(PageHeader, { props: { title: 'Allowed models' } });
     const root = () => container.querySelector('.cinder-page-header');
@@ -187,7 +211,8 @@ describe('PageHeader', () => {
     const { container } = render(Harness, { props: { withActions: true } });
     const buttons = container.querySelectorAll('.cinder-page-header__actions button');
     expect(buttons.length).toBe(3);
-    for (const button of buttons) expect(button.getAttribute('data-cinder-size')).toBe('xs');
+    for (const button of buttons)
+      expect(button.classList.contains('button-size-extra-small')).toBe(true);
     // The create "+" is the last action, in its own slot after the others, so a narrow header can
     // keep it beside the title while the rest move.
     const slots = [...container.querySelectorAll('.cinder-page-header__row > *')];
@@ -243,8 +268,8 @@ describe('PageHeader', () => {
   test('under an error header a primary action is secondary and still xs', () => {
     const { container } = render(Harness, { props: { withActions: true, error: true } });
     const primary = container.querySelector('.cinder-page-header__actions button');
-    expect(primary?.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(primary?.getAttribute('data-cinder-size')).toBe('xs');
+    expect(primary?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(primary?.classList.contains('button-size-extra-small')).toBe(true);
   });
 
   test('the title renders at the page-title token, which resolves to 24px', () => {
@@ -252,7 +277,10 @@ describe('PageHeader', () => {
     const declared = (name: string) =>
       tokens.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]?.trim() ?? '';
     const titleRule = stylesheet.match(/__title\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(titleRule).toContain('font-size: var(--cinder-text-page-title)');
+    expect(titleRule).toContain('font-size: var(--_cinder-page-header-title-size)');
+    expect(stylesheet).toMatch(
+      /\.cinder-page-header\s*\{[^}]*--_cinder-page-header-title-size:\s*var\(--cinder-text-page-title\);/,
+    );
     expect(titleRule).toContain('letter-spacing: var(--cinder-tracking-display)');
     expect(declared('--cinder-text-page-title')).toBe('var(--cinder-text-3xl)');
     expect(declared('--cinder-text-3xl')).toBe('1.5rem');
@@ -297,22 +325,23 @@ describe('PageHeader', () => {
   });
 
   describe('create action', () => {
-    test('is a secondary icon-only button named for the page', () => {
-      const { getByRole, container } = render(Harness);
-
-      const create = getByRole('button', { name: 'New agent' });
-      expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
-      expect(create.hasAttribute('data-cinder-icon-only')).toBe(true);
-      expect(create.querySelector('svg')).not.toBeNull();
-      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe('New agent');
-    });
-
-    test('names the tooltip without describing the button a second time', () => {
+    test('is a labelled primary button with a leading "+", never an icon alone (owner report, 2026-11-19)', () => {
       const { getByRole } = render(Harness);
 
+      const create = getByRole('button', { name: 'New agent' });
+      expect(create.classList.contains('button-variant-primary')).toBe(true);
+      expect(create.hasAttribute('data-cinder-icon-only')).toBe(false);
+      expect(create.textContent?.trim()).toBe('New agent');
+      expect(create.querySelector('svg')).not.toBeNull();
+      expect(create.getAttribute('aria-describedby')).toBeNull();
+    });
+
+    test('draws as secondary under a full-page error, so Try again is the one primary', () => {
+      const { getByRole } = render(Harness, { props: { error: true } });
+
       expect(
-        getByRole('button', { name: 'New agent' }).getAttribute('aria-describedby'),
-      ).toBeNull();
+        getByRole('button', { name: 'New agent' }).classList.contains('button-variant-secondary'),
+      ).toBe(true);
     });
 
     test('is drawn last in the actions region, after custom actions', () => {
@@ -320,7 +349,7 @@ describe('PageHeader', () => {
 
       const labels = [
         ...container.querySelectorAll('.cinder-page-header__actions .cinder-button'),
-      ].map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim());
+      ].map((button) => button.textContent?.trim());
       expect(labels).toEqual(['Add a memory', 'Delete', 'New agent']);
     });
 
@@ -341,7 +370,7 @@ describe('PageHeader', () => {
       const link = render(Harness, { props: { createHref: '/agents/new' } });
       const anchor = link.getByRole('link', { name: 'New agent' });
       expect(anchor.getAttribute('href')).toBe('/agents/new');
-      expect(anchor.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(anchor.classList.contains('button-variant-primary')).toBe(true);
     });
 
     test('is inert under a stale region, described by its reason, and presses nothing', async () => {
@@ -369,27 +398,31 @@ describe('PageHeader', () => {
       const { getByRole } = render(Harness, { props: { error: true, withActions: true } });
 
       expect(
-        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
-      ).toBe('secondary');
+        getByRole('button', { name: 'Add a memory' }).classList.contains(
+          'button-variant-secondary',
+        ),
+      ).toBe(true);
       // Only primary is demoted; a danger button keeps its meaning.
-      expect(getByRole('button', { name: 'Delete' }).getAttribute('data-cinder-variant')).toBe(
-        'danger',
-      );
-      expect(getByRole('button', { name: 'New agent' }).getAttribute('data-cinder-variant')).toBe(
-        'secondary',
-      );
+      expect(
+        getByRole('button', { name: 'Delete' }).classList.contains('button-variant-danger'),
+      ).toBe(true);
+      expect(
+        getByRole('button', { name: 'New agent' }).classList.contains('button-variant-secondary'),
+      ).toBe(true);
     });
 
     test('leaves primary actions primary otherwise, and follows the flag', async () => {
       const { getByRole, rerender } = render(Harness, { props: { withActions: true } });
       expect(
-        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
-      ).toBe('primary');
+        getByRole('button', { name: 'Add a memory' }).classList.contains('button-variant-primary'),
+      ).toBe(true);
 
       await rerender({ withActions: true, error: true });
       expect(
-        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
-      ).toBe('secondary');
+        getByRole('button', { name: 'Add a memory' }).classList.contains(
+          'button-variant-secondary',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -426,6 +459,42 @@ describe('PageHeader', () => {
       expect(stylesheet).toMatch(/__title-line\s*\{[^}]*align-items:\s*flex-start/);
       expect(stylesheet).toMatch(
         /__status\[data-cinder-placement='inline'\]\s*\{[^}]*min-block-size:/,
+      );
+    });
+
+    // COR-2438: the actions were centred on a 1.125rem line box under a 1.5rem title, and by a
+    // margin that assumed every control was the compact height, so a taller control (a page's own
+    // Dropdown menu, at the trigger's md height) sat lower than the title's first line.
+    test('centres the status and the actions on the title first line, whatever their height', () => {
+      const rule = (selector: string) =>
+        stylesheet.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? '';
+      const actions = rule('\\n  \\.cinder-page-header__actions');
+      expect(actions).toContain('font-size: var(--_cinder-page-header-title-size)');
+      expect(actions).toContain('line-height: var(--cinder-leading-tight)');
+      expect(actions).toContain('block-size: 1lh');
+      expect(actions).toContain('align-items: center');
+      expect(actions).toContain('margin-block: 0');
+      expect(actions).not.toContain('--cinder-text-xl');
+      const status = rule("__status\\[data-cinder-placement='inline'\\]");
+      expect(status).toContain(
+        'min-block-size: calc(var(--_cinder-page-header-title-size) * var(--cinder-leading-tight))',
+      );
+      expect(stylesheet).not.toMatch(/__status\[data-cinder-placement='inline'\][^}]*text-xl/);
+      expect(
+        rule(
+          ':where\\(\\.cinder-page-header:not\\(\\[data-cinder-regular-actions\\]\\)\\)\\s+' +
+            '\\.cinder-page-header__actions\\s+\\.cinder-dropdown-trigger:not\\(\\.cinder-button\\)',
+        ),
+      ).toContain('min-block-size: var(--_cinder-compact-control-height)');
+      // A Dropdown's trigger is centred as a flex item, not set on a baseline in the line box.
+      expect(rule('\\.cinder-page-header__actions \\.cinder-dropdown')).toContain(
+        'display: inline-flex',
+      );
+    });
+
+    test('a narrow header lets the dropped actions row grow to its controls', () => {
+      expect(stylesheet).toMatch(
+        /@container cinder-page-header \(max-width: 32rem\)\s*\{[^@]*__actions:not\(\.cinder-page-header__create-slot\)\s*\{[^}]*block-size:\s*auto/,
       );
     });
   });
@@ -576,6 +645,30 @@ describe('PageHeader narrowActions (COR-2327 B2)', () => {
     );
     expect(narrow).toMatch(
       /\.cinder-page-header__actions:not\(\.cinder-page-header__create-slot\) \{[^}]*grid-column: 2;[^}]*grid-row: 2;/u,
+    );
+  });
+
+  // COR-2438: in a narrow chat header the More menu sat on the status's line, 30px under the title.
+  test('beside-status with a one-line title keeps the actions on the title line and the status under both', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Hello', narrowActions: 'beside-status', titleLines: 1 },
+    });
+    expect(
+      container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-title-lines'),
+    ).toBe('1');
+    const narrow = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-page-header (max-width: 32rem)'),
+    );
+    const oneLine =
+      ".cinder-page-header[data-cinder-narrow-actions='beside-status'][data-cinder-title-lines='1']";
+    expect(narrow).toContain(
+      `${oneLine}\n      .cinder-page-header__title {\n      grid-column: 1;`,
+    );
+    expect(narrow).toContain(
+      `${oneLine}\n      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {\n      grid-row: 1;`,
+    );
+    expect(narrow).toContain(
+      `${oneLine}\n      .cinder-page-header__status {\n      grid-column: 1 / -1;`,
     );
   });
 

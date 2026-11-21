@@ -32,14 +32,20 @@ import {
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
-import { encode, type Outbox, VERSION as WEFT_VERSION, weftFaultPolicy } from '@lostgradient/weft';
+import {
+  AUTHORIZATION_SCOPES,
+  WEFT_SCOPE_VOCABULARY,
+  encode,
+  type Outbox,
+  VERSION as WEFT_VERSION,
+} from '@lostgradient/weft';
+import { bureauFaultPolicy } from './bureau-fault-policy.ts';
 import {
   type AuthConfig,
-  AUTHORIZATION_SCOPES,
   type AuthorizationScope,
   createOperationHandler,
   createOperationHandlerAuthenticator,
-  getPrincipalOperation,
+  createGetPrincipalOperation,
   type OperationHandler,
   type OperationHandlerMount,
   type OperationHandlerAuthenticate,
@@ -118,6 +124,7 @@ import {
   agentsReferencesOperation,
 } from './management/agent-references-operation.ts';
 import { findAgentReferences } from '../agent-references.ts';
+import { type BureauDryRunHost, dryRunEffectsOf } from './management/dry-run-references.ts';
 import {
   type BureauContextsInputOperationHost,
   contextsInputOperation,
@@ -360,6 +367,7 @@ export type BureauHandlerSource = Pick<
   readonly schedules: Pick<
     BureauSchedules,
     | 'create'
+    | 'createWorkflow'
     | 'get'
     | 'list'
     | 'pause'
@@ -409,6 +417,7 @@ export type BureauHandlerSource = Pick<
     | 'duplicate'
     | 'try'
     | 'disable'
+    | 'canDisable'
     | 'enable'
   >;
 };
@@ -460,7 +469,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauAssetsOperationHost &
   BureauDecisionsOperationHost &
   BureauSettingsOperationHost &
-  BureauSkillsOperationHost;
+  BureauSkillsOperationHost &
+  BureauDryRunHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -842,7 +852,7 @@ function assertPersistence(bureau: BureauHandlerSource): void {
  * owner-scoped (see their modules).
  */
 export const BUREAU_HANDLER_OPERATIONS = [
-  getPrincipalOperation,
+  createGetPrincipalOperation(WEFT_SCOPE_VOCABULARY),
   deploymentGetOperation,
   diagnosticsGetOperation,
   healthAttentionOperation,
@@ -903,7 +913,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
  */
 function createLocalPrincipal(): AuthenticatedPrincipal {
   const scopes = new Set<AuthorizationScope>([
-    ...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES),
+    ...(unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal?.scopes ??
+      AUTHORIZATION_SCOPES),
     ...BUREAU_SCOPES,
   ]);
   return Object.freeze({
@@ -978,7 +989,7 @@ function createApiKeyAuthenticate(authentication: AuthConfig): OperationHandlerA
           : principal;
       },
     },
-    { additionalScopes: BUREAU_SCOPES },
+    { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
   );
 }
 
@@ -1409,6 +1420,7 @@ export function buildBureauHandlerHost(
       tools: () => bureau.agents.tools(),
       loadArtifact: skills?.loadArtifact ?? createSkillArtifactLoader({}),
     },
+    dryRun: dryRunEffectsOf(bureau),
     workflows: bureau.workflows,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);
@@ -1421,6 +1433,7 @@ export function buildBureauHandlerHost(
     formatEvent: bureau.formatEvent,
     schedules: {
       create: bureau.schedules.create,
+      createWorkflow: bureau.schedules.createWorkflow,
       get: bureau.schedules.get,
       list: bureau.schedules.list,
       pause: bureau.schedules.pause,
@@ -1581,6 +1594,7 @@ export function createBureauHandler(
   ];
   const handler = createOperationHandler({
     operations: BUREAU_HANDLER_OPERATIONS,
+    scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     host,
     authenticate:
       options.workspace === undefined
@@ -1595,8 +1609,9 @@ export function createBureauHandler(
     publicPaths: [],
     // The documents are Bureau's: its own title, at the version of the Weft it is built on.
     discoveryInfo: { title: 'Bureau', version: WEFT_VERSION },
-    // Bureau's operations run on Weft's engine: its error classes and its strict-fault setting.
-    faultPolicy: weftFaultPolicy,
+    // Bureau's operations run on Weft's engine: its error classes and its strict-fault setting, with
+    // Bureau's own errors mapped to their faults in one place.
+    faultPolicy: bureauFaultPolicy,
     // `/v1/health` answers MessagePack to a client that asks for it, as it always has.
     encodeBinary: encode,
   });

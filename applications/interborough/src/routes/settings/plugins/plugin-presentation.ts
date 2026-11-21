@@ -1,10 +1,10 @@
 /**
  * What Settings › Plugins says about a plugin, worked out from what the host reports: its status as
- * a word and a dot, what it adds grouped by kind, what names it, and what depends on it when it is
+ * a badge, what it adds grouped by kind, what names it, and what depends on it when it is
  * turned off. Nothing here reads the page's drafts except through the `enabled` argument, so the
  * rules are testable on their own (`plugin-presentation.test.ts`).
  */
-import type { StatusDotStatus } from '@lostgradient/cinder';
+import type { BadgeVariant } from '@lostgradient/cinder';
 
 import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
 import { RESTART_COPY } from '../../../app/copy/restart.ts';
@@ -38,8 +38,7 @@ export type InFlightRuns =
 /** No run in flight: the question as it was before the read existed. */
 export const NO_RUNS: InFlightRuns = { kind: 'listed', runs: [] };
 
-/** A status as a person reads it: the word and the dot that goes with it. */
-export type PluginStatusView = { readonly label: string; readonly dot: StatusDotStatus };
+export type PluginStatusView = { readonly label: string; readonly variant: BadgeVariant };
 
 /** How many of each thing name what a plugin adds. */
 export type PluginReferenceTotals = {
@@ -105,22 +104,22 @@ export function statusOf(plugin: PluginStanding, enabled: boolean): PluginStatus
   const words = PLUGINS_COPY.status;
   if (enabled !== loadedEnabled(plugin)) {
     return enabled
-      ? { label: words.enabledAfterRestart, dot: 'warning' }
-      : { label: words.disabledAfterRestart, dot: 'warning' };
+      ? { label: words.enabledAfterRestart, variant: 'warning' }
+      : { label: words.disabledAfterRestart, variant: 'warning' };
   }
   if (plugin.restartRequired && plugin.enabled === enabled) {
-    return { label: words.changesAfterRestart, dot: 'warning' };
+    return { label: words.changesAfterRestart, variant: 'warning' };
   }
   switch (plugin.status) {
     case 'running':
-      return { label: words.running, dot: 'success' };
+      return { label: words.running, variant: 'success' };
     case 'needs-setup':
       // Neutral: amber is for what waits on the person, and a plugin that needs a key is not that.
-      return { label: words.needsSetup, dot: 'neutral' };
+      return { label: words.needsSetup, variant: 'neutral' };
     case 'disabled':
-      return { label: words.disabled, dot: 'neutral' };
+      return { label: words.disabled, variant: 'neutral' };
     case 'skipped':
-      return { label: words.notLoaded, dot: 'danger' };
+      return { label: words.notLoaded, variant: 'danger' };
   }
 }
 
@@ -396,20 +395,6 @@ export function restartBackWords(
     title: words.title,
     text: [words.applied(intent.changes), standing].filter((part) => part !== '').join(' '),
   };
-}
-
-/**
- * Where a secret is kept, as a person reads it: the folder of its file, written from the home
- * folder (`~/.interborough/secrets`) when it is under the state directory, and the location as
- * given when it is not a path at all (a remote host names an environment variable).
- */
-export function secretsDirectory(location: string): string {
-  const slash = location.lastIndexOf('/');
-  if (slash < 0) return location;
-  const directory = location.slice(0, slash);
-  const marker = '/.interborough/';
-  const at = `${directory}/`.indexOf(marker);
-  return at < 0 ? directory : `~${`${directory}/`.slice(at, -1)}`;
 }
 
 /**

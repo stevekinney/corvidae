@@ -115,8 +115,11 @@ const headerCreate = (container: HTMLElement): HTMLElement => {
   if (button === null) throw new Error('the page header has no create action');
   return button;
 };
+/** The primary buttons in the page's body, under its header. */
 const primaryButtons = (container: HTMLElement): HTMLElement[] => [
-  ...container.querySelectorAll<HTMLElement>('button[data-cinder-variant="primary"]'),
+  ...container.querySelectorAll<HTMLElement>(
+    'button.button-variant-primary:not(.cinder-page-header__create)',
+  ),
 ];
 const toolbar = (container: HTMLElement): Element | null =>
   container.querySelector('[aria-label="Filter schedules"]');
@@ -132,17 +135,21 @@ describe('nothing scheduled yet (row 70p)', () => {
     expect(toolbar(container)).toBeNull();
     expect(rows(container)).toHaveLength(0);
 
-    // The header's "+" stays secondary, and the state's button is the only primary.
-    expect(headerCreate(container).getAttribute('data-cinder-variant')).toBe('secondary');
+    // The header's New schedule is a labelled primary, and the state repeats it with the same verb
+    // (owner report, 2026-11-19).
+    expect(headerCreate(container).classList.contains('button-variant-primary')).toBe(true);
+    expect(headerCreate(container).textContent?.trim()).toBe('New schedule');
     const primaries = primaryButtons(container);
     expect(primaries).toHaveLength(1);
     expect(primaries[0]?.textContent?.trim()).toBe('New schedule');
     expect(primaries[0]?.querySelector('svg')).not.toBeNull();
-    // A first use: the accent disc with the calendar glyph.
+    // A first use in the page layout, in no box, with the Schedules icon of the sidebar.
     const state = container.querySelector('.cinder-empty-state');
     expect(state?.getAttribute('data-cinder-kind')).toBe('first-use');
-    expect(state?.hasAttribute('data-cinder-bordered')).toBe(true);
-    expect(state?.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
+    expect(state?.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
+    expect(
+      state?.querySelector('.cinder-empty-state-icon svg.lucide-calendar-clock'),
+    ).not.toBeNull();
 
     await fireEvent.click(primaries[0] as HTMLElement);
     expect(router.pathname).toBe('/schedules/new');
@@ -165,7 +172,8 @@ describe('nothing scheduled yet (row 70p)', () => {
     await findByRole('heading', { level: 2, name: 'No schedules yet' });
     const primary = primaryButtons(container)[0] as HTMLElement;
     expect(primary.getAttribute('aria-disabled')).toBe('true');
-    expect(primary.getAttribute('title')).toContain('schedules:write');
+    const reason = container.querySelector(`#${primary.getAttribute('aria-describedby') ?? ''}`);
+    expect(reason?.textContent).toContain('schedules:write');
     await fireEvent.click(primary);
     expect(router.pathname).toBe('/schedules');
   });
@@ -201,7 +209,7 @@ describe('filtered to nothing (rows 70q and 70r)', () => {
     expect(state.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
     expect(within(state).getAllByRole('button')).toHaveLength(1);
     const clear = within(state).getByRole('button', { name: 'Clear filters' });
-    expect(clear.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(clear.classList.contains('button-variant-secondary')).toBe(true);
     expect(primaryButtons(container)).toHaveLength(0);
 
     await fireEvent.click(clear);
@@ -376,7 +384,7 @@ describe('a first load that failed (row 70w)', () => {
     expect(primaries).toHaveLength(1);
     expect(primaries[0]?.textContent?.trim()).toBe('Try again');
     const create = headerCreate(container);
-    expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(create.classList.contains('button-variant-secondary')).toBe(true);
     expect(create.getAttribute('aria-disabled')).toBe('true');
     const reason = container.querySelector(`#${create.getAttribute('aria-describedby') ?? 'none'}`);
     expect(reason?.textContent).toBe(SCHEDULE_COPY.newActionOffReason);
@@ -399,7 +407,7 @@ describe('a first load that failed (row 70w)', () => {
 });
 
 describe('a refresh that failed over rows on screen (row 70u)', () => {
-  test('keeps the rows and says so in a banner under the header, with Retry now and no dismiss', async () => {
+  test('keeps the rows and says so in a banner under the header, with Try again and no dismiss', async () => {
     const world = twoSchedules();
     const { container, queryClient } = open('/schedules', world);
     await waitFor(() => expect(rows(container)).toHaveLength(2));
@@ -423,7 +431,7 @@ describe('a refresh that failed over rows on screen (row 70u)', () => {
     expect(banner.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     world.failSchedules = false;
-    await fireEvent.click(within(banner).getByRole('button', { name: 'Retry now' }));
+    await fireEvent.click(within(banner).getByRole('button', { name: 'Try again' }));
     await waitFor(() =>
       expect(within(container).queryByRole('region', { name: 'Connection problem' }) === null).toBe(
         true,

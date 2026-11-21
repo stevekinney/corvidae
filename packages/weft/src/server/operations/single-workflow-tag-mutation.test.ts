@@ -78,7 +78,10 @@ describe('single-workflow tag mutation helper', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Field "tags" must not contain empty tags' });
+    expect(await response.json()).toEqual({
+      error: 'Field "tags" must not contain empty tags',
+      retryable: false,
+    });
   });
 
   it('maps not-found failures to 404 with the engine message', async () => {
@@ -112,6 +115,7 @@ describe('single-workflow tag mutation helper', () => {
     expect(await response.json()).toEqual({
       error: 'workflow not found',
       data: { resource: 'workflow', identifier: 'missing' },
+      retryable: false,
     });
   });
 
@@ -143,7 +147,7 @@ describe('single-workflow tag mutation helper', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
   });
 
   it('does not claim the bulk tag mutation route', async () => {

@@ -56,6 +56,7 @@ describe('schedule REST body extraction', () => {
       jitter: undefined,
       timeZone: undefined,
       revisionPolicy: undefined,
+      metadata: undefined,
     });
   });
 
@@ -77,6 +78,7 @@ describe('schedule REST body extraction', () => {
       jitter: '30s',
       timeZone: 'America/Los_Angeles',
       revisionPolicy: 'pinned',
+      metadata: undefined,
     });
   });
 });

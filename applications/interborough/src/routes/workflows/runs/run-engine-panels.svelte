@@ -6,9 +6,9 @@
    * started and the run that started it are in the Details rail. Search attributes need
    * `attributes:read` (and `attributes:write` to edit); the rest need only the read of the run.
    */
+  import { Stack } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import AttributesPanel from '../detail/attributes/attributes-panel.svelte';
   import LineagePanel from '../detail/lineage-panel.svelte';
@@ -31,19 +31,17 @@
   const attributesClient = $derived(attributesClientOf(engine.client));
 </script>
 
+<!-- Each panel is a Cinder Section titled by its own heading (Search attributes, Worker versioning),
+     as the lineage is (`lineage-panel.svelte`); the wrappers only space them. -->
 {#if part === 'attributes'}
   {#if attributesClient !== undefined}
-    <section
-      class="ib-run__section ib-run__panels"
-      aria-label={RUN_PAGE_COPY.attributesAndWorkerLabel}
-      data-section="engine-panels"
-    >
+    <Stack gap="var(--cinder-space-4)" data-section="engine-panels">
       <AttributesPanel client={attributesClient} workflowId={workflow.id} {canRead} {canWrite} />
-    </section>
+    </Stack>
   {/if}
 {:else}
-  <section class="ib-run__section ib-run__panels" data-section="versioning">
+  <Stack gap="var(--cinder-space-4)" data-section="versioning">
     <WorkerBindingPanel {workflow} />
-  </section>
+  </Stack>
   <LineagePanel client={engine.client} {workflow} />
 {/if}

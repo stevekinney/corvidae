@@ -18,15 +18,22 @@
  * @module engine-run-tasks
  */
 
-import type { RegistryAgnosticEngine, WorkflowState, WorkflowSummary } from '@lostgradient/weft';
+import {
+  isWeftErrorCode,
+  type RegistryAgnosticEngine,
+  type WorkflowState,
+  type WorkflowSummary,
+} from '@lostgradient/weft';
 import {
   RUN_ENGINE_WORKFLOW_TYPE,
   isScheduleTick,
   type ScheduleTick,
 } from '@lostgradient/operative';
 
-import type { TaskState, TaskView } from './task-registry';
-import { isTaskOrigin, type TaskOrigin } from './task-origin';
+import type { TaskEngineRunFilter, TaskState, TaskView } from './task-registry';
+import { truncateFailureText, type TaskFailureView, type TaskRetrying } from './task-failure';
+import type { TaskOrigin } from './task-origin';
+import { startOfRun } from './workflow-run-start';
 import type { TaskWorkflow } from './task-workflow';
 import { bureauNameOf, weftNameOf } from './namespaced-identifier';
 import { workflowFileStepsInCanonicalOrder, type WorkflowFileStep } from './workflow-file';
@@ -41,7 +48,10 @@ export const ENGINE_RUN_TASK_STEP_READS = 40;
 const STATUS_MESSAGE_LIMIT = 1000;
 
 /** The engine, as far as this module reads it. */
-export type EngineRunTaskEngine = Pick<RegistryAgnosticEngine, 'list' | 'get' | 'getEvents'>;
+export type EngineRunTaskEngine = Pick<
+  RegistryAgnosticEngine,
+  'list' | 'get' | 'getEvents' | 'getScheduleProvenance'
+>;
 
 /** What {@link createEngineRunTasks} reads from the Bureau around it. */
 export interface EngineRunTasksDependencies {
@@ -100,8 +110,12 @@ export function createEngineRunTasksOf(dependencies: {
 
 /** The engine's runs as task views. */
 export interface EngineRunTasks {
-  /** The newest runs, as task views with no open waits (the registry adds the reviews it holds). */
-  readonly list: () => Promise<readonly TaskView[]>;
+  /**
+   * The newest runs, as task views with no open waits (the registry adds the reviews it holds). A
+   * `filter` is handed to the engine's own list (`ListFilter.failedStep`, `ListFilter.retrying`), so
+   * the newest runs of each type that match are read, not the newest runs filtered afterwards.
+   */
+  readonly list: (filter?: TaskEngineRunFilter) => Promise<readonly TaskView[]>;
   /** Whether the engine still holds `runId` as a run this module lists. */
   readonly holds: (runId: string) => Promise<boolean>;
 }
@@ -116,36 +130,65 @@ const STATE_OF_STATUS = {
   cancelled: 'canceled',
 } as const satisfies Record<WorkflowSummary['status'], TaskState>;
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function truncated(text: string): string {
   return text.length <= STATUS_MESSAGE_LIMIT ? text : text.slice(0, STATUS_MESSAGE_LIMIT);
 }
 
 /**
- * The schedule an instance was started by and the origin it records, read from its input. An
- * instance a person or a plugin started carries an `origin`; one a schedule fired carries the
- * schedule's trigger (`{ kind: 'schedule', scheduleId }`) and no origin.
+ * The schedule an instance was started by and the origin it records (COR-2546), from
+ * {@link startOfRun}, never from the instance's input, which a schedule's caller can write. An
+ * instance a person or a plugin started carries the `origin` Bureau declared; one a schedule fired
+ * has the schedule Weft recorded, and the origin that names it.
  */
-export function instanceStartOf(
-  input: unknown,
-  runId: string,
-): {
+export async function instanceStartOf(
+  engine: Pick<EngineRunTaskEngine, 'getScheduleProvenance'>,
+  run: {
+    readonly id: string;
+    readonly tags?: readonly string[] | undefined;
+    readonly input: unknown;
+  },
+): Promise<{
   readonly origin: TaskOrigin | null;
   readonly scheduleId: string | null;
-} {
-  if (!isRecord(input)) return { origin: null, scheduleId: null };
-  const recorded: unknown = input['origin'];
-  const origin = isTaskOrigin(recorded) ? recorded : null;
-  if (origin?.kind === 'schedule') return { origin, scheduleId: origin.scheduleId };
-  const scheduleId = input['kind'] === 'schedule' ? input['scheduleId'] : undefined;
-  if (typeof scheduleId === 'string' && scheduleId !== '') {
-    // The fire is the run the schedule started: this instance.
-    return { origin: origin ?? { kind: 'schedule', scheduleId, fireId: runId }, scheduleId };
-  }
-  return { origin, scheduleId: null };
+}> {
+  const { origin, scheduleId } = await startOfRun(engine, run);
+  if (scheduleId === null) return { origin, scheduleId: null };
+  // The fire is the run the schedule started: this instance.
+  return { origin: { kind: 'schedule', scheduleId, fireId: run.id }, scheduleId };
+}
+
+/**
+ * Why a failed engine run failed (COR-2531): the step the engine stopped it at and its error code,
+ * from the run's own state. The engine records the step's label as it is, so a workflow run's
+ * `step.label` is its `failedStep.label`. An engine run carries no error kind or tool call: those
+ * are an agent run's. `null` for a run that did not fail, and for one the engine recorded neither
+ * for (a failure from before the engine kept them).
+ */
+function failureOfRun(
+  status: TaskState,
+  run: WorkflowSummary,
+  state: WorkflowState,
+): TaskFailureView | null {
+  if (status !== 'failed') return null;
+  const failedStep = state.failedStep ?? run.failedStep;
+  // The engine's code is a member of its closed list of public codes (`WorkflowTimeoutError`), never text.
+  const errorCode = isWeftErrorCode(state.errorCode) ? state.errorCode : undefined;
+  if (failedStep === undefined && errorCode === undefined) return null;
+  return {
+    step:
+      failedStep === undefined
+        ? null
+        : { index: failedStep.index, label: truncateFailureText(failedStep.label) },
+    errorCode: errorCode ?? null,
+    errorKind: null,
+    toolCall: null,
+  };
+}
+
+/** The activity a running engine run is retrying, and the attempt it is on (COR-2531). */
+function retryingOfRun(status: TaskState, run: WorkflowSummary): TaskRetrying | null {
+  if (status !== 'working' || run.retrying === undefined) return null;
+  return { label: truncateFailureText(run.retrying.activity), attempt: run.retrying.attempt };
 }
 
 /** How far an instance got, from the step its history last started. */
@@ -224,6 +267,11 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       openWaits: [],
       wakeAt: null,
       workflow,
+      usage: null,
+      attention: [],
+      stalledSince: null,
+      failure: failureOfRun(status, run, state),
+      retrying: retryingOfRun(status, run),
     };
   }
 
@@ -233,7 +281,11 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
     engine: EngineRunTaskEngine,
     readSteps: boolean,
   ): Promise<TaskView> {
-    const { origin, scheduleId } = instanceStartOf(state.input, run.id);
+    const { origin, scheduleId } = await instanceStartOf(engine, {
+      id: run.id,
+      tags: state.tags ?? run.tags,
+      input: state.input,
+    });
     const revision = await dependencies.revisionSteps(run.type, state.versionTuple.workflowVersion);
     const total =
       revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
@@ -261,7 +313,7 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
   }
 
   return {
-    async list() {
+    async list(filter) {
       const engine = dependencies.engine();
       if (engine === undefined) return [];
       // A read the engine refuses leaves those runs out and is reported, never a failure of the
@@ -276,7 +328,12 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       const found: WorkflowSummary[] = [];
       for (const type of new Set(types)) {
         try {
-          const page = await engine.list({ type, limit: ENGINE_RUN_TASKS_PER_TYPE });
+          const page = await engine.list({
+            type,
+            limit: ENGINE_RUN_TASKS_PER_TYPE,
+            ...(filter?.failedStep === undefined ? {} : { failedStep: filter.failedStep }),
+            ...(filter?.retrying === undefined ? {} : { retrying: filter.retrying }),
+          });
           found.push(...page.items);
         } catch (error) {
           diagnose(`Could not list the runs of "${type}" as tasks.`, error);

@@ -23,6 +23,10 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'health-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 
+interface WarningFixtureWindow extends Window {
+  emitCheckpointSizeWarning?: () => void;
+}
+
 /** The problems `bureau.health.attention` lists, as the page reads them. */
 interface AttentionAnswer {
   items: { kind: string; area: string; at: number | null }[];
@@ -195,6 +199,66 @@ async function answerStorageSizes(
   }, reports);
 }
 
+/** Opens the shared fleet feed and exposes an operational-warning event for the mounted Alerts tab. */
+async function answerCheckpointSizeWarning(page: Page): Promise<void> {
+  await page.route('**/jsonrpc', async (route) => {
+    const request = JSON.parse(route.request().postData() ?? '{}') as {
+      id?: unknown;
+      method?: string;
+    };
+    if (request.method !== 'weft.alerts.list') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ json: { jsonrpc: '2.0', id: request.id, result: { items: [] } } });
+  });
+  await page.addInitScript(() => {
+    const fixtureWindow: WarningFixtureWindow = window;
+    const { preconnect } = window.fetch;
+    const original = window.fetch.bind(window);
+    window.fetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const address =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!new URL(address, location.href).pathname.endsWith('/v1/events/sse')) {
+          return original(input, init);
+        }
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode('event: ping\ndata: {"replayComplete":true}\n\n'));
+            fixtureWindow.emitCheckpointSizeWarning = () => {
+              const envelope = {
+                kind: 'checkpoint:size-warning',
+                sequence: 1,
+                cursor: 'checkpoint-size-warning',
+                emittedAtMs: Date.now(),
+                payload: { message: 'Checkpoint crossed 80% of its limit.' },
+              };
+              controller.enqueue(
+                encoder.encode(
+                  `id: 1\nevent: checkpoint:size-warning\ndata: ${JSON.stringify(envelope)}\n\n`,
+                ),
+              );
+            };
+            init?.signal?.addEventListener('abort', () => {
+              try {
+                controller.close();
+              } catch {
+                // Already closed.
+              }
+            });
+          },
+        });
+        return Promise.resolve(
+          new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }),
+        );
+      },
+      { preconnect },
+    );
+  });
+}
+
 /** The runs the engine lists for Health's cards: `count` done runs that each took `seconds`. */
 async function answerRunsStarted(
   page: Page,
@@ -249,6 +313,31 @@ const attentionCount = (page: Page) =>
 const sidebarRow = (page: Page, name: RegExp | string) =>
   page.getByRole('navigation').getByRole('link', { name });
 
+test('Warning indicator in System alerts', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await answerCheckpointSizeWarning(page);
+  await page.goto('/health?advanced=alerts');
+
+  await expect(page.getByText('No alert activity since page load')).toBeVisible();
+  await page.evaluate(() => {
+    const fixtureWindow: WarningFixtureWindow = window;
+    const emitCheckpointSizeWarning = fixtureWindow.emitCheckpointSizeWarning;
+    if (emitCheckpointSizeWarning === undefined) {
+      throw new Error('The test alert feed has not connected.');
+    }
+    emitCheckpointSizeWarning();
+  });
+  const row = page.locator('.weft-alerts-tab__row').filter({ hasText: 'Checkpoint size warning' });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Warning');
+  await captureForDesignReview(page, {
+    route: '/health?advanced=alerts',
+    state: 'checkpoint size warning',
+    tab: 'Alerts',
+    source: SOURCE,
+  });
+});
+
 for (const width of WIDTHS) {
   test(`all clear: Needs attention is one green row, the sidebar has no count and a green dot, at ${width} pixels`, async ({
     page,
@@ -269,21 +358,14 @@ for (const width of WIDTHS) {
     await answerRunsStarted(page, { started: 14, before: 11, seconds: 72 });
     await page.goto('/health');
     const main = page.locator('main');
-    const card = main.getByTestId('needs-attention');
 
-    // 76u: one row, a green check tile, the two lines, no count chip and no action.
-    await expect(attentionRows(page)).toHaveCount(1);
-    await expect(attentionRows(page).first()).toContainText('Nothing needs attention');
-    await expect(attentionRows(page).first()).toContainText(
-      'Storage, schedules, providers and hooks are fine.',
-    );
-    await expect(card.locator('h2')).toHaveText('Needs attention');
-    await expect(attentionCount(page)).toHaveCount(0);
-    await expect(card.locator('a, button')).toHaveCount(0);
-    await expect(card.locator('.cinder-stacked-list-item__leading-tile')).toHaveAttribute(
-      'data-cinder-tone',
-      'success',
-    );
+    // 76u: no card says nothing (owner, 2026-11-19): one quiet line, with no box, count or action,
+    // and no empty space under it.
+    await expect(main.getByTestId('needs-attention')).toHaveCount(0);
+    const clear = main.getByTestId('needs-attention-clear');
+    await expect(clear).toHaveText('Nothing needs attention.');
+    await expect(clear.locator('a, button')).toHaveCount(0);
+    expect(await clear.evaluate((element) => element.closest('.cinder-card') === null)).toBe(true);
 
     // 76t: the sidebar has no Reviews count, and the Health dot says nothing needs attention.
     // The sidebar is a drawer on a phone, so it is read where it is on the page.
@@ -298,7 +380,7 @@ for (const width of WIDTHS) {
     // 76v: Recent activity with its audit link, three cards, and Advanced collapsed at the foot.
     await expect(main.getByRole('heading', { level: 2, name: /^Recent activity/ })).toBeVisible();
     await expect(
-      main.getByRole('link', { name: /^Open audit log \(1,240 events\)/ }),
+      main.getByRole('link', { name: /^All 1,240 events in the audit log/ }),
     ).toBeVisible();
     // Only what this world did: the refund that was done, and the server's start.
     const lines = main.locator('[data-activity]');
@@ -354,10 +436,10 @@ for (const width of WIDTHS) {
 
     // 76w: the heading, the storage line and the tabs are real from the start.
     await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-    await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite in');
+    await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite');
     await expect(main.getByRole('button', { name: 'Storage details' })).toBeVisible();
 
-    // The skeleton shows once the 300 ms have gone; the counts' labels and the card headings are text.
+    // The skeleton shows once the 300 ms have gone; the card headings are text.
     const card = main.getByTestId('needs-attention');
     await expect(card.locator('.cinder-skeleton-row')).toHaveCount(3);
     // Each row's dot sits beside its title bar, at a phone's width too, not stacked under it (76x).
@@ -365,16 +447,13 @@ for (const width of WIDTHS) {
     const bar = await card.locator('.cinder-skeleton-title-bar').first().boundingBox();
     expect(Math.abs((dot?.y ?? 0) - (bar?.y ?? 100))).toBeLessThan(8);
     expect(dot?.x ?? 0).toBeLessThan(bar?.x ?? 0);
+    // 76x: no count is drawn as a placeholder, and none reads zero (owner, 2026-11-19: a count is a
+    // tile only when it is not zero).
     const counts = main.getByRole('group', { name: 'Health counts' });
-    await expect(counts.locator('.cinder-statistic__label')).toHaveText([
-      'Running now',
-      'Needs you',
-      'Failed in 24 hours',
-      'Missed schedule runs (7 days)',
-    ]);
-    // 76x: a placeholder block stands where each count will be, never a zero.
-    await expect(counts.locator('.cinder-skeleton')).toHaveCount(4);
-    await expect(counts.locator('.cinder-statistic__value')).toHaveText(['', '', '', '']);
+    await expect(counts.locator('.cinder-skeleton')).toHaveCount(0);
+    for (const value of await counts.locator('.cinder-statistic__value').allTextContents()) {
+      expect(value.trim()).not.toBe('0');
+    }
     await expect(card.locator('h2')).toHaveText('Needs attention');
     await expect(attentionCount(page)).toHaveCount(0);
     await expect(main.getByTestId('metric-cards').locator('h2')).toHaveText([
@@ -434,7 +513,7 @@ test('a deployment with a remote worker that stopped answering lists it second, 
     'href',
     '/health/workers?worker=reports-worker',
   );
-  await expect(action(page, 1, 'View worker')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 1, 'View worker')).toContainClass('button-variant-secondary');
   await expect(attentionRows(page).nth(2)).toContainText('Storage is over its warning level');
   await expect(attentionRows(page).nth(3)).toContainText('Daily summary missed 4 runs');
   // The checks say the same four problems.
@@ -494,7 +573,7 @@ test('a hook whose last delivery failed adds a row second, after the provider', 
   await expect(hook).toContainText(
     'hooks.slack.com answered 410 Gone on its last try at 10:42 AM.',
   );
-  await expect(action(page, 1, 'View hook')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 1, 'View hook')).toContainClass('button-variant-secondary');
   await expect(action(page, 1, 'View hook')).toHaveAttribute('href', '/hooks/notify-slack');
   await captureForDesignReview(page, {
     route: '/health',
@@ -543,7 +622,7 @@ test('a hook that gave up counts like one whose last delivery failed, and sits l
   await expect(hook).toContainText(
     'Stopped after 8 tries on Oct 30. The URL may have been removed.',
   );
-  await expect(action(page, 3, 'View hook')).toHaveAttribute('data-cinder-variant', 'secondary');
+  await expect(action(page, 3, 'View hook')).toContainClass('button-variant-secondary');
   await captureForDesignReview(page, { route: '/health', state: 'hook-gave-up', source: SOURCE });
   await checkA11y('health with a hook that gave up');
 });
@@ -587,9 +666,8 @@ test('a plugin that did not load adds a row with Open Plugins, and the count is 
     'href',
     '/settings/plugins',
   );
-  await expect(plugin.getByRole('link', { name: 'Open Plugins' })).toHaveAttribute(
-    'data-cinder-variant',
-    'secondary',
+  await expect(plugin.getByRole('link', { name: 'Open Plugins' })).toContainClass(
+    'button-variant-secondary',
   );
   await expect(
     attentionRows(page).filter({ hasText: 'Storage is over its warning level' }),

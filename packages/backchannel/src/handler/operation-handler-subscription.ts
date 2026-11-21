@@ -152,6 +152,7 @@ export async function handleSubscriptionRequest(
     host: context.host,
     transport: 'http-rest',
     registry: context.registry,
+    signal: request.signal,
   });
   if (!result.ok) {
     return faultToHttpResponse(

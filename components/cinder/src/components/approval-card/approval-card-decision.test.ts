@@ -159,12 +159,12 @@ describe('ApprovalCard decision layout', () => {
     );
 
     expect(labels).toEqual(['Add note', 'Deny', 'Refund $42.00']);
-    expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
-      'secondary',
-    );
-    expect(getByRole('button', { name: 'Refund $42.00' }).getAttribute('data-cinder-variant')).toBe(
-      'primary',
-    );
+    expect(
+      getByRole('button', { name: 'Deny' }).classList.contains('button-variant-secondary'),
+    ).toBe(true);
+    expect(
+      getByRole('button', { name: 'Refund $42.00' }).classList.contains('button-variant-primary'),
+    ).toBe(true);
   });
 
   test('writes the live countdown while the approval waits', async () => {
@@ -281,7 +281,7 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
 
     expect(onResolve).not.toHaveBeenCalled();
     const armed = getByRole('button', { name: 'Press again to refund $42.00' });
-    expect(armed.getAttribute('data-cinder-variant')).toBe('danger');
+    expect(armed.classList.contains('button-variant-danger')).toBe(true);
     // Each Button keeps its own empty loading live region, so the hint is found by its text and
     // its status role is asserted on it.
     const hint = getByText(
@@ -878,6 +878,11 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).toContain(
       '@container (inline-size < 24rem) { .cinder-approval-card--row .cinder-approval-card__line-tool-name { display: none; }',
     );
+    // COR-2438: the gap that stood for the name goes with it, so the risk word starts at the card's
+    // text edge (it stood 6px in, on a line of its own, at 375).
+    expect(css).toContain(
+      '.cinder-approval-card--row .cinder-approval-card__line-tool-name + .cinder-approval-card__keep { margin-inline-start: 0; }',
+    );
     // "Approval from Tool runner 3 min ago" breaks only on a card narrower than 14rem.
     expect(css).toMatch(
       /@container \(inline-size < 14rem\) \{ \.cinder-approval-card__line time \{ display: block; margin-inline-start: 0; \}/,
@@ -973,8 +978,8 @@ describe('ApprovalCard decision layout stylesheet', () => {
     const toggle = getByRole('button', { name: 'Add note' });
     expect(toggle.classList.contains('cinder-button')).toBe(true);
     expect(toggle.classList.contains('cinder-approval-card__note-toggle')).toBe(true);
-    expect(toggle.getAttribute('data-cinder-variant')).toBe('ghost');
-    expect(toggle.getAttribute('data-cinder-size')).toBe('sm');
+    expect(toggle.classList.contains('button-variant-ghost')).toBe(true);
+    expect(toggle.classList.contains('button-size-small')).toBe(true);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.querySelector('.cinder-button__icon svg')).not.toBeNull();
     const tip = toggle.closest('.cinder-approval-card__note-toggle-tip');

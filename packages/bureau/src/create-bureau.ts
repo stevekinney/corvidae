@@ -57,7 +57,7 @@ import {
   SkillRejectedEvent,
 } from './skills';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { type Engine, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
+import { type Engine, KEYS, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
 import { type Tool, type ToolRequestContext } from 'armorer';
 import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
@@ -197,7 +197,7 @@ import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
 import { recordedRunEvent as recordedRunEventOf } from './recorded-run-events.ts';
 import { announceRunOutcome } from './run-outcome-announcement.ts';
-import { createRunOutcomeDetails } from './run-outcome-details.ts';
+import { createRunOutcomeDetails, peekTaskFailure } from './run-outcome-details.ts';
 import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
@@ -755,7 +755,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   // is registered and reaped when it is removed. See
   // `run-event-feed-attachment.ts`.
   const runEventFeeds = createAgentRunEventRegistry();
-  const runOutcomeDetails = createRunOutcomeDetails();
+  const runOutcomeDetails = createRunOutcomeDetails({
+    // COR-2531: the step a run is on a second or later try of is written to its task, so a process
+    // that does not hold the run reads it. The registry is built below, before any run starts.
+    onRetrying: (runId, retrying) => {
+      tasks.recordRetrying(runId, retrying).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record whether task "${runId}" is retrying: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+    },
+  });
   // Snapshot `agents` synchronously, before the first `await` below — the
   // "fixed at createBureau() call time" catalog contract otherwise has a
   // real mutation window: a caller that mutates the SAME `agents` object it
@@ -2350,6 +2363,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const { recoverDurableRuns } = createDurableRecovery<D>(core, peers);
   const {
     createSchedule,
+    createWorkflowSchedule,
     recordScheduleTick,
     getSchedule,
     listSchedules,
@@ -2357,6 +2371,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     pauseInvalidSchedule,
     pauseInvalidSchedules,
     pauseSchedule,
+    pauseScheduleOfHold,
     resumeSchedule,
     cancelSchedule,
     recordPendingScheduleTransitions,
@@ -2608,6 +2623,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     interruptedFields,
     dropPendingApprovalOverride,
     recordTaskWakeup,
+    recordTaskUsage,
+    recordTaskLoop,
+    watchRunAttention,
+    unwatchRunAttention,
     recordTaskSettlement,
   } = createRunBookkeeping<D>(core, peers);
   const { scanApprovedToolResult, scannedApprovedOutcome } = createApprovedToolScan<D>(core, peers);
@@ -2645,6 +2664,11 @@ async function constructBureau<const D extends AgentDefinitions>(
     createRunHookOrigins({
       kv: runtime.kv,
       workflowOf: async (runId) => runtime.durable?.engine.get(runId),
+      // COR-2546: Weft's record of the fire, never the run's input, which a schedule's caller writes.
+      scheduleOfFire: async (runId) => {
+        const provenance = await runtime.durable?.engine.getScheduleProvenance(runId);
+        return provenance?.scheduleId;
+      },
       taskOriginOf: async (runId) => {
         const record = await tasks.record(runId);
         return record?.origin;
@@ -3284,6 +3308,14 @@ async function constructBureau<const D extends AgentDefinitions>(
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
+            // COR-2546: a schedule a caller made is held and released as its owner's own pause and
+            // resume are, with the history and audit record of each.
+            scheduleTransitions: {
+              pause: (scheduleId, expectedRevision) =>
+                pauseScheduleOfHold(scheduleId, { expectedRevision }),
+              resume: (scheduleId, expectedRevision) =>
+                resumeSchedule(scheduleId, { expectedRevision }),
+            },
             runtime: runtimeServices,
             onPinnedUnavailable: (activity, runId) =>
               pluginRegistry.notePinnedUnavailable(activity, runId),
@@ -3745,7 +3777,16 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1868: a child run's task is stopped by the topology that owns the child.
       cancelChild: async (child) => {
         const cancelled = await childTopology.children.cancel(child);
-        if (cancelled.outcome === 'failed') throw new BureauError(cancelled.reason, 'CONFLICT');
+        if (cancelled.outcome === 'failed') {
+          // The engine's own words describe its internals: they go to the operator's log, and the
+          // caller is told only that the child run could not be stopped (COR-2518).
+          diagnose({
+            level: 'warn',
+            scope: 'tasks',
+            message: `[bureau] Could not cancel a child run: ${cancelled.reason}`,
+          });
+          throw new BureauError('The child run could not be cancelled. Try again.', 'CONFLICT');
+        }
         return cancelled.outcome;
       },
       sleep: (milliseconds) =>
@@ -3753,8 +3794,21 @@ async function constructBureau<const D extends AgentDefinitions>(
           runtimeServices.timers.setTimeout(resolve, milliseconds);
         }),
       // COR-2423: the schedule tick and the instances of workflow files, which have no task record.
-      engineRuns: () => engineRunTasks.list(),
+      engineRuns: (filter) => engineRunTasks.list(filter),
       holdsEngineRun: (runId) => engineRunTasks.holds(runId),
+      // COR-2526: a live claim another process holds is the same read recovery makes of a run
+      // "preparing elsewhere"; a lapsed or absent claim leaves the writer the holder. The holder
+      // record is read first, from the store the engine claims in, so a write can require it
+      // unchanged: Weft rewrites it at a takeover, a renewal and a release.
+      claimFence: async (runId) => {
+        const key = KEYS.workflowOwnerHolder(runId);
+        const observed = (await runtime.kv?.get(key)) ?? null;
+        const claim = await runtime.durable?.engine.claimHolder(runId);
+        return {
+          elsewhere: claim?.heldByAnyProcess === true && !claim.heldByThisProcess,
+          holder: { key, expectedValue: observed },
+        };
+      },
     },
   });
   taskRegistryHolder.current = tasks;
@@ -3876,6 +3930,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       now: runtimeServices.clock.nowISO,
       ownerOf: ownerOrLocal,
       originatingMessage: originatingMessageText,
+      // COR-2531: what the run's own events said of its failure, kept on the task with the settlement.
+      failureOf: (runId) => peekTaskFailure(runOutcomeDetails, runId),
     }),
   );
 
@@ -3913,6 +3969,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           }
           break;
         }
+        recordTaskUsage(storeActionEvent.action);
+        recordTaskLoop(storeActionEvent.action);
         recordTaskSettlement(storeActionEvent.action);
         recordTaskWakeup(storeActionEvent.action);
         // COR-2096: a guardrail, a budget threshold and a tool's failure or refusal are published
@@ -3938,6 +3996,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       case 'run.registered': {
         const registeredRunId = (event as StoreRunRegisteredEvent).runId;
+        // COR-2526: whether a run is stalled is recorded for every run this process holds, a
+        // `bureau.run()` run included, since its task record is what a reader in another process
+        // sees.
+        watchRunAttention(registeredRunId);
         // COR-1302: see the `'action'` case above.
         if (catalogRunIds.has(registeredRunId)) break;
         emitter.dispatch(new RunRegisteredEvent(registeredRunId));
@@ -3945,6 +4007,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
       case 'run.removed': {
         const removedRunId = (event as StoreRunRemovedEvent).runId;
+        unwatchRunAttention(removedRunId);
         // COR-1302: a `bureau.run()` run's release is not a deletion, so it
         // is not announced as one. Durable event history records
         // `run.removed` as the evidence that a run's record was deleted,
@@ -4752,6 +4815,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const schedules = createSchedules({
     // Never the third, internal parameter: only a plugin's host API names a source.
     create: (definition, scheduleOptions) => createSchedule(definition, scheduleOptions),
+    createWorkflow: createWorkflowSchedule,
     get: getSchedule,
     list: listSchedules,
     pause: pauseSchedule,

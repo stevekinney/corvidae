@@ -93,7 +93,7 @@ for (const viewport of VIEWPORTS) {
       await expect(state).toContainText('It no longer exists, so nothing more can be sent here.');
       await expect(page.getByRole('textbox', { name: /^Message/ })).toHaveCount(0);
       const back = state.getByRole('button', { name: 'All conversations' });
-      await expect(back).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(back).toContainClass('button-variant-primary');
       await checkA11y(`a deleted chat at ${viewport.width}px`);
       await captureForDesignReview(page, {
         route: '/chats/:chat',
@@ -102,7 +102,9 @@ for (const viewport of VIEWPORTS) {
       });
 
       await back.click();
-      await expect(page).toHaveURL(/\/chats$/);
+      if (viewport.width <= 375) await expect(page).toHaveURL(/\/chats$/);
+      else await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
+      await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
     });
   });
 }
@@ -123,7 +125,7 @@ test.describe('no model provider, on the sample world (V4)', () => {
       const state = page.locator('[data-chat-availability="unconfigured"]');
       await expect(state.getByRole('heading', { level: 2 })).toHaveText('Connect a model provider');
       const connect = state.getByRole('button', { name: 'Connect provider' });
-      await expect(connect).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(connect).toContainClass('button-variant-primary');
       await expect(page.getByRole('textbox', { name: /^Message/ })).toBeHidden();
       await checkA11y(`an empty chat with no provider at ${viewport.width}px`);
       await captureForDesignReview(page, {
@@ -154,9 +156,8 @@ test.describe('no model provider, on the sample world (V4)', () => {
       // The composer is one blocked row with the same words and the primary action.
       const row = page.locator('[data-chat-composer-status="blocked"]');
       await expect(row).toContainText('Connect a model provider');
-      await expect(row.getByRole('button', { name: 'Connect provider' })).toHaveAttribute(
-        'data-cinder-variant',
-        'primary',
+      await expect(row.getByRole('button', { name: 'Connect provider' })).toContainClass(
+        'button-variant-primary',
       );
       await expect(page.getByRole('textbox', { name: /^Message/ })).toHaveCount(0);
       await checkA11y(`a chat with history and no provider at ${viewport.width}px`);

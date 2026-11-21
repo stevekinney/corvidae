@@ -27,6 +27,7 @@ describe('weft.workflows.aggregate', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'group_by must be one of "status", "type", "failureCategory", or "attribute:<name>"',
+      retryable: false,
     });
     engine[Symbol.dispose]();
   });
@@ -99,6 +100,7 @@ describe('weft.workflows.aggregate', () => {
     expect(await response.json()).toEqual({
       error:
         'Unknown search attribute "unknownAttribute". Aggregate groupBy requires a declared attribute.',
+      retryable: false,
     });
 
     engine[Symbol.dispose]();
@@ -123,6 +125,7 @@ describe('weft.workflows.aggregate', () => {
     expect(await response.json()).toEqual({
       error:
         'Aggregate query would exceed the distinct-key cap of 3. Narrow the filter or choose a lower-cardinality groupBy.',
+      retryable: false,
     });
 
     engine[Symbol.dispose]();
@@ -144,7 +147,7 @@ describe('weft.workflows.aggregate', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('content-type')).toBe('application/json');
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
 
     engine[Symbol.dispose]();
   });

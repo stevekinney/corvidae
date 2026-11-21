@@ -64,6 +64,7 @@ test.describe('Settings › General', () => {
       'Models',
       'Allowed models',
       'A2A',
+      'MCP',
       'Plugins',
       'Data and retention',
       'API reference',
@@ -101,6 +102,31 @@ test.describe('Settings › General', () => {
     const revert = await banner.getByRole('button', { name: 'Revert 1 change' }).boundingBox();
     expect(revert?.y ?? 0).toBeGreaterThan((words?.y ?? 0) + (words?.height ?? 0) - 1);
     await checkA11y('settings general at 375px');
+  });
+
+  test('/settings shows labels without raw configuration keys at 375px', async ({ page }) => {
+    await openGeneral(page);
+    const identifiers = page.locator('[data-view="settings"] .cinder-setting-row__identifier');
+    await expect(identifiers.first()).toBeVisible();
+    await page.setViewportSize({ width: 375, height: 900 });
+    for (const label of [
+      'Wakeup',
+      'Max concurrent runs',
+      'Embedder',
+      'Storage backend',
+      'Theme',
+      'Sidebar',
+      'Default agent for new chats',
+      'Use single-key shortcuts',
+    ]) {
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    }
+    await expect(identifiers).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: ROUTE,
+      state: 'setting labels without raw keys',
+      source: SOURCE,
+    });
   });
 
   test('reverted: Revert puts the waiting change back to the running value, with an Undo toast', async ({
@@ -781,9 +807,8 @@ test.describe('Settings › General, the Embedder row', () => {
     await expect(dialog).toContainText(
       'The 3 memories embedded so far are thrown away. Search keeps using Text hashing, and nothing else changes.',
     );
-    await expect(dialog.getByRole('button', { name: 'Cancel switch' })).toHaveAttribute(
-      'data-cinder-variant',
-      'danger',
+    await expect(dialog.getByRole('button', { name: 'Cancel switch' })).toContainClass(
+      'button-variant-danger',
     );
     await captureEmbedder(page, 'embedder-cancel-confirm');
     await dialog.getByRole('button', { name: 'Keep switching' }).click();
@@ -928,7 +953,7 @@ test.describe('Settings › General, the Embedder row', () => {
     );
     await captureEmbedder(page, 'embedder-needs-setup');
     await embedderRow(page).getByRole('button', { name: 'Add the key' }).click();
-    await expect(page.getByRole('dialog', { name: 'Save gemini-api-key' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Save Gemini API key' })).toBeVisible();
   });
 
   test('embedder-dimension-changed: the vectors are another size, and Embed again asks to embed every memory again', async ({
@@ -1012,7 +1037,8 @@ test.describe('Settings › General, the Embedder row on a phone', () => {
 
     const line = switchLine(page);
     const dot = line.getByRole('img', { name: 'Running' });
-    const label = embedderRow(page).locator('.cinder-form-field__label-row');
+    const label = embedderRow(page).locator('.cinder-setting-row__field > label');
+    await expect(label).toHaveText('Embedder');
     const bar = line.getByRole('progressbar');
     const cancel = line.getByRole('button', { name: 'Cancel switch' });
     // Scrolled into the viewport and settled, since the hit test below is made in viewport coordinates.

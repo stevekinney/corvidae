@@ -30,7 +30,7 @@
     {
       "id": "checklist",
       "title": "First-run checklist",
-      "description": "variant=\"checklist\" is a card of rows with a heading, a \"N of M done\" counter and an action per step. Steps complete in any order: done marks a step, and the first step that isn't done is current.",
+      "description": "variant=\"checklist\" is a grouped list of rows under a heading, a \"N of M done\" counter and an action per step. Steps complete in any order: done marks a step, and the first step that isn't done is current.",
       "code": "<script lang=\"ts\">\n  import { Button, Steps } from '@lostgradient/cinder';\n  import type { StepItem } from '@lostgradient/cinder';\n\n  const steps: StepItem[] = [\n    {\n      id: 'provider',\n      label: 'Connect a provider',\n      description: 'Anthropic is connected.',\n      done: true,\n    },\n    {\n      id: 'agent',\n      label: 'Create an agent, or start from Assistant',\n      description: 'Assistant is ready to use.',\n      done: true,\n    },\n    {\n      id: 'hello',\n      label: 'Say hello',\n      description: 'Send a first message to see a chat run end to end.',\n      action: hello,\n    },\n  ];\n</script>\n\n{#snippet hello()}\n  <Button variant=\"primary\" label=\"Start a chat\" />\n{/snippet}\n\n<Steps {steps} variant=\"checklist\" heading=\"Get started\" />\n"
     },
     {

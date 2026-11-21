@@ -69,6 +69,13 @@ function rows(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[data-review-row]')];
 }
 
+async function approveRefund(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+): Promise<void> {
+  await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+  await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
+}
+
 /** The key of the row that holds focus, or `null` when focus is on no row. */
 function focusedRowKey(): string | null {
   return (
@@ -105,7 +112,21 @@ describe('arriving at the inbox', () => {
     expect(router.search.get('review')).toBe(QUESTION_KEY);
   });
 
-  test('opens nothing in Done, which is read and not answered', async () => {
+  test.each([
+    ['/reviews?review=missing-review', REVIEWS_COPY.noLongerWaiting.message],
+    [
+      '/reviews?tab=done&review=missing-review',
+      'This item is not in the list. It may have been removed.',
+    ],
+  ])('keeps a missing link in an empty queue on a phone at %s', async (address, message) => {
+    measuredAt(400);
+    const { findByText, queryByText } = open({}, address);
+    expect(await findByText(message)).not.toBeNull();
+    expect(router.search.get('review')).toBe('missing-review');
+    expect(queryByText('missing-review')).toBeNull();
+  });
+
+  test('opens the latest decision in Done too, so the pane beside the list is never empty (COR-2445)', async () => {
     measuredAt(1200);
     const approved = toolApprovalFixture({
       id: 'approval:run-a:call-1',
@@ -116,7 +137,9 @@ describe('arriving at the inbox', () => {
     });
     const { container } = open({ reviews: [approved] }, '/reviews?tab=done');
     await waitFor(() => expect(rows(container).length).toBe(1));
-    expect(router.search.get('review')).toBeNull();
+    const key = rows(container)[0]?.getAttribute('data-review-row');
+    expect(key).not.toBeNull();
+    await waitFor(() => expect(router.search.get('review')).toBe(key ?? ''));
   });
 });
 
@@ -135,7 +158,7 @@ describe('the segments', () => {
     await findByRole('radio', { name: /^Done\s*,\s*1$/ });
 
     await fireEvent.click(rows(container)[0]!);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByRole('radio', { name: /^Waiting\s*,\s*1$/ });
     await findByRole('radio', { name: /^Done\s*,\s*2$/ });
   });
@@ -147,7 +170,7 @@ describe('deciding a review', () => {
     const { container, findByLabelText, findByRole, findByTestId } = open({
       reviews: [APPROVAL, QUESTION],
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     await findByLabelText('Your answer');
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -174,7 +197,7 @@ describe('deciding a review', () => {
   test('is not announced as a review that is no longer waiting', async () => {
     measuredAt(1200);
     const { container, findByRole, queryByTestId } = open({ reviews: [APPROVAL, QUESTION] });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     expect(queryByTestId('review-gone')).toBeNull();
     expect(container.textContent).not.toContain(REVIEWS_COPY.noLongerWaiting.message);
@@ -190,7 +213,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText(REVIEWS_COPY.noteLabel);
+    const note = await findByLabelText('Note Optional');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -216,28 +239,27 @@ describe('Enter on a row', () => {
 });
 
 describe('an approval', () => {
-  test('says what it wants to run and how risky that is, and offers the note as Add a note', async () => {
-    const { container, findByTestId, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
+  test('uses the shared approval row and keeps tool identifiers out of its title and metadata', async () => {
+    const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    const wants = await findByTestId('review-wants');
-    expect(wants.textContent).toContain(REVIEWS_COPY.wantsToRun);
-    expect(wants.textContent).toContain('Issue refund');
-    expect(wants.querySelector('code')?.textContent).toBe('issue-refund');
-    expect(wants.textContent).toContain(REVIEWS_COPY.risk.high);
-    expect(
-      getByText(REVIEWS_COPY.toolApproval, { selector: '.ib-review-pane__eyebrow' }),
-    ).not.toBeNull();
-    expect(getByLabelText(REVIEWS_COPY.noteLabel).getAttribute('placeholder')).toBe(
-      REVIEWS_COPY.notePlaceholder,
-    );
+    const card = await findByRole('article', { name: 'Refund order-1001?' });
+    expect(card.getAttribute('data-cinder-layout')).toBe('row');
+    expect(card.textContent).toContain('Issue refund');
+    expect(card.textContent).toContain("Can't be undone");
+    expect(card.textContent).not.toContain('issue-refund');
+    const note = getByLabelText('Note Optional');
+    expect(note.tagName).toBe('TEXTAREA');
+    expect(note.getAttribute('placeholder')).toBe('Add a note for the agent or the record');
   });
 
   test('offers Allow for the rest of the chat', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    expect(await findByRole('button', { name: REVIEWS_COPY.allowForChat })).not.toBeNull();
+    expect(
+      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+    ).not.toBeNull();
   });
 
   test('does not offer it for a tool that asks every time, which allowing would not change', async () => {
@@ -252,7 +274,7 @@ describe('an approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
     await findByRole('button', { name: 'Approve' });
-    expect(queryByRole('button', { name: REVIEWS_COPY.allowForChat })).toBeNull();
+    expect(queryByRole('checkbox', { name: /for the rest of this chat$/ })).toBeNull();
   });
 });
 

@@ -1,0 +1,2 @@
+# Bun patch context uses one ASCII space on a blank context line.
+patches/@tanstack%2Fsvelte-query@6.2.1.patch whitespace=-blank-at-eol

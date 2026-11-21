@@ -37,7 +37,7 @@ import {
 } from './journey-agent.ts';
 import { recordBureauTraffic, withReplyDiagnostics } from './journey-diagnostics.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
-import { expectEngineMissesForRuns, waitingReviewOf } from './task-support.ts';
+import { bureauCall, expectEngineMissesForRuns, waitingReviewOf } from './task-support.ts';
 import { openJsonTab, removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
@@ -296,15 +296,11 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
 
   await expect(conversation(page).getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
-  // The call is a row of the tool rail, named for a person; its identifier is the tooltip drawn
-  // beside the row, which shows only on hover or focus.
+  // The tool rail names the workflow action in words.
   await expect(
     conversation(page)
-      .getByRole('tooltip', { includeHidden: true })
-      .filter({ hasText: /workflows-create/ })
-      .first()
-      .locator('xpath=..')
       .locator('[data-cinder-tool-call-row]')
+      .filter({ hasText: /Create workflow|Workflows create/i })
       .first(),
   ).toBeVisible();
   // The agent wrote the file, which the Bureau reports as an agent-authored workflow of its own.
@@ -452,7 +448,26 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
     request,
     test.info(),
     () => sessionOf(page),
-    () => expect(reply).toContainText(correction),
+    async () => {
+      const contextId = sessionOf(page);
+      let task: { status: string; statusMessage?: string } | undefined;
+      await expect
+        .poll(async () => {
+          const result = (await bureauCall(
+            request,
+            'bureau.tasks.list',
+            { contextId },
+            E2E_JOURNEY_URL,
+          )) as { tasks: (typeof task)[] };
+          [task] = result.tasks;
+          return task?.status ?? 'not yet recorded';
+        })
+        .toMatch(/^(?:completed|failed|canceled)$/);
+      expect(task?.status, task?.statusMessage ?? 'The recall task must complete').toBe(
+        'completed',
+      );
+      await expect(reply).toContainText(correction);
+    },
   );
   await expect(reply).not.toContainText(original);
 });
@@ -496,6 +511,6 @@ test('opens the workers screen from Health, which the sidebar opens', async ({ p
   // Health's sections are the tab bar under its heading (COR-2018).
   await page.locator('main').getByRole('tab', { name: 'Workers', exact: true }).click();
 
-  await expect(page).toHaveURL(/\/health\/workers$/);
+  await expect(page).toHaveURL(/\/health\/workers(\?worker=[^&]+)?$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
 });

@@ -147,7 +147,7 @@ describe('RestartState reconnecting', () => {
     );
   });
 
-  test('Retry now shows only with a handler and fires it', async () => {
+  test('Try again shows only with a handler and fires it', async () => {
     const withoutHandler = render(RestartState, {
       props: { open: true, phase: 'reconnecting', attempt: 1 },
     });
@@ -158,7 +158,7 @@ describe('RestartState reconnecting', () => {
       props: { open: true, phase: 'reconnecting', attempt: 1, onRetry },
     });
     const button = requiredInstance(card(container).querySelector('button'), HTMLButtonElement);
-    expect(text(button)).toBe('Retry now');
+    expect(text(button)).toBe('Try again');
     await fireEvent.click(button);
     expect(onRetry).toHaveBeenCalledTimes(1);
   });

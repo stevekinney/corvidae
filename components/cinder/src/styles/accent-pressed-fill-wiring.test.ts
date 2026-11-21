@@ -60,7 +60,7 @@ const cases = [
   {
     name: 'primary Button',
     css: loadCss('../components/button/button.css'),
-    selectorFragments: ["[data-cinder-variant='primary']", ':active'],
+    selectorFragments: ['.button-variant-primary', ':active'],
   },
   {
     name: 'primary FloatingAction',

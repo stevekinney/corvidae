@@ -129,16 +129,15 @@ const composer = (container: HTMLElement) =>
   container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor');
 
 describe('the live composer', () => {
-  test('is addressed to the agent by its name, with the hint under it and a quiet disabled Send', async () => {
+  test('is addressed to the agent by its name, with nothing under it and a quiet disabled Send', async () => {
     serve();
     const { container } = mount();
 
     await waitFor(() => expect(composer(container)?.placeholder).toBe('Message Tool runner…'));
-    expect(container.querySelector('.chat-input-hint')?.textContent).toBe(
-      'Enter to send. Shift and Enter for a new line.',
-    );
+    // COR-2438: no line of help under the composer; Send's tooltip names the key.
+    expect(container.querySelector('.chat-input-hint')).toBeNull();
     const send = container.querySelector<HTMLButtonElement>('[data-chat-send]')!;
-    expect(send.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(send.classList.contains('button-variant-secondary')).toBe(true);
     expect(send.disabled).toBe(true);
     expect(row(container)).toBeNull();
   });
@@ -165,7 +164,7 @@ describe('a blocked composer', () => {
     expect(row(container)?.textContent).toContain('Connect a model provider');
     const buttons = [...row(container)!.querySelectorAll('a, button')];
     expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Connect provider']);
-    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(buttons[0]?.classList.contains('button-variant-primary')).toBe(true);
     expect(composer(container)).toBeNull();
     // The transcript is still there, and nothing stands in its place.
     expect(container.querySelector('[data-chat-availability]')).toBeNull();
@@ -209,7 +208,7 @@ describe('a blocked composer', () => {
     const connect = [...state.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === 'Connect provider',
     );
-    expect(connect?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(connect?.classList.contains('button-variant-primary')).toBe(true);
     expect(container.querySelector<HTMLElement>('.chat-input-wrapper')?.style.display).toBe('none');
     expect(row(container)).toBeNull();
   });
@@ -311,7 +310,7 @@ describe('a blocked composer', () => {
     expect(composer(container)).toBeNull();
   });
 
-  test('Enable and restart keeps the conversation on screen under the shared restart banner, which offers Retry now once the host stopped answering', async () => {
+  test('Enable and restart keeps the conversation on screen under the shared restart banner, which offers Try again once the host stopped answering', async () => {
     const probing = { ...restartProbing };
     restartProbing.delayMs = 0;
     restartProbing.retryDelayMs = () => 60_000;
@@ -349,7 +348,7 @@ describe('a blocked composer', () => {
       );
 
       const banner = await findByTestId('chat-restart-banner');
-      await waitFor(() => expect(banner.textContent).toContain('Retry now'));
+      await waitFor(() => expect(banner.textContent).toContain('Try again'));
       expect(container.querySelector('.weft-chat-surface')).not.toBeNull();
     } finally {
       host.restore();

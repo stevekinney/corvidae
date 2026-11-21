@@ -16,6 +16,9 @@
  * schedule that was held and when. A record whose file parses again, is gone, or names another
  * schedule than the workflow's live one means nothing, and the next reconcile removes it.
  *
+ * `bureau-workflow-schedule-hold:v1:caller#<scheduleId>` holds one for a schedule a caller made for a
+ * workflow that cannot be started (COR-2546), under a key no workflow identifier can spell.
+ *
  * @module workflow-schedule-holds
  */
 
@@ -32,12 +35,23 @@ export interface WorkflowScheduleHold {
   readonly scheduleId: string;
   /** When it was held, as an ISO 8601 instant. */
   readonly heldAt: string;
+  /**
+   * The revision the schedule was at once the hold paused it (COR-2546), for a schedule a caller
+   * made for a workflow: it is released to the file's owner only while it is still at that revision,
+   * so a resume or update by its owner since the hold is never undone. A pause by its owner does not
+   * move the revision of a schedule the hold paused, so it drops the record. Absent from a hold of
+   * a workflow file's own schedule, which the file alone decides.
+   */
+  readonly revision?: number;
 }
 
 /** The hold records of one Bureau. */
 export interface WorkflowScheduleHolds {
-  /** Records that schedule `scheduleId` of workflow `identifier` is held, replacing any record. */
-  readonly hold: (identifier: string, scheduleId: string) => Promise<void>;
+  /**
+   * Records that schedule `scheduleId` of workflow `identifier` is held, replacing any record, and
+   * the revision it was paused at when the hold is of a schedule a caller made.
+   */
+  readonly hold: (identifier: string, scheduleId: string, revision?: number) => Promise<void>;
   /** The hold recorded for workflow `identifier`, or `undefined`. */
   readonly held: (identifier: string) => Promise<WorkflowScheduleHold | undefined>;
   /** Removes the hold recorded for workflow `identifier`, if there is one. */
@@ -73,7 +87,14 @@ function parseHold(text: string | null | undefined): WorkflowScheduleHold | unde
   ) {
     return undefined;
   }
-  return { schemaVersion: 1, scheduleId: record.scheduleId, heldAt: record.heldAt };
+  return {
+    schemaVersion: 1,
+    scheduleId: record.scheduleId,
+    heldAt: record.heldAt,
+    ...(typeof record.revision === 'number' && Number.isSafeInteger(record.revision)
+      ? { revision: record.revision }
+      : {}),
+  };
 }
 
 /** The hold records kept in `options.store`. */
@@ -82,11 +103,12 @@ export function createWorkflowScheduleHolds(
 ): WorkflowScheduleHolds {
   const store = options.store ?? textValueStore(new MemoryStorage());
   return {
-    async hold(identifier, scheduleId) {
+    async hold(identifier, scheduleId, revision) {
       const record: WorkflowScheduleHold = {
         schemaVersion: 1,
         scheduleId,
         heldAt: options.nowISO(),
+        ...(revision === undefined ? {} : { revision }),
       };
       await store.set(keyOf(identifier), JSON.stringify(record));
     },

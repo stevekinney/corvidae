@@ -83,6 +83,44 @@ describe('FormSection rendering — section (default)', () => {
     expect(descEl?.textContent).toContain('Fill in your details.');
   });
 
+  test('descriptionContent draws markup in the same description paragraph, in place of description', () => {
+    const richDescription = createRawSnippet(() => ({
+      render: () => '<span>Add this to an <code>.mcp.json</code> file.</span>',
+    }));
+    const { container } = render(FormSection, {
+      props: {
+        description: 'Plain words.',
+        descriptionContent: richDescription,
+        children: emptySnippet,
+      },
+    });
+    const paragraphs = container.querySelectorAll('.cinder-form-section__description');
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0]?.tagName).toBe('P');
+    expect(paragraphs[0]?.querySelector('code')?.textContent).toBe('.mcp.json');
+    expect(paragraphs[0]?.textContent).not.toContain('Plain words.');
+    expect(formSectionStyles).toMatch(
+      /\.cinder-form-section__description code \{[^}]*font-family: var\(--cinder-font-mono\);/,
+    );
+  });
+
+  test('descriptionContent also draws inside a fieldset', () => {
+    const richDescription = createRawSnippet(() => ({
+      render: () => '<span>Use <code>--now</code>.</span>',
+    }));
+    const { container } = render(FormSection, {
+      props: {
+        as: 'fieldset',
+        heading: 'Group',
+        descriptionContent: richDescription,
+        children: emptySnippet,
+      },
+    });
+    expect(
+      container.querySelector('fieldset .cinder-form-section__description code')?.textContent,
+    ).toBe('--now');
+  });
+
   test('does not render description element when description is omitted', () => {
     const { container } = render(FormSection, {
       props: { children: emptySnippet },

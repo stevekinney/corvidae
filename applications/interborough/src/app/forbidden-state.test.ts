@@ -1,7 +1,5 @@
 /**
- * The forbidden page (design rows 12z and 13a): Cinder's access gate as a page, with the title,
- * the sentence that points at the scopes, the missing scope small and monospaced, and two
- * secondary buttons. There is no request-access button.
+ * The forbidden page uses the shared empty state, with a lock icon and links to scopes and Home.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -21,73 +19,45 @@ function landAt(path: string): void {
 }
 
 describe('the forbidden page', () => {
-  test('is an access gate with a lock disc, the title, the sentence and the missing scope', () => {
+  test('uses the shared layout and explains local access was refused', () => {
     landAt('/hooks');
     const { container, getByRole } = render(ForbiddenState, {
-      props: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'hooks:read' },
+      props: { title: FORBIDDEN_COPY.title('Hooks') },
     });
 
     expect(getByRole('heading', { level: 1 }).textContent?.trim()).toBe(
       'Your sign-in can’t open Hooks',
     );
-    const gate = container.querySelector('.cinder-access-gate');
-    expect(gate?.getAttribute('data-cinder-variant')).toBe('section');
-    expect(gate?.getAttribute('data-cinder-layout')).toBe('page');
-    expect(gate?.querySelector('.cinder-access-gate__section-icon svg')).not.toBeNull();
-    expect(gate?.textContent).toContain(
-      'Settings › API reference › Your scopes shows what it can do.',
-    );
-    expect(gate?.querySelector('code')?.textContent).toBe('requires hooks:read');
+    const gate = container.querySelector('.cinder-empty-state');
+    expect(gate?.getAttribute('data-cinder-kind')).toBe('disabled');
+    expect(gate?.querySelector('.cinder-empty-state-icon svg.lucide-lock')).not.toBeNull();
+    expect(gate?.textContent).toContain('Interborough refused access to this page.');
+    expect(gate?.querySelector('code')).toBeNull();
   });
 
-  test('never says Bureau in the scope it names', () => {
-    landAt('/goals');
-    const { container } = render(ForbiddenState, {
-      props: { title: FORBIDDEN_COPY.title('Goals'), requirement: 'bureau.goals:read' },
-    });
-
-    expect(container.querySelector('code')?.textContent).toBe('requires goals:read');
-  });
-
-  test('names no scope when none is known, instead of guessing one', () => {
-    landAt('/hooks');
-    const { container } = render(ForbiddenState, {
-      props: { title: 'Your sign-in can’t open Home' },
-    });
-
-    expect(container.querySelector('code')).toBeNull();
-  });
-
-  test('has two secondary buttons, See your scopes and Back to Home, and no request-access button', () => {
+  test('offers a single way back to Home', () => {
     landAt('/hooks');
     const { container, getByRole, queryByRole } = render(ForbiddenState, {
-      props: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'hooks:read' },
+      props: { title: FORBIDDEN_COPY.title('Hooks') },
     });
 
-    const buttons = [...container.querySelectorAll('.cinder-access-gate__actions > *')];
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'See your scopes',
-      'Back to Home',
-    ]);
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Back to Home']);
     for (const button of buttons) {
-      expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(button.classList.contains('button-variant-secondary')).toBe(true);
     }
-    expect(container.querySelector('[data-cinder-variant="primary"]')).toBeNull();
+    expect(container.querySelector('.button-variant-primary')).toBeNull();
     expect(queryByRole('button', { name: /request/i })).toBeNull();
     expect(queryByRole('link', { name: /request/i })).toBeNull();
-    expect(getByRole('link', { name: 'See your scopes' }).getAttribute('href')).toBe(
-      '/settings/api-reference?group=scopes',
-    );
+    expect(queryByRole('link', { name: 'See your scopes' })).toBeNull();
+    expect(getByRole('link', { name: 'Back to Home' }).getAttribute('href')).toBe('/');
   });
 
-  test('See your scopes and Back to Home open their pages in place', async () => {
+  test('Back to Home opens Home in place', async () => {
     landAt('/hooks');
     const { getByRole } = render(ForbiddenState, {
       props: { title: FORBIDDEN_COPY.title('Hooks') },
     });
-
-    await fireEvent.click(getByRole('link', { name: 'See your scopes' }));
-    await waitFor(() => expect(router.pathname).toBe('/settings/api-reference'));
 
     await fireEvent.click(getByRole('link', { name: 'Back to Home' }));
     await waitFor(() => expect(router.pathname).toBe('/'));

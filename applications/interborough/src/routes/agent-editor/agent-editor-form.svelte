@@ -260,7 +260,11 @@
     </FormSection>
   {/if}
 
-  {#if creating}
+  {#if creating && !editor.catalogMissing && editor.toolChoices.length === 0}
+    <!-- No tool to choose: the empty state alone, in no fieldset and under no "Tools" heading
+    (owner report, 2026-11-19). -->
+    <EmptyState kind="first-use" headingLevel={2} title={copy.noTools} />
+  {:else if creating}
     <FormSection
       as="fieldset"
       heading={copy.sections.tools}
@@ -273,14 +277,6 @@
         <p class="weft-agent-form__note" data-testid="agent-tools-waiting">
           {newCopy.toolsWaitOnModels}
         </p>
-      {:else if editor.toolChoices.length === 0}
-        <EmptyState
-          kind="first-use"
-          size="compact"
-          align="start"
-          headingLevel={3}
-          title={copy.noTools}
-        />
       {:else}
         <AgentEditorTools {editor} onAdd={() => (pickerOpen = true)} />
       {/if}
@@ -312,9 +308,14 @@
         </h2>
         <p class="weft-agent-form__note">{copy.edit.deleteBlock.description(savedName)}</p>
       </div>
-      <Button data-changes type="button" variant="danger" disabled={busy} onclick={onDelete}
-        >{copy.deleteAction}</Button
-      >
+      <Button
+        data-changes
+        type="button"
+        variant="danger"
+        disabled={busy}
+        onclick={onDelete}
+        label={copy.deleteAction}
+      />
     </section>
   {/if}
 
@@ -335,7 +336,7 @@
           {copy.edit.saved(savedRevision)}
         {/if}
       </p>
-      <Button type="button" variant="ghost" onclick={onCancel}>{copy.cancelAction}</Button>
+      <Button type="button" variant="ghost" onclick={onCancel} label={copy.cancelAction} />
       <Button data-changes type="submit" variant="primary" loading={saving}>
         {creating ? copy.createAction : copy.saveAction}
       </Button>

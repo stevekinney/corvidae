@@ -77,7 +77,8 @@ test.describe('Health › Storage on the sample world', () => {
 
     // 80c: the storage line names the backend and does not count keys.
     const backend = main.getByTestId('storage-backend');
-    await expect(backend).toContainText('Running on SQLite in');
+    await expect(backend).toContainText('Running on SQLite');
+    await expect(backend).not.toContainText('/');
     await expect(backend.getByRole('button', { name: 'Storage details' })).toBeVisible();
     await expect(backend).not.toContainText(/\d keys/);
 
@@ -123,10 +124,16 @@ test.describe('Health › Storage on the sample world', () => {
     const summary = main.locator('tr[data-cinder-row-id="agent-session:summary-index"]');
     await expect(summary.locator('td').nth(0)).toHaveText('Chat sessions');
 
-    // 80i: the footer says how many keys there are, and that scrolling loads the rest.
+    // 80i: the count says how many keys there are, and that scrolling loads the rest, once and
+    // outside the table: never a row its own scroll box can cut (owner, 2026-11-19).
     await expect(main.getByTestId('storage-count')).toHaveText(
       /^Showing 100 of [\d,]+ keys\. Scroll to load more\.$/,
     );
+    expect(
+      await main
+        .getByTestId('storage-count')
+        .evaluate((element) => element.closest('table, .cinder-data-table') === null),
+    ).toBe(true);
     await expect(main.getByRole('button', { name: 'Load more' })).toHaveCount(0);
     // The table's foot, scrolled into view, is the footer at rest.
     await main.getByTestId('storage-count').scrollIntoViewIfNeeded();
@@ -194,11 +201,25 @@ test.describe('Health › Storage on the sample world', () => {
     await row.click();
     await expect(main.getByTestId('storage-key-name')).toHaveText(key);
 
-    // Starts with is a prefix: every row starts with the text, and the footer counts that prefix.
-    for (const [rowKey] of await firstRows(page, 5)) {
-      expect(rowKey?.startsWith('durable-run:')).toBe(true);
-    }
-    await expect(main.getByTestId('storage-count')).toHaveText(/^Showing \d+ of \d+ keys\.$/);
+    // Starts with is a prefix: every row's key starts with the text (the Key column leaves out the
+    // group's prefix, owner 2026-11-19, so the row's id is read), and the count counts that prefix.
+    const ids = await main
+      .locator('tbody tr[data-cinder-row-id]')
+      .evaluateAll((rows) => rows.slice(0, 5).map((row) => row.getAttribute('data-cinder-row-id')));
+    for (const rowKey of ids) expect(rowKey?.startsWith('durable-run:')).toBe(true);
+    await expect(main.getByTestId('storage-count')).toHaveText(
+      /^(?:\d+ keys?|Showing \d+ of \d+ keys\. Scroll to load more\.)$/,
+    );
+
+    await search.fill('audit:v1:');
+    const nextKey = main.getByTestId('storage-key-name');
+    await expect(nextKey).toHaveText(/^audit:v1:/);
+    await expect(page).toHaveURL(/\/health\/storage$/);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'first key after a prefix filter',
+      source: SOURCE,
+    });
 
     // A chosen group and typed text that part ways match nothing.
     await main.getByLabel('Group', { exact: true }).selectOption({ label: 'Chat sessions' });
@@ -309,12 +330,13 @@ test.describe('Health › Storage on the sample world', () => {
     await end.fill(third.slice(0, third.lastIndexOf(':')));
     await expect(main.locator('tbody tr[data-cinder-row-id]')).toHaveCount(3);
     const listedRows = await firstRows(page, 3);
-    expect(listedRows.map(([key]) => key)).toEqual(audit);
+    // The Key column shows each key without the prefix its Group column gives (owner, 2026-11-19).
+    expect(listedRows.map(([key]) => key)).toEqual(audit.map((key) => key.slice('audit:'.length)));
     for (const [, groupName, , updated] of listedRows) {
       expect(groupName).toBe('Audit log');
       expect(updated).toMatch(WHEN);
     }
-    await expect(main.getByTestId('storage-count')).toHaveText('Showing 3 keys.');
+    await expect(main.getByTestId('storage-count')).toHaveText('3 keys');
     // The frame the board draws has one row of the range chosen and highlighted (row 80q).
     await main.locator('tbody tr[data-cinder-row-id]').nth(1).click();
     await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);
@@ -689,18 +711,29 @@ test.describe('Health › Storage writes and states', () => {
     // The alert only says it. The three ways on are one row under the editor: Discard my edit and
     // Save over it are secondary, Show new value is the primary, left to right.
     await expect(banner.getByRole('button')).toHaveCount(0);
-    const buttons = pane.locator('.ib-storage-key__actions').getByRole('button');
+    const actions = pane.locator('.ib-storage-key__actions');
+    const buttons = actions.getByRole('button');
     const editorBox = await editor.boundingBox();
-    const rowBox = await pane.locator('.ib-storage-key__actions').boundingBox();
+    const rowBox = await actions.boundingBox();
     expect(rowBox?.y ?? 0).toBeGreaterThan((editorBox?.y ?? 0) + (editorBox?.height ?? 0) - 1);
-    const boxes = await buttons.evaluateAll((all) =>
-      all.map((button) => button.getBoundingClientRect().top),
-    );
-    expect(new Set(boxes.map(Math.round)).size).toBe(1);
+    const geometry = await actions.evaluate((row) => ({
+      width: row.clientWidth,
+      scrollWidth: row.scrollWidth,
+      columnGap: getComputedStyle(row).columnGap,
+      buttons: [...row.querySelectorAll('button')].map((button) => {
+        const { top, width } = button.getBoundingClientRect();
+        return { top, width };
+      }),
+    }));
+    expect(
+      new Set(geometry.buttons.map(({ top }) => Math.round(top))).size,
+      JSON.stringify(geometry),
+    ).toBe(1);
+    expect(geometry.scrollWidth - geometry.width).toBeLessThanOrEqual(1);
     await expect(buttons).toHaveText(['Discard my edit', 'Save over it…', 'Show new value']);
-    await expect(buttons.nth(0)).toHaveAttribute('data-cinder-variant', 'secondary');
-    await expect(buttons.nth(1)).toHaveAttribute('data-cinder-variant', 'secondary');
-    await expect(buttons.nth(2)).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(buttons.nth(0)).toContainClass('button-variant-secondary');
+    await expect(buttons.nth(1)).toContainClass('button-variant-secondary');
+    await expect(buttons.nth(2)).toContainClass('button-variant-primary');
     // The draft stays in the editor, under the alert, and the editor's own buttons give way.
     await expect(editor).toHaveValue('{\n  "dismissed": false\n}');
     await expect(pane.getByRole('button', { name: 'Save value' })).toHaveCount(0);
@@ -774,29 +807,36 @@ test.describe('Health › Storage writes and states', () => {
     }
   });
 
-  test('nothing selected: the pane says what to do, the table keeps no row highlighted', async ({
+  test('on arrival the pane beside the table opens the first key, and one above the other nothing opens', async ({
     page,
     checkA11y,
   }) => {
-    await openStorage(page);
+    // COR-2445: beside the table the first key opens, so the pane never says "Select a key".
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await page.goto('/health/storage');
     const main = page.locator('main');
+    const first = main.locator('tbody tr[data-cinder-row-id]').first();
+    await expect(first).toBeVisible();
+    await expect(main.locator('.cinder-list-detail')).toHaveAttribute(
+      'data-cinder-layout',
+      'split',
+    );
+    await expect(first).toHaveAttribute('aria-current', 'true');
     const detail = main.locator('.cinder-list-detail__detail');
     await expect(
       detail.getByRole('heading', { name: 'Select a key to see its value' }),
-    ).toBeVisible();
-    await expect(
-      detail.getByText(
-        'Pick a row to read what is stored. Keys Interborough doesn’t manage can also be edited and deleted.',
-      ),
-    ).toBeVisible();
-    await expect(detail.locator('.cinder-empty-state svg')).toBeVisible();
+    ).toHaveCount(0);
+    await checkA11y('health storage, the first key open');
+
+    // With the pane under the table the table is where it starts: nothing opens.
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.goto('/health/storage');
+    await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
+    await expect(main.locator('.cinder-list-detail')).not.toHaveAttribute(
+      'data-cinder-layout',
+      'split',
+    );
     await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(0);
-    await captureForDesignReview(page, {
-      route: '/health/storage',
-      state: 'nothing-selected',
-      source: SOURCE,
-    });
-    await checkA11y('health storage, nothing selected');
   });
 
   test('while the keys are read the filters stay, rows appear after 300 ms, Still loading with Cancel after 10 s, and Cancel stops the read', async ({
@@ -989,18 +1029,19 @@ test.describe('Health › Storage with the design’s own keys', () => {
     await openStorage(page);
     const main = page.locator('main');
 
-    // 80g: the ten rows, each with its group, its size and its time in Central time.
+    // 80g: the ten rows, each with its group, its size and its time in Central time. The Key
+    // column leaves out the prefix the Group column gives (owner, 2026-11-19).
     expect(await firstRows(page, 10)).toEqual([
-      ['agent-session:summary-index', 'Chat sessions', '1.2 KB', 'Today, 10:44 AM'],
-      ['agent-session:415b1fd8…:messages', 'Chat sessions', '310 B', 'Today, 10:42 AM'],
-      ['app:preferences', 'App data and memory', '64 B', 'Today, 9:40 AM'],
-      ['app:goals', 'App data and memory', '410 B', 'Today, 9:00 AM'],
-      ['audit:2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
-      ['bureau-goal:seeded-goal', 'Goals', '880 B', 'Today, 9:00 AM'],
-      ['bureau-task:run-1-12b71b8b…', 'Tasks', '540 B', 'Today, 9:00 AM'],
-      ['bureau-catalog-run:run-1-12b71b8b…', 'Runs', '2.4 KB', 'Today, 9:00 AM'],
-      ['steering-log:415b1fd8…:0001', 'Chat steering', '180 B', 'Today, 10:42 AM'],
-      ['schedule:daily-summary', 'Schedules', '360 B', 'Today, 10:40 AM'],
+      ['summary-index', 'Chat sessions', '1.2 KB', 'Today, 10:44 AM'],
+      ['415b1fd8…:messages', 'Chat sessions', '310 B', 'Today, 10:42 AM'],
+      ['preferences', 'App data and memory', '64 B', 'Today, 9:40 AM'],
+      ['goals', 'App data and memory', '410 B', 'Today, 9:00 AM'],
+      ['2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
+      ['seeded-goal', 'Goals', '880 B', 'Today, 9:00 AM'],
+      ['run-1-12b71b8b…', 'Tasks', '540 B', 'Today, 9:00 AM'],
+      ['run-1-12b71b8b…', 'Runs', '2.4 KB', 'Today, 9:00 AM'],
+      ['415b1fd8…:0001', 'Chat steering', '180 B', 'Today, 10:42 AM'],
+      ['daily-summary', 'Schedules', '360 B', 'Today, 10:40 AM'],
     ]);
 
     // The first row is open and tinted, and the pane says what the board's does.
@@ -1024,7 +1065,7 @@ test.describe('Health › Storage with the design’s own keys', () => {
     });
     await captureForDesignReview(page, {
       route: '/health/storage',
-      state: 'key selected',
+      state: 'key selected with the design’s keys',
       source: SOURCE,
     });
     await checkA11y('health storage with the design’s keys');
@@ -1047,16 +1088,17 @@ test.describe('Health › Storage with the design’s own keys', () => {
     await range.getByLabel('Range end').fill('audit:2026-11-02');
     await expect(main.locator('tbody tr[data-cinder-row-id]')).toHaveCount(3);
     // 80q: the keys, their sizes, and their times in Central time.
+    // The Key column leaves out the prefix its Group column gives (owner, 2026-11-19).
     expect(await firstRows(page, 3)).toEqual([
-      ['audit:2026-11-01T22:12:31Z', 'Audit log', '210 B', 'Sun Nov 1, 4:12 PM'],
-      ['audit:2026-11-02T15:00:02Z', 'Audit log', '224 B', 'Today, 9:00 AM'],
-      ['audit:2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
+      ['2026-11-01T22:12:31Z', 'Audit log', '210 B', 'Sun Nov 1, 4:12 PM'],
+      ['2026-11-02T15:00:02Z', 'Audit log', '224 B', 'Today, 9:00 AM'],
+      ['2026-11-02T16:33:08Z', 'Audit log', '220 B', 'Today, 10:33 AM'],
     ]);
     await main.locator('tbody tr[data-cinder-row-id]').nth(1).click();
     await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);
     await captureForDesignReview(page, {
       route: '/health/storage',
-      state: 'range',
+      state: 'range with the design’s keys',
       source: SOURCE,
     });
     await checkA11y('health storage range with the design’s keys');

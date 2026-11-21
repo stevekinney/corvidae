@@ -10,14 +10,16 @@
  *
  * COR-2308 retuned both ladders. Light is the app-shell ladder (a near-white canvas above a grey
  * surface and a tinted well, raised still pure white), the text tiers step at 44% and 50%, and
- * the success and warning backgrounds drop to chroma 0.035. Dark is a neutral ladder at hue 265
- * (chroma at most 0.014) with a white border ink at 12% and 8%, and its status backgrounds are
- * `color-mix(in oklab, <solid> 14%, <surface>)`. The derived values below are what that recipe
+ * the success and warning backgrounds drop to chroma 0.035. Dark is a ladder at hue 265 with a
+ * white border ink at 12% and 8%, and its status backgrounds are
+ * `color-mix(in oklab, <solid> 20%, <surface>)`. COR-2489 (owner decision 2026-11-16, more
+ * colour) tinted the dark ladder indigo (chroma 0.022 to 0.028, from 0.012 to 0.014), raised the
+ * dark status mix from 14% to 20%, and the light success ground to chroma 0.055. The derived values below are what that recipe
  * evaluates to in each arm (`scripts/tokens/derived-values.ts`).
  *
  * The owner then found the grey surface made every panel read as a grey slab (2026-11-15) and
  * chose the consumer ladder for the default light arm too: the surface is pure white like raised,
- * the canvas a grey page at 97.6% (3.51:1 for the focus ring; 97.0% would read 3.45:1), and the well
+ * the canvas a grey page at 97.1% (the light focus ring is tuned to retain the 3.5:1 floor), and the well
  * 95.5%. The hover, pressed and soft accent washes now mix from white, so they follow.
  *
  * COR-2450 made the light well neutral: chroma 0.005 read as a blue-grey band inside a white
@@ -62,15 +64,16 @@ function expectColor(arm: 'light' | 'dark', [property, components, alpha]: Expec
 // `hue-travel.test.ts` fails any OKLCH mix whose operands are more than 40° apart, and the hover
 // and pressed washes mix it toward the accent at hue 272.
 const LIGHT_VALUES: readonly ExpectedColor[] = [
-  ['--cinder-surface-canvas', [0.976, 0.004, 265]],
+  ['--cinder-surface-canvas', [0.971, 0.006, 265]],
   ['--cinder-surface', [1, 0, 255]],
   ['--cinder-surface-raised', [1, 0, 255]],
   ['--cinder-surface-inset', [0.955, 0.002, 265]],
-  ['--cinder-surface-hover', [0.9712, 0.0144, 256.02]],
+  ['--cinder-surface-hover', [0.9664, 0.0168, 256.19]],
   ['--cinder-surface-pressed', [0.9424, 0.0288, 257.04]],
   ['--cinder-surface-raised-hover', [0.9664, 0.0168, 256.19]],
   ['--cinder-text-muted', [0.44, 0.01, 265]],
-  ['--cinder-text-subtle', [0.5, 0.01, 265]],
+  // Owner, 2026-11-19: 4.5:1 on the selected row's stronger fill too.
+  ['--cinder-text-subtle', [0.47, 0.01, 265]],
   ['--cinder-accent-solid', [0.52, 0.24, 272]],
   ['--cinder-accent-background', [0.9424, 0.0288, 257.04]],
   ['--cinder-status-success-solid', [0.6, 0.174, 148]],
@@ -78,7 +81,9 @@ const LIGHT_VALUES: readonly ExpectedColor[] = [
   ['--cinder-status-success-solid-hover', [0.64, 0.174, 148]],
   ['--cinder-status-success-solid-active', [0.68, 0.174, 148]],
   ['--cinder-status-success-text', [0.44, 0.128, 148]],
-  ['--cinder-status-success-background', [0.965, 0.035, 148]],
+  // COR-2489: the light success ground is brighter, chroma 0.055 (the in-gamut limit is 0.058);
+  // warning, danger and info are already at theirs.
+  ['--cinder-status-success-background', [0.965, 0.055, 148]],
   ['--cinder-status-warning-solid', [0.79, 0.167, 75]],
   ['--cinder-status-warning-contrast', [0.22, 0.05, 70]],
   ['--cinder-status-warning-solid-hover', [0.71, 0.15, 75]],
@@ -103,15 +108,18 @@ const LIGHT_VALUES: readonly ExpectedColor[] = [
  * The structural tiers and the control tiers, as alpha steps over the border ink. COR-2308 gives
  * the dark arm its own structural steps (8% and 12% of a white ink) and keeps the light ones.
  */
+// Owner, 2026-11-19: light mode read faded, its borders barely showing. The light tiers step up:
+// 9%, 16% and 24% structural, 50% and 60% for a control's edge (3:1 on every panel), 66% and 76%
+// for the contrast tier above it.
 const INK_TIERS = [
-  ['--cinder-border-muted', { light: 0.05, dark: 0.08 }],
-  ['--cinder-border', { light: 0.09, dark: 0.12 }],
-  ['--cinder-border-strong', { light: 0.15, dark: 0.15 }],
-  ['--cinder-border-control', { light: 0.32, dark: 0.38 }],
-  ['--cinder-border-control-hover', { light: 0.42, dark: 0.44 }],
-  ['--cinder-border-contrast', { light: 0.48, dark: 0.48 }],
-  ['--cinder-border-contrast-hover', { light: 0.58, dark: 0.58 }],
-  ['--cinder-button-border', { light: 0.32, dark: 0.38 }],
+  ['--cinder-border-muted', { light: 0.09, dark: 0.08 }],
+  ['--cinder-border', { light: 0.16, dark: 0.12 }],
+  ['--cinder-border-strong', { light: 0.24, dark: 0.15 }],
+  ['--cinder-border-control', { light: 0.5, dark: 0.38 }],
+  ['--cinder-border-control-hover', { light: 0.6, dark: 0.44 }],
+  ['--cinder-border-contrast', { light: 0.66, dark: 0.48 }],
+  ['--cinder-border-contrast-hover', { light: 0.76, dark: 0.58 }],
+  ['--cinder-button-border', { light: 0.5, dark: 0.38 }],
 ] as const;
 
 /** The one tier whose dark arm is the opaque literal below, not a step over the ink. */
@@ -119,14 +127,16 @@ const OPAQUE_IN_DARK = new Set<string>(['--cinder-border-contrast']);
 
 /** The dark arm as COR-2308 ships it: neutral surfaces, a white border ink, mixed status grounds. */
 const DARK_VALUES: readonly ExpectedColor[] = [
-  ['--cinder-surface', [0.185, 0.012, 265]],
-  ['--cinder-surface-raised', [0.235, 0.014, 265]],
-  ['--cinder-surface-raised-hover', [0.25413, 0.01365, 265]],
-  ['--cinder-surface-raised-pressed', [0.2809, 0.01316, 265]],
-  ['--cinder-surface-hover', [0.2502, 0.01104, 265]],
-  ['--cinder-surface-pressed', [0.2828, 0.01056, 265]],
-  ['--cinder-surface-upcoming-marker', [0.185, 0.012, 265]],
-  ['--cinder-surface-canvas', [0.145, 0.012, 265]],
+  // COR-2489 (owner decision 2026-11-16, more colour): the ladder keeps its lightness steps and
+  // carries an indigo tint, chroma 0.022 to 0.028 where it was 0.012 to 0.014.
+  ['--cinder-surface', [0.185, 0.024, 265]],
+  ['--cinder-surface-raised', [0.235, 0.028, 265]],
+  ['--cinder-surface-raised-hover', [0.25413, 0.0273, 265]],
+  ['--cinder-surface-raised-pressed', [0.2809, 0.02632, 265]],
+  ['--cinder-surface-hover', [0.2502, 0.02208, 265]],
+  ['--cinder-surface-pressed', [0.2828, 0.02112, 265]],
+  ['--cinder-surface-upcoming-marker', [0.185, 0.024, 265]],
+  ['--cinder-surface-canvas', [0.145, 0.022, 265]],
   ['--cinder-border-ink', [1, 0, 0]],
   ['--cinder-border-control', [1, 0, 0], 0.38],
   ['--cinder-border-control-hover', [1, 0, 0], 0.44],
@@ -142,46 +152,47 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-accent-solid-active', [0.57, 0.14, 270]],
   ['--cinder-accent-solid-active-on-fill', [0.61, 0.14, 270]],
   ['--cinder-accent-solid-hover', [0.64, 0.14, 270]],
-  ['--cinder-accent-background', [0.2492, 0.02736, 265.6]],
+  ['--cinder-accent-background', [0.2492, 0.03792, 265.6]],
   ['--cinder-accent-border', [0.72, 0.14, 270], 0.4],
   ['--cinder-status-success-contrast', [0.15, 0.03, 145]],
   ['--cinder-status-success-solid', [0.78, 0.14, 145]],
   ['--cinder-status-success-solid-active', [0.62, 0.14, 145]],
   ['--cinder-status-success-solid-hover', [0.7, 0.14, 145]],
-  ['--cinder-status-success-background', [0.2683, 0.01698, 176.755]],
+  // COR-2489: the dark status grounds mix 20% of their solid, where they mixed 14%.
+  ['--cinder-status-success-background', [0.304, 0.028, 145]],
   ['--cinder-status-success-text', [0.88, 0.11, 145]],
   ['--cinder-status-success-border', [0.45, 0.09, 145]],
   ['--cinder-status-success-subtle', [0.8412, 0.05, 147.034]],
-  ['--cinder-status-success-muted', [0.5658, 0.05, 147.45]],
+  ['--cinder-status-success-muted', [0.5658, 0.05, 150.014]],
   ['--cinder-status-warning-contrast', [0.2, 0.04, 75]],
   ['--cinder-status-warning-solid', [0.82, 0.156, 75]],
   ['--cinder-status-warning-solid-active', [0.66, 0.13, 75]],
   ['--cinder-status-warning-solid-hover', [0.74, 0.156, 75]],
-  ['--cinder-status-warning-background', [0.2739, 0.01181, 66.275]],
+  ['--cinder-status-warning-background', [0.312, 0.0312, 75]],
   ['--cinder-status-warning-text', [0.9, 0.08, 75]],
   ['--cinder-status-warning-border', [0.5, 0.1, 75]],
   ['--cinder-status-warning-subtle', [0.8668, 0.05, 74.628]],
-  ['--cinder-status-warning-muted', [0.5914, 0.05, 74.55]],
+  ['--cinder-status-warning-muted', [0.5914, 0.05, 74.059]],
   ['--cinder-status-danger-contrast', [0.12, 0.02, 25]],
   ['--cinder-status-danger-solid', [0.67, 0.19, 27]],
   ['--cinder-status-danger-solid-active', [0.59, 0.18, 27]],
   ['--cinder-status-danger-solid-hover', [0.61, 0.19, 27]],
-  ['--cinder-status-danger-background', [0.2529, 0.02287, 4.502]],
+  ['--cinder-status-danger-background', [0.282, 0.038, 27]],
   // COR-2287: the dark danger ink is a red at 76% (chroma 0.14, the in-gamut step below the
   // board's 0.15) and its border a red at 62%, so a danger row reads red instead of pink-white.
   ['--cinder-status-danger-text', [0.76, 0.14, 25]],
   ['--cinder-status-danger-border', [0.62, 0.17, 25]],
   ['--cinder-status-danger-subtle', [0.7708, 0.05, 25.539]],
-  ['--cinder-status-danger-muted', [0.4954, 0.05, 25.241]],
+  ['--cinder-status-danger-muted', [0.4954, 0.05, 23.417]],
   ['--cinder-status-info-contrast', [0.15, 0.03, 230]],
   ['--cinder-status-info-solid', [0.78, 0.13, 230]],
   ['--cinder-status-info-solid-active', [0.62, 0.12, 230]],
   ['--cinder-status-info-solid-hover', [0.7, 0.13, 230]],
-  ['--cinder-status-info-background', [0.2683, 0.0273, 242.521]],
+  ['--cinder-status-info-background', [0.304, 0.026, 230]],
   ['--cinder-status-info-text', [0.88, 0.071, 230]],
   ['--cinder-status-info-border', [0.45, 0.08, 230]],
   ['--cinder-status-info-subtle', [0.8412, 0.05, 231.373]],
-  ['--cinder-status-info-muted', [0.5658, 0.05, 231.636]],
+  ['--cinder-status-info-muted', [0.5658, 0.05, 233.142]],
   ['--cinder-status-neutral-background', [0.268, 0.012, 265]],
   ['--cinder-status-neutral-text', [0.95, 0.01, 265]],
   ['--cinder-status-dot-color', [0.78, 0.01, 265]],
@@ -238,13 +249,14 @@ describe('COR-1552 and COR-2308: the structural and control border tiers', () =>
 
 describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and skeleton', () => {
   test('the inset band sits between the surface and raised (COR-2308: 21%)', () => {
-    expectColor('dark', ['--cinder-surface-inset', [0.21, 0.012, 265]]);
+    expectColor('dark', ['--cinder-surface-inset', [0.21, 0.026, 265]]);
   });
 
   test('the inverse chip is the light text ink, so a tooltip separates from raised popovers', () => {
     expectColor('dark', ['--cinder-surface-inverse', [0.95, 0.01, 265]]);
-    expectColor('light', ['--cinder-surface-inverse', [0.2, 0.018, 245]]);
-    expectColor('dark', ['--cinder-text-inverse', [0.185, 0.012, 265]]);
+    // The light text ink is near-black (owner, 2026-11-19).
+    expectColor('light', ['--cinder-surface-inverse', [0.17, 0.018, 245]]);
+    expectColor('dark', ['--cinder-text-inverse', [0.185, 0.024, 265]]);
   });
 
   test('the contrast tier is the opaque oklch(64% .03 265), which clears 3:1 on raised', () => {
@@ -266,7 +278,7 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
   });
 
   test('the focus ring is the accent hue at 62% lightness in both arms', () => {
-    expectColor('light', ['--cinder-ring-color', [0.62, 0.16, 272]]);
+    expectColor('light', ['--cinder-ring-color', [0.612, 0.16, 272]]);
     expectColor('dark', ['--cinder-ring-color', [0.62, 0.16, 270]]);
   });
 });
@@ -278,7 +290,10 @@ describe('COR-2308: the dark arm ships the neutral ladder', () => {
     });
   }
 
-  test('every dark resting surface is hue 265 at chroma 0.014 or less', () => {
+  // COR-2489 (owner decision 2026-11-16): the dark page carries colour. Every resting surface is
+  // hue 265 with an indigo tint, at least 0.02 and no more than 0.03 chroma, so it never reads grey
+  // and never reads as a coloured panel.
+  test('every dark resting surface is hue 265 at chroma 0.02 to 0.03', () => {
     for (const property of [
       '--cinder-surface-canvas',
       '--cinder-surface',
@@ -287,13 +302,30 @@ describe('COR-2308: the dark arm ships the neutral ladder', () => {
     ]) {
       const [, chroma, hue] = contexts.dark.get(property)?.components ?? [];
       expect(hue, property).toBe(265);
-      expect(chroma, property).toBeLessThanOrEqual(0.014);
+      expect(chroma, property).toBeGreaterThanOrEqual(0.02);
+      expect(chroma, property).toBeLessThanOrEqual(0.03);
+    }
+  });
+
+  // COR-2489 design round: a dark status ground is its solid mixed 20% into a neutral of the
+  // surface's lightness, so the indigo page never turns red teal, amber grey or green teal.
+  test('every dark status ground keeps its status hue, never the surface hue', () => {
+    for (const [property, low, high] of [
+      ['--cinder-status-danger-background', 15, 40],
+      ['--cinder-status-warning-background', 60, 95],
+      ['--cinder-status-success-background', 130, 160],
+      ['--cinder-status-info-background', 215, 245],
+    ] as const) {
+      const [, chroma, hue] = contexts.dark.get(property)?.components ?? [];
+      expect(hue, property).toBeGreaterThanOrEqual(low);
+      expect(hue, property).toBeLessThanOrEqual(high);
+      expect(chroma, property).toBeGreaterThanOrEqual(0.025);
     }
   });
 
   test('the neutral status border follows the structural border tier in each arm', () => {
     expect(contexts.dark.get('--cinder-status-neutral-border')?.alpha).toBe(0.12);
-    expect(contexts.light.get('--cinder-status-neutral-border')?.alpha).toBe(0.09);
+    expect(contexts.light.get('--cinder-status-neutral-border')?.alpha).toBe(0.16);
   });
 });
 

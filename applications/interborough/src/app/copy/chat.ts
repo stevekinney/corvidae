@@ -74,6 +74,7 @@ export const CHAT_COPY = {
   },
   /** The chat list beside the open chat. */
   list: {
+    description: 'Your conversations with agents, newest first.',
     /** The accessible name of the pane that holds the open chat. */
     detailLabel: 'Open chat',
     /** The toggle that hides the list beside the open chat, and shows it again (COR-2327). */
@@ -131,11 +132,8 @@ export const CHAT_COPY = {
     /** The list could not be read: the error stays in the list and the page stays live. */
     failedTitle: 'Couldn’t load chats',
     failedDescription: 'Interborough didn’t send them back.',
-    pickTitle: 'Pick a chat',
-    pickDescription: 'Choose a chat from the list, or start a new one.',
-    /** What the open pane says when there is no chat to pick, so the list's one primary stays alone. */
+    /** The quiet hint in the pane beside the list while chats are listed and none is open. */
     noChatTitle: 'No chat open',
-    noChatDescription: 'A chat you start opens here.',
   },
   /** What a chat with no message says in place of its transcript. */
   emptyTranscript: {
@@ -169,6 +167,14 @@ export const CHAT_COPY = {
      */
     continuesOnProvider: (agent: string): string =>
       `${agent} continues once a provider is connected.`,
+    /**
+     * Said once, in place of any earlier error, when a decision is refused because the approval is
+     * no longer waiting (decided on another page, expired, or its run stopped). The page reads the
+     * chat again and the card shows which (COR-2438).
+     */
+    notWaiting: 'That approval was no longer waiting, so your decision was not sent.',
+    /** Written in an approval no run waits on any more and that nobody decided: its run stopped. */
+    lapsed: 'No longer waiting. The run stopped before anyone decided.',
   },
   /** The tool calls of a turn. */
   tools: {
@@ -189,6 +195,8 @@ export const CHAT_COPY = {
     interruptedChanges: 'Interrupted, may have run',
     /** The terminal rail result for an approval whose durable deadline elapsed. */
     expiredBeforeDecision: 'Expired before a decision was made.',
+    /** The row of a call whose approval no run waits on any more, though nobody decided it. */
+    noLongerWaiting: 'No longer waiting',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
     runFinishedNoReply: 'Run finished, no reply',
     /**
@@ -281,7 +289,8 @@ export const CHAT_COPY = {
   /** The label of a question that declares no schema, which takes free text. */
   questionAnswerLabel: 'Answer',
   /** Said under a question that is picked from choices: the number keys. */
-  pickHint: 'Press 1 to 9 to pick a choice.',
+  pickHint: (count: number): string =>
+    count === 1 ? 'Press 1 to pick the choice.' : `Press 1 to ${count} to pick a choice.`,
   /** The shortcuts the `?` map lists for this page. */
   shortcutGroup: 'Chat',
   pickShortcut: (position: number): string => `Pick choice ${String(position)}`,
@@ -451,9 +460,6 @@ export const CHAT_COPY = {
       percent === null || max === null
         ? `Context window: about ${used} tokens in use, window size unknown. Opens the breakdown`
         : `Context window: ${String(percent)}% used, about ${used} of ${max} tokens. Opens the breakdown`,
-    /** The visible reading beside the ring. */
-    reading: (percent: number | null, used: string) =>
-      percent === null ? `${used} tokens` : `${String(percent)}%`,
     summary: (used: string, max: string | null) =>
       max === null
         ? `About ${used} tokens, in a window of unknown size.`
@@ -545,18 +551,20 @@ export const CHAT_COPY = {
       label: 'Settings: Model, Effort and Permissions',
     },
   },
-  /** The context meter in the composer: a bar and a reading of how full the window is. */
+  /**
+   * The chat's one context meter, in the composer beside Send (COR-2438): a bar and its percentage,
+   * the tokens in its tooltip. Its button's name and the breakdown it opens are `contextWindow`'s.
+   */
   contextMeter: {
-    /** The meter's accessible name; `percent` is `null` when the model's window is not known. */
+    /** The bar's own name; `percent` is `null` when the model's window is not known. */
     label: (percent: number | null, used: string) =>
       percent === null ? `Context ${used} tokens` : `Context ${String(percent)}%`,
-    /** The visible reading beside the bar. */
+    /** The visible reading beside the bar: the percentage, or the tokens when there is no window. */
     reading: (percent: number | null, used: string) =>
-      percent === null ? used : `${String(percent)}%`,
+      percent === null ? `${used} tokens` : `${String(percent)}%`,
     /** The tooltip: tokens in use of the window, as short numbers. */
     tooltip: (used: string, max: string | null) =>
       max === null ? `About ${used} tokens` : `${used} of ${max} tokens`,
-    unavailable: 'Context unavailable',
   },
   /** Branching a chat from one of an agent's replies. */
   /** What a message that was not sent says in the popover its red icon opens. */
@@ -574,22 +582,43 @@ export const CHAT_COPY = {
     done: 'Done',
   },
   /**
-   * The details popover the last breadcrumb opens (board ChatPage frame b): the session, its agent,
-   * when it started, and what the chat ran with.
+   * What a place that starts a chat says when a chat cannot work yet (COR-2438, `chatReadiness`):
+   * why, and the one step that is missing, as its action. Never an action that cannot work.
+   */
+  readiness: {
+    'needs-provider': {
+      title: 'Connect a provider first',
+      description: 'A chat needs a model provider to answer. Connect one, then start a chat.',
+      action: 'Connect a provider',
+    },
+    'needs-agent': {
+      title: 'Create an agent first',
+      description: 'A chat is with an agent. Create one, then start a chat with it.',
+      action: 'Create an agent',
+    },
+  },
+  /**
+   * The details popover the last breadcrumb opens (board ChatPage frame b): the agent, when the chat
+   * started and was last active, its settings, and a quiet action that copies the session ID.
    */
   details: {
     /** The popover's accessible name, before the chat's title. */
     label: 'Chat details',
-    sessionId: 'Session ID',
+    /** The quiet action at the bottom of the popover, and what it says once it copied. */
     copySessionId: 'Copy session ID',
+    sessionIdCopied: 'Session ID copied',
     agent: 'Agent',
     started: 'Started',
-    /** What follows when the chat started, naming the last time it changed. */
-    lastActive: (when: string): string => `last active ${when}`,
-    /** The group of what the chat ran with. */
-    asRun: 'As run',
+    /** Its own row, shown only when the chat changed after the minute it started. */
+    lastActive: 'Last active',
     model: 'Model',
     effort: 'Effort',
+    /** The effort a chat left unset, as the agent's file names it ("Medium, the agent's default"). */
+    agentEffort: (effort: string): string => `${effort}, the agent’s default`,
+    /** The agent's file names no effort, so the model's own applies. */
+    modelEffort: 'The model’s default',
+    /** The agent's definition has not been read, or could not be. */
+    unknownEffort: 'The agent’s default',
     permissions: 'Permissions',
   },
   branch: {

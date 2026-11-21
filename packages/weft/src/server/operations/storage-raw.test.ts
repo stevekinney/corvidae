@@ -56,6 +56,7 @@ describe('storage REST raw operations', () => {
     expect(await response.json()).toEqual({
       error: 'Payload Too Large',
       data: { maxBytes: 1 },
+      retryable: false,
     });
     expect(await storage.get('oversized-value')).toBeNull();
   });
@@ -215,7 +216,7 @@ describe('storage REST raw operations', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error });
+      expect(await response.json()).toEqual({ error, retryable: false });
     }
   });
 
@@ -253,6 +254,7 @@ describe('storage REST raw operations', () => {
           },
         ],
       },
+      retryable: false,
     });
   });
 

@@ -152,7 +152,7 @@ test.describe('the Instructions tab', () => {
 
     // Memory is a tab of the same page: the header and the tab bar stay above it.
     await page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs.memory }).click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${id}/memory$`));
+    await expect(page).toHaveURL(new RegExp(`/agents/${id}/memory(\\?selected=[^&]+)?$`));
     await expect(page.getByTestId('agent-header')).toBeVisible();
 
     // An address from before each tab had a path opens the tab, not a missing page.

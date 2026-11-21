@@ -153,7 +153,6 @@ export const RUN_PAGE_COPY = {
   /** Under Tags when the run has none, and the field's placeholder (rows 54j, 54p, 55d, 55h). */
   noTags: 'None',
   addTag: 'Add a tag',
-  attributesAndWorkerLabel: 'Attributes and worker',
   changeHeading: 'Change or ask this run',
   changeIntro: 'Send a message to the run, or read something from it, without leaving the page.',
   signal: { label: 'Send a signal', hint: 'Fire-and-forget message' },
@@ -279,6 +278,7 @@ export const RUN_DETAIL_COPY = {
     },
     forbidden: {
       title: 'Your sign-in can’t see this run’s hooks',
+      reason: 'The rest of the run is still available.',
       /** The scope Interborough’s API checks before it lets the inspection through (`host/scope-gate.ts`). */
       requirement: 'runs:read',
     },
@@ -435,13 +435,17 @@ export const RUN_DETAIL_COPY = {
       took === undefined
         ? `Interborough tried ${String(tries)} times.`
         : `Interborough tried ${String(tries)} times in ${took}.`,
-    /** What Retry from this step does (row 55b): the steps it keeps, and the version it runs on. */
-    retryKeeps: (at: number, ran: string): string =>
+    /**
+     * What Retry from this step does (row 55b): the steps it keeps. The version it runs on is said
+     * once in the block, beside its button (row 14t), and once in the header's caption (row 54z), so
+     * the sentence does not say it a third time in the first screen (COR-2489 design round).
+     */
+    retryKeeps: (at: number): string =>
       at <= 1
-        ? `Retry from this step runs step 1 again on version ${ran}, the version this run used.`
+        ? 'Retry from this step runs step 1 again.'
         : `Retry from this step keeps ${
             at === 2 ? 'step 1’s result' : `the results of steps 1 to ${String(at - 1)}`
-          } and runs step ${String(at)} again on version ${ran}, the version this run used.`,
+          } and runs step ${String(at)} again.`,
     /** Said in the status line once the retry is under way, and when it was refused. */
     retrying: 'running again from the failed step',
     retryRefused: {

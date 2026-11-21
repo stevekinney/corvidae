@@ -43,7 +43,5 @@ export function replyModelLabel(
     (candidate) =>
       candidate.provider === replyModel.provider && candidate.model === replyModel.model,
   );
-  return choice !== undefined && choice.displayName !== choice.model
-    ? choice.displayName
-    : modelDisplayName(replyModel.model);
+  return modelDisplayName(replyModel.model, choice?.displayName);
 }

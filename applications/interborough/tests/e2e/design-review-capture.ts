@@ -28,6 +28,12 @@ import {
   designReviewCaptureDirectory,
   designReviewColorScheme,
 } from '../../scripts/environment-configuration.ts';
+import {
+  E2E_FIRST_RUN_PORT,
+  E2E_PLUGIN_PAGES_PORT,
+  E2E_PORT,
+  E2E_SHOWCASE_PORT,
+} from './e2e-constants.ts';
 
 /** At or below this width a capture is of a phone, and is taken with a coarse pointer. */
 const PHONE_WIDTH_MAXIMUM = GEOMETRY_THRESHOLDS.phoneWidthMaximum;
@@ -106,6 +112,17 @@ export async function withPointerCleanup<T>(
 /** The smallest phone the application supports, which every phone-width capture is repeated at. */
 const SMALL_PHONE = { width: 320, height: 640 } as const;
 
+/**
+ * The wide desktop every 1280-pixel capture is repeated at, because the owner reads the application
+ * on a screen this wide and a layout that holds at 1280 can still be wrong here: a column that
+ * stretches, an action stranded at the far edge, a measure that runs past ninety characters. No
+ * specification has to open this size itself, as none opens 320.
+ */
+const WIDE_DESKTOP = { width: 1920, height: 1080 } as const;
+
+/** The width a capture is repeated at {@link WIDE_DESKTOP} from. */
+const DESKTOP_WIDTH = 1280;
+
 /** The tallest the viewport is stretched to for a whole-page capture, so a runaway list stays readable. */
 const MAXIMUM_FULL_HEIGHT = 8000;
 
@@ -126,6 +143,8 @@ export interface DesignReviewCapture {
 /** One line of `manifest.jsonl`. */
 export interface DesignReviewManifestEntry extends DesignReviewCapture {
   readonly address: string;
+  /** The content the page showed: `sample-world`, `stress`, `first-run`, `plugin-pages` or `e2e-host`. */
+  readonly world: string;
   readonly width: number;
   readonly height: number;
   readonly colorScheme: 'light' | 'dark';
@@ -139,13 +158,41 @@ export interface DesignReviewManifestEntry extends DesignReviewCapture {
   readonly geometryError?: string;
 }
 
-/** A file-name-safe slug of a capture's route, state, tab, width and scheme. */
+/**
+ * Which content a page shows, from the host that served it: the sample world (the showcase host,
+ * the boards' believable data), a fresh installation (the first-run host), the plugin-pages host,
+ * or the main end-to-end host, which the responsive specification fills with the stress seed's
+ * 300-character words and every other specification reads as it stands. A name that says only
+ * `ready` never said which of them it showed.
+ */
+export function designReviewWorld(address: string, source: string): string {
+  const port = Number(new URL(address).port);
+  if (port === E2E_SHOWCASE_PORT) return 'sample-world';
+  if (port === E2E_FIRST_RUN_PORT) return 'first-run';
+  if (port === E2E_PLUGIN_PAGES_PORT) return 'plugin-pages';
+  return port === E2E_PORT && source.startsWith('responsive') ? 'stress' : 'e2e-host';
+}
+
+/**
+ * A file-name-safe slug of a capture's specification, world, route, tab, state, width and scheme.
+ * The specification and the world lead, so two specifications that capture the same route in the
+ * same state, or one route in two worlds, never write the same file.
+ */
 export function designReviewSlug(
   capture: DesignReviewCapture,
   width: number,
   colorScheme: 'light' | 'dark',
+  world: string,
 ): string {
-  const parts = [capture.route, capture.tab ?? '', capture.state, `${width}`, colorScheme];
+  const parts = [
+    capture.source.replace(/\.spec\.ts$/, ''),
+    world,
+    capture.route,
+    capture.tab ?? '',
+    capture.state,
+    `${width}`,
+    colorScheme,
+  ];
   return parts
     .filter((part) => part !== '')
     .map((part) =>
@@ -202,16 +249,24 @@ export async function captureForDesignReview(
   const viewportSize = page.viewportSize();
   if (viewportSize === null) throw new Error('A design-review capture needs a fixed viewport.');
   if (viewportSize.width > PHONE_WIDTH_MAXIMUM) {
-    await captureViewport(page, capture, directory, viewportSize);
+    await captureViewport(page, capture, directory, viewportSize, 'asked');
+    if (viewportSize.width === DESKTOP_WIDTH) {
+      await page.setViewportSize(WIDE_DESKTOP);
+      await nextFrame(page);
+      await captureViewport(page, capture, directory, WIDE_DESKTOP, 'repeated');
+      await page.setViewportSize(viewportSize);
+      await nextFrame(page);
+      await capture.ready?.(page);
+    }
     return;
   }
   const restorePointer = await emulateTouch(page);
   await withPointerCleanup(async () => {
-    await captureViewport(page, capture, directory, viewportSize);
+    await captureViewport(page, capture, directory, viewportSize, 'asked');
     if (viewportSize.width !== SMALL_PHONE.width) {
       await page.setViewportSize(SMALL_PHONE);
       await nextFrame(page);
-      await captureViewport(page, capture, directory, SMALL_PHONE);
+      await captureViewport(page, capture, directory, SMALL_PHONE, 'repeated');
       await page.setViewportSize(viewportSize);
       await nextFrame(page);
       await capture.ready?.(page);
@@ -219,15 +274,64 @@ export async function captureForDesignReview(
   }, restorePointer);
 }
 
+/** The phone a state held only at a desktop width is captured at as well, with 320 by 640 after it. */
+export const DESIGN_REVIEW_PHONE = { width: 375, height: 812 } as const;
+
+/**
+ * Captures a state at the width the page is at and then at a phone (375, and so 320 as well), for a
+ * state a specification holds only at a desktop width (COR-2489: Home's loading, still-loading,
+ * one-card-fails, nothing-waiting and something-needs-you states were recorded only at 1280). The
+ * viewport is put back after, so the specification's own assertions run at the width they expect.
+ * In an ordinary run it does nothing and leaves the viewport alone.
+ */
+export async function captureForDesignReviewWithPhone(
+  page: Page,
+  capture: DesignReviewCapture,
+): Promise<void> {
+  if (designReviewCaptureDirectory() === undefined) return;
+  await captureForDesignReview(page, capture);
+  const viewportSize = page.viewportSize();
+  if (viewportSize === null || viewportSize.width <= PHONE_WIDTH_MAXIMUM) return;
+  await page.setViewportSize(DESIGN_REVIEW_PHONE);
+  await nextFrame(page);
+  try {
+    await captureForDesignReview(page, capture);
+  } finally {
+    await page.setViewportSize(viewportSize);
+    await nextFrame(page);
+    await capture.ready?.(page);
+  }
+}
+
+/**
+ * The files this process has written, by directory and slug, and whether the specification asked
+ * for the size or the helper repeated it (320 and 1920). A repeat of a screen the specification
+ * took itself, or the specification taking a screen the helper repeated, is the same screen and
+ * writes nothing twice; two screens the specification asked for under one name are an error,
+ * because the second would overwrite the first and the review would read one of them as both.
+ */
+const written = new Map<string, 'asked' | 'repeated'>();
+
 /** Screenshots and measures the page at the size it is at, and appends its line to the manifest. */
 async function captureViewport(
   page: Page,
   capture: DesignReviewCapture,
   directory: string,
   viewportSize: { readonly width: number; readonly height: number },
+  origin: 'asked' | 'repeated',
 ): Promise<void> {
   const colorScheme = designReviewColorScheme() ?? 'light';
-  const slug = designReviewSlug(capture, viewportSize.width, colorScheme);
+  const world = designReviewWorld(page.url(), capture.source);
+  const slug = designReviewSlug(capture, viewportSize.width, colorScheme, world);
+  const key = `${directory}\0${slug}`;
+  const earlier = written.get(key);
+  if (earlier !== undefined) {
+    if (earlier === 'repeated' || origin === 'repeated') return;
+    throw new Error(
+      `Two design-review captures resolve to ${slug}: give the second a state or a tab of its own.`,
+    );
+  }
+  written.set(key, origin);
   await mkdir(join(directory, 'screens'), { recursive: true });
 
   await capture.ready?.(page);
@@ -273,6 +377,7 @@ async function captureViewport(
   const entry: DesignReviewManifestEntry = {
     ...capture,
     address: new URL(page.url()).pathname + new URL(page.url()).search,
+    world,
     width: viewportSize.width,
     height: viewportSize.height,
     colorScheme,

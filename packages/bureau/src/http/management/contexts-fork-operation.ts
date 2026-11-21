@@ -38,7 +38,8 @@ import { ForkThroughMessageError, sessionOwnerOf } from '@lostgradient/operative
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, BureauShuttingDownError } from '../../bureau-errors.ts';
+import { BureauShuttingDownError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { SessionForkRefusedError } from '../../session-fork.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
@@ -207,10 +208,7 @@ export const contextsForkOperation = defineOperation<
           ? resourceNotFound('context', contextId)
           : resourceNotFound('message', input.throughMessageId);
       }
-      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
-        throw resourceNotFound('context', contextId);
-      }
-      throw error;
+      throw bureauFaultOf(error, { notFound: { resource: 'context', identifier: contextId } });
     }
   },
 });

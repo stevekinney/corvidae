@@ -816,16 +816,14 @@
             title={copy.noAgents.title}
             description={copy.noAgents.description}
             headingLevel={3}
-          >
-            {#snippet action()}
-              <Button
-                variant="primary"
-                size="sm"
-                href={router.href('/agents/new')}
-                onclick={(event) => goTo(event, '/agents/new')}>{copy.noAgents.action}</Button
-              >
-            {/snippet}
-          </EmptyState>
+            actions={[
+              {
+                label: copy.noAgents.action,
+                href: router.href('/agents/new'),
+                onclick: (event) => goTo(event, '/agents/new'),
+              },
+            ]}
+          />
         {:else}
           {#if agentNames !== undefined}
             <FormField
@@ -1019,9 +1017,12 @@
   <div class="ib-schedule-new__footer" data-testid="new-schedule-footer">
     <p class="ib-schedule-new__summary" data-testid="new-schedule-summary">{footerLine}</p>
     <div class="ib-schedule-new__actions">
-      <Button variant="secondary" href={router.href(LIST_PATH)} onclick={cancel}
-        >{copy.cancel}</Button
-      >
+      <Button
+        variant="secondary"
+        href={router.href(LIST_PATH)}
+        onclick={cancel}
+        label={copy.cancel}
+      />
       <Button
         data-changes
         variant="primary"

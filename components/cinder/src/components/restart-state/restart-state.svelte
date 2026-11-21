@@ -39,7 +39,7 @@
     attempt,
     maxAttempts = BANNER_MAX_ATTEMPTS,
     retryInSeconds,
-    retryLabel = 'Retry now',
+    retryLabel = 'Try again',
     onRetry,
     checkTitle = 'What to check',
     check,

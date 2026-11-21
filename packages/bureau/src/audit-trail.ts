@@ -1871,7 +1871,9 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         type: 'schedule.created',
         detail: {
           scheduleId: event.scheduleId,
-          agentName: event.agentName,
+          // COR-2546: a schedule of a workflow runs no agent, so it has no `agentName`.
+          ...(event.agentName !== undefined ? { agentName: event.agentName } : {}),
+          target: event.scheduleTarget,
           spec: event.spec,
           ...(event.sessionId !== undefined ? { sessionId: event.sessionId } : {}),
         },

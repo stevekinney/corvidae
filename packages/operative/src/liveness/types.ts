@@ -89,7 +89,8 @@ export interface DeclaredWait {
   /** provider name, tool callId, rate-limit window. */
   readonly dependency?: string | undefined;
   /**
-   * Absent means unbounded; legal only for `'signal'` and `'review'`.
+   * Absent means unbounded; legal only for `'signal'`, `'review'` and `'child'` (a run parked on a
+   * child run lasts as long as the child's own run, which has its own policies).
    * `'sleep'`, `'retry'`, and `'rate-limit'` must carry a deadline.
    */
   readonly deadline?: number | undefined;

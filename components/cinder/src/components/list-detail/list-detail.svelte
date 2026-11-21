@@ -3,14 +3,16 @@
     ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
+    ListDetailSelectionChange,
     ListDetailSelectionLocation,
     ListDetailStorage,
   } from './list-detail.types.ts';
 </script>
 
 <script lang="ts" generics="T">
-  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
-  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
+  // The list's own icons, never the application sidebar's panel icons beside it (COR-2438).
+  import ChevronsLeft from '@lucide/svelte/icons/chevrons-left';
+  import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
   import { tick, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -41,7 +43,7 @@
   import CompactActions from '../../_internal/compact-actions.svelte';
   import { Tooltip } from '../tooltip/index.ts';
   import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
-  import type { ListDetailProps } from './list-detail.types.ts';
+  import type { ListDetailProps, ListDetailSelectionChange } from './list-detail.types.ts';
 
   // The region declares the keys it handles from the same list an application's shortcut map reads.
   const LIST_DETAIL_KEY_SHORTCUTS = LIST_DETAIL_SHORTCUTS.map((shortcut) =>
@@ -65,6 +67,10 @@
     listFooter,
     header,
     openFirst = false,
+    reopenFirst = true,
+    notFound,
+    notFoundTitle = 'Not found',
+    notFoundDescription = 'This item is not in the list. It may have been removed.',
     selectedKey = $bindable(null),
     onSelectedKeyChange,
     selectionParameter = 'selected',
@@ -116,6 +122,7 @@
     const index = selectedKey === null ? -1 : keys.indexOf(selectedKey);
     return index === -1 ? undefined : { item: items[index] as T };
   });
+  const showsDetail = $derived(selectedEntry !== undefined || (openFirst && selectedKey !== null));
   // An unmeasured root (the server, the first paint) is treated as wide, so the stacked layout
   // never flashes before the width is known.
   const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
@@ -128,12 +135,16 @@
     const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
     if (stored !== null) listCollapsed = stored;
   });
-  // The toggle is drawn, and its corner of the header held, whenever the panes sit side by side and
-  // the list can be hidden, with or without an open item: the corner is never empty, and the header
-  // does not move when an item opens. One pane at a time has nothing to hide. Hiding the list with
-  // nothing open leaves the detail's empty state, with the way back on the rail.
+  // The toggle is drawn whenever the panes sit side by side and the list can be hidden, with or
+  // without an open item. While the list shows it is a handle on the divider, inside the list pane
+  // (COR-2438: never in the header beside its title or its "+"); while the list is hidden it is at
+  // the top of the rail. One pane at a time has nothing to hide. Hiding the list with nothing open
+  // leaves the detail's empty state, with the way back on the rail.
   const toggleShown = $derived(listCollapsible && !narrow);
   const collapsed = $derived(toggleShown && listCollapsed);
+  // The list pane's size, which places the handle on the divider as the divider is dragged.
+  let listPaneWidth = $state(0);
+  let listPaneHeight = $state(0);
 
   /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
   async function setListCollapsed(next: boolean): Promise<void> {
@@ -228,7 +239,7 @@
         untrack(() => {
           selectedKey = fromUrl;
           activeKey = fromUrl;
-          onSelectedKeyChange?.(fromUrl);
+          onSelectedKeyChange?.(fromUrl, { automatic: false });
         });
         return;
       }
@@ -236,14 +247,39 @@
     if (location.read(parameter) !== current) location.write(parameter, current);
   });
 
-  // With `openFirst`, an empty selection beside a list becomes the first item, once the width is
-  // known to be wide. It follows the effect above, so a key the URL names has been read by then.
+  // The open key the list last showed. An open key the list has shown and no longer does left it (a
+  // filter hid it); one it never showed is a link to something that is not there.
+  let shownKey: string | null = null;
   $effect(() => {
-    if (!openFirst || narrow || rootWidth === 0 || selectedKey !== null) return;
-    const first = keys[0];
-    if (first === undefined) return;
-    untrack(() => setSelection(first));
+    const current = selectedKey;
+    if (current !== null && keys.includes(current)) shownKey = current;
   });
+
+  // With `openFirst`, an empty selection beside a list becomes the first item drawn, once the width
+  // is known to be wide; an open item the list stops showing gives way to the new first one, or to
+  // nothing when the list is empty. It follows the effect above, so a key the URL names has been
+  // read by then, and a key the list never showed is left open, for its not-found detail.
+  $effect(() => {
+    if (!openFirst || loading || narrow || below || rootWidth === 0) return;
+    const current = selectedKey;
+    const listed = keys;
+    untrack(() => {
+      if (current !== null) {
+        if (listed.includes(current)) return;
+        if (!reopenFirst || shownKey !== current) return;
+      }
+      setSelection(firstDrawnKey(listed), true);
+    });
+  });
+
+  /** The key of the first row on screen, which a table that sorts its own rows decides, else the first item's. */
+  function firstDrawnKey(listed: readonly string[]): string | null {
+    for (const row of rowElements()) {
+      const rowKey = rowKeyAttribute(row);
+      if (rowKey !== null && listed.includes(rowKey)) return rowKey;
+    }
+    return listed[0] ?? null;
+  }
 
   function rowElements(): HTMLElement[] {
     return rootElement ? [...rootElement.querySelectorAll<HTMLElement>(ROW_SELECTOR)] : [];
@@ -274,11 +310,12 @@
     control?.focus();
   }
 
-  function setSelection(next: string | null): void {
+  function setSelection(next: string | null, automatic = false): void {
     if (next === selectedKey) return;
     selectedKey = next;
     if (next !== null) activeKey = next;
-    onSelectedKeyChange?.(next);
+    const change: ListDetailSelectionChange = { automatic };
+    onSelectedKeyChange?.(next, change);
   }
 
   async function open(rowKey: string): Promise<void> {
@@ -340,23 +377,17 @@
     aria-keyshortcuts={LIST_DETAIL_KEY_SHORTCUTS}
     onclick={handleClick}
     onkeydown={handleKeydown}
+    bind:clientWidth={listPaneWidth}
+    bind:clientHeight={listPaneHeight}
   >
     {#if header}
-      <!-- The list toggle stands in the header's start corner (drawn once, outside the pane), and
-           the heading starts after it, so the header keeps its full width for its own search and
-           filter. -->
+      <!-- The header keeps its whole width: its title starts on the search field's edge, and the
+           list toggle is not in it but on the divider (drawn once, outside the pane). -->
       <header class="cinder-list-detail__header">
         <CompactActions>
           {@render header()}
         </CompactActions>
       </header>
-    {:else if toggleShown}
-      <!-- No header of its own: an empty one holds the toggle's place at the top of the list. -->
-      <header
-        class="cinder-list-detail__header"
-        data-cinder-toggle-space=""
-        aria-hidden="true"
-      ></header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
       {#if loading}
@@ -417,19 +448,25 @@
       onclick={() => void setListCollapsed(!collapsed)}
     >
       {#if collapsed}
-        <PanelLeftOpen class="cinder-icon-md" aria-hidden="true" />
+        <ChevronsRight class="cinder-icon-md" aria-hidden="true" />
       {:else}
-        <PanelLeftClose class="cinder-icon-md" aria-hidden="true" />
+        <ChevronsLeft class="cinder-icon-md" aria-hidden="true" />
       {/if}
     </Button>
   </Tooltip>
 {/snippet}
 
 {#snippet toggleAnchor()}
-  <!-- One button, mounted while the list shows and while it is hidden, at one place: the start
-       corner of the list's header, which is also where the rail's top is, so the control does not
-       move when it is pressed and focus stays on it. -->
-  <div class="cinder-list-detail__toggle">{@render listToggle()}</div>
+  <!-- One button, mounted while the list shows and while it is hidden, so focus stays on it as it is
+       pressed: a handle on the divider, inside the list pane, while the list shows (shown on hover
+       and focus, always reachable by keyboard), and the top of the rail while it is hidden. -->
+  <div
+    class="cinder-list-detail__toggle"
+    style:--_cinder-list-detail-list-width={`${String(listPaneWidth)}px`}
+    style:--_cinder-list-detail-list-height={`${String(listPaneHeight)}px`}
+  >
+    {@render listToggle()}
+  </div>
 {/snippet}
 
 {#snippet detailPane()}
@@ -459,6 +496,12 @@
         </div>
       {:else if selectedEntry}
         {@render detail(selectedEntry.item)}
+      {:else if openFirst && selectedKey !== null}
+        {#if notFound}
+          {@render notFound(selectedKey)}
+        {:else}
+          <EmptyState title={notFoundTitle} description={notFoundDescription} />
+        {/if}
       {:else if empty}
         {@render empty()}
       {:else}
@@ -475,12 +518,11 @@
   class={classNames('cinder-list-detail', className)}
   data-cinder-layout={narrow ? 'stacked' : below ? 'below' : 'split'}
   data-cinder-flush-detail={flushDetail ? '' : undefined}
-  data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
+  data-cinder-showing={narrow ? (showsDetail ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
-  data-cinder-toggle-slot={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
-    {#if selectedEntry}
+    {#if showsDetail}
       {@render detailPane()}
     {:else}
       {@render listPane()}

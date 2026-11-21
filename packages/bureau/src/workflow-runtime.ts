@@ -55,6 +55,7 @@ import type { VersionedCatalogEntry } from './versioned-catalog';
 import { z } from 'zod';
 
 import { auditTrailWorkflowOwnerId } from './audit-trail';
+import { startOfRun } from './workflow-run-start';
 import {
   taskOriginTag,
   type TaskOrigin,
@@ -137,6 +138,7 @@ import {
   type DesiredWorkflowSchedule,
   parseWorkflowScheduleId,
   reconcileWorkflowSchedules,
+  workflowScheduleOwnerOf,
 } from './workflow-schedule';
 import {
   errorCodeOf,
@@ -546,9 +548,17 @@ export interface BureauWorkflows {
     id: string,
     options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
+  /**
+   * Delete the workflow's file, if it still hashes to `expectedHash`. With `dryRun` it makes the
+   * checks the delete makes and refuses as it refuses, then removes nothing and writes no audit
+   * entry, event or schedule change.
+   */
   readonly delete: (
     id: string,
-    options: { readonly expectedHash: string } & WorkflowWriteContext,
+    options: {
+      readonly expectedHash: string;
+      readonly dryRun?: boolean | undefined;
+    } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   /**
    * Start the failed listener of workflow `id`'s contributed trigger at once, with its backoff
@@ -607,9 +617,14 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
-  /** Request cancellation of one workflow-file run, returning once the request is recorded. */
+  /**
+   * Request cancellation of one workflow-file run, returning once the request is recorded. With
+   * `dryRun` it makes the check the cancel makes and refuses as it refuses (a run that is no
+   * instance of a workflow file is `NOT_FOUND`), then asks the engine for nothing.
+   */
   readonly cancel: (
     runId: string,
+    options?: { readonly dryRun?: boolean | undefined },
   ) => Promise<{ readonly runId: string; readonly status: 'cancel-requested' }>;
   /**
    * COR-2424 — run a failed instance again from the step it failed at, in place and on the version
@@ -670,6 +685,13 @@ export interface BureauWorkflows {
    * refused as if it did not exist.
    */
   readonly assertStartable: (id: string) => void;
+  /**
+   * Every way `input` breaks the input schema of workflow `id` (COR-2546), judged as a start of it
+   * would judge it: empty when the workflow has no schema or the input satisfies it. Throws as
+   * {@link BureauWorkflows.assertStartable} does for a workflow that cannot be started, so a path
+   * that stores an input for later (a schedule's) refuses what a start would refuse.
+   */
+  readonly inputIssues: (id: string, input: unknown) => readonly WorkflowSchemaIssue[];
   /**
    * Deliver a signal named `name` and start what it triggers (COR-1528), in that order. First
    * `payload` goes to every running instance of a workflow file that is waiting at an
@@ -791,6 +813,15 @@ export interface WorkflowRuntime {
    * this process. Synchronous, for the services resolver.
    */
   readonly isRegisteredType: (type: string) => boolean;
+  /**
+   * COR-2546 — runs `pause`, the pause of schedule `scheduleId` that its owner asked for, as one step
+   * of the apply that holds and releases the schedules, after dropping the hold that paused it for
+   * its workflow. A schedule the hold already paused makes the owner's pause a no-op in the engine,
+   * which leaves its revision where the hold recorded it, so without the drop the release would
+   * resume a schedule its owner was told is paused. The release reads the hold in the same step, so
+   * it never resumes a schedule whose hold is gone. A pause that fails puts the hold back.
+   */
+  readonly pauseCallerSchedule: <T>(scheduleId: string, pause: () => Promise<T>) => Promise<T>;
   /** Whether `scheduleId` is a Bureau workflow schedule that exists. */
   readonly scheduleExists: (scheduleId: string) => Promise<boolean>;
   /**
@@ -867,6 +898,18 @@ export interface WorkflowRuntimeOptions {
    * lasts as long as the process when omitted.
    */
   readonly scheduleHolds?: WorkflowScheduleHolds | undefined;
+  /**
+   * How a schedule a caller made for a workflow is held and released (COR-2546): the Bureau's own
+   * `pause` and `resume`, which commit the transition with its history and audit record, as a
+   * pause by the schedule's owner is. When omitted the engine's own pause and resume are used, and
+   * nothing is recorded.
+   */
+  readonly scheduleTransitions?:
+    | {
+        readonly pause: (scheduleId: string, expectedRevision: number) => Promise<unknown>;
+        readonly resume: (scheduleId: string, expectedRevision: number) => Promise<unknown>;
+      }
+    | undefined;
   readonly runtime: RuntimeServices;
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -1122,6 +1165,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       holds: scheduleHolds,
       workspace: options.workspace,
     });
+    await holdCallerSchedules(unreadable);
     // One read of the catalog serves the reconcile and the sweep: a file that changes while the
     // reconcile awaits a stop is judged by the next reconcile, so state is never deleted under a
     // trigger this reconcile left running.
@@ -1129,6 +1173,83 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     await triggers.reconcile(snapshot.desired, unreadable);
     await sweepOrphanedTriggerState(snapshot.files);
     await forgetVanishedHookOrigins();
+  }
+
+  /**
+   * Whether a schedule may start workflow `id` (COR-2546): the answer of
+   * {@link BureauWorkflows.assertStartable}, so a paused or deleted file, an unregistered code
+   * type, and a plugin that needs setup are each one that cannot be started.
+   */
+  function isStartable(id: string): boolean {
+    try {
+      workflows.assertStartable(id);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The key a caller's schedule is held under: no workflow identifier can spell a `#`. */
+  const callerHoldKey = (scheduleId: string): string => `caller#${scheduleId}`;
+
+  /**
+   * Hold every schedule a caller made for a workflow that cannot be started paused, and release the
+   * ones whose workflow can be started again (COR-2546). A paused file's own schedule is held paused
+   * the same way, so a schedule a caller made for that file starts nothing while the file is
+   * paused, deleted or its code type is no longer registered.
+   *
+   * A hold is recorded after the pause, with the revision the pause wrote: a crash between the two
+   * leaves a schedule paused with no record, which stays paused, never one resumed against its
+   * owner's wish. A schedule is resumed only while it is still at that revision, so a resume or an
+   * update by its owner since the hold is left as it is. An owner's pause of a schedule the hold
+   * already paused writes nothing and leaves the revision, so it drops the hold instead
+   * ({@link WorkflowRuntime.pauseCallerSchedule}), as a step of the same apply chain this runs in.
+   * The schedules of a workflow whose file this host cannot read are left alone, as the file's own
+   * is.
+   */
+  async function holdCallerSchedules(unreadable: ReadonlySet<string>): Promise<void> {
+    for (let offset = 0; ;) {
+      const page = await engine.listSchedules({ status: ['active', 'paused'], limit: 100, offset });
+      for (const summary of page.items) {
+        if (parseWorkflowScheduleId(summary.id) !== undefined) continue;
+        if (workflowScheduleOwnerOf(summary) === undefined) continue;
+        const id = bureauNameOf(summary.workflowType);
+        if (unreadable.has(id)) continue;
+        try {
+          await holdCallerSchedule(summary, isStartable(id));
+        } catch (error) {
+          // A schedule that changed under the reconcile is judged by the next one, and never fails
+          // the write that triggered this.
+          options.diagnose(`Could not hold or release the schedule "${summary.id}".`, error);
+        }
+      }
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) return;
+    }
+  }
+
+  async function holdCallerSchedule(
+    summary: { readonly id: string; readonly status: string; readonly revision: number },
+    startable: boolean,
+  ): Promise<void> {
+    const key = callerHoldKey(summary.id);
+    const held = await scheduleHolds.held(key);
+    if (!startable) {
+      if (summary.status !== 'active') return;
+      await (options.scheduleTransitions?.pause(summary.id, summary.revision) ??
+        engine.pauseSchedule(summary.id, { expectedRevision: summary.revision }));
+      // The pause of an active schedule at `summary.revision` commits the next one, exactly: the
+      // fence refuses it at any other. A read of the schedule here could be an owner's later edit,
+      // whose revision would then pass for the hold's and let its release undo the edit.
+      await scheduleHolds.hold(key, summary.id, summary.revision + 1);
+      return;
+    }
+    if (held === undefined) return;
+    if (summary.status === 'paused' && held.revision === summary.revision) {
+      await (options.scheduleTransitions?.resume(summary.id, summary.revision) ??
+        engine.resumeSchedule(summary.id, { expectedRevision: summary.revision }));
+    }
+    await scheduleHolds.release(key);
   }
 
   /**
@@ -2099,20 +2220,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     }
   }
 
-  function summarize(state: {
+  async function summarize(state: {
     id: string;
     type: string;
     status: WorkflowStatus;
     version: string;
     createdAt: number;
     updatedAt: number;
+    tags?: readonly string[] | undefined;
     input?: unknown;
-  }): WorkflowRunSummary {
-    const input = state.input;
-    const origin =
-      typeof input === 'object' && input !== null && 'origin' in input
-        ? (input.origin as TaskOrigin | null)
-        : null;
+  }): Promise<WorkflowRunSummary> {
+    // COR-2546: the origin a Bureau start declared, never one a schedule's caller wrote.
+    const { origin } = await startOfRun(engine, state);
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),
@@ -2805,7 +2924,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       );
     },
     delete: (id, guard) =>
-      write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
+      // A dry run leaves the write pipeline out altogether: it records no audit entry, claims no
+      // hook origin and applies nothing.
+      guard.dryRun === true
+        ? catalog.delete(id, guard)
+        : write(
+            'workflow.deleted',
+            guard,
+            undefined,
+            () => catalog.delete(id, guard),
+            undefined,
+            id,
+          ),
 
     async revisions(id, mayReadRun) {
       if (mayReadRun !== undefined) {
@@ -2937,7 +3067,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             ) {
               continue;
             }
-            found.push(summarize({ ...run, input: state?.input }));
+            found.push(await summarize({ ...run, input: state?.input }));
           }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
@@ -3011,15 +3141,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           : undefined;
       const error = state.error ?? cancellation?.reason;
       return {
-        ...summarize({
+        ...(await summarize({
           id: state.id,
           type: state.type,
           status: state.status,
           version: state.versionTuple.workflowVersion,
           createdAt: state.createdAt,
           updatedAt: state.updatedAt,
+          tags: state.tags,
           input: state.input,
-        }),
+        })),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
@@ -3034,11 +3165,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
     },
 
-    async cancel(runId) {
+    async cancel(runId, cancelOptions) {
       const state = await engine.get(runId);
       if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
         throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
       }
+      if (cancelOptions?.dryRun === true) return { runId, status: 'cancel-requested' as const };
       const outcome = await engine.cancel(runId);
       if (outcome.status === 'already-terminal') {
         return { runId, status: 'cancel-requested' as const };
@@ -3269,6 +3401,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
       }
     },
+
+    inputIssues(id, input) {
+      workflows.assertStartable(id);
+      const code = codeWorkflows.get(id);
+      if (code !== undefined) return codeInputIssues(code.definition.inputSchema, input);
+      const file = catalog.find(id);
+      if (file === undefined || file.paused) {
+        throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
+      }
+      return file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
+    },
   };
 
   return {
@@ -3278,6 +3421,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     isWorkflowType,
     isRegisteredType: (type) =>
       registeredTypes.has(bureauNameOf(type)) || codeWorkflows.has(bureauNameOf(type)),
+
+    pauseCallerSchedule: (scheduleId, pause) =>
+      exclusive(async () => {
+        const key = callerHoldKey(scheduleId);
+        const held = await scheduleHolds.held(key);
+        if (held !== undefined) await scheduleHolds.release(key);
+        try {
+          return await pause();
+        } catch (error) {
+          if (held !== undefined) await scheduleHolds.hold(key, held.scheduleId, held.revision);
+          throw error;
+        }
+      }),
 
     async revisionSteps(type, workflowVersion) {
       if (!(await isWorkflowType(type))) return undefined;

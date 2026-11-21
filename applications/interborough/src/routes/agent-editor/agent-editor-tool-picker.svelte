@@ -53,8 +53,6 @@
     {#if groups.length === 0}
       <EmptyState
         kind="filtered"
-        size="compact"
-        align="start"
         headingLevel={3}
         title={copy.noMatchesTitle}
         description={copy.noMatchesDescription(search.trim())}
@@ -91,7 +89,7 @@
   </div>
 
   {#snippet footer()}
-    <Button type="button" variant="primary" onclick={() => (open = false)}>{copy.done}</Button>
+    <Button type="button" variant="primary" onclick={() => (open = false)} label={copy.done} />
   {/snippet}
 </Drawer>
 

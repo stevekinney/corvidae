@@ -284,7 +284,7 @@ describe('the states (C3-15, C3-16, C3-17)', () => {
     expect(view.getByText(copy.loadFailed.description)).not.toBeNull();
     const retry = section(view.container)!.querySelector('button')!;
     expect(retry.textContent?.trim()).toBe(RETRY_LABEL);
-    expect(retry.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.classList.contains('button-variant-secondary')).toBe(true);
     // The rest of the page is unchanged.
     expect(view.container.querySelector('[data-section="what-happened"]')).not.toBeNull();
   });
@@ -303,15 +303,14 @@ describe('the states (C3-15, C3-16, C3-17)', () => {
     await waitFor(() => expect(hookIds(view.container)).toHaveLength(3));
   });
 
-  test('a read that was refused is an inline access gate, with the scope in code and only See your scopes', async () => {
+  test('a read that was refused explains the local run access gate', async () => {
     const view = open(LIVE, 'forbidden');
 
     await view.findByText(copy.forbidden.title);
     const body = section(view.container)!;
     expect(body.textContent).toContain(`requires ${copy.forbidden.requirement}`);
-    const actions = [...body.querySelectorAll('a, button')];
-    expect(actions.map((action) => action.textContent?.trim())).toEqual(['See your scopes']);
-    expect(actions[0]?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(body.textContent).toContain(copy.forbidden.reason);
+    expect(body.querySelectorAll('a, button')).toHaveLength(0);
     expect(hookIds(view.container)).toEqual([]);
   });
 });

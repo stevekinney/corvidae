@@ -16,6 +16,12 @@
       "code": "<script lang=\"ts\">\n  import { MultiSelect } from '@lostgradient/cinder';\n\n  const teams = [\n    { id: 'design', label: 'Design', description: 'Product and visual design' },\n    { id: 'engineering', label: 'Engineering', description: 'Frontend and backend' },\n    { id: 'qa', label: 'QA', description: 'Testing and release checks' },\n    { id: 'support', label: 'Support', description: 'Customer support and triage' },\n    { id: 'ops', label: 'Operations', description: 'SRE and infrastructure' },\n  ] as const;\n\n  let selectedTeams = $state<Array<(typeof teams)[number]['id']>>(['engineering', 'qa']);\n</script>\n\n<MultiSelect\n  id=\"teams\"\n  label=\"Teams\"\n  items={teams}\n  filterable\n  warning=\"Selections affect queue routing.\"\n  selectionFeedback=\"top-after-reopen\"\n  bind:selectedIds={selectedTeams}\n/>\n"
     },
     {
+      "id": "filled",
+      "title": "Filled appearance",
+      "description": "A filled trigger gives a multi-select the same inset, 48px comfortable-field treatment as Input.",
+      "code": "<script lang=\"ts\">\n  import { MultiSelect } from '@lostgradient/cinder';\n\n  const channels = [\n    { id: 'email', label: 'Email' },\n    { id: 'webhook', label: 'Webhook' },\n  ];\n\n  let selected = $state(['email']);\n</script>\n\n<MultiSelect\n  id=\"channels\"\n  label=\"Notification channels\"\n  items={channels}\n  appearance=\"filled\"\n  bind:selectedIds={selected}\n/>\n"
+    },
+    {
       "id": "grouped",
       "title": "Grouped items",
       "description": "Give items a group to render them under headings with counts. Filtering keeps the headings of groups that still match.",

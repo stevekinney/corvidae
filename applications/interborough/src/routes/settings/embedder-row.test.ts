@@ -426,7 +426,7 @@ describe('canceling a switch (EM6-11, EM6-12, EM6-13)', () => {
       'The 3 memories embedded so far are thrown away. Search keeps using Text hashing, and nothing else changes.',
     );
     const confirm = within(dialog).getByRole('button', { name: 'Cancel switch' });
-    expect(confirm.getAttribute('data-cinder-variant') ?? confirm.className).toMatch(/danger/u);
+    expect(confirm.classList.contains('button-variant-danger')).toBe(true);
     await fireEvent.click(within(dialog).getByRole('button', { name: 'Keep switching' }));
     await waitFor(() => noDialog(container));
     expect(stub?.callsTo('bureau.memory.embedding.cancel')).toHaveLength(0);

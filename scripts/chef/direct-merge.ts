@@ -22,7 +22,10 @@
 //                 head. A branch that changes nothing relative to the base is refused at `merge`;
 //   3b. queue     `land-queue.ts`: a commit on `origin/<default>` since the head's merge-base that
 //                 touches what the head's evidence plan reaches refuses the landing, naming the
-//                 files, because the head's evidence never saw it. It runs here, inside the merge
+//                 files, because the head's evidence never saw it, unless main's own CI verified
+//                 it (a `main.yml` push run succeeded at that commit or a later one on main, owner
+//                 decision 2026-11-21; the report's `verifiedOnMain` names the runs, and an
+//                 unreadable provider verifies nothing). It runs here, inside the merge
 //                 lock the push holds, so the decision and the push are one critical section. On
 //                 LAND with `main` moved, the integration-tree check accepts the attested base and
 //                 tree for the pushed ones only when Git shows the pushed tree is the attested
@@ -56,7 +59,6 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { discoverWorkspaces } from '../affected-tests.ts';
 import {
   isDeliveryMergeObservation,
   loadDeliveryVerification,
@@ -64,16 +66,17 @@ import {
   validateDeliveryApproval,
   validateDeliveryCiEvidence,
   validateDeliveryVerification,
+  withDeliveryAuthorityFences,
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
-import { repositoryContext } from './evidence-plan.ts';
-import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
+import { readExecutionSnapshot } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { landQueueVerdict, type LandQueueResult } from './land-queue.ts';
+import { describeVerified, type MainRunReader } from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
+import { acceptMovedMain, landingQueue } from './moved-base.ts';
 import { defaultRunner, UsageError, type Runner } from './process-runner.ts';
 import { loadRepositoryConfig } from './repository-config.ts';
 import { revertCheck, RevertCheckError } from './revert-check.ts';
@@ -84,7 +87,7 @@ import {
   type GuardsResult,
 } from './text-guards.ts';
 import { totalUsage, type UsageTotals } from './transcript-usage.ts';
-import { computeEvidencePlan, type EvidencePlan } from './verification-plan.ts';
+import type { EvidencePlan } from './verification-plan.ts';
 
 export interface DirectMergeOptions {
   configPath: string;
@@ -124,6 +127,11 @@ export interface DirectMergeReport {
   guardsAlreadyFailing?: AlreadyFailingGuard[];
   /** The revert findings the caller named as intended, each file with the commit it undoes. */
   acceptedReverts?: string[];
+  /**
+   * The commits on `origin/<default>` since the head's evidence that main's own CI had already
+   * verified and the queue therefore did not count, one line per `main.yml` run. Absent when none.
+   */
+  verifiedOnMain?: string[];
   failedStep: string | null;
   detail: string | null;
   usage?: UsageTotals;
@@ -142,6 +150,8 @@ export interface DirectMergeDependencies {
   verification: DeliveryVerificationDependencies;
   /** The evidence plan of a changed-file list, read from `worktree`; a test supplies one. */
   evidencePlan: (changed: string[], worktree: string) => EvidencePlan;
+  /** Main's own `main.yml` push runs, for the landing queue; defaults to `gh run list`. */
+  mainRuns: MainRunReader;
 }
 
 /** The refusal's detail: the first failing guard by name, and the others that failed after it. */
@@ -189,104 +199,6 @@ function validateDirectInputs(
   }
 
   return { config, verification, transcripts };
-}
-
-/**
- * Why the landing queue refuses the head, or `undefined` when no commit on the default branch since
- * the head's merge-base overlaps its evidence plan. Fails closed: a plan that cannot be computed is
- * a refusal.
- */
-function landingQueue(
-  options: DirectMergeOptions,
-  partial: Partial<DirectMergeDependencies>,
-  runner: Runner,
-  base: string,
-  defaultBranch: string,
-): { refusal: string } | { classified: LandQueueResult } {
-  try {
-    const changed = runner(
-      ['git', 'diff', '-z', '--name-only', '--diff-filter=d', `${base}...${options.head}`],
-      {
-        cwd: options.worktree,
-      },
-    );
-    if (changed.code !== 0) return { refusal: `git diff failed: ${firstLine(changed.stderr)}` };
-    const files = changed.stdout.split('\0').filter(Boolean);
-    const plan = (partial.evidencePlan ?? defaultEvidencePlan)(files, options.worktree);
-    const verdict = landQueueVerdict({
-      runner,
-      evidence: options.head,
-      plan,
-      base,
-      cwd: options.worktree,
-      workspaces: discoverWorkspaces(options.worktree),
-    });
-    if (verdict.verdict === 'LAND') return { classified: verdict };
-    return {
-      refusal: `commits on origin/${defaultBranch} since the evidence head ${options.head.slice(0, 12)} touch what its plan reaches, so it needs a new evidence run: ${verdict.overlapping.join(', ')}`,
-    };
-  } catch (error) {
-    return {
-      refusal: `the landing queue could not decide: ${error instanceof Error ? error.message : 'unknown error'}`,
-    };
-  }
-}
-
-/**
- * `main` moved after the evidence and the queue classified every new commit as outside the plan's
- * scope. The integration-tree check may then accept the attested identity for the tree actually
- * pushed, but only when Git itself shows the two agree. Returns why not, or `undefined`:
- *   1. the attested base is an ancestor of the current one;
- *   2. merging the head onto the attested base reproduces the attested tree;
- *   3. the paths main's new commits touch are all among those the queue classified;
- *   4. the pushed tree differs from the attested tree only at those paths, and at each of them it
- *      holds exactly what the current base holds: the attested tree plus main's new commits, and
- *      nothing else.
- * A conflict, or a tree that differs anywhere else, stays refused.
- */
-function acceptMovedMain(
-  git: (...args: string[]) => ReturnType<Runner>,
-  attested: { base: string; tree: string },
-  head: string,
-  base: string,
-  tree: string,
-  classified: LandQueueResult,
-): string | undefined {
-  const refuse = (why: string) =>
-    `main moved after the evidence and the merged tree cannot be shown to be the attested tree plus main's new commits: ${why}`;
-  if (git('merge-base', '--is-ancestor', attested.base, base).code !== 0)
-    return refuse(`the attested base ${attested.base.slice(0, 12)} is not an ancestor of main`);
-  const reproduced = git('merge-tree', '--write-tree', attested.base, head);
-  if (reproduced.code !== 0 || reproduced.stdout.split('\n')[0]?.trim() !== attested.tree)
-    return refuse('merging the head onto the attested base does not give the attested tree');
-  // `-z` throughout: a path Git would quote (a non-ASCII or special name) is read verbatim.
-  const log = git('log', '-z', '--name-only', '--format=', `${attested.base}..${base}`);
-  if (log.code !== 0) return refuse(`git log failed: ${firstLine(log.stderr)}`);
-  const incoming = new Set(log.stdout.split('\0').filter((path) => path.trim() !== ''));
-  const classifiedFiles = new Set(classified.commits.flatMap((commit) => commit.files));
-  const unclassified = [...incoming].filter((path) => !classifiedFiles.has(path));
-  if (unclassified.length > 0)
-    return refuse(`the queue did not classify ${unclassified.slice(0, 5).join(', ')}`);
-  const differing = git('diff', '-z', '--name-only', '--no-renames', attested.tree, tree);
-  if (differing.code !== 0) return refuse(`git diff failed: ${firstLine(differing.stderr)}`);
-  const outside = differing.stdout.split('\0').filter((path) => path !== '' && !incoming.has(path));
-  if (outside.length > 0)
-    return refuse(
-      `the trees differ outside main's new commits at ${outside.slice(0, 5).join(', ')}`,
-    );
-  for (const path of incoming) {
-    // The entry (mode, type, object) at the path in each tree; a path absent from both (main
-    // deleted it, and the merge did too) is an empty entry on each side and matches.
-    const merged = git('ls-tree', '-z', tree, '--', path);
-    const current = git('ls-tree', '-z', base, '--', path);
-    if (merged.code !== 0 || current.code !== 0 || merged.stdout !== current.stdout)
-      return refuse(`${path} is not what main holds`);
-  }
-  return undefined;
-}
-
-function defaultEvidencePlan(changed: string[], worktree: string): EvidencePlan {
-  return computeEvidencePlan(changed, repositoryContext(worktree, new Set()));
 }
 
 /** Run the steps while the public entrypoint holds both fences. */
@@ -378,8 +290,11 @@ async function directMergeCore(
   // 3b. queue: inside the merge lock this step shares with the push, so the decision and the merge
   // are one critical section. Commits that reached `main` since the head's evidence, and touch
   // what its plan reaches, need a new evidence run: refuse with the files named.
-  const queued = landingQueue(options, partial, runner, base, defaultBranch);
+  const queued = landingQueue(options, partial, runner, base, defaultBranch, config.repository);
   if ('refusal' in queued) return fail('queue', queued.refusal);
+  // Say which commits main's own CI verified, so the landing comment can name them.
+  const verifiedOnMain = describeVerified(queued.classified.verified);
+  if (verifiedOnMain.length > 0) report.verifiedOnMain = verifiedOnMain;
   // The identity the verification chain attests: the actual base and tree, or, when main moved
   // outside the plan's scope and Git shows the tree is the attested one plus main's new commits,
   // the attested ones. Any other movement keeps the actual values and is refused below.
@@ -682,9 +597,9 @@ export async function directMerge(
       lockPollIntervalMs: snapshot.lockPollIntervalMs,
     },
     () =>
-      withProviderTransitionLock(
+      withDeliveryAuthorityFences(
         partial.verification?.state ?? loaded.state,
-        loaded.request.authority.resource,
+        loaded.request,
         async () =>
           (await recoverDirectMerge(snapshot, partial, loaded)) ??
           directMergeCore(snapshot, partial),

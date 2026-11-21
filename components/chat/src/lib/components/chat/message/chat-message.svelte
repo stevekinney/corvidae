@@ -247,12 +247,12 @@
     Button,
     Callout,
     CircleAlert,
+    Collapsible,
     CopyButton,
     Info,
     Pencil,
     Popover,
     Quote,
-    ChevronRight,
     RefreshCw,
     RotateCcw,
     Tooltip,
@@ -773,7 +773,6 @@
 
   // The agent's instructions open the transcript as muted text, folded to one line by default.
   const systemRow = $derived(transcript && message.role === 'system');
-  let systemOpen = $state(false);
   const shownParts = $derived(
     turnOwnsStop
       ? messageParts.filter((part) => !(part.type === 'note' && part.kind === 'stopped'))
@@ -1125,100 +1124,106 @@
         <span id={roleId} class="chat-message-role">{roleLabel}</span>
       </header>
 
+      <!-- The agent's instructions are Cinder's disclosure: one flat row, a chevron then
+           "Instructions", that opens them in place. Never a label and an action word joined by a
+           dot (COR-2438). -->
       {#if systemRow}
-        <button
-          type="button"
-          class="chat-message-system-toggle"
-          aria-expanded={systemOpen}
-          aria-controls={`${messageId}-body`}
-          onclick={() => (systemOpen = !systemOpen)}
+        <Collapsible
+          class="chat-message-system"
+          triggerClass="chat-message-system-toggle"
+          variant="flat"
+          chevron="start"
+          animated={false}
+          idBase={`${messageId}-instructions`}
+          trigger="Instructions"
         >
-          <ChevronRight class="chat-message-system-chevron" aria-hidden="true" />
-          Instructions
-        </button>
+          {@render messageBody()}
+        </Collapsible>
+      {:else}
+        {@render messageBody()}
       {/if}
 
-      <div
-        class="chat-message-body"
-        data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}
-        dir="auto"
-        id={systemRow ? `${messageId}-body` : undefined}
-        hidden={systemRow && !systemOpen}
-      >
-        {#if isEditing}
-          <!-- Edit mode replaces the body parts with a textarea, but attachments
+      {#snippet messageBody()}
+        <div
+          class="chat-message-body"
+          data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}
+          dir="auto"
+        >
+          {#if isEditing}
+            <!-- Edit mode replaces the body parts with a textarea, but attachments
              stay visible (they were never inside the editable body). -->
-          <div class="chat-message-edit">
-            <!-- svelte-ignore a11y_autofocus -->
-            <textarea
-              class="chat-message-edit-textarea"
-              bind:value={editContent}
-              onkeydown={handleEditKeyDown}
-              dir="auto"
-              autofocus
-              aria-label="Edit message content"
-              rows={Math.min(Math.max(editContent.split('\n').length, 2), 10)}></textarea>
-            <div class="chat-message-edit-actions">
-              <Button
-                type="button"
-                class="chat-message-edit-cancel"
-                size="xs"
-                variant="secondary"
-                onclick={cancelEditing}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                class="chat-message-edit-save"
-                size="xs"
-                variant="primary"
-                aria-label="Save & Resend"
-                onclick={saveEdit}
-              >
-                Save
-              </Button>
+            <div class="chat-message-edit">
+              <!-- svelte-ignore a11y_autofocus -->
+              <textarea
+                class="chat-message-edit-textarea"
+                bind:value={editContent}
+                onkeydown={handleEditKeyDown}
+                dir="auto"
+                autofocus
+                aria-label="Edit message content"
+                rows={Math.min(Math.max(editContent.split('\n').length, 2), 10)}></textarea>
+              <div class="chat-message-edit-actions">
+                <Button
+                  type="button"
+                  class="chat-message-edit-cancel"
+                  size="xs"
+                  variant="secondary"
+                  onclick={cancelEditing}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  class="chat-message-edit-save"
+                  size="xs"
+                  variant="primary"
+                  aria-label="Save & Resend"
+                  onclick={saveEdit}
+                >
+                  Save
+                </Button>
+              </div>
             </div>
-          </div>
-        {:else}
-          <!-- Replaces the historical role-branch body: every body render shape
+          {:else}
+            <!-- Replaces the historical role-branch body: every body render shape
              (tool call, tool result, markdown text) flows through the cinder-
              owned parts spine. The renderer keeps stable DOM identity across
              streaming updates via per-part keys, so the markdown body never
              remounts as its text grows. Image parts render below, as a sibling
              of this body div, matching the historical structure. -->
-          <ChatMessagePartsRenderer
-            parts={bodyParts}
-            {messageId}
-            {messagePart}
-            {approvalLayout}
-            {markdownNode}
-            quoteSource={canQuote ? message.id : undefined}
-            expanded={toolCallExpanded}
-            onToggle={toggleToolCallExpanded}
-            {onApprovalResolve}
-            {onApprovalRequestAgain}
-            {onInputSubmit}
-            {reasoningExpanded}
-            {onreasoning}
-            {stepsExpanded}
-            {onsteps}
-            {onSuggestionSelect}
-            {toolActivityActive}
-            {onRetryStep}
-            {toolCallDurations}
-            {toolCallStartTimes}
-            {turnLabels}
-            labels={messageLabels}
-          />
+            <ChatMessagePartsRenderer
+              parts={bodyParts}
+              {messageId}
+              {messagePart}
+              {approvalLayout}
+              {markdownNode}
+              quoteSource={canQuote ? message.id : undefined}
+              expanded={toolCallExpanded}
+              onToggle={toggleToolCallExpanded}
+              {onApprovalResolve}
+              {onApprovalRequestAgain}
+              {onInputSubmit}
+              {reasoningExpanded}
+              {onreasoning}
+              {stepsExpanded}
+              {onsteps}
+              {onSuggestionSelect}
+              {toolActivityActive}
+              {onRetryStep}
+              {toolCallDurations}
+              {toolCallStartTimes}
+              {turnLabels}
+              labels={messageLabels}
+            />
 
-          {#if hasMarkdownBody && textContent.length > TRUNCATE_THRESHOLD}
-            <button type="button" class="chat-message-expand" onclick={toggleExpanded}>
-              {expanded ? messageLabels.showLess : messageLabels.showMore}
-            </button>
+            {#if hasMarkdownBody && textContent.length > TRUNCATE_THRESHOLD}
+              <button type="button" class="chat-message-expand" onclick={toggleExpanded}>
+                {expanded ? messageLabels.showLess : messageLabels.showMore}
+              </button>
+            {/if}
           {/if}
-        {/if}
-      </div>
+        </div>
+      {/snippet}
 
       {#if imageParts.length > 0}
         <!-- Images render through the grouped default path (the attachment grid
@@ -2446,49 +2451,19 @@
     text-align: start;
   }
 
-  .chat-message-wrapper[data-presentation='transcript'] .chat-message-body[hidden] {
-    display: none;
+  /* The instructions' disclosure is Cinder's flat Collapsible; in the transcript it reads as the
+     muted line it opens, not a heading. */
+  .chat-message-wrapper :global(.chat-message-system) {
+    align-self: stretch;
   }
 
-  .chat-message-system-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    align-self: flex-start;
-    padding: 0;
-    border: none;
-    background: none;
+  .chat-message-wrapper :global(.chat-message-system-toggle) {
     color: var(--cinder-text-muted);
-    font: inherit;
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    cursor: pointer;
   }
 
-  .chat-message-system-toggle:hover {
-    color: var(--cinder-text-default);
-    text-decoration: underline;
-  }
-
-  .chat-message-system-toggle :global(.chat-message-system-chevron) {
-    flex: none;
-    inline-size: 12px;
-    block-size: 12px;
-    transition: transform 120ms ease;
-  }
-
-  .chat-message-system-toggle[aria-expanded='true'] :global(.chat-message-system-chevron) {
-    transform: rotate(90deg);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .chat-message-system-toggle :global(.chat-message-system-chevron) {
-      transition: none;
-    }
-  }
-
-  .chat-message-system-toggle:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+  .chat-message-wrapper :global(.chat-message-system-toggle .cinder-collapsible__label) {
+    font-weight: var(--cinder-font-normal);
   }
 
   /* ----------------------------------------

@@ -1,7 +1,19 @@
-import { createManualRuntimeServices, type Subscription } from '@lostgradient/lifecycle';
+import {
+  CompletableEventTarget,
+  createManualRuntimeServices,
+  type Subscription,
+} from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
 import type { ChildRunDescriptor, ChildRunRegistry } from '../child-run';
+import { wireChildWaitLiveness } from '../durable/active-run-event-surface';
+import {
+  ChildWorkflowAbortedEvent,
+  ChildWorkflowCompletedEvent,
+  ChildWorkflowFailedEvent,
+  ChildWorkflowStartedEvent,
+  type CombinedOperativeEventMap,
+} from '../events';
 import { createActiveRunLiveness } from './active-run-liveness';
 import { LIVENESS_POLICY_VERSION, TOOL_CALL_POLICY } from './policies';
 import type { LivenessAssessment } from './types';
@@ -679,7 +691,7 @@ describe('createActiveRunLiveness', () => {
     liveness.dispose();
   });
 
-  it('sets raw progress to stalled once tool-call silence crosses the missed-pulse threshold, collapsing assessment to unreachable', () => {
+  it('sets raw progress to stalled once tool-call silence crosses the missed-pulse threshold, reading alive-but-stalled', () => {
     const clock = createManualClock();
     const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
 
@@ -693,27 +705,163 @@ describe('createActiveRunLiveness', () => {
     clock.advance(TOOL_CHECK_INTERVAL_MS);
 
     const snapshot = liveness.snapshot();
-    // AC1's collapse rule: 'stalled' is legal only with 'reachable'/'late';
-    // once reachability crosses into 'unreachable' at the same threshold,
-    // the single-glance `assessment` collapses to 'unreachable' even though
-    // the raw `progress` dimension still independently reports 'stalled'.
+    // Both dimensions cross their threshold on the same tick. The run is
+    // driven by the process that observes it, so a stalled progress reads
+    // 'alive-but-stalled' ahead of the raw 'unreachable' (COR-2526), which
+    // is a word for a subject the observer has lost.
     expect(snapshot.progress).toBe('stalled');
     expect(snapshot.reachability).toBe('unreachable');
-    expect(snapshot.assessment).toBe('unreachable');
+    expect(snapshot.assessment).toBe('alive-but-stalled');
 
     liveness.dispose();
   });
 
-  it('reports alive-but-stalled when progress stalls before reachability crosses into unreachable', () => {
+  it('reads legitimately-waiting, never stalled, while a declared wait outlasts the stall threshold (COR-2526)', () => {
     const clock = createManualClock();
     const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
 
-    // A session.monitor-shaped policy would separate the 'late' and
-    // 'unreachable' thresholds from 'stalled'; TOOL_CALL_POLICY's single
-    // threshold governs both dimensions identically here, so this case is
-    // exercised directly against `deriveAssessment` via a reachability that
-    // is 'late' rather than 'unreachable' — one missed tick short of the
-    // threshold still reads 'late'/'idle', not yet 'stalled'.
+    liveness.beginToolCall();
+    liveness.beginWait({ reason: 'review', wakeCondition: 'review:r-1' });
+    for (let tick = 0; tick < 6; tick += 1) clock.advance(TOOL_CHECK_INTERVAL_MS);
+
+    const waiting = liveness.snapshot();
+    expect(waiting.progress).toBe('stalled');
+    expect(waiting.assessment).toBe('legitimately-waiting');
+
+    // The wait ends and the silence is still there: now it is a stall.
+    liveness.endWait();
+    expect(liveness.snapshot().assessment).toBe('alive-but-stalled');
+
+    // Progress resumes: the stall clears.
+    liveness.recordToolProgressPulse({ toolCallId: 'call-1' });
+    expect(liveness.snapshot().assessment).toBe('healthy');
+
+    liveness.dispose();
+  });
+
+  it('declares a wait on outstanding child runs, so a tool call awaiting one is not a stall (COR-2526)', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+
+    liveness.beginToolCall();
+    liveness.beginChildWait('child-1');
+    liveness.beginChildWait('child-2');
+    expect(liveness.snapshot().declaredWait).toMatchObject({ reason: 'child', owner: 'child-1' });
+    for (let tick = 0; tick < 6; tick += 1) clock.advance(TOOL_CHECK_INTERVAL_MS);
+    expect(liveness.snapshot().assessment).toBe('legitimately-waiting');
+
+    // One child is still outstanding: the wait stands.
+    liveness.endChildWait('child-1');
+    expect(liveness.snapshot().assessment).toBe('legitimately-waiting');
+    // The last one settles: that is the progress the tool call was waiting for, so the silence the
+    // wait excused is not a stall the instant it ends.
+    liveness.endChildWait('child-2');
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    expect(liveness.snapshot().assessment).toBe('healthy');
+    // Silence after the child's end is a stall again, by the tool call's own policy.
+    for (let tick = 0; tick < 6; tick += 1) clock.advance(TOOL_CHECK_INTERVAL_MS);
+    expect(liveness.snapshot().assessment).toBe('alive-but-stalled');
+    // A child nobody started changes nothing.
+    liveness.endChildWait('child-3');
+    expect(liveness.snapshot().assessment).toBe('alive-but-stalled');
+
+    liveness.dispose();
+  });
+
+  it('wires the child events of the run’s emitter into the child wait (COR-2526)', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const stop = wireChildWaitLiveness(emitter, liveness);
+    const correlation = {
+      parentAgentName: 'parent',
+      parentRunId: 'run-1',
+      childAgentName: 'child',
+      childRunId: 'child-1',
+    };
+
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    expect(liveness.snapshot().declaredWait?.reason).toBe('child');
+    // Each way a child ends ends the wait.
+    for (const End of [ChildWorkflowCompletedEvent]) {
+      emitter.dispatchEvent(new End(correlation));
+      expect(liveness.snapshot().declaredWait).toBeUndefined();
+    }
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    emitter.dispatchEvent(new ChildWorkflowFailedEvent({ ...correlation, reason: 'error' }));
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    emitter.dispatchEvent(new ChildWorkflowAbortedEvent({ ...correlation, reason: undefined }));
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+
+    // A start that names no child is not tracked, and a stopped wiring hears nothing.
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({
+        ...correlation,
+        childRunId: undefined,
+        input: 'go',
+        durable: false,
+      }),
+    );
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    stop();
+    emitter.dispatchEvent(
+      new ChildWorkflowStartedEvent({ ...correlation, input: 'go', durable: false }),
+    );
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+
+    liveness.dispose();
+  });
+
+  it('never replaces a declared wait with a child wait, and an abort drops the child wait', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+
+    liveness.beginWait({ reason: 'review', wakeCondition: 'review:r-1' });
+    liveness.beginChildWait('child-1');
+    expect(liveness.snapshot().declaredWait?.reason).toBe('review');
+    liveness.endWait();
+    expect(liveness.snapshot().status).toBe('running');
+
+    liveness.beginChildWait('child-2');
+    expect(liveness.snapshot().status).toBe('waiting');
+    liveness.setStatus('aborting');
+    expect(liveness.snapshot().declaredWait).toBeUndefined();
+    liveness.endChildWait('child-2');
+    expect(liveness.snapshot().status).toBe('aborting');
+
+    liveness.dispose();
+  });
+
+  it('delivers the change into and out of alive-but-stalled to a snapshot subscriber (COR-2526)', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+    const assessments: string[] = [];
+    liveness.subscribeSnapshot((snapshot) => {
+      if (assessments.at(-1) !== snapshot.assessment) assessments.push(snapshot.assessment);
+    });
+
+    liveness.beginToolCall();
+    for (let tick = 0; tick < 4; tick += 1) clock.advance(TOOL_CHECK_INTERVAL_MS);
+    liveness.recordToolProgressPulse({ toolCallId: 'call-1' });
+    liveness.endToolCall();
+
+    expect(assessments).toEqual(['healthy', 'alive-but-stalled', 'healthy']);
+    liveness.dispose();
+  });
+
+  it('reads healthy while a tool call is only late, one missed tick short of the stall threshold', () => {
+    const clock = createManualClock();
+    const liveness = createActiveRunLiveness({ id: 'run-1', durability: 'process-local', clock });
+
+    // TOOL_CALL_POLICY's single threshold governs both dimensions identically:
+    // one missed tick short of it still reads 'late'/'idle', not yet 'stalled'.
     liveness.recordToolProgressPulse({ toolCallId: 'call-1' });
     clock.advance(TOOL_CHECK_INTERVAL_MS);
     clock.advance(TOOL_CHECK_INTERVAL_MS);

@@ -159,7 +159,7 @@ describe('ToolCallPanel sections', () => {
       'Failures aren’t retried automatically. Ask the agent to retry sends “Please retry Send email to maya@example.com” as your message',
     );
     const retry = getByRole('button', { name: 'Ask the agent to retry' });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.classList.contains('button-variant-secondary')).toBe(true);
     expect(retry.querySelector('svg')).not.toBeNull();
     await fireEvent.click(retry);
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -170,7 +170,7 @@ describe('ToolCallPanel sections', () => {
   test('without onRetry there is no retry button and no primary action in the panel', () => {
     const { queryByRole, container } = render(ToolCallPanel, { props: { ...failed } });
     expect(queryByRole('button', { name: 'Ask the agent to retry' })).toBeNull();
-    expect(container.querySelector('[data-cinder-variant="primary"]')).toBeNull();
+    expect(container.querySelector('.button-variant-primary')).toBeNull();
   });
 
   test('a done call shows Input and Result as fields with Copy input and Copy result', () => {
@@ -339,7 +339,7 @@ describe('ToolCallPanel decision', () => {
     expect(queryByRole('textbox')).toBeNull();
     expect(text(container)).not.toContain('(optional)');
     const toggle = getByRole('button', { name: 'Add note' });
-    expect(toggle.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(toggle.classList.contains('button-variant-ghost')).toBe(true);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     const row = container.querySelector('.cinder-tool-call-panel__decision-actions');
     expect(row?.contains(toggle)).toBe(true);
@@ -347,13 +347,13 @@ describe('ToolCallPanel decision', () => {
       toggle.compareDocumentPosition(getByRole('button', { name: 'Deny' })) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
-      'secondary',
-    );
-    expect(getByRole('button', { name: 'Approve' }).getAttribute('data-cinder-variant')).toBe(
-      'primary',
-    );
-    expect(container.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
+    expect(
+      getByRole('button', { name: 'Deny' }).classList.contains('button-variant-secondary'),
+    ).toBe(true);
+    expect(
+      getByRole('button', { name: 'Approve' }).classList.contains('button-variant-primary'),
+    ).toBe(true);
+    expect(container.querySelectorAll('.button-variant-primary')).toHaveLength(1);
     expect(container.querySelector('section[aria-labelledby$="-result"]')).toBeNull();
   });
 

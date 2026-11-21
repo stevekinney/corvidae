@@ -16,7 +16,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
-import { revealSettings } from './chat-support.ts';
+import { hideModelPicker, revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -51,11 +51,11 @@ async function connectProvider(page: Page): Promise<void> {
   });
 }
 
-/** Opens the refund chat at 1280 pixels and waits until its transcript is drawn. */
-async function openRefundChat(page: Page): Promise<void> {
+/** Opens the refund chat and waits until its transcript is drawn. */
+async function openRefundChat(page: Page, viewport = { width: 1280, height: 900 }): Promise<void> {
   await connectProvider(page);
   await page.clock.setFixedTime(SAMPLE_NOW);
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize(viewport);
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await expect(page.locator('[data-approval-decision]')).toBeVisible();
@@ -93,32 +93,96 @@ test.describe('an open chat on the sample world', () => {
     });
   });
 
-  test('opens the details popover from the breadcrumb: session, agent, started and As run (16u, 16v)', async ({
+  test('opens the compact details popover from the breadcrumb: agent, started, settings and Copy session ID inside it (16u, 16v, COR-2438 16a to 16f)', async ({
     page,
   }) => {
-    await openRefundChat(page);
+    await openRefundChat(page, { width: 1280, height: 800 });
+    await revealSettings(page, [{ name: 'Model', text: 'Claude Sonnet 5.5' }]);
+    await hideModelPicker(page);
     await trail(page).getByRole('button', { name: TITLE }).click();
     const details = page.getByTestId('chat-details');
     await expect(details).toBeVisible();
 
-    await expect(details.getByTestId('chat-details-session')).toHaveText(
-      SAMPLE_WORLD_THREADS.refund,
-    );
-    await expect(details.getByRole('button', { name: 'Copy session ID' })).toBeVisible();
+    const copy = details.getByRole('button', { name: 'Copy session ID' });
+    await expect(copy).toBeVisible();
     const agent = details.getByRole('link', { name: 'Tool runner' });
     await expect(agent).toHaveAttribute('href', '/agents/tool-runner');
-    await expect(details.locator('code', { hasText: /^tool-runner$/ })).toBeVisible();
+    // No machine identifier beside a name, and no middle dot.
+    await expect(details.locator('code')).toHaveCount(0);
+    await expect(details).not.toContainText(SAMPLE_WORLD_THREADS.refund);
+    expect(await details.textContent()).not.toContain(String.fromCodePoint(0xb7));
     // The 4471 refund is a chat of its own, started when it was asked at 10:42 AM.
-    await expect(details).toContainText(/Started\s*Today, 10:42 AM, last active 10:4\d AM/);
+    await expect(details).toContainText(/Started\s*Today, 10:42 AM/);
+    // Last activity rounds to the same displayed minute as the start.
+    await expect(details).not.toContainText('Last active');
 
-    const asRun = details.getByRole('region', { name: 'As run' });
-    await expect(asRun).toContainText('Claude Sonnet 5.5');
-    await expect(asRun.locator('code', { hasText: /^claude-sonnet-5-5$/ })).toBeVisible();
-    await expect(asRun).toContainText(/Effort\s*Medium/);
-    await expect(asRun).toContainText(/Permissions\s*On changes asks/);
+    const settings = details.getByTestId('chat-details-settings');
+    await expect(settings).not.toContainText('As run');
+    await expect(settings).toContainText(/Model\s*Claude Sonnet 5\.5/);
+    await expect(settings).toContainText(/Effort\s*Medium/);
+    await expect(settings).toContainText(/Permissions\s*On changes asks/);
+
+    // 16a: every control sits inside the popover's padding; 16b: the popover is as wide as its
+    // content, at most about 360px; 16c: labels muted, values in the body colour.
+    const measured = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="chat-details"]');
+      const panel = list?.closest('.cinder-popover');
+      if (!list || !panel) return undefined;
+      const box = panel.getBoundingClientRect();
+      const style = getComputedStyle(panel);
+      const inner = {
+        left: box.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth) - 0.5,
+        right:
+          box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth) + 0.5,
+      };
+      const controls = [...list.querySelectorAll('a, button')].map((control) => {
+        const rect = control.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      });
+      const term = list.querySelector('dt');
+      const value = list.querySelector('dd');
+      return {
+        inner,
+        controls,
+        width: box.width,
+        term: term ? getComputedStyle(term).color : '',
+        value: value ? getComputedStyle(value).color : '',
+      };
+    });
+    expect(measured).toBeDefined();
+    for (const control of measured!.controls) {
+      expect(control.left).toBeGreaterThanOrEqual(measured!.inner.left);
+      expect(control.right).toBeLessThanOrEqual(measured!.inner.right);
+    }
+    expect(measured!.width).toBeLessThanOrEqual(400);
+    expect(measured!.term).not.toBe(measured!.value);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'details popover open',
+      source: SOURCE,
+    });
+  });
+
+  test('opens the details as a bottom sheet with Copy session ID inside it at 375 pixels (COR-2438 16g)', async ({
+    page,
+  }) => {
+    await openRefundChat(page, { width: 375, height: 812 });
+    await trail(page).getByRole('button', { name: TITLE }).click();
+    const details = page.getByTestId('chat-details');
+    await expect(details).toBeVisible();
+    const sheet = page.getByRole('dialog', { name: TITLE });
+    await expect(sheet).toHaveAttribute('data-cinder-sheet', 'docked');
+    const boxes = await readBoxes(page, {
+      sheet,
+      copy: sheet.getByRole('button', { name: 'Copy session ID' }),
+    });
+    expect(boxes.sheet.y + boxes.sheet.height).toBeCloseTo(812, 0);
+    expect(boxes.copy.x).toBeGreaterThanOrEqual(boxes.sheet.x);
+    expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(boxes.sheet.x + boxes.sheet.width);
+    expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(375);
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'details sheet at 375',
       source: SOURCE,
     });
   });
@@ -332,9 +396,8 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     await expect(canceled).toContainText('Loading was canceled');
     await expect(page).toHaveURL(new RegExp(`/chats/${SAMPLE_WORLD_THREADS.refund}$`));
     // One label for one job (COR-2327 Q1): Try again, as a failed read and a failing list say it.
-    await expect(canceled.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(canceled.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(canceled.getByRole('button', { name: 'All conversations' })).toBeVisible();
     // Said once (COR-2327 B6): no notice over the composer, only the reason beside Send.
@@ -382,13 +445,11 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
     await expect(state).toContainText(
       'Interborough didn’t send it back. Nothing was lost; the messages are stored with the chat.',
     );
-    await expect(state.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(state.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-primary',
     );
-    await expect(state.getByRole('button', { name: 'All conversations' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(state.getByRole('button', { name: 'All conversations' })).toContainClass(
+      'button-variant-secondary',
     );
     // Nothing old to show, so no banner; nothing to send to, so no composer.
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
@@ -405,8 +466,12 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
       source: SOURCE,
     });
 
+    const newest = await page.locator('[data-chat]').first().getAttribute('data-chat');
+    expect(newest).not.toBeNull();
     await state.getByRole('button', { name: 'All conversations' }).click();
-    await expect(page).toHaveURL(/\/chats$/);
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`/chats/${encodeURIComponent(newest ?? '')}`);
   });
 });
 
@@ -425,8 +490,12 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     // Provider connected, so the composer is live: the person's follow-up, sent while the approval
     // waits, is the message that was not sent (frame g).
     await connectProvider(page);
-    // The page loads at 10:44 AM, two minutes before the sample "now".
-    await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 2 * 60_000 });
+    // Pause before navigation at 10:44 AM, two minutes before the sample "now". Reading a running
+    // clock and then pausing at that reading + 500 ms races the next command under load (COR-2553).
+    const loadedAt = SAMPLE_NOW_MILLISECONDS - 2 * 60_000;
+    // Captures already fix Date at SAMPLE_NOW. Pause there first, then set the paused clock back.
+    await page.clock.pauseAt(SAMPLE_NOW);
+    await page.clock.setSystemTime(loadedAt);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
@@ -448,7 +517,8 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     await upNext.getByRole('button', { name: 'Send now instead' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
 
-    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 500);
+    // Setup and interactions must not advance the clock; only the explicit retry steps below do.
+    expect(await page.evaluate(() => Date.now())).toBe(loadedAt);
     await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
     const banner = page.getByRole('region', { name: 'Connection problem' });
@@ -513,7 +583,8 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     await expect(approval.getByRole('group', { name: 'Input' })).toBeVisible();
     await expect(approval.getByRole('button', { name: 'Add note' })).toBeEnabled();
     await expect(page.getByRole('searchbox', { name: 'Search chats' })).toBeEnabled();
-    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    // The shell's banner says the app's one word for asking again (COR-2489).
+    await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'server unreachable',
@@ -779,7 +850,12 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(conversationArea(page).locator('.chat-input-status')).toHaveText(
       'A message now steers the run.',
     );
-    await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
+    // The header's status is a Badge now (COR-2438, criterion 18b), not a dot named for its word.
+    await expect(
+      conversationArea(page).locator(
+        '[data-testid="chat-header"] .cinder-page-header__status .cinder-badge',
+      ),
+    ).toHaveText('Running');
     // The decision stays as it was, and is not told again.
     await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
       /Approved by you in Reviews\s*10:46 AM/,

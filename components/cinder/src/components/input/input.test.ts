@@ -1032,6 +1032,14 @@ describe('Input — required marker', () => {
     });
     expect(container.querySelector('.cinder-_required-marker')).toBeNull();
   });
+
+  test('renders Optional in the standalone input accessible name', () => {
+    const { getByRole, container } = render(Input, {
+      props: { id: 'optional-input', value: '', label: 'Name', optional: true },
+    });
+    expect(getByRole('textbox', { name: 'Name Optional' }).id).toBe('optional-input');
+    expect(container.querySelector('.cinder-_optional-marker')?.textContent).toBe('Optional');
+  });
 });
 
 describe('Input keeps its native element across addon toggles', () => {

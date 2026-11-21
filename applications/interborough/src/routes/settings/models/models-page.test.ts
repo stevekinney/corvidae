@@ -357,7 +357,7 @@ describe('the models', () => {
     expect(order()).toEqual(['anthropic/claude-sonnet-5', 'anthropic/claude-haiku-4-5']);
   });
 
-  test('are an empty state with no provider connected: a title, the reason and a quiet link up to Providers', async () => {
+  test('are the one empty state alone with no provider connected: a title, the reason and a button up to Providers', async () => {
     const { container, findByRole } = open({
       keys: { anthropic: false, openai: false, gemini: false },
     });
@@ -365,12 +365,14 @@ describe('the models', () => {
 
     expect(empty.textContent).toContain(MODELS_COPY.models.empty.description);
     expect(container.querySelector('table')).toBeNull();
-    expect(container.textContent).toContain(MODELS_COPY.models.emptyDescription);
+    // No grouped box and no "Models" heading over it (owner report, 2026-11-19).
+    expect(empty.closest('.cinder-form-section')).toBeNull();
+    expect(container.textContent).not.toContain(MODELS_COPY.models.emptyDescription);
     expect(container.textContent).not.toContain(MODELS_COPY.models.description);
 
-    // A quiet link, not a primary button, and it goes to the Providers section of this page.
-    expect(within(empty).queryByRole('button')).toBeNull();
+    // A button, never a text link, and it goes to the Providers section of this page.
     const link = within(empty).getByRole('link', { name: MODELS_COPY.models.empty.action });
+    expect(link.classList.contains('cinder-button')).toBe(true);
     expect(link.getAttribute('href')).toBe('#ib-models-providers');
     await fireEvent.click(link);
     expect(container.ownerDocument.activeElement?.id).toBe('ib-models-providers');
@@ -783,8 +785,10 @@ describe('managing a connected provider', () => {
       .filter((label) => label !== undefined && label !== '');
     expect(labels).toEqual([copy.removeKey, copy.replaceKey, copy.done]);
     expect(
-      within(dialog).getByRole('button', { name: copy.done }).getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+      within(dialog)
+        .getByRole('button', { name: copy.done })
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // The saved key is never shown again: there is no field.
     expect(dialog.querySelector('input')).toBeNull();
     expect(writes()).toEqual([]);
@@ -963,7 +967,7 @@ describe('removing a provider’s key', () => {
       ),
     );
     expect(dialog.textContent).not.toContain('Assistant');
-    expect(confirm(dialog).getAttribute('data-cinder-variant')).toBe('danger');
+    expect(confirm(dialog).classList.contains('button-variant-danger')).toBe(true);
     expect(within(dialog).getByRole('button', { name: copy.cancel })).toBeDefined();
     expect(writes()).toEqual([]);
   });

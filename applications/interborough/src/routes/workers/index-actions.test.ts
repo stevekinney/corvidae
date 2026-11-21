@@ -165,10 +165,11 @@ describe('Workers route — the Workers list', () => {
     routeHappyPaths(scripted, { workers: [worker({ id: 'wkr_listed' })] });
 
     resetLocation('/health/workers?worker=wkr_gone');
-    const { findByText, findByRole } = await renderWorkersRoute();
+    const { findByText, findByRole, queryByText } = await renderWorkersRoute();
 
     expect(await findByText('Worker closed')).not.toBeNull();
-    expect(await findByText(/No worker with the ID wkr_gone/)).not.toBeNull();
+    expect(await findByText(/The server does not list this worker/)).not.toBeNull();
+    expect(queryByText(/wkr_gone/)).toBeNull();
     await fireEvent.click(await findByRole('button', { name: 'Back to all workers' }));
     expect(router.search.get('worker')).toBeNull();
   });

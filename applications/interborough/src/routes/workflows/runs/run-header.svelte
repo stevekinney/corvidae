@@ -323,7 +323,7 @@
       />
     {/if}
     <Dropdown id="ib-run-actions" placement="bottom-end">
-      <Dropdown.Trigger caretVisible={false}>
+      <Dropdown.Trigger caretVisible={false} iconOnly>
         <Ellipsis aria-hidden="true" size={16} />
         <VisuallyHidden>{RUN_PAGE_COPY.moreActions}</VisuallyHidden>
       </Dropdown.Trigger>

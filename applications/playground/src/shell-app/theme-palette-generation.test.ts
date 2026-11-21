@@ -187,12 +187,14 @@ describe('palette proposals over the shipped baseline', () => {
   test('pins a status family and a neutral family', () => {
     const success = proposalFor(fresh(), 'success', 'oklch(0.62 0.2 150)');
     expect(textOf(success, 'light', 'status.success.solid')).toBe('oklch(0.62 0.17 150)');
-    // COR-2308 baselines: the light success background is oklch(96.5% 0.035 148) and the dark one
-    // is the oklab mix of the solid into the surface (oklch(0.2683 0.01698 176.755)). The light
-    // proposal keeps the 0.365 offset from the anchor (0.985) and its gamut-limited chroma drops
-    // to grid step 58; the dark proposal fits at step 100.
-    expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(0.985 0.02333 150)');
-    expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.1083 0.02426 150)');
+    // COR-2308 baselines, as COR-2489 brightened them: the light success background is
+    // oklch(96.5% 0.055 148) and the dark one is the oklab mix of 20% of the solid into the surface
+    // (oklch(0.304 0.0248 187.103)). The light proposal keeps the 0.365 offset from the anchor
+    // (0.985) and its chroma is gamut-limited; the dark proposal fits.
+    expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(0.985 0.02339 150)');
+    // COR-2489 design round: a dark status ground mixes its solid into a neutral of the surface's
+    // lightness, so the dark proposal keeps a little more chroma.
+    expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.144 0.0396 150)');
     const neutral = proposalFor(fresh(), 'neutral', '#6b7280');
     // The light surface is pure white since 2026-11-15 (chroma 0), so it takes none of the
     // seed's chroma; the dark text default keeps the seed's chroma.

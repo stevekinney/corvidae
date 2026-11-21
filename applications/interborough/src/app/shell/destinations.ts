@@ -38,6 +38,9 @@ import { pluginIcon } from './plugin-icons.ts';
 /** The focus region of a ListDetail list: its keys act only there. */
 export const LIST_DETAIL_REGION = 'list-detail';
 
+/** The focus region of a chat's composer, where Enter sends (listed on the map, handled by Chat). */
+const CHAT_COMPOSER_REGION = 'chat-composer';
+
 /**
  * The sections the sidebar groups its destinations in: Home on its own at the top, then Work,
  * Build and System, which sits at the bottom of the column.
@@ -76,6 +79,15 @@ export const DESTINATIONS: readonly Destination[] = [
   // The gear is Settings; the sliders icon in the top bar is quick settings.
   { view: 'settings', path: '/settings', letter: 'n', icon: Settings, group: 'system' },
 ];
+
+/**
+ * The icon the sidebar shows for `view`, which a list page's empty state shows too, so a page and
+ * its navigation item are one picture (owner report, 2026-11-19). A view with no sidebar entry has
+ * none.
+ */
+export function destinationIcon(view: ViewName): typeof Workflow | undefined {
+  return DESTINATIONS.find((destination) => destination.view === view)?.icon;
+}
 
 /**
  * One page a plugin adds to the sidebar (COR-2213): a `page` placement that names a `sidebar` entry.
@@ -248,6 +260,14 @@ export function registerShellShortcuts(
       group: SHORTCUT_COPY.chatGroup,
       scope: 'global',
       handler: () => actions.navigate(NEW_CHAT_PATH),
+    }),
+    // Enter sends from a chat's composer. The composer handles it; the map only lists it, since no
+    // hint under the composer says so (COR-2438).
+    registry.describe({
+      keys: ['Enter'],
+      label: SHORTCUT_COPY.sendMessage,
+      group: SHORTCUT_COPY.chatGroup,
+      scope: { region: CHAT_COMPOSER_REGION },
     }),
     ...DESTINATIONS.map((destination) =>
       registry.register({

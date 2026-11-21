@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * Shared setup for the agent definition operation tests (COR-1526): a Bureau over an agent
  * directory, served three ways (API-key callers, the owner with no scope, and the local caller
@@ -6,7 +7,6 @@
 import { join } from 'node:path';
 
 import {
-  AUTHORIZATION_SCOPES,
   type AuthorizationScope,
   createOperationHandler,
   unauthenticatedLocalAuthContext,
@@ -77,9 +77,10 @@ export async function serve(options: Parameters<typeof startFileBureau>[0] = {})
     ...(workspace === undefined ? {} : { workspace }),
   });
   const noBureauScopes = new Set<AuthorizationScope>(
-    [...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES)].filter(
-      (scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope),
-    ),
+    [
+      ...(unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal?.scopes ??
+        AUTHORIZATION_SCOPES),
+    ].filter((scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope)),
   );
   const ownerPrincipal: AuthenticatedPrincipal = Object.freeze({
     method: 'unauthenticated-local',

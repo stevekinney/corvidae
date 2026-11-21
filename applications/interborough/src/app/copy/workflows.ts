@@ -1,3 +1,5 @@
+import { RETRY_LABEL } from './views.ts';
+
 /** `text` with its first letter capitalized, to open a sentence: "step 3" reads "Step 3". */
 function capitalized(text: string): string {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
@@ -61,21 +63,26 @@ export const WORKFLOW_COPY = {
     fileName: (id: string): string => `${id}.json`,
     schedules: (count: number): string => `${String(count)} schedules`,
     onSignal: 'On the signal',
-    /** The card under the rows that leads to the types Interborough runs itself. */
-    internalCard: {
-      title: 'Internal workflows',
-      count: (count: number): string =>
-        `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
-      description:
-        'Interborough runs these for chats, goals and schedules. You can watch their runs but not change them.',
-    },
+    /** The header's secondary control that leads to the types Interborough runs itself. */
+    internalAction: (count: number): string => `Internal workflows (${String(count)})`,
     /** First use: the empty state is the page. */
     empty: {
       title: 'No workflows yet',
       description:
         'A workflow is a set of steps that agents and tools run in order. Build one yourself, or, once a provider is connected, describe it and an agent drafts it.',
-      askAction: 'Ask an agent to write one',
-      hintBefore: 'Or add a file to',
+      askAction: 'Ask an agent',
+      /** The sentence that says Interborough's own workflows exist, when the engine holds some. */
+      internal: (count: number): string =>
+        `Interborough also runs ${String(count)} internal ${count === 1 ? 'workflow' : 'workflows'} of its own for chats, goals and schedules.`,
+      /** The state's way to the internal workflows. */
+      internalAction: 'See internal workflows',
+      /** The closed row under the state that opens to the folder workflow files are read from. */
+      files: {
+        label: 'Where workflow files live',
+        lead: 'Interborough reads workflows from',
+        copyLabel: 'Copy the folder',
+        copiedLabel: 'Folder copied',
+      },
       /** Where the files are when the host does not say. */
       hintDirectory: '~/.interborough/workflows',
     },
@@ -189,8 +196,9 @@ export const WORKFLOW_COPY = {
       lastStartedRun: (time: string): string => `Last started a run at ${time}.`,
       /** The code of a failed trigger, last on the line: "(code start-failed)". */
       code: 'code',
-      retry: 'Retry now',
-      /** A refused configuration is not tried again until it changes, so the page offers Edit, not Retry now. */
+      /** A failed trigger is tried again at once: the one label every page's retry has (COR-2489). */
+      retry: RETRY_LABEL,
+      /** A refused configuration is not tried again until it changes, so the page offers Edit, not a retry. */
       edit: 'Edit',
       retrying: 'Retrying the trigger…',
       retryFailed: 'The trigger could not be retried.',
@@ -601,7 +609,7 @@ export const WORKFLOW_COPY = {
     builderTab: 'Builder',
     jsonTab: 'JSON',
     /** The workflow's `title`, the name a person reads. */
-    titleLabel: 'Title (optional)',
+    titleLabel: 'Title',
     titlePlaceholder: 'e.g. Morning briefing',
     /** The workflow's identifier, the file's `name`. */
     idLabel: 'ID',

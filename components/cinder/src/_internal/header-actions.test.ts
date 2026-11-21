@@ -24,8 +24,8 @@ describe('header actions never grow the header', () => {
   for (const kind of ['card', 'section-heading'] as const) {
     test(`${kind}: a default-size button in the actions draws at xs, one in the body does not`, () => {
       const { getByTestId } = render(Harness, { props: { kind, withActions: true } });
-      expect(getByTestId('header-button').getAttribute('data-cinder-size')).toBe('xs');
-      expect(getByTestId('body-button').getAttribute('data-cinder-size')).toBe('md');
+      expect(getByTestId('header-button').classList.contains('button-size-extra-small')).toBe(true);
+      expect(getByTestId('body-button').classList.contains('button-size-medium')).toBe(true);
     });
   }
 
@@ -35,8 +35,8 @@ describe('header actions never grow the header', () => {
         props: { kind, withActions: true, underError: true },
       });
       const header = getByTestId('header-button');
-      expect(header.getAttribute('data-cinder-size')).toBe('xs');
-      expect(header.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(header.classList.contains('button-size-extra-small')).toBe(true);
+      expect(header.classList.contains('button-variant-secondary')).toBe(true);
     });
   }
 
@@ -140,7 +140,8 @@ describe('coarse pointers get a real touch box without enlarging the painted con
     });
   }
 
-  for (const name of ['card', 'section-heading', 'page-header']) {
+  // PageHeader centres its actions in a box of the title's line box instead (page-header.test.ts).
+  for (const name of ['card', 'section-heading']) {
     test(`${name}: the actions margin uses the fine xs height on a coarse pointer, so it never goes negative`, () => {
       const rule = component(name).match(
         /margin-block:\s*calc\(\(1lh - var\((--[\w-]+)\)\) \/ 2\);/,

@@ -364,6 +364,21 @@ describe('under `start`', () => {
     expect(stdout).toContain('Interborough is listening on http://127.0.0.1:');
   });
 
+  test('prints the connection lines, one per line, after the address and the state (COR-2539)', () => {
+    const lines = startRestart.stdout.split('\n');
+    const listening = lines.findIndex((line) =>
+      /^Interborough is listening on http:\/\/127\.0\.0\.1:\d+$/.test(line),
+    );
+    expect(listening).toBeGreaterThanOrEqual(0);
+    const origin = lines[listening]!.slice('Interborough is listening on '.length);
+    expect(lines.slice(listening + 2, listening + 6)).toEqual([
+      `Interface: ${origin}`,
+      `API: ${origin}/api`,
+      `MCP: ${origin}/bureau/mcp`,
+      `CLI: --url ${origin}`,
+    ]);
+  });
+
   test('a run waiting on a signal before the restart is still waiting after it', () => {
     const { first, waitingBefore, restarted, waitingAfter, answered, waitingAfterAnswer } =
       startParkedRun;

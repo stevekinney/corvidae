@@ -22,7 +22,6 @@
    */
   import {
     Banner,
-    Button,
     EmptyState,
     ErrorState,
     FilterBar,
@@ -33,7 +32,7 @@
     type AppliedFilter,
     type FacetDefinition,
   } from '@lostgradient/cinder';
-  import { Calendar, Plus, Search } from '@lucide/svelte';
+  import { Search } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
   import type { ScheduleSummary } from '@lostgradient/weft';
@@ -43,11 +42,13 @@
   import {
     CONNECTION_MAX_ATTEMPTS,
     ConnectionMonitor,
+    CONNECTION_RETRY_LABEL,
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
@@ -140,7 +141,7 @@
   // The shell leaves its banner to this page while it is on screen.
   $effect(() => connection.claimBanner());
 
-  /** Banner's Retry now: the connection's own tries again, or this read's, and the frame's probe of it. */
+  /** Banner's Try again: the connection's own tries again, or this read's, and the frame's probe of it. */
   function retryNow(): void {
     if (connection.unreachable) {
       void connection.retryNow();
@@ -341,6 +342,7 @@
     {#if stale && !restartActivity.active}
       <Banner
         preset={connectionBannerPreset(tries)}
+        retryLabel={CONNECTION_RETRY_LABEL}
         dataUpdatedAt={connection.unreachable ? connection.lastHealthyAt : listQuery.dataUpdatedAt}
         retryInSeconds={tries.retryInSeconds}
         attempt={tries.browserOffline || tries.attempt === 0 ? undefined : tries.attempt}
@@ -370,27 +372,20 @@
         onFilterRemove={(key) => setFilter(key, undefined)}
       />
     {:else if nothingYet}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19): unboxed, the Schedules icon, and
+           New schedule, held with its reason for a caller who may not write schedules. -->
+      <ListPageEmpty
+        view="schedules"
         title={SCHEDULE_COPY.empty.title}
         description={SCHEDULE_COPY.empty.description}
-        headingLevel={2}
-      >
-        {#snippet icon()}<Calendar aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          <Button
-            variant="primary"
-            label={SCHEDULE_COPY.newAction}
-            aria-disabled={writeGate.disabled ? 'true' : undefined}
-            title={writeGate.title}
-            onclick={() => router.navigate(scheduleCreatePath())}
-            mutating
-          >
-            {#snippet leadingIcon()}<Plus />{/snippet}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        create={{
+          label: SCHEDULE_COPY.newAction,
+          onclick: () => router.navigate(scheduleCreatePath()),
+          ...(writeGate.disabled && writeGate.title !== undefined
+            ? { inertReason: writeGate.title }
+            : {}),
+        }}
+      />
     {:else}
       <FilterBar
         aria-label={SCHEDULE_COPY.filtersLabel}
@@ -410,7 +405,6 @@
 
       {#if visibleRows.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={SCHEDULE_COPY.noMatch.title}
           description={noMatchSentence}

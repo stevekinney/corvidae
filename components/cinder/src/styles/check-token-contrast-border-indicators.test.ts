@@ -227,6 +227,48 @@ describe('the warning indicator clears 3:1 on every surface a lone dot sits on',
   }
 });
 
+describe('warning fills use the same indicator token', () => {
+  const cinderDirectory = join(dirname(fileURLToPath(import.meta.url)), '..', 'components');
+  const appDirectory = join(
+    dirname(fileURLToPath(import.meta.url)),
+    '../../../../applications/interborough/src',
+  );
+  const meterCss = readFileSync(join(cinderDirectory, 'meter/meter.css'), 'utf8');
+  const lowBand = ruleBody(meterCss, '.cinder-meter__segment--state-low {');
+  const fills = [
+    [
+      'System alerts warning edge',
+      ruleBody(
+        readFileSync(join(appDirectory, 'routes/system/alerts-tab.svelte'), 'utf8'),
+        'const EDGE_COLOR: Readonly<Record<AlertRowState, string>> = {',
+      ).match(/warning: '[^']+'/)?.[0] ?? '',
+    ],
+    ['Meter low band', lowBand],
+    [
+      'Meter low fill',
+      ruleBody(meterCss, ".cinder-meter[data-cinder-state='low'] .cinder-meter__fill {"),
+    ],
+    [
+      'Sparkbar warning fill',
+      ruleBody(
+        readFileSync(join(cinderDirectory, 'sparkbar/sparkbar.css'), 'utf8'),
+        ".cinder-sparkbar[data-cinder-variant='warning'] .cinder-sparkbar__fill {",
+      ),
+    ],
+  ] as const;
+
+  for (const [name, style] of fills) {
+    it(`${name} uses the warning indicator`, () => {
+      expect(style).toContain('var(--cinder-status-warning-indicator)');
+      expect(style).not.toContain('var(--cinder-status-warning-solid)');
+    });
+  }
+
+  it('keeps the low summary band secondary to the main fill', () => {
+    expect(lowBand).toContain('opacity: 0.32;');
+  });
+});
+
 describe('the skeleton fill is a visible step over every surface a bar sits on', () => {
   // A skeleton bar is a placeholder, not a control, so WCAG 1.4.11 does not apply; it only has to
   // read as a shape. The fill is a 12% alpha step over the border ink, so it is the same step over

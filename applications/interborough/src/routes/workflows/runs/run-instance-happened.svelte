@@ -6,9 +6,9 @@
    * why it failed under it and no banner above the page (row 14t). The entries are made from the
    * history the Bureau keeps of the instance (`run-instance.ts`).
    */
-  import { Badge, Button, Collapsible, Section } from '@lostgradient/cinder';
+  import { Alert, Badge, Button, Collapsible, Section } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { CircleX, Play, RefreshCw } from '@lucide/svelte';
+  import { Play, RefreshCw } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
@@ -98,7 +98,7 @@
   const retryKeeps = $derived(
     retryVersion === undefined || progress?.at === null || progress?.at === undefined
       ? undefined
-      : copy.retryKeeps(progress.at, retryVersion),
+      : copy.retryKeeps(progress.at),
   );
 
   // What the step said, in its own words and never the error's JSON (row 55b): "GitHub didn’t
@@ -152,11 +152,12 @@
     {/each}
   </ol>
   {#if failed && heading !== undefined}
-    <div class="weft-overview-tab__failure" data-testid="run-step-failure">
-      <div class="weft-overview-tab__failure-title">
-        <CircleX aria-hidden="true" size={18} />
-        <span>{heading}</span>
-      </div>
+    <Alert
+      variant="danger"
+      class="weft-overview-tab__failure"
+      data-testid="run-step-failure"
+      {heading}
+    >
       {#if said !== undefined}
         <p class="weft-overview-tab__failure-explanation">
           <strong>{copy.whyItFailed}.</strong>
@@ -240,6 +241,6 @@
           {/if}
         </Collapsible>
       {/if}
-    </div>
+    </Alert>
   {/if}
 </Section>

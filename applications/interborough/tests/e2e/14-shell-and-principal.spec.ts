@@ -283,7 +283,7 @@ test('g then a letter opens a view', async ({ page }) => {
   await expect(page).toHaveURL(/\/agents$/);
   await page.keyboard.press('g');
   await page.keyboard.press('c');
-  await expect(page).toHaveURL(/\/chats$/);
+  await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
   await page.keyboard.press('g');
   await page.keyboard.press('h');
   await expect(page).toHaveURL(/\/$/);
@@ -430,19 +430,22 @@ test('a tab left open past the old idle timeout keeps its event feed, and logs n
 });
 
 test.describe('a tab opened before the host was rebuilt', () => {
+  // The alert log appends Chromium’s line number to the same asset URL.
+  const agentListChunk = /\/assets\/agent-list-[^/]+\.js(?=$|:\d+\))/;
+
   test('reloads once when a route’s chunk is gone, and shows the route', async ({
     page,
     pageErrors,
   }) => {
     pageErrors.expect({
-      pattern: loggedFailedResponse(404, /\/assets\/.*\.js/),
+      pattern: loggedFailedResponse(404, agentListChunk),
       reason: 'the test removes a route’s chunk, as a rebuild does',
     });
     await page.goto('/chats');
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
     let removed = false;
-    await page.route('**/assets/*.js', async (route) => {
+    await page.route(agentListChunk, async (route) => {
       if (removed) {
         await route.fallback();
         return;
@@ -465,24 +468,14 @@ test.describe('a tab opened before the host was rebuilt', () => {
     pageErrors,
   }) => {
     pageErrors.expect({
-      pattern: loggedFailedResponse(404, /\/assets\/.*\.js/),
+      pattern: loggedFailedResponse(404, agentListChunk),
       reason: 'the test removes a route’s chunk for good',
       count: 2,
     });
     await page.goto('/chats');
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
-    // The first chunk the Agents route asks for goes missing, and stays missing after the reload.
-    let missing: string | undefined;
-    await page.route('**/assets/*.js', async (route) => {
-      const url = route.request().url();
-      missing ??= url;
-      if (url === missing) {
-        await route.fulfill({ status: 404, body: 'gone' });
-        return;
-      }
-      await route.fallback();
-    });
+    await page.route(agentListChunk, (route) => route.fulfill({ status: 404, body: 'gone' }));
     let loads = 0;
     page.on('load', () => (loads += 1));
 

@@ -19,34 +19,33 @@ export type BureauErrorNotConfiguredSubject =
   /** COR-1920: a secret answer arrived, and the Bureau has no `answerEncryption` key or no storage for it. */
   | 'encryption';
 
+/**
+ * Every code a {@link BureauError} carries, as a runtime list so a policy keyed by code can be
+ * checked for a code it forgot. `BureauError['code']` is derived from it.
+ */
+export const BUREAU_ERROR_CODES = [
+  'NOT_FOUND',
+  'CONFLICT',
+  'NOT_CONFIGURED',
+  'BAD_REQUEST',
+  'RATE_LIMITED',
+  'UNSUPPORTED_CAPABILITY',
+  'STORAGE_UNAVAILABLE',
+] as const;
+
+/** One of the codes in {@link BUREAU_ERROR_CODES}. */
+export type BureauErrorCode = (typeof BUREAU_ERROR_CODES)[number];
+
 export class BureauError extends Error {
-  readonly code:
-    | 'NOT_FOUND'
-    | 'CONFLICT'
-    | 'NOT_CONFIGURED'
-    | 'BAD_REQUEST'
-    | 'RATE_LIMITED'
-    | 'UNSUPPORTED_CAPABILITY'
-    | 'STORAGE_UNAVAILABLE';
+  readonly code: BureauErrorCode;
   readonly subject: BureauErrorNotConfiguredSubject | undefined;
 
   // `subject` is required for NOT_CONFIGURED and disallowed for every other
   // code — a compile-time guarantee that a future NOT_CONFIGURED throw site
   // cannot skip disambiguation and reintroduce the ambiguity #264 fixed.
-  constructor(message: string, code: Exclude<BureauError['code'], 'NOT_CONFIGURED'>);
+  constructor(message: string, code: Exclude<BureauErrorCode, 'NOT_CONFIGURED'>);
   constructor(message: string, code: 'NOT_CONFIGURED', subject: BureauErrorNotConfiguredSubject);
-  constructor(
-    message: string,
-    code:
-      | 'NOT_FOUND'
-      | 'CONFLICT'
-      | 'NOT_CONFIGURED'
-      | 'BAD_REQUEST'
-      | 'RATE_LIMITED'
-      | 'UNSUPPORTED_CAPABILITY'
-      | 'STORAGE_UNAVAILABLE',
-    subject?: BureauErrorNotConfiguredSubject,
-  ) {
+  constructor(message: string, code: BureauErrorCode, subject?: BureauErrorNotConfiguredSubject) {
     super(message);
     this.name = 'BureauError';
     this.code = code;
@@ -336,6 +335,26 @@ export class UnknownScheduleAgentError extends BureauError {
     );
     this.name = 'UnknownScheduleAgentError';
     this.agentName = agentName;
+  }
+}
+
+/**
+ * A schedule named a workflow that is neither a code workflow a plugin contributed nor a ready,
+ * unpaused workflow file (COR-2546), the targets `bureau.workflows.start` accepts. It is a
+ * {@link BureauError}, so the management plane answers it as a client error; the name is on
+ * `workflowType`.
+ */
+export class UnknownScheduleWorkflowError extends BureauError {
+  /** The identifier no startable workflow resolves. */
+  readonly workflowType: string;
+
+  constructor(workflowType: string) {
+    super(
+      `Unknown workflow "${workflowType}": a schedule can only run a workflow that can be started`,
+      'NOT_FOUND',
+    );
+    this.name = 'UnknownScheduleWorkflowError';
+    this.workflowType = workflowType;
   }
 }
 

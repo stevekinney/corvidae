@@ -78,6 +78,12 @@ const updateScheduleInput = z.object({
     .describe(
       'Revision policy (WFT-20). Runtime validation requires "active-at-fire" or "pinned". Omitted preserves the current policy (and pin); "pinned" always re-resolves and re-captures the pin against the revision active right now.',
     ),
+  metadata: z
+    .unknown()
+    .optional()
+    .describe(
+      'A plain JSON object stored with the schedule and returned with it, replacing the stored metadata whole. Omitted, the schedule keeps its metadata. It is not passed to the runs the schedule starts.',
+    ),
 });
 
 export type UpdateScheduleInput = z.infer<typeof updateScheduleInput>;
@@ -139,6 +145,7 @@ export const updateScheduleRestBinding: UnknownRestBinding = {
     jitter: { kind: 'body-field', bodyField: 'jitter' },
     timeZone: { kind: 'body-field', bodyField: 'timeZone' },
     revisionPolicy: { kind: 'body-field', bodyField: 'revisionPolicy' },
+    metadata: { kind: 'body-field', bodyField: 'metadata' },
   },
   extractInput: async (request, pathParams, context) => {
     const record = await parseScheduleRestBodyRequestRecord(request, context);

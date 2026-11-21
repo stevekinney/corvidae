@@ -14,6 +14,8 @@
    */
   import { Alert, Button } from '@lostgradient/cinder';
 
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+
   import {
     FAULT_TREATMENT_TITLE,
     type FaultTreatment,
@@ -48,7 +50,7 @@
     </span>
   {/if}
   {#if onRetry}
-    <Button size="sm" variant="secondary" label="Retry" onclick={onRetry} />
+    <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={onRetry} />
   {/if}
 </Alert>
 

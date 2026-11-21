@@ -86,10 +86,10 @@ describe('DecisionDeck structure', () => {
     const reject = action(container, 'reject');
     const accept = action(container, 'accept');
 
-    expect(reject.getAttribute('data-cinder-size')).toBe(accept.getAttribute('data-cinder-size'));
-    expect(reject.getAttribute('data-cinder-variant')).toBe(
-      accept.getAttribute('data-cinder-variant'),
-    );
+    const modifiers = (element: HTMLElement) =>
+      [...element.classList].filter((name) => /^button-(size|variant)-/.test(name));
+    expect(modifiers(reject)).toHaveLength(2);
+    expect(modifiers(reject)).toEqual(modifiers(accept));
     expect(reject.getAttribute('data-cinder-icon-only')).toBe('');
     expect(reject.textContent).toContain('Reject');
   });

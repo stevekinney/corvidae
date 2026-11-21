@@ -4,10 +4,10 @@
    * `visually-hidden` wrapper, so the page shows no heading of its own: the breadcrumb already says
    * "Home", and Home's heading row carries no status or actions. The date line leads the content,
    * then the page's one focal value, a Spotlight that says how many reviews wait on you, with the
-   * link to Reviews beside it and the one count Home lists nowhere else under it
-   * (`home-focus.svelte`), then two columns: what needs you (titled by the Spotlight, so it draws no
-   * heading of its own), what is running and what needs attention at the left, each one grouped
-   * list, the box that
+   * link to Reviews beside it (`home-focus.svelte`), then two columns: what needs you (titled by the
+   * Spotlight, so it draws no heading of its own) with the one count Home lists nowhere else after
+   * it (`home-counts.svelte`), what is running and what needs attention at the left, each one
+   * grouped list, the box that
    * starts a chat at the right, and the chats you were last in across the full width below
    * (`home-layout.svelte`), then the last region, the two activity bands: Workflow activity and
    * Agent activity (`home-workflow-activity.svelte`, `home-agent-activity.svelte`), which the
@@ -16,11 +16,10 @@
    * Each card reads on its own, so one that cannot be read says so in its own place and the rest
    * stay live. Running now is there only while a run is going.
    *
-   * On a new installation the page is the first-run checklist instead (`useHomeFirstRun`): it
-   * leads with "Welcome. …" in place of the date line, and the Spotlight, Needs you and the provider
-   * notice give way to the checklist, whose first step says the notice. The box that starts a chat
-   * comes back below the checklist once a provider is connected, and Recent chats says there are
-   * none yet.
+   * On a new installation the page is the first-run checklist alone (`useHomeFirstRun`,
+   * `home-first-run.svelte`, owner 2026-11-19): its own visible heading in place of the hidden one,
+   * one sentence and the steps, and no date line, counts, Needs you, Needs attention, box that
+   * starts a chat, Recent chats or activity. Recent chats appears once a chat exists.
    *
    * Around the cards sits the page's phase (`useHomePhase`): placeholders in the page's own layout
    * until the first reads have answered, so the overview is never drawn only to be replaced or
@@ -37,15 +36,17 @@
   import { getConnection } from '../../app/connection.svelte.ts';
   import { dateLine, timesShowIn } from '../../lib/format/clock.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
+  import HomeCounts from './home-counts.svelte';
   import HomeFirstRun from './home-first-run.svelte';
   import HomeFocus from './home-focus.svelte';
   import { useHomeFirstRun } from './home-first-run.svelte.ts';
+  import { useChatReadiness } from '../../app/chat-readiness.svelte.ts';
   import HomeLayout from './home-layout.svelte';
   import HomeLoading from './home-loading.svelte';
   import HomeNeedsAttention from './home-needs-attention.svelte';
   import HomeNeedsYou from './home-needs-you.svelte';
   import { useHomePhase } from './home-phase.svelte.ts';
-  import { useAttentionItems, useRunningTasks } from './home-queries.svelte.ts';
+  import { useRunningTasks } from './home-queries.svelte.ts';
   import HomeRecentChats from './home-recent-chats.svelte';
   import HomeRunningNow from './home-running-now.svelte';
   import HomeStartChat from './home-start-chat.svelte';
@@ -59,17 +60,17 @@
   const firstRun = useHomeFirstRun();
   const homePhase = useHomePhase(firstRun);
   const running = useRunningTasks();
-  const attention = useAttentionItems();
+
+  const readiness = useChatReadiness();
 
   const mode = $derived(firstRun.mode());
   const phase = $derived(homePhase.phase());
+  // The checklist is the whole page, with its own visible heading.
+  const firstRunShown = $derived(
+    mode === 'checklist' && phase !== 'loading' && phase !== 'canceled' && phase !== 'unreachable',
+  );
   // Running now is a card only while a run is going.
   const runningNow = $derived(running.data ?? []);
-  // While the checklist shows, its first step says there is no provider, so only the other
-  // problems are worth a card of their own.
-  const otherProblems = $derived(
-    (attention.data ?? []).some((item) => item.kind !== 'no-provider'),
-  );
 
   // With nothing to show but the unreachable state, the page says it itself and the shell's banner
   // stays out (never both).
@@ -79,7 +80,7 @@
   });
 </script>
 
-<VisuallyHidden as="h1">{HOME_COPY.heading}</VisuallyHidden>
+{#if !firstRunShown}<VisuallyHidden as="h1">{HOME_COPY.heading}</VisuallyHidden>{/if}
 
 {#if phase === 'loading'}
   <HomeLoading onCancel={homePhase.cancel} />
@@ -109,46 +110,38 @@
       data-testid="home-unreachable"
     />
   </div>
+{:else if firstRunShown}
+  <div class="ib-home-first-run-page" data-page="home" data-mode="checklist">
+    <HomeFirstRun
+      steps={firstRun.steps()}
+      assistant={firstRun.assistant()}
+      readiness={readiness()}
+      onUseAssistant={firstRun.useAssistant}
+    />
+  </div>
 {:else}
   <HomeLayout
     {mode}
     {date}
-    focus={mode === 'overview' ? focusRow : undefined}
+    focus={focusRow}
     primary={primaryCard}
-    running={mode === 'overview' && runningNow.length > 0 ? runningCard : undefined}
-    startChatBelow={mode === 'checklist' && firstRun.providerConnected()
-      ? startChatCard
-      : undefined}
-    attention={mode === 'overview' || otherProblems ? attentionCard : undefined}
-    startChatAside={mode === 'overview' ? startChatCard : undefined}
+    counts={countsRow}
+    running={runningNow.length > 0 ? runningCard : undefined}
+    attention={attentionCard}
+    startChatAside={startChatCard}
     recent={recentCard}
-    workflowActivity={mode === 'checklist' ? undefined : workflowActivityBand}
-    agentActivity={mode === 'checklist' ? undefined : agentActivityBand}
+    workflowActivity={workflowActivityBand}
+    agentActivity={agentActivityBand}
   />
 {/if}
 
-{#snippet date()}
-  {#if mode === 'checklist'}
-    {HOME_COPY.firstRun.lead(firstRun.left())}
-  {:else}
-    {dateLine(clock())}. {timesShowIn(clock())}.
-  {/if}
-{/snippet}
+{#snippet date()}{dateLine(clock())}. {timesShowIn(clock())}.{/snippet}
 {#snippet focusRow()}<HomeFocus />{/snippet}
-{#snippet primaryCard()}
-  {#if mode === 'checklist'}
-    <HomeFirstRun
-      steps={firstRun.steps()}
-      assistant={firstRun.assistant()}
-      onUseAssistant={firstRun.useAssistant}
-    />
-  {:else}
-    <HomeNeedsYou />
-  {/if}
-{/snippet}
+{#snippet countsRow()}<HomeCounts />{/snippet}
+{#snippet primaryCard()}<HomeNeedsYou />{/snippet}
 {#snippet runningCard()}<HomeRunningNow tasks={runningNow} />{/snippet}
 {#snippet startChatCard()}<HomeStartChat />{/snippet}
-{#snippet attentionCard()}<HomeNeedsAttention omitProviderNotice={mode === 'checklist'} />{/snippet}
+{#snippet attentionCard()}<HomeNeedsAttention />{/snippet}
 {#snippet recentCard()}<HomeRecentChats />{/snippet}
 {#snippet workflowActivityBand()}<HomeWorkflowActivity />{/snippet}
 {#snippet agentActivityBand()}<HomeAgentActivity />{/snippet}

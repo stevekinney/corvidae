@@ -169,6 +169,7 @@ describe('weft.workflows.activities.pending.list', () => {
     expect(await missingWorkflow.json()).toEqual({
       error: 'Workflow "missing" not found',
       data: { resource: 'workflow', identifier: 'missing' },
+      retryable: false,
     });
   });
 });
@@ -326,7 +327,7 @@ describe('weft.activities.complete', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.completeAsyncActivity = original;
     }
@@ -413,7 +414,7 @@ describe('weft.activities.fail', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.failAsyncActivity = original;
     }

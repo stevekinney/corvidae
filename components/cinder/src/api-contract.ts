@@ -187,6 +187,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       loadingStatus: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       quiet: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      flush: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       shortcut: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
@@ -317,6 +318,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     props: {
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       caretVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      iconOnly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       variant: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       size: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
@@ -348,17 +350,14 @@ export const CONTRACT: Record<string, ComponentContract> = {
       title: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       headingLevel: { optional: true, type_kind: 'TSUnionType', default: L(3) },
-      align: { optional: true, type_kind: 'TSTypeReference', default: L('center') },
       kind: { optional: true, type_kind: 'TSTypeReference', default: L('first-use') },
-      size: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
-      layout: { optional: true, type_kind: 'TSTypeReference', default: L('stacked') },
-      bordered: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onClearFilters: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       clearFiltersLabel: {
         optional: true,
         type_kind: 'TSStringKeyword',
         default: L('Clear filters'),
       },
+      actions: { optional: true, type_kind: 'TSTypeOperator', default: L([]) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
@@ -508,6 +507,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       labelVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      optional: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       appearance: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       inputAttachment: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
@@ -548,6 +548,13 @@ export const CONTRACT: Record<string, ComponentContract> = {
       key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
       label: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       openFirst: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      reopenFirst: { optional: true, type_kind: 'TSBooleanKeyword', default: B(true) },
+      notFoundTitle: { optional: true, type_kind: 'TSStringKeyword', default: L('Not found') },
+      notFoundDescription: {
+        optional: true,
+        type_kind: 'TSStringKeyword',
+        default: L('This item is not in the list. It may have been removed.'),
+      },
       selectedKey: { optional: true, type_kind: 'TSUnionType', default: B(null) },
       onSelectedKeyChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       selectionParameter: { optional: true, type_kind: 'TSUnionType', default: L('selected') },
@@ -589,6 +596,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       listBody: sp(1, true),
       detail: sp(1, false),
       empty: s0(true),
+      notFound: sp(1, true),
       listEmpty: s0(true),
       listFooter: s0(true),
       header: s0(true),
@@ -727,6 +735,9 @@ export const CONTRACT: Record<string, ComponentContract> = {
       narrowActions: { optional: true, type_kind: 'TSTypeReference', default: L('own-row') },
       compactActions: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       titleText: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      // COR-2438: a title of one line, ending in an ellipsis, with an inline status that drops under
+      // it when there is no room beside it (a chat's conversation pane).
+      titleLines: { optional: true, type_kind: 'TSUnionType', default: L(2) },
       // COR-2423: a short caption under the actions' row (`string | Snippet`, as `description`
       // is), and the id a button's `aria-describedby` names it by.
       actionsNote: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
@@ -783,6 +794,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       appearance: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       tone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      flush: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       presentation: { optional: true, type_kind: 'TSTypeReference', default: L('native') },
       placeholder: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       valuePrefix: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
@@ -895,6 +907,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // context (`field.disabled`), so the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      optional: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       maxlength: { optional: true, type_kind: 'TSNumberKeyword', default: NO_DEFAULT },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       appearance: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },

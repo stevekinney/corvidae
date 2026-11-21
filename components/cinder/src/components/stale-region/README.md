@@ -4,7 +4,7 @@
 
 `StaleRegion` wraps a page (or a part of one) that keeps showing old data while the server cannot answer. It changes nothing about how that data looks: text, dots and tones stay exactly as they were, at full contrast, never dimmed with opacity. The warning banner above it is the only sign it is old. What the region does is turn off the controls that change something, and only those.
 
-A control opts in with `mutating`, on `Button`, `Toggle`, `Checkbox`, `Select` and `DropdownTrigger`. While the region is stale an opted-in control goes inert: it carries `aria-disabled="true"`, stays focusable so a keyboard or screen-reader user can still land on it and hear why, ignores the press, and lists the region's reason in `aria-describedby` ("Off until it’s back" unless the page words its own). Everything that does not opt in stays live: links, tabs, filters, search, Retry now and Cancel. A control outside any region is untouched. When `stale` turns false the controls return by themselves, with no remount.
+A control opts in with `mutating`, on `Button`, `Toggle`, `Checkbox`, `Select` and `DropdownTrigger`. While the region is stale an opted-in control goes inert: it carries `aria-disabled="true"`, stays focusable so a keyboard or screen-reader user can still land on it and hear why, ignores the press, and lists the region's reason in `aria-describedby` ("Off until it’s back" unless the page words its own). Everything that does not opt in stays live: links, tabs, filters, search, Try again and Cancel. A control outside any region is untouched. When `stale` turns false the controls return by themselves, with no remount.
 
 The region takes no box of its own (`display: contents`), so wrapping a header, a banner and a list does not move any of them.
 
@@ -13,7 +13,7 @@ The region takes no box of its own (`display: contents`), so wrapping a header, 
 This is Cinder's app-level pattern for a page whose server cannot answer. It has four parts, and a page needs nothing else.
 
 - One `Banner` with the `unreachable` preset says it once, with the time the data is "as of". There is never a second notice per row or per section.
-- Navigation stays enabled. Links, tabs, filters, search, Retry now and Cancel keep working and show the cached views.
+- Navigation stays enabled. Links, tabs, filters, search, Try again and Cancel keep working and show the cached views.
 - Only the actions that change data are off. Mark them `mutating`; they go inert together and keep focus.
 - Each inert action gives its reason: the region's reason is the control's description ("Off until it’s back"), and a page can also show that text inline or in a tooltip.
 

@@ -5,15 +5,49 @@
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { QueryClient, QueryObserver } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { bureauClient } from '../lib/bureau-api.ts';
 import {
   askAgainAfterOutage,
   CONNECTION_MAX_ATTEMPTS,
+  CONNECTION_RETRY_LABEL,
   connectionBannerPreset,
   ConnectionMonitor,
   connectionProbeDelayMs,
 } from './connection.svelte.ts';
+import { RETRY_LABEL } from './copy/views.ts';
+
+// COR-2489: Home's banner said "Retry now" over a failed row and a full-page error that said
+// "Try again". The shell's connection banner says the app's one word for asking again.
+describe('the connection banner’s retry', () => {
+  test('has the one label the full-page error and a failed card use, and the shell passes it', () => {
+    expect(CONNECTION_RETRY_LABEL).toBe(RETRY_LABEL);
+    expect(CONNECTION_RETRY_LABEL).toBe('Try again');
+    const shell = readFileSync(new URL('./shell/shell.svelte', import.meta.url), 'utf8');
+    const start = shell.indexOf('preset={connectionBannerPreset(connection)}');
+    expect(start).toBeGreaterThan(-1);
+    const banner = shell.slice(start, shell.indexOf('/>', start));
+    expect(banner).toContain('retryLabel={CONNECTION_RETRY_LABEL}');
+  });
+
+  test('every page that draws the connection banner itself passes the same label', () => {
+    for (const page of [
+      '../routes/schedules/schedule-list.svelte',
+      '../routes/goals/goal-list.svelte',
+      '../routes/workflow-definitions/workflow-editor.svelte',
+      '../routes/workflow-definitions/workflow-detail.svelte',
+      '../routes/agents/agent-access.svelte',
+    ]) {
+      const source = readFileSync(new URL(page, import.meta.url), 'utf8');
+      const start = source.indexOf('preset={connectionBannerPreset(');
+      expect(start, page).toBeGreaterThan(-1);
+      expect(source.slice(start, source.indexOf('/>', start)), page).toContain(
+        'retryLabel={CONNECTION_RETRY_LABEL}',
+      );
+    }
+  });
+});
 
 const monitors: ConnectionMonitor[] = [];
 afterEach(() => {
@@ -202,7 +236,7 @@ describe('ConnectionMonitor', () => {
     stop();
   });
 
-  test('counts each probe from 1 and stops after eight failures, leaving Retry now', async () => {
+  test('counts each probe from 1 and stops after eight failures, leaving Try again', async () => {
     let probes = 0;
     const monitor = open(async () => {
       probes += 1;
@@ -243,7 +277,7 @@ describe('ConnectionMonitor', () => {
     expect(monitor.retryInSeconds).toBeUndefined();
   });
 
-  test('Retry now after the probes stopped counts from 1 again and finds the server when it is back', async () => {
+  test('Try again after the probes stopped counts from 1 again and finds the server when it is back', async () => {
     let answers = false;
     let recovered = 0;
     const monitor = open(
@@ -266,7 +300,7 @@ describe('ConnectionMonitor', () => {
     expect(recovered).toBe(1);
   });
 
-  test('Retry now while the server is still down starts the count again', async () => {
+  test('Try again while the server is still down starts the count again', async () => {
     const monitor = new ConnectionMonitor({
       probe: async () => {
         throw new TypeError('Failed to fetch');

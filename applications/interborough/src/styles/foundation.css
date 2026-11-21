@@ -87,8 +87,9 @@
  * on the outlet's own `data-width="panes"`, which the route's kind sets from the first frame
  * (`views.ts`), not on a descendant that appears when the page's code has loaded: the panes measure
  * their container once and keep a saved list width as a share of it, so an outlet that changed its
- * padding after that first measure widened the list. */
-.weft-shell-outlet[data-width='panes'] {
+ * padding after that first measure widened the list. Chat's page-level first use draws no panes
+ * and keeps the standard outlet gutter. */
+.weft-shell-outlet[data-width='panes']:not(:has([data-chat-first-use])) {
   padding: 0;
 }
 
@@ -343,11 +344,20 @@
   }
 }
 
+/* The label clips for its ellipsis, so its line box must hold the font's ascent and descent: under
+ * the Button's `line-height: 1` the 13px box cut the descender of the "g" in "Search everything"
+ * (COR-2438). It takes the trail's own 20px line (Cinder Breadcrumbs' `1.25rem`), so the title's
+ * words and the search field's words are line boxes of one height, centred on one line, and round
+ * the same way. The negative block margin hands 4px of that line back, as Cinder Button's own label
+ * does, so the field keeps a medium Button's 32px and stays as tall as the icon buttons and the
+ * breadcrumb select beside it (the 20px line alone made it 34px). */
 .weft-shell-search-trigger__label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.25rem;
+  margin-block: -0.125rem;
 }
 
 .weft-shell-search-trigger__kbd {
@@ -845,12 +855,6 @@
   color: var(--cinder-text-muted);
 }
 
-/* The frame's empty, not-found and forbidden states are Cinder's EmptyState, which pads itself
- * 48px by 32px. The shell's outlet already pads the page (COR-1647), so the state adds none. */
-.weft-view__empty {
-  padding: 0;
-}
-
 /* While the server does not answer, a control that changes something reads as off. The shell sets
  * `data-connection` and holds the activation (`app/shell/changing-actions.ts`); this rule is only
  * the look, and it must name the same controls as `CHANGING_ACTION_SELECTOR`. It reads the shell
@@ -873,19 +877,6 @@ body:has(.weft-shell[data-connection='unreachable'])
   margin: 0 0 var(--cinder-space-3, 0.75rem);
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm, 0.875rem);
-}
-
-.weft-view__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2);
-  align-items: center;
-  justify-content: center;
-}
-
-.weft-view__action {
-  color: var(--cinder-accent-text);
-  font-weight: 600;
 }
 
 /* The quick settings popover (design row 02y): a title, then one row for each preference with its

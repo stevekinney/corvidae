@@ -54,6 +54,11 @@ const VIEW: TaskView = {
   openWaits: [],
   wakeAt: null,
   workflow: PLAIN_TASK_WORKFLOW,
+  usage: null,
+  attention: [],
+  stalledSince: null,
+  failure: null,
+  retrying: null,
 };
 
 const CALLER = { authenticated: true, userName: 'api-key:alice' };

@@ -164,6 +164,51 @@ export const taskViewSchema = z.object({
   wakeAt: z.string().nullable(),
   /** The workflow the task ran on (COR-2423); see {@link taskWorkflowSchema}. */
   workflow: taskWorkflowSchema,
+  /**
+   * What the run has used and cost so far, or in total once it ended (COR-2524), or `null` for a
+   * task whose run has recorded none (it has not taken a step, or its record predates the field).
+   * `costUsd` is in US dollars, priced from the model catalog, and `null`, never `0`, when no
+   * request was priced: an unpriced model is unknown, not free.
+   */
+  usage: z
+    .object({
+      promptTokens: z.number(),
+      completionTokens: z.number(),
+      totalTokens: z.number(),
+      costUsd: z.number().nullable(),
+    })
+    .nullable(),
+  /**
+   * What asks for attention (COR-2526): `stalled` while the run is alive but making no progress
+   * outside a declared wait, which is Operative's own `alive-but-stalled` assessment recorded when
+   * it changes, and `looping` once the run's toolbox reported a loop until the run settles. Empty
+   * for a task that has ended, and `stalled` is empty while a person is asked something.
+   */
+  attention: z.array(z.enum(['stalled', 'looping'])),
+  /** The instant, as ISO 8601 on the Bureau's clock, the run was seen to stall; `null` unless `attention` holds `stalled`. */
+  stalledSince: z.string().nullable(),
+  /**
+   * Why a failed task failed (COR-2531), or `null` for a task that did not fail and for a failure
+   * nothing described. `step` is the step it failed at (its index and a label: the failing tool's
+   * name, `model` for a model step, or for a workflow run the engine's `failedStep.label`),
+   * `errorCode` and `errorKind` are the run's error identifiers, and `toolCall` names the tool and
+   * the call that failed. It never holds a tool's arguments or error text: the text is
+   * `statusMessage`.
+   */
+  failure: z
+    .object({
+      step: z.object({ index: z.number().int().min(0), label: z.string() }).nullable(),
+      errorCode: z.string().nullable(),
+      errorKind: z.string().nullable(),
+      toolCall: z.object({ name: z.string(), callId: z.string() }).nullable(),
+    })
+    .nullable(),
+  /**
+   * The step the run is on a second or later try of, while it runs (COR-2531): `label` is `model`
+   * for a model step, or for a workflow run the engine's retrying activity, and `attempt` is 2 or
+   * later. `null` when no step is retrying, and for a task that has ended.
+   */
+  retrying: z.object({ label: z.string(), attempt: z.number().int().min(2) }).nullable(),
 });
 
 /** The paging fields the list operations share. */

@@ -29,7 +29,7 @@ describe('ListDetail pane header with actions', () => {
     const { getByRole } = render(Harness, { props: { withActions: true } });
     const button = getByRole('button', { name: 'New chat' });
     expect(button.closest('.cinder-list-detail__header')).not.toBeNull();
-    expect(button.getAttribute('data-cinder-size')).toBe('xs');
+    expect(button.classList.contains('button-size-extra-small')).toBe(true);
     expect(button.hasAttribute('data-cinder-compact')).toBe(true);
   });
 
@@ -54,30 +54,29 @@ describe('ListDetail pane header with actions', () => {
     return css.text().then((text) => {
       const rule = declarationsFor(
         text,
-        ".cinder-list-detail__header .cinder-button[data-cinder-compact][data-cinder-variant='ghost']:not([data-cinder-icon-only])",
+        '.cinder-list-detail__header .cinder-button[data-cinder-compact].button-variant-ghost:not([data-cinder-icon-only])',
       );
       expect(rule.get('padding-inline')).toBe('var(--cinder-button-padding-x-sm)');
     });
   });
 
-  // The header's first row, whatever it holds (a plain `<h2>`, a SectionHeading, a way back), starts
-  // after the list toggle, so the toggle never draws over it and no page marks anything.
-  test('the first row of the header, whatever it is, begins after the list toggle', async () => {
+  // COR-2438: the header's first row starts on the header's own edge, the search field's, whatever
+  // it holds: the list toggle is a handle on the divider, not a slot in the header.
+  test('the first row of the header, whatever it is, starts on the header’s own edge', async () => {
     const text = await Bun.file(new URL('./list-detail.css', import.meta.url)).text();
-    const rule = declarationsFor(
-      text,
-      '.cinder-list-detail[data-cinder-toggle-slot] .cinder-list-detail__header > :first-child',
-    );
-    expect(rule.get('padding-inline-start')).toBe('var(--cinder-button-height-sm)');
+    expect(text).not.toContain('.cinder-list-detail__header > :first-child');
     expect(text).not.toContain('cinder-section-heading__primary');
     expect(text).not.toContain('data-cinder-list-detail-header-start');
   });
 
-  test('the corner is held and the toggle is drawn in it while the panes sit side by side and the list can be hidden, with no item open', () => {
+  test('the toggle is drawn outside the header while the panes sit side by side and the list can be hidden, with no item open, with its own icon', () => {
     const { container } = render(Harness, { props: { collapsible: true } });
     // Happy-dom measures no width, which ListDetail treats as wide: side by side.
-    const root = container.querySelector('.cinder-list-detail')!;
-    expect(root.hasAttribute('data-cinder-toggle-slot')).toBe(true);
-    expect(container.querySelector('.cinder-list-detail__toggle button')).not.toBeNull();
+    const toggle = container.querySelector('.cinder-list-detail__toggle button');
+    expect(toggle).not.toBeNull();
+    expect(toggle?.closest('.cinder-list-detail__header')).toBeNull();
+    // Not the application sidebar's panel icon.
+    expect(toggle?.querySelector('.lucide-panel-left-close, .lucide-panel-left')).toBeNull();
+    expect(toggle?.querySelector('.lucide-chevrons-left')).not.toBeNull();
   });
 });

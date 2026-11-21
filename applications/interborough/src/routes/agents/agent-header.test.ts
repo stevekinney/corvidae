@@ -121,9 +121,10 @@ describe('the header every tab of an agent’s page shares', () => {
   test('says an agent on a model cannot answer while no provider is connected, with the way to connect one', async () => {
     landAt('/agents/researcher');
     serve({}, [{ name: 'anthropic', hasKey: false, connected: false }]);
-    const { findByTestId } = mount();
+    const { findByTestId, queryByRole } = mount();
 
     const reason = await findByTestId('agent-provider-reason');
+    expect(queryByRole('link', { name: /^New chat$/ })).toBeNull();
     expect(reason.textContent).toContain(AGENT_PAGE_COPY.header.needsProvider);
     const link = within(reason).getByRole('link', { name: AGENT_PAGE_COPY.header.connectProvider });
     expect(link.getAttribute('href')).toBe('/settings/models');
@@ -157,10 +158,10 @@ describe('the header every tab of an agent’s page shares', () => {
     const header = await findByTestId('agent-header');
     const edit = await findByRole('link', { name: 'Edit' });
     expect(header.contains(edit)).toBe(true);
-    expect(edit.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(edit.classList.contains('button-variant-secondary')).toBe(true);
     expect(edit.querySelector('svg')).not.toBeNull();
     const newChat = within(header).getByRole('link', { name: 'New chat' });
-    expect(newChat.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(newChat.classList.contains('button-variant-primary')).toBe(true);
     expect(newChat.querySelector('svg')).not.toBeNull();
     // Memory is a tab, not an action, and an owner's agent is edited, not duplicated, from here.
     expect(within(header).queryByRole('link', { name: /Memory/ })).toBeNull();
@@ -367,7 +368,7 @@ describe('the page of an agent a disabled plugin ships', () => {
     const duplicate = within(header).getByRole('button', {
       name: AGENT_PAGE_COPY.plugin.duplicate,
     });
-    expect(duplicate.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(duplicate.classList.contains('button-variant-secondary')).toBe(true);
     // A secondary action is an icon: the name is the accessible name, never visible text.
     expect(duplicate.hasAttribute('data-cinder-icon-only')).toBe(true);
     expect(duplicate.textContent?.trim()).toBe('');

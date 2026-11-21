@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * Internal helpers extracted from `serve()` to reduce its cyclomatic complexity.
  * These are implementation details — do not import from outside `src/server/`.
@@ -173,24 +174,18 @@ function authenticationRequiredByEnvironment(rawValue: string | undefined): bool
   );
 }
 
-/**
- * Refuse to start a server whose static API keys would admit callers holding no
- * recognized scope. This belongs to `serve()` alone: Weft's own catalog is what
- * makes such a key useless, because every operation except
- * `weft.system.principal` requires a scope. A generic authenticator
- * (`createAuthenticator`, `createOperationHandlerAuthenticator`) may serve a
- * catalog whose operations are authenticated-only, and for those an unscoped
- * key is valid. A `resolveApiKeyPrincipal` resolver is authoritative for the
- * key space and supplies each key's scopes itself. A default scope the server
- * does not recognize grants nothing, so it does not count.
- */
+/** Weft's scoped catalog requires each static API key to hold a recognized scope. */
 function assertStaticApiKeysHaveScopes(
   auth: NonNullable<ServeOptions['auth']>,
   additionalScopes: AdditionalScopeSet,
 ): void {
   if (auth.apiKeys === undefined || auth.apiKeys.length === 0) return;
   if (auth.resolveApiKeyPrincipal !== undefined) return;
-  const granted = filterRecognizedScopes(auth.defaultApiKeyScopes ?? [], additionalScopes);
+  const granted = filterRecognizedScopes(
+    auth.defaultApiKeyScopes ?? [],
+    additionalScopes,
+    WEFT_SCOPE_VOCABULARY,
+  );
   if (granted.length > 0) return;
   throw new Error(STATIC_API_KEYS_WITHOUT_SCOPES_ERROR);
 }
@@ -256,6 +251,7 @@ export type ResolvedNetworkConfig = {
 function createServerAuthenticator(options: ServeOptions): Promise<Authenticator> | null {
   if (!options.auth) return null;
   return createAuthenticator(options.auth, {
+    scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     transportVerifiesClientCertificates: tlsOptionsVerifyClientCertificates(
       buildTLSOptions(options.auth),
     ),

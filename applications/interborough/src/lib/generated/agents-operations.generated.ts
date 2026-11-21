@@ -7,7 +7,8 @@ import type {
   SharedConfigurationId_fcfd2182,
   SharedCostStepsTools_95f40410,
   SharedDescriptionExamplesId_fe67aedf,
-  SharedExpectedHashId_6df57fe0,
+  SharedDryRunEffectsTarget_b07628bd,
+  SharedDryRunExpectedHashId_50848f66,
   SharedHashId_cce87f20,
 } from './shared-operation-types.generated.ts';
 export type AgentsOperationTypes = {
@@ -76,8 +77,8 @@ export type AgentsOperationTypes = {
       'Conflict' | 'Forbidden' | 'InvalidParams' | 'Unprocessable' | 'UnsupportedCapability';
   };
   'bureau.agents.definitions.delete': {
-    readonly input: SharedExpectedHashId_6df57fe0;
-    readonly output: SharedHashId_cce87f20;
+    readonly input: SharedDryRunExpectedHashId_50848f66;
+    readonly output: SharedDryRunEffectsTarget_b07628bd | SharedHashId_cce87f20;
     readonly faults:
       'InvalidParams' | 'NotFound' | 'StaleRevision' | 'Unprocessable' | 'UnsupportedCapability';
   };
@@ -180,8 +181,9 @@ export type AgentsOperationTypes = {
       'InvalidParams' | 'NotFound' | 'StaleRevision' | 'Unprocessable' | 'UnsupportedCapability';
   };
   'bureau.agents.disable': {
-    readonly input: { readonly id: string };
-    readonly output: { readonly disabled: boolean; readonly id: string };
+    readonly input: { readonly dryRun?: boolean; readonly id: string };
+    readonly output:
+      SharedDryRunEffectsTarget_b07628bd | { readonly disabled: boolean; readonly id: string };
     readonly faults: 'InvalidParams' | 'NotFound';
   };
   'bureau.agents.enable': {

@@ -5,7 +5,7 @@
  * @module types/schedule-controls
  */
 
-import type { ScheduleTransitionOptions } from './schedules.ts';
+import type { ScheduleTransitionOptions } from './schedule-transition-options.ts';
 
 /**
  * One persisted record of occurrences a schedule missed (`engine.listScheduleMissedFires`). The

@@ -34,7 +34,7 @@ import {
   ToolErrorRecordedEvent,
   ToolPolicyDeniedRecordedEvent,
 } from './events.ts';
-import type { RunOutcomeDetailRecorder } from './run-outcome-details.ts';
+import { observeRunOutcome, type RunOutcomeDetailRecorder } from './run-outcome-details.ts';
 
 /** The Bureau event that wraps a recorded run event. */
 export type RecordedRunEvent =
@@ -150,15 +150,7 @@ export function observeRecordedRunEvents(
   }
   const outcomeDetails = observer.outcomeDetails;
   if (outcomeDetails !== undefined) {
-    const recordFailure = (event: Event): void => {
-      try {
-        outcomeDetails.record(activeRun.runId, event as never);
-      } catch (error) {
-        observer.onError?.(error, 'run.error');
-      }
-    };
-    activeRun.addEventListener('run.error', recordFailure);
-    disposers.push(() => activeRun.removeEventListener('run.error', recordFailure));
+    disposers.push(observeRunOutcome(activeRun, activeRun.runId, outcomeDetails, observer.onError));
   }
   return () => {
     for (const dispose of disposers) dispose();

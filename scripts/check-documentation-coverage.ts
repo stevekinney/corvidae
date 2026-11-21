@@ -111,13 +111,18 @@ export function parseArguments(argv: readonly string[]): Arguments | string {
   return { mode, entries };
 }
 
-/** Reads the workspace's `exports` map, which must map each subpath straight to a TypeScript file. */
+/** Reads the TypeScript entries in the workspace’s exports map. */
 export function readEntryPoints(directory: string, exports: unknown): EntryPoint[] {
   const map: Record<string, unknown> =
     typeof exports === 'string' ? { '.': exports } : ((exports ?? {}) as Record<string, unknown>);
-  // A component library's `.metadata/` JSON exports document nothing: they are generated data.
   const sourceEntries = Object.entries(map).filter(
-    ([subpath, entry]) => !isMetadataExport(subpath, entry),
+    ([subpath, entry]) =>
+      !isMetadataExport(subpath, entry) &&
+      !(
+        subpath.endsWith('.css') &&
+        typeof entry === 'string' &&
+        /^\.\/src(?:\/[\w-]+)+\.css$/.test(entry)
+      ),
   );
   return sourceEntries.map(([subpath, entry]) => {
     const target = exportSourceTarget(entry);

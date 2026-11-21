@@ -51,11 +51,11 @@ export type PageHeaderOverflowAction = {
 };
 
 /**
- * A list page's create action: a secondary, icon-only "+" button at the right of the header with
- * a tooltip and an accessible name, in the same place whether the list is empty or not.
+ * A list page's create action: a labelled primary button with a leading "+" at the right of the
+ * header, such as "+ New agent", in the same place whether the list is empty or not.
  */
 export type PageHeaderCreateAction = {
-  /** The tooltip and the accessible name, such as "New agent" or "Start run". */
+  /** The button's words and its accessible name, such as "New agent" or "Start run". */
   label: string;
   /** Render the action as a link to this address instead of a button. */
   href?: string;
@@ -171,8 +171,9 @@ export type PageHeaderProps = Omit<
    */
   collapsedBar?: boolean;
   /**
-   * A list page's create action, drawn last in the actions region as a secondary icon-only "+"
-   * with a tooltip. It is always secondary, in every state of the page.
+   * A list page's create action, drawn last in the actions region as a labelled primary button
+   * with a leading "+", never an icon alone, in every state of the page. Under a full-page `error`
+   * it draws as secondary, so the error's Try again is the one primary.
    */
   createAction?: PageHeaderCreateAction;
   /**
@@ -218,6 +219,13 @@ export type PageHeaderProps = Omit<
    * `title` is a snippet. A string `title` is used as it is.
    */
   titleText?: string;
+  /**
+   * How many lines the title may take before it ends in an ellipsis. With `1` the title keeps one
+   * line and takes the free space first: an inline `status` that no longer fits beside it moves under
+   * it, for a narrow pane such as a chat's conversation.
+   * @default 2
+   */
+  titleLines?: 1 | 2;
   /** Additional class names merged with `.cinder-page-header`. */
   class?: string;
 };
@@ -309,6 +317,12 @@ export interface PageHeaderSchemaProps {
   collapsedBar?: boolean;
   /** The title's plain text, for the full-title tooltip when `title` is a snippet. */
   titleText?: string;
+  /**
+   * How many lines the title may take before it ends in an ellipsis; with `1` an inline status that
+   * no longer fits beside the title moves under it.
+   * @default 2
+   */
+  titleLines?: 1 | 2;
   /** Additional class names merged with `.cinder-page-header`. */
   class?: string;
 }

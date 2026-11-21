@@ -3,10 +3,10 @@
  * (COR-1888), built into a self-contained page and served as its `ui://` resource, and the tool
  * metadata that links a tool to the page, merged into the one pair the adapter accepts.
  */
+import type { OperationMcpResource } from '@lostgradient/backchannel-mcp';
 import type { BureauPlugins } from '@lostgradient/bureau';
 import type { PluginPanel, PluginPanelPlacement } from '@lostgradient/interborough-plugin';
 import type { Storage } from '@lostgradient/storage';
-import type { OperationMcpResource } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { createPanelBuildCache, type PanelBuildCache } from './panel-build-cache.ts';

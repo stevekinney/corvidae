@@ -25,7 +25,9 @@ export type CatalogWorkflow = Catalog['workflows'][number];
 
 /** What a step can call: the activities, and the code workflows, in the order the Bureau lists them. */
 export type WorkflowCatalog = {
+  /** The activities available to workflow definitions. */
   readonly activities: readonly CatalogActivity[];
+  /** The workflows visible to the caller. */
   readonly workflows: readonly CatalogWorkflow[];
 };
 

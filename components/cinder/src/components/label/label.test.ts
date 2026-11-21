@@ -59,6 +59,28 @@ describe('Label rendering', () => {
     expect(dot?.textContent).toBe('');
   });
 
+  test('renders Optional after the label text as a non-decorative marker', () => {
+    const { container } = render(Label, {
+      for: 'time',
+      optional: true,
+      children: textSnippet('Time'),
+    });
+    const marker = container.querySelector('.cinder-_optional-marker');
+    expect(marker?.textContent).toBe('Optional');
+    expect(marker?.getAttribute('aria-hidden')).toBeNull();
+  });
+
+  test('renders just the required marker when both props are present', () => {
+    const { container } = render(Label, {
+      for: 'time',
+      optional: true,
+      required: true,
+      children: textSnippet('Time'),
+    });
+    expect(container.querySelector('.cinder-_required-marker')).not.toBeNull();
+    expect(container.querySelector('.cinder-_optional-marker')).toBeNull();
+  });
+
   test('required false omits the dot', () => {
     const { container } = render(Label, {
       for: 'a',

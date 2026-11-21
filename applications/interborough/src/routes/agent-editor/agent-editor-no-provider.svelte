@@ -3,8 +3,9 @@
    * What the agent editor shows instead of its form when the model catalog is empty. An agent runs
    * on a model and the catalog is what the host's configured providers offer, so with no provider
    * nothing the form could ask for would save. The application cannot add a provider (that is the
-   * host's configuration file and a secret, both read once at start), so the state says exactly
-   * where each lives, on this installation, from `/host/paths`, and what to do after.
+   * host's configuration file and a secret, both read once at start), so the state gives the
+   * configuration file's location in a copy control, from `/host/paths`, and what to do after. Where
+   * or how a key is stored is never said: no secret reference renders (owner, 2026-11-19).
    *
    * Where a key can be saved from Settings › Models, the state is the card the New agent board
    * draws (rows 42a, 42b): a plug in an accent disc, "No model provider yet", what to do, a primary
@@ -18,7 +19,7 @@
    * under the action in reading order: the description, Connect a provider, the line under it, "Or
    * set it up by hand:", then the steps.
    */
-  import { Button, CodeBlock, CodeLocation, EmptyState } from '@lostgradient/cinder';
+  import { Button, CodeBlock, CopyableValue, EmptyState } from '@lostgradient/cinder';
   import { Plug } from '@lucide/svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
@@ -72,7 +73,6 @@
   kind="first-use"
   title={copy.title}
   headingLevel={2}
-  align="start"
   description={copy.description}
   {...canConnect ? { action: connectAction } : {}}
   class="weft-no-provider"
@@ -95,8 +95,9 @@
     variant="primary"
     href={router.href(connectPath)}
     onclick={connect}
-    data-testid="agent-connect-provider">{copy.connectAction}</Button
-  >
+    data-testid="agent-connect-provider"
+    label={copy.connectAction}
+  />
 {/snippet}
 
 {#snippet steps()}
@@ -104,10 +105,11 @@
     <li>
       <p class="weft-no-provider__text">{copy.configurationStep}</p>
       {#if paths !== undefined}
+        <!-- A host path is shown only inside a copy control (owner, 2026-11-19). -->
         <p class="weft-no-provider__path">
-          <CodeLocation
-            class="weft-code-location"
-            file={paths.configurationFile}
+          <CopyableValue
+            value={paths.configurationFile}
+            label={copy.copyConfigurationFile}
             data-testid="provider-configuration-file"
           />
         </p>
@@ -117,33 +119,18 @@
       {/if}
     </li>
     <li>
+      <!-- Where or how a key is stored never renders (owner, 2026-11-19): no secret reference. -->
       <p class="weft-no-provider__text">{copy.secretStep}</p>
-      {#if paths !== undefined}
-        <ul class="weft-no-provider__secrets">
-          {#each paths.providers as provider (provider.name)}
-            <li data-provider={provider.name}>
-              <code class="weft-no-provider__provider">{provider.name}</code>
-              <CodeLocation class="weft-code-location" file={provider.secretFile} />
-            </li>
-          {/each}
-        </ul>
-      {/if}
     </li>
     <li>
       <p class="weft-no-provider__text">{copy.restartStep}</p>
-      <Button variant="secondary" disabled={reloading} onclick={onReload}>{copy.reload}</Button>
+      <Button variant="secondary" disabled={reloading} onclick={onReload} label={copy.reload} />
     </li>
   </ol>
 {/snippet}
 
 <style>
-  /* The outlet already pads the page; the state adds only a little air above its steps, and its steps fill the width. */
-  :global(.weft-no-provider) {
-    padding-inline: 0;
-    padding-block: var(--cinder-space-4);
-    align-items: stretch;
-  }
-
+  /* The state itself is Cinder's one layout (owner report, 2026-11-19); only its steps are styled here. */
   .weft-no-provider__steps {
     display: flex;
     flex-direction: column;
@@ -160,28 +147,5 @@
   .weft-no-provider__path {
     margin: 0 0 var(--cinder-space-2);
     overflow-wrap: anywhere;
-  }
-
-  .weft-no-provider__secrets {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .weft-no-provider__secrets li {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-    align-items: baseline;
-    overflow-wrap: anywhere;
-  }
-
-  .weft-no-provider__provider {
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-muted);
   }
 </style>

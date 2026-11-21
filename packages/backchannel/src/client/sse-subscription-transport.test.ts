@@ -320,7 +320,7 @@ describe('a subscription that fails', () => {
     const error = caught as CatalogClientError;
     expect(error.operationName).toBe('probe.jobs.broken');
     expect(error.message).toBe('Internal server error');
-    expect(error.data).toEqual({ code: 'EngineFailure', data: undefined });
+    expect(error.data).toEqual({ code: 'EngineFailure', data: undefined, retryable: false });
   });
 
   it('delivers the events before an error frame, then throws', async () => {
@@ -342,6 +342,26 @@ describe('a subscription that fails', () => {
     expect((caught as CatalogClientError).data).toEqual({
       code: 'Unavailable',
       data: { retryAfterSeconds: 1 },
+    });
+  });
+
+  it('keeps the retryable and remediation of an error frame in the error’s data', async () => {
+    const stream =
+      'event: error\ndata: {"code":"Unavailable","message":"feed down","data":{},"retryable":true,"remediation":"Follow the feed again."}\n\n';
+    const fetchStub: CatalogFetch = async () =>
+      new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+    const messages = sseSubscriptionTransport({ baseUrl: BASE_URL, fetch: fetchStub })(
+      'probe.jobs.watch',
+      {},
+    )[Symbol.asyncIterator]();
+
+    const caught = await rejectionOf(messages.next());
+
+    expect((caught as CatalogClientError).data).toEqual({
+      code: 'Unavailable',
+      data: {},
+      retryable: true,
+      remediation: 'Follow the feed again.',
     });
   });
 

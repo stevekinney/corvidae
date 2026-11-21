@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
@@ -85,14 +86,15 @@ describe('a refused answer', () => {
 });
 
 describe('an approval', () => {
-  test('given no input says so, rather than showing an empty list', async () => {
+  test('keeps the shared approval card free of an empty Input section', async () => {
     const approval = toolApprovalFixture({
       requestedAt: Date.now() - 1_000,
       approval: { ...toolApprovalFixture().approval, arguments: {} },
     });
-    const { container, findByText } = open({ reviews: [approval] });
+    const { container, findByRole, queryByRole } = open({ reviews: [approval] });
     await openFirst(container);
-    await findByText('This call was given no input.');
+    await findByRole('button', { name: 'Approve' });
+    expect(queryByRole('group', { name: 'Input' })).toBeNull();
     expect(container.querySelector('.ib-tool__details')).toBeNull();
   });
 });
@@ -172,7 +174,7 @@ describe('a list that failed', () => {
     } as never);
     await findByText('The Bureau broke.');
     failing = false;
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(rows(container).length).toBe(1));
   });
 });

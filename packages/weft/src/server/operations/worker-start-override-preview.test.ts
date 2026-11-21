@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { principalFromStdioLocal } from '@lostgradient/backchannel';
 import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
@@ -34,7 +35,7 @@ describe('weft.worker.startoverrides.preview operation', () => {
       'weft.worker.startoverrides.preview',
       { workflowId: WORKFLOW_ID },
       {
-        principal: principalFromStdioLocal(),
+        principal: principalFromStdioLocal(WEFT_SCOPE_VOCABULARY),
         host: {},
         transport: 'http-rest',
         registry,
@@ -123,7 +124,7 @@ describe('weft.worker.startoverrides.preview operation', () => {
       'weft.worker.startoverrides.preview',
       { workflowId: WORKFLOW_ID, ttlMs: 50 },
       {
-        principal: principalFromStdioLocal(),
+        principal: principalFromStdioLocal(WEFT_SCOPE_VOCABULARY),
         host: {},
         transport: 'http-rest',
         registry,
@@ -330,7 +331,7 @@ async function executePreview(storage: MemoryStorage) {
     'weft.worker.startoverrides.preview',
     { workflowId: WORKFLOW_ID },
     {
-      principal: principalFromStdioLocal(),
+      principal: principalFromStdioLocal(WEFT_SCOPE_VOCABULARY),
       host: {},
       transport: 'http-rest',
       registry,

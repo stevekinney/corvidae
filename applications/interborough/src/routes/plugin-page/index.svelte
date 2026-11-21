@@ -166,9 +166,12 @@
         {#snippet action()}
           {#if missing.length === 1 && missing[0] !== undefined}
             {@const key = missing[0].key}
-            <Button variant="secondary" size="sm" onclick={() => (secret = { plugin, key })}
-              >{PLUGIN_PAGE_COPY.needsSetup.addKey}</Button
-            >
+            <Button
+              variant="secondary"
+              size="sm"
+              onclick={() => (secret = { plugin, key })}
+              label={PLUGIN_PAGE_COPY.needsSetup.addKey}
+            />
           {:else}
             {@render settingsLink()}
           {/if}

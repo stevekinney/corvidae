@@ -60,6 +60,7 @@ type AddedCodeRow = {
   readonly http: number;
   readonly jsonRpc: number;
   readonly category: FailureCategory;
+  readonly retryable: boolean;
   readonly jsonRpcData: Record<string, unknown>;
   readonly restData: Record<string, unknown>;
 };
@@ -70,6 +71,7 @@ const ADDED_CODES: AddedCodeRow[] = [
     http: 409,
     jsonRpc: -32026,
     category: 'application',
+    retryable: false,
     jsonRpcData: { expectedRevision: 3, currentRevision: 5 },
     restData: { expectedRevision: 3, currentRevision: 5 },
   },
@@ -78,6 +80,7 @@ const ADDED_CODES: AddedCodeRow[] = [
     http: 429,
     jsonRpc: -32027,
     category: 'resource',
+    retryable: true,
     jsonRpcData: { retryAfterSeconds: 30 },
     restData: { retryAfterSeconds: 30 },
   },
@@ -86,6 +89,7 @@ const ADDED_CODES: AddedCodeRow[] = [
     http: 503,
     jsonRpc: -32028,
     category: 'system',
+    retryable: true,
     jsonRpcData: { reason: 'storage is recovering', retryAfterSeconds: 7 },
     // `reason` is internal detail: REST discloses only the retry delay.
     restData: { retryAfterSeconds: 7 },
@@ -95,6 +99,7 @@ const ADDED_CODES: AddedCodeRow[] = [
     http: 501,
     jsonRpc: -32029,
     category: 'system',
+    retryable: false,
     jsonRpcData: { capability: 'streams' },
     restData: { capability: 'streams' },
   },
@@ -116,7 +121,11 @@ describe.each(ADDED_CODES)('$fault.code', (row) => {
 
   it('serializes the typed data an audited REST body discloses', async () => {
     const body = await faultToHttpResponse(row.fault).json();
-    expect(body).toEqual({ error: row.fault.message, data: row.restData });
+    expect(body).toEqual({
+      error: row.fault.message,
+      data: row.restData,
+      retryable: row.retryable,
+    });
   });
 
   it('maps to its JSON-RPC code and payload', () => {
@@ -124,7 +133,12 @@ describe.each(ADDED_CODES)('$fault.code', (row) => {
     expect(faultToJsonRpcError(row.fault)).toEqual({
       code: row.jsonRpc,
       message: row.fault.message,
-      data: { ...row.jsonRpcData, weftCode: code, httpStatus: row.http },
+      data: {
+        ...row.jsonRpcData,
+        weftCode: code,
+        httpStatus: row.http,
+        retryable: row.retryable,
+      },
     });
   });
 
@@ -181,6 +195,7 @@ describe('Retry-After', () => {
     expect(await faultToHttpResponse(fault).json()).toEqual({
       error: fault.message,
       data: { currentRevision: 9 },
+      retryable: false,
     });
     expect(faultToJsonRpcError(fault).data).toMatchObject({ currentRevision: 9 });
     // Even a falsy revision survives.
@@ -188,6 +203,7 @@ describe('Retry-After', () => {
     expect(await faultToHttpResponse(zero).json()).toEqual({
       error: zero.message,
       data: { currentRevision: 0 },
+      retryable: false,
     });
   });
 
@@ -214,12 +230,17 @@ describe('Retry-After', () => {
           try {
             const rest = faultToHttpResponse(fault);
             expect(rest.status).toBe(500);
-            expect(await rest.json()).toEqual({ error: 'Internal server error' });
+            expect(await rest.json()).toEqual({ error: 'Internal server error', retryable: false });
             expect((await shapeOperationFaultAsJson(fault).json()) as unknown).toEqual({
               error: 'Internal server error',
+              retryable: false,
             });
             const rpc = faultToJsonRpcError(fault);
-            expect(rpc.data).toEqual({ weftCode: 'EngineFailure', httpStatus: 500 });
+            expect(rpc.data).toEqual({
+              weftCode: 'EngineFailure',
+              httpStatus: 500,
+              retryable: false,
+            });
             expect(errors).toHaveBeenCalledTimes(3);
             expect(String(errors.mock.calls[0]?.[0])).toContain(`data.${field}`);
           } finally {
@@ -251,6 +272,7 @@ describe('Retry-After', () => {
         expect(faultToJsonRpcError(payloadTooLarge).data).toEqual({
           weftCode: 'EngineFailure',
           httpStatus: 500,
+          retryable: false,
         });
       } finally {
         errors.mockRestore();
@@ -260,8 +282,15 @@ describe('Retry-After', () => {
 
   it('keeps an undefined delay out of the wire payloads', async () => {
     const fault: AddedFault = { ...rateLimited, data: {} };
-    expect(await faultToHttpResponse(fault).json()).toEqual({ error: fault.message });
-    expect(faultToJsonRpcError(fault).data).toEqual({ weftCode: 'RateLimited', httpStatus: 429 });
+    expect(await faultToHttpResponse(fault).json()).toEqual({
+      error: fault.message,
+      retryable: true,
+    });
+    expect(faultToJsonRpcError(fault).data).toEqual({
+      weftCode: 'RateLimited',
+      httpStatus: 429,
+      retryable: true,
+    });
   });
 });
 

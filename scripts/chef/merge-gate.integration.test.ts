@@ -17,6 +17,7 @@ import {
   readExecutionSnapshot,
   requireAuthority,
 } from './execution-state.ts';
+import type { MainRun } from './land-queue.ts';
 import {
   changedAnswer,
   greenLanding,
@@ -33,6 +34,7 @@ import {
 } from './merge-gate.ts';
 import { UsageError, type Runner } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
+import type { EvidencePlan } from './verification-plan.ts';
 
 let HEAD = 'a'.repeat(40);
 const OTHER = 'b'.repeat(40);
@@ -1255,6 +1257,209 @@ scenarios.describe('mergeGate landing evidence', () => {
       expect(full.merged()).toBe(true);
     },
   );
+});
+
+// The base the verification request names was current when the evidence was taken. When `main`
+// moves after that, the pull-request route accepts the new base only through the same landing queue
+// and integration-tree check the branch route uses (owner decision, 2026-11-21): every commit
+// between the two bases is outside the plan or verified by a green `main.yml` push run on main, the
+// attested base is an ancestor, and the tree about to land is the attested tree plus those commits.
+scenarios.describe('a base that moved after the evidence', () => {
+  const NEW_BASE = '1'.repeat(40);
+  const CURRENT_TREE = '8'.repeat(40);
+  const C1 = '2'.repeat(40);
+  const C2 = '3'.repeat(40);
+  const plan: EvidencePlan = {
+    changed: ['src/feature.ts'],
+    unit_tests: [],
+    root_checks: ['lint:root', 'typecheck:root'],
+    fixture_slugs: [],
+    fixture_specs: [],
+    e2e_specs: [],
+    requires_full_run: false,
+    full_run_rules: [],
+  };
+  const OUTSIDE = ['docs/notes.md'];
+  const IN_PLAN = ['src/feature.ts'];
+  const green = (sha: string, id: string): MainRun => ({
+    sha,
+    id,
+    status: 'completed',
+    conclusion: 'success',
+  });
+  const ok = (stdout: string) => ({ code: 0, stdout: `${stdout}\n`, stderr: '' });
+
+  /** `fake()` with `main` at NEW_BASE and the Git reads the moved-base checks make answered. */
+  function movedWorld(spec: {
+    commits: Record<string, string[]>;
+    ancestor?: boolean;
+    extraDiff?: string[];
+  }) {
+    const world = fake({ base: NEW_BASE, expectedTree: CURRENT_TREE });
+    const incoming = [...new Set(Object.values(spec.commits).flat())];
+    const runner: Runner = (command, runnerOptions) => {
+      const [program, verb, ...rest] = command;
+      if (program === 'git') {
+        if (verb === 'rev-parse' && rest[0] === '--verify')
+          return ok((rest[1] ?? '').replace('^{commit}', '').replace('origin/main', NEW_BASE));
+        if (verb === 'merge-base' && rest[0] === '--is-ancestor')
+          return { code: spec.ancestor === false ? 1 : 0, stdout: '', stderr: '' };
+        if (verb === 'merge-base') return ok(BASE);
+        if (verb === 'rev-list') return ok(Object.keys(spec.commits).join('\n'));
+        if (verb === 'diff-tree')
+          return {
+            code: 0,
+            stdout: (spec.commits[rest.at(-1) ?? ''] ?? []).join('\0'),
+            stderr: '',
+          };
+        if (verb === 'show') return { code: 128, stdout: '', stderr: 'bad object' };
+        if (verb === 'diff' && rest.includes('--diff-filter=d')) return ok(IN_PLAN.join('\0'));
+        if (verb === 'diff' && rest.includes('--no-renames'))
+          return {
+            code: 0,
+            stdout: [...incoming, ...(spec.extraDiff ?? [])].join('\0'),
+            stderr: '',
+          };
+        if (verb === 'log') return { code: 0, stdout: incoming.join('\0'), stderr: '' };
+        if (verb === 'ls-tree') return ok(`100644 blob ${'a'.repeat(40)}\t${rest.at(-1) ?? ''}`);
+        // The head merged onto the attested base reproduces the attested tree.
+        if (verb === 'merge-tree' && rest[1] === BASE) return ok(EXPECTED_TREE);
+      }
+      return world.runner(command, runnerOptions);
+    };
+    return { ...world, runner };
+  }
+
+  /** The worktree needs the manifest the landing queue reads its workspaces from. */
+  function withManifest(): void {
+    writeFileSync(join(options.worktree, 'package.json'), '{"name":"w","workspaces":[]}\n');
+  }
+
+  scenarios.scenario(
+    'lands when every commit is outside the plan or verified, naming the runs',
+    async () => {
+      withManifest();
+      const world = movedWorld({ commits: { [C1]: OUTSIDE, [C2]: IN_PLAN } });
+      const report = await mergeGate(options, {
+        runner: world.runner,
+        evidencePlan: () => plan,
+        mainRuns: () => [green(C2, '4242')],
+      });
+      expect(report).toMatchObject({ failedStep: null, merged: true, treesMatch: true });
+      expect(report.base).toBe(NEW_BASE);
+      expect(report.verifiedOnMain?.join('\n')).toContain('main.yml run 4242');
+      expect(report.verifiedOnMain?.join('\n')).toContain(C2.slice(0, 12));
+      expect(renderMergeGate(report, false)).toContain('base moved, accepted without a new run');
+      expect(world.posted() && world.merged()).toBe(true);
+      // The receipt keeps the attested identity and names the base and tree that landed.
+      const loaded = loadDeliveryVerification(options.verification, verification);
+      const observed = readExecutionSnapshot(loaded.state).operations[loaded.request.operationId]
+        ?.observed as {
+        base: string;
+        integrationTree: string;
+        landedBase: string;
+        landedTree: string;
+      };
+      expect(observed).toMatchObject({
+        base: BASE,
+        integrationTree: EXPECTED_TREE,
+        landedBase: NEW_BASE,
+        landedTree: CURRENT_TREE,
+      });
+    },
+  );
+
+  scenarios.scenario('lands when every commit is outside the plan, reading no CI', async () => {
+    withManifest();
+    const world = movedWorld({ commits: { [C1]: OUTSIDE, [C2]: ['docs/other.md'] } });
+    const report = await mergeGate(options, {
+      runner: world.runner,
+      evidencePlan: () => plan,
+      mainRuns: () => {
+        throw new Error('main CI must not be read');
+      },
+    });
+    expect(report).toMatchObject({ failedStep: null, merged: true });
+    expect(report.verifiedOnMain).toBeUndefined();
+  });
+
+  scenarios.scenario(
+    'refuses as a stale base when one in-plan commit is not verified, before anything is posted',
+    async () => {
+      withManifest();
+      const world = movedWorld({ commits: { [C1]: IN_PLAN, [C2]: IN_PLAN } });
+      const report = await mergeGate(options, {
+        runner: world.runner,
+        evidencePlan: () => plan,
+        // Verified at the older commit only: the later in-plan commit is unverified.
+        mainRuns: () => [green(C1, '4242')],
+      });
+      expect(report.failedStep).toBe('verification');
+      expect(report.detail).toContain('verification request has a stale base');
+      expect(report.detail).toContain('src/feature.ts');
+      expect(world.posted() || world.merged()).toBe(false);
+    },
+  );
+
+  scenarios.scenario('refuses a base that the attested base is not an ancestor of', async () => {
+    withManifest();
+    const world = movedWorld({ commits: { [C1]: OUTSIDE }, ancestor: false });
+    const report = await mergeGate(options, {
+      runner: world.runner,
+      evidencePlan: () => plan,
+      mainRuns: () => [],
+    });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('verification request has a stale base');
+    expect(report.detail).toContain('is not an ancestor of main');
+    expect(world.posted() || world.merged()).toBe(false);
+  });
+
+  scenarios.scenario('refuses a pushed tree that holds anything besides main commits', async () => {
+    withManifest();
+    const world = movedWorld({
+      commits: { [C1]: IN_PLAN },
+      extraDiff: ['src/smuggled.ts'],
+    });
+    const report = await mergeGate(options, {
+      runner: world.runner,
+      evidencePlan: () => plan,
+      mainRuns: () => [green(C1, '4242')],
+    });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('verification request has a stale base');
+    expect(report.detail).toContain('the trees differ outside main');
+    expect(report.detail).toContain('src/smuggled.ts');
+    expect(world.posted() || world.merged()).toBe(false);
+  });
+
+  scenarios.scenario('a failed provider read verifies nothing and refuses', async () => {
+    withManifest();
+    const world = movedWorld({ commits: { [C1]: IN_PLAN } });
+    const report = await mergeGate(options, {
+      runner: world.runner,
+      evidencePlan: () => plan,
+      mainRuns: () => {
+        throw new Error('gh run list failed: HTTP 502');
+      },
+    });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('verification request has a stale base');
+    expect(report.detail).toContain('the queue could not verify main');
+    expect(world.posted() || world.merged()).toBe(false);
+  });
+
+  scenarios.scenario('an unchanged base asks nothing of the queue', async () => {
+    const world = fake();
+    const report = await mergeGate(options, {
+      runner: world.runner,
+      mainRuns: () => {
+        throw new Error('must not be read');
+      },
+    });
+    expect(report).toMatchObject({ failedStep: null, merged: true });
+    expect(report.verifiedOnMain).toBeUndefined();
+  });
 });
 
 await scenarios.settled();

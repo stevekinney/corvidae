@@ -35,7 +35,7 @@
     Toggle,
     VisuallyHidden,
   } from '@lostgradient/cinder';
-  import { Ellipsis } from '@lucide/svelte';
+  import { Ellipsis, Wrench } from '@lucide/svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
@@ -253,8 +253,9 @@
           size="sm"
           disabled={locked}
           loading={signIn.isPending}
-          onclick={() => signIn.mutate()}>{copy.signIn.action}</Button
-        >
+          onclick={() => signIn.mutate()}
+          label={copy.signIn.action}
+        />
       {/if}
       {#if source.state !== 'failed'}
         <Button
@@ -262,8 +263,9 @@
           variant="secondary"
           size="sm"
           loading={testConnection.isPending}
-          onclick={() => testConnection.mutate()}>{copy.test.action}</Button
-        >
+          onclick={() => testConnection.mutate()}
+          label={copy.test.action}
+        />
       {/if}
       <Dropdown id="ib-source-actions" placement="bottom-end">
         <Dropdown.Trigger caretVisible={false}>
@@ -323,8 +325,9 @@
           variant="secondary"
           size="sm"
           loading={testConnection.isPending}
-          onclick={() => testConnection.mutate()}>{copy.test.action}</Button
-        >
+          onclick={() => testConnection.mutate()}
+          label={copy.test.action}
+        />
       </div>
     </Alert>
   {:else if !(source.state === 'needs-authorization' && table.remembered && stateWords === sourceStateDescription(source.state))}
@@ -363,8 +366,9 @@
           variant="ghost"
           size="sm"
           loading={testConnection.isPending}
-          onclick={() => testConnection.mutate()}>{copy.test.again}</Button
-        >
+          onclick={() => testConnection.mutate()}
+          label={copy.test.again}
+        />
       </div>
     </Alert>
   {/if}
@@ -382,16 +386,18 @@
   {/if}
 
   <section class="ib-capability__section" data-testid="source-tools">
-    <SectionHeading level={4} title={copy.tools.heading} />
     {#if table.tools.length === 0}
+      <!-- The state alone: no "Tools" heading above it saying the same thing (owner report, 2026-11-19). -->
       <EmptyState
         kind="first-use"
-        size="compact"
-        headingLevel={5}
+        headingLevel={4}
         title={copy.tools.empty.title}
         description={copy.tools.empty.description}
-      />
+      >
+        {#snippet icon()}<Wrench aria-hidden="true" />{/snippet}
+      </EmptyState>
     {:else}
+      <SectionHeading level={4} title={copy.tools.heading} />
       <div
         class="ib-source__table"
         data-paused={paused ? '' : undefined}

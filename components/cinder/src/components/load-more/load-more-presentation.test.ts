@@ -76,8 +76,8 @@ describe('LoadMore', () => {
 
     const button = requiredInstance(getByRole('button', { name: 'Load more' }), HTMLButtonElement);
     expect(button.classList.contains('cinder-button')).toBe(true);
-    expect(button.getAttribute('data-cinder-size')).toBe('sm');
-    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button.classList.contains('button-size-small')).toBe(true);
+    expect(button.classList.contains('button-variant-secondary')).toBe(true);
     // The class stays so a page can find the footer's button without a second name for it.
     expect(button.classList.contains('cinder-load-more__button')).toBe(true);
     expect(container.querySelectorAll('button')).toHaveLength(1);

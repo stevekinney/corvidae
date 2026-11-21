@@ -7,6 +7,9 @@
       "path": "../backchannel/tsconfig.source.json"
     },
     {
+      "path": "../backchannel-mcp/tsconfig.source.json"
+    },
+    {
       "path": "../cryptography/tsconfig.source.json"
     },
     {

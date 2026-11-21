@@ -8,8 +8,8 @@
    * and never act in a field). J, K and Enter are ListDetail's own, and Enter also moves focus into
    * the open review's first control, and never decides it.
    *
-   * Waiting opens the oldest review on arrival when the panes sit side by side (ListDetail's
-   * `openFirst`), and writes it to the address. A decision opens the review after it and moves focus
+   * Both open their first review on arrival when the panes sit side by side (ListDetail's
+   * `openFirst`), and write it to the address. A decision opens the review after it and moves focus
    * to its row; a review that leaves the queue while it is open (the agent moved on) is said so in
    * its place, with one button to the next. Both are announced politely.
    */
@@ -18,17 +18,18 @@
 
   import {
     Button,
-    EmptyState,
     ListDetail,
     LoadMore,
     RelativeTime,
     SelectableRow,
     StatusDot,
+    type ApprovalResolution,
     type DataListGroup,
   } from '@lostgradient/cinder';
-  import { Check, Inbox } from '@lucide/svelte';
+  import { Check } from '@lucide/svelte';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import type {
     BureauHumanWait,
     BureauReview,
@@ -265,13 +266,22 @@
       if (key === selectedKey) linger(key);
     });
   });
-  // With nothing left to list the panes give way to the empty state, which cannot clear an address
-  // that still names a review.
+  let lastListedSelection: string | null = null;
+  $effect(() => {
+    if (selected !== undefined) lastListedSelection = selected.key;
+  });
+
+  // Clear a selection that was visible when its queue drains. A missing deep link keeps its detail.
   $effect(() => {
     if (phase !== 'ready' || visible.length > 0) return;
     untrack(() => {
+      const requested = selection.read('review');
+      if (lastListedSelection === null || (requested ?? selectedKey) !== lastListedSelection) {
+        return;
+      }
+      lastListedSelection = null;
       selectedKey = null;
-      if (selection.read('review') !== null) selection.write('review', null);
+      if (requested !== null) selection.write('review', null);
     });
   });
   $effect(() => {
@@ -352,13 +362,13 @@
   /** Sends a decision on the open approval, then opens the review after it. */
   function decide(
     review: Extract<BureauReview, { kind: 'tool-approval' }>,
-    action: 'approve' | 'deny' | 'remember',
+    resolution: ApprovalResolution,
   ): void {
     if (mode !== 'waiting' || resolving || decisionSent || review.status !== 'pending') return;
     decisionSent = true;
-    const note = (notes.get(review.id) ?? '').trim();
-    const word =
-      action === 'deny' ? REVIEWS_COPY.announced.denied : REVIEWS_COPY.announced.approved;
+    const note = resolution.reason;
+    const denied = resolution.decision === 'deny';
+    const word = denied ? REVIEWS_COPY.announced.denied : REVIEWS_COPY.announced.approved;
     const advance = advancer(
       `bureau:${review.id}`,
       REVIEWS_COPY.announce(word, reviewTitle(review)),
@@ -368,12 +378,12 @@
       notes.delete(review.id);
       advance();
     };
-    if (action === 'deny') {
+    if (denied) {
       // A denial with a note is a rejection with that reason, which the agent reads.
       onResolve({
         review,
-        decision: note === '' ? 'deny' : 'reject',
-        reason: note === '' ? undefined : note,
+        decision: note === undefined ? 'deny' : 'reject',
+        reason: note,
         remember: false,
         onDone,
       });
@@ -381,20 +391,34 @@
       onResolve({
         review,
         decision: 'approve',
-        reason: note === '' ? undefined : note,
-        remember: action === 'remember',
+        reason: note,
+        remember: resolution.remember,
         onDone,
       });
     }
   }
 
-  function approvalOpen(): Extract<BureauReview, { kind: 'tool-approval' }> | undefined {
-    const review = selected?.review;
-    return review?.kind === 'tool-approval' ? review : undefined;
+  /** Uses the same controls for keys and pointer input, including the confirmation step. */
+  function pressApprovalControl(action: 'approve' | 'deny'): void {
+    if (!decisionKeysArmed || selected?.review.kind !== 'tool-approval') return;
+    const selector =
+      action === 'approve'
+        ? '.cinder-inline-confirm__two-press button'
+        : 'button[data-cinder-approval-deny]';
+    detailElement
+      ?.querySelector<HTMLButtonElement>(`.ib-review-pane__decision ${selector}`)
+      ?.click();
   }
 
   /** Moves focus to the first control of the open review's decision or answer, and presses none. */
   function focusDecision(): void {
+    const note = detailElement?.querySelector<HTMLElement>(
+      '.ib-review-pane__decision textarea:not([disabled])',
+    );
+    if (note !== null && note !== undefined) {
+      note.focus();
+      return;
+    }
     const region = detailElement?.querySelector<HTMLElement>(
       '.ib-review-pane__decision, .ib-review-pane__answer',
     );
@@ -435,20 +459,14 @@
         label: REVIEWS_COPY.approveShortcut,
         group,
         scope,
-        handler: () => {
-          const review = approvalOpen();
-          if (review !== undefined && decisionKeysArmed) decide(review, 'approve');
-        },
+        handler: () => pressApprovalControl('approve'),
       }),
       shortcuts.register({
         keys: ['d'],
         label: REVIEWS_COPY.denyShortcut,
         group,
         scope,
-        handler: () => {
-          const review = approvalOpen();
-          if (review !== undefined && decisionKeysArmed) decide(review, 'deny');
-        },
+        handler: () => pressApprovalControl('deny'),
       }),
       ...Array.from({ length: 9 }, (_, index) =>
         shortcuts.register({
@@ -506,24 +524,23 @@
       <Check aria-hidden="true" size={18} />
       <span>{REVIEWS_COPY.noLongerWaiting.message}</span>
     </p>
-    <Button variant="primary" onclick={openNext}>{REVIEWS_COPY.noLongerWaiting.next}</Button>
+    <Button variant="primary" onclick={openNext} label={REVIEWS_COPY.noLongerWaiting.next} />
   </div>
 {/snippet}
 
-{#if phase === 'ready' && visible.length === 0}
+{#if phase === 'ready' && visible.length === 0 && selectedKey === null && selection.read('review') === null}
+  <!-- The one list-page empty state (owner report, 2026-11-19), with the Reviews icon. Nothing is
+       made here, so it has no create action. -->
   {#if mode === 'waiting'}
-    <EmptyState
+    <ListPageEmpty
+      view="reviews"
       kind="done"
-      headingLevel={2}
       title={REVIEWS_COPY.allCaughtUp}
       description={REVIEWS_COPY.nothingWaiting}
-    >
-      {#snippet icon()}<Inbox aria-hidden="true" />{/snippet}
-    </EmptyState>
+    />
   {:else}
-    <EmptyState
-      kind="first-use"
-      headingLevel={2}
+    <ListPageEmpty
+      view="reviews"
       title={REVIEWS_COPY.nothingDecided}
       description={REVIEWS_COPY.nothingDecidedDescription}
     />
@@ -552,13 +569,14 @@
         loading={phase === 'loading'}
         loadingRows={3}
         loadingLabel={REVIEWS_COPY.loading}
-        openFirst={mode === 'waiting'}
+        openFirst
+        reopenFirst={mode !== 'waiting'}
         defaultListWidth={listWidth}
         bind:selectedKey
         selectionParameter="review"
         selectionLocation={selection}
         storageKey="interborough-reviews"
-        {...gone ? { empty: goneDetail } : {}}
+        {...gone ? { notFound: goneDetail } : {}}
         {...mode === 'done' ? { groupBy: dayGroup } : {}}
       >
         {#snippet header()}

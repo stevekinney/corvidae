@@ -195,6 +195,7 @@ describe('KEYS insertion order', () => {
       'teardownOwed',
       'teardownSucceeded',
       'activityRetrying',
+      'activityRetryingPrefix',
       'teardownDeadLetter',
       'teardownDeadLetterPrefix',
       'teardownDeadLetterHistory',

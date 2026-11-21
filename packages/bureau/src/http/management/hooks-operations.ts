@@ -48,6 +48,7 @@ import { z } from 'zod';
 
 import { isSharedWebhook } from '../../hooks/workspace-hook-events.ts';
 import {
+  assertHookDeletable,
   type BureauHooks,
   HOOK_EVENT_KIND_MAXIMUM_LENGTH,
   HOOK_SECRET_MAXIMUM_LENGTH,
@@ -69,6 +70,7 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { dryRunField, dryRunResult, effect, effectAtLeast, orDryRun } from './dry-run.ts';
 
 /** What the hooks operations read from the handler's `host`. */
 export type BureauHooksOperationHost = BureauOwnershipHost & {
@@ -961,35 +963,65 @@ export const hooksReplaceSigningSecretOperation = defineOperation<
   },
 });
 
+const deleteInput = idInput.extend({ dryRun: dryRunField });
+const deleteAnswer = orDryRun(z.object({ hookId: z.string(), deleted: z.boolean() }));
+
+/** The most delivery records one read of a hook's deliveries returns. */
+const DELIVERY_PAGE = 200;
+
 export const hooksDeleteOperation = defineOperation<
-  typeof idInput,
-  z.ZodObject<{ hookId: z.ZodString; deleted: z.ZodBoolean }>,
+  typeof deleteInput,
+  typeof deleteAnswer,
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.delete',
   authorize: authorizeWorkspaceOperation('bureau.hooks.delete'),
   mcpExposable: false,
+  supportsDryRun: true,
   summary: 'Delete a hook',
   description:
-    'Deletes one of the caller’s hooks, its sealed signing secret and its delivery records; `bureau.hooks:write` deletes any owner’s, and anyone else is answered `NotFound`. A delivery in flight stops at its next attempt. Answers `{ hookId, deleted: true }`.',
+    'Deletes one of the caller’s hooks, its sealed signing secret and its delivery records; `bureau.hooks:write` deletes any owner’s, and anyone else is answered `NotFound`. A default hook, one a plugin declares (`declaredBy`), is refused with `InvalidParams` on `declaredBy`: turn it off instead. A delivery in flight stops at its next attempt. Answers `{ hookId, deleted: true }`. With `dryRun: true` nothing is deleted, no event is published and no audit entry is written: the answer is `{ dryRun: true, target, effects }`, whose `delivery-records` effect counts the delivery records the delete would remove and whose `deliveries-in-flight` effect counts the deliveries that would stop at their next attempt (each a floor, marked `atLeast`, when the hook has 200 or more delivery records, since one read holds no more), and a hook that is missing, not the caller’s or a default hook answers the fault the real call answers.',
   destructive: true,
   tags: ['Hooks'],
-  inputSchema: idInput,
-  outputSchema: z.object({ hookId: z.string(), deleted: z.boolean() }),
-  producibleFaults: ['NotFound', 'UnsupportedCapability'],
+  inputSchema: deleteInput,
+  outputSchema: deleteAnswer,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    const { hooks, hook } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    if (input.dryRun === true) {
+      try {
+        // The check `hooks.delete` makes before it writes, on the hook this call authorized.
+        assertHookDeletable(hook);
+      } catch (error) {
+        return faultOf(error);
+      }
+      const deliveries = await hooks.deliveries(input.hookId, { limit: DELIVERY_PAGE });
+      // One read holds at most `DELIVERY_PAGE` records, so a full one may have left more behind:
+      // both counts are floors then.
+      const truncated = deliveries.length >= DELIVERY_PAGE;
+      const counted = (kind: 'delivery-records' | 'deliveries-in-flight', count: number) =>
+        truncated ? effectAtLeast(kind, count) : effect(kind, count);
+      const inFlight = deliveries.filter((delivery) => delivery.status === 'pending').length;
+      return dryRunResult({ kind: 'hook', id: input.hookId }, [
+        counted('delivery-records', deliveries.length),
+        counted('deliveries-in-flight', inFlight),
+      ]);
+    }
     const actor = actorOf(principal);
-    const deleted = await hooks.delete(
-      input.hookId,
-      actor === undefined ? {} : { principal: actor },
-    );
-    if (!deleted) throw resourceNotFound('hook', input.hookId);
-    return { hookId: input.hookId, deleted };
+    try {
+      const deleted = await hooks.delete(
+        input.hookId,
+        actor === undefined ? {} : { principal: actor },
+      );
+      if (!deleted) throw resourceNotFound('hook', input.hookId);
+      return { hookId: input.hookId, deleted };
+    } catch (error) {
+      return faultOf(error);
+    }
   },
 });
 

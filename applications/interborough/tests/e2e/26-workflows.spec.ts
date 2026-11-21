@@ -15,7 +15,6 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
-import { newChatFromWorkflowsPath } from '../../src/lib/new-chat-address.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -197,11 +196,10 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         await expect(row(page, SEEDED_WORKFLOWS.digest)).toBeVisible();
 
-        const link = area(page).getByTestId('internal-workflows-card');
+        // A secondary control in the header beside New workflow (owner report, 2026-11-19).
+        const link = area(page).getByTestId('internal-workflows-action');
         await expect(link).toHaveAttribute('href', '/internal-workflows');
-        await expect(area(page).getByTestId('internal-workflows-count')).toHaveText(
-          WORKFLOW_COPY.list.internalCard.count(ENGINE_TYPES.length),
-        );
+        await expect(link).toHaveText(WORKFLOW_COPY.list.internalAction(ENGINE_TYPES.length));
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
         await checkA11y(`the list without the Bureau’s own types at ${width}px`);
 
@@ -262,18 +260,22 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
         await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
-        // The header keeps its "+", and the empty state has its two actions and the hint.
+        // The header and state each offer a way to internal workflows alongside New workflow.
         await expect(
           page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
         ).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
-        ).toHaveAttribute('href', newChatFromWorkflowsPath());
-        await expect(area(page).getByTestId('workflow-directory')).toHaveText(
-          await workflowDirectory(request),
-        );
-        // First use is the page: no filter row and no Internal workflows card.
-        await expect(area(page).getByTestId('internal-workflows-card')).toHaveCount(0);
+        ).toHaveCount(0);
+        await expect(
+          empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.internalAction }),
+        ).toHaveAttribute('href', '/internal-workflows');
+        await expect(area(page).getByTestId('internal-workflows-action')).toBeVisible();
+        const directory = await workflowDirectory(request);
+        await expect(empty).not.toContainText(directory);
+        await empty.getByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }).click();
+        await expect(area(page).getByTestId('file-location-directory')).toContainText(directory);
+        // First use is the page: no filter row.
         await expect(page.getByRole('radio')).toHaveCount(0);
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
         await checkA11y(`the list of a host with no workflow at ${width}px`);
@@ -455,7 +457,6 @@ test.describe('an agent-authored type', () => {
   for (const width of WIDTHS) {
     test(`leads with its agent, description, cadence and state, and its steps, and keeps its runs and the versions on tabs, at ${width} pixels`, async ({
       page,
-      request,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -489,8 +490,9 @@ test.describe('an agent-authored type', () => {
         `${SEEDED_WORKFLOWS.digest}.json`,
       );
       await openTab(root, WORKFLOW_COPY.page.tabs.code);
+      // Named relative to the home: a host path never shows (owner, 2026-11-19).
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, SEEDED_WORKFLOWS.digest),
+        `workflows/${SEEDED_WORKFLOWS.digest}.json`,
       );
       await openTab(root, WORKFLOW_COPY.page.tabs.overview);
 
@@ -555,7 +557,6 @@ test.describe('an invalid file', () => {
   for (const width of WIDTHS) {
     test(`shows its problem, its path, and delete and edit, with no definition, at ${width} pixels`, async ({
       page,
-      request,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -584,7 +585,7 @@ test.describe('an invalid file', () => {
       // Open Code leads to the file, read-only, with the banner and a way into the JSON editor.
       await root.getByRole('button', { name: WORKFLOW_COPY.page.problem.openCode }).click();
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, SEEDED_WORKFLOWS.broken),
+        `workflows/${SEEDED_WORKFLOWS.broken}.json`,
       );
       await expect(
         root.getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }),
@@ -856,7 +857,7 @@ test.describe('the editor', () => {
       const root = page.locator('[data-page="workflow-editor"]');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, 'e2e-editable'),
+        'workflows/e2e-editable.json',
       );
       await openJsonTab(root);
       const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
@@ -967,7 +968,7 @@ test.describe('the editor', () => {
     await expect(root.getByTestId('workflow-problem')).toContainText(
       'e2e-fixable.json can’t be read as a workflow:',
     );
-    await expect(root.getByTestId('workflow-file-path')).toHaveText(path);
+    await expect(root.getByTestId('workflow-file-path')).toHaveText('workflows/e2e-fixable.json');
     await checkA11y('an invalid file in the editor');
 
     await openJsonTab(root);

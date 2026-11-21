@@ -154,7 +154,6 @@
     {:else if error && isForbidden(error)}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={4}
         title="Retained result is locked"
         description={`${scopeReason('system:admin')} to read the retained value.`}
@@ -162,7 +161,6 @@
     {:else if error && faultTreatment(error).kind === 'not-found'}
       <EmptyState
         kind="done"
-        size="compact"
         headingLevel={4}
         title="Dead letter no longer retained"
         description="The server holds no dead letter for this task. It may have been cleared since this page loaded."

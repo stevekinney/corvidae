@@ -14,13 +14,14 @@
   import {
     Button,
     Checkbox,
+    EmptyState,
     FormActions,
     FormSection,
-    Link,
     Select,
     SettingRow,
     validateSchemaFormValue,
   } from '@lostgradient/cinder';
+  import { Cpu } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, onMount, untrack } from 'svelte';
 
@@ -38,6 +39,7 @@
     type SettingsSnapshot,
   } from '../../lib/bureau-settings.ts';
   import { getProviders, type ProviderModel } from '../../lib/host-providers.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
@@ -317,7 +319,7 @@
       <p class="weft-allowed__muted">
         {stale ? SETTINGS_COPY.stale.description : SETTINGS_COPY.changedElsewhere.description}
       </p>
-      <Button variant="secondary" size="sm" onclick={reset}>{SETTINGS_COPY.reloadAction}</Button>
+      <Button variant="secondary" size="sm" onclick={reset} label={SETTINGS_COPY.reloadAction} />
     </div>
   {/if}
 
@@ -347,23 +349,39 @@
     </FormSection>
   {:else}
     <div class="weft-allowed__models">
-      <FormSection grouped heading={copy.models.title} description={copy.models.description} />
+      <!-- With no model the empty state stands alone, under no "Models" heading (owner report, 2026-11-19). -->
+      {#if providers.isError || providers.isPending}
+        <FormSection grouped heading={copy.models.title} description={copy.models.description} />
+      {/if}
       {#if providers.isError}
         <p class="weft-allowed__muted" role="alert">
           {copy.models.loadFailed}
-          <Button variant="secondary" size="sm" onclick={() => void providers.refetch()}
-            >{copy.models.tryAgain}</Button
-          >
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => void providers.refetch()}
+            label={copy.models.tryAgain}
+          />
         </p>
       {:else if providers.isPending}
         <p class="weft-allowed__muted" role="status">{copy.models.loading}</p>
       {:else}
-        <p class="weft-allowed__muted" data-testid="allowed-models-empty">
-          {copy.models.empty}
-          <Link href={router.href(PROVIDERS_PATH)} underline="always" onclick={openProviders}
-            >{copy.models.goToProviders}</Link
-          >
-        </p>
+        <EmptyState
+          kind="first-use"
+          headingLevel={2}
+          title={copy.models.empty.title}
+          description={copy.models.empty.description}
+          actions={[
+            {
+              label: copy.models.goToProviders,
+              href: router.href(PROVIDERS_PATH),
+              onclick: openProviders,
+            },
+          ]}
+          data-testid="allowed-models-empty"
+        >
+          {#snippet icon()}<Cpu aria-hidden="true" />{/snippet}
+        </EmptyState>
       {/if}
     </div>
   {/if}
@@ -378,7 +396,7 @@
         <SettingRow
           id="weft-allowed-prefer"
           label={copy.preferences.prefer.label}
-          identifier={copy.preferences.prefer.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.preferences.prefer.identifier }}
           description={copy.preferences.prefer.description}
           disabled={held}
         >
@@ -400,7 +418,7 @@
         <SettingRow
           id="weft-allowed-effort"
           label={copy.preferences.effort.label}
-          identifier={copy.preferences.effort.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.preferences.effort.identifier }}
           description={copy.preferences.effort.description}
           disabled={held}
         >
@@ -433,13 +451,14 @@
     <FormActions sticky unsavedChanges={changes} error={failure} errorTitle={copy.saveFailed.title}>
       {#snippet summary()}{copy.effect}{/snippet}
       {#snippet end()}
-        <Button variant="secondary" disabled={saving} onclick={reset}>{copy.reset}</Button>
+        <Button variant="secondary" disabled={saving} onclick={reset} label={copy.reset} />
         <Button
           data-changes
           variant="primary"
           disabled={saving || locked}
-          onclick={() => void save()}>{copy.save}</Button
-        >
+          onclick={() => void save()}
+          label={copy.save}
+        />
       {/snippet}
     </FormActions>
   {/if}

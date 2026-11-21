@@ -40,6 +40,7 @@
 
   import {
     CONNECTION_MAX_ATTEMPTS,
+    CONNECTION_RETRY_LABEL,
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
@@ -51,7 +52,7 @@
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
-  import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
+  import { getHostPaths, workflowRelativePath } from '../../lib/host-paths.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
   import { router, scheduleDetailPath, workflowRunPath } from '../../lib/router.svelte.ts';
   import {
@@ -217,11 +218,9 @@
   const file = $derived(resolved?.kind === 'agent-authored' ? resolved.file : undefined);
   const document = $derived(file === undefined ? undefined : parseWorkflowText(file.text));
   const actions = $derived(file === undefined ? undefined : availableActions(file));
-  const path = $derived(
-    file === undefined
-      ? ''
-      : workflowFilePath(hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory, file.id),
-  );
+  // The file's path relative to the Interborough home, as the agent editor names an agent's: a host
+  // path never shows in a sentence (owner, 2026-11-19).
+  const path = $derived(file === undefined ? '' : workflowRelativePath(file.id));
 
   /** A write was refused because the file changed on disk after the page loaded. */
   let stale = $state(false);
@@ -734,12 +733,13 @@
       variant="secondary"
       size="sm"
       href={router.href(internalPath)}
-      onclick={(event) => go(event, internalPath)}>{copy.page.seeInternal}</Button
-    >
+      onclick={(event) => go(event, internalPath)}
+      label={copy.page.seeInternal}
+    />
   {:else if resolution.isPending}
     <!-- The route says what the page is, so its actions are there at once, off until the type loads. -->
-    <Button variant="secondary" size="sm" disabled>{copy.editAction}</Button>
-    <Button variant="primary" size="sm" disabled>{copy.page.startAction}</Button>
+    <Button variant="secondary" size="sm" disabled label={copy.editAction} />
+    <Button variant="primary" size="sm" disabled label={copy.page.startAction} />
   {/if}
   {#if file !== undefined && actions?.edit === true}
     <Button
@@ -748,8 +748,8 @@
       variant="secondary"
       size="sm"
       onclick={(event) => go(event, invalidFile ? editJsonPath : editPath)}
-      >{copy.editAction}</Button
-    >
+      label={copy.editAction}
+    />
   {/if}
   {#if canStart}
     <Button
@@ -757,8 +757,9 @@
       variant="primary"
       size="sm"
       href={router.href(runSetupPath)}
-      onclick={(event) => go(event, runSetupPath)}>{copy.page.startAction}</Button
-    >
+      onclick={(event) => go(event, runSetupPath)}
+      label={copy.page.startAction}
+    />
   {:else if file !== undefined && actions?.resume === true && file.paused}
     <!-- A paused file swaps Start run for Resume, and the menu does not repeat it. -->
     <Button
@@ -766,11 +767,12 @@
       variant="primary"
       size="sm"
       disabled={busy || file.hash === null}
-      onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
-    >
+      onclick={() => act(resume.mutate)}
+      label={copy.resumeAction}
+    />
   {:else if invalidFile}
     <!-- Off until the file is fixed, and the banner under the tabs says why. -->
-    <Button variant="primary" size="sm" aria-disabled="true">{copy.page.startAction}</Button>
+    <Button variant="primary" size="sm" aria-disabled="true" label={copy.page.startAction} />
   {/if}
   <WorkflowMoreMenu
     canSignal={actions?.signal === true}
@@ -845,6 +847,7 @@
   {#if connection.unreachable && !restartActivity.active}
     <Banner
       preset={connectionBannerPreset(connection)}
+      retryLabel={CONNECTION_RETRY_LABEL}
       subject={copy.page.offlineSubject}
       dataUpdatedAt={connection.lastHealthyAt}
       retryInSeconds={connection.retryInSeconds}
@@ -860,9 +863,12 @@
     <Alert variant="warning">
       <p class="ib-workflow__alert-title">{copy.stale.title}</p>
       <p class="ib-workflow__alert-body">{copy.stale.description}</p>
-      <Button variant="secondary" size="sm" onclick={() => void reload()}
-        >{copy.stale.action}</Button
-      >
+      <Button
+        variant="secondary"
+        size="sm"
+        onclick={() => void reload()}
+        label={copy.stale.action}
+      />
     </Alert>
   {/if}
 
@@ -975,7 +981,7 @@
     bind:open={confirmingDelete}
     name={heading}
     fileName={`${type}.json`}
-    directory={hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory}
+    directory={copy.fallbackDirectory}
     schedules={deleteSchedules}
     busy={removal.isPending}
     error={deleteError}

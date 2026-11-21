@@ -13,7 +13,6 @@ import {
   providerOf,
   referenceTotals,
   restartBackWords,
-  secretsDirectory,
   sourceKind,
   sourceWord,
   standingNames,
@@ -34,14 +33,14 @@ describe('statusOf', () => {
   test('words the loaded status', () => {
     expect(statusOf(standing({ name: 'a' }), true)).toEqual({
       label: PLUGINS_COPY.status.running,
-      dot: 'success',
+      variant: 'success',
     });
     // Neutral: amber is for what waits on the person, and a plugin that needs a key is not that.
-    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).dot).toBe('neutral');
-    expect(statusOf(standing({ name: 'a', enabled: false }), false).dot).toBe('neutral');
+    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).variant).toBe('neutral');
+    expect(statusOf(standing({ name: 'a', enabled: false }), false).variant).toBe('neutral');
     expect(statusOf(standing({ name: 'a', status: 'skipped' }), true)).toEqual({
       label: PLUGINS_COPY.status.notLoaded,
-      dot: 'danger',
+      variant: 'danger',
     });
   });
 
@@ -129,12 +128,7 @@ describe('what a plugin adds and what names it', () => {
     expect(inUseSentence(standing({ name: 'a', status: 'needs-setup' }))).toBeUndefined();
   });
 
-  test('says where a secret is kept and which model provider a plugin is', () => {
-    expect(secretsDirectory('/Users/steve/.interborough/secrets/anthropic-api-key')).toBe(
-      '~/.interborough/secrets',
-    );
-    expect(secretsDirectory('/srv/state/secrets/key')).toBe('/srv/state/secrets');
-    expect(secretsDirectory('ANTHROPIC_API_KEY')).toBe('ANTHROPIC_API_KEY');
+  test('says which model provider a plugin is', () => {
     expect(
       providerOf(
         standing({

@@ -170,8 +170,8 @@ describe('StackedListItem on a phone', () => {
     expect(row?.classList.contains('cinder-stacked-list-item--collapsed-actions')).toBe(false);
     const action = getByRole('link', { name: 'Verdict' });
     expect(action.getAttribute('href')).toBe('/verdict');
-    expect(action.getAttribute('data-cinder-size')).toBe('sm');
-    expect(action.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action.classList.contains('button-size-small')).toBe(true);
+    expect(action.classList.contains('button-variant-secondary')).toBe(true);
     cleanup();
     setPhone(false);
   });

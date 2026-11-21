@@ -63,10 +63,16 @@ const rail = (page: Page) => page.locator('.cinder-tool-call-rail');
 const railRow = (page: Page, tool: string): Locator =>
   rail(page).locator('[data-cinder-tool-call-row]').filter({ hasText: tool });
 
-/** The status word beside a chat's title, and the dot that comes with it. */
+/**
+ * The status word beside a chat's title, and the tone of the Badge it is drawn as (COR-2438: a
+ * Badge, as on the tool-call row; `dot` keeps its name for the tone).
+ */
 async function statusOf(page: Page): Promise<{ word: string; dot: string | null }> {
   const heading = header(page);
-  const dot = heading.locator('.cinder-status-dot').first();
+  const dot = heading
+    .locator('.cinder-page-header__status .cinder-badge')
+    .filter({ visible: true })
+    .first();
   const shown = await heading.innerText();
   const text = shown.replace(/\s+/g, ' ');
   return {
@@ -74,7 +80,7 @@ async function statusOf(page: Page): Promise<{ word: string; dot: string | null 
       ['Waiting on you', 'Running', 'Failed', 'Ended', 'Done'].find((word) =>
         text.includes(word),
       ) ?? '',
-    dot: (await dot.count()) === 0 ? null : await dot.getAttribute('data-cinder-status'),
+    dot: (await dot.count()) === 0 ? null : await dot.getAttribute('data-cinder-variant'),
   };
 }
 
@@ -185,9 +191,37 @@ test.describe('Chat ended by a restart (frame a: 19a, 19b, 19c, 19e)', () => {
     // The refund chat that was only waiting on a review is not ended by the restart: its review
     // stays waiting and answerable (frame i draws it held back by a plugin instead).
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
-    await expect(page.locator('[data-approval-decision]')).toBeVisible();
-    const status = await statusOf(page);
-    expect(status.word).toBe('Waiting on you');
+    const approval = page.locator('[data-approval-decision]');
+    await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+    await expect(header(page)).not.toContainText('Waiting on you');
+    const waiting = transcript(page)
+      .getByText('Waiting on you', { exact: true })
+      .filter({ visible: true });
+    await expect(waiting).toHaveCount(1);
+  });
+});
+
+test('shows one waiting status in the refund conversation on a phone (COR-2451)', async ({
+  page,
+}) => {
+  await connectProvider(page);
+  await page.clock.setFixedTime(SAMPLE_NOW_MILLISECONDS);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+  await expect(page.locator('[data-approval-decision]')).toBeVisible();
+
+  const status = transcript(page)
+    .getByText('Waiting on you', { exact: true })
+    .filter({ visible: true });
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 640 });
+    await expect(status).toHaveCount(1);
+  }
+
+  await captureForDesignReview(page, {
+    route: '/chats/:chat',
+    state: 'waiting once in the refund conversation on a phone',
+    source: SOURCE,
   });
 });
 
@@ -200,7 +234,11 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
 
     await expectTopBar(page);
     await expect(trail(page).getByRole('button', { name: /^Refund order 4471/ })).toBeVisible();
-    expect(await statusOf(page)).toEqual({ word: 'Waiting on you', dot: 'warning' });
+    const waitingStatus = transcript(page)
+      .getByText('Waiting on you', { exact: true })
+      .filter({ visible: true });
+    await expect(waitingStatus).toHaveCount(1);
+    await expect(waitingStatus).toBeVisible();
 
     const conversation = transcript(page);
     const message = conversation.getByText(REFUND_TITLE).last();
@@ -222,9 +260,9 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     // The composer is the one blocked row, not a banner.
     // Chat keeps the conversation and replaces only the composer (COR-2285 V4).
     await expect(blockedRow(page)).toContainText('Connect a model provider');
-    await expect(
-      blockedRow(page).getByRole('button', { name: 'Connect provider' }),
-    ).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(blockedRow(page).getByRole('button', { name: 'Connect provider' })).toContainClass(
+      'button-variant-primary',
+    );
     await expect(page.locator('[data-chat-availability]')).toHaveCount(0);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -258,7 +296,7 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
 });
 
 test.describe('Agent’s plugin is disabled (frame c: 19k)', () => {
-  test('shows a Release helper chat waiting on you, its message and its List changes row, and draws no banner (19k)', async ({
+  test('shows a Release helper approval held by its plugin, its message and its List changes row, and draws no banner (19k)', async ({
     page,
     request,
   }) => {
@@ -268,7 +306,10 @@ test.describe('Agent’s plugin is disabled (frame c: 19k)', () => {
     await expectTopBar(page);
     await expect(trail(page).getByRole('button', { name: HELD_BY_PLUGIN_TITLE })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name: HELD_BY_PLUGIN_TITLE })).toBeVisible();
-    expect(await statusOf(page)).toEqual({ word: 'Waiting on you', dot: 'warning' });
+    expect(await statusOf(page)).toEqual({ word: '', dot: null });
+    await expect(transcript(page).locator('.cinder-approval-card__state-word')).toHaveText(
+      'Unavailable',
+    );
 
     const user = transcript(page).locator('[data-role="user"], .chat-message--user').first();
     await expect(user).toContainText(HELD_BY_PLUGIN_TITLE);
@@ -388,12 +429,12 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
       source: SOURCE,
     });
 
-    // Once the host stops answering the banner counts the attempts and offers Retry now; the
+    // Once the host stops answering the banner counts the attempts and offers Try again; the
     // conversation is still readable.
     releaseRestart();
     await expect(banner).toHaveAttribute('data-cinder-preset', 'reconnecting');
     await expect(banner).toContainText('Reconnecting');
-    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(await opacityOf(card)).toBe(1);
   });
@@ -428,6 +469,8 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       'The reply stopped partway: the model provider dropped the connection.',
     );
     await expect(line.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.locator('.weft-chat-strip')).toHaveCount(0);
+    await expect(page.getByText('The agent did not answer', { exact: true })).toHaveCount(0);
     // The conversation stays live: a provider is connected, so the composer takes a message.
     await expect(page.getByRole('textbox', { name: /^Message/ })).toBeVisible();
     await expect(blockedRow(page)).toHaveCount(0);
@@ -458,9 +501,9 @@ test.describe('Chat not found (frame g: 19u)', () => {
 
     await expect(page.getByText('It may have been deleted, or the link is wrong.')).toBeVisible();
     const create = page.getByRole('link', { name: 'New chat' }).last();
-    await expect(create).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(create).toContainClass('button-variant-primary');
     const back = page.getByRole('link', { name: 'Back to chats' });
-    await expect(back).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(back).toContainClass('button-variant-secondary');
     await expect(page.getByRole('button', { name: 'Search everything' }).last()).toBeVisible();
 
     // The state is centred in the pane that holds the conversation.
@@ -476,8 +519,16 @@ test.describe('Chat not found (frame g: 19u)', () => {
       source: SOURCE,
     });
 
+    await expect(back).toHaveAttribute('href', /\/chats$/);
     await back.click();
-    await expect(page).toHaveURL(/\/chats$/);
+    // Beside the list the latest chat opens on arrival (COR-2445): the first row's chat, in place.
+    const first = page.locator('[data-chat]').first();
+    await expect(first).toBeVisible();
+    const firstId = await first.getAttribute('data-chat');
+    expect(firstId).not.toBeNull();
+    await expect(page).toHaveURL(
+      (url) => url.pathname === `/chats/${encodeURIComponent(firstId ?? '')}`,
+    );
   });
 });
 

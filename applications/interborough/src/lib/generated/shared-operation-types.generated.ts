@@ -154,9 +154,10 @@ export type SharedActionTypeAttemptsCreate_605da491 = {
     readonly workflowId: string | null;
   } | null;
 };
-export type SharedActorAgentNameCleanup_04ef488e = {
+export type SharedActorAgentNameAttention_ffceb9e6 = {
   readonly actor: string | null;
   readonly agentName: string | null;
+  readonly attention: ReadonlyArray<'stalled' | 'looping'>;
   readonly cleanup:
     | 'cancel-requested'
     | 'canceled'
@@ -168,6 +169,12 @@ export type SharedActorAgentNameCleanup_04ef488e = {
     | null;
   readonly contextId: string;
   readonly createdAt: string;
+  readonly failure: {
+    readonly errorCode: string | null;
+    readonly errorKind: string | null;
+    readonly step: { readonly index: number; readonly label: string } | null;
+    readonly toolCall: { readonly callId: string; readonly name: string } | null;
+  } | null;
   readonly finishReason: string | null;
   readonly id: string;
   readonly kind: 'chat' | 'schedule-fire' | 'catalog';
@@ -188,9 +195,17 @@ export type SharedActorAgentNameCleanup_04ef488e = {
     | SharedKindPluginWorkflowId_b0296d57
     | null;
   readonly owner: string;
+  readonly retrying: { readonly attempt: number; readonly label: string } | null;
+  readonly stalledSince: string | null;
   readonly status: 'submitted' | 'working' | 'input-required' | 'completed' | 'failed' | 'canceled';
   readonly statusMessage: string | null;
   readonly updatedAt: string;
+  readonly usage: {
+    readonly completionTokens: number;
+    readonly costUsd: number | null;
+    readonly promptTokens: number;
+    readonly totalTokens: number;
+  } | null;
   readonly wakeAt: string | null;
   readonly workflow: {
     readonly awaitingSignal: string | null;
@@ -360,7 +375,7 @@ export type SharedAgentNameAttemptsBounds_368afcde = {
   readonly validator: SharedNameVersion_ad3a242e;
   readonly validatorConfiguration: unknown;
 };
-export type SharedAgentNameBlockerContinue_89e36b6d = {
+export type SharedAgentNameBlockerContinue_57723630 = {
   readonly agentName: string | null;
   readonly blocker: {
     readonly kind: 'workflow-cannot-load';
@@ -383,6 +398,9 @@ export type SharedAgentNameBlockerContinue_89e36b6d = {
   readonly skippedCount: number | null;
   readonly skippedOccurrences: ReadonlyArray<string>;
   readonly status: 'active' | 'paused' | 'cancelled';
+  readonly target:
+    | { readonly agentName: string; readonly kind: 'agent' }
+    | { readonly kind: 'workflow'; readonly workflowType: string };
   readonly timeZone: string;
   readonly updatedAt: string;
   readonly workflowType: string;
@@ -675,14 +693,48 @@ export type SharedDescriptionExamplesId_fe67aedf = {
   readonly outputModes?: ReadonlyArray<string>;
   readonly tags: ReadonlyArray<string>;
 };
+export type SharedDryRunEffectsTarget_b07628bd = {
+  readonly dryRun: true;
+  readonly effects: ReadonlyArray<{
+    readonly atLeast?: true;
+    readonly count: number;
+    readonly kind:
+      | 'runs-in-progress'
+      | 'running-instances'
+      | 'schedules'
+      | 'goals'
+      | 'open-chats'
+      | 'queued-runs'
+      | 'running-switches'
+      | 'tool-grants'
+      | 'delivery-records'
+      | 'deliveries-in-flight'
+      | 'memories';
+  }>;
+  readonly target: {
+    readonly id: string;
+    readonly kind:
+      | 'task'
+      | 'workflow-run'
+      | 'goal'
+      | 'context'
+      | 'context-grants'
+      | 'agent'
+      | 'hook'
+      | 'memory'
+      | 'workflow'
+      | 'schedule'
+      | 'memory-embedding-switch';
+  };
+};
+export type SharedDryRunExpectedHashId_50848f66 = {
+  readonly dryRun?: boolean;
+  readonly expectedHash: string;
+  readonly id: string;
+};
 export type SharedEnabledThresholdPercent_0fce5636 = {
   readonly enabled: boolean;
   readonly thresholdPercent?: number;
-};
-export type SharedExpectedHashId_6df57fe0 = { readonly expectedHash: string; readonly id: string };
-export type SharedExpectedRevisionSchedule_3fabe1d3 = {
-  readonly expectedRevision?: number;
-  readonly scheduleId: string;
 };
 export type SharedFailedAtReasonSuperseded_bfabdc72 = {
   readonly failedAt: string;

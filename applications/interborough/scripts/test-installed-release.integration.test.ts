@@ -379,7 +379,7 @@ describe('installed-release harness arguments', () => {
             return {
               executable,
               sha256: 'fixture-hash',
-              manifest: { sourceSha: 'fixture-source' },
+              manifest: { sourceSha: 'a'.repeat(40), target: 'darwin-arm64' },
             };
           },
           runInstalled: async (executable, prefix, relocated) => {
@@ -393,6 +393,34 @@ describe('installed-release harness arguments', () => {
       expect(calls[0]).toContain('initial:');
       expect(calls[1]).toContain('relocated:');
       expect(evidence).toMatch(/installed-release-.*\.json$/);
+      expect(await Bun.file(evidence).json()).toMatchObject({
+        version: 1,
+        outcome: 'pass',
+        archive: {
+          sha256: 'fixture-hash',
+          manifest: { sourceSha: 'a'.repeat(40), target: 'darwin-arm64' },
+          target: 'darwin-arm64',
+        },
+        installedExecutable: 'interborough/bin/interborough',
+        producer: {
+          script: 'applications/interborough/scripts/test-installed-release.ts',
+          platform: process.platform,
+          architecture: process.arch,
+        },
+      });
+      const receipt = await Bun.file(evidence).json();
+      expect(receipt.configuration).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'bun.lock',
+            sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          }),
+          expect.objectContaining({
+            path: 'applications/interborough/scripts/build-release.ts',
+            sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          }),
+        ]),
+      );
     } finally {
       await rm(evidenceDirectory, { recursive: true, force: true });
     }

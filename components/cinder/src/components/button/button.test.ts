@@ -46,8 +46,10 @@ describe('Button rendering', () => {
       props: { label: 'tag', variant: 'danger', size: 'lg' },
     });
     const button = container.querySelector('button');
-    expect(button?.getAttribute('data-cinder-variant')).toBe('danger');
-    expect(button?.getAttribute('data-cinder-size')).toBe('lg');
+    expect(button?.classList.contains('button-variant-danger')).toBe(true);
+    expect(button?.classList.contains('button-size-large')).toBe(true);
+    expect(button?.hasAttribute('data-cinder-size')).toBe(false);
+    expect(button?.hasAttribute('data-cinder-variant')).toBe(false);
   });
 
   test('exposes the compact painted control and its touch target for visual harnesses', () => {
@@ -61,9 +63,9 @@ describe('Button rendering', () => {
       props: { label: 'Remove', variant: 'ghost-danger' },
     });
 
-    expect(container.querySelector('button')?.getAttribute('data-cinder-variant')).toBe(
-      'ghost-danger',
-    );
+    expect(
+      container.querySelector('button')?.classList.contains('button-variant-ghost-danger'),
+    ).toBe(true);
   });
 
   test('supports the ghost-accent variant', () => {
@@ -71,9 +73,9 @@ describe('Button rendering', () => {
       props: { label: 'Undo', variant: 'ghost-accent' },
     });
 
-    expect(container.querySelector('button')?.getAttribute('data-cinder-variant')).toBe(
-      'ghost-accent',
-    );
+    expect(
+      container.querySelector('button')?.classList.contains('button-variant-ghost-accent'),
+    ).toBe(true);
   });
 
   test('loading button is aria-disabled and aria-busy, and stays focusable (no native disabled)', () => {
@@ -190,18 +192,18 @@ describe('Button rendering', () => {
 });
 
 describe('Button variants — new additions', () => {
-  test('soft variant applies data-cinder-variant="soft"', () => {
+  test('soft variant applies the soft modifier class', () => {
     const { container } = render(Button, { props: { label: 'Soft', variant: 'soft' } });
-    expect(container.querySelector('button')?.getAttribute('data-cinder-variant')).toBe('soft');
+    expect(container.querySelector('button')?.classList.contains('button-variant-soft')).toBe(true);
   });
 
-  test('soft-danger variant applies data-cinder-variant="soft-danger"', () => {
+  test('soft-danger variant applies the soft-danger modifier class', () => {
     const { container } = render(Button, {
       props: { label: 'Delete', variant: 'soft-danger' },
     });
-    expect(container.querySelector('button')?.getAttribute('data-cinder-variant')).toBe(
-      'soft-danger',
-    );
+    expect(
+      container.querySelector('button')?.classList.contains('button-variant-soft-danger'),
+    ).toBe(true);
   });
 });
 
@@ -371,7 +373,7 @@ describe('Button ghost-danger disabled state', () => {
       props: { label: 'Delete', variant: 'ghost-danger', 'aria-disabled': 'true' },
     });
     const button = container.querySelector('button');
-    expect(button?.getAttribute('data-cinder-variant')).toBe('ghost-danger');
+    expect(button?.classList.contains('button-variant-ghost-danger')).toBe(true);
     expect(button?.getAttribute('aria-disabled')).toBe('true');
   });
 });

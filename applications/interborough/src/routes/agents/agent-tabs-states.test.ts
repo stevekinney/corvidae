@@ -145,10 +145,9 @@ describe('the empty Chats tab', () => {
     const links = await findAllByRole('link', { name: 'New chat' });
     // The empty state's New chat owns the page's one primary, so the header's is secondary (row 39p).
     await waitFor(() =>
-      expect(links.map((link) => link.getAttribute('data-cinder-variant'))).toEqual([
-        'secondary',
-        'primary',
-      ]),
+      expect(
+        links.map((link) => [...link.classList].find((name) => name.startsWith('button-variant-'))),
+      ).toEqual(['button-variant-secondary', 'button-variant-primary']),
     );
     await fireEvent.click(links[1] as HTMLElement);
 

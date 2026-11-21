@@ -4,9 +4,10 @@
    * to 76k). They are the Bureau's own list (`bureau.health.attention`), shown in the order it
    * gives, most recent first, with one glyph tile per kind and a secondary button for every
    * action. The count chip is neutral and these are never counted as Needs you. This list is the
-   * page's status: there is no banner above it. With nothing to report the card collapses to one
-   * row with a green check, and a list that could not be read says so rather than claiming all is
-   * well. Line two is the row's meta, so it sits directly under the title with the actions centred
+   * page's status: there is no banner above it. With nothing to report there is no card at all,
+   * only one quiet line, "Nothing needs attention." (`lib/quiet-line.svelte`, the rule Home follows,
+   * owner 2026-11-19), so no empty box leaves dead space under it; a list that could not be read
+   * says so rather than claiming all is well. Line two is the row's meta, so it sits directly under the title with the actions centred
    * beside both lines (rows 76h, 76i, 76u), not the third `detail` line a phone's row adds.
    */
   import {
@@ -20,7 +21,6 @@
   } from '@lostgradient/cinder';
   import {
     CalendarClock,
-    Check,
     Database,
     Plug,
     Server,
@@ -30,7 +30,9 @@
   } from '@lucide/svelte';
   import type { Component } from 'svelte';
 
+  import QuietLine from '../../lib/quiet-line.svelte';
   import { router } from '../../lib/router.svelte.ts';
+  import { listIsClear } from '../../lib/worth-showing.ts';
   import type { AttentionGlyph, AttentionRow } from './attention-rows.ts';
   import { HEALTH_ATTENTION_COPY as copy } from './health-copy.ts';
 
@@ -74,68 +76,64 @@
   }
 </script>
 
-<Card padding="none" class="ib-needs-attention" data-testid="needs-attention">
-  {#snippet header()}
-    <div class="ib-needs-attention__heading">
-      <h2 class="ib-needs-attention__title">{copy.title}</h2>
-      {#if rows !== undefined && rows.length > 0}
-        <Badge
-          variant="neutral"
-          size="sm"
-          aria-label={`${rows.length} ${rows.length === 1 ? 'problem' : 'problems'}`}
-        >
-          {rows.length}
-        </Badge>
-      {/if}
-    </div>
-  {/snippet}
+{#if listIsClear(rows) && !failed && !forbidden}
+  <QuietLine text={copy.allClear} data-testid="needs-attention-clear" />
+{:else}
+  <Card padding="none" class="ib-needs-attention" data-testid="needs-attention">
+    {#snippet header()}
+      <div class="ib-needs-attention__heading">
+        <h2 class="ib-needs-attention__title">{copy.title}</h2>
+        {#if rows !== undefined && rows.length > 0}
+          <Badge
+            variant="neutral"
+            size="sm"
+            aria-label={`${rows.length} ${rows.length === 1 ? 'problem' : 'problems'}`}
+          >
+            {rows.length}
+          </Badge>
+        {/if}
+      </div>
+    {/snippet}
 
-  {#if rows === undefined && !failed && !forbidden}
-    <Skeleton
-      variant="list"
-      rows={3}
-      statusMarker="dot"
-      statusColumn={false}
-      framed={false}
-      label={`Loading ${copy.title.toLowerCase()}`}
-    />
-  {:else if forbidden}
-    <p class="ib-needs-attention__note">{copy.lockedTitle}</p>
-  {:else if failed}
-    <div class="ib-needs-attention__note" role="alert">
-      <p class="ib-needs-attention__note-title">{copy.unavailableTitle}</p>
-      <p class="ib-needs-attention__note-line">{copy.unavailableLine}</p>
-      {#if onRetry !== undefined}
-        <Button variant="secondary" size="sm" label={copy.retry} onclick={onRetry} />
-      {/if}
-    </div>
-  {:else if rows !== undefined && rows.length === 0}
-    <ul class="ib-needs-attention__clear" aria-label={copy.listLabel}>
-      <StackedListItem lines leadingTone="success">
-        {#snippet leading()}<Check aria-hidden="true" size={16} />{/snippet}
-        {#snippet title()}{copy.allClearTitle}{/snippet}
-        {#snippet meta()}{copy.allClearLine}{/snippet}
-      </StackedListItem>
-    </ul>
-  {:else if rows !== undefined}
-    <DataList items={[...rows]} key={(row) => row.id} aria-label={copy.listLabel}>
-      {#snippet children(row)}
-        {@const Glyph = GLYPHS[row.glyph]}
-        <StackedListItem
-          lines
-          wrapMeta
-          leadingTone="warning"
-          actions={actionsOf(row)}
-          data-attention={row.id}
-        >
-          {#snippet leading()}<Glyph aria-hidden="true" size={16} />{/snippet}
-          {#snippet title()}{row.title}{/snippet}
-          {#snippet meta()}{row.description}{/snippet}
-        </StackedListItem>
-      {/snippet}
-    </DataList>
-  {/if}
-</Card>
+    {#if rows === undefined && !failed && !forbidden}
+      <Skeleton
+        variant="list"
+        rows={3}
+        statusMarker="dot"
+        statusColumn={false}
+        framed={false}
+        label={`Loading ${copy.title.toLowerCase()}`}
+      />
+    {:else if forbidden}
+      <p class="ib-needs-attention__note">{copy.lockedTitle}</p>
+    {:else if failed}
+      <div class="ib-needs-attention__note" role="alert">
+        <p class="ib-needs-attention__note-title">{copy.unavailableTitle}</p>
+        <p class="ib-needs-attention__note-line">{copy.unavailableLine}</p>
+        {#if onRetry !== undefined}
+          <Button variant="secondary" size="sm" label={copy.retry} onclick={onRetry} />
+        {/if}
+      </div>
+    {:else if rows !== undefined}
+      <DataList items={[...rows]} key={(row) => row.id} aria-label={copy.listLabel}>
+        {#snippet children(row)}
+          {@const Glyph = GLYPHS[row.glyph]}
+          <StackedListItem
+            lines
+            wrapMeta
+            leadingTone="warning"
+            actions={actionsOf(row)}
+            data-attention={row.id}
+          >
+            {#snippet leading()}<Glyph aria-hidden="true" size={16} />{/snippet}
+            {#snippet title()}{row.title}{/snippet}
+            {#snippet meta()}{row.description}{/snippet}
+          </StackedListItem>
+        {/snippet}
+      </DataList>
+    {/if}
+  </Card>
+{/if}
 
 <style>
   .ib-needs-attention__heading {
@@ -148,12 +146,6 @@
     margin: 0;
     font-size: var(--cinder-text-md);
     font-weight: 600;
-  }
-
-  .ib-needs-attention__clear {
-    margin: 0;
-    padding: 0;
-    list-style: none;
   }
 
   .ib-needs-attention__note {

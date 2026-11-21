@@ -9,8 +9,10 @@ import type { BureauCore } from './core';
 import { BureauError } from '../bureau-errors';
 import type { BureauToolbox } from '../runtime-composition-types';
 import { detachBestEffortPromise } from '../bureau-construction-support';
+import { peekTaskFailure } from '../run-outcome-details';
 import { serializeUnknownError } from '../serialization';
-import { settledTaskState } from '../task-registry';
+import { RunLoopingEvent, RunStalledEvent } from '../events';
+import { settledTaskState, type TaskUsage } from '../task-registry';
 
 /** The callables run bookkeeping reads from elsewhere in `constructBureau`. */
 export interface RunBookkeepingPeers {
@@ -105,6 +107,128 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
     });
   }
 
+  /**
+   * COR-2524 — keeps what a run has used and cost so far on its task record, after each step: a
+   * `usage.accumulated` action carries the run's token total and, when a request has been priced,
+   * its cost so far. A run no request of which was priced records `costUsd: null`, never `0`. The
+   * write is skipped once the task has settled, so a figure from a step cannot replace the run's own
+   * total, which rides the settlement.
+   */
+  function recordTaskUsage(action: {
+    readonly runId: string;
+    readonly type: string;
+    readonly detail: unknown;
+  }): void {
+    if (action.type !== 'usage.accumulated') return;
+    const detail = recordOf(action.detail);
+    const usage = usageOfDetail(recordOf(detail['totalUsage']), detail['totalCost']);
+    if (usage === undefined) return;
+    core.tasks.recordUsage(action.runId, usage).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not record the usage of task "${action.runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
+  }
+
+  /**
+   * COR-2526 — keeps whether a run is stalled on its task record, from the liveness snapshots of
+   * the run this process holds. Operative's own assessment decides: the Bureau records `stalled`
+   * when `alive-but-stalled` begins and clears it when the assessment changes (a pulse, the end of
+   * the tool call, a declared wait, an abort, the end of the run), and applies no threshold of its
+   * own. The instant is the Bureau's clock when the snapshot arrived: a snapshot's own times are
+   * monotonic and mean nothing to another process. The record is written on a change of the
+   * assessment, never per pulse; and `run.stalled` is announced only when that write began a stall,
+   * so a stall that is already recorded, or a write the task's settlement beat, announces nothing.
+   *
+   * The first snapshot is delivered synchronously and is written too: a run recovered from a dead
+   * holder starts healthy, while its record may still say stalled, and that stale stall must not
+   * outlive the process that saw it. A run's subscription ends with its terminal snapshot, and when
+   * the run is removed from the store.
+   */
+  const attentionSubscriptions = new Map<
+    string,
+    { readonly activeRun: unknown; readonly unsubscribe: () => void }
+  >();
+
+  function watchRunAttention(runId: string): void {
+    const activeRun = store.getRun(runId)?.activeRun;
+    if (activeRun === undefined) return;
+    const watching = attentionSubscriptions.get(runId);
+    // The same run registered twice is watched once; a run id the store now holds another run under
+    // (a recovery's) is watched afresh, and the earlier run's snapshots are no longer heard.
+    if (watching?.activeRun === activeRun) return;
+    watching?.unsubscribe();
+    // `stalled` is what was last asked for, so a snapshot that repeats it writes nothing; a write
+    // that rejects puts it back to what `recorded` says, so the next snapshot asks again. An answer
+    // of `false` (the record already said so, the task settled, another process holds the run now)
+    // is a decision, not a failure, and is not retried.
+    let stalled: boolean | undefined;
+    let recorded: boolean | undefined;
+    const subscription = activeRun.subscribeSnapshot((snapshot) => {
+      const nowStalled = snapshot.assessment === 'alive-but-stalled';
+      if (nowStalled === stalled) return;
+      stalled = nowStalled;
+      const since = core.runtimeServices.clock.nowISO();
+      core.tasks
+        .recordStall(runId, nowStalled ? since : null)
+        .then((changed) => {
+          recorded = nowStalled;
+          if (changed && nowStalled) core.emitter.dispatch(new RunStalledEvent(runId, since));
+          return changed;
+        })
+        .catch((error: unknown) => {
+          if (stalled === nowStalled) stalled = recorded;
+          diagnose({
+            level: 'error',
+            scope: 'task-registry',
+            message: `[bureau] Could not record whether task "${runId}" is stalled: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        });
+    });
+    attentionSubscriptions.set(runId, { activeRun, unsubscribe: () => subscription.unsubscribe() });
+  }
+
+  /** Ends a run's liveness subscription, as the run is removed from the store. */
+  function unwatchRunAttention(runId: string): void {
+    attentionSubscriptions.get(runId)?.unsubscribe();
+    attentionSubscriptions.delete(runId);
+  }
+
+  /**
+   * COR-2526 — marks a task `looping` from the first loop its toolbox reports (`loop-warning` or
+   * `loop-blocked`, which a run records as `toolbox.loop-warning` and `toolbox.loop-blocked`), and
+   * announces `run.looping` once, from the write that began it. Each report stays in the audit
+   * trail. A run stays looping until it settles: the settlement drops the mark.
+   */
+  function recordTaskLoop(action: { readonly runId: string; readonly type: string }): void {
+    const level =
+      action.type === 'toolbox.loop-warning'
+        ? 'warning'
+        : action.type === 'toolbox.loop-blocked'
+          ? 'blocked'
+          : undefined;
+    if (level === undefined) return;
+    const since = core.runtimeServices.clock.nowISO();
+    core.tasks
+      .recordLooping(action.runId, since)
+      .then((changed) => {
+        if (changed) core.emitter.dispatch(new RunLoopingEvent(action.runId, since, level));
+        return changed;
+      })
+      .catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record that task "${action.runId}" is looping: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+  }
+
   /** COR-1481 — records how a task ended, from the action that ended its run. */
   function recordTaskSettlement(action: {
     readonly runId: string;
@@ -134,15 +258,27 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
       const activeRun = store.getRun(action.runId)?.activeRun;
       if (activeRun !== undefined) void core.tasks.watchCleanup(action.runId, activeRun.closed());
     }
+    // COR-2524 — the run's own total, written in the same compare-and-swap as the settlement. A
+    // run with no priced request says `null`: the run's `costEstimate` is absent, never `0`.
+    const usage = usageOfDetail(
+      recordOf(detail['usage']),
+      recordOf(detail['costEstimate'])['totalCost'],
+    );
+    // COR-2531 — why the run failed, from what its own events said, kept on the task with the
+    // settlement. Read, not taken: the announcement of the settlement takes it for `run.error`.
+    const failedBecause =
+      status === 'failed' ? peekTaskFailure(core.runOutcomeDetails, action.runId) : undefined;
     void core.tasks
       .recordSettled(action.runId, {
         at: new Date(action.timestamp).toISOString(),
         status,
+        ...(failedBecause === undefined ? {} : { failure: failedBecause }),
         finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
         message:
           status === 'failed' && failure !== undefined && failure !== null
             ? serializeUnknownError(failure).slice(0, 1000)
             : null,
+        ...(usage === undefined ? {} : { usage }),
       })
       .catch((error: unknown) => {
         diagnose({
@@ -161,6 +297,36 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
     interruptedFields,
     dropPendingApprovalOverride,
     recordTaskWakeup,
+    recordTaskUsage,
+    recordTaskLoop,
+    watchRunAttention,
+    unwatchRunAttention,
     recordTaskSettlement,
+  };
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * A task's usage from a run's token total and its cost so far, or `undefined` when the tokens are
+ * not numbers. A cost that is not a finite number is `null`: unknown, never `0`.
+ */
+function usageOfDetail(tokens: Record<string, unknown>, cost: unknown): TaskUsage | undefined {
+  const { prompt, completion, total } = tokens;
+  if (
+    typeof prompt !== 'number' ||
+    typeof completion !== 'number' ||
+    typeof total !== 'number' ||
+    !Number.isFinite(prompt + completion + total)
+  ) {
+    return undefined;
+  }
+  return {
+    promptTokens: prompt,
+    completionTokens: completion,
+    totalTokens: total,
+    costUsd: typeof cost === 'number' && Number.isFinite(cost) ? cost : null,
   };
 }

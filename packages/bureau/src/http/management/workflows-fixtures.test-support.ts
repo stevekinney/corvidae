@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * A Bureau over a temporary workflow directory, served as the handler serves it to an API-key
  * caller and to the deployment's owner (COR-1527, COR-1528). The tests share it so the owner
@@ -9,7 +10,6 @@ import { join } from 'node:path';
 
 import { createAgent } from '@lostgradient/operative';
 import {
-  AUTHORIZATION_SCOPES,
   type AuthConfig,
   type AuthorizationScope,
   createOperationHandler,
@@ -30,7 +30,7 @@ import {
 import { authentication, type Handler, type RpcBody } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { workflowFileDirectory } from '../../sources/workflow-file-directory';
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 export interface Served {
@@ -67,6 +67,12 @@ export interface ServeOptions {
   readonly runtime?: BureauOptions<AgentDefinitions>['runtime'];
   /** `manual` leaves the engine's maintenance to the test, as a host that runs it on its own does. */
   readonly maintenance?: 'manual';
+  /**
+   * The store the Bureau keeps its state in, for a test that reads what it holds. A test that
+   * serves a second Bureau over the first's store, as a restart does, passes the same one to both.
+   * Defaults to a fresh one.
+   */
+  readonly storage?: Storage;
 }
 
 export async function serveWorkflows(
@@ -87,7 +93,7 @@ export async function serveWorkflows(
     ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     ...(options.maintenance === undefined ? {} : { maintenance: options.maintenance }),
-    storage: new MemoryStorage(),
+    storage: options.storage ?? new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
   });
@@ -100,9 +106,10 @@ export async function serveWorkflows(
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
   });
   const noBureauScopes = new Set<AuthorizationScope>(
-    [...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES)].filter(
-      (scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope),
-    ),
+    [
+      ...(unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal?.scopes ??
+        AUTHORIZATION_SCOPES),
+    ].filter((scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope)),
   );
   const ownerPrincipal: AuthenticatedPrincipal = Object.freeze({
     method: 'unauthenticated-local',

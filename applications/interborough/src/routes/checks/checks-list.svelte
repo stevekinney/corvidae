@@ -33,10 +33,10 @@
     type FacetDefinition,
     type FilterSegment,
   } from '@lostgradient/cinder';
-  import { ListChecks, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import {
     CHECK_SEGMENTS,
     CHECK_TIMES,
@@ -290,9 +290,8 @@
             variant="secondary"
             href={router.href(TASK_COPY.list.loadFailed.healthPath)}
             onclick={(event) => open(event, TASK_COPY.list.loadFailed.healthPath)}
-          >
-            {TASK_COPY.list.loadFailed.checkHealth}
-          </Button>
+            label={TASK_COPY.list.loadFailed.checkHealth}
+          />
         {/snippet}
       </ErrorState>
     {:else if loading}
@@ -305,32 +304,23 @@
         onRetry={retry}
       />
     {:else if firstUse}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19). A check is never made here, so the
+           state's one action makes the goal whose check fills the list. -->
+      <ListPageEmpty
+        view="checks"
         title={CHECKS_COPY.empty.title}
         description={CHECKS_COPY.empty.description}
-        headingLevel={2}
-      >
-        {#snippet icon()}<ListChecks aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          <Button
-            href={router.href(CHECKS_COPY.empty.path)}
-            variant="primary"
-            mutating
-            onclick={(event) => open(event, CHECKS_COPY.empty.path)}
-          >
-            {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
-            {CHECKS_COPY.empty.action}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        create={{
+          label: CHECKS_COPY.empty.action,
+          href: router.href(CHECKS_COPY.empty.path),
+          onclick: (event) => open(event, CHECKS_COPY.empty.path),
+        }}
+      />
     {:else}
       {@render bar()}
 
       {#if rows.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={CHECKS_COPY.noMatch.title}
           description={CHECKS_COPY.noMatch.description}

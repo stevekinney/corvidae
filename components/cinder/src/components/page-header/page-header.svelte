@@ -57,6 +57,7 @@
     statusPlacement = 'below',
     narrowActions = 'own-row',
     titleText,
+    titleLines = 2,
     class: className,
     ...rest
   }: PageHeaderProps = $props();
@@ -202,37 +203,36 @@
     {#if createAction.inertReason}
       <span id={createReasonId} class="cinder-sr-only">{createAction.inertReason}</span>
     {/if}
-    <Tooltip text={createAction.label} describe={false}>
-      {#if createAction.href !== undefined}
-        <Button
-          variant="secondary"
-          iconOnly
-          href={createAction.href}
-          aria-label={createAction.label}
-          aria-disabled={createAction.inertReason ? 'true' : undefined}
-          aria-describedby={createAction.inertReason ? createReasonId : undefined}
-          mutating={createAction.mutating ?? true}
-          onclick={createAction.onclick}
-          class="cinder-page-header__create"
-        >
-          {@render createIcon()}
-        </Button>
-      {:else}
-        <Button
-          variant="secondary"
-          iconOnly
-          aria-label={createAction.label}
-          aria-disabled={createAction.inertReason ? 'true' : undefined}
-          aria-describedby={createAction.inertReason ? createReasonId : undefined}
-          disabled={createAction.disabled}
-          mutating={createAction.mutating ?? true}
-          onclick={createAction.onclick}
-          class="cinder-page-header__create"
-        >
-          {@render createIcon()}
-        </Button>
-      {/if}
-    </Tooltip>
+    <!-- A labelled primary button, never an icon alone (owner report, 2026-11-19): the page's way to
+         make its first item reads the same in the header as in its empty state. Under a full-page
+         error it draws as secondary, so Try again is the one primary. -->
+    {#if createAction.href !== undefined}
+      <Button
+        variant="primary"
+        href={createAction.href}
+        aria-disabled={createAction.inertReason ? 'true' : undefined}
+        aria-describedby={createAction.inertReason ? createReasonId : undefined}
+        mutating={createAction.mutating ?? true}
+        onclick={createAction.onclick}
+        class="cinder-page-header__create"
+        leadingIcon={createIcon}
+      >
+        {createAction.label}
+      </Button>
+    {:else}
+      <Button
+        variant="primary"
+        aria-disabled={createAction.inertReason ? 'true' : undefined}
+        aria-describedby={createAction.inertReason ? createReasonId : undefined}
+        disabled={createAction.disabled}
+        mutating={createAction.mutating ?? true}
+        onclick={createAction.onclick}
+        class="cinder-page-header__create"
+        leadingIcon={createIcon}
+      >
+        {createAction.label}
+      </Button>
+    {/if}
   {/if}
 {/snippet}
 
@@ -338,6 +338,7 @@
   data-cinder-divider={divider ? 'true' : undefined}
   data-cinder-regular-actions={!useCompactActions && !hero ? '' : undefined}
   data-cinder-narrow-actions={narrowActions === 'beside-status' ? 'beside-status' : undefined}
+  data-cinder-title-lines={titleLines === 1 ? '1' : undefined}
   data-cinder-variant={resolvedVariant === 'default' ? undefined : resolvedVariant}
   data-cinder-tone={hero ? resolvedTone : undefined}
   data-theme={darkBand ? 'dark' : undefined}

@@ -608,6 +608,7 @@
             <Input
               id="workflow-builder-title"
               label={copy.titleLabel}
+              optional
               placeholder={copy.titlePlaceholder}
               value={view.title}
               onValueChange={changeTitle}
@@ -624,9 +625,12 @@
               <p class="weft-workflow-builder__id-line" data-testid="workflow-builder-id-line">
                 <span class="weft-workflow-builder__id-label">{copy.idLabel}</span>
                 <code class="weft-workflow-builder__id">{view.name}</code>
-                <Button variant="ghost-accent" size="sm" onclick={() => (idOpen = true)}
-                  >{copy.idChange}</Button
-                >
+                <Button
+                  variant="ghost-accent"
+                  size="sm"
+                  onclick={() => (idOpen = true)}
+                  label={copy.idChange}
+                />
                 <span class="weft-workflow-builder__note">{copy.idFixedOnCreate}</span>
               </p>
             {:else if view.title.trim() === '' || derivedId === ''}
@@ -655,9 +659,12 @@
               >
                 {#snippet descriptionAction()}
                   {' '}<code>{copy.idFile(view.name)}</code>{copy.idChangedDescription.after}
-                  <Button variant="ghost-accent" size="sm" onclick={useDerivedId}
-                    >{copy.useDerivedId}</Button
-                  >
+                  <Button
+                    variant="ghost-accent"
+                    size="sm"
+                    onclick={useDerivedId}
+                    label={copy.useDerivedId}
+                  />
                 {/snippet}
               </Input>
             {/if}
@@ -738,9 +745,11 @@
                 <p class="weft-workflow-builder__note" role="alert">
                   {copy.triggersFailed(view.trigger.id)}
                 </p>
-                <Button variant="secondary" onclick={() => void contributed.refetch()}>
-                  {copy.retryTriggers}
-                </Button>
+                <Button
+                  variant="secondary"
+                  onclick={() => void contributed.refetch()}
+                  label={copy.retryTriggers}
+                />
               </div>
             {:else if view.trigger?.kind === 'contributed'}
               <p class="weft-workflow-builder__note">

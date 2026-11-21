@@ -45,7 +45,7 @@ A preset keeps `role="region"` and fixes the defaults: the tone, the accessible 
 
 The bold lead is a `<strong>`, so it reads as emphasis, and the sentence after it is plain text in the same paragraph. The "as of" time is written out ("10:44 AM CST"), not a `<time>` element that a screen reader would re-read as a relative age.
 
-The Retry now button is a native `<button>` placed first in the actions region so it is the first stop after the message; its refresh glyph is `aria-hidden`. `restart-failed` puts Open Health (a link when `healthHref` is set) before Restart again. On a touch pointer each action has a 44px minimum height.
+The Try again button is a native `<button>` placed first in the actions region so it is the first stop after the message; its refresh glyph is `aria-hidden`. `restart-failed` puts Open Health (a link when `healthHref` is set) before Restart again. On a touch pointer each action has a 44px minimum height.
 
 Without a preset, `dataUpdatedAt` adds a stale-data notice: plain text with a `<time>` element carrying the ISO `datetime`, so the age reads as "Showing data from 2 minutes ago".
 

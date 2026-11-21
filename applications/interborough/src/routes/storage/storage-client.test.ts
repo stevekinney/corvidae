@@ -9,6 +9,7 @@ import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
+import { classifyFault } from '../../lib/faults.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import {
   storageConditionalBatch,
@@ -110,6 +111,44 @@ describe('storageGet', () => {
       message: 'Raw storage access requires storage:admin.',
       faultCode: undefined,
     });
+  });
+
+  test('an error body keeps the fault’s retryable and remediation, whichever shape its error is', async () => {
+    scripted = new ScriptedFetch();
+    scripted.respondWith(
+      new Response(
+        JSON.stringify({
+          error: 'Storage is read-only.',
+          retryable: false,
+          remediation: 'Ask an operator to lift the read-only mode.',
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const flat = await rejectionOf(storageGet(connection, 'k'));
+    expect(flat).toMatchObject({
+      status: 503,
+      message: 'Storage is read-only.',
+      retryable: false,
+      remediation: 'Ask an operator to lift the read-only mode.',
+    });
+    expect(classifyFault(flat)).toMatchObject({
+      retryable: false,
+      remediation: 'Ask an operator to lift the read-only mode.',
+    });
+
+    scripted.respondWith(
+      new Response(
+        JSON.stringify({
+          error: { code: 'Unavailable', message: 'Storage is busy.' },
+          retryable: true,
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const structured = await rejectionOf(storageGet(connection, 'k'));
+    expect(structured).toMatchObject({ faultCode: 'Unavailable', retryable: true });
+    expect((structured as HttpClientError).remediation).toBeUndefined();
   });
 
   test('a structured error body ({ error: { code, message } }) recovers faultCode when the code is a known FaultCode', async () => {

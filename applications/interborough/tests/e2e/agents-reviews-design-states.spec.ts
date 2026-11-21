@@ -17,6 +17,7 @@
 import type { APIRequestContext, Page, Route } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 
 import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { MEMORY_COPY } from '../../src/app/copy/memory.ts';
@@ -34,10 +35,10 @@ import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
 import { E2E_SKILLS } from './skills-support.ts';
-import { bureauCall, waitingReviewOf } from './task-support.ts';
+import { approveReview, bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
-const WIDTHS = [375, 1280] as const;
+const WIDTHS = designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 const SOURCE = 'agents-reviews-design-states.spec.ts';
 const settingsCopy = AGENT_PAGE_COPY.settings;
 
@@ -382,7 +383,7 @@ for (const width of WIDTHS) {
       await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
       const pane = page.locator('.ib-review-pane');
       await expect(pane).toContainText('Refund order order-1001');
-      await pane.getByRole('button', { name: 'Approve' }).click();
+      await approveReview(pane);
       await expect(page.getByTestId('review-gone')).toBeVisible();
       await captureForDesignReview(page, {
         route: '/reviews',

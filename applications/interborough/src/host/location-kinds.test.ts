@@ -23,6 +23,7 @@ import {
   describeContent,
   describeDatabaseState,
   localContentDirectory,
+  localDatabaseHome,
   redactDatabase,
   type ContentKinds,
   type DatabaseKinds,
@@ -62,6 +63,15 @@ describe('the default tables', () => {
     ).toBe('the configured Postgres database');
   });
 
+  test('name the home directory of a SQLite file, and none for a Postgres server', () => {
+    expect(localDatabaseHome({ kind: 'sqlite', path: '/home/interborough/database.sqlite' })).toBe(
+      '/home/interborough',
+    );
+    expect(
+      localDatabaseHome({ kind: 'postgres', url: `postgresql://user:${CREDENTIAL}@db/x` }),
+    ).toBeUndefined();
+  });
+
   test('name the local directory of a directory, and none for a bucket', () => {
     expect(localContentDirectory({ kind: 'directory', path: '/home/agents' })).toBe('/home/agents');
     expect(
@@ -89,6 +99,7 @@ describe('a table that holds an extra kind', () => {
         },
         redact: () => ({ kind: 'sqlite', path: '/redacted' }),
         describeState: () => 'the extra database',
+        localHome: () => '/the/extra/home',
       },
     };
     const clock = () => 7;
@@ -97,6 +108,7 @@ describe('a table that holds an extra kind', () => {
     expect(calls).toEqual([[extraDatabase, clock]]);
     expect(redactDatabase(extraDatabase, kinds)).toEqual({ kind: 'sqlite', path: '/redacted' });
     expect(describeDatabaseState(extraDatabase, kinds)).toBe('the extra database');
+    expect(localDatabaseHome(extraDatabase, kinds)).toBe('/the/extra/home');
     storage[Symbol.dispose]();
   });
 

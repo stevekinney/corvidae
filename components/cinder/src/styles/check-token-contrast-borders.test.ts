@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import type { OklchColor } from '../tokens/runtime/contrast/index.ts';
 import type { TranslucentColor } from './token-contrast-test-readers.ts';
 
 import {
@@ -11,7 +10,6 @@ import {
 import * as values from './check-token-contrast-test-values.ts';
 
 const {
-  accent,
   bg,
   border,
   borderContrast,
@@ -32,36 +30,14 @@ const {
   surfaceRaised,
   translucentContrastOn,
 } = values;
-describe('focus ring contrast (WCAG 1.4.11)', () => {
-  // --cinder-ring-color is one quiet ring in both arms: oklch(from accent 0.62 0.16 h).
-  it('ring clears 3:1 against the page background (both arms)', () => {
-    const ringLight: OklchColor = { l: 0.62, c: 0.16, h: accent.light.h };
-    const ringDark: OklchColor = { l: 0.62, c: 0.16, h: accent.dark.h };
-    expect(contrastRatio(wcagLuminance(ringLight), wcagLuminance(bg.light))).toBeGreaterThanOrEqual(
-      NON_TEXT,
-    );
-    expect(contrastRatio(wcagLuminance(ringDark), wcagLuminance(bg.dark))).toBeGreaterThanOrEqual(
-      NON_TEXT,
-    );
-  });
-});
-
 describe('focus ring contrast on the sidebar and the canvas (COR-2010 row 02o)', () => {
-  // The sidebar paints `--cinder-surface` (sidebar.css) beside the page canvas, and the design asks
-  // the shared quiet ring to read at 3.6:1 against both, in light and dark.
-  // COR-2311 darkened the light canvas to 97.5% so a card reads as a step; the ring held 3.5:1 there.
-  // COR-2308 moved the grey step to the surface the sidebar paints: at the revision's 97.3% the ring
-  // read 3.48:1, so the surface shipped at 97.6% (3.51:1). On 2026-11-15 the surface went white
-  // (3.70:1 or better) and the canvas took that grey step: 97.6% reads 3.51:1, 97.0% would read
-  // 3.45:1, which is why the canvas is not lighter. Dark: the
-  // ring reads 4.97:1 on the 18.5% surface and 5.28:1 on the 14.5% canvas.
+  const ring = readOklchToken('--cinder-ring-color');
   const SIDEBAR_RING_FLOOR = 3.5;
   for (const arm of ['light', 'dark'] as const) {
     for (const [groundName, ground] of Object.entries({ sidebar: surface, canvas: bg })) {
       it(`${arm}: the ring reads at least ${SIDEBAR_RING_FLOOR}:1 on the ${groundName}`, () => {
-        const ring: OklchColor = { l: 0.62, c: 0.16, h: accent[arm].h };
         expect(
-          contrastRatio(wcagLuminance(ring), wcagLuminance(ground[arm])),
+          contrastRatio(wcagLuminance(ring[arm]), wcagLuminance(ground[arm])),
         ).toBeGreaterThanOrEqual(SIDEBAR_RING_FLOOR);
       });
     }
@@ -300,8 +276,10 @@ describe('border-on-surface contrast', () => {
     expect(borderMuted.dark.alpha).toBe(0.08);
     expect(border.dark.alpha).toBe(0.12);
     expect(borderStrong.dark.alpha).toBe(0.15);
-    expect(borderMuted.light.alpha).toBe(0.05);
-    expect(border.light.alpha).toBe(0.09);
+    // Light mode read faded (owner, 2026-11-19): its structural tiers are 9%, 16% and 24%.
+    expect(borderMuted.light.alpha).toBe(0.09);
+    expect(border.light.alpha).toBe(0.16);
+    expect(borderStrong.light.alpha).toBe(0.24);
   });
 
   it('the dark contrast tier keeps its 56% step on every dark surface', () => {
@@ -341,9 +319,11 @@ describe('border-on-surface contrast', () => {
     expect(borderContrast.dark.alpha).toBe(1);
   });
 
-  it('the control edge is 32% of the ink at rest and 42% on hover in light, 38% and 44% in dark', () => {
-    expect(borderControl.light.alpha).toBe(0.32);
-    expect(borderControlHover.light.alpha).toBe(0.42);
+  // Owner, 2026-11-19: light mode read faded. The light control edge rose to 50% at rest and 60% on
+  // hover, which clears 3:1 on the canvas and the panels (`text-on-surface-contrast.test.ts`).
+  it('the control edge is 50% of the ink at rest and 60% on hover in light, 38% and 44% in dark', () => {
+    expect(borderControl.light.alpha).toBe(0.5);
+    expect(borderControlHover.light.alpha).toBe(0.6);
     expect(borderControl.dark.alpha).toBe(0.38);
     expect(borderControlHover.dark.alpha).toBe(0.44);
   });

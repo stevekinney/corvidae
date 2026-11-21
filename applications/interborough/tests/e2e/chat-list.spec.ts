@@ -64,17 +64,19 @@ const list = (page: Page) => page.getByRole('region', { name: 'Chats' });
 const row = (page: Page, title: string) => page.locator('[data-chat]').filter({ hasText: title });
 
 test.describe('the chat list on the sample world', () => {
-  test('is "Chats" with a secondary "+" and a Search chats field below it (16c)', async ({
+  test('is "Chats" with a labelled primary New chat and a Search chats field below it (16c)', async ({
     page,
   }) => {
     await openChats(page);
     const header = list(page).locator('header');
-    await expect(header.getByRole('heading', { level: 1, name: 'Chats' })).toBeVisible();
+    // Beside the list the latest chat opens (COR-2445), whose title is the page's level-one
+    // heading, so the list's own heading is a level below it.
+    await expect(header.getByRole('heading', { name: 'Chats' })).toBeVisible();
     const plus = header.getByRole('link', { name: 'New chat' });
-    await expect(plus).toHaveAttribute('data-cinder-variant', 'secondary');
+    // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
+    await expect(plus).toContainClass('button-variant-primary');
+    await expect(plus).toHaveText('New chat');
     await expect(plus).toHaveAttribute('href', '/chats/new');
-    await plus.hover();
-    await expect(page.getByRole('tooltip').filter({ hasText: 'New chat' })).toBeVisible();
     const field = header.getByRole('searchbox', { name: 'Search chats' });
     const plusBox = await plus.boundingBox();
     const fieldBox = await field.boundingBox();
@@ -83,16 +85,16 @@ test.describe('the chat list on the sample world', () => {
     );
   });
 
-  test('lists the chats under their days, each band naming Central time (16f, 16g, 11g)', async ({
+  test('lists chats by day and names the time zone once (16f, 16g, 11g, COR-2451)', async ({
     page,
   }) => {
     await openChats(page);
     const bands = list(page).locator('.cinder-data-list-group__header');
     await expect(bands).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday, Sunday, Nov 1\s*Central time$/,
-      /^Friday, Oct 30\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday, Sunday, Nov 1',
+      'Friday, Oct 30',
+      'Thursday, Oct 29',
     ]);
     const refund = row(page, 'Refund order 4471');
     await expect(refund).toContainText('10:42 AM');
@@ -162,6 +164,23 @@ test.describe('the chat list on the sample world', () => {
     await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
   });
 
+  test('opens the first chat the search finds when it hides the automatic selection', async ({
+    page,
+  }) => {
+    await openChats(page);
+    const hello = row(page, 'Say hello').getByRole('link');
+    await expect(page.locator('[data-chat]').first().getByRole('link')).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    await expect(hello).not.toHaveAttribute('aria-current', 'true');
+    const search = list(page).getByRole('searchbox', { name: 'Search chats' });
+    await search.fill('Say hello');
+    await expect(hello).toHaveAttribute('aria-current', 'true');
+    await expect(search).toBeFocused();
+    await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
+  });
+
   test('keeps the open chat open when a search leaves it out of the list', async ({ page }) => {
     await openChats(page);
     await row(page, 'Say hello').getByRole('link').click();
@@ -185,7 +204,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
     const detailBefore = await detail.boundingBox();
 
-    // One control in one place: on the rail at the start edge, not beside the list's "+".
+    // One control: a handle on the divider, never in the header beside the list's "+" (COR-2438).
     const hide = page.getByRole('button', { name: 'Hide chats' });
     await expect(hide).toBeVisible();
     await expect(list(page).getByRole('button', { name: 'Hide chats' })).toHaveCount(0);
@@ -216,6 +235,48 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
     await expect(page.getByRole('button', { name: 'Hide chats' })).toBeFocused();
   });
+
+  test('puts Hide chats on the divider inside the list pane, with its own icon, and starts the title on the search field’s edge, at 1280 pixels (COR-2438)', async ({
+    page,
+  }) => {
+    await openChats(page, 1280, `/chats/${SAMPLE_WORLD_THREADS.sayHello}`);
+    await expect(
+      page.getByRole('region', { name: 'Open chat' }).getByRole('heading', { name: 'Say hello' }),
+    ).toBeVisible();
+    const read = await page.evaluate(() => {
+      const pane = document.querySelector('.cinder-list-detail__list');
+      const title = pane?.querySelector('.ib-chats__title h1, .ib-chats__title h2');
+      const search = pane?.querySelector('.cinder-search-field, input[type="search"]');
+      const toggle = document.querySelector('.cinder-list-detail__list-toggle');
+      if (!pane || !title || !search || !toggle) return undefined;
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const words = [...range.getClientRects()].find((rect) => rect.width > 0);
+      const box = (element: Element) => element.getBoundingClientRect();
+      return {
+        pane: box(pane).toJSON(),
+        titleLeft: words?.left ?? box(title).left,
+        searchLeft: box(search).left,
+        toggle: box(toggle).toJSON(),
+        inHeader: toggle.closest('.cinder-list-detail__header') !== null,
+        icon: toggle.querySelector('svg')?.getAttribute('class') ?? '',
+      };
+    });
+    expect(read).toBeDefined();
+    expect(Math.abs(read!.titleLeft - read!.searchLeft)).toBeLessThanOrEqual(1);
+    expect(read!.inHeader).toBe(false);
+    expect(read!.toggle.left).toBeGreaterThanOrEqual(read!.pane.left - 0.5);
+    expect(read!.toggle.right).toBeLessThanOrEqual(read!.pane.right + 0.5);
+    expect(read!.toggle.top).toBeGreaterThanOrEqual(read!.pane.top - 0.5);
+    expect(read!.toggle.bottom).toBeLessThanOrEqual(read!.pane.bottom + 0.5);
+    // Its own icon, not the sidebar's panel icon.
+    expect(read!.icon).not.toMatch(/panel-left/);
+    // Reachable by keyboard, and shown once it has focus.
+    const hide = page.getByRole('button', { name: 'Hide chats' });
+    await hide.focus();
+    await expect(hide).toBeFocused();
+    await expect(page.locator('.cinder-list-detail__toggle')).toHaveCSS('opacity', '1');
+  });
 });
 
 test.describe('one left edge for the open chat (COR-2327 B4)', () => {
@@ -243,7 +304,7 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
         composer: left(region.querySelector('.chat-input-area'), true),
       };
       region
-        .querySelectorAll('.weft-chat-head > .cinder-alert, .weft-chat-head > [role="alert"]')
+        .querySelectorAll('.weft-chat-alerts > .cinder-alert, .weft-chat-alerts > [role="alert"]')
         .forEach((alert, index) => (edges[`alert ${index}`] = left(alert)));
       return edges;
     });
@@ -259,7 +320,7 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
     await expect(page.locator('.chat-timeline').first()).toBeVisible();
     if (expected.includes('runs')) await expect(open.locator('.weft-chat-strip')).toBeVisible();
     if (expected.includes('alert 0')) {
-      await expect(open.locator('.weft-chat-head > .cinder-alert').first()).toBeVisible();
+      await expect(open.locator('.weft-chat-alerts > .cinder-alert').first()).toBeVisible();
     }
     const edges = await leftEdges(page);
     const drawn = Object.entries(edges).filter(
@@ -376,22 +437,21 @@ test.describe('the chat list at other widths', () => {
     });
   });
 
-  test('on a phone is its own screen: "Chat", the "+", day bands and rows, with no search (06l)', async ({
+  test('on a phone is its own screen: "Chat", New chat, day bands and rows, with no search (06l)', async ({
     page,
   }) => {
     await openChats(page, 375);
     const header = list(page).locator('header');
     await expect(header.getByRole('heading', { level: 1, name: 'Chat' })).toBeVisible();
-    await expect(header.getByRole('link', { name: 'New chat' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(header.getByRole('link', { name: 'New chat' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(header.getByRole('searchbox')).toHaveCount(0);
     await expect(list(page).locator('.cinder-data-list-group__header')).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday\s*Central time$/,
-      /^Friday, Oct 30\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday',
+      'Friday, Oct 30',
+      'Thursday, Oct 29',
     ]);
     const scrolls = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -416,7 +476,7 @@ test.describe('the chat list at other widths', () => {
 });
 
 test.describe('the states of the chat list', () => {
-  test('first use is "No chats yet" with the only primary New chat, and the "+" stays secondary (17u)', async ({
+  test('first use is one page with "No chats yet" and the only primary New chat, with no list pane (17u, COR-2438 21a)', async ({
     page,
   }) => {
     // Nothing is waiting on anyone either: a chat a pending review names is listed on its own.
@@ -431,19 +491,101 @@ test.describe('the states of the chat list', () => {
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/chats');
-    const state = list(page).locator('.cinder-empty-state');
-    await expect(state.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
+    const state = page.getByTestId('chats-first-use');
+    await expect(state.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
     await expect(state).toContainText('Start one with an agent.');
-    await expect(state.getByRole('link', { name: 'New chat' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(state.getByRole('link', { name: 'New chat' })).toContainClass(
+      'button-variant-primary',
     );
-    await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveCount(1);
-    await expect(
-      list(page).locator('header').getByRole('link', { name: 'New chat' }),
-    ).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(page.locator('main .button-variant-primary')).toHaveCount(1);
+    // One empty state: no list pane and no "No chat open" beside it.
+    await expect(list(page)).toHaveCount(0);
+    await expect(page.locator('main .cinder-empty-state')).toHaveCount(1);
+    await expect(page.getByText('No chat open')).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats', state: 'first use', source: SOURCE });
   });
+
+  // COR-2438 21b, 21e: with no chat, the page follows whether a chat can work: no provider asks for
+  // one first, a provider with no agent asks for an agent, and New chat is never offered then.
+  for (const theme of ['light', 'dark'] as const) {
+    for (const width of [1280, 375]) {
+      for (const setup of [
+        {
+          name: 'no provider',
+          connected: false,
+          title: 'Connect a provider first',
+          action: 'Connect a provider',
+          href: '/settings/models',
+        },
+        {
+          name: 'no agent',
+          connected: true,
+          title: 'Create an agent first',
+          action: 'Create an agent',
+          href: '/agents/new',
+        },
+      ] as const) {
+        test(`first use with ${setup.name} says so and links to the missing step, at ${width} pixels (${theme})`, async ({
+          page,
+          checkA11y,
+        }) => {
+          await page.addInitScript((selected) => {
+            localStorage.setItem('weft-ui-theme', selected);
+          }, theme);
+          await answerOperation(page, 'bureau.reviews.list', (route, id) =>
+            route.fulfill({ json: { jsonrpc: '2.0', id, result: { reviews: [] } } }),
+          );
+          await answerOperation(page, 'bureau.contexts.list', (route, id) =>
+            route.fulfill({
+              json: { jsonrpc: '2.0', id, result: { contexts: [], nextOffset: null } },
+            }),
+          );
+          await answerOperation(page, 'bureau.agents.list', (route, id) =>
+            route.fulfill({ json: { jsonrpc: '2.0', id, result: { agents: [] } } }),
+          );
+          await page.route('**/host/providers', (route) =>
+            route.fulfill({
+              json: {
+                configurationRevision: null,
+                providers: [
+                  {
+                    name: 'anthropic',
+                    configured: setup.connected,
+                    hasKey: setup.connected,
+                    connected: setup.connected,
+                  },
+                ],
+                catalog: [],
+                models: [],
+              },
+            }),
+          );
+          await page.clock.setFixedTime(SAMPLE_NOW);
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto('/chats');
+
+          const state = page.getByTestId('chats-first-use');
+          await expect(state.getByRole('heading', { level: 1 })).toHaveText(
+            width === 375 ? 'Chat' : 'Chats',
+          );
+          await expect(state.getByRole('heading', { level: 2, name: setup.title })).toBeVisible();
+          await expect(state.getByRole('link', { name: setup.action })).toHaveAttribute(
+            'href',
+            setup.href,
+          );
+          await expect(page.locator('main a[href="/chats/new"]')).toHaveCount(0);
+          await expect(list(page)).toHaveCount(0);
+          await expect(page.locator('main .cinder-empty-state')).toHaveCount(1);
+          await checkA11y(`chat first use with ${setup.name} at ${width}px (${theme})`);
+          await captureForDesignReview(page, {
+            route: '/chats',
+            state: `first use with ${setup.name} at ${width} (${theme})`,
+            source: SOURCE,
+          });
+        });
+      }
+    }
+  }
 
   test('a search with no results says what was searched and offers Clear search (17v)', async ({
     page,
@@ -455,6 +597,8 @@ test.describe('the states of the chat list', () => {
       state.getByRole('heading', { level: 3, name: 'No chats match “parcelly”' }),
     ).toBeVisible();
     await expect(state).toContainText('Check the spelling or try another word.');
+    await expect(page).toHaveURL(/\/chats$/);
+    await expect(page.getByRole('heading', { name: 'Pick a chat' })).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats', state: 'no results', source: SOURCE });
     await state.getByRole('button', { name: 'Clear search' }).click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
@@ -508,9 +652,8 @@ test.describe('the states of the chat list', () => {
       state.getByRole('heading', { level: 3, name: 'Couldn’t load chats' }),
     ).toBeVisible();
     await expect(state).toContainText('Interborough didn’t send them back.');
-    await expect(state.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(state.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-secondary',
     );
     // The rest of the page is live: the shell, the header, and the pane beside the list.
     await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible();

@@ -15,9 +15,12 @@ import {
   originatingMessageText,
   settledTaskState,
   TASK_CONTEXT_INDEX_KEY_PREFIX,
+  TASK_OWNER_LOST_FINISH_REASON,
   TASK_RECORD_KEY_PREFIX,
   type TaskCleanupState,
+  type TaskRecord,
   type TaskRegistryHost,
+  type TaskView,
 } from './task-registry';
 import type { TaskOrigin } from './task-origin';
 import { notificationOutboxKey } from './notifications/notification-outbox';
@@ -56,6 +59,10 @@ type HostState = {
   childOutcome: 'requested' | 'already-terminal' | 'not-found';
   /** Every durable run the host was asked to cancel. */
   durableCancelled: string[];
+  /** The runs whose live workflow claim another process now holds. */
+  claimedElsewhere: Set<string>;
+  /** Runs after a claim read and before the write it fences: where a takeover can land. */
+  afterClaimRead?: (taskId: string) => Promise<void> | void;
 };
 
 function build(
@@ -64,6 +71,7 @@ function build(
     kv?: ConditionalTextValueStore;
     onSettled?: Parameters<typeof createTaskRegistry>[0]['onSettled'];
     onCleanupAcknowledged?: Parameters<typeof createTaskRegistry>[0]['onCleanupAcknowledged'];
+    processId?: string;
   } = {},
 ) {
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
@@ -77,6 +85,7 @@ function build(
     childCancelled: [],
     childOutcome: 'requested',
     durableCancelled: [],
+    claimedElsewhere: new Set(),
     ...state,
   };
   const diagnostics: string[] = [];
@@ -109,6 +118,15 @@ function build(
       held.durableCancelled.push(taskId);
       return held.durable;
     },
+    // The claim's holder record lives in the registry's own store here, as Weft's lives in the
+    // store Bureau's registry shares; it is read before `elsewhere` is judged, as the Bureau does.
+    claimFence: async (taskId) => {
+      const key = `claim-holder:${taskId}`;
+      const expectedValue = await kv.get(key);
+      const elsewhere = held.claimedElsewhere.has(taskId);
+      await held.afterClaimRead?.(taskId);
+      return { elsewhere, holder: { key, expectedValue } };
+    },
     sleep: (milliseconds) =>
       new Promise<void>((resolve) => {
         runtime.timers.setTimeout(resolve, milliseconds);
@@ -123,6 +141,7 @@ function build(
     diagnose: (message) => diagnostics.push(message),
     onSettled: options.onSettled,
     onCleanupAcknowledged: options.onCleanupAcknowledged,
+    ...(options.processId === undefined ? {} : { processId: options.processId }),
   });
   return { registry, kv, host, held, runtime, diagnostics };
 }
@@ -149,6 +168,26 @@ async function admit(
     message: `message of ${taskId}`,
     ...overrides,
   });
+}
+
+/** One field of a task's view, or `undefined` for a task with none. */
+async function viewField<K extends keyof TaskView>(
+  registry: ReturnType<typeof build>['registry'],
+  taskId: string,
+  key: K,
+): Promise<TaskView[K] | undefined> {
+  const view = await registry.get(taskId);
+  return view?.[key];
+}
+
+/** One field of a task's record as stored, or `undefined` for a task with none. */
+async function recordField<K extends keyof TaskRecord>(
+  registry: ReturnType<typeof build>['registry'],
+  taskId: string,
+  key: K,
+): Promise<TaskRecord[K] | undefined> {
+  const record = await registry.record(taskId);
+  return record?.[key];
 }
 
 describe('the task record keys', () => {
@@ -1903,5 +1942,550 @@ describe('redactSettlement (COR-1934)', () => {
     expect(await registry.redactSettlement('child-1')).toBe(true);
     expect(await registry.history('child-1')).toEqual([]);
     expect(await registry.redactSettlement('child-1')).toBe(false);
+  });
+});
+
+describe('usage and cost (COR-2524)', () => {
+  const FIRST_STEP = { promptTokens: 10, completionTokens: 5, totalTokens: 15, costUsd: 0.25 };
+  const SECOND_STEP = { promptTokens: 20, completionTokens: 10, totalTokens: 30, costUsd: 0.5 };
+  const TOTAL = { promptTokens: 21, completionTokens: 11, totalTokens: 32, costUsd: 0.52 };
+  const SETTLEMENT = {
+    at: '2026-10-18T01:00:00.000Z',
+    status: 'completed' as const,
+    finishReason: 'stop',
+    message: null,
+  };
+
+  it('reads a task with no recorded usage as null, and a record written before the field as it was', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1');
+    expect(await viewField(registry, 'run-1', 'usage')).toBeNull();
+
+    // A record as the previous release wrote it: no `usage` key at all.
+    const stored = JSON.parse((await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`)) as string);
+    expect('usage' in stored).toBe(false);
+    expect(await recordField(registry, 'run-1', 'usage')).toBeUndefined();
+    expect(await viewField(registry, 'run-1', 'usage')).toBeNull();
+  });
+
+  it('keeps the latest step figure, moves no revision, and writes nothing for an unchanged figure', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1');
+    const before = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+
+    await registry.recordUsage('run-1', FIRST_STEP);
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(SECOND_STEP);
+    expect(await recordField(registry, 'run-1', 'revision')).toBeUndefined();
+
+    const after = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`)).toBe(after);
+    expect(after).not.toBe(before);
+  });
+
+  it('applies a task’s figures in the order they were asked', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await Promise.all([
+      registry.recordUsage('run-1', FIRST_STEP),
+      registry.recordUsage('run-1', SECOND_STEP),
+    ]);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(SECOND_STEP);
+  });
+
+  it('records a cost of null, never 0, for a run with nothing priced', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', { ...FIRST_STEP, costUsd: null });
+    const usage = await viewField(registry, 'run-1', 'usage');
+    expect(usage?.costUsd).toBeNull();
+  });
+
+  it('replaces the step figure with the run’s total in the settlement’s own write, and refuses a later step', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+    await registry.recordSettled('run-1', { ...SETTLEMENT, usage: TOTAL });
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(TOTAL);
+    expect(await recordField(registry, 'run-1', 'settled')).toEqual(SETTLEMENT);
+
+    // A step figure that lands after the settlement is stale and is never written.
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(TOTAL);
+  });
+
+  it('leaves the last step figure standing when another process settles the task without one', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+    await registry.recordSettled('run-1', {
+      ...SETTLEMENT,
+      status: 'canceled',
+      finishReason: 'aborted',
+    });
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(FIRST_STEP);
+  });
+
+  it('(m) takes no figure from a process another live claim has replaced, and takes it again once the claim is gone', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+
+    // This process was deposed: the run's figures are the successor's to write.
+    held.claimedElsewhere.add('run-1');
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(FIRST_STEP);
+
+    held.claimedElsewhere.delete('run-1');
+    await registry.recordUsage('run-1', SECOND_STEP);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(SECOND_STEP);
+  });
+
+  it('(m) loses a write to a takeover that lands between its claim read and its swap, and the retry sees the successor', async () => {
+    const { registry, held, kv } = build();
+    await admit(registry, 'run-1');
+    await registry.recordUsage('run-1', FIRST_STEP);
+
+    // The successor takes the claim after this process judged it held and before its write swaps:
+    // the holder record it read is stale, so the swap must fail instead of landing on the successor's task.
+    let reads = 0;
+    held.afterClaimRead = async (taskId) => {
+      reads += 1;
+      if (reads > 1) return;
+      held.claimedElsewhere.add(taskId);
+      await kv.set(`claim-holder:${taskId}`, 'successor');
+    };
+    await registry.recordUsage('run-1', SECOND_STEP);
+
+    expect(reads).toBe(2);
+    expect(await viewField(registry, 'run-1', 'usage')).toEqual(FIRST_STEP);
+  });
+
+  it('(m) reports no stall or loop when a takeover fails the swap, so no attention event is published', async () => {
+    const { registry, held, kv } = build();
+    await admit(registry, 'run-1');
+
+    // The first attempt's mutation judges a change; the takeover fails its swap, and the retry
+    // sees the successor and writes nothing. Nothing committed, so nothing may be reported.
+    let reads = 0;
+    let takeovers = 0;
+    held.afterClaimRead = async (taskId) => {
+      reads += 1;
+      if (reads > 1) return;
+      takeovers += 1;
+      held.claimedElsewhere.add(taskId);
+      await kv.set(`claim-holder:${taskId}`, `successor-${String(takeovers)}`);
+    };
+    expect(await registry.recordStall('run-1', '2026-10-18T00:02:00.000Z')).toBe(false);
+    expect(reads).toBe(2);
+
+    reads = 0;
+    held.claimedElsewhere.delete('run-1');
+    expect(await registry.recordLooping('run-1', '2026-10-18T00:03:00.000Z')).toBe(false);
+    expect(reads).toBe(2);
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual([]);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+  });
+
+  it('writes nothing for a task with no record', async () => {
+    const { registry } = build();
+    await registry.recordUsage('missing', FIRST_STEP);
+    expect(await registry.get('missing')).toBeUndefined();
+  });
+});
+
+describe('attention: stalled and looping (COR-2526)', () => {
+  const STALLED_AT = '2026-10-18T00:02:00.000Z';
+  const LATER = '2026-10-18T00:05:00.000Z';
+  const SETTLEMENT = {
+    at: '2026-10-18T01:00:00.000Z',
+    status: 'canceled' as const,
+    finishReason: 'aborted',
+    message: null,
+  };
+
+  it('is empty for a task that was never stalled or looping, and for a record written before the field', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1');
+    const view = await registry.get('run-1');
+    expect(view?.attention).toEqual([]);
+    expect(view?.stalledSince).toBeNull();
+    const stored = JSON.parse((await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`)) as string);
+    expect('attention' in stored).toBe(false);
+  });
+
+  it('records a stall once per episode, with the instant it began, and clears it', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    expect(await registry.recordStall('run-1', STALLED_AT)).toBe(true);
+    // A stall already recorded changes nothing and keeps the instant it began at.
+    expect(await registry.recordStall('run-1', LATER)).toBe(false);
+    expect(await registry.get('run-1')).toMatchObject({
+      attention: ['stalled'],
+      stalledSince: STALLED_AT,
+    });
+    expect(await recordField(registry, 'run-1', 'revision')).toBeUndefined();
+
+    expect(await registry.recordStall('run-1', null)).toBe(true);
+    expect(await registry.recordStall('run-1', null)).toBe(false);
+    expect(await registry.get('run-1')).toMatchObject({ attention: [], stalledSince: null });
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+
+    // A second stall is a new episode.
+    expect(await registry.recordStall('run-1', LATER)).toBe(true);
+    expect(await viewField(registry, 'run-1', 'stalledSince')).toBe(LATER);
+  });
+
+  it('applies a task’s stall writes in the order they were asked, and announces only a stall that began', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    const results = await Promise.all([
+      registry.recordStall('run-1', STALLED_AT),
+      registry.recordStall('run-1', null),
+      registry.recordStall('run-1', LATER),
+    ]);
+    expect(results).toEqual([true, true, true]);
+    expect(await viewField(registry, 'run-1', 'stalledSince')).toBe(LATER);
+  });
+
+  it('is looping from the first report until the task settles, and reports it once', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    expect(await registry.recordLooping('run-1', STALLED_AT)).toBe(true);
+    expect(await registry.recordLooping('run-1', LATER)).toBe(false);
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual(['looping']);
+    // It is not a stall: `stalledSince` stays null.
+    expect(await viewField(registry, 'run-1', 'stalledSince')).toBeNull();
+
+    held.live.set('run-1', { ...running, phase: 'aborted', finishReason: 'aborted' });
+    await registry.recordSettled('run-1', SETTLEMENT);
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual([]);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+  });
+
+  it('lists both kinds in a fixed order, and filters on either', async () => {
+    const { registry, held } = build();
+    for (const id of ['run-1', 'run-2', 'run-3']) {
+      await admit(registry, id);
+      held.live.set(id, running);
+    }
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordLooping('run-1', STALLED_AT);
+    await registry.recordLooping('run-2', STALLED_AT);
+
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual(['stalled', 'looping']);
+    const ids = async (attention: 'stalled' | 'looping') => {
+      const page = await registry.enumerate({ attention, limit: 10, offset: 0 });
+      return page.tasks.map((task) => task.id).toSorted();
+    };
+    expect(await ids('stalled')).toEqual(['run-1']);
+    expect(await ids('looping')).toEqual(['run-1', 'run-2']);
+  });
+
+  it('binds a page token to the attention filter it was issued for', async () => {
+    const { registry, held } = build();
+    for (const id of ['run-1', 'run-2', 'run-3']) {
+      await admit(registry, id);
+      held.live.set(id, running);
+      await registry.recordLooping(id, STALLED_AT);
+    }
+    const first = await registry.list({
+      principal: OWNER,
+      attention: 'looping',
+      limit: 1,
+    });
+    expect(first.nextPageToken).not.toBeNull();
+    const refused = await rejectionOf(
+      registry.list({
+        principal: OWNER,
+        limit: 1,
+        pageToken: first.nextPageToken as string,
+      }),
+    );
+    expect(refused).toMatchObject({ reason: 'filters' });
+  });
+
+  it('is never shown for an ended task, and writes nothing once the task has settled', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordSettled('run-1', SETTLEMENT);
+    held.live.delete('run-1');
+
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual([]);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+    // A holder that is a moment behind cannot bring it back.
+    expect(await registry.recordStall('run-1', LATER)).toBe(false);
+    expect(await registry.recordLooping('run-1', LATER)).toBe(false);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+  });
+
+  it('is dropped by a cancel from a process that does not hold the run, which writes the settlement itself', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordLooping('run-1', STALLED_AT);
+    // This process holds no live run, so the cancel goes to the engine.
+    expect(held.live.has('run-1')).toBe(false);
+
+    const outcome = await registry.cancel('run-1', 0);
+    expect(outcome?.receipt).toBe('canceled');
+    expect(held.durableCancelled).toEqual(['run-1']);
+    const record = await registry.record('run-1');
+    expect(record?.settled?.status).toBe('canceled');
+    expect(record?.attention).toBeUndefined();
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual([]);
+  });
+
+  it('is dropped by an owner-lost settlement, and a stall is never recorded from a dead holder afterwards', async () => {
+    const { registry, held } = build({}, { processId: 'process-a' });
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordStall('run-1', STALLED_AT);
+    held.live.delete('run-1');
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual(['stalled']);
+
+    // The lease of the process that held the run is gone, so the next boot settles the task lost.
+    const result = await registry.settleAbandoned(
+      'run-1',
+      'process-a',
+      { key: 'bureau-process:v1:process-a', expected: null },
+      {
+        at: LATER,
+        status: 'failed',
+        finishReason: TASK_OWNER_LOST_FINISH_REASON,
+        message: null,
+      },
+    );
+    expect(result).toBe('written');
+    const record = await registry.record('run-1');
+    expect(record?.settled?.finishReason).toBe(TASK_OWNER_LOST_FINISH_REASON);
+    expect(record?.attention).toBeUndefined();
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual([]);
+
+    // A dead holder's snapshot, arriving late, writes nothing back.
+    expect(await registry.recordStall('run-1', LATER)).toBe(false);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+  });
+
+  it('(n) is not written, cleared or announced by a process another live claim has replaced', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    // The successor holds the claim and has no stall: the deposed holder's stall and loop writes
+    // answer false, which is what keeps `run.stalled` and `run.looping` from being announced.
+    held.claimedElsewhere.add('run-1');
+    expect(await registry.recordStall('run-1', STALLED_AT)).toBe(false);
+    expect(await registry.recordLooping('run-1', STALLED_AT)).toBe(false);
+    expect(await recordField(registry, 'run-1', 'attention')).toBeUndefined();
+
+    // The successor's own stall and loop, written while it was the holder, stand against the
+    // deposed holder's late clear.
+    held.claimedElsewhere.delete('run-1');
+    expect(await registry.recordStall('run-1', STALLED_AT)).toBe(true);
+    expect(await registry.recordLooping('run-1', STALLED_AT)).toBe(true);
+    held.claimedElsewhere.add('run-1');
+    expect(await registry.recordStall('run-1', null)).toBe(false);
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual(['stalled', 'looping']);
+  });
+
+  it('shows a stall only while no person is asked anything: a run waiting on a review is not stalled', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordStall('run-1', STALLED_AT);
+    await registry.recordLooping('run-1', STALLED_AT);
+
+    held.reviews = [humanWait('run-1')];
+    const waiting = await registry.get('run-1');
+    expect(waiting?.status).toBe('input-required');
+    expect(waiting?.attention).toEqual(['looping']);
+    expect(waiting?.stalledSince).toBeNull();
+
+    // The review closes and the silence is still there: it reads as the stall it is.
+    held.reviews = [];
+    expect(await viewField(registry, 'run-1', 'attention')).toEqual(['stalled', 'looping']);
+  });
+
+  it('reads a record whose attention is malformed as unreadable, like any other bad field', async () => {
+    const { registry, kv, diagnostics } = build();
+    await admit(registry, 'run-1');
+    const key = `${TASK_RECORD_KEY_PREFIX}run-1`;
+    const stored = JSON.parse((await kv.get(key)) as string);
+    await kv.set(key, JSON.stringify({ ...stored, attention: { stalledSince: 'not a time' } }));
+    expect(await registry.get('run-1')).toBeUndefined();
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe('failure and retrying (COR-2531)', () => {
+  const FAILED_AT = '2026-10-18T01:00:00.000Z';
+  const FAILURE = {
+    step: { index: 2, label: 'charge-card' },
+    errorCode: 'UNKNOWN',
+    errorKind: 'tool',
+    toolCall: { name: 'charge-card', callId: 'call-1' },
+  };
+  const failed = (extra: object = {}) => ({
+    at: FAILED_AT,
+    status: 'failed' as const,
+    finishReason: 'error',
+    message: 'it failed',
+    ...extra,
+  });
+
+  it('keeps the failure on the record beside the settlement, not inside it, and shows it for a failed task', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', failed({ failure: FAILURE }));
+
+    const record = await registry.record('run-1');
+    expect(record?.failure).toEqual(FAILURE);
+    expect(record?.settled).toEqual({
+      at: FAILED_AT,
+      status: 'failed',
+      finishReason: 'error',
+      message: 'it failed',
+    });
+    expect(await viewField(registry, 'run-1', 'failure')).toEqual({
+      step: { index: 2, label: 'charge-card' },
+      errorCode: 'UNKNOWN',
+      errorKind: 'tool',
+      toolCall: { name: 'charge-card', callId: 'call-1' },
+    });
+  });
+
+  it('shows each unknown part of a stored failure as null, and no failure for a failure that names nothing', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await admit(registry, 'run-2');
+    await registry.recordSettled('run-1', failed({ failure: { errorCode: 'UNKNOWN' } }));
+    await registry.recordSettled('run-2', failed());
+
+    expect(await viewField(registry, 'run-1', 'failure')).toEqual({
+      step: null,
+      errorCode: 'UNKNOWN',
+      errorKind: null,
+      toolCall: null,
+    });
+    expect(await viewField(registry, 'run-2', 'failure')).toBeNull();
+  });
+
+  it('leaves a stored failure standing when a later writer of the failed settlement knows none, and drops it when the settlement that stands is not a failure', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', failed({ failure: FAILURE }));
+    // The catalog hook writes the same failure, with the answer and no failure of its own.
+    await registry.recordSettled('run-1', failed({ message: 'later' }));
+    expect(await recordField(registry, 'run-1', 'failure')).toEqual(FAILURE);
+
+    // An owner-lost inference is replaced by the owner's real end: a completion has no failure.
+    await admit(registry, 'run-2');
+    await registry.recordSettled('run-2', {
+      at: FAILED_AT,
+      status: 'failed',
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+      message: 'lost',
+    });
+    await registry.recordSettled('run-2', {
+      at: FAILED_AT,
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+    expect(await recordField(registry, 'run-2', 'failure')).toBeUndefined();
+    expect(await viewField(registry, 'run-2', 'failure')).toBeNull();
+
+    // A failure stored for a task whose settlement then says canceled is not shown for it.
+    await admit(registry, 'run-3');
+    await registry.recordSettled('run-3', failed({ failure: FAILURE }));
+    await registry.recordSettled('run-3', {
+      at: FAILED_AT,
+      status: 'canceled',
+      finishReason: 'aborted',
+      message: null,
+    });
+    expect(await recordField(registry, 'run-3', 'failure')).toBeUndefined();
+  });
+
+  it('keeps the failure when the settlement’s text is redacted', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', failed({ failure: FAILURE }));
+
+    expect(await registry.redactSettlement('run-1')).toBe(true);
+    expect(await recordField(registry, 'run-1', 'failure')).toEqual(FAILURE);
+  });
+
+  it('records a step on its second or later try while the task runs, and clears it', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 2 })).toBe(true);
+    // The same attempt again changes nothing; the next attempt does.
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 2 })).toBe(false);
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 2 });
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 3 })).toBe(true);
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 3 });
+    expect(await recordField(registry, 'run-1', 'revision')).toBeUndefined();
+
+    expect(await registry.recordRetrying('run-1', null)).toBe(true);
+    expect(await registry.recordRetrying('run-1', null)).toBe(false);
+    expect(await viewField(registry, 'run-1', 'retrying')).toBeNull();
+    expect(await recordField(registry, 'run-1', 'retrying')).toBeUndefined();
+  });
+
+  it('shows no retry for a task waiting on a person, and drops it at the settlement, which a late write cannot restore', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordRetrying('run-1', { label: 'model', attempt: 2 });
+
+    held.reviews = [humanWait('run-1')];
+    expect(await viewField(registry, 'run-1', 'retrying')).toBeNull();
+    held.reviews = [];
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 2 });
+
+    await registry.recordSettled('run-1', failed());
+    expect(await recordField(registry, 'run-1', 'retrying')).toBeUndefined();
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 4 })).toBe(false);
+    expect(await recordField(registry, 'run-1', 'retrying')).toBeUndefined();
+  });
+
+  it('takes no retry from a process another live claim has replaced', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordRetrying('run-1', { label: 'model', attempt: 2 });
+
+    held.claimedElsewhere.add('run-1');
+    expect(await registry.recordRetrying('run-1', null)).toBe(false);
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 3 })).toBe(false);
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 2 });
+  });
+
+  it('reads a record whose failure or retry is malformed as unreadable, like any other bad field', async () => {
+    const { registry, kv, diagnostics } = build();
+    await admit(registry, 'run-1');
+    await admit(registry, 'run-2');
+    for (const [taskId, change] of [
+      ['run-1', { failure: { step: { index: -1, label: 'x' } } }],
+      ['run-2', { retrying: { label: 'model', attempt: 1 } }],
+    ] as const) {
+      const key = `${TASK_RECORD_KEY_PREFIX}${taskId}`;
+      const stored = JSON.parse((await kv.get(key)) as string);
+      await kv.set(key, JSON.stringify({ ...stored, ...change }));
+      expect(await registry.get(taskId)).toBeUndefined();
+    }
+    expect(diagnostics.length).toBeGreaterThan(0);
   });
 });

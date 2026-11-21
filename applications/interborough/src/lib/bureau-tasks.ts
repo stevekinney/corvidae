@@ -57,7 +57,35 @@ export type TaskCancelReceipt = z.infer<typeof taskCancelReceiptSchema>;
 export type TaskOpenWait = TaskView['openWaits'][number];
 
 /** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
-export type TaskView = Omit<BureauOutput<'bureau.tasks.get'>, 'origin' | 'wakeAt' | 'workflow'> & {
+export type TaskView = Omit<
+  BureauOutput<'bureau.tasks.get'>,
+  'origin' | 'wakeAt' | 'workflow' | 'usage' | 'attention' | 'stalledSince' | 'failure' | 'retrying'
+> & {
+  /**
+   * Why a failed task failed (COR-2531): the step (`index` and `label`, the failing tool's name or
+   * `model`), the error's code and kind, and the tool call that failed. `null` for a task that did
+   * not fail and for a failure nothing described; absent from a Bureau that does not report it.
+   */
+  readonly failure?: BureauOutput<'bureau.tasks.get'>['failure'] | undefined;
+  /**
+   * The step a running task is on a second or later try of (COR-2531): its `label` and `attempt`.
+   * `null` when none is, and absent from a Bureau that does not report it.
+   */
+  readonly retrying?: BureauOutput<'bureau.tasks.get'>['retrying'] | undefined;
+  /**
+   * What the run has used and cost so far, or in total once it ended (COR-2524): tokens, and
+   * `costUsd` in US dollars, `null` rather than `0` when nothing was priced. Absent from a Bureau
+   * that does not report it, and `null` for a run that has recorded none.
+   */
+  readonly usage?: BureauOutput<'bureau.tasks.get'>['usage'] | undefined;
+  /**
+   * What asks for attention on a task that has not ended (COR-2526): `stalled` for a run that is
+   * alive but making no progress outside a declared wait, `looping` for a run whose toolbox
+   * reported a loop. Absent from a Bureau that does not report it, which reads as none.
+   */
+  readonly attention?: BureauOutput<'bureau.tasks.get'>['attention'] | undefined;
+  /** The instant (ISO 8601) the Bureau saw the run stall, while `attention` holds `stalled`. */
+  readonly stalledSince?: string | null | undefined;
   /**
    * Where the task came from (COR-1867), when the Bureau recorded it. Only its `kind` is read, to
    * tell a run a person or a schedule started from one a parent run, a goal or an agent tool call

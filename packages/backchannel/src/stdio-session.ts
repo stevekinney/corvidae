@@ -25,6 +25,8 @@
  * the JSON-RPC semantics come from the shared session.
  */
 
+import type { ScopeVocabulary } from './authorization-scope.ts';
+import { faultErrorData } from './fault-to-json-rpc.ts';
 import { splitNewlineDelimitedBuffer } from './json-rpc-framing.ts';
 import { JSON_RPC_ERROR_CODES, JSON_RPC_VERSION, type JsonRpcId } from './json-rpc-protocol.ts';
 import {
@@ -46,6 +48,7 @@ export type StdioSessionOptions = {
   readonly output: WritableStream<Uint8Array>;
   readonly admission: StdioAdmission;
   readonly registry: OperationRegistry;
+  readonly scopeVocabulary?: ScopeVocabulary;
   readonly engine: unknown;
   /** The host's workflow event feed, handed to `weft.workflows.subscribe` as `host.feed`. */
   readonly feed: unknown;
@@ -112,7 +115,7 @@ export async function runStdioSession(options: StdioSessionOptions): Promise<Std
     buffer = outcome.remainder;
   }
 
-  const principal: Principal = principalFromStdioLocal();
+  const principal: Principal = principalFromStdioLocal(options.scopeVocabulary);
   const session = createJsonRpcWebSocketSession({
     registry: options.registry,
     engine: options.engine,
@@ -210,7 +213,7 @@ async function runStartupTokenAdmission(
       error: {
         code: JSON_RPC_ERROR_CODES.INVALID_REQUEST,
         message: 'authenticate frame exceeds maxFrameBytes',
-        data: { weftCode: 'InvalidParams', httpStatus: 400 },
+        data: faultErrorData('InvalidParams'),
       },
       id: null,
     });
@@ -251,7 +254,7 @@ async function runStartupTokenAdmission(
       error: {
         code: JSON_RPC_ERROR_CODES.UNAUTHORIZED,
         message: 'startup token mismatch',
-        data: { weftCode: 'Unauthorized', httpStatus: 401 },
+        data: faultErrorData('Unauthorized'),
       },
       id,
     });
@@ -280,7 +283,7 @@ function classifyAuthenticateShape(
       error: {
         code: JSON_RPC_ERROR_CODES.UNAUTHORIZED,
         message: 'first frame must be weft.authenticate',
-        data: { weftCode: 'Unauthorized', httpStatus: 401 },
+        data: faultErrorData('Unauthorized'),
       },
       id,
     },
@@ -345,7 +348,7 @@ async function runMainReadLoop(
         error: {
           code: JSON_RPC_ERROR_CODES.INVALID_REQUEST,
           message: 'frame exceeds maxFrameBytes',
-          data: { weftCode: 'InvalidParams', httpStatus: 400 },
+          data: faultErrorData('InvalidParams'),
         },
         id: null,
       });

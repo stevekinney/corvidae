@@ -25,6 +25,7 @@ import { applySessionEvent, type SessionEvent, type SessionState } from './host-
 import {
   admitWorker,
   appendEvent,
+  capBypassVariable,
   handleHookEvent,
   hostPlaces,
   readSessions,
@@ -839,6 +840,51 @@ const m7AppendAfterRemoval = await scenario(async (root) => {
   }).toEqual({ withoutHolder: [], sessions: ['session-A'] });
 });
 
+const m7LedgerLostBeforeAdmission = await scenario(async (root) => {
+  for (const bypass of [false, true]) {
+    const directory = join(root, bypass ? 'bypass' : 'ordinary');
+    const ledger = join(directory, 'sessions', 'session-B');
+    const dispose = interceptFileSystem([
+      {
+        methods: ['mkdir'],
+        matches: ([path]) => path === join(ledger, 'events'),
+        before: async () => {
+          await real.rename(ledger, join(directory, 'removed-ledger'));
+        },
+      },
+    ]);
+    try {
+      const time = boundedClock(20);
+      const result = await handleHookEvent(
+        {
+          hook_event_name: 'PreToolUse',
+          tool_name: 'Agent',
+          session_id: 'session-B',
+          tool_use_id: 'dispatch',
+          tool_input: { description: 'Deliver COR-2506', subagent_type: 'chef-worker' },
+          cwd: '/worktrees/B',
+        },
+        {
+          directory,
+          hookPid: 511,
+          environment: bypass ? { [capBypassVariable]: 'COR-2506' } : {},
+          readProcessTable: () => hostTable(),
+          now: time.now,
+          sleep: time.sleep,
+        },
+      );
+      expect(result?.hookSpecificOutput).toMatchObject({
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: expect.stringContaining('session ledger disappeared'),
+      });
+      expect(await sessionIds(directory)).toEqual([]);
+    } finally {
+      dispose();
+    }
+  }
+});
+
 /** A ledger an older checkout's append recreated without its holder file is reclaimed by the next admission. */
 const m7LedgerWithoutHolder = await scenario(async (root) => {
   const directory = join(root, 'places');
@@ -982,6 +1028,9 @@ describe('the COR-2463 outcome matrix', () => {
 
   test('M7: an append after its ledger was removed leaves no ledger without its holder', () =>
     rethrow(m7AppendAfterRemoval));
+
+  test('M7: the Agent hook denies an ordinary or bypass admission when its ledger disappears', () =>
+    rethrow(m7LedgerLostBeforeAdmission));
 
   test('M7: the next admission reclaims a ledger left without its holder', () =>
     rethrow(m7LedgerWithoutHolder));

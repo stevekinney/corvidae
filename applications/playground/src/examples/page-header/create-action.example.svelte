@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Create action, status and a full-page error';
   export const description =
-    'A list page’s create action is a secondary icon-only "+" with a tooltip and an accessible name, in the same place in every state. status sits beside the title or under it, a long title wraps to two lines and then ends in an ellipsis with the full title in its tooltip, and error draws the header’s primary buttons as secondary so Try again is the only primary.';
+    'A list page’s create action is a labelled primary button with a leading "+", never an icon alone, in the same place in every state. status sits beside the title or under it, a long title wraps to two lines and then ends in an ellipsis with the full title in its tooltip, and error draws the header’s primary buttons as secondary so Try again is the only primary.';
 </script>
 
 <script lang="ts">

@@ -82,7 +82,7 @@ export const REVIEWS_COPY = {
   /** The footer button that commits a structured answer (a form), which picking a value does not send. */
   sendAnswer: 'Send answer',
   /** The optional note saved with any decision; on a denial the agent reads it. */
-  noteLabel: 'Note (optional)',
+  noteLabel: 'Note',
   /** Said under the note field: where the note goes. */
   noteDescription: 'Saved with your decision. If you deny, the agent reads it as the reason.',
   toolLabel: 'Tool',
@@ -153,7 +153,6 @@ export const REVIEWS_COPY = {
   pickHint: 'Press 1 to 9 to pick a choice.',
   /** What the open approval would run, and what it was given. */
   inputLabel: 'Input',
-  noInput: 'This call was given no input.',
   /** The shortcuts the `?` map lists for this page. */
   shortcutGroup: 'Reviews',
   approveShortcut: 'Approve the open review',

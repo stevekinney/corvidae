@@ -1,13 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { spawnWithHangGuard } from '../hang-guard.ts';
 
 const compileProgram = `
 import { sveltePlugin } from '@lostgradient/testing';
-import { dirname, join } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-const { sourcePath, conditions = ['svelte'] } = await Bun.stdin.json();
+const { sourcePaths, root, conditions } = await Bun.stdin.json();
 if (typeof document !== 'undefined' || typeof window !== 'undefined') {
   throw new Error('Server rendering must start without DOM globals');
 }
@@ -30,7 +30,13 @@ function requiresSvelteCompilation(resolved) {
   return false;
 }
 const result = await Bun.build({
-  entrypoints: [sourcePath],
+  entrypoints: sourcePaths,
+  root,
+  naming: {
+    entry: '[dir]/[name].[ext]',
+    asset: 'assets/[name]-[hash].[ext]',
+    chunk: 'chunks/[name]-[hash].[ext]',
+  },
   target: 'bun',
   conditions,
   plugins: [sveltePlugin({ generate: 'server' }), {
@@ -47,9 +53,15 @@ const result = await Bun.build({
   }],
 });
 if (!result.success) throw new AggregateError(result.logs, 'Server component compilation failed');
-const artifact = result.outputs.find((output) => output.kind === 'entry-point');
-if (!artifact) throw new Error('Missing server component artifact');
-process.stdout.write(JSON.stringify(await artifact.text()));
+const artifacts = new Map(result.outputs.filter((output) => output.kind === 'entry-point')
+  .map((output) => [resolve(root, output.path), output]));
+const code = await Promise.all(sourcePaths.map(async (sourcePath) => {
+  const name = join(dirname(sourcePath), basename(sourcePath, extname(sourcePath)) + '.js');
+  const artifact = artifacts.get(name);
+  if (!artifact) throw new Error('Missing server component artifact: ' + sourcePath);
+  return artifact.text();
+}));
+process.stdout.write(JSON.stringify(code));
 `;
 
 const renderProgram = `
@@ -92,7 +104,7 @@ function serializeServerInput(payload: Record<string, unknown>): string {
 async function runServerProgram(
   program: string,
   payload: Record<string, unknown>,
-): Promise<string> {
+): Promise<unknown> {
   // Through the hang guard, which kills a child that never exits after 120 s of awake time and
   // starts Bun with `--no-install`.
   const child = spawnWithHangGuard([process.execPath, '--eval', program], {
@@ -108,9 +120,7 @@ async function runServerProgram(
   ]);
   if (status !== 0 || errors !== '')
     throw new Error(`Server execution failed (${status}): ${errors}`);
-  const result: unknown = JSON.parse(output);
-  if (typeof result !== 'string') throw new Error('Server process returned invalid output');
-  return result;
+  return JSON.parse(output) as unknown;
 }
 
 type SvelteServerOptions = {
@@ -121,35 +131,69 @@ function serverSourceKey(sourcePath: string, conditions: readonly string[]): str
   return `${sourcePath}\u0000${JSON.stringify(conditions)}`;
 }
 
-async function compiledServerSource(
-  sourcePath: string,
-  conditions: readonly string[],
-): Promise<string> {
-  const key = serverSourceKey(sourcePath, conditions);
-  let compilation = serverSources.get(key);
-  if (!compilation) {
-    compilation = runServerProgram(compileProgram, { sourcePath, conditions });
-    serverSources.set(key, compilation);
+function commonSourceDirectory(sourcePaths: readonly string[]): string {
+  let directory = dirname(sourcePaths[0]!);
+  for (const source of sourcePaths.slice(1)) {
+    let path = relative(directory, source);
+    while (isAbsolute(path) || path === '..' || path.startsWith('../')) {
+      const parent = dirname(directory);
+      if (parent === directory) throw new Error('Server fixtures must share a filesystem root');
+      directory = parent;
+      path = relative(directory, source);
+    }
   }
-  try {
-    return await compilation;
-  } catch (error) {
-    serverSources.delete(key);
-    throw error;
+  return directory;
+}
+
+function compileMissingSources(
+  sourcePaths: readonly string[],
+  conditions: readonly string[],
+): void {
+  const missing = [...new Set(sourcePaths)].filter(
+    (sourcePath) => !serverSources.has(serverSourceKey(sourcePath, conditions)),
+  );
+  if (missing.length === 0) return;
+
+  const bundle = runServerProgram(compileProgram, {
+    sourcePaths: missing,
+    root: commonSourceDirectory(missing),
+    conditions,
+  });
+  for (const [index, sourcePath] of missing.entries()) {
+    const key = serverSourceKey(sourcePath, conditions);
+    const compilation = bundle
+      .then((result) => {
+        const code: unknown = Array.isArray(result) ? result[index] : undefined;
+        if (typeof code !== 'string') throw new Error('Server compiler returned invalid output');
+        return code;
+      })
+      .catch((error: unknown) => {
+        serverSources.delete(key);
+        throw error;
+      });
+    serverSources.set(key, compilation);
   }
 }
 
-/**
- * Compile an immutable fixture once during test setup, before timed assertions.
- *
- * Pass the same `conditions` the timed render will use: compilation is cached per condition set,
- * so preparing under the default conditions does nothing for a render under `browser`.
- */
+/** Compile related fixtures together to share dependency transforms without sharing render state. */
+export async function prepareSvelteServerSources(
+  sourcePaths: readonly string[],
+  options: SvelteServerOptions = {},
+): Promise<void> {
+  const paths = sourcePaths.map((sourcePath) => resolve(sourcePath));
+  const conditions = [...(options.conditions ?? ['svelte'])];
+  compileMissingSources(paths, conditions);
+  await Promise.all(
+    paths.map((sourcePath) => serverSources.get(serverSourceKey(sourcePath, conditions))!),
+  );
+}
+
+/** Prepare one fixture, keeping the condition selection identical to its render. */
 export async function prepareSvelteServerSource(
   sourcePath: string,
   options: SvelteServerOptions = {},
 ): Promise<void> {
-  await compiledServerSource(sourcePath, [...(options.conditions ?? ['svelte'])]);
+  await prepareSvelteServerSources([sourcePath], options);
 }
 
 async function runServerComponent(
@@ -159,10 +203,15 @@ async function runServerComponent(
   options: SvelteServerOptions,
 ): Promise<string> {
   const conditions = [...(options.conditions ?? ['svelte'])];
-  const code = await compiledServerSource(sourcePath, conditions);
+  const absolute = resolve(sourcePath);
+  compileMissingSources([absolute], conditions);
+  const code = await serverSources.get(serverSourceKey(absolute, conditions));
+  if (code === undefined) throw new Error('Missing prepared server source: ' + sourcePath);
   const directory = await mkdtemp(join(packageRoot, 'node_modules/.svelte-ssr-'));
   try {
-    return await runServerProgram(renderProgram, { code, props, directory, importOnly });
+    const output = await runServerProgram(renderProgram, { code, props, directory, importOnly });
+    if (typeof output !== 'string') throw new Error('Server renderer returned invalid output');
+    return output;
   } finally {
     await rm(directory, { recursive: true });
   }

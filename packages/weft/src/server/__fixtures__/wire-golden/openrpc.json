@@ -8,10 +8,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -22,7 +33,21 @@
         "code": -32099,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "EngineFailure",
@@ -35,10 +60,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -80,10 +116,21 @@
               },
               "readOnly": true,
               "type": "array"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "issues"
+            "issues",
+            "retryable"
           ],
           "type": "object"
         },
@@ -97,10 +144,21 @@
           "properties": {
             "method": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "method"
+            "method",
+            "retryable"
           ],
           "type": "object"
         },
@@ -115,12 +173,23 @@
             "identifier": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "resource": {
               "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "resource"
+            "resource",
+            "retryable"
           ],
           "type": "object"
         },
@@ -131,7 +200,21 @@
         "code": -32025,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "NotImplemented",
@@ -144,10 +227,21 @@
           "properties": {
             "maxBytes": {
               "type": "number"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "maxBytes"
+            "maxBytes",
+            "retryable"
           ],
           "type": "object"
         },
@@ -159,10 +253,23 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "RateLimited",
@@ -184,10 +291,21 @@
                 "string",
                 "number"
               ]
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "currentRevision"
+            "currentRevision",
+            "retryable"
           ],
           "type": "object"
         },
@@ -202,13 +320,24 @@
             "droppedCount": {
               "type": "number"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "subscriptionId": {
               "type": "string"
             }
           },
           "required": [
             "subscriptionId",
-            "droppedCount"
+            "droppedCount",
+            "retryable"
           ],
           "type": "object"
         },
@@ -223,10 +352,23 @@
             "operationName": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "updateId": {
               "type": "string"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Timeout",
@@ -239,10 +381,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -257,10 +410,23 @@
             "reason": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Unavailable",
@@ -273,10 +439,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -290,10 +467,21 @@
           "properties": {
             "capability": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "capability"
+            "capability",
+            "retryable"
           ],
           "type": "object"
         },
@@ -305,6 +493,16 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "supported": {
               "items": {
                 "enum": [
@@ -332,7 +530,8 @@
           },
           "required": [
             "transport",
-            "supported"
+            "supported",
+            "retryable"
           ],
           "type": "object"
         },
@@ -801,7 +1000,7 @@
       }
     },
     {
-      "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
+      "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, failing step, whether an activity is being retried, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1000,6 +1199,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -1080,6 +1288,14 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -1344,6 +1560,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -1398,6 +1619,10 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
@@ -1656,6 +1881,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -1758,6 +1992,14 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -2083,6 +2325,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -2163,6 +2410,10 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
@@ -2471,6 +2722,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -2559,6 +2819,14 @@
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -2792,11 +3060,17 @@
                           },
                           "type": "array"
                         },
+                        "failedStep": {
+                          "type": "string"
+                        },
                         "limit": {
                           "type": "number"
                         },
                         "offset": {
                           "type": "number"
+                        },
+                        "retrying": {
+                          "type": "boolean"
                         },
                         "scheduleId": {
                           "type": "string"
@@ -2980,11 +3254,17 @@
                               },
                               "type": "array"
                             },
+                            "failedStep": {
+                              "type": "string"
+                            },
                             "limit": {
                               "type": "number"
                             },
                             "offset": {
                               "type": "number"
+                            },
+                            "retrying": {
+                              "type": "boolean"
                             },
                             "scheduleId": {
                               "type": "string"
@@ -3257,11 +3537,17 @@
                           },
                           "type": "array"
                         },
+                        "failedStep": {
+                          "type": "string"
+                        },
                         "limit": {
                           "type": "number"
                         },
                         "offset": {
                           "type": "number"
+                        },
+                        "retrying": {
+                          "type": "boolean"
                         },
                         "scheduleId": {
                           "type": "string"
@@ -3574,6 +3860,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -3636,6 +3927,10 @@
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
@@ -6541,6 +6836,13 @@
           }
         },
         {
+          "name": "metadata",
+          "required": false,
+          "schema": {
+            "description": "A plain JSON object stored with the schedule and returned with it, such as who owns it. It is not passed to the runs the schedule starts. Runtime validation requires a JSON object."
+          }
+        },
+        {
           "name": "overlap",
           "required": false,
           "schema": {
@@ -6623,6 +6925,9 @@
           },
           "jitter": {
             "description": "Deterministic delay spread over each occurrence, as milliseconds or a duration string such as \"30s\"."
+          },
+          "metadata": {
+            "description": "A plain JSON object stored with the schedule and returned with it, such as who owns it. It is not passed to the runs the schedule starts. Runtime validation requires a JSON object."
           },
           "overlap": {
             "description": "What to do when a tick fires while the previous run is still active: \"skip\", \"queue\", \"cancel-running\", or \"allow\"."
@@ -6711,6 +7016,13 @@
           }
         },
         {
+          "name": "metadata",
+          "required": false,
+          "schema": {
+            "description": "A plain JSON object stored with the schedule and returned with it, replacing the stored metadata whole. Omitted, the schedule keeps its metadata. It is not passed to the runs the schedule starts."
+          }
+        },
+        {
           "name": "overlap",
           "required": false,
           "schema": {
@@ -6790,6 +7102,9 @@
           },
           "jitter": {
             "description": "Deterministic delay spread over each occurrence, as milliseconds or a duration string such as \"30s\"."
+          },
+          "metadata": {
+            "description": "A plain JSON object stored with the schedule and returned with it, replacing the stored metadata whole. Omitted, the schedule keeps its metadata. It is not passed to the runs the schedule starts."
           },
           "overlap": {
             "description": "What to do when a tick fires while the previous run is still active: \"skip\", \"queue\", \"cancel-running\", or \"allow\"."

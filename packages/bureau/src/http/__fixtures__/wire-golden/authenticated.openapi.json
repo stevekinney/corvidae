@@ -22,6 +22,116 @@
         ],
         "type": "object"
       },
+      "BureauAgentsDefinitionsDeleteOutput": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "dryRun": {
+                "const": true,
+                "description": "Always `true`: nothing was changed.",
+                "type": "boolean"
+              },
+              "effects": {
+                "description": "What else the real call would change, each with a count; a kind with nothing to change is listed with a count of 0.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "atLeast": {
+                      "const": true,
+                      "description": "Present when `count` is a floor: more exist than one answer can count.",
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "description": "How many of them the call would change.",
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "description": "What is counted: the kind of thing the call would change besides its target.",
+                      "enum": [
+                        "runs-in-progress",
+                        "running-instances",
+                        "schedules",
+                        "goals",
+                        "open-chats",
+                        "queued-runs",
+                        "running-switches",
+                        "tool-grants",
+                        "delivery-records",
+                        "deliveries-in-flight",
+                        "memories"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "target": {
+                "additionalProperties": false,
+                "description": "What the real call would act on.",
+                "properties": {
+                  "id": {
+                    "description": "The identifier of the target.",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "description": "What the call acts on.",
+                    "enum": [
+                      "task",
+                      "workflow-run",
+                      "goal",
+                      "context",
+                      "context-grants",
+                      "agent",
+                      "hook",
+                      "memory",
+                      "workflow",
+                      "schedule",
+                      "memory-embedding-switch"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "dryRun",
+              "target",
+              "effects"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "hash": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "hash"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "BureauAgentsDefinitionsGetInput": {
         "additionalProperties": false,
         "properties": {
@@ -34,37 +144,6 @@
         },
         "required": [
           "id"
-        ],
-        "type": "object"
-      },
-      "BureauAgentsDisableInput": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
-      },
-      "BureauAgentsDisableOutput": {
-        "additionalProperties": false,
-        "properties": {
-          "disabled": {
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "disabled"
         ],
         "type": "object"
       },
@@ -583,21 +662,6 @@
         ],
         "type": "object"
       },
-      "BureauHooksDeleteInput": {
-        "additionalProperties": false,
-        "properties": {
-          "hookId": {
-            "description": "The identifier of the hook.",
-            "maxLength": 256,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "hookId"
-        ],
-        "type": "object"
-      },
       "BureauHooksDeliveriesRetryOutput": {
         "additionalProperties": false,
         "properties": {
@@ -916,6 +980,21 @@
         ],
         "type": "object"
       },
+      "BureauHooksGetInput": {
+        "additionalProperties": false,
+        "properties": {
+          "hookId": {
+            "description": "The identifier of the hook.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "hookId"
+        ],
+        "type": "object"
+      },
       "BureauHooksGetOutput": {
         "additionalProperties": false,
         "properties": {
@@ -1124,7 +1203,7 @@
         ],
         "type": "object"
       },
-      "BureauMemoryForgetInput": {
+      "BureauMemoryHoldInput": {
         "additionalProperties": false,
         "properties": {
           "agentId": {
@@ -1256,54 +1335,6 @@
         },
         "required": [
           "updated"
-        ],
-        "type": "object"
-      },
-      "BureauSchedulesCancelInput": {
-        "additionalProperties": false,
-        "properties": {
-          "expectedRevision": {
-            "description": "The schedule’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.",
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "scheduleId": {
-            "description": "The identifier of the schedule.",
-            "maxLength": 256,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "scheduleId"
-        ],
-        "type": "object"
-      },
-      "BureauSchedulesCancelOutput": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "active",
-              "paused",
-              "cancelled"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "status",
-          "revision"
         ],
         "type": "object"
       },
@@ -1444,6 +1475,44 @@
             ],
             "type": "string"
           },
+          "target": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "agentName": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "agent",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "agentName"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow",
+                    "type": "string"
+                  },
+                  "workflowType": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workflowType"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "timeZone": {
             "type": "string"
           },
@@ -1458,6 +1527,7 @@
           "id",
           "owner",
           "agentName",
+          "target",
           "inputPreview",
           "continuesChat",
           "workflowType",
@@ -1494,24 +1564,51 @@
         ],
         "type": "object"
       },
-      "BureauWorkflowsDeleteInput": {
+      "BureauSchedulesPauseInput": {
         "additionalProperties": false,
         "properties": {
-          "expectedHash": {
-            "description": "The `hash` of the workflow file the caller read; a file that has changed since is a `StaleRevision` fault and nothing is written.",
-            "minLength": 1,
-            "type": "string"
+          "expectedRevision": {
+            "description": "The schedule’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
-          "id": {
-            "description": "The identifier of the workflow.",
+          "scheduleId": {
+            "description": "The identifier of the schedule.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
           }
         },
         "required": [
+          "scheduleId"
+        ],
+        "type": "object"
+      },
+      "BureauSchedulesPauseOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "paused",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
           "id",
-          "expectedHash"
+          "status",
+          "revision"
         ],
         "type": "object"
       },
@@ -1530,17 +1627,24 @@
         ],
         "type": "object"
       },
-      "BureauWorkflowsRunsCancelInput": {
+      "BureauWorkflowsPauseInput": {
         "additionalProperties": false,
         "properties": {
-          "runId": {
-            "description": "The identifier of the workflow instance to read.",
+          "expectedHash": {
+            "description": "The `hash` of the workflow file the caller read; a file that has changed since is a `StaleRevision` fault and nothing is written.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The identifier of the workflow.",
+            "maxLength": 256,
             "minLength": 1,
             "type": "string"
           }
         },
         "required": [
-          "runId"
+          "id",
+          "expectedHash"
         ],
         "type": "object"
       },
@@ -1662,6 +1766,16 @@
           "error": {
             "description": "Human-readable error description",
             "type": "string"
+          },
+          "remediation": {
+            "description": "One line of plain text saying what to do next; omitted when none is known",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryable": {
+            "description": "Whether repeating the identical call later can succeed; present on every operation fault",
+            "type": "boolean"
           },
           "weftCode": {
             "description": "Fine-grained public Weft error code when one is available",

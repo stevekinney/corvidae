@@ -271,8 +271,8 @@ describe('the list', () => {
     const { container, getByRole } = open('linear');
     await loaded(container, 'linear');
 
-    const dot = rowOf(container, 'typesafe')!.querySelector('[data-cinder-status]');
-    expect(dot?.getAttribute('data-cinder-status')).toBe('neutral');
+    const badge = rowOf(container, 'typesafe')!.querySelector('.cinder-badge');
+    expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
     expect(container.querySelector('[data-testid="plugins-count"]')?.textContent?.trim()).toBe(
       `${PLUGINS_COPY.listHeader.heading} 6`,
     );
@@ -342,17 +342,16 @@ describe('a plugin', () => {
     expect(getByRole('switch', { name: PLUGINS_COPY.enabled }).getAttribute('aria-checked')).toBe(
       'true',
     );
-    expect(detail.textContent).toContain('/home/.interborough/plugins/linear');
+    expect(detail.textContent).not.toContain('/home/.interborough/plugins/linear');
+    expect(getByRole('button', { name: PLUGINS_COPY.copyLocation })).not.toBeNull();
     expect(detail.textContent).toContain(PLUGINS_COPY.sourceKind.folder);
     const adds = detail.querySelector('[data-testid="plugin-adds"]')!;
     expect(adds.textContent).toContain(PLUGINS_COPY.contributionKinds['tool']!);
-    // The title the plugin gave, with the identifier (and no version) small beside it.
+    // The contribution uses its display title.
     expect(adds.querySelector('[data-contribution="linear:create-issue"]')?.textContent).toContain(
       'Create an issue',
     );
-    expect(adds.querySelector('[data-contribution="linear:create-issue"]')?.textContent).toContain(
-      'linear:create-issue',
-    );
+    expect(adds.textContent).not.toContain('linear:create-issue');
     // A name with no title is the identifier as words.
     expect(adds.querySelector('[data-contribution="linear:sync-issue"]')?.textContent).toContain(
       'Sync issue',
@@ -370,7 +369,7 @@ describe('a plugin', () => {
     await loaded(container, 'linear');
     expect(
       detailOf(container).querySelector('[data-testid="plugin-in-use"]')?.textContent,
-    ).toContain('In use. 1 agent, 2 schedules and 1 waiting run use Linear.');
+    ).toContain('1 agent, 2 schedules and 1 waiting run use Linear.');
 
     await fireEvent.click(rowOf(container, 'anthropic')!);
     await waitFor(() =>
@@ -381,7 +380,7 @@ describe('a plugin', () => {
         .querySelector('[data-plugin-detail="anthropic"] [data-testid="plugin-in-use"]')
         ?.textContent?.replaceAll(/\s+/g, ' ')
         .trim(),
-    ).toBe('In use. Nothing uses Anthropic yet.');
+    ).toBe('Nothing uses Anthropic yet.');
   });
 
   test('lists the skills it ships under Skills', async () => {
@@ -461,7 +460,8 @@ describe('a plugin', () => {
     const detail = detailOf(container);
     expect(detail.textContent).toContain(PLUGINS_COPY.status.needsSetup);
     const secret = detail.querySelector<HTMLElement>('[data-secret="typesafe-api-key"]')!;
-    expect(secret.textContent).toContain('typesafe-api-key');
+    expect(secret.textContent).toContain('Typesafe API key');
+    expect(secret.textContent).not.toContain('typesafe-api-key');
     expect(secret.textContent).toContain(PLUGINS_COPY.secrets.missing);
     // One way to add it: the secret's own action, not a second card for the same thing.
     expect(container.querySelector('[data-plugin-problem]')).toBeNull();
@@ -470,8 +470,10 @@ describe('a plugin', () => {
     ).not.toBeNull();
     expect(secret.textContent).toContain(PLUGINS_COPY.secrets.add);
     expect(detail.querySelector('[data-testid="plugin-secret-note"]')?.textContent?.trim()).toBe(
-      PLUGINS_COPY.secrets.note('/home/.bungalow/secrets', 'TypeSafe', false),
+      PLUGINS_COPY.secrets.note('TypeSafe', false),
     );
+    // Where or how the key is stored never renders (owner, 2026-11-19).
+    expect(detail.textContent).not.toMatch(/workspace:|\/secrets|\.bungalow/);
     // Nothing to put in use while it cannot run.
     expect(container.querySelector('[data-testid="plugin-in-use"]')).toBeNull();
   });
@@ -901,8 +903,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('danger');
+        .classList.contains('button-variant-danger'),
+    ).toBe(true);
     // Cinder draws the list: it sits directly in the dialog's options, with no wrapper of the page's.
     expect(
       dialog.querySelector('[data-testid="plugin-disable-impacts"]')?.parentElement?.className,
@@ -980,8 +982,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // One question, which confirms with the one press: no second step.
     await fireEvent.click(
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
@@ -1024,8 +1026,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('danger');
+        .classList.contains('button-variant-danger'),
+    ).toBe(true);
     // Disabling is never blocked on a read: the question still confirms.
     await fireEvent.click(
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
@@ -1219,8 +1221,8 @@ describe('restarting', () => {
     await waitFor(() => expect(card.getAttribute('data-cinder-phase')).toBe('reconnecting'));
     expect(card.textContent).toContain('Attempt 1 of 8.');
     expect(container.querySelector('[data-testid="restart-back"]')).toBeNull();
-    // Retry now probes at once, without waiting out the minute the countdown has left.
-    await fireEvent.click(within(card).getByRole('button', { name: 'Retry now' }));
+    // Try again probes at once, without waiting out the minute the countdown has left.
+    await fireEvent.click(within(card).getByRole('button', { name: 'Try again' }));
     await backBanner(container);
   });
 
@@ -1590,14 +1592,14 @@ describe('problems', () => {
       ).not.toBeNull(),
     );
     expect(container.querySelector('[data-plugin-detail]')?.textContent).toContain(
-      '/home/plugins/linear',
+      PLUGINS_COPY.sourceKind.folder,
     );
 
     await fireEvent.click(getByRole('button', { name: 'Show both' }));
 
     await waitFor(() =>
       expect(container.querySelector('[data-plugin-detail]')?.textContent).toContain(
-        '@lostgradient/plugin-linear',
+        PLUGINS_COPY.sourceKind.package,
       ),
     );
   });

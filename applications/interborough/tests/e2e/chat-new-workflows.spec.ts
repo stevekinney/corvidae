@@ -2,7 +2,7 @@
  * New chat on the sample world (`fixtures/sample-world-seed.ts`, the showcase host) at the browser's
  * sample clock, Monday, Nov 2, 10:46 AM Central time (COR-2016, design rows 23s, 23x, 24b, 24d, 24e,
  * 24f, 24g, 24h, 24i, 24k and 24m of PageNewChat): choosing an agent, typing to Tool runner, sending
- * the first message, the chat a person starts from Workflows ("Ask an agent to write one") with and
+ * the first message, the chat a person starts from Workflows ("Ask an agent") with and
  * without a provider and with no agent that can create workflows, and the chat that came of it.
  * "Provider connected" is a captioned state outside the sample world, made by answering the host's
  * provider list as it would with a key in place; the chat the agent created is
@@ -293,9 +293,8 @@ test.describe('New chat from Workflows with no provider (COR-2285 V4)', () => {
     // it supersedes rows 24g and 24h's chip over the blocked row and its swap to Assistant.
     const state = page.locator('[data-chat-availability="unconfigured"]');
     await expect(state.getByRole('heading', { level: 2 })).toHaveText('Connect a model provider');
-    await expect(state.getByRole('button', { name: 'Connect provider' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(state.getByRole('button', { name: 'Connect provider' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(blockedRow(page)).toHaveCount(0);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);

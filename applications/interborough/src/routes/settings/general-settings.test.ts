@@ -10,6 +10,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import { SETTINGS_COPY } from '../../app/copy/settings.ts';
 import { KeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
@@ -23,6 +24,11 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import {
+  forbiddenVisibleText,
+  PATH_ALLOWED_SELECTOR,
+  visibleTextOutsideCopyControls,
+} from '../../lib/visible-text-rules.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 import {
   installSettingsBureau,
@@ -184,6 +190,30 @@ describe('the page', () => {
     expect(renew?.textContent).toContain(
       'How often a worker renews its claim on a running workflow. Shorter intervals recover from a crashed worker sooner.',
     );
+  });
+
+  test('keeps every General label while omitting configuration identifiers on a phone', async () => {
+    const view = open(servedSettings());
+    await view.findByRole('group', READY);
+    await waitFor(() => expect(row(view.container, 'storage.backend')).not.toBeNull());
+    const testWindow = window;
+    if (!(testWindow instanceof Window)) throw new Error('expected a happy-dom test window');
+    try {
+      for (const width of [320, 375]) {
+        testWindow.happyDOM.setViewport({ width, height: 800 });
+        await waitFor(() =>
+          expect(view.container.querySelectorAll('.cinder-setting-row__identifier')).toHaveLength(
+            0,
+          ),
+        );
+        expect(row(view.container, 'tools.humanInput')?.textContent).toContain('Human input');
+        expect(row(view.container, 'engine.maxConcurrentRuns')?.textContent).toContain(
+          'Max concurrent runs',
+        );
+      }
+    } finally {
+      testWindow.happyDOM.setViewport({ width: 1024, height: 768 });
+    }
   });
 
   test('lists Max concurrent runs second under Runs, counted in runs', async () => {
@@ -603,29 +633,31 @@ describe('the preferences of this browser', () => {
   });
 });
 
-describe('where the host keeps its state, on a host of each mode', () => {
+// Owner, 2026-11-19: Settings listed three derived host paths and every provider's secret
+// reference. One row, the data folder, with its Copy button; no secret reference renders.
+describe('the one host fact Settings shows, on a host of each mode', () => {
   test.each(['local', 'remote'] as const)(
-    'names each place in the words of a %s host',
+    'is the data folder in a copy control on a %s host, and no other path or secret reference',
     async (mode) => {
       const view = open(servedSettings(), { hostMode: mode });
       await view.findByRole('group', READY);
-      const words = mode === 'remote' ? SETTINGS_COPY.remote.hostPaths : SETTINGS_COPY.hostPaths;
-      const section = view.container.querySelector<HTMLElement>('.weft-general__paths');
-      await waitFor(() => expect(section?.querySelector('dl')).not.toBeNull());
-      expect(section?.querySelector('h2')?.textContent?.trim()).toBe(words.title);
-      const text = section?.textContent ?? '';
-      if (mode === 'remote') {
-        for (const location of [
-          STUB_REMOTE_AGENT_DIRECTORY,
-          STUB_REMOTE_WORKFLOW_DIRECTORY,
-          STUB_REMOTE_CONFIGURATION_FILE,
-          ...STUB_REMOTE_PROVIDERS.map((provider) => provider.secretFile),
-        ]) {
-          expect(text).toContain(location);
-        }
-      } else {
-        expect(text).not.toContain('s3://');
+      const folder = await view.findByTestId('settings-data-folder');
+      expect(folder.classList.contains('cinder-copyable-value')).toBe(true);
+      expect(folder.closest('[data-setting="data-folder"]')).not.toBeNull();
+      expect(view.container.textContent).toContain(SETTINGS_COPY.about.dataFolder);
+      expect(view.container.textContent).not.toContain('Where the host keeps');
+      expect(view.container.textContent).not.toContain('workspace:');
+      for (const location of [
+        STUB_REMOTE_AGENT_DIRECTORY,
+        STUB_REMOTE_WORKFLOW_DIRECTORY,
+        STUB_REMOTE_CONFIGURATION_FILE,
+        ...STUB_REMOTE_PROVIDERS.map((provider) => provider.secretFile),
+      ]) {
+        expect(view.container.textContent).not.toContain(location);
       }
+      expect(
+        forbiddenVisibleText(visibleTextOutsideCopyControls(view.container, PATH_ALLOWED_SELECTOR)),
+      ).toEqual([]);
     },
   );
 });

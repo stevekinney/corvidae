@@ -8,7 +8,7 @@ import type { HookEventToDeliver } from './hook-delivery.ts';
 
 const sharedFields: Readonly<Record<string, readonly string[]>> = {
   'definitions.changed': ['catalog', 'added', 'changed', 'removed', 'rejected'],
-  'schedule.created': ['agentName', 'scheduleId'],
+  'schedule.created': ['agentName', 'target', 'scheduleId'],
   'schedule.paused': ['scheduleId'],
   'schedule.resumed': ['scheduleId'],
   'schedule.cancelled': ['scheduleId'],

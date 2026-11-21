@@ -633,11 +633,19 @@ export class UsageAccumulatedEvent extends Event {
   readonly stepCacheHitRate?: number | undefined;
   /** Prompt-cache hit rate across the run so far, from `totalUsage`. */
   readonly totalCacheHitRate?: number | undefined;
-  constructor(step: number, totalUsage: TokenUsage, stepUsage?: TokenUsage) {
+  /**
+   * What the run has cost so far, in the currency of its `costEstimation` pricing, summed over
+   * every request priced on its own usage (the figure the run's `costEstimate` ends on). Absent,
+   * never `0`, when the run has no `costEstimation` or no request has been priced: a missing price
+   * is not read as free.
+   */
+  readonly totalCost?: number | undefined;
+  constructor(step: number, totalUsage: TokenUsage, stepUsage?: TokenUsage, totalCost?: number) {
     super(UsageAccumulatedEvent.type);
     this.step = step;
     this.stepUsage = stepUsage;
     this.totalUsage = totalUsage;
+    if (totalCost !== undefined) this.totalCost = totalCost;
     const stepCacheHitRate = stepUsage ? estimateCacheHitRate(stepUsage) : undefined;
     const totalCacheHitRate = estimateCacheHitRate(totalUsage);
     if (stepCacheHitRate !== undefined) this.stepCacheHitRate = stepCacheHitRate;
@@ -1492,23 +1500,44 @@ export class HumanWaitParkedEvent extends Event {
  */
 export class AgentScheduledEvent extends Event {
   static readonly type = 'schedule.created' as const;
-  readonly agentName: string;
+  /** The agent the schedule runs; `undefined` for a schedule of a workflow, which runs none. */
+  readonly agentName: string | undefined;
+  /**
+   * What each fire runs (COR-2546): the agent, or the workflow named as `bureau.workflows.*` names
+   * it. Always present, and derived from the constructor's `agentName` or `workflowType`. It is
+   * `scheduleTarget` because `target` is the DOM `Event`'s own property; the recorded and
+   * published payloads of the event carry it as `target`.
+   */
+  readonly scheduleTarget: ScheduleEventTarget;
   readonly scheduleId: string;
   readonly spec: { cron?: string | undefined; every?: (string | number) | undefined };
   readonly sessionId?: string | undefined;
-  constructor(data: {
-    agentName: string;
-    scheduleId: string;
-    spec: { cron?: string | undefined; every?: (string | number) | undefined };
-    sessionId?: string | undefined;
-  }) {
+  constructor(
+    data: {
+      scheduleId: string;
+      spec: { cron?: string | undefined; every?: (string | number) | undefined };
+      sessionId?: string | undefined;
+    } & (
+      | { agentName: string; workflowType?: undefined }
+      | { workflowType: string; agentName?: undefined }
+    ),
+  ) {
     super(AgentScheduledEvent.type);
     this.agentName = data.agentName;
+    this.scheduleTarget =
+      data.agentName === undefined
+        ? { kind: 'workflow', workflowType: data.workflowType }
+        : { kind: 'agent', agentName: data.agentName };
     this.scheduleId = data.scheduleId;
     this.spec = data.spec;
     this.sessionId = data.sessionId;
   }
 }
+
+/** What a schedule's fires run: a catalog agent, or a workflow (COR-2546). */
+export type ScheduleEventTarget =
+  | { readonly kind: 'agent'; readonly agentName: string }
+  | { readonly kind: 'workflow'; readonly workflowType: string };
 
 /**
  * Emitted when a running agent calls `scheduleWakeup({in, note})` to park the

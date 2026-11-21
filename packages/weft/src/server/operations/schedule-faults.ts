@@ -6,6 +6,7 @@ import { ScheduleStaleRevisionError } from '../../core/engine/schedule-stale-rev
 import {
   isValidScheduleOverlapPolicy,
   isValidScheduleRevisionPolicy,
+  normalizeScheduleMetadata,
   normalizeScheduleUpdateOptions,
 } from '../../core/engine/validation/schedule.ts';
 import { isValidTimeZone } from '../../core/schedule.ts';
@@ -19,6 +20,7 @@ export type ScheduleMutableOptionsInput = {
   jitter?: unknown;
   timeZone?: unknown;
   revisionPolicy?: unknown;
+  metadata?: unknown;
 };
 
 /** Validate the mutable schedule options shared by create and update. */
@@ -26,6 +28,7 @@ export function validateScheduleMutableOptions(
   input: ScheduleMutableOptionsInput,
 ): ScheduleUpdateOptions {
   const description = validateScheduleDescription(input.description);
+  const metadata = validateScheduleMetadata(input.metadata);
   const overlap = validateScheduleOverlap(input.overlap);
   const backfill = validateScheduleBackfill(input.backfill);
   const jitter = validateScheduleJitter(input.jitter);
@@ -39,7 +42,17 @@ export function validateScheduleMutableOptions(
     ...(jitter !== undefined ? { jitter } : {}),
     ...(timeZone !== undefined ? { timeZone } : {}),
     ...(revisionPolicy !== undefined ? { revisionPolicy } : {}),
+    ...(metadata !== undefined ? { metadata } : {}),
   };
+}
+
+function validateScheduleMetadata(value: unknown): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return normalizeScheduleMetadata(value);
+  } catch {
+    throw invalidParamsFault('Field "metadata" must be a plain JSON object');
+  }
 }
 
 /** The workflow type an update moves a schedule to: a non-empty string, or `undefined` when omitted. */
