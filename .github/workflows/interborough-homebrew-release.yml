@@ -63,13 +63,12 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      - run: bunx playwright install chromium
       - name: Build one release archive
         working-directory: applications/interborough
         run: bun scripts/build-release.ts --version "$VERSION" --outdir "$RUNNER_TEMP/interborough-release"
       - name: Test the packaged archive before publication
         working-directory: applications/interborough
-        env:
-          CORVIDAE_EXPECTED_RELEASE_SHA: ${{ steps.release-inputs.outputs.source_sha }}
         run: |
           bun scripts/test-installed-release.ts \
             --archive "$RUNNER_TEMP/interborough-release/interborough-$VERSION-darwin-arm64.tar.gz" \
@@ -112,28 +111,28 @@ jobs:
         with:
           name: interborough-${{ inputs.version }}-darwin-arm64-release
           path: ${{ runner.temp }}/interborough-release
-      - name: Reject an existing release tag
-        run: |
-          response="$RUNNER_TEMP/interborough-existing-tag.json"
-          diagnostics="$RUNNER_TEMP/interborough-existing-tag.log"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" > "$response" 2> "$diagnostics"; then
-            echo "Release tag $TAG already exists" >&2
-            exit 1
-          fi
-          if ! grep -q '404' "$diagnostics"; then
-            cat "$diagnostics" >&2
-            exit 1
-          fi
       - name: Verify downloaded archive digest
         run: |
           cd "$RUNNER_TEMP/interborough-release"
           shasum -a 256 -c "interborough-$VERSION-darwin-arm64.tar.gz.sha256"
+      - name: Pin the release tag to the tested source
+        run: |
+          if ! tag_source="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$TAG" -f "sha=$SOURCE_SHA" --jq .object.sha)"; then
+            # A retry may find the tag reserved by an earlier run whose release did not publish.
+            tag_source="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)"
+          fi
+          if [ "$tag_source" != "$SOURCE_SHA" ]; then
+            echo "Release tag $TAG points to $tag_source, expected $SOURCE_SHA" >&2
+            exit 1
+          fi
       - name: Publish tested archive and checksum
         run: |
           cd "$RUNNER_TEMP/interborough-release"
           gh release create "$TAG" \
             "interborough-$VERSION-darwin-arm64.tar.gz" \
             "interborough-$VERSION-darwin-arm64.tar.gz.sha256" \
-            --target "$SOURCE_SHA" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
             --title "Interborough $VERSION" \
             --generate-notes

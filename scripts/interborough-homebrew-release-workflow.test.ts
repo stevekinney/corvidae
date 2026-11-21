@@ -27,8 +27,10 @@ describe('Interborough Homebrew release workflow', () => {
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$SOURCE_SHA"');
     expect(workflow).toContain('bun install --frozen-lockfile');
     expect(workflow).toContain('bun scripts/build-release.ts --version "$VERSION"');
+    const chromium = workflow.indexOf('bunx playwright install chromium');
+    expect(chromium).toBeGreaterThan(workflow.indexOf('bun install --frozen-lockfile'));
+    expect(chromium).toBeLessThan(workflow.indexOf('bun scripts/test-installed-release.ts'));
     expect(workflow).toContain('bun scripts/test-installed-release.ts');
-    expect(workflow).toContain('CORVIDAE_EXPECTED_RELEASE_SHA');
     expect(workflow).toContain('shasum -a 256 "interborough-$VERSION-darwin-arm64.tar.gz"');
   });
 
@@ -50,13 +52,18 @@ describe('Interborough Homebrew release workflow', () => {
     );
     expect(workflow).toContain('gh release create "$TAG"');
     expect(workflow).toContain('SOURCE_SHA: ${{ needs.package.outputs.source_sha }}');
-    expect(workflow).toContain('--target "$SOURCE_SHA"');
+    expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
+    expect(workflow).toContain('--verify-tag');
   });
 
-  test('fails closed for an existing tag and publishes precisely the archive and checksum', () => {
+  test('pins a tag before publishing and rejects a tag pointing to other source', () => {
+    expect(workflow).toContain('gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs"');
+    expect(workflow).toContain('-f "ref=refs/tags/$TAG" -f "sha=$SOURCE_SHA"');
     expect(workflow).toContain('gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG"');
-    expect(workflow).toContain('Release tag $TAG already exists');
-    expect(workflow).toContain('grep -q \'404\' "$diagnostics"');
+    expect(workflow).toContain('if [ "$tag_source" != "$SOURCE_SHA" ]; then');
+    expect(workflow.indexOf('Verify downloaded archive digest')).toBeLessThan(
+      workflow.indexOf('Pin the release tag to the tested source'),
+    );
     expect(workflow).toContain('"interborough-$VERSION-darwin-arm64.tar.gz"');
     expect(workflow).toContain('"interborough-$VERSION-darwin-arm64.tar.gz.sha256"');
   });
