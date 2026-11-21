@@ -272,7 +272,7 @@ for (const viewport of [
     }, testInfo) => {
       const page = await componentPage.open({
         entry: modalEntry,
-        fixtureName: 'assertion',
+        fixtureName: 'open',
         theme,
         viewport,
       });
