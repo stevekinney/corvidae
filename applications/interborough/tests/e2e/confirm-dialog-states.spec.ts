@@ -325,7 +325,7 @@ test.describe('confirm-dialog-states: the bulk action dialog', () => {
     const dialog = await openBulkDialog(page, 'Cancel');
     await expectPreview(dialog, 'cancel');
     await confirmPreview(dialog, 'cancel');
-    await expect(dialog.getByText(/keep this open/)).toBeVisible();
+    await expect(dialog.getByText(/keeps running on the server/)).toBeVisible();
     await expect(dialog.getByRole('progressbar')).toBeVisible();
     await captureDialog(page, BULK, 'committing');
     held.release();
@@ -355,7 +355,8 @@ test.describe('confirm-dialog-states: the bulk action dialog', () => {
     await expectPreview(dialog, 'cancel');
     await confirmPreview(dialog, 'cancel');
     await expect(dialog.getByRole('button', { name: 'Refresh preview' })).toBeVisible();
-    await expect(dialog.getByText(/changed since the preview/)).toBeVisible();
+    await expect(dialog.getByText('The matching workflows changed')).toBeVisible();
+    await expect(dialog.getByText(CONFLICT.message)).toHaveCount(0);
     await captureDialog(page, BULK, 'stale');
   });
 

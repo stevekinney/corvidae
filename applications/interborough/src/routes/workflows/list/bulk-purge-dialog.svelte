@@ -30,7 +30,8 @@
    */
   import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 
-  import { BULK_PURGE_COPY } from '../../../app/copy/bulk-purge.ts';
+  import { BULK_DIALOG_COPY } from '../../../app/copy/bulk-dialog.ts';
+  import { BULK_PURGE_COPY, PURGE_SAMPLE_SHOWN } from '../../../app/copy/bulk-purge.ts';
   import BulkActionDialog from './bulk-action-dialog.svelte';
   import type { BulkCommitSummary } from './bulk-result-summary.ts';
 
@@ -50,15 +51,13 @@
 </script>
 
 {#snippet lead(preview: BulkOperationDryRunResult)}
-  {preview.matched === 0
-    ? BULK_PURGE_COPY.preview.nothing
-    : BULK_PURGE_COPY.preview.lead(preview.matched)}
+  {BULK_PURGE_COPY.preview.lead(preview.matched)}
 {/snippet}
 
-<!-- With nothing to purge there is nothing more to say: no sample, no note of what is kept. -->
+<!-- A few ids, not all of them: the rest are counted, so the typed field stays in view. -->
 {#snippet details(preview: BulkOperationDryRunResult)}
   {#if preview.matched > 0}
-    {@const sample = preview.sampleWorkflowIds ?? []}
+    {@const sample = (preview.sampleWorkflowIds ?? []).slice(0, PURGE_SAMPLE_SHOWN)}
     {#if sample.length > 0}
       <p id={sampleIntroId}>{BULK_PURGE_COPY.preview.sampleIntro}</p>
       <ul aria-labelledby={sampleIntroId}>
@@ -85,8 +84,7 @@
   {details}
   loadingLabel={BULK_PURGE_COPY.loading}
   loadingConfirmLabel={BULK_PURGE_COPY.preview.confirmWhileCounting}
-  committingNote={BULK_PURGE_COPY.committing}
-  staleNotice={BULK_PURGE_COPY.stale}
+  nothingMatches={BULK_DIALOG_COPY.nothingMatches('finished workflows', 'purge')}
   commitFailureNote={BULK_PURGE_COPY.failed.refreshNote}
   commitRetry="new-preview"
 />

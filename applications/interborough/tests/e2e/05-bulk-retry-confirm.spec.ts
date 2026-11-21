@@ -57,7 +57,7 @@ test('operator bulk-retries every failed workflow with type-to-confirm', async (
 
   await expect(dialog.getByRole('progressbar', { name: /in progress/ })).toBeVisible();
   await expect(
-    dialog.getByText("Please keep this open until it finishes. Closing this doesn't cancel"),
+    dialog.getByText('Working on it. This keeps running on the server if you leave this page.'),
   ).toBeVisible();
   await checkA11y('workflow list — bulk retry dialog (committing)');
 

@@ -165,7 +165,14 @@
 </script>
 
 {#snippet signalParamsForm()}
-  <Input id="bulk-signal-name" label="Signal name" bind:value={signalName} placeholder="addItem" />
+  <!-- The form is filled in before anything can be confirmed, so its first field takes the first focus, not Cancel. -->
+  <Input
+    id="bulk-signal-name"
+    label="Signal name"
+    bind:value={signalName}
+    placeholder="addItem"
+    autofocus
+  />
   <Textarea
     id="bulk-signal-payload"
     label="Payload"
@@ -180,6 +187,7 @@
 
 {#snippet tagsParamsForm()}
   <Select
+    autofocus
     id="bulk-tags-operation"
     label="Operation"
     bind:value={tagsOperation}

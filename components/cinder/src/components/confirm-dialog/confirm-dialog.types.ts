@@ -53,7 +53,9 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    * Content rendered below the description and above the typed confirmation: a checkbox that
    * changes what the confirmation does, or the exact command about to run in a code block. The
    * description says what the dialog does; the options say what each choice does. Keep the
-   * description short, and keep controls here labelled.
+   * description short, and keep controls here labelled. Cancel keeps the first focus unless a
+   * control here carries `autofocus`: it comes before Cancel in the dialog, so it takes the first
+   * focus instead. Use that for a form the person fills in before anything can be confirmed.
    */
   options?: Snippet;
   /**
@@ -95,8 +97,8 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    */
   busyLabel?: string | undefined;
   /**
-   * Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`.
-   * Shown only with `error`.
+   * Title of the failure callout, such as "Couldn’t delete the agent.", drawn on its own line above
+   * `error` as every Callout title is. Shown only with `error`.
    */
   errorTitle?: string | undefined;
   /**

@@ -303,6 +303,14 @@
     outline: none;
   }
 
+  /* A body with nothing in it takes no room. A confirmation whose only content is its failure (the
+   * callout lives in the footer) would otherwise leave a padded band between the title and the
+   * footer. `:empty` ignores the comment nodes a template leaves, so only a body that renders
+   * nothing collapses. */
+  .cinder-modal__body:empty {
+    display: none;
+  }
+
   .cinder-modal__body[data-cinder-chrome='none'] {
     padding: 0;
     background: transparent;

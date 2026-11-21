@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -264,7 +265,7 @@ describe('ConfirmDialog busy', () => {
 });
 
 describe('ConfirmDialog failure', () => {
-  test('shows a danger callout with a bold lead inside an alert region', () => {
+  test('shows a danger callout with its title on its own line inside an alert region', () => {
     const { container } = render(ConfirmDialog, {
       props: {
         ...base,
@@ -279,10 +280,61 @@ describe('ConfirmDialog failure', () => {
     expect(region.getAttribute('role')).toBe('alert');
     const callout = requiredInstance(region.querySelector('.cinder-callout'), HTMLElement);
     expect(callout.getAttribute('data-cinder-variant')).toBe('danger');
-    expect(callout.querySelector('strong')?.textContent).toBe('Couldn’t delete the key.');
-    expect(callout.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Couldn’t delete the key. Nothing was removed.',
+    // The title is the Callout's own title, a paragraph apart from the message, so it never runs
+    // into it, and it is the same form as every other notice in a dialog.
+    const title = requiredInstance(callout.querySelector('.cinder-callout__title'), HTMLElement);
+    expect(title.textContent).toBe('Couldn’t delete the key.');
+    expect(callout.querySelector('strong')).toBeNull();
+    expect(title.textContent).not.toContain('Nothing was removed.');
+    expect(callout.textContent).toContain('Nothing was removed.');
+  });
+
+  test('the action starts at the leading edge, under the message', () => {
+    const { container } = render(ConfirmDialog, {
+      props: { ...base, error: 'It failed.', errorAction: { label: 'Retry', onAction: () => {} } },
+    });
+    const callout = requiredInstance(container.querySelector('.cinder-callout'), HTMLElement);
+    expect(callout.classList.contains('cinder-callout--inline-action')).toBe(false);
+    expect(callout.querySelector('button')?.textContent?.trim()).toBe('Retry');
+  });
+
+  test('a dialog with nothing to show in its body renders an empty one, which Modal collapses', () => {
+    const { container } = render(ConfirmDialog, {
+      props: { ...base, error: 'It failed.', errorAction: { label: 'Retry', onAction: () => {} } },
+    });
+    const body = requiredInstance(container.querySelector('.cinder-modal__body'), HTMLElement);
+    // Its template leaves whitespace between blocks, which `:empty` would not forgive, so the rule
+    // is "no element in it".
+    expect(body.children).toHaveLength(0);
+    const css = readFileSync(new URL('./confirm-dialog.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\.cinder-confirm-dialog \.cinder-modal__body:not\(:has\(> \*\)\) \{\s*display: none;/u,
     );
+  });
+
+  test('a control in options that carries autofocus takes the first focus before Cancel', async () => {
+    const { container } = render(ConfirmDialog, {
+      props: {
+        ...base,
+        confirmEnabled: false,
+        options: html('<input aria-label="Signal name" autofocus />'),
+      },
+    });
+    const dialog = requiredInstance(container.querySelector('dialog'), HTMLDialogElement);
+    const field = requiredInstance(container.querySelector('input'), HTMLInputElement);
+    const [cancel] = footerButtons(container);
+    if (!cancel) throw new Error('Expected a Cancel button.');
+    // Cancel still asks for focus, and the field comes before it in the dialog...
+    expect(cancel.autofocus).toBe(true);
+    expect(field.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    // ...so the first control that asks, the one the native dialog and Modal's own initial focus
+    // pick, is the field.
+    const first = Array.from(dialog.querySelectorAll<HTMLElement>('*')).find(
+      (element) => element.autofocus,
+    );
+    expect(first).toBe(field);
   });
 
   test('the alert region is mounted before the failure and empty without one', async () => {

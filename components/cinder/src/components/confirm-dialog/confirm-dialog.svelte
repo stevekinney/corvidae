@@ -160,9 +160,11 @@
             variant={errorTone}
             semantic="note"
             class="cinder-confirm-dialog__error"
+            actionLayout="stacked"
+            {...errorTitle ? { title: errorTitle } : {}}
             {...errorAction ? { action: failureAction } : {}}
           >
-            {#if errorTitle}<strong>{errorTitle}</strong>{' '}{/if}{failure}
+            {failure}
           </Callout>
         {/if}
       </div>

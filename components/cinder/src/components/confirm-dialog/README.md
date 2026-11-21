@@ -100,6 +100,8 @@ Put what each choice does in `options`. A plain `<ul>` as a direct child is draw
 </ConfirmDialog>
 ```
 
+Cancel keeps the first focus. The exception is a form in `options` that the person fills in before anything can be confirmed: put `autofocus` on its first field and that field, which comes before Cancel in the dialog, takes the first focus instead.
+
 ## Waiting for the answer: `pending`
 
 Set `pending` while what the dialog confirms is still being worked out, such as a count the server has not answered. The description and options regions show a skeleton that keeps the room the answer will take, `pendingLabel` is announced once as a status, and the confirm button cannot be pressed. Cancel stays enabled and keeps the first focus, so a person can leave while the answer is in flight. The typed field waits with the rest of the body, and entering `pending` clears what was typed, so a new answer is confirmed afresh. Nothing describes the dialog while it waits; `aria-describedby` returns with the description.
@@ -158,7 +160,7 @@ By default a failure keeps the confirm button armed, so pressing it again is the
 | `confirmVisible` | `boolean` | no | `true` | Whether the confirm button is drawn. Set `false` when there is nothing to confirm, such as the answer to a finished action: Cancel is then the one action, so name it with `cancelLabel` ("Close"). |
 | `destructive` | `boolean` | no | — | When true, the confirm button uses variant="danger". The cancel button still receives default focus regardless — color is never the sole destructive signal. |
 | `error` | `string` | no | — | Why the confirmed work failed, in a danger callout between the body and the actions that is announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays, and the confirm button stays armed under its own label, so pressing it again is the retry. Clear it to hide the callout. |
-| `errorTitle` | `string` | no | — | Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`. Shown only with `error`. |
+| `errorTitle` | `string` | no | — | Title of the failure callout, such as "Couldn’t delete the agent.", drawn on its own line above `error` as every Callout title is. Shown only with `error`. |
 | `errorTone` | `"danger"` \| `"warning"` | no | `"danger"` | Tone of the failure callout: `danger` (the default) for work that failed, `warning` for a refusal that nothing was done about, such as a preview that went stale before it was confirmed. |
 | `open` | `boolean` | yes | — | Controls visibility. Bindable. |
 | `pending` | `boolean` | no | `false` | True while what the dialog confirms is still being worked out, such as a count the server has not answered: the description and options show a skeleton, the typed field waits, and the confirm button cannot be pressed. Cancel stays enabled and focusable. Entering `pending` clears the typed text, so a new answer is confirmed afresh. |
@@ -173,7 +175,7 @@ By default a failure keeps the confirm button armed, so pressing it again is the
 | `onCancel` | `(opaque)` | no | — | Called when the user cancels (cancel button, Escape, or backdrop per the dialog's policy). Not expressible in JSON Schema; see the component types for the signature. |
 | `onConfirm` | `(opaque)` | yes | — | Fired when the user activates the confirm button. Required. The component closes itself after, unless `closeOnConfirm` is `false`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onExitComplete` | `(opaque)` | no | — | Fired once the underlying modal's exit transition has completed. Not expressible in JSON Schema; see the component types for the signature. |
-| `options` | `(opaque)` | no | — | Content rendered below the description and above the typed confirmation: a checkbox that changes what the confirmation does, or the exact command about to run in a code block. The description says what the dialog does; the options say what each choice does. Keep the description short, and keep controls here labelled. Not expressible in JSON Schema; see the component types for the signature. |
+| `options` | `(opaque)` | no | — | Content rendered below the description and above the typed confirmation: a checkbox that changes what the confirmation does, or the exact command about to run in a code block. The description says what the dialog does; the options say what each choice does. Keep the description short, and keep controls here labelled. Cancel keeps the first focus unless a control here carries `autofocus`: it comes before Cancel in the dialog, so it takes the first focus instead. Use that for a form the person fills in before anything can be confirmed. Not expressible in JSON Schema; see the component types for the signature. |
 | `triggerRef` | `(opaque)` | no | — | Forwarded to <Modal>; focus is restored here on close. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

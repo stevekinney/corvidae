@@ -223,7 +223,7 @@ describe('BulkPurgeDialog', () => {
 
     await waitFor(() => {
       expect(
-        getByText('Purging. This keeps running on the server if you leave this page.'),
+        getByText('Working on it. This keeps running on the server if you leave this page.'),
       ).not.toBeNull();
     });
     // No spaced em dash, and no talk of closing the dialog: the person may leave the page.
@@ -298,9 +298,9 @@ describe('BulkPurgeDialog', () => {
     await waitFor(() => {
       expect(getByText('The matching workflows changed')).not.toBeNull();
     });
-    expect(getByText(/Check the new count before you purge\./)).not.toBeNull();
+    expect(getByText(/Check the new count before you confirm\./)).not.toBeNull();
     // Nothing was deleted: the server checks the token before it touches a workflow.
-    expect(getByText(/Nothing was purged\./)).not.toBeNull();
+    expect(getByText(/Nothing was changed\./)).not.toBeNull();
     expect(queryByText(/does not match/)).toBeNull();
     // The callout carries the one Refresh action; the footer does not repeat it.
     expect(getAllByRole('button', { name: 'Refresh preview' })).toHaveLength(1);
@@ -450,7 +450,7 @@ describe('BulkPurgeDialog', () => {
       expect(getByText('Field "filter.tags" must be an array')).not.toBeNull();
     });
     expect(queryByText('The matching workflows changed')).toBeNull();
-    expect(queryByText(/Nothing was purged\./)).toBeNull();
+    expect(queryByText(/Nothing was changed\./)).toBeNull();
   });
 
   test('a failed commit says what was deleted and never retries with the same token: it offers Refresh preview, which runs the dry run again', async () => {
@@ -522,7 +522,7 @@ describe('BulkPurgeDialog', () => {
     });
     expect(getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
     // Only the server's Conflict, raised before anything is touched, may say nothing was purged.
-    expect(queryByText(/Nothing was purged/)).toBeNull();
+    expect(queryByText(/Nothing was changed/)).toBeNull();
   });
 
   test('a failed dry run offers Retry, which runs the dry run again', async () => {

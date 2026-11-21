@@ -36,6 +36,27 @@ afterEach(() => {
   resetScrollLock();
 });
 
+describe('Modal body that renders nothing (COR-2547)', () => {
+  test('an empty body takes no room, so no padded band sits between the title and the footer', () => {
+    expect(declared('.cinder-modal__body:empty', 'display')).toBe('none');
+  });
+
+  test('a body holding only comment nodes is :empty, so the rule reaches a template that rendered nothing', async () => {
+    const { createRawSnippet } = await import('svelte');
+    const { container } = render(Modal, {
+      props: {
+        open: true,
+        title: 'Nothing to say',
+        children: createRawSnippet(() => ({ render: () => '<!---->' })),
+      },
+    });
+    const body = requiredInstance(container.querySelector('.cinder-modal__body'), HTMLElement);
+    expect(Array.from(body.childNodes).every((node) => node.nodeType === Node.COMMENT_NODE)).toBe(
+      true,
+    );
+  });
+});
+
 // A short confirmation has nothing to separate from: the header and footer rules appear only
 // while the body scrolls (COR-2448 AC4).
 describe('Modal header and footer rules (COR-2448 AC4)', () => {

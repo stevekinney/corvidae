@@ -36,6 +36,7 @@
   import { onMount, tick, type Snippet } from 'svelte';
   import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
 
+  import { BULK_DIALOG_COPY } from '../../../app/copy/bulk-dialog.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import { confirmPhrase, filterSummaryChip } from './bulk-preview-format.ts';
   import type { BulkCommitSummary } from './bulk-result-summary.ts';
@@ -75,13 +76,8 @@
     readonly loadingLabel?: string;
     /** The confirm button's label while there is no count to name yet. Defaults to "<Verb> workflows". */
     readonly loadingConfirmLabel?: string;
-    /** Said while the commit is in flight. */
-    readonly committingNote?: string;
-    /**
-     * What a commit that was refused as stale says, in place of the server's message and the
-     * default sentence. Without it the server's message leads and the default sentence follows.
-     */
-    readonly staleNotice?: { readonly title: string; readonly body: string };
+    /** Said, in place of the lead, when the count is zero. Defaults to the sentence for "workflows". */
+    readonly nothingMatches?: string;
     /** A sentence under the server's message for a commit fault that is not stale, such as what to do next. */
     readonly commitFailureNote?: string;
     /**
@@ -107,8 +103,7 @@
     details,
     loadingLabel = 'Checking how many workflows match',
     loadingConfirmLabel,
-    committingNote = "Please keep this open until it finishes. Closing this doesn't cancel the server operation — it will keep running.",
-    staleNotice,
+    nothingMatches = BULK_DIALOG_COPY.nothingMatches('workflows', 'do'),
     commitFailureNote,
     commitRetry = 'same-token',
   }: BulkActionDialogProps = $props();
@@ -226,9 +221,6 @@
     }
   }
 
-  const STALE_BODY =
-    'The set of matching workflows changed since the preview. Run the preview again.';
-
   /** The one fault callout: its words, its tone, and the action that re-runs what failed. */
   const fault = $derived.by(() => {
     if (phase !== 'fault') return undefined;
@@ -242,8 +234,8 @@
     }
     if (faultMeansStalePreview) {
       return {
-        title: staleNotice?.title ?? faultMessage,
-        body: staleNotice?.body ?? STALE_BODY,
+        title: BULK_DIALOG_COPY.stale.title,
+        body: BULK_DIALOG_COPY.stale.body,
         tone: 'warning' as const,
         action: { label: 'Refresh preview', onAction: reloadPreview },
       };
@@ -260,14 +252,20 @@
   });
 
   const hasMatches = $derived(phase === 'preview' && matched > 0);
+  /** A commit that failed still says what it was asked to do: the count and the filter stay. */
+  const faultKeepsPreview = $derived(
+    phase === 'fault' && faultOrigin === 'committing' && preview !== null,
+  );
   const showsDescription = $derived(
     (phase === 'preview' && preview !== null) ||
+      faultKeepsPreview ||
       phase === 'committing' ||
       (phase === 'result' && result !== null),
   );
   const showsOptions = $derived(
     (phase === 'params' && parameters !== undefined) ||
       (phase === 'preview' && preview !== null) ||
+      (faultKeepsPreview && chip.length > 0) ||
       phase === 'committing' ||
       (phase === 'result' && result !== null && (!!result.note || result.errors.length > 0)),
   );
@@ -300,19 +298,22 @@
   {#if previewNote}
     <p>{previewNote}</p>
   {/if}
-  {#if dryRun.matched === 0}
-    <p>No workflows match the current filter — nothing to do.</p>
-  {/if}
 {/snippet}
 
 {#snippet phaseDescription()}
-  {#if phase === 'preview' && preview}
+  {#if (phase === 'preview' || phase === 'fault') && preview}
     <!-- Focusable by script only: after a reload, focus lands here so the new count is read. -->
     <span tabindex="-1" bind:this={leadElement}>
-      {#if lead}{@render lead(preview)}{:else}{@render defaultLead(preview)}{/if}
+      {#if preview.matched === 0}
+        {nothingMatches}
+      {:else if lead}
+        {@render lead(preview)}
+      {:else}
+        {@render defaultLead(preview)}
+      {/if}
     </span>
   {:else if phase === 'committing'}
-    {committingNote}
+    {BULK_DIALOG_COPY.committing}
   {:else if phase === 'result' && result}
     <Badge variant="success">Done</Badge>
     {result.headline}
@@ -322,6 +323,8 @@
 {#snippet phaseOptions()}
   {#if phase === 'params'}
     {@render parameters?.()}
+  {:else if phase === 'fault' && preview}
+    <p><code>{chip}</code></p>
   {:else if phase === 'preview' && preview}
     {#if chip.length > 0}
       <p><code>{chip}</code></p>

@@ -7,6 +7,7 @@ import { createRawSnippet } from 'svelte';
 import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 import { HttpClientError } from '@lostgradient/weft';
 
+import { BULK_DIALOG_COPY } from '../../../app/copy/bulk-dialog.ts';
 import BulkActionDialog from './bulk-action-dialog.svelte';
 import BulkPurgeDialog from './bulk-purge-dialog.svelte';
 import type { BulkCommitSummary } from './bulk-result-summary.ts';
@@ -32,6 +33,7 @@ function preview(overrides: Partial<BulkOperationDryRunResult> = {}): BulkOperat
   };
 }
 
+const CONFLICT_SENTENCE = 'Bulk confirmation token does not match the current dry-run scope';
 const ACTION_PHRASE = 'Type "cancel 47 workflows" to confirm';
 const PURGE_PHRASE = 'Type "purge 47 workflows" to confirm';
 
@@ -120,7 +122,7 @@ describe('the footer is present in every phase', () => {
     });
     await fireEvent.click(view.getByRole('button', { name: 'Signal 47 workflows' }));
     await waitFor(() => {
-      expect(view.getByText(/keep this open/)).not.toBeNull();
+      expect(view.getByText(/keeps running on the server/)).not.toBeNull();
     });
     expect(footerCount()).toBe(1);
     expect(footerNames()).toEqual(['Cancel', 'Signal 47 workflows']);
@@ -310,6 +312,161 @@ describe('every fault is one callout with its re-run action in the same slot', (
     expect(callouts()[0]?.getAttribute('data-cinder-variant')).toBe('danger');
     expect(callouts()[0]?.contains(view.getByRole('button', { name: 'Retry' }))).toBe(true);
     expect(footerButtonNames()).toEqual(['Retry', 'Close']);
+  });
+});
+
+describe('a fault keeps what was asked (design round 1, B3)', () => {
+  test('a failed commit still shows the count and the filter, under the title', async () => {
+    const view = render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        runDryRun: async () => preview(),
+        runCommit: async () => {
+          throw new HttpClientError(500, 'Internal server error');
+        },
+        onClose: () => {},
+      },
+    });
+    await typeAndConfirm(view, ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
+    await waitFor(() => {
+      expect(view.getByRole('button', { name: 'Retry' })).not.toBeNull();
+    });
+    expect(view.getByText('47 matching workflows')).not.toBeNull();
+    expect(view.getByText('status:failed, type:payment-capture')).not.toBeNull();
+    // The typed field is gone with the preview it confirmed: nothing is left to type.
+    expect(view.queryByRole('textbox')).toBeNull();
+  });
+
+  test('a failed dry run has no count to keep, so its body is empty and takes no room', async () => {
+    render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        runDryRun: async () => {
+          throw new HttpClientError(500, 'Internal server error');
+        },
+        runCommit: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll('.cinder-callout')).toHaveLength(1);
+    });
+    const body = requireElement(document.querySelector('.cinder-modal__body'), HTMLElement);
+    expect(body.children).toHaveLength(0);
+  });
+});
+
+describe('the bulk and purge flows word the same things the same way (design round 1, B5)', () => {
+  test('one committing note', async () => {
+    const hold = new Promise<BulkCommitSummary>(() => {});
+    const action = render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        runDryRun: async () => preview(),
+        runCommit: () => hold,
+        onClose: () => {},
+      },
+    });
+    await typeAndConfirm(action, ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
+    await waitFor(() => {
+      expect(action.getByText(BULK_DIALOG_COPY.committing)).not.toBeNull();
+    });
+    action.unmount();
+    const purge = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview({ action: 'purge' }),
+        runPurge: () => hold,
+        onClose: () => {},
+      },
+    });
+    await typeAndConfirm(purge, PURGE_PHRASE, 'purge 47 workflows', 'Purge 47 workflows');
+    await waitFor(() => {
+      expect(purge.getByText(BULK_DIALOG_COPY.committing)).not.toBeNull();
+    });
+  });
+
+  test('one stale notice, never the server sentence as a title', async () => {
+    const stale = async (): Promise<never> => {
+      throw new HttpClientError(409, CONFLICT_SENTENCE, { faultCode: 'Conflict' });
+    };
+    const action = render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        runDryRun: async () => preview(),
+        runCommit: stale,
+        onClose: () => {},
+      },
+    });
+    await typeAndConfirm(action, ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
+    await waitFor(() => {
+      expect(action.getByText(BULK_DIALOG_COPY.stale.title)).not.toBeNull();
+    });
+    expect(action.getByText(BULK_DIALOG_COPY.stale.body)).not.toBeNull();
+    expect(action.queryByText(CONFLICT_SENTENCE)).toBeNull();
+    action.unmount();
+    const purge = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview({ action: 'purge' }),
+        runPurge: stale,
+        onClose: () => {},
+      },
+    });
+    await typeAndConfirm(purge, PURGE_PHRASE, 'purge 47 workflows', 'Purge 47 workflows');
+    await waitFor(() => {
+      expect(purge.getByText(BULK_DIALOG_COPY.stale.title)).not.toBeNull();
+    });
+    expect(purge.getByText(BULK_DIALOG_COPY.stale.body)).not.toBeNull();
+  });
+
+  test('one zero-matches sentence, with its own subject and action', async () => {
+    const action = render(BulkActionDialog, {
+      props: {
+        title: 'Bulk cancel',
+        verb: 'cancel',
+        runDryRun: async () => preview({ matched: 0 }),
+        runCommit: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+    await waitFor(() => {
+      expect(action.getByText(BULK_DIALOG_COPY.nothingMatches('workflows', 'do'))).not.toBeNull();
+    });
+    action.unmount();
+    const purge = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview({ action: 'purge', matched: 0 }),
+        runPurge: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+    await waitFor(() => {
+      expect(
+        purge.getByText(BULK_DIALOG_COPY.nothingMatches('finished workflows', 'purge')),
+      ).not.toBeNull();
+    });
+  });
+});
+
+describe('the purge shows a few ids, so the typed field stays in view (design round 1, B2)', () => {
+  test('at most five of the sample are listed, and the rest are counted', async () => {
+    const ids = Array.from({ length: 20 }, (_, index) => `wf-${String(index + 1)}`);
+    const view = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview({ action: 'purge', sampleWorkflowIds: ids, matched: 47 }),
+        runPurge: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+    await waitFor(() => {
+      expect(view.getByLabelText(PURGE_PHRASE)).not.toBeNull();
+    });
+    const list = view.getByRole('list', { name: 'These workflows will be deleted:' });
+    expect(list.querySelectorAll('li')).toHaveLength(5);
+    expect(view.getByText('…and 42 more.')).not.toBeNull();
   });
 });
 
