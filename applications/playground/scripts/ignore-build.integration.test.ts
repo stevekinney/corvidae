@@ -324,6 +324,16 @@ describe('decideFromChanges', () => {
     });
     expect(decision.build).toBe(false);
   });
+
+  test('builds when deployment configuration or the ignore-step contract changes', () => {
+    for (const changed of [
+      'applications/playground/vercel.json',
+      'applications/playground/scripts/ignore-build.sh',
+      'applications/playground/scripts/ignore-build.ts',
+      'applications/playground/scripts/environment-configuration.ts',
+    ])
+      expect(decideFromChanges({ changedFiles: [changed], closure }).build).toBe(true);
+  });
 });
 
 describe('ignore-build.sh', () => {

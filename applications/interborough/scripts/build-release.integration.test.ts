@@ -1,6 +1,7 @@
 import type { PluginPanel } from '@lostgradient/interborough-plugin';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -202,6 +203,7 @@ const server = Bun.serve({ port, fetch(request) {
   return new Response('not found', { status: 404 });
 } });
 await writeFile(join(home, 'server-port'), String(server.port));
+if (marker && behavior === 'poll-error') await writeFile(marker, 'ready');
 console.info('Interborough is listening on http://127.0.0.1:' + server.port);
 await new Promise(() => {});
 `,
@@ -580,6 +582,31 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the delayed supervisor fixture owns and cleans its guarded child process.
+  test('checks the relocated host once it reports ready even after the startup clock advances', async () => {
+    const markerDirectory = await mkdtemp(join(tmpdir(), 'interborough-release-marker-'));
+    const marker = join(markerDirectory, 'lifecycle');
+    const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'poll-error' });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-ready-'));
+    try {
+      const archive = await buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+        ...fixture.operations,
+        now: () => {
+          try {
+            return readFileSync(marker, 'utf8') === 'ready' ? 20_000 : 0;
+          } catch {
+            return 0;
+          }
+        },
+      });
+      expect(await Bun.file(archive).exists()).toBe(true);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+      await rm(markerDirectory, { recursive: true, force: true });
+    }
+  });
+
   // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects a dependency absent from the frozen production install', async () => {
     const fixture = await releaseFixture({ recursiveDependency: true, missingDependency: true });
@@ -704,6 +731,15 @@ describe('release arguments', () => {
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-staged-'));
     try {
       await buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations);
+      expect(fixture.commands).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining(['components/cinder/scripts/tokens/generate-validators.ts']),
+          expect.arrayContaining([
+            'components/cinder/scripts/tokens/generate-artifacts.ts',
+            '--ignored-only',
+          ]),
+        ]),
+      );
       const runtime = join(
         output,
         'interborough',

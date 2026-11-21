@@ -1,4 +1,9 @@
 import { createHash } from 'node:crypto';
+import {
+  dependencyClosure,
+  reachesPlaygroundDeployment,
+  readWorkspaces,
+} from '../../applications/playground/scripts/ignore-build.ts';
 
 export const assignmentVersion = 1 as const;
 
@@ -129,6 +134,17 @@ export function classifyRisks(
 ): Record<RiskArea, boolean> {
   const unknown = paths.length === 0;
   const has = (pattern: RegExp) => unknown || paths.some((path) => pattern.test(path));
+  let automaticDeployment =
+    unknown || paths.some((path) => /(?:^\.github\/|wrangler\.|Dockerfile)/.test(path));
+  if (!automaticDeployment) {
+    try {
+      const closure = dependencyClosure(readWorkspaces(process.cwd()), '@lostgradient/playground');
+      automaticDeployment = paths.some((path) => reachesPlaygroundDeployment(path, closure));
+    } catch {
+      // A broken deployment map cannot justify an automatic deployment without pre-integration proof.
+      automaticDeployment = true;
+    }
+  }
   return {
     'root-scripts': has(/^scripts\//),
     'shared-configuration': has(/(?:^|\/)(?:package\.json|turbo\.json|.*\.(?:json|ya?ml|toml))$/),
@@ -142,7 +158,7 @@ export function classifyRisks(
     ),
     'installed-artifacts': has(/(?:package\.json|release|publish|payload)/),
     'shared-ui-design': hasDesign || has(/^components\/|^applications\/interborough\//),
-    'automatic-deployment': has(/(?:^\.github\/|vercel\.json|wrangler\.|Dockerfile)/),
+    'automatic-deployment': automaticDeployment,
   };
 }
 
