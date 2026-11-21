@@ -192,6 +192,8 @@
      * transcript.
      */
     sources?: readonly CitationSource[] | undefined;
+    /** Ordered Markdown blocks with sources for individual claims in this message. */
+    claimSources?: readonly import('../chat.types.ts').ChatCitationClaim[] | undefined;
     /**
      * Whether the sources are open in place under the message line, on a layout wider than a phone
      * (a phone opens them in a bottom sheet). Bindable, like `toolCallExpanded`: `Chat` drives it
@@ -323,6 +325,7 @@
     ontoolcalltoggle,
     onSuggestionSelect,
     sources,
+    claimSources,
     sourcesExpanded = $bindable(false),
     onsourcestoggle,
     turnState,
@@ -427,13 +430,6 @@
     onQuote?.(selectionInside(quoteSources) ?? renderedText(quoteSources));
   }
 
-  // Sources. Only an assistant message shows them, and only when it has at least one; a user
-  // message given the same input never gains the control.
-  const shownSources = $derived(
-    message.role === 'assistant' && sources !== undefined && sources.length > 0
-      ? sources
-      : undefined,
-  );
   let sourcesElement = $state<HTMLElement | null>(null);
   let sourcesWereShown = false;
   let previousKeys: string[] = [];
@@ -477,67 +473,6 @@
     pendingSourceFocus = undefined;
     if (pending.article.isConnected) returnSourceFocus(pending.article, pending.preferAction);
   }
-
-  // Read the old triggers before Svelte removes them. Retry after the update because an open
-  // mobile sheet makes the underlying message inert until the dialog is removed.
-  $effect.pre(() => {
-    const shown = shownSources !== undefined;
-    const currentKeys = shownSources !== undefined ? sourceKeys(shownSources) : [];
-    const active = document.activeElement;
-    const article = articleElement;
-    if (article !== null && sourcesElement !== null && sourcesWereShown) {
-      const anySourceWithdrawn = previousKeys.some((key) => !currentKeys.includes(key));
-      // Focus on a row of the list under the control: the row that was withdrawn hands focus to the
-      // next row that is a link, or to a message action when none is left. A row that stays keeps it.
-      const inPlace = sourcesElement.querySelector('.cinder-citation--in-place') !== null;
-      const focusedRow = active?.closest('.cinder-citation__item') ?? null;
-      const rowPosition =
-        inPlace && focusedRow !== null && sourcesElement.contains(focusedRow)
-          ? Array.from(focusedRow.parentElement?.children ?? []).indexOf(focusedRow)
-          : -1;
-      const rowWithdrawn =
-        rowPosition !== -1 &&
-        shown &&
-        previousKeys[rowPosition] !== undefined &&
-        !currentKeys.includes(previousKeys[rowPosition]!);
-      const withdrawnSource =
-        !inPlace &&
-        rowPosition === -1 &&
-        shown &&
-        anySourceWithdrawn &&
-        sourceOwnsFocus(sourcesElement, active);
-      // The list under the line is not a sheet: only the phone's bottom sheet closes under a
-      // withdrawal and hands focus back once it has gone.
-      const sheetOpen =
-        !inPlace &&
-        ((active !== null && active.closest('dialog') !== null) ||
-          sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null);
-      if (rowWithdrawn || withdrawnSource || (!shown && sourceOwnsFocus(sourcesElement, active))) {
-        if (rowWithdrawn) {
-          // Said once, through the host's announcer outside the transcript's log when there is one.
-          if (onAnnounce !== undefined) onAnnounce('A source was withdrawn.');
-          else sourceAnnouncement = 'A source was withdrawn.';
-          void moveFocusToNextSourceRow(article, sourcesElement, rowPosition);
-        } else if (withdrawnSource && sheetOpen) {
-          sourceAnnouncement = 'Sources were removed';
-          pendingSourceFocus = { article, preferAction: true };
-        } else {
-          sourceAnnouncement = 'Sources were removed';
-          returnSourceFocus(article, withdrawnSource);
-          void (async () => {
-            await tick();
-            if (article.isConnected && !article.parentElement?.contains(document.activeElement)) {
-              returnSourceFocus(article, withdrawnSource);
-            }
-          })();
-        }
-      } else if (shown && currentKeys.some((key) => !previousKeys.includes(key))) {
-        sourceAnnouncement = '';
-      }
-    }
-    sourcesWereShown = shown;
-    previousKeys = currentKeys;
-  });
 
   // After a withdrawn row leaves the list, focus goes to the row now at its place if that is a
   // link, else to the next link below it, else a message action: never to the page behind.
@@ -784,6 +719,98 @@
   const bodyParts = $derived(
     shownParts.filter((part) => part.type !== 'image' && !(transcript && part.type === 'note')),
   );
+  // Content truncation threshold (characters)
+  const TRUNCATE_THRESHOLD = 500;
+
+  const displayedClaims = $derived.by(() => {
+    if (message.role !== 'assistant' || claimSources === undefined || claimSources.length === 0)
+      return undefined;
+    const markdown = bodyParts.filter((part) => part.type === 'markdown');
+    const content = markdown[0];
+    if (
+      markdown.length !== 1 ||
+      content === undefined ||
+      content.streaming ||
+      (!content.expanded && content.content.length > TRUNCATE_THRESHOLD) ||
+      !claimSources.some((claim) => claim.sources.length > 0) ||
+      new Set(claimSources.map((claim) => claim.id)).size !== claimSources.length ||
+      claimSources.map((claim) => claim.markdown).join('') !== content.content
+    ) {
+      return undefined;
+    }
+    return claimSources;
+  });
+  // The standalone source control belongs to an assistant message whose sources aren't already
+  // presented as inline claims.
+  const shownSources = $derived(
+    message.role === 'assistant' &&
+      sources !== undefined &&
+      sources.length > 0 &&
+      displayedClaims === undefined
+      ? sources
+      : undefined,
+  );
+  // Read the old triggers before Svelte removes them. Retry after the update because an open
+  // mobile sheet makes the underlying message inert until the dialog is removed.
+  $effect.pre(() => {
+    const shown = shownSources !== undefined;
+    const currentKeys = shownSources !== undefined ? sourceKeys(shownSources) : [];
+    const active = document.activeElement;
+    const article = articleElement;
+    if (article !== null && sourcesElement !== null && sourcesWereShown) {
+      const anySourceWithdrawn = previousKeys.some((key) => !currentKeys.includes(key));
+      // Focus on a row of the list under the control: the row that was withdrawn hands focus to the
+      // next row that is a link, or to a message action when none is left. A row that stays keeps it.
+      const inPlace = sourcesElement.querySelector('.cinder-citation--in-place') !== null;
+      const focusedRow = active?.closest('.cinder-citation__item') ?? null;
+      const rowPosition =
+        inPlace && focusedRow !== null && sourcesElement.contains(focusedRow)
+          ? Array.from(focusedRow.parentElement?.children ?? []).indexOf(focusedRow)
+          : -1;
+      const rowWithdrawn =
+        rowPosition !== -1 &&
+        shown &&
+        previousKeys[rowPosition] !== undefined &&
+        !currentKeys.includes(previousKeys[rowPosition]!);
+      const withdrawnSource =
+        !inPlace &&
+        rowPosition === -1 &&
+        shown &&
+        anySourceWithdrawn &&
+        sourceOwnsFocus(sourcesElement, active);
+      // The list under the line is not a sheet: only the phone's bottom sheet closes under a
+      // withdrawal and hands focus back once it has gone.
+      const sheetOpen =
+        !inPlace &&
+        ((active !== null && active.closest('dialog') !== null) ||
+          sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null);
+      if (rowWithdrawn || withdrawnSource || (!shown && sourceOwnsFocus(sourcesElement, active))) {
+        if (rowWithdrawn) {
+          // Said once, through the host's announcer outside the transcript's log when there is one.
+          if (onAnnounce !== undefined) onAnnounce('A source was withdrawn.');
+          else sourceAnnouncement = 'A source was withdrawn.';
+          void moveFocusToNextSourceRow(article, sourcesElement, rowPosition);
+        } else if (withdrawnSource && sheetOpen) {
+          sourceAnnouncement = 'Sources were removed';
+          pendingSourceFocus = { article, preferAction: true };
+        } else {
+          sourceAnnouncement = 'Sources were removed';
+          returnSourceFocus(article, withdrawnSource);
+          void (async () => {
+            await tick();
+            if (article.isConnected && !article.parentElement?.contains(document.activeElement)) {
+              returnSourceFocus(article, withdrawnSource);
+            }
+          })();
+        }
+      } else if (shown && currentKeys.some((key) => !previousKeys.includes(key))) {
+        sourceAnnouncement = '';
+      }
+    }
+    sourcesWereShown = shown;
+    previousKeys = currentKeys;
+  });
+
   const imageParts = $derived(shownParts.filter((part) => part.type === 'image'));
   // A message that is images and nothing to read: its body may still hold an empty markdown part,
   // so the body element exists with no height. The bubble then insets the tile evenly.
@@ -809,9 +836,6 @@
   const copyImage = $derived.by(() => {
     return imageParts[0] === undefined ? undefined : mediaDisplayUrl(imageParts[0].image);
   });
-
-  // Content truncation threshold (characters)
-  const TRUNCATE_THRESHOLD = 500;
 
   // Accessibility IDs
   const messageId = $derived(idPrefix ? `${idPrefix}-message` : `message-${message.id}`);
@@ -1193,6 +1217,7 @@
             {messagePart}
             {approvalLayout}
             {markdownNode}
+            claimSources={displayedClaims}
             quoteSource={canQuote ? message.id : undefined}
             expanded={toolCallExpanded}
             onToggle={toggleToolCallExpanded}

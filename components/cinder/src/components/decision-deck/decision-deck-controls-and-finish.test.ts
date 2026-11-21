@@ -23,9 +23,9 @@ const items = [
 ];
 
 describe('DecisionDeck round controls', () => {
-  test('reject and accept are drawn at 40px, Later at 32px, with 20px and 16px glyphs', () => {
+  test('every round action is drawn at or below 36px, with 20px and 16px glyphs', () => {
     expect(css).toMatch(
-      /\.cinder-decision-deck__action\.cinder-button\[data-cinder-icon-only\] \{[^}]*inline-size: 2\.5rem;[^}]*block-size: 2\.5rem/,
+      /\.cinder-decision-deck__action\.cinder-button\[data-cinder-icon-only\] \{[^}]*inline-size: 2\.25rem;[^}]*block-size: 2\.25rem/,
     );
     expect(css).toMatch(
       /\[data-decision-action='later'\] \{[^}]*inline-size: 2rem;[^}]*block-size: 2rem/,
@@ -48,7 +48,7 @@ describe('DecisionDeck round controls', () => {
       );
       expect(button.getAttribute('data-cinder-hit-target'), name).toBe('44');
     }
-    // The pseudo-element grows the 40px and 32px faces to the touch minimum, and is Button's own.
+    // The pseudo-element grows the 36px and 32px faces to the touch minimum, and is Button's own.
     expect(buttonCss).toMatch(
       /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\[data-cinder-hit-target='44'\]::before\s*\{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\)/,
     );
