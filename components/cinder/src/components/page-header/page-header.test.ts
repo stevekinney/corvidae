@@ -481,7 +481,10 @@ describe('PageHeader', () => {
       );
       expect(stylesheet).not.toMatch(/__status\[data-cinder-placement='inline'\][^}]*text-xl/);
       expect(
-        rule('\\.cinder-page-header__actions \\.cinder-dropdown-trigger:not\\(\\.cinder-button\\)'),
+        rule(
+          ':where\\(\\.cinder-page-header:not\\(\\[data-cinder-regular-actions\\]\\)\\)\\s+' +
+            '\\.cinder-page-header__actions\\s+\\.cinder-dropdown-trigger:not\\(\\.cinder-button\\)',
+        ),
       ).toContain('min-block-size: var(--_cinder-compact-control-height)');
       // A Dropdown's trigger is centred as a flex item, not set on a baseline in the line box.
       expect(rule('\\.cinder-page-header__actions \\.cinder-dropdown')).toContain(
