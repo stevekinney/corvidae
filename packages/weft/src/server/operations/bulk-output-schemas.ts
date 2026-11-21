@@ -26,6 +26,8 @@ const filter = z.looseObject({
   scheduleId: z.string().exactOptional(),
   tags: z.array(z.string()).exactOptional(),
   attributes: z.array(attribute).exactOptional(),
+  failedStep: z.string().exactOptional(),
+  retrying: z.boolean().exactOptional(),
   limit: z.number().exactOptional(),
   offset: z.number().exactOptional(),
 });
