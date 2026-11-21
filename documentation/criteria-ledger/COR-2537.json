@@ -1,14 +1,14 @@
 {
   "issue": "COR-2537",
   "branch": "worktree-agent-a73a2e4bcaadda058",
-  "checkedAt": "875872a89aa16c79c3af689ffe34f828734ae3aa",
+  "checkedAt": "52cb3c9e9767de4738bfdf7a71e0724ecdefeae3",
   "briefVersion": "2f617ebb0b5c",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "json-diff-viewer.test.ts three-level fixture and collapsed-unchanged tests; focused-checks exit 0 at 875872a89a"
+      "evidence": "json-diff-viewer.test.ts three-level fixture and collapsed-unchanged tests; focused-checks exit 0 at 52cb3c9e97"
     },
     {
       "id": "AC2",
