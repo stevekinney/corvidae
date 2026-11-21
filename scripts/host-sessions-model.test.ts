@@ -141,7 +141,7 @@ describe('the session count', () => {
     expect(foldSession(events).dispatches.get('tB')?.agentId).toBe('b');
   });
 
-  test('a release frees a pending dispatch or a running agent', () => {
+  test('a release frees each place it can identify while an anonymous start keeps its other compatible dispatch reserved', () => {
     const events: SessionEvent[] = [
       admit('tA'),
       admit('tB'),
@@ -149,7 +149,7 @@ describe('the session count', () => {
       { kind: 'release', target: 'tB', at: 0 },
       { kind: 'release', target: 'a', at: 0 },
     ];
-    expect(placesAfterEach(events)).toEqual([1, 2, 2, 1, 0]);
+    expect(placesAfterEach(events)).toEqual([1, 2, 2, 1, 1]);
   });
 
   test('a launched dispatch whose start was never recorded keeps its place past the limit, and its stop returns it', () => {
@@ -160,14 +160,48 @@ describe('the session count', () => {
     expect(placesAfterEach([...events, stop('a'), stop('a')])).toEqual([1, 1, 0, 0]);
   });
 
-  test('only a pending dispatch older than the limit counts as never started', () => {
+  test('an ambiguous start prevents either compatible dispatch from expiring', () => {
     const state = foldSession([admit('tA', 0), admit('tB', 5), start('a', 6)]);
     expect(neverStarted(state, neverStartedLimitMilliseconds + 4).map((d) => d.toolUseId)).toEqual(
       [],
     );
-    expect(neverStarted(state, neverStartedLimitMilliseconds + 5).map((d) => d.toolUseId)).toEqual([
-      'tB',
-    ]);
+    expect(neverStarted(state, neverStartedLimitMilliseconds + 5)).toEqual([]);
+  });
+
+  test('a late anonymous start holds the maximum compatible count until either dispatch link resolves it', () => {
+    const prefix: SessionEvent[] = [
+      admit('t0'),
+      { kind: 'expire', toolUseId: 't0', at: 1 },
+      admit('t1'),
+      start('a0', 2),
+    ];
+    expect(placesAfterEach(prefix)).toEqual([1, 0, 1, 2]);
+    expect(placesAfterEach([...prefix, launched('t0', 'a0')])).toEqual([1, 0, 1, 2, 2]);
+    expect(placesAfterEach([...prefix, launched('t1', 'a0')])).toEqual([1, 0, 1, 2, 1]);
+  });
+
+  test('the two COR-2463 expiry traces retain only histories compatible with their recorded expiry and link', () => {
+    expect(
+      placesAfterEach([
+        admit('t0'),
+        { kind: 'expire', toolUseId: 't0', at: 1 },
+        admit('t1'),
+        start('a0', 2),
+        launched('t1', 'a0'),
+      ]),
+    ).toEqual([1, 0, 1, 2, 1]);
+    expect(
+      placesAfterEach([
+        admit('t0'),
+        admit('t1'),
+        start('a1'),
+        { kind: 'expire', toolUseId: 't1', at: 1 },
+        start('a0', 2),
+        stop('a0', 3),
+        stop('a1', 4),
+        launched('t1', 'a1'),
+      ]),
+    ).toEqual([1, 2, 2, 2, 2, 1, 0, 0]);
   });
 });
 

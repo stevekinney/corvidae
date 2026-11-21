@@ -1,5 +1,6 @@
 import type { Subprocess } from 'bun';
-import { describe, expect, setSystemTime, test } from 'bun:test';
+import { describe, expect, setSystemTime, spyOn, test } from 'bun:test';
+import * as fileSystem from 'node:fs/promises';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -331,6 +332,38 @@ const removesStillAbandonedLock = await inScratchDirectory(async (scratch) => {
   expect(guard).toBeUndefined();
 });
 
+const keepsReplacementWhenOwnerlessLockChangesInode = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory } = scratch;
+  const replacement = `${lockDirectory}.replacement`;
+  await mkdir(lockDirectory);
+  await writeFile(join(lockDirectory, 'stray'), 'old');
+  const before = await stat(lockDirectory);
+  const originalReadFile = fileSystem.readFile;
+  let replaced = false;
+  const read = spyOn(fileSystem, 'readFile').mockImplementation(async (...arguments_) => {
+    try {
+      return await originalReadFile(...arguments_);
+    } finally {
+      if (!replaced && arguments_[0] === join(lockDirectory, ownerFileName)) {
+        replaced = true;
+        await rm(lockDirectory, { recursive: true });
+        await mkdir(replacement);
+        await writeFile(join(replacement, 'stray'), 'replacement');
+        await fileSystem.rename(replacement, lockDirectory);
+      }
+    }
+  });
+  try {
+    expect(await reclaimAbandoned(lockDirectory, 0)).toBe(false);
+  } finally {
+    read.mockRestore();
+  }
+  const after = await stat(lockDirectory);
+  expect(replaced).toBe(true);
+  expect(after.ino).not.toBe(before.ino);
+  expect(await readFile(join(lockDirectory, 'stray'), 'utf8')).toBe('replacement');
+});
+
 /**
  * `Date.now()` counts whole milliseconds and `mtimeMs` keeps the fraction, so a directory written
  * earlier in the current millisecond has an `mtimeMs` above `Date.now()`. With no grace it must
@@ -366,6 +399,9 @@ describe('reclaimAbandoned', () => {
     rethrow(leavesLockToReclaimerHoldingGuard));
 
   test('removes a lock that is still the abandoned one', () => rethrow(removesStillAbandonedLock));
+
+  test('leaves an ownerless lock replacement in place when it changed inode after its owner read', () =>
+    rethrow(keepsReplacementWhenOwnerlessLockChangesInode));
 });
 
 const signalReachesChainedCommand = await inScratchDirectory(async (scratch) => {

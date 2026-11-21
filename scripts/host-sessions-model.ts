@@ -138,10 +138,48 @@ function unclaimedPending(state: Draft, agentId: string): Dispatch | undefined {
 }
 
 /**
+ * An expired dispatch can still own one late, anonymous start. Prefer it to a newer pending
+ * dispatch until that start's `PostToolUse` identifies its real dispatch. A stopped anonymous
+ * agent no longer owns the marker, so the next late start may take it instead.
+ */
+function unmatchedExpiry(state: Draft, agentId: string): Dispatch | undefined {
+  const type = state.agents.get(agentId)?.agentType;
+  let oldest: Dispatch | undefined;
+  let oldestOfType: Dispatch | undefined;
+  for (const dispatch of state.dispatches.values()) {
+    if (dispatch.status !== 'expired') continue;
+    // A late start that has already stopped belongs to this expired dispatch. It cannot make a
+    // later, different anonymous start ambiguous again.
+    if (dispatch.agentId !== undefined) continue;
+    oldest ??= dispatch;
+    if (type !== undefined && dispatch.agentType === type) oldestOfType ??= dispatch;
+  }
+  return oldestOfType ?? oldest;
+}
+
+function pendingForAgent(state: Draft, agentId: string): Dispatch | undefined {
+  return [...state.dispatches.values()].find(
+    (dispatch) => dispatch.status === 'pending' && dispatch.agentId === agentId,
+  );
+}
+
+/**
  * Gives `agentId`'s first run the place of a pending dispatch, the one named for it if any, and
  * resolves to whether there was one.
  */
 function takePending(state: Draft, agentId: string): boolean {
+  const linked = pendingForAgent(state, agentId);
+  if (linked !== undefined) {
+    update(state.dispatches, linked.toolUseId, { status: 'started', linked: true });
+    update(state.agents, agentId, { toolUseId: linked.toolUseId });
+    return true;
+  }
+  const expired = unmatchedExpiry(state, agentId);
+  if (expired !== undefined) {
+    update(state.dispatches, expired.toolUseId, { agentId, linked: false });
+    update(state.agents, agentId, { toolUseId: undefined });
+    return false;
+  }
   const dispatch = unclaimedPending(state, agentId);
   if (dispatch === undefined) {
     update(state.agents, agentId, { toolUseId: undefined });
@@ -169,6 +207,15 @@ function link(state: Draft, toolUseId: string, agentId: string): void {
   const dispatch = state.dispatches.get(toolUseId);
   if (dispatch === undefined || agentId === '') return;
   if (dispatch.agentId === agentId) {
+    const agent = state.agents.get(agentId);
+    if (dispatch.status === 'expired') {
+      update(state.dispatches, toolUseId, {
+        status: agent?.running === true ? 'started' : 'finished',
+        linked: true,
+      });
+      if (agent !== undefined) update(state.agents, agentId, { toolUseId });
+      return;
+    }
     update(state.dispatches, toolUseId, { linked: true });
     return;
   }
@@ -181,8 +228,15 @@ function link(state: Draft, toolUseId: string, agentId: string): void {
     });
     update(state.agents, agentId, { toolUseId: undefined });
   }
-  const displaced = guessedAgent(dispatch);
-  if (dispatch.status === 'pending' || displaced !== undefined) {
+  const markedExpiry = [...state.dispatches.values()].find(
+    (each) => each.status === 'expired' && each.agentId === agentId,
+  );
+  if (markedExpiry !== undefined) {
+    update(state.dispatches, markedExpiry.toolUseId, { agentId: undefined, linked: false });
+  }
+  const displaced =
+    guessedAgent(dispatch) ?? (dispatch.status === 'expired' ? dispatch.agentId : undefined);
+  if (dispatch.status === 'pending' || dispatch.status === 'expired' || displaced !== undefined) {
     // The dispatch is claimed for its agent before a displaced agent looks for another.
     const status = agent === undefined ? 'pending' : agent.running ? 'started' : 'finished';
     update(state.dispatches, toolUseId, { status, agentId, linked: true });
@@ -200,7 +254,7 @@ function stopRun(state: Draft, agentId: string): void {
 }
 
 /** The session after one more event. Events a session has already seen change nothing. */
-export function applySessionEvent(state: SessionState, event: SessionEvent): SessionState {
+function applyCertainEvent(state: SessionState, event: SessionEvent): SessionState {
   const next = draft(state);
   switch (event.kind) {
     case 'admit': {
@@ -306,6 +360,131 @@ export function applySessionEvent(state: SessionState, event: SessionEvent): Ses
   }
 }
 
+/** Candidate folds of anonymous starts that the observed hook history has not yet linked. */
+const compatibleStates = new WeakMap<SessionState, readonly SessionState[]>();
+
+function candidatesOf(state: SessionState): readonly SessionState[] {
+  return compatibleStates.get(state) ?? [state];
+}
+
+function historyKey(state: SessionState): string {
+  return JSON.stringify([
+    [...state.dispatches.values()].map((dispatch) => [
+      dispatch.toolUseId,
+      dispatch.status,
+      dispatch.agentId,
+      dispatch.linked,
+    ]),
+    [...state.agents.values()].map((agent) => [
+      agent.agentId,
+      agent.running,
+      agent.runs,
+      agent.toolUseId,
+    ]),
+  ]);
+}
+
+function distinct(states: readonly SessionState[]): SessionState[] {
+  const found = new Map<string, SessionState>();
+  for (const state of states) found.set(historyKey(state), state);
+  return [...found.values()];
+}
+
+function startFor(
+  state: SessionState,
+  event: Extract<SessionEvent, { kind: 'start' }>,
+): SessionState[] {
+  if (state.agents.has(event.agentId)) return [applyCertainEvent(state, event)];
+  const named = [...state.dispatches.values()].find(
+    (dispatch) => dispatch.status === 'pending' && dispatch.agentId === event.agentId,
+  );
+  if (named !== undefined) return [applyCertainEvent(state, event)];
+  const eligible = [...state.dispatches.values()].filter(
+    (dispatch) =>
+      (dispatch.status === 'pending' || dispatch.status === 'expired') &&
+      dispatch.agentId === undefined,
+  );
+  const sameType = eligible.filter(
+    (dispatch) => event.agentType !== undefined && dispatch.agentType === event.agentType,
+  );
+  const choices = sameType.length === 0 ? eligible : sameType;
+  if (choices.length === 0) return [applyCertainEvent(state, event)];
+  return choices.map((dispatch) => {
+    const next = draft(state);
+    next.agents.set(event.agentId, {
+      agentId: event.agentId,
+      ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
+      ...(event.readOnly === true ? { readOnly: true } : {}),
+      startedAt: event.at,
+      running: true,
+      runs: 1,
+      ...(dispatch.status === 'expired' ? {} : { toolUseId: dispatch.toolUseId }),
+      overCap: dispatch.status === 'expired' && event.overCap === true,
+    });
+    update(next.dispatches, dispatch.toolUseId, {
+      status: 'started',
+      agentId: event.agentId,
+      linked: false,
+    });
+    return next;
+  });
+}
+
+function compatibleWithLink(
+  state: SessionState,
+  event: Extract<SessionEvent, { kind: 'launched' | 'completed' }>,
+): boolean {
+  const dispatch = state.dispatches.get(event.toolUseId);
+  const agent = state.agents.get(event.agentId);
+  return (
+    dispatch === undefined ||
+    ((dispatch.agentId === undefined || dispatch.agentId === event.agentId) &&
+      (agent?.toolUseId === undefined || agent.toolUseId === event.toolUseId))
+  );
+}
+
+function compatibleWithFailure(
+  state: SessionState,
+  event: Extract<SessionEvent, { kind: 'failed' }>,
+): boolean {
+  const dispatch = state.dispatches.get(event.toolUseId);
+  return dispatch?.agentId === undefined;
+}
+
+function project(states: readonly SessionState[]): SessionState {
+  const selected = states.reduce((maximum, candidate) =>
+    workerPlaces(candidate) > workerPlaces(maximum) ? candidate : maximum,
+  );
+  const result: SessionState = {
+    dispatches: new Map(selected.dispatches),
+    agents: new Map(selected.agents),
+  };
+  compatibleStates.set(result, states);
+  return result;
+}
+
+/**
+ * Folds a hook event across every dispatch ownership compatible with anonymous starts, projecting
+ * the greatest held count. A later launch or completion event names the dispatch and removes every
+ * incompatible candidate.
+ */
+export function applySessionEvent(state: SessionState, event: SessionEvent): SessionState {
+  const before = candidatesOf(state);
+  const after =
+    event.kind === 'start'
+      ? before.flatMap((candidate) => startFor(candidate, event))
+      : event.kind === 'launched' || event.kind === 'completed'
+        ? before
+            .filter((candidate) => compatibleWithLink(candidate, event))
+            .map((candidate) => applyCertainEvent(candidate, event))
+        : event.kind === 'failed'
+          ? before
+              .filter((candidate) => compatibleWithFailure(candidate, event))
+              .map((candidate) => applyCertainEvent(candidate, event))
+          : before.map((candidate) => applyCertainEvent(candidate, event));
+  return project(distinct(after.length === 0 ? before : after));
+}
+
 export function foldSession(events: readonly SessionEvent[]): SessionState {
   return events.reduce(applySessionEvent, emptySession);
 }
@@ -375,12 +554,17 @@ export function neverStarted(
   now: number,
   limit = neverStartedLimitMilliseconds,
 ): Dispatch[] {
-  return [...state.dispatches.values()].filter(
-    // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
-    // `SubagentStart` was recorded; it keeps its place until that agent's stop.
-    (dispatch) =>
-      dispatch.status === 'pending' &&
-      dispatch.agentId === undefined &&
-      now - dispatch.admittedAt >= limit,
+  const candidates = candidatesOf(state);
+  return [...state.dispatches.values()].filter((dispatch) =>
+    candidates.every((candidate) => {
+      const possible = candidate.dispatches.get(dispatch.toolUseId);
+      // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
+      // `SubagentStart` was recorded; it keeps its place until that agent's stop.
+      return (
+        possible?.status === 'pending' &&
+        possible.agentId === undefined &&
+        now - possible.admittedAt >= limit
+      );
+    }),
   );
 }

@@ -741,7 +741,11 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
     const hook = ownerFor(request.waiter, `bypass ${request.toolUseId}`, request.cwd, started);
     await withAdmissionLock(directory, hook, options, async () => {
       await recordHolder(directory, request.sessionId, holder);
-      await appendEvent(directory, request.sessionId, admitEvent(request, now(), true));
+      if (!(await appendEvent(directory, request.sessionId, admitEvent(request, now(), true)))) {
+        throw new Error(
+          `session ledger ${request.sessionId} disappeared while admitting bypass ${request.toolUseId}`,
+        );
+      }
     });
     return { admitted: true, bypassed: true, waitedMilliseconds: 0 };
   }
