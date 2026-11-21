@@ -1,0 +1,135 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * JSON DIFF VIEWER
+ * Structural comparison of two JSON values. Each row leads with a symbol (+ - ~ =) so the kind
+ * never rests on colour alone; the tint is a second signal.
+ * ======================================== */
+
+  .cinder-json-diff-viewer {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-md);
+    padding: var(--cinder-space-3);
+    overflow: auto;
+  }
+
+  .cinder-json-diff-viewer__empty {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-sans);
+    text-align: center;
+  }
+
+  .cinder-json-diff-viewer__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* A nested level sits under its key, indented behind a dashed rule like JsonViewer's. */
+  .cinder-json-diff-viewer__row > .cinder-json-diff-viewer__list {
+    grid-column: 1 / -1;
+    padding-inline-start: var(--cinder-space-4);
+    border-inline-start: 1px dashed var(--cinder-border-muted);
+  }
+
+  .cinder-json-diff-viewer__row {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    column-gap: var(--cinder-space-2);
+    align-items: baseline;
+    border-radius: var(--cinder-radius-sm);
+    padding-inline: var(--cinder-space-1);
+  }
+
+  .cinder-json-diff-viewer__marker {
+    inline-size: 1ch;
+    font-weight: var(--cinder-font-semibold);
+    text-align: center;
+  }
+
+  .cinder-json-diff-viewer__key {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-json-diff-viewer__key::after {
+    content: ':';
+  }
+
+  .cinder-json-diff-viewer__value {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='added'] {
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='removed'] {
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='changed'] {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='unchanged'] {
+    color: var(--cinder-text-muted);
+  }
+
+  /* A container that changed in place only frames its children; the tint stays on the rows. */
+  .cinder-json-diff-viewer__row[data-cinder-diff-kind='changed']:has(
+      > .cinder-json-diff-viewer__list
+    ) {
+    background: none;
+    color: inherit;
+  }
+
+  .cinder-json-diff-viewer__control {
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-1);
+  }
+
+  .cinder-json-diff-viewer__button {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--cinder-text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  @media (hover: hover) {
+    .cinder-json-diff-viewer__button:hover {
+      color: var(--cinder-text-default);
+    }
+  }
+
+  .cinder-json-diff-viewer__button:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-json-diff-viewer__button:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+
+    /* Tints do not survive forced colours; the marker and a rule carry the kind. */
+    .cinder-json-diff-viewer__row[data-cinder-diff-kind='added'],
+    .cinder-json-diff-viewer__row[data-cinder-diff-kind='removed'],
+    .cinder-json-diff-viewer__row[data-cinder-diff-kind='changed'] {
+      border-inline-start: 2px solid CanvasText;
+    }
+  }
+}

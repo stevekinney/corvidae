@@ -592,6 +592,9 @@ export type {
   InvocationRuleValueChoice,
 } from './components/invocation-rule-builder/index.ts';
 
+export { default as JsonDiffViewer } from './components/json-diff-viewer/index.ts';
+export type { JsonDiffViewerProps } from './components/json-diff-viewer/index.ts';
+
 export { default as JsonViewer } from './components/json-viewer/index.ts';
 export type { JsonViewerProps } from './components/json-viewer/index.ts';
 
