@@ -721,9 +721,9 @@ test.describe('Health › Storage writes and states', () => {
     ).toBe(1);
     expect(geometry.scrollWidth - geometry.width).toBeLessThanOrEqual(1);
     await expect(buttons).toHaveText(['Discard my edit', 'Save over it…', 'Show new value']);
-    await expect(buttons.nth(0)).toHaveAttribute('data-cinder-variant', 'secondary');
-    await expect(buttons.nth(1)).toHaveAttribute('data-cinder-variant', 'secondary');
-    await expect(buttons.nth(2)).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(buttons.nth(0)).toContainClass('button-variant-secondary');
+    await expect(buttons.nth(1)).toContainClass('button-variant-secondary');
+    await expect(buttons.nth(2)).toContainClass('button-variant-primary');
     // The draft stays in the editor, under the alert, and the editor's own buttons give way.
     await expect(editor).toHaveValue('{\n  "dismissed": false\n}');
     await expect(pane.getByRole('button', { name: 'Save value' })).toHaveCount(0);

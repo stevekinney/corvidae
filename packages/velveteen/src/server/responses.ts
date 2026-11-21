@@ -3,7 +3,7 @@ import {
   dataMediaType,
   type PagePayload,
 } from "../data/contract.ts";
-import { encodePayload, escapeJson, type Settlement } from "../data/codec.ts";
+import { encodePayload, escapeJson } from "../data/codec.ts";
 import type { Transport } from "../data/custom-transport.ts";
 
 type ResponseOptions = {
@@ -132,5 +132,3 @@ export function documentResponse(options: DocumentOptions): Response {
     },
   });
 }
-
-export type { Settlement };

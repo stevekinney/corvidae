@@ -39,7 +39,7 @@ const filterBar = (page: Page) =>
   page.locator('main').getByRole('search', { name: 'Filter schedules' });
 
 /** Every primary button on the page, which a list page keeps to the one its state offers. */
-const primaryButtons = (page: Page) => page.locator('main button[data-cinder-variant="primary"]');
+const primaryButtons = (page: Page) => page.locator('main button.button-variant-primary');
 
 for (const width of WIDTHS) {
   test(`nothing scheduled yet is the page, with no filter row and one primary New schedule, at ${width} pixels`, async ({
@@ -64,7 +64,7 @@ for (const width of WIDTHS) {
     // The header keeps its secondary "+", and the state's button is the only primary.
     await expect(headerCreate(page)).toBeVisible();
     await expect(headerCreate(page)).toHaveAccessibleName('New schedule');
-    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(headerCreate(page)).toContainClass('button-variant-secondary');
     await expect(primaryButtons(page)).toHaveCount(1);
     const create = primaryButtons(page).first();
     await expect(create).toHaveText('New schedule');
@@ -116,7 +116,7 @@ for (const width of WIDTHS) {
     const state = main.locator('.cinder-empty-state');
     await expect(state.getByRole('button')).toHaveCount(1);
     const clear = state.getByRole('button', { name: 'Clear filters' });
-    await expect(clear).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(clear).toContainClass('button-variant-secondary');
     await expect(primaryButtons(page)).toHaveCount(0);
     // A neutral disc with a search glyph: the filtered kind, not the accent of a first use.
     await expect(state).toHaveAttribute('data-cinder-kind', 'filtered');
@@ -217,7 +217,7 @@ for (const width of WIDTHS) {
     // The state's Try again is the only primary, and the header's "+" is secondary and inert.
     await expect(primaryButtons(page)).toHaveCount(1);
     await expect(primaryButtons(page).first()).toHaveText('Try again');
-    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(headerCreate(page)).toContainClass('button-variant-secondary');
     await expect(headerCreate(page)).toHaveAttribute('aria-disabled', 'true');
 
     await captureForDesignReview(page, { route: '/schedules', state: 'error', source: SOURCE });

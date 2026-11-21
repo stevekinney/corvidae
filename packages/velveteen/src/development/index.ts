@@ -5,7 +5,7 @@ import ts from "typescript";
 import remapping from "@jridgewell/remapping";
 import { compileComponent, compileRuneModule } from "../compiler/index.ts";
 
-export type DevelopmentDiagnostic = {
+type DevelopmentDiagnostic = {
   filename: string;
   message: string;
   line: number;

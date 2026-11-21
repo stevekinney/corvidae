@@ -1367,7 +1367,7 @@ test.describe('chat harness — code blocks (COR-2276)', () => {
         '[data-cinder-markdown-node="code-block"] .cinder-code-block',
       );
       await expect(block).toBeVisible();
-      await expect(block.getByRole('button', { name: 'Copy sql code' })).toBeVisible();
+      await expect(block.getByRole('button', { name: 'Copy SQL code' })).toBeVisible();
       await expect(block.locator('.cinder-code-block__language')).toHaveCount(0);
 
       const timeline = harness.locator('.chat-timeline').first();

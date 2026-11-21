@@ -5,6 +5,12 @@
 export const API_REFERENCE_COPY = {
   title: 'API reference',
   intro: 'What other programs can do with Interborough, and what this session may do.',
+  /** The line under the heading that says where the API is: the words before its address, and its copy button. */
+  address: {
+    lead: 'The API is at',
+    copy: 'Copy the API address',
+    copied: 'Copied the API address',
+  },
   /** The tab row's accessible name. */
   tabsLabel: 'API reference',
   groups: {

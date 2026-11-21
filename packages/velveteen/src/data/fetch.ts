@@ -54,7 +54,10 @@ export function loadRequest(
   }
   return request;
 }
-/** Cache keys hash explicit request headers and bytes, never serialize credential values. */
+/**
+ * Cache keys hash explicit request headers and bytes, never serialize credential values.
+ * @internal
+ */
 export async function fetchKey(
   request: Request,
   url = request.url,

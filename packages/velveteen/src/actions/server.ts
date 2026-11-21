@@ -3,7 +3,7 @@ import type { RequestEvent } from "../server/types.ts";
 
 const failureBrand = Symbol.for("velveteen.action.failure");
 export type ActionData = Record<string, unknown> | undefined;
-export type Action = (
+type Action = (
   event: RequestEvent,
 ) =>
   | ActionData
@@ -15,7 +15,7 @@ export type ActionFailure<Data extends ActionData = ActionData> = {
   data: Data;
   [failureBrand]: true;
 };
-export type ActionSuccess = {
+type ActionSuccess = {
   type: "success";
   status: number;
   data: ActionData;
@@ -25,7 +25,6 @@ export type ActionResult =
 type BrandedFailure<Data extends ActionData> = ActionFailure<Data> & {
   [failureBrand]: true;
 };
-export type Actions = Record<string, Action | undefined>;
 
 /** Return a branded validation failure for an action without throwing. */
 export function fail<Data extends ActionData>(

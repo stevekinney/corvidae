@@ -1,6 +1,9 @@
 import type { RenderNode, PagePayload } from "../data/contract.ts";
 
-/** A retained view is safe only when every rendered component in its branch is unchanged. */
+/**
+ * A retained view is safe only when every rendered component in its branch is unchanged.
+ * @internal
+ */
 export function sameRenderedBranch(
   current: RenderNode[],
   next: RenderNode[],

@@ -58,7 +58,7 @@ export type RouteManifest = {
   routes: RouteEntry[];
 };
 
-export type ClientRouteNode = Omit<
+type ClientRouteNode = Omit<
   RouteNode,
   "page" | "layout" | "endpoint" | "layoutParentId"
 > & {

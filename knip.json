@@ -1,0 +1,186 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "playwright": false,
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/**/*.test.ts",
+        "scripts/**/*.integration.test.ts",
+        "scripts/**/*.slow.test.ts",
+        "scripts/**/*.bench.ts",
+        "scripts/**/*.playwright.ts",
+        "scripts/chef/evaluate-outcomes.ts"
+      ],
+      "project": ["scripts/**/*.ts"]
+    },
+    "applications/*": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "components/*": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "src/{components,lib/components}/*/*-fixtures.ts",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/*": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/velveteen": {
+      "entry": [
+        "bun-primitives.test.ts",
+        "src/**/*.test.ts",
+        "tests/**/*.test.ts",
+        "tests/fixtures/candidate/server.ts",
+        "src/actions/server.ts!",
+        "src/client/index.ts!",
+        "src/client/navigation-context.ts!",
+        "src/development/index.ts!",
+        "src/prerender/{index,serve,service-worker}.ts!",
+        "src/routing/synchronize.ts!"
+      ],
+      "project": ["src/**/*.ts!", "!src/**/*.test.ts!"]
+    },
+    "internal/*": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "plugins/*": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "testing/*": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
+    },
+    "scripts/browser-fixtures": {
+      "entry": ["tests/**/*.playwright.ts"],
+      "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
+    },
+    "scripts/groom": {
+      "entry": ["**/*.test.ts"],
+      "project": ["**/*.ts"]
+    },
+    "applications/interborough": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "scripts/browser-build.ts!",
+        "src/host/{cli,dev,serve}.ts!"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "applications/playground": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "scripts/export-tailwind-theme.ts!",
+        "scripts/static-export.ts!",
+        "src/shell-app/shell-entry.ts!",
+        "src/shell-app/shell-server-entry.ts!",
+        "src/shell-app/theme-builder-entry.ts!",
+        "src/shell-app/theme-preview-entry.ts!"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    }
+  }
+}

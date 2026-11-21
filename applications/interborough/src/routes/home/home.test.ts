@@ -97,10 +97,8 @@ async function drawn(container: HTMLElement): Promise<void> {
 }
 
 /** A Cinder button's form: its variant and its size. */
-const buttonForm = (button: Element) => [
-  button.getAttribute('data-cinder-variant'),
-  button.getAttribute('data-cinder-size'),
-];
+const buttonForm = (button: Element) =>
+  [...button.classList].filter((name) => /^button-(variant|size)-/.test(name));
 
 /** The text of a card's rows, after the rows have been read. */
 function cardOf(container: HTMLElement, title: string): HTMLElement {
@@ -476,9 +474,9 @@ describe('Home’s Start a chat card (01k)', () => {
       'Ask an agent to do something',
     );
     await waitFor(() => expect(shownLabel(card)).toContain('Assistant'));
-    expect(card.querySelector('[data-cinder-variant="ghost"]')).not.toBeNull();
+    expect(card.querySelector('.cinder-select.select-variant-ghost')).not.toBeNull();
     const send = within(card).getByRole('button', { name: 'Send' });
-    expect(send.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(send.classList.contains('button-variant-primary')).toBe(true);
     expect(send.querySelector('svg')).not.toBeNull();
     expect((send as HTMLButtonElement).disabled).toBe(false);
     // Assistant is scripted, so Send is live with no provider connected.
@@ -546,8 +544,8 @@ describe('Home’s Start a chat card (01k)', () => {
     const row = await waitFor(() =>
       within(attention).getByRole('link', { name: 'Connect a provider' }),
     );
-    expect(buttonForm(row)).toEqual(['secondary', 'sm']);
-    expect(buttonForm(composer)).toEqual(['secondary', 'sm']);
+    expect(buttonForm(row)).toEqual(['button-variant-secondary', 'button-size-small']);
+    expect(buttonForm(composer)).toEqual(['button-variant-secondary', 'button-size-small']);
   });
 
   test('draws the checklist’s Connect a provider as its one primary small button', async () => {
@@ -555,7 +553,7 @@ describe('Home’s Start a chat card (01k)', () => {
     const step = within(stepOf(container, 'provider')).getByRole('link', {
       name: 'Connect a provider',
     });
-    expect(buttonForm(step)).toEqual(['primary', 'sm']);
+    expect(buttonForm(step)).toEqual(['button-variant-primary', 'button-size-small']);
     // The checklist stands in for the notice, so the step is the only Connect a provider there.
     expect(within(container).getAllByRole('link', { name: 'Connect a provider' })).toHaveLength(1);
   });
@@ -644,25 +642,25 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
   test('step 1 holds the only primary button; the others are secondary, and the link is quiet (13g, 01y)', async () => {
     const { container } = await open(freshInstallation());
     const primaries = [...container.querySelectorAll('.cinder-steps .cinder-button')].filter(
-      (button) => button.getAttribute('data-cinder-variant') === 'primary',
+      (button) => button.classList.contains('button-variant-primary'),
     );
     expect(primaries.map(words)).toEqual(['Connect a provider']);
     const agent = stepOf(container, 'agent');
     expect(
       within(agent)
         .getByRole('button', { name: 'Use Assistant' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('ghost-accent');
+        .classList.contains('button-variant-ghost-accent'),
+    ).toBe(true);
     expect(
       within(agent)
         .getByRole('link', { name: 'Create an agent' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
     expect(
       within(stepOf(container, 'chat'))
         .getByRole('link', { name: 'Start a chat' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
   });
 
   test('each button goes where its step is done: Models, a new agent, and New chat with Assistant (02a, 13g, 14c)', async () => {
@@ -830,7 +828,7 @@ describe('Home’s checklist on a host with no Assistant', () => {
     const held = startChat(container);
     expect(held.tagName).toBe('BUTTON');
     expect((held as HTMLButtonElement).disabled).toBe(true);
-    expect(held.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(held.classList.contains('button-variant-secondary')).toBe(true);
     expect(words(stepOf(container, 'chat'))).toContain(
       'Waits for step 1: connect a provider first.',
     );
@@ -886,11 +884,11 @@ describe('Home’s checklist as steps are done (14e, 14j)', () => {
     expect(
       within(stepOf(container, 'agent'))
         .getByRole('link', { name: 'Create an agent' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // Only the current step's action is primary.
     const primaries = [...container.querySelectorAll('.cinder-steps .cinder-button')].filter(
-      (button) => button.getAttribute('data-cinder-variant') === 'primary',
+      (button) => button.classList.contains('button-variant-primary'),
     );
     expect(primaries.map(words)).toEqual(['Create an agent']);
     expect(container.querySelector('[data-testid="home-start-chat"]')).toBeNull();
@@ -906,8 +904,8 @@ describe('Home’s checklist as steps are done (14e, 14j)', () => {
     expect(
       within(stepOf(container, 'chat'))
         .getByRole('link', { name: 'Start a chat' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();
   });
 
@@ -926,8 +924,8 @@ describe('Home’s checklist as steps are done (14e, 14j)', () => {
     expect(
       within(stepOf(container, 'chat'))
         .getByRole('link', { name: 'Start a chat' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
   });
 
   test('steps are done in any order: step 2 first leaves step 1 current', async () => {

@@ -182,7 +182,7 @@ describe('the heading and the header action', () => {
     expect(container.textContent).toMatch(/Runs that start on a timetable\. Times are in .+\./);
     const create = await findByRole('button', { name: 'New schedule' });
     expect(create.textContent?.trim()).toBe('');
-    expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(create.classList.contains('button-variant-secondary')).toBe(true);
     await fireEvent.click(create);
     expect(router.pathname).toBe('/schedules/new');
   });

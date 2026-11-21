@@ -15,7 +15,7 @@ export type Fetch = (
 ) => Promise<Response>;
 export type Data = Record<string, unknown>;
 export type LoadRole = "layout" | "page";
-export type ComponentRole = LoadRole | "error";
+type ComponentRole = LoadRole | "error";
 export type PublicError = { message: string; [key: string]: unknown };
 export type Uses = {
   params: string[];
@@ -33,7 +33,7 @@ export type LoadNode = {
   uses: Uses;
   skip?: boolean;
 };
-export type Branch = { node: number | null; role: ComponentRole };
+type Branch = { node: number | null; role: ComponentRole };
 export type FetchRecord = {
   key: string;
   status: number;
@@ -71,12 +71,12 @@ export type UniversalLoadEvent = {
   setHeaders: (headers: Record<string, string>) => void;
   signal: AbortSignal;
 };
-export type UniversalLoad = (
+type UniversalLoad = (
   event: UniversalLoadEvent,
 ) => Data | void | Promise<Data | void>;
-export type LoadModule = { load?: UniversalLoad; ssr?: boolean; csr?: boolean };
-export type ComponentModule = { default: Component<Record<string, unknown>> };
-export type RuntimeNode = {
+type LoadModule = { load?: UniversalLoad; ssr?: boolean; csr?: boolean };
+type ComponentModule = { default: Component<Record<string, unknown>> };
+type RuntimeNode = {
   page?: () => Promise<ComponentModule>;
   layout?: () => Promise<ComponentModule>;
   error?: () => Promise<ComponentModule>;

@@ -35,7 +35,7 @@ const LONG_NAME = `check-${'a'.repeat(294)}`;
 const rows = (page: Page) => page.locator('main li[data-check-kind]');
 const filterBar = (page: Page) => page.getByRole('search', { name: 'Filter checks' });
 /** Every primary button or link on the page, which a list page keeps to the one its state offers. */
-const primaries = (page: Page) => page.locator('main [data-cinder-variant="primary"]');
+const primaries = (page: Page) => page.locator('main .button-variant-primary');
 
 /** Opens the page at `width` with the sample clock and waits until the results are listed. */
 async function openChecks(page: Page, width = 1280, path = '/checks'): Promise<void> {
@@ -357,7 +357,7 @@ for (const width of WIDTHS) {
       await expect(state).toHaveAttribute('data-cinder-kind', 'filtered');
       await expect(state.getByRole('button')).toHaveCount(1);
       const clear = state.getByRole('button', { name: 'Clear filters' });
-      await expect(clear).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(clear).toContainClass('button-variant-secondary');
       await expect(primaries(page)).toHaveCount(0);
 
       await captureForDesignReview(page, {
@@ -400,9 +400,8 @@ for (const width of WIDTHS) {
       await expect(filterBar(page)).toHaveCount(0);
       await expect(primaries(page)).toHaveCount(1);
       await expect(primaries(page)).toHaveText('Try again');
-      await expect(main.getByRole('link', { name: 'Check Health' })).toHaveAttribute(
-        'data-cinder-variant',
-        'secondary',
+      await expect(main.getByRole('link', { name: 'Check Health' })).toContainClass(
+        'button-variant-secondary',
       );
       await expect(main.getByText('Show the error details')).toBeVisible();
 

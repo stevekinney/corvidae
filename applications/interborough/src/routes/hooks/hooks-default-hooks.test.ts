@@ -539,8 +539,8 @@ describe('a default hook’s page (rows R10-04 to R10-09 and R10-17)', () => {
     expect(
       within(header)
         .getByRole('button', { name: 'Add the key' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('link');
+        .classList.contains('button-variant-link'),
+    ).toBe(true);
     await waitFor(() => {
       expect(view.getByTestId('hook-test-reason').textContent).toBe(
         copy.check.testPluginNeedsSetup('Calendar'),

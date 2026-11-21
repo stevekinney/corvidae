@@ -114,11 +114,8 @@ describe('DurationField', () => {
     const { container } = render(DurationField, {
       props: { id: 'timeout', label: 'Timeout', value: 1000, size: 'sm' },
     });
-    const sizes = [...container.querySelectorAll('[data-cinder-size]')].map((element) =>
-      element.getAttribute('data-cinder-size'),
-    );
-    expect(sizes.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(sizes)).toEqual(new Set(['sm']));
+    expect(numberOf(container).getAttribute('data-cinder-size')).toBe('sm');
+    expect(unitOf(container).classList.contains('select-size-small')).toBe(true);
   });
 
   test('a unit chosen by the person survives their own edit coming back', async () => {

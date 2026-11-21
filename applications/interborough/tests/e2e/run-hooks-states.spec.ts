@@ -269,7 +269,7 @@ for (const width of WIDTHS) {
       await expect(body).toContainText('Couldn’t load this run’s hooks.');
       await expect(body).toContainText('The rest of the run is shown.');
       const retry = body.getByRole('button', { name: 'Try again' });
-      await expect(retry).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(retry).toContainClass('button-variant-secondary');
       await expect(page.locator('main [data-section="what-happened"]')).toBeVisible();
       await captured(page, 'failing');
       await checkA11y(`run hooks, failing, at ${width}px`);
@@ -290,9 +290,8 @@ for (const width of WIDTHS) {
       const body = section(page);
       await expect(body).toContainText('Your sign-in can’t see this run’s hooks');
       await expect(body).toContainText('requires runs:read');
-      await expect(body.getByRole('link', { name: 'See your scopes' })).toHaveAttribute(
-        'data-cinder-variant',
-        'secondary',
+      await expect(body.getByRole('link', { name: 'See your scopes' })).toContainClass(
+        'button-variant-secondary',
       );
       await expect(body.getByRole('button')).toHaveCount(0);
       await captured(page, 'forbidden');

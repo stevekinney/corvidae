@@ -740,7 +740,7 @@
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
-    .cinder-button[data-cinder-variant='primary']:not(:disabled, [aria-disabled='true']) {
+    .cinder-button.button-variant-primary:not(:disabled, [aria-disabled='true']) {
     /* cinder-allow-raw-color: structural-pattern — the hero's white primary fill */
     background: oklch(100% 0 0);
     /* cinder-allow-raw-color: structural-pattern — the indigo label on the white primary */
@@ -749,7 +749,7 @@
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
-    .cinder-button[data-cinder-variant='secondary']:not(:disabled, [aria-disabled='true']) {
+    .cinder-button.button-variant-secondary:not(:disabled, [aria-disabled='true']) {
     /* cinder-allow-raw-color: structural-pattern — the hero's translucent secondary fill */
     background: oklch(100% 0 0 / 0.12);
     /* cinder-allow-raw-color: structural-pattern — white label, 4.5:1 on every secondary state */
@@ -761,7 +761,7 @@
   /* The default filled face (soft) on the band: the same translucent white fill and white label as
      the secondary, with no edge, so a default Button never draws accent text on an accent band. */
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
-    .cinder-button[data-cinder-variant='soft']:not(:disabled, [aria-disabled='true']) {
+    .cinder-button.button-variant-soft:not(:disabled, [aria-disabled='true']) {
     /* cinder-allow-raw-color: structural-pattern — the hero's translucent default fill */
     background: oklch(100% 0 0 / 0.12);
     /* cinder-allow-raw-color: structural-pattern — white label, 4.5:1 on every default state */
@@ -774,9 +774,7 @@
         .cinder-page-header[data-cinder-tone='accent'],
         .cinder-page-header[data-cinder-tone='night']
       )
-      .cinder-button[data-cinder-variant='primary']:hover:not(:disabled):not(
-        [aria-disabled='true']
-      ) {
+      .cinder-button.button-variant-primary:hover:not(:disabled):not([aria-disabled='true']) {
       /* cinder-allow-raw-color: structural-pattern — the white primary's hover */
       background: oklch(93% 0.03 275);
     }
@@ -785,9 +783,7 @@
         .cinder-page-header[data-cinder-tone='accent'],
         .cinder-page-header[data-cinder-tone='night']
       )
-      .cinder-button[data-cinder-variant='secondary']:hover:not(:disabled):not(
-        [aria-disabled='true']
-      ) {
+      .cinder-button.button-variant-secondary:hover:not(:disabled):not([aria-disabled='true']) {
       /* cinder-allow-raw-color: structural-pattern — the translucent secondary's hover */
       background: oklch(100% 0 0 / 0.2);
     }
@@ -796,30 +792,26 @@
         .cinder-page-header[data-cinder-tone='accent'],
         .cinder-page-header[data-cinder-tone='night']
       )
-      .cinder-button[data-cinder-variant='soft']:hover:not(:disabled):not([aria-disabled='true']) {
+      .cinder-button.button-variant-soft:hover:not(:disabled):not([aria-disabled='true']) {
       /* cinder-allow-raw-color: structural-pattern — the translucent default's hover */
       background: oklch(100% 0 0 / 0.2);
     }
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
-    .cinder-button[data-cinder-variant='primary']:active:not(:disabled):not(
-      [aria-disabled='true']
-    ) {
+    .cinder-button.button-variant-primary:active:not(:disabled):not([aria-disabled='true']) {
     /* cinder-allow-raw-color: structural-pattern — the white primary's press */
     background: oklch(88% 0.04 275);
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
-    .cinder-button[data-cinder-variant='secondary']:active:not(:disabled):not(
-      [aria-disabled='true']
-    ) {
+    .cinder-button.button-variant-secondary:active:not(:disabled):not([aria-disabled='true']) {
     /* cinder-allow-raw-color: structural-pattern — the translucent secondary's press */
     background: oklch(100% 0 0 / 0.26);
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
-    .cinder-button[data-cinder-variant='soft']:active:not(:disabled):not([aria-disabled='true']) {
+    .cinder-button.button-variant-soft:active:not(:disabled):not([aria-disabled='true']) {
     /* cinder-allow-raw-color: structural-pattern — the translucent default's press */
     background: oklch(100% 0 0 / 0.26);
   }

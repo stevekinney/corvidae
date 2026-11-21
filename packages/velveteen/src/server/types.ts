@@ -23,7 +23,7 @@ declare global {
 export type CookieOptions = Omit<Bun.CookieInit, "name" | "value"> & {
   path: string;
 };
-export type Cookies = {
+type Cookies = {
   get(name: string): string | undefined;
   getAll(): { name: string; value: string }[];
   set(name: string, value: string, options: CookieOptions): void;
@@ -44,7 +44,7 @@ export type RequestEvent = {
 };
 export type ServerLoadEvent = RequestEvent &
   Pick<UniversalLoadEvent, "parent" | "depends" | "untrack">;
-export type ServerLoad = (
+type ServerLoad = (
   event: ServerLoadEvent,
 ) => Data | void | Promise<Data | void>;
 export type ServerModule = { load?: ServerLoad; ssr?: boolean; csr?: boolean };

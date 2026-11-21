@@ -170,6 +170,22 @@ describe('Settings › API reference', () => {
     expect(view.container.textContent).not.toContain('API keys');
   });
 
+  test('says where the API is under the heading, with a copy button for its address', async () => {
+    const view = open();
+
+    const line = await view.findByTestId('api-address');
+    expect(line.textContent).toContain(API_REFERENCE_COPY.address.lead);
+    const value = within(line).getByTestId('api-address-value');
+    expect(value.textContent).toContain('http://localhost/api');
+    expect(
+      within(value).getByRole('button', { name: API_REFERENCE_COPY.address.copy }),
+    ).not.toBeNull();
+    // One line, above the tabs; the MCP page does not carry it.
+    expect(line.compareDocumentPosition(view.getByRole('tablist'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   test('Operations has a group select, a count and a table of method, path, what it does and scope', async () => {
     const view = open();
 

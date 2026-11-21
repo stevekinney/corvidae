@@ -292,10 +292,10 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(card.getByPlaceholder('Ask an agent to do something')).toBeVisible();
     const agent = card.getByRole('combobox', { name: 'Agent' });
     await expect(agent).toContainText('Assistant');
-    await expect(card.locator('.cinder-select[data-cinder-variant="ghost"]').first()).toBeVisible();
+    await expect(card.locator('.cinder-select.select-variant-ghost').first()).toBeVisible();
     const send = card.getByRole('button', { name: 'Send' });
     await expect(send).toBeEnabled();
-    await expect(send).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(send).toContainClass('button-variant-primary');
     await expect(send.locator('svg')).toBeVisible();
     // It is a right column: its left edge is past both lists'.
     const start = await card.boundingBox();
@@ -493,20 +493,18 @@ test.describe('Home on a new installation that lists Assistant', () => {
     await expect(steps.nth(2)).toContainText('Say hello');
     await expect(steps.nth(2)).toContainText('Send a first message to see a chat run end to end.');
     // Step 1's button is the only primary one; Use Assistant is the quiet link.
-    await expect(
-      checklist(page).locator('.cinder-button[data-cinder-variant="primary"]'),
-    ).toHaveText(['Connect a provider']);
-    await expect(steps.nth(1).getByRole('button', { name: 'Use Assistant' })).toHaveAttribute(
-      'data-cinder-variant',
-      'ghost-accent',
+    await expect(checklist(page).locator('.cinder-button.button-variant-primary')).toHaveText([
+      'Connect a provider',
+    ]);
+    await expect(steps.nth(1).getByRole('button', { name: 'Use Assistant' })).toContainClass(
+      'button-variant-ghost-accent',
     );
-    await expect(steps.nth(1).getByRole('link', { name: 'Create an agent' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(steps.nth(1).getByRole('link', { name: 'Create an agent' })).toContainClass(
+      'button-variant-secondary',
     );
     // Step 3 is live with steps 1 and 2 open, and opens New chat with Assistant.
     const start = steps.nth(2).getByRole('link', { name: 'Start a chat' });
-    await expect(start).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(start).toContainClass('button-variant-secondary');
     await expect(start).not.toHaveAttribute('aria-disabled', 'true');
     await expect(start).toHaveAttribute('href', /^\/chats\/new\?agent=[^&]*assistant$/);
     // Only the steps: no counts, Needs you, composer, Needs attention, Recent chats or empty state,
@@ -549,12 +547,11 @@ test.describe('Home on a new installation that lists Assistant', () => {
     await expect(stepsOf(page).nth(0)).toContainText('Anthropic is connected.');
     await expect(
       stepsOf(page).nth(1).getByRole('link', { name: 'Create an agent' }),
-    ).toHaveAttribute('data-cinder-variant', 'primary');
+    ).toContainClass('button-variant-primary');
     await stepsOf(page).nth(1).getByRole('button', { name: 'Use Assistant' }).click();
     await expect(stepsOf(page).nth(1)).toContainText('Assistant is ready to use.');
-    await expect(stepsOf(page).nth(2).getByRole('link', { name: 'Start a chat' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(stepsOf(page).nth(2).getByRole('link', { name: 'Start a chat' })).toContainClass(
+      'button-variant-primary',
     );
     // The steps stay the whole page: the current step's action is the way to the first chat.
     await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
@@ -852,9 +849,8 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await page.clock.runFor(1);
     const status = page.locator('.cinder-skeleton-status');
     await expect(status).toContainText('Still loading Home. This is taking longer than usual.');
-    await expect(status.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
-      'data-cinder-variant',
-      'ghost',
+    await expect(status.getByRole('button', { name: 'Cancel' })).toContainClass(
+      'button-variant-ghost',
     );
     // It is the skeleton's own line, in view, not a banner. It takes the Spotlight placeholder's
     // place, so nothing on the page moves when it appears (COR-2329 round two: inserted above the
@@ -939,9 +935,8 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     await expect(failure).toHaveText(
       /Couldn’t load system problems\.\s*The rest of Home is live\.\s*Try again/,
     );
-    await expect(failure.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(failure.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-secondary',
     );
     // One flat row inside the card: the card keeps its title, and has no link and no list.
     await expect(card.getByRole('heading', { level: 2, name: 'Needs attention' })).toBeVisible();
@@ -1205,7 +1200,12 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
       for (let item = 0; item < count; item += 1) {
         const button = actions.nth(item);
         // Not the quiet link, which is text in a line.
-        if ((await button.getAttribute('data-cinder-variant')) === 'ghost-accent') continue;
+        if (
+          await button.evaluate((element) =>
+            element.classList.contains('button-variant-ghost-accent'),
+          )
+        )
+          continue;
         const box = await button.boundingBox();
         expect(
           box!.y,

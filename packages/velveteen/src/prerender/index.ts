@@ -14,7 +14,7 @@ import { matchRoute } from "../routing/match.ts";
 import { dataMediaType } from "../data/contract.ts";
 import { entryPath, routeEntries } from "./entries.ts";
 import { serviceWorkerVersion } from "./service-worker.ts";
-export type StaticResponse = {
+type StaticResponse = {
   status: number;
   headers: Record<string, string>;
   file: string;

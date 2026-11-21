@@ -1,5 +1,5 @@
 /** A custom value transport supplied by an application `src/transport.ts`. */
-export type Transporter<Encoded = unknown, Value = unknown> = {
+type Transporter<Encoded = unknown, Value = unknown> = {
   /** Return false when this transporter does not recognize the value. */
   encode(value: Value): false | Encoded;
   decode(value: Encoded): Value;
@@ -7,7 +7,10 @@ export type Transporter<Encoded = unknown, Value = unknown> = {
 
 export type Transport = Record<string, Transporter>;
 
-/** Custom tags are isolated from devalue's built-in tags and our Promise tag. */
+/**
+ * Custom tags are isolated from devalue's built-in tags and our Promise tag.
+ * @internal
+ */
 export const transportTag = (name: string) => {
   if (!name || name.includes("\0")) throw new Error("Invalid transport name");
   return `velveteen:transport:${encodeURIComponent(name)}`;

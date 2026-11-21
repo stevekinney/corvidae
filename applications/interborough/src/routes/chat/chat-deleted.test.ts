@@ -67,7 +67,7 @@ describe('a chat deleted while its page is open', () => {
     expect(view.queryByRole('textbox', { name: /message/i })).toBeNull();
     expect(served.runs).toHaveLength(0);
     const back = within(notice).getByRole('button', { name: CHAT_COPY.load.allConversations });
-    expect(back.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(back.classList.contains('button-variant-primary')).toBe(true);
     await fireEvent.click(back);
     expect(router.pathname).toBe('/chats');
   });

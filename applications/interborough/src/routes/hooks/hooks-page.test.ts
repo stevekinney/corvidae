@@ -579,9 +579,7 @@ describe('the hooks list', () => {
     // The header's secondary "+" and the state's primary button are both named New hook.
     const buttons = view.getAllByRole('button', { name: HOOKS_COPY.newAction });
     expect(buttons.length).toBe(2);
-    const primary = buttons.filter(
-      (button) => button.getAttribute('data-cinder-variant') === 'primary',
-    );
+    const primary = buttons.filter((button) => button.classList.contains('button-variant-primary'));
     expect(primary.length).toBe(1);
     await fireEvent.click(primary[0]!);
     await waitFor(() => expect(router.pathname).toBe('/hooks/new'));

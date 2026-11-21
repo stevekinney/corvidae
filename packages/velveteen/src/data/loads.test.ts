@@ -4,12 +4,8 @@ import {
 } from "@lostgradient/testing/promise-outcome";
 import { expect, test } from "bun:test";
 import type { PagePayload, RuntimeRegistry } from "./contract.ts";
-import {
-  runUniversalLoads,
-  emptyUses,
-  shouldRerun,
-  trackLoad,
-} from "./loads.ts";
+import { runUniversalLoads } from "./loads.ts";
+import { emptyUses, shouldRerun, trackLoad } from "./tracking.ts";
 import { LoadFailure, createErrorPayload } from "./errors.ts";
 import { assertRegistryPayload } from "./validate.ts";
 import { selectServerLoads } from "../client/load-selection.ts";

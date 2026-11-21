@@ -1,11 +1,11 @@
 import type { PluginPanel } from '@lostgradient/interborough-plugin';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { CINDER_GENERATED_OUTPUTS } from '../../../scripts/ensure-cinder-generated.ts';
 import { digestOf } from '../src/host/panel-build.ts';
 import { prebuiltPanelSchema } from '../src/host/panel-mounts.ts';
 import {
@@ -98,7 +98,6 @@ async function releaseFixture(
     readonly invalidExportMap?: boolean;
     /** A package of {@link PANEL_RUNTIME_FIXTURE} the frozen install leaves out. */
     readonly missingPanelRuntime?: string;
-    readonly missingGeneratedCinderAsset?: string;
     readonly runtimeFailure?:
       | 'missing-link'
       | 'wrong-link'
@@ -113,7 +112,6 @@ async function releaseFixture(
 ) {
   const root = await mkdtemp(join(tmpdir(), 'interborough-release-fixture-'));
   const source = join(root, 'source');
-  const cinderDirectory = join(root, 'generated-cinder');
   const dependencies = join(root, 'dependencies');
   const sdk = join(dependencies, '@lostgradient', 'interborough-plugin');
   await mkdir(join(sdk, 'src', 'testing'), { recursive: true });
@@ -157,18 +155,9 @@ async function releaseFixture(
     await symlink('/tmp/interborough-release-missing-target', join(sdk, 'escape'));
   const buildArguments: string[][] = [];
   const commands: string[][] = [];
-  const command = async (arguments_: string[], cwd?: string): Promise<void> => {
+  const command = async (arguments_: string[]): Promise<void> => {
     commands.push(arguments_);
-    if (arguments_[1] === 'run' && arguments_[2] === 'metadata') {
-      if (cwd !== cinderDirectory)
-        throw new Error('Cinder must generate from the release checkout');
-      for (const generated of CINDER_GENERATED_OUTPUTS) {
-        if (generated === options.missingGeneratedCinderAsset) continue;
-        const path = join(cinderDirectory, generated);
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, `generated: ${generated}`);
-      }
-    } else if (arguments_[1] === 'build') {
+    if (arguments_[1] === 'build') {
       buildArguments.push(arguments_);
       if (options.commandFailure) throw new Error('fixture command failed');
       const output = arguments_[arguments_.indexOf('--outfile') + 1];
@@ -207,6 +196,7 @@ const server = Bun.serve({ port, fetch(request) {
   return new Response('not found', { status: 404 });
 } });
 await writeFile(join(home, 'server-port'), String(server.port));
+if (marker && behavior === 'poll-error') await writeFile(marker, 'ready');
 console.info('Interborough is listening on http://127.0.0.1:' + server.port);
 await new Promise(() => {});
 `,
@@ -266,7 +256,6 @@ await new Promise(() => {});
     platform: 'darwin',
     architecture: 'arm64',
     runCommand: command,
-    cinderDirectory,
     buildApplication: async (options) => {
       const outdir = options?.outdir;
       if (outdir === undefined) throw new Error('missing browser output');
@@ -298,18 +287,12 @@ async function expectRelocatedFailure(
   const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
   const fixture = await releaseFixture({ markerPath: marker, runtimeFailure });
   const output = await mkdtemp(join(tmpdir(), `interborough-release-${runtimeFailure}-`));
-  let clock = 0;
   try {
+    // These fixtures reach the verifier's HTTP checks. Keep the real startup clock so a
+    // scheduled sleep before the child binds cannot consume the retry window in a tight loop.
     expect(
       await throwingRejectionOf(
-        buildRelease(['--version', '0.0.0-test', '--outdir', output], {
-          ...fixture.operations,
-          now: () => clock,
-          sleep: async () => {
-            while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
-            clock += 100;
-          },
-        }),
+        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
       ),
     ).toThrow(message);
     expect(await Bun.file(marker).text()).toBe('terminated');
@@ -585,6 +568,31 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the delayed supervisor fixture owns and cleans its guarded child process.
+  test('checks the relocated host once it reports ready even after the startup clock advances', async () => {
+    const markerDirectory = await mkdtemp(join(tmpdir(), 'interborough-release-marker-'));
+    const marker = join(markerDirectory, 'lifecycle');
+    const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'poll-error' });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-ready-'));
+    try {
+      const archive = await buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+        ...fixture.operations,
+        now: () => {
+          try {
+            return readFileSync(marker, 'utf8') === 'ready' ? 20_000 : 0;
+          } catch {
+            return 0;
+          }
+        },
+      });
+      expect(await Bun.file(archive).exists()).toBe(true);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+      await rm(markerDirectory, { recursive: true, force: true });
+    }
+  });
+
   // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects a dependency absent from the frozen production install', async () => {
     const fixture = await releaseFixture({ recursiveDependency: true, missingDependency: true });
@@ -709,6 +717,15 @@ describe('release arguments', () => {
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-staged-'));
     try {
       await buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations);
+      expect(fixture.commands).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining(['components/cinder/scripts/tokens/generate-validators.ts']),
+          expect.arrayContaining([
+            'components/cinder/scripts/tokens/generate-artifacts.ts',
+            '--ignored-only',
+          ]),
+        ]),
+      );
       const runtime = join(
         output,
         'interborough',
@@ -721,11 +738,6 @@ describe('release arguments', () => {
         for (const file of Object.keys(files)) {
           expect(await Bun.file(join(runtime, name, file)).exists(), `${name}/${file}`).toBe(true);
         }
-      }
-      for (const generated of CINDER_GENERATED_OUTPUTS) {
-        expect(await Bun.file(join(runtime, '@lostgradient/cinder', generated)).text()).toBe(
-          `generated: ${generated}`,
-        );
       }
       // The staged files the host reads: the compiler and the panel kit's entry.
       expect(await Bun.file(join(runtime, 'svelte', 'compiler', 'index.js')).exists()).toBe(true);
@@ -741,24 +753,7 @@ describe('release arguments', () => {
   });
 
   // spawn-free: the release fixture controls every child process boundary deterministically.
-  test('rejects a release missing a generated Cinder runtime asset', async () => {
-    const missingGeneratedCinderAsset = 'src/styles/tokens-base.css';
-    const fixture = await releaseFixture({ missingGeneratedCinderAsset });
-    const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-generated-'));
-    try {
-      expect(
-        await throwingRejectionOf(
-          buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
-        ),
-      ).toThrow('tokens-base.css');
-      expect(await readdir(output)).toEqual([]);
-    } finally {
-      await rm(fixture.root, { recursive: true, force: true });
-      await rm(output, { recursive: true, force: true });
-    }
-  });
-
-  // spawn-free: the fixture stubs every command and missing packages fail before the relocated host can start.
+  // spawn-free: missing runtime packages fail during mocked staging before the relocated host can start.
   test.each(PANEL_RUNTIME_PACKAGES.map((name) => [name]))(
     'rejects a release whose frozen install has no %s to stage',
     async (name) => {

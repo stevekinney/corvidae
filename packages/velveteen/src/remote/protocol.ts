@@ -1,6 +1,5 @@
 import { parse, stringify } from "devalue";
 export const remoteContentType = "application/x-velveteen-remote";
-export const remoteProtocolVersion = 1 as const;
 export const remoteBatchPath = "_batch";
 export const remoteBatchLimit = 32;
 export const validRemoteName = (name: string) =>
@@ -107,17 +106,6 @@ export function isRemoteBatchResponse(
     )
   );
 }
-export type RemoteFailure = {
-  version: 1;
-  ok: false;
-  error: { message: string };
-};
-export type RemoteRedirect = {
-  version: 1;
-  ok: false;
-  redirect: string;
-  status: number;
-};
 export function isRemoteSuccess(value: unknown): value is RemoteSuccess {
   return (
     isRecord(value) &&

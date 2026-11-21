@@ -5,11 +5,9 @@ import {
   transportRevivers,
   type Transport,
 } from "./custom-transport.ts";
-export { assertPayload } from "./validate.ts";
 export type Settlement =
   | { type: "resolve"; id: number; value: string }
   | { type: "reject"; id: number; error: PublicError };
-export type InitialFrame = { type: "initial"; value: string };
 
 /** Inert JSON remains inert even when application data contains an HTML script terminator. */
 export const escapeJson = (value: unknown) =>

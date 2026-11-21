@@ -13,8 +13,6 @@ export const emptyUses = (): Uses => ({
   parent: false,
   route: false,
 });
-export const loadKey = (node: number, role: "layout" | "page") =>
-  `${node}:${role}`;
 /** Track public load inputs while preserving native URL methods and selective query dependencies. */
 export function trackLoad(input: UniversalLoadEvent): {
   event: UniversalLoadEvent;

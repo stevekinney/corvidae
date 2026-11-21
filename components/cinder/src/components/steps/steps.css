@@ -512,9 +512,9 @@
        names the action row alone and no variant above the Button. */
     .cinder-steps__action
       > .cinder-button:first-child:is(
-        [data-cinder-variant='ghost'],
-        [data-cinder-variant='ghost-accent'],
-        [data-cinder-variant='ghost-danger']
+        .button-variant-ghost,
+        .button-variant-ghost-accent,
+        .button-variant-ghost-danger
       ):not([data-cinder-icon-only]) {
       margin-inline-start: calc(-1 * (var(--_cinder-steps-action-padding) + 1px));
     }
@@ -526,15 +526,15 @@
     --_cinder-steps-action-padding: var(--cinder-button-padding-x-sm);
   }
 
-  .cinder-steps__action > .cinder-button[data-cinder-size='xs'] {
+  .cinder-steps__action > .cinder-button.button-size-extra-small {
     --_cinder-steps-action-padding: var(--cinder-button-padding-x-xs);
   }
 
-  .cinder-steps__action > .cinder-button[data-cinder-size='md'] {
+  .cinder-steps__action > .cinder-button.button-size-medium {
     --_cinder-steps-action-padding: var(--cinder-button-padding-x-md);
   }
 
-  .cinder-steps__action > .cinder-button[data-cinder-size='lg'] {
+  .cinder-steps__action > .cinder-button.button-size-large {
     --_cinder-steps-action-padding: var(--cinder-button-padding-x-lg);
   }
 

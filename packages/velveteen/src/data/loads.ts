@@ -15,7 +15,6 @@ export type LoadObserver = <Value>(
   key: string,
   operation: () => Value | Promise<Value>,
 ) => Promise<Value>;
-export { emptyUses, trackLoad, shouldRerun, loadKey } from "./tracking.ts";
 
 export function loadOutput(value: unknown): Data {
   if (value === undefined) return {};

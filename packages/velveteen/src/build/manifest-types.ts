@@ -25,7 +25,7 @@ export type BrowserModule = {
 export type ServerModule = { file: string };
 export type ClientModuleRole =
   "page" | "layout" | "error" | "pageUniversal" | "layoutUniversal";
-export type ServerModuleRole =
+type ServerModuleRole =
   ClientModuleRole | "pageServer" | "layoutServer" | "endpoint";
 export type BrowserNode = Partial<Record<ClientModuleRole, BrowserModule>>;
 export type ServerNode = Partial<Record<ServerModuleRole, ServerModule>>;

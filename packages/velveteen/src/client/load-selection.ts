@@ -1,5 +1,5 @@
 import { matchRoute } from "../routing/match.ts";
-import { shouldRerun } from "../data/loads.ts";
+import { shouldRerun } from "../data/tracking.ts";
 import type {
   RuntimeRegistry,
   ResolvedPage,

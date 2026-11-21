@@ -246,7 +246,7 @@ describe('Home while it loads (02c, 02d)', () => {
       true,
     );
     expect(cinder('./components/select/select.css')).toMatch(
-      /\.cinder-select\[data-cinder-size='sm'\] \{ min-height: var\(--cinder-control-height-sm\);/,
+      /\.cinder-select\.select-size-small \{ min-height: var\(--cinder-control-height-sm\);/,
     );
     hold.release();
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
@@ -318,7 +318,7 @@ describe('Home while it loads slowly (02e, 02f)', () => {
     );
     expect(container.querySelectorAll('.cinder-skeleton-status')).toHaveLength(1);
     const cancel = within(status as HTMLElement).getByRole('button', { name: 'Cancel' });
-    expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(cancel.classList.contains('button-variant-ghost')).toBe(true);
 
     await fireEvent.click(cancel);
     flushSync();
