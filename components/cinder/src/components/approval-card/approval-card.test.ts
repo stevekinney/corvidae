@@ -370,7 +370,7 @@ describe('ApprovalCard', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(getByLabelText('Note'), {
+    await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: 'Outside the deployment window.' },
     });
     await fireEvent.click(
@@ -383,6 +383,19 @@ describe('ApprovalCard', () => {
       reason: 'Outside the deployment window.',
       remember: true,
     });
+  });
+
+  test('starts with a host-owned decision note when requested', () => {
+    const { getByLabelText } = render(ApprovalCard, {
+      ...approvalCardProps({
+        reason: 'Keep this review-specific note.',
+        noteInitiallyOpen: true,
+      }),
+    });
+
+    expect(requiredInstance(getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
+      'Keep this review-specific note.',
+    );
   });
 
   test('offers no Dismiss: Deny and Approve are the only decisions on screen', () => {
@@ -401,7 +414,7 @@ describe('ApprovalCard', () => {
     });
 
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(view.getByLabelText('Note'), {
+    await fireEvent.input(view.getByLabelText('Note Optional'), {
       target: { value: 'Applies only to the first approval.' },
     });
     await fireEvent.click(
@@ -416,9 +429,11 @@ describe('ApprovalCard', () => {
     });
 
     // A new request starts with the note closed and empty.
-    expect(view.queryByLabelText('Note')).toBeNull();
+    expect(view.queryByLabelText('Note Optional')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe('');
+    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
+      '',
+    );
     expect(
       requiredInstance(
         view.getByRole('checkbox', {
@@ -442,7 +457,7 @@ describe('ApprovalCard', () => {
     });
 
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(view.getByLabelText('Note'), {
+    await fireEvent.input(view.getByLabelText('Note Optional'), {
       target: { value: 'Still drafting this reason.' },
     });
     await fireEvent.click(
@@ -456,7 +471,7 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ onResolve, idempotencyKey: 'approval-one', snapshotId: 'snap-2' }),
     });
 
-    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
       'Still drafting this reason.',
     );
     expect(
@@ -1788,6 +1803,7 @@ describe('ApprovalCard row layout', () => {
     test(`the ${layout} layout keeps its note closed behind Add note, beside Deny, and focuses it on open`, async () => {
       const onResolve = mock((_resolution: unknown) => undefined);
       const view = render(ApprovalCard, { props: refundRow({ layout, onResolve }) });
+      const noteLabel = layout === 'row' || layout === 'decision' ? 'Note' : 'Note Optional';
 
       expect(view.queryByRole('textbox', { name: /note/i })).toBeNull();
       expect(view.container.textContent).not.toContain('(optional)');
@@ -1800,14 +1816,14 @@ describe('ApprovalCard row layout', () => {
 
       await fireEvent.click(toggle);
       await tick();
-      const field = requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement);
+      const field = requiredInstance(view.getByLabelText(noteLabel), HTMLTextAreaElement);
       expect(document.activeElement).toBe(field);
       expect(view.queryByRole('button', { name: 'Add note' })).toBeNull();
 
       // A typed note keeps the field open through an unrelated re-render.
       await fireEvent.input(field, { target: { value: 'Check the carrier first.' } });
       await view.rerender({ ...refundRow({ layout, onResolve }), consequence: 'Sends it back' });
-      expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+      expect(requiredInstance(view.getByLabelText(noteLabel), HTMLTextAreaElement).value).toBe(
         'Check the carrier first.',
       );
     });

@@ -155,12 +155,14 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `idempotencyKey` | `string` | yes | — | Idempotency key that makes repeated decisions durable. |
 | `inputLabel` | `string` | no | — | What the payload is called, such as `Runs with`: the name of the input rows in the row and decision layouts and of the Input block on the detail page (default `Input`), and of the arguments in the card (default `<tool> arguments`). |
 | `layout` | `"card"` \| `"row"` \| `"detail"` \| `"decision"` | no | `"card"` | Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), the approval's own `detail` page, or the explicit `decision` surface with its retained receipt. Default `'card'`. |
+| `noteInitiallyOpen` | `boolean` | no | — | Opens the decision note field when the card first renders. |
 | `notice` | `string` | no | — | A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired. |
 | `operation` | { argsPreview?: `unknown`; command: `string`; filesTouched?: `string`[]; kind: `"command"` } \| { argsPreview?: `unknown`; filesTouched: `string`[]; kind: `"file-write"` } \| { argsPreview?: `unknown`; diff: `string`; filesTouched?: `string`[]; kind: `"patch"` } \| { argsPreview?: `unknown`; filesTouched?: `string`[]; kind: `"other"` } | yes | — | Operation details shown to the approver. |
 | `outcomeLabel` | `string` | no | — | Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. |
 | `pauseSentence` | `string` | no | — | Shared approval context accepted by callers; the compact decision layout does not repeat a generic pause sentence. |
 | `policyVersion` | `string` | yes | — | Policy version that produced the approval request. |
 | `question` | `string` | no | — | The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. |
+| `reason` | `string` | no | — | A host-owned decision note, retained when the host changes the open approval. |
 | `rememberScope` | `string` | no | — | Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always. |
 | `requestedAt` | `string` | no | — | When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending. |
 | `resolving` | `"approve"` \| `"deny"` | no | — | The answer that is on its way: `approve` writes "Approving…" with a spinner on Approve, `deny` writes "Denying…" on Deny, and both buttons, the note and the checkbox turn off until the host clears it. |

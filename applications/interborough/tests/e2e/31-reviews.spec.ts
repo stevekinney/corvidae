@@ -10,6 +10,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
+import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
@@ -22,6 +23,19 @@ import {
 } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
+const REFUND_APPROVAL = {
+  toolName: 'issue-refund',
+  question: 'Refund order 4471 for $42.00?',
+  arguments: { orderId: '4471', amount: '$42.00', reason: 'Arrived damaged' },
+  risk: 'high',
+} as const;
+const TRIAGE_APPROVAL = {
+  toolName: 'triage-refunds',
+  question: 'Triage refund request for order 4398?',
+  arguments: { orderId: '4398', amount: '$27.25', reason: 'Arrived damaged' },
+  risk: 'medium',
+} as const;
+type ApprovalCaptureFixture = typeof REFUND_APPROVAL | typeof TRIAGE_APPROVAL;
 
 // Wide enough that the list and the open review show side by side (ListDetail shows one pane at a
 // time below 900 pixels of its own width), so a row is on the page while its review is open.
@@ -71,12 +85,59 @@ const inboxAt = (review: WaitingReview, tab?: 'done'): string =>
 const rowOf = (page: Page, review: WaitingReview) =>
   page.locator(`[data-review-row="bureau:${review.id}"]`);
 
-/** The open review's pane. */
-const paneOf = (page: Page) => page.locator('.ib-review-pane');
+/** The open review detail, whether it is a shared approval card or a question/workflow pane. */
+const paneOf = (page: Page) => page.locator('.ib-reviews__detail');
 
 /** Whether a tool result in a conversation carries `refundedCents`, which only a refund that ran does. */
 function refundRan(messages: unknown[]): boolean {
   return JSON.stringify(messages).includes('refundedCents');
+}
+
+/** Supplies the board's sample copy and arguments on the real review's read response. */
+async function useApprovalCaptureFixture(
+  page: Page,
+  review: WaitingReview,
+  fixture: ApprovalCaptureFixture,
+): Promise<void> {
+  await page.route('**/jsonrpc', async (route) => {
+    const call = route.request().postDataJSON() as { method?: string };
+    if (call.method !== 'bureau.reviews.list') return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      result?: {
+        reviews?: Array<{
+          id: string;
+          approval?: { action: Record<string, unknown> };
+        }>;
+      };
+    };
+    if (body.result?.reviews === undefined) return route.fulfill({ response });
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        result: {
+          ...body.result,
+          reviews: body.result.reviews.map((candidate) => {
+            if (candidate.id !== review.id || candidate.approval === undefined) return candidate;
+            return {
+              ...candidate,
+              approval: {
+                ...candidate.approval,
+                toolName: fixture.toolName,
+                arguments: fixture.arguments,
+                action: {
+                  ...candidate.approval.action,
+                  message: fixture.question,
+                  risk: fixture.risk,
+                },
+              },
+            };
+          }),
+        },
+      },
+    });
+  });
 }
 
 /** Starts a refund run that waits on its approval, and opens the inbox on it. */
@@ -84,14 +145,57 @@ async function waitingRefund(
   page: Page,
   request: APIRequestContext,
   name: string,
+  fixture?: ApprovalCaptureFixture,
 ): Promise<{ threadId: string; review: WaitingReview }> {
   const threadId = newThreadId(name);
   await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
   expect(refundRan(await threadMessages(request, threadId))).toBe(false);
   const review = await waitingReviewOf(request, threadId);
+  if (fixture !== undefined) await useApprovalCaptureFixture(page, review, fixture);
   await page.goto(inboxAt(review));
-  await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
+  await expect(paneOf(page)).toContainText(
+    fixture?.question ?? 'Refund order order-1001 for $42.00?',
+  );
   return { threadId, review };
+}
+
+/** Captures an approval in the two board widths, restoring the suite's desktop viewport afterwards. */
+async function captureApprovalAtWidths(
+  page: Page,
+  state: string,
+  actions: readonly string[] = ['Deny', 'Approve'],
+): Promise<void> {
+  const originalViewport = page.viewportSize();
+  if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
+  try {
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width === 375) {
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        ).toBe(true);
+      }
+      for (const name of actions) {
+        const action = paneOf(page).getByRole('button', { name, exact: true });
+        await expect(action).toBeVisible();
+        if (width === 375) {
+          await expect
+            .poll(async () => {
+              const box = await action.boundingBox();
+              return box === null ? 0 : Math.min(box.height, box.width);
+            })
+            .toBeGreaterThanOrEqual(44);
+        }
+      }
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state,
+        source: '31-reviews.spec.ts',
+      });
+    }
+  } finally {
+    await page.setViewportSize(originalViewport);
+  }
 }
 
 test.describe('a tool approval', () => {
@@ -187,18 +291,139 @@ test.describe('a tool approval', () => {
     expect(refundRan(await threadMessages(request, denied.threadId))).toBe(false);
   });
 
-  test('Allow for the rest of this chat approves the tool and sends remember', async ({
+  test('shared Reviews approval detail remembers an On changes approval only when approved', async ({
     page,
     request,
   }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-remember');
     const resolves = recordResolves(page);
-    await paneOf(page).getByRole('button', { name: 'Allow for the rest of this chat' }).click();
+    const remember = paneOf(page).getByRole('checkbox', {
+      name: /allow .* for the rest of this chat/i,
+    });
+    await remember.check();
+    await expect.poll(() => resolves).toHaveLength(0);
+    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
 
     await expect(rowOf(page, review)).toHaveCount(0);
     expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
     await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
   });
+
+  test('shared Reviews approval detail captures a pending On changes approval', async ({
+    page,
+    request,
+  }) => {
+    await waitingRefund(page, request, 'reviews-capture-on-changes', TRIAGE_APPROVAL);
+    await captureApprovalAtWidths(page, 'pending On changes approval');
+  });
+
+  test('shared Reviews approval detail captures a pending Always approval', async ({
+    page,
+    request,
+  }) => {
+    const threadId = newThreadId('reviews-capture-always');
+    const id = 'demo:tool-runner';
+    const tool = 'issue-refund';
+    const { hash, overrides, ownTools } = (await bureauCall(
+      request,
+      'bureau.agents.overrides.get',
+      {
+        id,
+      },
+    )) as { hash: string; overrides: Record<string, unknown>; ownTools: string[] };
+    expect(ownTools).toContain(tool);
+    const { hash: appliedHash } = (await bureauCall(request, 'bureau.agents.overrides.update', {
+      id,
+      expectedHash: hash,
+      overrides: { ...overrides, approvals: { [tool]: 'always' } },
+    })) as { hash: string };
+    try {
+      const readback = (await bureauCall(request, 'bureau.agents.overrides.get', {
+        id,
+      })) as { overrides: Record<string, unknown> };
+      expect(readback.overrides['approvals']).toMatchObject({ [tool]: 'always' });
+      await runToEnd(request, id, threadId, 'Refund order-1001');
+      const review = await waitingReviewOf(request, threadId);
+      await useApprovalCaptureFixture(page, review, REFUND_APPROVAL);
+      await page.goto(inboxAt(review));
+      const pane = paneOf(page);
+      await expect(pane.getByRole('heading', { level: 2 })).toHaveText(REFUND_APPROVAL.question);
+      for (const label of ['Order ID', 'Amount', 'Reason']) {
+        await expect(pane.getByText(label, { exact: true })).toBeVisible();
+      }
+      await expect(pane).toContainText('Arrived damaged');
+      await expect(pane).toContainText("Can't be undone.");
+      await expect(paneOf(page).getByRole('checkbox')).toHaveCount(0);
+      await captureApprovalAtWidths(page, 'pending Always approval');
+    } finally {
+      await bureauCall(request, 'bureau.agents.overrides.update', {
+        id,
+        expectedHash: appliedHash,
+        overrides,
+      });
+    }
+  });
+
+  for (const [decision, active, other] of [
+    ['Approve', 'Approving…', 'Deny'],
+    ['Deny', 'Denying…', 'Approve'],
+  ] as const) {
+    test(`/reviews shared Reviews approval detail captures ${decision} held and failing`, async ({
+      page,
+      request,
+    }) => {
+      const { review, threadId } = await waitingRefund(
+        page,
+        request,
+        'reviews-capture-held',
+        REFUND_APPROVAL,
+      );
+      const requests = recordResolves(page);
+      const release = Promise.withResolvers<void>();
+      let failedOnce = false;
+      const reason = 'The Bureau could not apply this decision.';
+      await page.route('**/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as {
+          method?: string;
+          id?: string;
+          params?: { id?: string };
+        };
+        if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id) {
+          return route.fallback();
+        }
+        if (failedOnce) return route.fallback();
+        failedOnce = true;
+        await release.promise;
+        await route.fulfill({
+          json: { jsonrpc: '2.0', id: call.id, error: { code: -32603, message: reason } },
+        });
+      });
+      const pane = paneOf(page);
+      try {
+        await pane.getByRole('button', { name: decision, exact: true }).click();
+        await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
+          'aria-busy',
+          'true',
+        );
+        await expect(pane.getByRole('button', { name: other, exact: true })).toBeDisabled();
+        await page.keyboard.press(decision === 'Approve' ? 'd' : 'a');
+        expect(requests).toHaveLength(1);
+        await captureApprovalAtWidths(page, `${decision} in flight`, [active, other]);
+      } finally {
+        release.resolve();
+      }
+      await expect(pane.getByText(REVIEWS_COPY.decisionFailed, { exact: true })).toBeVisible();
+      await expect(pane).toContainText(reason);
+      await expect(page.locator('.cinder-toast-region').getByText(reason)).toHaveCount(0);
+      await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
+      await captureApprovalAtWidths(page, `${decision} failing`);
+      expect(refundRan(await threadMessages(request, threadId))).toBe(false);
+      expect(requests).toHaveLength(1);
+      await pane.getByRole('button', { name: decision, exact: true }).click();
+      await expect(rowOf(page, review)).toHaveCount(0);
+      expect(requests).toHaveLength(2);
+    });
+  }
 
   test('decided in the chat is gone from the inbox once the run goes on', async ({
     page,
@@ -271,19 +496,23 @@ test.describe('a tool approval', () => {
     await expect(page.getByText('1 run is waiting on you')).toHaveCount(0);
   });
 
-  test('is listed under Done once it is decided, with who decided it, and cannot be decided again', async ({
+  test('/reviews shared Reviews approval detail is listed under Done with its decision and note', async ({
     page,
     request,
   }) => {
-    const { review } = await waitingRefund(page, request, 'reviews-done');
+    const { review } = await waitingRefund(page, request, 'reviews-done', REFUND_APPROVAL);
+    const note = 'Confirmed with the customer.';
+    await paneOf(page).getByRole('textbox', { name: 'Note Optional' }).fill(note);
     await paneOf(page).getByRole('button', { name: 'Approve' }).click();
     await expect(rowOf(page, review)).toHaveCount(0);
 
     await page.goto(inboxAt(review, 'done'));
     await expect(rowOf(page, review)).toContainText('Approved');
-    await expect(paneOf(page).getByTestId('review-resolution')).toContainText('Approved');
+    await expect(paneOf(page)).toContainText('Approved');
+    await expect(paneOf(page)).toContainText(note);
     await expect(paneOf(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(paneOf(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
+    await captureApprovalAtWidths(page, 'no longer waiting with a decision', []);
     // Done is read through the same list, asked for what was resolved.
     await page.getByRole('radio', { name: /^Waiting/ }).click();
     await expect(page).not.toHaveURL(/tab=done/);
