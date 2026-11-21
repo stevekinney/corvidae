@@ -83,9 +83,9 @@ describe('diffJsonValues', () => {
   });
 
   test('a circular reference past maxDepth shows as changed instead of throwing', () => {
-    const before: Record<string, unknown> = { name: 'a' };
+    const before: { name: string; self?: unknown } = { name: 'a' };
     before.self = before;
-    const after: Record<string, unknown> = { name: 'a' };
+    const after: { name: string; self?: unknown } = { name: 'a' };
     after.self = after;
     const level = diffJsonValues(before, after, 3);
     expect(level.changes).toHaveLength(1);
