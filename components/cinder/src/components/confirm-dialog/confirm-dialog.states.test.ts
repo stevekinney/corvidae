@@ -327,9 +327,9 @@ describe('ConfirmDialog failure', () => {
     confirmButton(view.container).focus();
     await view.rerender({ confirmVisible: false, cancelLabel: 'Close' });
     await tick();
-    const [close] = footerButtons(view.container);
-    expect(footerButtons(view.container)).toHaveLength(1);
-    expect(document.activeElement).toBe(close);
+    const buttons = footerButtons(view.container);
+    expect(buttons).toHaveLength(1);
+    expect(document.activeElement).toBe(buttons[0] ?? null);
   });
 
   test('focus that is not on the confirm button is left where it is', async () => {
