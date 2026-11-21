@@ -180,6 +180,28 @@ describe('the session count', () => {
     expect(placesAfterEach([...prefix, launched('t1', 'a0')])).toEqual([1, 0, 1, 2, 1]);
   });
 
+  test('projects every capacity rate independently across compatible histories', () => {
+    const workerAndReadOnly = foldSession([
+      {
+        ...admit('t-read-only'),
+        agentType: 'Explore',
+        readOnly: true,
+      },
+      admit('t-worker'),
+      start('a'),
+      stop('a'),
+    ]);
+    expect([workerPlaces(workerAndReadOnly), readOnlyAgents(workerAndReadOnly)]).toEqual([1, 1]);
+
+    const workerAndOpus = foldSession([
+      { ...admit('t-opus'), agentType: 'chef-reviewer', opus: true },
+      { ...admit('t-worker'), agentType: 'chef-worker' },
+      start('a'),
+      stop('a'),
+    ]);
+    expect([workerPlaces(workerAndOpus), opusPlaces(workerAndOpus)]).toEqual([1, 1]);
+  });
+
   test('the two COR-2463 expiry traces retain only histories compatible with their recorded expiry and link', () => {
     expect(
       placesAfterEach([
@@ -203,6 +225,18 @@ describe('the session count', () => {
       ]),
     ).toEqual([1, 2, 2, 2, 2, 1, 0, 0]);
   });
+
+  test('rejects a stale link without reinstating a dispatch its failure already released', () => {
+    const events = [admit('t'), failed('t'), launched('t', 'a')];
+    expect(placesAfterEach(events)).toEqual([1, 0, 0]);
+    expect(foldSession(events).dispatches.get('t')).toMatchObject({ status: 'failed' });
+  });
+
+  test('expires a dispatch only when every compatible history still has it pending', () => {
+    const state = foldSession([admit('t0', 0), admit('t1', 1), start('a', 2)]);
+    expect(neverStarted(state, neverStartedLimitMilliseconds + 2)).toEqual([]);
+  });
+
 });
 
 describe('every interleaving', () => {

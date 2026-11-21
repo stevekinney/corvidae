@@ -436,11 +436,12 @@ function compatibleWithLink(
 ): boolean {
   const dispatch = state.dispatches.get(event.toolUseId);
   const agent = state.agents.get(event.agentId);
-  return (
-    dispatch === undefined ||
-    ((dispatch.agentId === undefined || dispatch.agentId === event.agentId) &&
-      (agent?.toolUseId === undefined || agent.toolUseId === event.toolUseId))
-  );
+  if (dispatch === undefined || agent === undefined) return true;
+  if (agent.toolUseId === event.toolUseId || dispatch.agentId === event.agentId) return true;
+  // An agent whose late start took an expired dispatch has no `toolUseId`, but that absence is
+  // not a blank cheque for a newer pending dispatch. Another candidate represents that dispatch
+  // when it was eligible at the recorded start; retain only that candidate when its link arrives.
+  return false;
 }
 
 function compatibleWithFailure(
@@ -453,7 +454,7 @@ function compatibleWithFailure(
 
 function project(states: readonly SessionState[]): SessionState {
   const selected = states.reduce((maximum, candidate) =>
-    workerPlaces(candidate) > workerPlaces(maximum) ? candidate : maximum,
+    workerPlacesIn(candidate) > workerPlacesIn(maximum) ? candidate : maximum,
   );
   const result: SessionState = {
     dispatches: new Map(selected.dispatches),
@@ -500,6 +501,10 @@ function agentReadOnly(state: SessionState, agent: Agent): boolean {
  * running implementation agent. Read-only agents take none (they count in {@link readOnlyAgents}).
  */
 export function workerPlaces(state: SessionState): number {
+  return Math.max(...candidatesOf(state).map(workerPlacesIn));
+}
+
+function workerPlacesIn(state: SessionState): number {
   let held = 0;
   for (const dispatch of state.dispatches.values()) {
     if (dispatch.status === 'pending' && dispatch.readOnly !== true) held += 1;
@@ -512,6 +517,10 @@ export function workerPlaces(state: SessionState): number {
 
 /** The read-only agents the session holds: pending dispatches and running agents. */
 export function readOnlyAgents(state: SessionState): number {
+  return Math.max(...candidatesOf(state).map(readOnlyAgentsIn));
+}
+
+function readOnlyAgentsIn(state: SessionState): number {
   let held = 0;
   for (const dispatch of state.dispatches.values()) {
     if (dispatch.status === 'pending' && dispatch.readOnly === true) held += 1;
@@ -537,6 +546,10 @@ export function sessionPlaces(state: SessionState): number {
  * on record and counts none.
  */
 export function opusPlaces(state: SessionState): number {
+  return Math.max(...candidatesOf(state).map(opusPlacesIn));
+}
+
+function opusPlacesIn(state: SessionState): number {
   let held = 0;
   for (const dispatch of state.dispatches.values()) {
     if (dispatch.opus === true && dispatch.status === 'pending') held += 1;
@@ -557,14 +570,14 @@ export function neverStarted(
   const candidates = candidatesOf(state);
   return [...state.dispatches.values()].filter((dispatch) =>
     candidates.every((candidate) => {
-      const possible = candidate.dispatches.get(dispatch.toolUseId);
-      // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
-      // `SubagentStart` was recorded; it keeps its place until that agent's stop.
-      return (
-        possible?.status === 'pending' &&
-        possible.agentId === undefined &&
-        now - possible.admittedAt >= limit
-      );
+        const possible = candidate.dispatches.get(dispatch.toolUseId);
+        // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
+        // `SubagentStart` was recorded; it keeps its place until that agent's stop.
+        return (
+          possible?.status === 'pending' &&
+          possible.agentId === undefined &&
+          now - possible.admittedAt >= limit
+        );
     }),
   );
 }
