@@ -913,11 +913,16 @@ describe('activity operation helpers', () => {
     const verify = mock(async (_result: unknown, context?: { phase?: string }) =>
       context?.phase === 'pre-dispatch-reconciliation' ? 'not-completed' : true,
     );
-    const secondExecute = mock(() => 'second-result');
+    let dispatched: unknown;
+    const secondExecute = mock((_input: unknown, context?: unknown) => {
+      dispatched = context;
+      return 'second-result';
+    });
     const replayActivity = Object.assign(secondExecute, { verify });
     const replayOperation = createActivityOperation({
       fn: replayActivity,
       operationId: 'replayed-after-not-completed',
+      workflowExecutionToken: 'owner-token',
       options: { idempotencyKey: 'crash-redo' },
     });
 
@@ -931,6 +936,7 @@ describe('activity operation helpers', () => {
     ).toBe('second-result');
 
     expect(secondExecute).toHaveBeenCalledTimes(1);
+    expect(dispatched).toMatchObject({ activityAttemptToken: expect.stringMatching(/:2$/) });
     expect(verify).toHaveBeenCalledWith(
       undefined,
       expect.objectContaining({ attempt: 1, phase: 'pre-dispatch-reconciliation' }),

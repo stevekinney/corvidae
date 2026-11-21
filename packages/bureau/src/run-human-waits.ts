@@ -426,9 +426,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
    * heard, is stale, and is hidden from its list as one resolved here is.
    */
   function closedElsewhere(reviewId: string): void {
+    resolved.add(reviewId);
     for (const [runId, wait] of restored) {
       if (reviewIdFor(wait) === reviewId) {
-        resolved.add(reviewId);
         restored.delete(runId);
         dependencies.released?.(runId);
       }
