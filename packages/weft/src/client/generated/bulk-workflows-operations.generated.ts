@@ -2,13 +2,13 @@
 import type {
   SharedActionAffectedCountConfi_6a0b3afc,
   SharedActionConfirmationTokenC_7756c689,
-  SharedAttributesBulkConcurrenc_0f0d07d6,
+  SharedAttributesBulkConcurrenc_dca23546,
   SharedGtGteKey_e658e64c,
   SharedGtGteLt_d9a61361,
 } from './shared-operation-types.generated.ts';
 export type BulkWorkflowsOperationTypes = {
   'weft.workflows.bulk.cancel': {
-    readonly input: SharedAttributesBulkConcurrenc_0f0d07d6;
+    readonly input: SharedAttributesBulkConcurrenc_dca23546;
     readonly output:
       | {
           readonly auditEvent?: SharedActionAffectedCountConfi_6a0b3afc;
@@ -20,7 +20,7 @@ export type BulkWorkflowsOperationTypes = {
     readonly faults: 'Conflict';
   };
   'weft.workflows.bulk.delete': {
-    readonly input: SharedAttributesBulkConcurrenc_0f0d07d6;
+    readonly input: SharedAttributesBulkConcurrenc_dca23546;
     readonly output:
       | {
           readonly auditEvent?: SharedActionAffectedCountConfi_6a0b3afc;
@@ -31,7 +31,7 @@ export type BulkWorkflowsOperationTypes = {
     readonly faults: 'Conflict' | 'Unprocessable';
   };
   'weft.workflows.bulk.retryfailed': {
-    readonly input: SharedAttributesBulkConcurrenc_0f0d07d6;
+    readonly input: SharedAttributesBulkConcurrenc_dca23546;
     readonly output:
       | {
           readonly auditEvent?: SharedActionAffectedCountConfi_6a0b3afc;
@@ -50,6 +50,7 @@ export type BulkWorkflowsOperationTypes = {
       readonly createdAt?: SharedGtGteLt_d9a61361;
       readonly dryRun?: boolean;
       readonly executionDeadline?: SharedGtGteLt_d9a61361;
+      readonly failedStep?: string;
       readonly failureCategory?:
         | 'application'
         | 'timeout'
@@ -65,6 +66,7 @@ export type BulkWorkflowsOperationTypes = {
       readonly parentWorkflowId?: string;
       readonly payload?: unknown;
       readonly requestId?: string;
+      readonly retrying?: boolean;
       readonly scheduleId?: string;
       readonly status?:
         | 'pending'
@@ -99,6 +101,7 @@ export type BulkWorkflowsOperationTypes = {
         readonly attributes?: ReadonlyArray<SharedGtGteKey_e658e64c>;
         readonly createdAt?: SharedGtGteLt_d9a61361;
         readonly executionDeadline?: SharedGtGteLt_d9a61361;
+        readonly failedStep?: string;
         readonly failureCategory?:
           | 'application'
           | 'timeout'
@@ -111,6 +114,7 @@ export type BulkWorkflowsOperationTypes = {
         readonly offset?: number;
         readonly parentWorkflowExecutionToken?: string;
         readonly parentWorkflowId?: string;
+        readonly retrying?: boolean;
         readonly scheduleId?: string;
         readonly status?:
           | 'pending'

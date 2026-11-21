@@ -43,6 +43,30 @@ describe('parseBulkListFilterFromBody — validation precedence', () => {
     });
   });
 
+  // COR-2530: a bulk filter must carry failedStep and retrying to the engine, never drop them,
+  // because a bulk cancel of `{ status: 'failed', failedStep }` that lost the step would act on
+  // every failed run.
+  it('carries failedStep and retrying through the body parser and the typed input mapper', () => {
+    expect(
+      parseBulkListFilterFromBody(wrap({ status: 'failed', failedStep: 'charge-card' })),
+    ).toEqual({ status: 'failed', failedStep: 'charge-card' });
+    expect(parseBulkListFilterFromBody(wrap({ status: 'running', retrying: false }))).toEqual({
+      status: 'running',
+      retrying: false,
+    });
+    expect(
+      listFilterFromBulkInput(
+        bulkListFilterInputSchema.parse({ status: 'running', failedStep: 'a', retrying: true }),
+      ),
+    ).toEqual({ status: 'running', failedStep: 'a', retrying: true });
+    expect(() => parseBulkListFilterFromBody(wrap({ failedStep: 3 }))).toThrow(
+      'Field "filter.failedStep" must be a string',
+    );
+    expect(() => parseBulkListFilterFromBody(wrap({ retrying: 'yes' }))).toThrow(
+      'Field "filter.retrying" must be a boolean',
+    );
+  });
+
   // --- adjacent pair: status before type ---
   it('reports status error before type error when both are invalid', () => {
     expect(() => parseBulkListFilterFromBody(wrap({ status: 42, type: 99 }))).toThrow(

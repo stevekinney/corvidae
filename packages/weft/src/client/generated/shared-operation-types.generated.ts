@@ -73,13 +73,14 @@ export type SharedAttemptAttemptTokenDiges_a17e1950 = {
   readonly lastHeartbeatAt?: number;
   readonly sessionGeneration?: number;
 };
-export type SharedAttributesBulkConcurrenc_0f0d07d6 = {
+export type SharedAttributesBulkConcurrenc_dca23546 = {
   readonly attributes?: ReadonlyArray<SharedGtGteKey_e658e64c>;
   readonly bulkConcurrency?: number;
   readonly confirmationToken?: string;
   readonly createdAt?: SharedGtGteLt_d9a61361;
   readonly dryRun?: boolean;
   readonly executionDeadline?: SharedGtGteLt_d9a61361;
+  readonly failedStep?: string;
   readonly failureCategory?:
     | 'application'
     | 'timeout'
@@ -93,6 +94,7 @@ export type SharedAttributesBulkConcurrenc_0f0d07d6 = {
   readonly parentWorkflowExecutionToken?: string;
   readonly parentWorkflowId?: string;
   readonly requestId?: string;
+  readonly retrying?: boolean;
   readonly scheduleId?: string;
   readonly status?:
     | 'pending'

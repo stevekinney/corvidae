@@ -72,7 +72,8 @@ export const listWorkflowsOperation = defineOperation({
   summary: 'List workflows',
   description:
     'List workflows visible to the caller, optionally filtered by status, type, originating ' +
-    'schedule, direct parent run, tags, id prefix, failure category, and time range, with pagination via ' +
+    'schedule, direct parent run, tags, id prefix, failure category, failing step, whether an ' +
+    'activity is being retried, and time range, with pagination via ' +
     '`limit`/`offset`. ' +
     'Read-only. Returns the matching workflow summaries in the engine default ordering.',
   destructive: false,

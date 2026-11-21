@@ -18,6 +18,7 @@ import type {
 import { searchAttributeName } from '../types.ts';
 import { matchesWorkflowTagFilter } from '../workflow-tags.ts';
 import { stripInternalCheckpointReplayPayload } from './checkpoint-replay.ts';
+import { truncateLabel } from './failure-record.ts';
 import { isPlainObjectRecord, isSanitizedSearchAttributeValue } from './validation.ts';
 
 const PERSISTED_WORKFLOW_START_HEADER_NAMES = new Set(['traceparent', 'tracestate']);
@@ -425,6 +426,12 @@ function matchesListFilterFailureCategory(state: WorkflowState, filter: ListFilt
   );
 }
 
+function matchesListFilterFailedStep(state: WorkflowState, filter: ListFilter): boolean {
+  if (filter.failedStep === undefined) return true;
+  // The engine stores the label cut to 200 characters, so a longer filter label matches that cut.
+  return state.failedStep?.label === truncateLabel(filter.failedStep);
+}
+
 export function listFilterHasAttributeFilters(filter: ListFilter | undefined): boolean {
   return (filter?.attributes?.length ?? 0) > 0;
 }
@@ -563,6 +570,7 @@ export function matchesListFilter(
   if (!matchesListFilterIdentity(state, filter)) return false;
   if (!matchesListFilterTimeRanges(state, filter)) return false;
   if (!matchesListFilterFailureCategory(state, filter)) return false;
+  if (!matchesListFilterFailedStep(state, filter)) return false;
   if (!matchesListFilterAttributes(searchAttributes, filter)) return false;
   return true;
 }

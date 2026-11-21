@@ -1000,7 +1000,7 @@
       }
     },
     {
-      "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
+      "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, failing step, whether an activity is being retried, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1199,6 +1199,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -1279,6 +1288,14 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -1543,6 +1560,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -1597,6 +1619,10 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
@@ -1855,6 +1881,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -1957,6 +1992,14 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -2282,6 +2325,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -2362,6 +2410,10 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
@@ -2670,6 +2722,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -2758,6 +2819,14 @@
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -3773,6 +3842,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -3835,6 +3909,10 @@
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",

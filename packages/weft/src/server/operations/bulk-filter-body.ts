@@ -77,7 +77,8 @@ function parseFilterStatus(value: unknown): BulkListFilterDraft['status'] {
 
 function parseOptionalFilterString(
   value: unknown,
-  fieldName: 'type' | 'scheduleId' | 'parentWorkflowId' | 'parentWorkflowExecutionToken',
+  fieldName:
+    'type' | 'scheduleId' | 'parentWorkflowId' | 'parentWorkflowExecutionToken' | 'failedStep',
 ): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -116,8 +117,8 @@ function parseOptionalFilterNumber(
 /**
  * Ordered parsers for each filter dimension in `parseBulkListFilterFromBody`.
  * Precedence is visible in source order: status → type → tags → attributes →
- * limit → offset → idPrefix → failureCategory → createdAt →
- * updatedAt → executionDeadline.
+ * limit → offset → idPrefix → failureCategory → failedStep → retrying →
+ * createdAt → updatedAt → executionDeadline.
  */
 const BULK_FILTER_DIMENSION_PARSERS: ReadonlyArray<
   (filter: BulkListFilterDraft, record: object) => void
@@ -176,6 +177,16 @@ const BULK_FILTER_DIMENSION_PARSERS: ReadonlyArray<
       Reflect.get(record, 'failureCategory'),
     );
     if (failureCategory !== undefined) filter.failureCategory = failureCategory;
+  },
+  (filter, record) => {
+    const failedStep = parseOptionalFilterString(Reflect.get(record, 'failedStep'), 'failedStep');
+    if (failedStep !== undefined) filter.failedStep = failedStep;
+  },
+  (filter, record) => {
+    const retrying: unknown = Reflect.get(record, 'retrying');
+    if (retrying === undefined) return;
+    if (typeof retrying !== 'boolean') throw new Error('Field "filter.retrying" must be a boolean');
+    filter.retrying = retrying;
   },
   (filter, record) => {
     const createdAt = parseOptionalTimeRange(Reflect.get(record, 'createdAt'));
