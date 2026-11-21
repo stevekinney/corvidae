@@ -56,7 +56,10 @@ export const API_REFERENCE_COPY = {
     response: (status: string): string => `Response, ${status}`,
     noResponseBody: 'No response body.',
     noScope: 'Any caller',
-    empty: 'The server lists no operations.',
+    empty: {
+      title: 'No operations',
+      description: 'The server lists no operations in this group.',
+    },
   },
   discovery: {
     documents: {
@@ -87,6 +90,9 @@ export const API_REFERENCE_COPY = {
       `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
     schedules: (count: number): string =>
       `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
-    empty: 'No workflow files yet. Add one to the workflows folder and it loads on the next start.',
+    empty: {
+      title: 'No workflow files yet',
+      description: 'Add one to the workflows folder and it loads on the next start.',
+    },
   },
 } as const;

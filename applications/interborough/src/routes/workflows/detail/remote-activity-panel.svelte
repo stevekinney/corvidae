@@ -56,13 +56,12 @@
   {:else if error && isForbidden(error)}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={4}
       title="The remote task is locked"
       description={`${scopeReason('system:read')} to read this activity’s task record.`}
     >
       {#snippet icon()}
-        <Lock size={24} aria-hidden="true" />
+        <Lock aria-hidden="true" />
       {/snippet}
     </EmptyState>
   {:else if error instanceof MalformedTaskLedgerError}
@@ -75,7 +74,6 @@
   {:else if notRecorded}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={4}
       title="No task record"
       description="The task ledger holds no record for this dispatch. It may have been removed after its retention window."

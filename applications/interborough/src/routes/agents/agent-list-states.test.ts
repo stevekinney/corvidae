@@ -34,13 +34,13 @@ function advance(milliseconds: number): void {
   flushSync();
 }
 
-/** The header the page keeps in every state: the heading, the subtitle and the secondary "+". */
+/** The header the page keeps in every state: the heading, the subtitle and the labelled New agent. */
 function expectHeader(container: HTMLElement): void {
   const view = within(container);
   expect(view.getByRole('heading', { level: 1, name: 'Agents' })).not.toBeNull();
   expect(container.textContent).toContain(AGENTS_COPY.subtitle);
-  const create = container.querySelector('a[aria-label="New agent"]');
-  expect(create).not.toBeNull();
+  const create = container.querySelector('.cinder-page-header__create');
+  expect(create?.textContent?.trim()).toBe('New agent');
   expect(create?.getAttribute('aria-disabled')).toBeNull();
 }
 
@@ -157,7 +157,7 @@ describe('the Agents list when a refresh fails over a list already read', () => 
 });
 
 describe('the Agents list, in the states of its board', () => {
-  test('has no filter row when no agent exists, and New agent is the one primary button', async () => {
+  test('has no filter row when no agent exists, and New agent leads the state’s buttons', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({ agents: [] }),
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),

@@ -190,10 +190,7 @@
       back={VIEW_COPY.chat.notFound.back}
     />
   {:else}
-    <ForbiddenState
-      title={VIEW_COPY.chat.forbidden.title}
-      requirement={VIEW_COPY.chat.forbidden.requirement}
-    />
+    <ForbiddenState title={VIEW_COPY.chat.forbidden.title} />
   {/if}
 {:else}
   <!-- Loading, canceled, or failed with nothing old to show: Chat's availability state is the whole

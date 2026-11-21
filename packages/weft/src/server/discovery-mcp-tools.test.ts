@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * `rpc.discover` on an engine-hosted Weft server lists a registered workflow's MCP tool, over each
  * JSON-RPC transport (HTTP, WebSocket and stdio), and carries Weft's own document title and version
@@ -142,6 +143,7 @@ describe('rpc.discover lists a workflow MCP tool on an engine-hosted server', ()
     using engine = createCheckoutEngine();
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input: readableFromLines([`${JSON.stringify(DISCOVER_REQUEST)}\n`]),
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },

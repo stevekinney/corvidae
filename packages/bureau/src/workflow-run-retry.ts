@@ -45,7 +45,9 @@ export type WorkflowRetryRefusal =
 
 /** A retry the instance's state refused. Nothing was changed. */
 export class WorkflowRetryRefusedError extends Error {
+  /** The reason the run could not be retried. */
   readonly code: WorkflowRetryRefusal;
+  /** The run that was left in its prior state. */
   readonly runId: string;
   constructor(code: WorkflowRetryRefusal, runId: string, message: string) {
     super(message);
@@ -57,6 +59,7 @@ export class WorkflowRetryRefusedError extends Error {
 
 /** What {@link BureauWorkflows.retryRun} answers: the instance is running again from `step`. */
 export interface WorkflowRetryResult {
+  /** The run that resumed from the requested step. */
   readonly runId: string;
   /** The step that runs again, counted from 1. */
   readonly step: number;

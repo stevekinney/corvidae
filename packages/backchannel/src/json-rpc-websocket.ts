@@ -17,9 +17,14 @@
 
 import type { ConnectionLease } from './connection-lease.ts';
 import { faultErrorData, faultToJsonRpcError } from './fault-to-json-rpc.ts';
-import { dispatchJsonRpc } from './json-rpc-dispatch.ts';
+import { dispatchJsonRpc, type JsonRpcSubscription } from './json-rpc-dispatch.ts';
 import { parseJsonRpcRequest } from './json-rpc-parse.ts';
-import { JSON_RPC_ERROR_CODES, JSON_RPC_VERSION, type JsonRpcId } from './json-rpc-protocol.ts';
+import {
+  JSON_RPC_ERROR_CODES,
+  JSON_RPC_VERSION,
+  type JsonRpcId,
+  type JsonRpcResponse,
+} from './json-rpc-protocol.ts';
 import { pumpSubscriptionIterable } from './json-rpc-websocket-subscription-pump.ts';
 import {
   FLEET_EVENTS_OPERATION_NAME,
@@ -70,22 +75,33 @@ type SessionRequest = {
   readonly expectsResponse: boolean;
 };
 
-type SubscriptionExecution = Promise<
-  DispatchResult<{
-    subscriptionId: string;
-    envelope: unknown;
-    iterable: AsyncIterable<unknown>;
-    close: () => Promise<void>;
-  }>
->;
+type SubscriptionStart = {
+  readonly subscription?: JsonRpcSubscription;
+  readonly response?: JsonRpcResponse;
+};
 
-function subscriptionResponseEnvelope(
-  envelope: unknown,
-  subscriptionId: string,
-  requiresStartEnvelope: boolean,
-): unknown {
-  if (!requiresStartEnvelope) return envelope;
-  return { subscriptionId, cursor: (envelope as SubscriptionStartEnvelope).cursor };
+async function startLegacySubscription(
+  request: SessionRequest,
+  execution: Promise<DispatchResult<JsonRpcSubscription>>,
+): Promise<SubscriptionStart> {
+  const result = await execution;
+  const id = request.id ?? null;
+  if (!result.ok) {
+    const error = faultToJsonRpcError(result.fault);
+    return { response: { jsonrpc: JSON_RPC_VERSION, id, error } };
+  }
+  const subscription = result.value;
+  return {
+    subscription,
+    response: {
+      jsonrpc: JSON_RPC_VERSION,
+      id,
+      result: {
+        subscriptionId: subscription.subscriptionId,
+        cursor: (subscription.envelope as SubscriptionStartEnvelope).cursor,
+      },
+    },
+  };
 }
 
 function requiresSubscriptionClose(disposed: boolean, signal: AbortSignal): boolean {
@@ -175,25 +191,28 @@ export function createJsonRpcWebSocketSession(
 
     await startSubscription(
       request,
-      () =>
-        executeSubscription(
-          WORKFLOW_EVENTS_OPERATION_NAME,
-          {
-            workflowId: validation.workflowId,
-            selector: validation.selector,
-            ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
-          },
-          {
-            principal,
-            host: { feed },
-            // Subscribe is a session primitive, but the transport identity still
-            // needs to reflect the adapter reusing this implementation so
-            // availability checks enforce stdio-only and websocket-only policies.
-            transport,
-            registry,
-          },
+      (signal) =>
+        startLegacySubscription(
+          request,
+          executeSubscription(
+            WORKFLOW_EVENTS_OPERATION_NAME,
+            {
+              workflowId: validation.workflowId,
+              selector: validation.selector,
+              ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
+            },
+            {
+              principal,
+              host: { feed },
+              // Subscribe is a session primitive, but the transport identity still
+              // needs to reflect the adapter reusing this implementation so
+              // availability checks enforce stdio-only and websocket-only policies.
+              transport,
+              registry,
+              signal,
+            },
+          ),
         ),
-      true,
       acquireWorkflowSubscription,
     );
   }
@@ -204,22 +223,24 @@ export function createJsonRpcWebSocketSession(
   ): Promise<void> {
     await startSubscription(
       request,
-      () =>
-        executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
-          principal,
-          host: { fleetFeed },
-          transport,
-          registry,
-        }),
-      true,
+      (signal) =>
+        startLegacySubscription(
+          request,
+          executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
+            principal,
+            host: { fleetFeed },
+            transport,
+            registry,
+            signal,
+          }),
+        ),
       acquireFleetSubscription,
     );
   }
 
   async function startSubscription(
     request: SessionRequest,
-    execute: () => SubscriptionExecution,
-    requiresStartEnvelope = false,
+    execute: (signal: AbortSignal) => Promise<SubscriptionStart>,
     acquire?: () => ConnectionLease,
   ): Promise<void> {
     if (subscriptions.size >= maxSubscriptions) {
@@ -240,19 +261,18 @@ export function createJsonRpcWebSocketSession(
     const controller = new AbortController();
     const pending: PendingSubscription = { controller };
     pendingSubscriptions.add(pending);
-    const result = await execute();
-    pendingSubscriptions.delete(pending);
-    if (!result.ok) {
-      const error = faultToJsonRpcError(result.fault);
-      emitResponse(request, {
-        jsonrpc: JSON_RPC_VERSION,
-        error: { code: error.code, message: error.message, data: error.data },
-        id: request.id ?? null,
-      });
+    let result: SubscriptionStart;
+    try {
+      result = await execute(controller.signal);
+    } finally {
+      pendingSubscriptions.delete(pending);
+    }
+    if (result.subscription === undefined) {
+      if (result.response !== undefined) emitResponse(request, result.response);
       return;
     }
 
-    const { subscriptionId, envelope, iterable, close: closeSubscription } = result.value;
+    const { subscriptionId, iterable, close: closeSubscription } = result.subscription;
     let closeStarted = false;
     const closeOnce = async (): Promise<void> => {
       if (closeStarted) return;
@@ -264,11 +284,7 @@ export function createJsonRpcWebSocketSession(
       return;
     }
     const lease = acquireSubscriptionLease(acquire);
-    emitResponse(request, {
-      jsonrpc: JSON_RPC_VERSION,
-      result: subscriptionResponseEnvelope(envelope, subscriptionId, requiresStartEnvelope),
-      id: request.id ?? null,
-    });
+    if (result.response !== undefined) emitResponse(request, result.response);
 
     const pump = pumpSubscriptionIterable({
       subscriptionId,
@@ -397,18 +413,23 @@ export function createJsonRpcWebSocketSession(
         });
         return true;
       }
-      await startSubscription(
-        request,
-        () =>
-          executeSubscription(method, validation.params ?? {}, {
-            principal,
-            host: engine,
-            transport,
-            registry,
-          }),
-        false,
-        undefined,
-      );
+      await startSubscription(request, async (signal) => {
+        let subscription: JsonRpcSubscription | undefined;
+        const result = await dispatchJsonRpc(validation.parsed, {
+          registry,
+          host: engine,
+          principal,
+          transport,
+          signal,
+          acceptSubscription(started) {
+            subscription = started;
+          },
+        });
+        return {
+          ...(subscription === undefined ? {} : { subscription }),
+          ...(result.kind === 'single' ? { response: result.response } : {}),
+        };
+      });
       return true;
     }
     return false;

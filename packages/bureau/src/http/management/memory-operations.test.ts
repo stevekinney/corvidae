@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-1546 — `bureau.memory.list`, `search`, `get`, `forget` and `correct`: an agent's governed
  * memory, served to the owner whose chats wrote it. Every request goes through the handler as a
@@ -690,7 +691,7 @@ describe('bureau.memory.remember', () => {
         method: 'jwt' as const,
         principal: principalFromJwtClaims(
           { sub: 'someone', scope: 'bureau.memory:write' },
-          { additionalScopes: new Set(BUREAU_SCOPES) },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: new Set(BUREAU_SCOPES) },
         ),
       }),
     });
@@ -1496,7 +1497,7 @@ describe('bureau.memory.quarantine.release (COR-2195)', () => {
         method: 'jwt' as const,
         principal: principalFromJwtClaims(
           { sub: 'someone', scope: 'bureau.memory:govern' },
-          { additionalScopes: new Set(BUREAU_SCOPES) },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: new Set(BUREAU_SCOPES) },
         ),
       }),
     });

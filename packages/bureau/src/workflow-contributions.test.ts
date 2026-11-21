@@ -151,6 +151,8 @@ describe('a workflow file that uses a contributed activity and trigger kind', ()
         },
       },
     });
+    // Exercise the real retry scheduler without waiting a full default poll on each failure.
+    harness.bureau.durableEngine()!.reconfigure({ schedulerPollIntervalMs: 10 });
     await harness.put('pipeline.json', workflowFileText('pipeline', ticking()));
     await listing(harness, 'pipeline');
 

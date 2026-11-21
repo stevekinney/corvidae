@@ -375,7 +375,6 @@
     ". BureauShutdownReport.requested",
     ". BureauShutdownReport.unresolved",
     ". BureauWorkflows.create",
-    ". BureauWorkflows.delete",
     ". BureauWorkflows.get",
     ". BureauWorkflows.getRun",
     ". BureauWorkflows.list",

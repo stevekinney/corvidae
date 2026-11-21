@@ -19,6 +19,7 @@ export const UNKNOWN_COMMIT = 'unknown';
 
 /** The source a build was made from: the full commit, and a digest of the changes not committed. */
 export type BuildInfo = {
+  /** The commit displayed by this build. */
   readonly commit: string;
   /** Empty when the tree matched `commit`; otherwise a digest of the edits on top of it. */
   readonly changes: string;

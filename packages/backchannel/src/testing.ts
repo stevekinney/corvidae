@@ -34,3 +34,8 @@ export {
   type TestHost,
 } from './handler/operation-handler.test-support.ts';
 export { makeOperation } from './json-rpc-operation.test-support.ts';
+export {
+  createTransportConformanceFixture,
+  describeTransportConformance,
+  type TransportConformancePair,
+} from './transport-conformance.test-support.ts';

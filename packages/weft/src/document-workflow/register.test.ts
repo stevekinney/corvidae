@@ -645,8 +645,11 @@ describe('registerWorkflowDocuments()', () => {
       { kind: 'activity', handler: 'trace', input: 'd' },
       { kind: 'sleep', duration: 1 },
     ]);
-    // `Engine.create` starts the scheduler that fires the sleep; `new Engine` does not.
-    await using engine = await Engine.create({ storage: new MemoryStorage() });
+    // Keep the real scheduler for the sleep steps, with a short poll interval for this fixture.
+    await using engine = await Engine.create({
+      storage: new MemoryStorage(),
+      schedulerPollIntervalMs: 10,
+    });
     await registerWorkflowDocuments(engine, host, { active: [document] });
 
     const run = await engine.start('previous-values', 'fire', { id: 'previous-run' });

@@ -299,7 +299,6 @@ export const ALLOWED_INSTANCES: Record<string, { count: number; reason: string }
         'settings-allowed-models.spec.ts': 1,
         'settings-general.spec.ts': 1,
         'settings-models.spec.ts': 3,
-        'shell-states.spec.ts': 1,
         'workflow-page.spec.ts': 1,
       },
       NOT_YET_CONVERTED,

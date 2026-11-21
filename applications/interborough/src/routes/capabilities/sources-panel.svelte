@@ -22,11 +22,11 @@
     SelectableRow,
     Skeleton,
   } from '@lostgradient/cinder';
-  import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -90,19 +90,17 @@
     </Alert>
   {:else if all.length === 0}
     <RestartBanner flow={restart} {waiting} {locked} />
-    <EmptyState
-      kind="first-use"
-      headingLevel={2}
+    <!-- The one list-page first use (owner report, 2026-11-19), with the header's Connect tools. -->
+    <ListPageEmpty
+      view="capabilities"
       title={copy.source.empty.title}
       description={copy.source.empty.description}
-    >
-      {#snippet action()}
-        <Button data-changes variant="primary" disabled={locked} onclick={onConnect}>
-          {#snippet leadingIcon()}<Plus aria-hidden="true" size={16} />{/snippet}
-          {copy.source.connect.action}
-        </Button>
-      {/snippet}
-    </EmptyState>
+      create={{
+        label: copy.source.connect.action,
+        onclick: onConnect,
+        ...(locked ? { inertReason: copy.source.refusal.locked } : {}),
+      }}
+    />
   {:else}
     <RestartBanner flow={restart} {waiting} {locked} />
     <div class="ib-capabilities__frame" data-shortcut-region="list-detail">
@@ -150,7 +148,6 @@
         {#snippet listEmpty()}
           <EmptyState
             kind="filtered"
-            size="compact"
             headingLevel={3}
             title={copy.source.filtered.title}
             description={copy.source.filtered.description}

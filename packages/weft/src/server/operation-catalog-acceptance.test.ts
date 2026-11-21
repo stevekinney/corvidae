@@ -1,6 +1,7 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 import { createWeftDiscoverDocument } from './weft-documents.ts';
 
 import {
@@ -518,6 +519,7 @@ describe('Operation-catalog acceptance coverage', () => {
 
     try {
       await runStdioSession({
+        scopeVocabulary: WEFT_SCOPE_VOCABULARY,
         input: stdioInput,
         output: stdioOutput,
         admission: { kind: 'allow-unauthenticated-local-admin' },

@@ -17,20 +17,18 @@ import type {
 import {
   faultWireAdvice,
   isAuthenticated,
+  zodToJsonSchema,
   type DispatchResult,
 } from '@lostgradient/backchannel/internals';
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
-import { VERSION } from '../version.ts';
-import { DEFAULT_MCP_MAX_BODY_BYTES } from './protocol.ts';
 
 /**
  * Options for {@link createOperationMcpMount}.
  *
  * @example
  * ```ts
- * import type { OperationMcpMountOptions } from '@lostgradient/weft';
+ * import type { OperationMcpMountOptions } from '@lostgradient/backchannel-mcp';
  *
- * const options: OperationMcpMountOptions = { pathPrefix: '/mcp', maxEvents: 50 };
+ * const options: OperationMcpMountOptions = { serverInfo: { name: 'probe', version: '1.0.0' }, pathPrefix: '/mcp', maxEvents: 50 };
  * void options;
  * ```
  */
@@ -39,11 +37,14 @@ export type OperationMcpMountOptions = {
   readonly pathPrefix?: string;
   /** Upper bound on a POST body, answered `413` when exceeded. */
   readonly maxBodyBytes?: number;
-  /** The `serverInfo` the MCP handshake reports; each field omitted is Weft's own. */
-  readonly serverInfo?: {
-    readonly name?: string;
+  /** The server identity the MCP handshake reports. */
+  readonly serverInfo: {
+    /** The server's machine-readable name. */
+    readonly name: string;
+    /** The display name, when supplied. */
     readonly title?: string;
-    readonly version?: string;
+    /** The API version reported on the wire. */
+    readonly version: string;
   };
   /**
    * The most elements one call to a `subscription` tool returns. The tool answers with what is
@@ -81,7 +82,7 @@ export type OperationMcpMountOptions = {
  *
  * @example
  * ```ts
- * import type { OperationMcpResource } from '@lostgradient/weft';
+ * import type { OperationMcpResource } from '@lostgradient/backchannel-mcp';
  *
  * const page: OperationMcpResource = {
  *   uri: 'ui://probe/page',
@@ -97,8 +98,11 @@ export type OperationMcpResource = {
   readonly uri: string;
   /** The resource's name in a listing. */
   readonly name: string;
+  /** The resource's display title. */
   readonly title?: string;
+  /** A short description shown to clients. */
   readonly description?: string;
+  /** The media type of the resource contents. */
   readonly mimeType: string;
   /** The contents. A function runs on every read, with the context of the request. */
   readonly text: string | ((context: OperationHandlerMountContext) => string | Promise<string>);
@@ -111,6 +115,7 @@ export type OperationMcpResource = {
   readonly authorize?: (context: OperationHandlerMountContext) => boolean;
 };
 
+const DEFAULT_MCP_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_MAX_EVENTS = 100;
 const DEFAULT_IDLE_MS = 250;
 /** The key under `AuthInfo.extra` that carries the mount's context to the server factory. */
@@ -136,7 +141,7 @@ const CONTEXT_KEY = 'weftOperationMount';
  * @example
  * ```ts
  * import { createOperationHandler, defineOperation } from '@lostgradient/backchannel';
- * import { createOperationMcpMount } from '@lostgradient/weft';
+ * import { createOperationMcpMount } from '@lostgradient/backchannel-mcp';
  * import { z } from 'zod';
  *
  * const echo = defineOperation({
@@ -155,19 +160,19 @@ const CONTEXT_KEY = 'weftOperationMount';
  * const handler = createOperationHandler({
  *   operations: [echo],
  *   host: {},
- *   mounts: [createOperationMcpMount()],
+ *   mounts: [createOperationMcpMount({ serverInfo: { name: 'probe', version: '1.0.0' } })],
  * });
  * void handler;
  * ```
  */
-export function createOperationMcpMount(
-  options: OperationMcpMountOptions = {},
-): OperationHandlerMount {
+export function createOperationMcpMount(options: OperationMcpMountOptions): OperationHandlerMount {
   const limits = collectionLimits(options);
-  const serverInfo = { name: 'weft', title: 'Weft', version: VERSION, ...options.serverInfo };
+  const { name, title, version } = options.serverInfo;
+  const serverInfo = { name, ...(title === undefined ? {} : { title }), version };
   const resources = validatedResources(options.resources ?? []);
   const toolMeta = options.toolMeta ?? {};
-  const metaOf = (name: string) => toolMetaOf(toolMeta, options.defaultToolMeta, name);
+  const metaOf = (operationName: string) =>
+    toolMetaOf(toolMeta, options.defaultToolMeta, operationName);
   const handler = createMcpHandler(
     (request) => buildServer(contextOf(request), serverInfo, limits, resources, metaOf),
     {
@@ -305,7 +310,7 @@ function buildServer(
 
 /** The operation's input schema, closed or open as its JSON-RPC unknown-key policy says. */
 function toolInputSchema(operation: OperationHandlerMountOperation): Record<string, unknown> {
-  const schema = definitionSchemaToJsonSchema(operation.inputSchema);
+  const schema = zodToJsonSchema(operation.inputSchema);
   const { $schema: _unused, ...rest } = schema;
   return { ...rest, additionalProperties: operation.unknownKeyPolicy.jsonRpc !== 'reject' };
 }

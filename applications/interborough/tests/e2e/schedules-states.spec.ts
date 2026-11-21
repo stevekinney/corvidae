@@ -38,8 +38,9 @@ const headerCreate = (page: Page) => page.locator('main .cinder-page-header__cre
 const filterBar = (page: Page) =>
   page.locator('main').getByRole('search', { name: 'Filter schedules' });
 
-/** Every primary button on the page, which a list page keeps to the one its state offers. */
-const primaryButtons = (page: Page) => page.locator('main button.button-variant-primary');
+/** Every primary button under the header, which a list page keeps to the one its state offers. */
+const primaryButtons = (page: Page) =>
+  page.locator('main button.button-variant-primary:not(.cinder-page-header__create)');
 
 for (const width of WIDTHS) {
   test(`nothing scheduled yet is the page, with no filter row and one primary New schedule, at ${width} pixels`, async ({
@@ -61,10 +62,11 @@ for (const width of WIDTHS) {
     await expect(filterBar(page)).toHaveCount(0);
     await expect(main.locator('li[data-schedule]')).toHaveCount(0);
 
-    // The header keeps its secondary "+", and the state's button is the only primary.
+    // The header keeps its labelled New schedule, and the state repeats it with the same verb.
     await expect(headerCreate(page)).toBeVisible();
     await expect(headerCreate(page)).toHaveAccessibleName('New schedule');
-    await expect(headerCreate(page)).toContainClass('button-variant-secondary');
+    await expect(headerCreate(page)).toHaveText('New schedule');
+    await expect(headerCreate(page)).toContainClass('button-variant-primary');
     await expect(primaryButtons(page)).toHaveCount(1);
     const create = primaryButtons(page).first();
     await expect(create).toHaveText('New schedule');

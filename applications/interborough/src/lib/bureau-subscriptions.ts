@@ -41,7 +41,12 @@ export function acceptedFetch(options: {
 }
 
 /** One event of a feed with the id to resume after it. */
-export type FeedEvent<Data> = { readonly id: string; readonly data: Data };
+export type FeedEvent<Data> = {
+  /** Cursor to send when resuming the feed. */
+  readonly id: string;
+  /** The typed payload of this event. */
+  readonly data: Data;
+};
 
 /**
  * The events of a feed, without the replay marker. A refusal throws the `HttpClientError` the

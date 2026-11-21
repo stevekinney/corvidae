@@ -251,6 +251,15 @@ describe('readEntryPoints', () => {
     ]);
   });
 
+  test('excludes a source stylesheet exported as a CSS asset', () => {
+    expect(
+      readEntryPoints(directory, {
+        '.': './src/index.ts',
+        './utilities.css': './src/styles/token-utilities.css',
+      }),
+    ).toEqual([{ subpath: '.', file: join(directory, 'src/index.ts') }]);
+  });
+
   test('rejects a conditional or non-TypeScript export rather than skipping it', () => {
     expect(() => readEntryPoints(directory, { '.': { default: './src/index.ts' } })).toThrow(
       'must map to a TypeScript source file',

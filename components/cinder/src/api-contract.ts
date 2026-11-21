@@ -350,17 +350,14 @@ export const CONTRACT: Record<string, ComponentContract> = {
       title: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       headingLevel: { optional: true, type_kind: 'TSUnionType', default: L(3) },
-      align: { optional: true, type_kind: 'TSTypeReference', default: L('center') },
       kind: { optional: true, type_kind: 'TSTypeReference', default: L('first-use') },
-      size: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
-      layout: { optional: true, type_kind: 'TSTypeReference', default: L('stacked') },
-      bordered: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onClearFilters: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       clearFiltersLabel: {
         optional: true,
         type_kind: 'TSStringKeyword',
         default: L('Clear filters'),
       },
+      actions: { optional: true, type_kind: 'TSTypeOperator', default: L([]) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {

@@ -1,11 +1,11 @@
 <script lang="ts" module>
   export const title = 'Every kind';
   export const description =
-    'Why a view is empty sets the disc: first use is accent with a primary button, filtered is neutral with a secondary Clear filters, done is green with a quiet link, blocked is amber, not-found is neutral and disabled is neutral with a plug, for content a setting you chose holds back.';
+    'Why a view is empty sets the disc: first use is accent with a primary button, filtered is neutral with a secondary Clear filters, done is green with a secondary button, blocked is amber, not-found is neutral and disabled is neutral with a plug, for content a setting you chose holds back.';
 </script>
 
 <script lang="ts">
-  import { Button, EmptyState, Link } from '@lostgradient/cinder';
+  import { Button, EmptyState } from '@lostgradient/cinder';
 
   let cleared = $state(0);
 </script>
@@ -31,11 +31,8 @@
     kind="done"
     title="All caught up"
     description="Nothing is waiting on you. When an agent asks for approval, it shows up here."
-  >
-    {#snippet action()}
-      <Link href="#past-decisions">See past decisions</Link>
-    {/snippet}
-  </EmptyState>
+    actions={[{ label: 'See past decisions', href: '#past-decisions', variant: 'secondary' }]}
+  />
   <EmptyState
     kind="blocked"
     title="Connect a model provider"

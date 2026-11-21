@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * Cross-transport contract for the data-driven runtime operations.
  *
@@ -178,10 +179,13 @@ describe('runtime operation cross-transport contract', () => {
     }
 
     // stdio — Forbidden via the same operation policy hook
-    const stdioPrincipal = principalFromJwtClaims({
-      sub: 'cross-transport-test-user',
-      scope: 'workflows:read',
-    });
+    const stdioPrincipal = principalFromJwtClaims(
+      {
+        sub: 'cross-transport-test-user',
+        scope: 'workflows:read',
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
     const stdioResult = await executeOperation(
       'weft.system.metrics',
       {},
