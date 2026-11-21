@@ -44,6 +44,18 @@ function buttons(container: HTMLElement): HTMLButtonElement[] {
   return Array.from(container.querySelectorAll<HTMLButtonElement>('button'));
 }
 
+/** The button whose accessible name is exactly `name`: its `aria-label`, else its text. */
+function buttonNamedBy(container: HTMLElement, name: string): HTMLButtonElement {
+  return requiredInstance(
+    buttons(container).find(
+      (button) =>
+        (button.getAttribute('aria-label') ??
+          (button.textContent ?? '').replace(/\s+/g, ' ').trim()) === name,
+    ) ?? null,
+    HTMLButtonElement,
+  );
+}
+
 function buttonNamed(container: HTMLElement, pattern: RegExp): HTMLButtonElement {
   return requiredInstance(
     buttons(container).find((button) =>
@@ -200,6 +212,55 @@ describe('JsonDiffViewer markers and accessibility', () => {
     expect(container.querySelector('.cinder-json-diff-viewer.custom-class')).not.toBeNull();
   });
 
+  test('every control is a link-variant xs Button carrying the 44px hit target, with a chevron', () => {
+    const many = Array.from({ length: 250 }, (_, index) => index);
+    const { container } = render(JsonDiffViewer, {
+      before: { kept: 1, many, runs: [0, 1].map((run) => ({ run, values: many.slice(0, 150) })) },
+      after: {
+        kept: 1,
+        many: many.map((value) => value + 1),
+        runs: [0, 1].map((run) => ({ run: run + 5, values: many.slice(0, 150).map((v) => v + 1) })),
+      },
+    });
+    const controls = buttons(container);
+    // The paging control, the unchanged disclosure and a render-budget control are all present.
+    const names = controls.map((button) => button.textContent?.replace(/\s+/g, ' ').trim());
+    expect(names).toContain('Show 50 more');
+    expect(names).toContain('Show 1 unchanged entry');
+    expect(names).toContain('Show 150 changes');
+    for (const button of controls) {
+      expect(button.classList.contains('cinder-button')).toBe(true);
+      expect(button.classList.contains('button-variant-link')).toBe(true);
+      expect(button.classList.contains('button-size-extra-small')).toBe(true);
+      expect(button.getAttribute('data-cinder-hit-target')).toBe('44');
+      expect(button.querySelector('svg')).not.toBeNull();
+    }
+  });
+
+  test('the stylesheet keeps each control on one line at the inline start, with room for its hit region', () => {
+    const css = readFileSync(new URL('./json-diff-viewer.css', import.meta.url), 'utf8');
+    const button = /\.cinder-json-diff-viewer__button\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(button).toContain('white-space: nowrap');
+    expect(button).toContain('text-align: start');
+    const control = /\.cinder-json-diff-viewer__control\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(control).toContain('text-align: start');
+    expect(css).toMatch(
+      /@media \(any-pointer: coarse\)\s*\{[^@]*\.cinder-json-diff-viewer__control[^{]*\{\s*padding-block: var\(--cinder-space-3\)/,
+    );
+  });
+
+  test('a very long key wraps inside its column instead of widening the row', () => {
+    const key = `a-very-long-property-name-${'x'.repeat(300)}`;
+    const { container } = render(JsonDiffViewer, { before: { [key]: 1 }, after: { [key]: 2 } });
+    expect(rowsOfKind(container, 'changed').map(keyOf)).toEqual([key]);
+
+    const css = readFileSync(new URL('./json-diff-viewer.css', import.meta.url), 'utf8');
+    const row = /\.cinder-json-diff-viewer__row\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(row).toContain('grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr)');
+    const keyRule = /\.cinder-json-diff-viewer__key\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(keyRule).toContain('overflow-wrap: anywhere');
+  });
+
   test('ships the accessibility record beside the component', () => {
     const record = readFileSync(new URL('./json-diff-viewer.a11y.md', import.meta.url), 'utf8');
     expect(record).toContain('## Design review (required)');
@@ -259,8 +320,10 @@ describe('JsonDiffViewer identical values', () => {
       before: { a: [1, { b: null }], c: 'x' },
       after: { a: [1, { b: null }], c: 'x' },
     });
-    const status = requiredInstance(container.querySelector('[role="status"]'), HTMLElement);
-    expect(status.textContent).toBe('No differences');
+    const empty = requiredInstance(container.querySelector('.cinder-empty-state'), HTMLElement);
+    expect(empty.textContent?.trim()).toBe('No differences');
+    expect(empty.getAttribute('data-cinder-layout')).toBe('inline');
+    expect(empty.getAttribute('data-cinder-size')).toBe('compact');
     expect(container.querySelector(ROW)).toBeNull();
     expect(buttons(container)).toHaveLength(0);
   });
@@ -268,6 +331,14 @@ describe('JsonDiffViewer identical values', () => {
   test('renders "No differences" for equal primitives', () => {
     const { container } = render(JsonDiffViewer, { before: 'same', after: 'same' });
     expect(container.textContent).toContain('No differences');
+  });
+
+  test('says it in the words DiffStatistics uses for no change', async () => {
+    const { default: DiffStatistics } = await import('../diff-statistics/diff-statistics.svelte');
+    const { container } = render(DiffStatistics, {
+      props: { added: 0, removed: 0, modified: 0, zeroVisible: false },
+    });
+    expect(container.textContent?.trim()).toBe('No differences');
   });
 });
 
@@ -306,10 +377,21 @@ describe('JsonDiffViewer bounded rendering', () => {
     const { before, after } = bigObjects();
     const { container } = render(JsonDiffViewer, { before, after });
 
-    const more = buttonNamed(container, /^Show 200 more changes \(11,800 not shown\)$/);
+    const more = buttonNamedBy(container, 'Show 200 more changes, 11,800 not shown');
+    // The visible words are the step only; the total lives in the accessible name.
+    expect(more.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show 200 more');
     await fireEvent.click(more);
     expect(rowsOfKind(container, 'changed')).toHaveLength(400);
-    buttonNamed(container, /^Show 200 more changes \(11,600 not shown\)$/);
+    buttonNamedBy(container, 'Show 200 more changes, 11,600 not shown');
+  });
+
+  test('names the last step by what remains, not by a full page', async () => {
+    const before = Array.from({ length: 250 }, (_, index) => index);
+    const after = before.map((value) => value + 1);
+    const { container } = render(JsonDiffViewer, { before, after });
+    await fireEvent.click(buttonNamedBy(container, 'Show 50 more changes, 50 not shown'));
+    expect(rowsOfKind(container, 'changed')).toHaveLength(250);
+    expect(buttons(container)).toHaveLength(0);
   });
 
   test('pages the unchanged entries of a level the same way', async () => {
@@ -325,12 +407,36 @@ describe('JsonDiffViewer bounded rendering', () => {
     await fireEvent.click(buttonNamed(container, /^Show 450 unchanged entries$/));
     expect(rowsOfKind(container, 'unchanged')).toHaveLength(200);
     await fireEvent.click(
-      buttonNamed(container, /^Show 200 more unchanged entries \(250 not shown\)$/),
+      buttonNamedBy(container, 'Show 200 more unchanged entries, 250 not shown'),
     );
     expect(rowsOfKind(container, 'unchanged')).toHaveLength(400);
   });
 
-  test('nested changes in two 1 MB arrays of objects stay under 1,000 elements, with the levels that do not fit closed', async () => {
+  test('a level that outgrows the budget closes the nested levels it cannot afford, and opens them on request', async () => {
+    const run = (offset: number) =>
+      Object.fromEntries(
+        Array.from({ length: 150 }, (_, index) => [`field-${index}`, offset + index]),
+      );
+    const before = { runs: [0, 1, 2, 3, 4].map((index) => run(index)) };
+    const after = { runs: [0, 1, 2, 3, 4].map((index) => run(index + 1000)) };
+
+    const { container } = render(JsonDiffViewer, { before, after });
+    expect(container.querySelectorAll('*').length).toBeLessThanOrEqual(1000);
+    // The first run opens whole; each later one starts closed behind a control with its count.
+    expect(leafRowsOfKind(container, 'changed')).toHaveLength(150);
+    const closed = buttons(container).filter((button) =>
+      /^Show 150 changes$/.test(button.textContent?.replace(/\s+/g, ' ').trim() ?? ''),
+    );
+    expect(closed).toHaveLength(4);
+    for (const button of closed) expect(button.getAttribute('aria-expanded')).toBe('false');
+
+    await fireEvent.click(requiredInstance(closed[0] ?? null, HTMLButtonElement));
+    expect(closed[0]?.getAttribute('aria-expanded')).toBe('true');
+    expect(closed[0]?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Hide 150 changes');
+    expect(leafRowsOfKind(container, 'changed').length).toBeGreaterThan(150);
+  });
+
+  test('nested changes in two 1 MB arrays of objects stay under 1,000 elements', async () => {
     const before = Array.from({ length: 9_000 }, (_, index) => ({
       id: index,
       label: `item number ${index} with some text to fill the payload out`,
@@ -343,17 +449,19 @@ describe('JsonDiffViewer bounded rendering', () => {
     const { container } = render(JsonDiffViewer, { before, after });
     expect(container.querySelectorAll('*').length).toBeLessThanOrEqual(1000);
 
-    // Every row of the first page is a changed item; the budget closed the levels it could not afford.
-    const closed = buttons(container).filter((button) =>
-      /^Show \d+ changes?$/.test(button.textContent?.replace(/\s+/g, ' ').trim() ?? ''),
+    // The budget ran out inside the root level, so it shows fewer than a page and the rest wait
+    // behind its control; opening it adds rows.
+    const topRows = container.querySelectorAll('.cinder-json-diff-viewer > ul > li');
+    expect(topRows.length).toBeGreaterThan(1);
+    expect(topRows.length).toBeLessThan(200);
+    const more = requiredInstance(
+      buttons(container).find((button) =>
+        /^Show 200 more changes, [\d,]+ not shown$/.test(button.getAttribute('aria-label') ?? ''),
+      ) ?? null,
+      HTMLButtonElement,
     );
-    expect(closed.length).toBeGreaterThan(0);
-    for (const button of closed) expect(button.getAttribute('aria-expanded')).toBe('false');
-
     const elementsBefore = container.querySelectorAll('*').length;
-    await fireEvent.click(requiredInstance(closed[0] ?? null, HTMLButtonElement));
-    expect(closed[0]?.getAttribute('aria-expanded')).toBe('true');
-    expect(closed[0]?.textContent?.replace(/\s+/g, ' ').trim()).toMatch(/^Hide \d+ changes?$/);
+    await fireEvent.click(more);
     expect(container.querySelectorAll('*').length).toBeGreaterThan(elementsBefore);
   });
 
@@ -372,7 +480,7 @@ describe('JsonDiffViewer bounded rendering', () => {
     const after = { list: Array.from({ length: 300 }, (_, index) => index + 1) };
     const { container } = render(JsonDiffViewer, { before, after });
     expect(leafRowsOfKind(container, 'changed')).toHaveLength(200);
-    buttonNamed(container, /^Show 100 more changes \(100 not shown\)$/);
+    buttonNamedBy(container, 'Show 100 more changes, 100 not shown');
   });
 });
 

@@ -4,7 +4,7 @@
     "packages": 190,
     "multiComponentFamilies": 23,
     "singleComponentFamilies": 164,
-    "layerSizes": [2, 79, 23, 13, 37, 18, 8, 6, 3, 1]
+    "layerSizes": [2, 78, 23, 13, 37, 19, 8, 6, 3, 1]
   },
   "layers": [
     ["foundation", "tokens"],
@@ -37,7 +37,6 @@
       "form-section",
       "grid",
       "image",
-      "json-diff-viewer",
       "json-viewer",
       "kbd",
       "label",
@@ -175,6 +174,7 @@
       "data-list",
       "description-list",
       "duration-field",
+      "json-diff-viewer",
       "kanban-board",
       "markdown",
       "menu-bar",
@@ -1477,9 +1477,9 @@
     },
     "json-diff-viewer": {
       "kind": "family",
-      "layer": 1,
+      "layer": 5,
       "components": ["json-diff-viewer"],
-      "dependencies": ["foundation"],
+      "dependencies": ["button", "empty-state", "foundation"],
       "modules": []
     },
     "json-editor": {

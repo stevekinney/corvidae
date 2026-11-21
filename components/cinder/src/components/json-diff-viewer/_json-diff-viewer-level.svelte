@@ -9,7 +9,10 @@
 </script>
 
 <script lang="ts">
+  import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import ChevronUp from '@lucide/svelte/icons/chevron-up';
   import Self from './_json-diff-viewer-level.svelte';
+  import Button from '../button/button.svelte';
   import { formatNumber } from '../../utilities/format-number.ts';
   import {
     JSON_DIFF_PAGE_SIZE,
@@ -20,14 +23,16 @@
 
   let { level }: JsonDiffViewerLevelProps = $props();
 
-  // How far each list has been revealed. A level never shows more than a page until asked.
-  let changesShown = $state(JSON_DIFF_PAGE_SIZE);
-  let unchangedShown = $state(JSON_DIFF_PAGE_SIZE);
+  // How many pages the reader has asked for beyond what the first render showed. A level never
+  // shows more than its first render until asked.
+  let morePages = $state(0);
+  let unchangedPages = $state(1);
   let unchangedOpen = $state(false);
 
+  const changesShown = $derived(level.initialChanges + morePages * JSON_DIFF_PAGE_SIZE);
   const visibleChanges = $derived(level.changes.slice(0, changesShown));
   const hiddenChanges = $derived(level.changes.length - visibleChanges.length);
-  const visibleUnchanged = $derived(level.unchanged.slice(0, unchangedShown));
+  const visibleUnchanged = $derived(level.unchanged.slice(0, unchangedPages * JSON_DIFF_PAGE_SIZE));
   const hiddenUnchanged = $derived(level.unchanged.length - visibleUnchanged.length);
 
   // A symbol and a name for each kind, so the colour is never the only signal.
@@ -72,9 +77,14 @@
     `${unchangedOpen ? 'Hide' : 'Show'} ${unchangedLabel(level.unchanged.length)}`,
   );
 
-  function moreLabel(hidden: number, noun: string): string {
-    const next = Math.min(hidden, JSON_DIFF_PAGE_SIZE);
-    return `Show ${formatNumber(next)} more ${noun} (${formatNumber(hidden)} not shown)`;
+  /** The visible words of a paging control: the step only, so the total is not a second count. */
+  function moreLabel(hidden: number): string {
+    return `Show ${formatNumber(Math.min(hidden, JSON_DIFF_PAGE_SIZE))} more`;
+  }
+
+  /** The accessible name of a paging control: the step, then what the level still holds. */
+  function moreName(hidden: number, noun: string): string {
+    return `${moreLabel(hidden)} ${noun}, ${formatNumber(hidden)} not shown`;
   }
 </script>
 
@@ -84,25 +94,35 @@
   {/each}
   {#if hiddenChanges > 0}
     <li class="cinder-json-diff-viewer__control">
-      <button
-        type="button"
+      <Button
+        variant="link"
+        size="xs"
         class="cinder-json-diff-viewer__button"
-        onclick={() => (changesShown += JSON_DIFF_PAGE_SIZE)}
+        aria-label={moreName(hiddenChanges, 'changes')}
+        onclick={() => (morePages += 1)}
       >
-        {moreLabel(hiddenChanges, 'changes')}
-      </button>
+        {moreLabel(hiddenChanges)}
+        {#snippet trailingIcon()}<ChevronDown size={12} strokeWidth={2} />{/snippet}
+      </Button>
     </li>
   {/if}
   {#if level.unchanged.length > 0}
     <li class="cinder-json-diff-viewer__control">
-      <button
-        type="button"
+      <Button
+        variant="link"
+        size="xs"
         class="cinder-json-diff-viewer__button"
         aria-expanded={unchangedOpen}
         onclick={() => (unchangedOpen = !unchangedOpen)}
       >
         {unchangedControlLabel}
-      </button>
+        {#snippet trailingIcon()}
+          {#if unchangedOpen}<ChevronUp size={12} strokeWidth={2} />{:else}<ChevronDown
+              size={12}
+              strokeWidth={2}
+            />{/if}
+        {/snippet}
+      </Button>
     </li>
     {#if unchangedOpen}
       {#each visibleUnchanged as entry (entry.id)}
@@ -110,13 +130,16 @@
       {/each}
       {#if hiddenUnchanged > 0}
         <li class="cinder-json-diff-viewer__control">
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="xs"
             class="cinder-json-diff-viewer__button"
-            onclick={() => (unchangedShown += JSON_DIFF_PAGE_SIZE)}
+            aria-label={moreName(hiddenUnchanged, 'unchanged entries')}
+            onclick={() => (unchangedPages += 1)}
           >
-            {moreLabel(hiddenUnchanged, 'unchanged entries')}
-          </button>
+            {moreLabel(hiddenUnchanged)}
+            {#snippet trailingIcon()}<ChevronDown size={12} strokeWidth={2} />{/snippet}
+          </Button>
         </li>
       {/if}
     {/if}
@@ -131,14 +154,21 @@
     <span class="cinder-json-diff-viewer__key">{entry.key}</span>
     {#if entry.children && entry.collapsed}
       <!-- A nested level the render budget closed: it opens on request, so a huge comparison never builds it unasked. -->
-      <button
-        type="button"
+      <Button
+        variant="link"
+        size="xs"
         class="cinder-json-diff-viewer__button"
         aria-expanded={opened.has(entry.id)}
         onclick={() => toggleOpened(entry.id)}
       >
         {nestedControlLabel(entry)}
-      </button>
+        {#snippet trailingIcon()}
+          {#if opened.has(entry.id)}<ChevronUp size={12} strokeWidth={2} />{:else}<ChevronDown
+              size={12}
+              strokeWidth={2}
+            />{/if}
+        {/snippet}
+      </Button>
       {#if opened.has(entry.id)}
         <Self level={entry.children} />
       {/if}

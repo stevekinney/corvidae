@@ -12,6 +12,11 @@ export type JsonDiffLevel = {
   readonly changes: readonly JsonDiffEntry[];
   /** Entries present and equal on both sides, in the same order. */
   readonly unchanged: readonly JsonDiffEntry[];
+  /**
+   * How many of `changes` the first render shows: a page, or fewer when the render budget runs
+   * out first. The rest wait behind a control to show more. Set by the budget, once.
+   */
+  initialChanges: number;
 };
 
 /** One entry of a diff: a key and how its value differs. */
@@ -43,15 +48,22 @@ export const JSON_DIFF_PAGE_SIZE = 200;
 
 /**
  * How many elements the first render may create. Each level is capped at a page, but pages of
- * nested levels add up, so a nested level opens by default only while its page still fits.
+ * nested levels add up, so a nested level opens by default only while its page still fits, and a
+ * level shows fewer than a page when the budget runs out inside it.
  */
 export const JSON_DIFF_ELEMENT_BUDGET = 900;
 
-/** The elements one row creates: its item, marker, key, and value or control. */
+/** The elements a row showing a value creates: its item, marker, key and value. */
 const ELEMENTS_PER_ROW = 4;
 
-/** The elements a level creates besides its rows: its list, and its two controls with their items. */
-const ELEMENTS_PER_LEVEL = 5;
+/** The elements a row holding an open nested level creates besides that level: item, marker, key. */
+const ELEMENTS_PER_OPEN_ROW = 3;
+
+/** The elements a row closed behind a control creates: item, marker, key, and the Button with its chevron. */
+const ELEMENTS_PER_CLOSED_ROW = 6;
+
+/** The elements a level creates besides its rows: its list, and two controls (item, Button, chevron). */
+const ELEMENTS_PER_LEVEL = 9;
 
 /** The longest preview of a value before it is cut with an ellipsis. */
 const PREVIEW_LIMIT = 120;
@@ -190,26 +202,41 @@ function compareCollection(
       if (!seen.has(key)) place([leaf(key, 'added', undefined, afterValue)]);
     }
   }
-  return { changes, unchanged };
+  return { changes, unchanged, initialChanges: Math.min(changes.length, JSON_DIFF_PAGE_SIZE) };
 }
 
 /**
- * Charge the first page of `level` against the budget, then open each nested level whose own page
- * still fits and close the rest. Rows past the first page only render when a control asks, so they
+ * Walk the first page of `level` in reading order, charging each row against the budget. A row
+ * holding a nested level opens it when that level's own first page fits, and otherwise closes it
+ * behind a control; when not even a closed row fits, the level stops there and the rest wait behind
+ * its show-more control. Rows past a level's first page only render when a control asks, so they
  * cost nothing here.
  */
 function spendBudget(level: JsonDiffLevel, remaining: { elements: number }): void {
-  const page = level.changes.slice(0, JSON_DIFF_PAGE_SIZE);
-  remaining.elements -= page.length * ELEMENTS_PER_ROW + ELEMENTS_PER_LEVEL;
-  for (const entry of page) {
+  remaining.elements -= ELEMENTS_PER_LEVEL;
+  let shown = 0;
+  for (const entry of level.changes.slice(0, JSON_DIFF_PAGE_SIZE)) {
     const { children } = entry;
-    if (children === undefined) continue;
-    const cost =
-      Math.min(children.changes.length, JSON_DIFF_PAGE_SIZE) * ELEMENTS_PER_ROW +
-      ELEMENTS_PER_LEVEL;
-    if (cost > remaining.elements) entry.collapsed = true;
-    else spendBudget(children, remaining);
+    if (children === undefined) {
+      if (remaining.elements < ELEMENTS_PER_ROW) break;
+      remaining.elements -= ELEMENTS_PER_ROW;
+    } else if (
+      remaining.elements >=
+      ELEMENTS_PER_OPEN_ROW +
+        ELEMENTS_PER_LEVEL +
+        Math.min(children.changes.length, JSON_DIFF_PAGE_SIZE) * ELEMENTS_PER_ROW
+    ) {
+      remaining.elements -= ELEMENTS_PER_OPEN_ROW;
+      spendBudget(children, remaining);
+    } else if (remaining.elements >= ELEMENTS_PER_CLOSED_ROW) {
+      entry.collapsed = true;
+      remaining.elements -= ELEMENTS_PER_CLOSED_ROW;
+    } else {
+      break;
+    }
+    shown += 1;
   }
+  level.initialChanges = shown;
 }
 
 /**
@@ -226,9 +253,11 @@ export function diffJsonValues(before: unknown, after: unknown, maxDepth = 50): 
     level = compareCollection(before, after, 1, maxDepth);
   } else {
     const entries = compareEntry(ROOT_KEY, before, after, 0, maxDepth);
+    const changes = entries.filter((entry) => entry.kind !== 'unchanged');
     level = {
-      changes: entries.filter((entry) => entry.kind !== 'unchanged'),
+      changes,
       unchanged: entries.filter((entry) => entry.kind === 'unchanged'),
+      initialChanges: Math.min(changes.length, JSON_DIFF_PAGE_SIZE),
     };
   }
   spendBudget(level, { elements: JSON_DIFF_ELEMENT_BUDGET });

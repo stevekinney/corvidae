@@ -5,6 +5,7 @@
 <script lang="ts">
   import type { JsonDiffViewerProps } from './json-diff-viewer.types.ts';
   import JsonDiffViewerLevel from './_json-diff-viewer-level.svelte';
+  import EmptyState from '../empty-state/empty-state.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import { diffJsonValues } from './json-diff-viewer.diff.ts';
 
@@ -21,7 +22,7 @@
 
 <div class={classNames('cinder-json-diff-viewer', className)} role="group" aria-label={label}>
   {#if level.changes.length === 0}
-    <p class="cinder-json-diff-viewer__empty" role="status">No differences</p>
+    <EmptyState layout="inline" size="compact" title="No differences" />
   {:else}
     <JsonDiffViewerLevel {level} />
   {/if}

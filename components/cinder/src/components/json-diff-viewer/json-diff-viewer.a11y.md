@@ -28,16 +28,16 @@ Nothing moves focus. The controls are native buttons that keep focus when activa
 | --- | --- | --- |
 | Tab | The comparison | Moves between the controls in reading order; rows are not focus stops. |
 | Enter, Space | Unchanged-entries control | Toggles the unchanged entries of that level, and updates `aria-expanded`. |
-| Enter, Space | Show-more control | Reveals the next 200 entries of that level. |
+| Enter, Space | Show-more control | Reveals the next 200 entries of that level; its name also gives how many are not shown. |
 | Enter, Space | Nested-changes control | Opens or closes a nested level the render budget closed, and updates `aria-expanded`. |
 
 ### Assistive-technology announcements
 
-The comparison is a named group (`label`, "JSON differences" by default) holding nested lists, so a screen reader announces each level's item count. Each row's first child is an image named "Added", "Removed", "Changed" or "Unchanged", so the kind is spoken as well as drawn. Identical values render a `role="status"` line reading "No differences". The unchanged control reports `aria-expanded`, and its text names how many entries it holds.
+The comparison is a named group (`label`, "JSON differences" by default) holding nested lists, so a screen reader announces each level's item count. Each row's first child is an image named "Added", "Removed", "Changed" or "Unchanged", so the kind is spoken as well as drawn. Identical values render Cinder's `EmptyState` (inline, compact) titled "No differences", the same words `DiffStatistics` uses for no change. The unchanged control reports `aria-expanded`, and its text names how many entries it holds. A show-more control reads "Show 200 more" and names the level's remaining total in its accessible name ("Show 200 more changes, 450 not shown"), so the total is not a second visible count.
 
 ## Touch targets
 
-The controls are inline text buttons at the row's own size. A host that needs a larger touch target wraps the viewer and sets the controls' padding; the component adds none.
+Every control is Cinder's `Button` in the `link` variant at the `xs` size, so on a coarse pointer each carries Button's 44px hit region (`data-cinder-hit-target="44"`, a pseudo-element that takes no layout). The viewer adds the room that region needs: on a coarse pointer each control's item, and each row that holds a control, pads above and below by `--cinder-space-3`, so stacked controls never take one another's taps. The label stays on one line, starting at the inline start.
 
 ## Forced colors
 

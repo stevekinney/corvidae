@@ -16,6 +16,18 @@
       "code": "<script lang=\"ts\">\n  import { JsonDiffViewer } from '@lostgradient/cinder';\n\n  const before = { timeout: 30, tags: ['etl', 'nightly', 'production'] };\n  const after = { timeout: '30s', tags: ['etl', 'hourly', 'production'] };\n</script>\n\n<JsonDiffViewer {before} {after} label=\"Run settings differences\" />\n"
     },
     {
+      "id": "many-changes",
+      "title": "More than 200 changes in one level",
+      "description": "A level shows its first 200 changed entries and holds the rest behind a control that shows 200 more. Here 450 values changed, so two presses reveal them all.",
+      "code": "<script lang=\"ts\">\n  import { JsonDiffViewer } from '@lostgradient/cinder';\n\n  const before = Object.fromEntries(\n    Array.from({ length: 450 }, (_, index) => [`setting-${index}`, index]),\n  );\n  const after = Object.fromEntries(\n    Array.from({ length: 450 }, (_, index) => [`setting-${index}`, index + 1]),\n  );\n</script>\n\n<JsonDiffViewer {before} {after} label=\"Settings differences\" />\n"
+    },
+    {
+      "id": "render-budget",
+      "title": "A comparison too large to open at once",
+      "description": "Nested levels add up, so the first render opens a nested level only while the whole render stays small. Here five runs each changed 150 fields: the first run opens, and the rest wait behind a \"Show 150 changes\" control.",
+      "code": "<script lang=\"ts\">\n  import { JsonDiffViewer } from '@lostgradient/cinder';\n\n  const run = (offset: number) =>\n    Object.fromEntries(\n      Array.from({ length: 150 }, (_, index) => [`field-${index}`, offset + index]),\n    );\n\n  const before = { runs: [0, 1, 2, 3, 4].map((index) => run(index)) };\n  const after = { runs: [0, 1, 2, 3, 4].map((index) => run(index + 1000)) };\n</script>\n\n<JsonDiffViewer {before} {after} label=\"Run differences\" />\n"
+    },
+    {
       "id": "identical",
       "title": "Identical values",
       "description": "When the two values are equal the viewer says so instead of rendering an empty list.",
