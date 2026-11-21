@@ -39,6 +39,8 @@
     question="Deploy the approved release?"
     tool={{ name: 'deploy-cloud', label: 'Deploy release', risk: 'medium' }}
     operation={{ kind: 'other' }}
+    policyVersion="policy-2026-06"
+    idempotencyKey="approval-canceled-01"
     state="cancelled"
   />
 {/if}
