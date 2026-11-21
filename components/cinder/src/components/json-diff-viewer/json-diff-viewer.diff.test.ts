@@ -82,6 +82,18 @@ describe('diffJsonValues', () => {
     expect(diffJsonValues(before, structuredClone(before), 2).changes).toEqual([]);
   });
 
+  test('a circular reference past maxDepth shows as changed instead of throwing', () => {
+    const before: Record<string, unknown> = { name: 'a' };
+    before.self = before;
+    const after: Record<string, unknown> = { name: 'a' };
+    after.self = after;
+    const level = diffJsonValues(before, after, 3);
+    expect(level.changes).toHaveLength(1);
+    let entry = requiredValue(level.changes[0]);
+    while (entry.children !== undefined) entry = requiredValue(entry.children.changes[0]);
+    expect(entry.kind).toBe('changed');
+  });
+
   test('a deeply nested value does not overflow the stack', () => {
     const nest = (depth: number, leaf: number): unknown => {
       let value: unknown = { leaf };

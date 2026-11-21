@@ -104,6 +104,15 @@ export function previewJsonValue(value: unknown): string {
   return String(value);
 }
 
+/** The JSON text of a value, or `null` when it cannot be serialized. */
+function serializeOrNull(value: unknown): string | null {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
 function leaf(key: string, kind: JsonDiffKind, before?: unknown, after?: unknown): JsonDiffEntry {
   return {
     id: `${kind}:${key}`,
@@ -130,8 +139,10 @@ function compareEntry(
 
   if (beforeShape === 'array' || beforeShape === 'object') {
     if (depth >= maxDepth) {
-      // Past the cap the collections are compared whole, never walked.
-      const equal = JSON.stringify(before) === JSON.stringify(after);
+      // Past the cap the collections are compared whole, never walked. A value JSON cannot
+      // serialize (a circular reference, a BigInt) is never equal to anything, so it shows changed.
+      const serialized = [serializeOrNull(before), serializeOrNull(after)];
+      const equal = serialized[0] !== null && serialized[0] === serialized[1];
       return [equal ? leaf(key, 'unchanged', before) : leaf(key, 'changed', before, after)];
     }
     const children = compareCollection(before, after, depth + 1, maxDepth);

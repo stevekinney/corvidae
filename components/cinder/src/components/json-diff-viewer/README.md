@@ -26,7 +26,7 @@ A panel imports the same component from `@lostgradient/cinder/panel`, beside `mo
 - Unchanged entries start collapsed behind a control that names how many it holds.
 - A level renders its first 200 entries; a control shows the next 200. Nested levels add up, so a nested level opens by default only while the first render stays under about 900 elements; one that would not starts closed behind a "Show N changes" control. A comparison of two large values therefore creates a bounded number of elements before anyone asks for more.
 - Identical values render the text "No differences".
-- Values that are not JSON, and circular references, are out of scope: pass what `JSON.stringify` accepts.
+- Pass what `JSON.stringify` accepts. A circular reference, which JSON cannot hold, is walked to `maxDepth` and shows there as one changed entry.
 
 ## Props
 
