@@ -351,7 +351,7 @@ function servedRaising(error: Error): readonly {
     respond: async () => {
       throw error;
     },
-  } as never;
+  };
   const workflowsHost = {
     ownership,
     codeWorkflow: () => undefined,
