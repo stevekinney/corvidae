@@ -161,7 +161,7 @@ export function breakPoints(text: string): string[] {
 }
 
 /** The class a word takes when it has places to break, so a wrapping block keeps it in one box. */
-export const wordClass = 'cinder-code-block__word';
+const wordClass = 'cinder-code-block__word';
 
 /**
  * Cuts `text` into its words and the whitespace between them, each word with the pieces it may break

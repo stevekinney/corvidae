@@ -87,13 +87,11 @@ describe('breakPoints', () => {
 
 describe('splitWords', () => {
   test('boxes a word that has places to break and leaves the rest, joining back to the text', () => {
+    // A dot that ends a word is no place to break: nothing follows it to move to the next row.
     const text = `claude  mcp add ${ENDPOINT}\tdone.`;
     const runs = splitWords(text);
     expect(runs.map((run) => run.text).join('')).toBe(text);
-    expect(runs.filter((run) => run.pieces.length > 1).map((run) => run.text)).toEqual([
-      ENDPOINT,
-      'done.',
-    ]);
+    expect(runs.filter((run) => run.pieces.length > 1).map((run) => run.text)).toEqual([ENDPOINT]);
     // Whitespace is a run of its own and never a place inside a word.
     expect(runs.filter((run) => /^\s+$/.test(run.text)).map((run) => run.text)).toEqual([
       '  ',
