@@ -31,10 +31,11 @@ test.describe('/hooks: the hooks list states', () => {
   const BUREAU_CALLS = '**/jsonrpc';
   const BUREAU_LOGGED = /\/jsonrpc/;
 
-  /** The header's "+": a secondary icon button named for what it makes. */
+  /** The header's New hook: a labelled primary button (owner report, 2026-11-19). */
   const headerCreate = (page: Page) => page.locator('main .cinder-page-header__create');
-  /** Every primary button on the page, which a list page keeps to the one its state offers. */
-  const primaryButtons = (page: Page) => page.locator('main button.button-variant-primary');
+  /** Every primary button under the header, which a list page keeps to the one its state offers. */
+  const primaryButtons = (page: Page) =>
+    page.locator('main button.button-variant-primary:not(.cinder-page-header__create)');
 
   /** A hook as `bureau.hooks.list` answers it, field for field, with the newest delivery. */
   function listedHook(overrides: Record<string, unknown> = {}) {
@@ -88,7 +89,8 @@ test.describe('/hooks: the hooks list states', () => {
       'Run something when something happens: send a webhook, start a workflow, or notify you.',
     );
     await expect(headerCreate(page)).toHaveAccessibleName('New hook');
-    await expect(headerCreate(page)).toContainClass('button-variant-secondary');
+    await expect(headerCreate(page)).toHaveText('New hook');
+    await expect(headerCreate(page)).toContainClass('button-variant-primary');
     await expect(main.getByTestId('hooks-count')).toHaveText('5 hooks');
 
     const rows = main.locator('li[data-hook]');

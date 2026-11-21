@@ -244,7 +244,11 @@ export const ALLOWED_MODELS_COPY = {
     title: 'Models',
     description:
       'Every model your connected providers offer; untick one to keep agents from using it.',
-    empty: 'No models yet. Connect a provider and its models appear here to allow.',
+    /** Cinder's one empty state, alone in place of the section (owner report, 2026-11-19). */
+    empty: {
+      title: 'No models yet',
+      description: 'Connect a provider and its models appear here to allow.',
+    },
     goToProviders: 'Go to Providers',
     /** The name of a provider's group of models. */
     groupLabel: (provider: string): string => `${provider} models`,

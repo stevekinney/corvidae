@@ -18,7 +18,6 @@
 
   import {
     Button,
-    EmptyState,
     ListDetail,
     LoadMore,
     RelativeTime,
@@ -26,9 +25,10 @@
     StatusDot,
     type DataListGroup,
   } from '@lostgradient/cinder';
-  import { Check, Inbox } from '@lucide/svelte';
+  import { Check } from '@lucide/svelte';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import type {
     BureauHumanWait,
     BureauReview,
@@ -511,19 +511,18 @@
 {/snippet}
 
 {#if phase === 'ready' && visible.length === 0}
+  <!-- The one list-page empty state (owner report, 2026-11-19), with the Reviews icon. Nothing is
+       made here, so it has no create action. -->
   {#if mode === 'waiting'}
-    <EmptyState
+    <ListPageEmpty
+      view="reviews"
       kind="done"
-      headingLevel={2}
       title={REVIEWS_COPY.allCaughtUp}
       description={REVIEWS_COPY.nothingWaiting}
-    >
-      {#snippet icon()}<Inbox aria-hidden="true" />{/snippet}
-    </EmptyState>
+    />
   {:else}
-    <EmptyState
-      kind="first-use"
-      headingLevel={2}
+    <ListPageEmpty
+      view="reviews"
       title={REVIEWS_COPY.nothingDecided}
       description={REVIEWS_COPY.nothingDecidedDescription}
     />

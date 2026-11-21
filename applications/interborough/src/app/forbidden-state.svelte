@@ -1,13 +1,9 @@
 <script lang="ts">
   /**
-   * The forbidden page (design rows 12z and 13a): Cinder's access gate as a whole page, with a
-   * neutral disc and lock glyph, a title that names what is locked ("Your sign-in can’t open
-   * Hooks"), the sentence that points at where the session's scopes are shown, and the missing
-   * scope small and monospaced ("requires hooks:read") when it is known. It has two secondary
-   * buttons, "See your scopes" and "Back to Home", and no request-access button: single-user v1
-   * has no such flow.
+   * The forbidden page uses the shared state layout with a lock and a link to the session's scopes.
    */
-  import { AccessGate, Button } from '@lostgradient/cinder';
+  import { Button, EmptyState } from '@lostgradient/cinder';
+  import { Lock } from '@lucide/svelte';
 
   import { router } from '../lib/router.svelte.ts';
   import { FORBIDDEN_COPY } from './copy/views.ts';
@@ -15,14 +11,10 @@
   interface ForbiddenStateProps {
     /** Names what is locked: "Your sign-in can’t open Hooks". */
     title: string;
-    /** The scope that opens it, when it is known. Nothing is shown when it is not. */
-    requirement?: string | undefined;
+    headingLevel?: 1 | 2;
   }
 
-  let { title, requirement }: ForbiddenStateProps = $props();
-
-  // The scope is the person's to read, and Interborough never says "Bureau" to them: "goals:read".
-  const shownRequirement = $derived(requirement?.replace(/^bureau\./, ''));
+  let { title, headingLevel = 1 }: ForbiddenStateProps = $props();
 
   /** A button opens its page without leaving the application. */
   function open(event: MouseEvent, path: string): void {
@@ -34,16 +26,9 @@
   }
 </script>
 
-<AccessGate
-  granted={false}
-  variant="section"
-  layout="page"
-  headingLevel={1}
-  {title}
-  reason={FORBIDDEN_COPY.description}
-  {...shownRequirement === undefined ? {} : { requirement: shownRequirement }}
->
-  {#snippet actions()}
+<EmptyState kind="disabled" {headingLevel} {title} description={FORBIDDEN_COPY.description}>
+  {#snippet icon()}<Lock aria-hidden="true" />{/snippet}
+  {#snippet action()}
     <Button
       variant="secondary"
       href={router.href(FORBIDDEN_COPY.scopes.href)}
@@ -55,4 +40,4 @@
       {FORBIDDEN_COPY.home}
     </Button>
   {/snippet}
-</AccessGate>
+</EmptyState>

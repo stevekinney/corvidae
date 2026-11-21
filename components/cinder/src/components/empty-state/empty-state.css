@@ -4,33 +4,23 @@
  * EMPTY STATE
  * ======================================== */
 
-  /* The state is centred both ways in the region it is given, with 8px of extra bottom padding
-   * so the content sits at the optical centre. `min-block-size: 100%` makes it fill a region of
-   * known height; in an auto-height parent it is ignored and the padding alone spaces it. */
+  /* One layout wherever the state sits, a page, a tab, a section or a panel (owner report,
+   * 2026-11-19): the parts stacked and centred across, but top-aligned at one offset under
+   * whatever is above them rather than centred in the height, so a state never floats in the
+   * middle of a tall window. It is never boxed, and the words hold a reading measure of about 60
+   * characters however wide the region is. */
   .cinder-empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     inline-size: 100%;
-    min-block-size: 100%;
+    min-block-size: 0;
     box-sizing: border-box;
     text-align: center;
-    padding-block: var(--cinder-space-12) calc(var(--cinder-space-12) + var(--cinder-space-2));
-    padding-inline: var(--cinder-space-8);
+    padding-block: var(--cinder-space-12);
+    padding-inline: 0;
     gap: var(--cinder-space-1);
-  }
-
-  /* A bordered state draws its own box, for a list or page body with no container. */
-  .cinder-empty-state[data-cinder-bordered] {
-    border: var(--cinder-border-width) solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface);
-  }
-
-  .cinder-empty-state[data-cinder-align='start'] {
-    align-items: flex-start;
-    text-align: start;
   }
 
   /* The glyph sits in a 48px tinted disc. The disc is neutral by default (a filtered or
@@ -55,8 +45,8 @@
     block-size: 1.375rem;
   }
 
-  /* An illustration stands in for the disc in a stacked state: a picture the caller sizes, kept
-   * to the width of the region and centred above the title. */
+  /* An illustration stands in for the disc: a picture the caller sizes, kept to the width of the
+   * region and centred above the title. */
   .cinder-empty-state-illustration {
     display: flex;
     align-items: center;
@@ -71,10 +61,6 @@
   .cinder-empty-state-illustration > img {
     max-inline-size: 100%;
     block-size: auto;
-  }
-
-  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-illustration {
-    justify-content: flex-start;
   }
 
   .cinder-empty-state[data-cinder-kind='first-use'] .cinder-empty-state-icon {
@@ -96,6 +82,7 @@
   /* A title or sentence that names a record carries its name, and a name can be one unbroken
    * identifier longer than the region is wide: it breaks inside rather than overflowing. */
   .cinder-empty-state-title {
+    max-inline-size: 60ch;
     font-size: var(--cinder-text-lg);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
@@ -104,9 +91,8 @@
     overflow-wrap: anywhere;
   }
 
-  /* The sentence holds a 380px measure however wide the region is. */
   .cinder-empty-state-description {
-    max-inline-size: 23.75rem;
+    max-inline-size: 60ch;
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
@@ -118,188 +104,21 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
+    inline-size: 100%;
+    max-inline-size: 60ch;
     gap: var(--cinder-space-2);
     margin-block-start: var(--cinder-space-3);
   }
 
-  /* A start-aligned state reads from the start, but its action row spans the state and ends at the
-   * trailing content edge, the primary last. A centred state keeps its centred action. */
-  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-action {
-    align-self: stretch;
-    justify-content: flex-end;
-  }
-
-  /* Supporting content under the action, such as the steps of a manual set-up: the full width of
-   * the state, with no measure of its own, so it can hold a code block. It reads the state's
-   * alignment (the text inherits it) and draws no border or background. */
+  /* Supporting content under the action, such as the steps of a manual set-up, at the words'
+   * measure. The text inherits the centring, and the block draws no border or background. */
   .cinder-empty-state-details {
     inline-size: 100%;
+    max-inline-size: 60ch;
     min-inline-size: 0;
     margin-block-start: var(--cinder-space-4);
     overflow-wrap: anywhere;
-  }
-
-  /* Compact fits a tab or a panel: less padding, a smaller disc, and quieter type. */
-  .cinder-empty-state[data-cinder-size='compact'] {
-    padding-block: var(--cinder-space-6);
-    padding-inline: var(--cinder-space-4);
-    gap: var(--cinder-space-2);
-  }
-
-  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon {
-    inline-size: var(--cinder-space-10);
-    block-size: var(--cinder-space-10);
-    margin-block-end: 0;
-  }
-
-  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon > svg {
-    inline-size: var(--cinder-space-5);
-    block-size: var(--cinder-space-5);
-  }
-
-  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-title {
-    font-size: var(--cinder-text-base);
-  }
-
-  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-action {
-    margin-block-start: var(--cinder-space-2);
-  }
-
-  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-details {
-    margin-block-start: var(--cinder-space-3);
-  }
-
-  /* A row lays the parts on one line: the disc, then the title over the description, then the
-   * action at the end. It is the line of a list, so it reads from the start, keeps the compact
-   * type whatever the size, and takes a grouped list row's insets (16px at the start, 8px at the
-   * end), so its action ends on the same edge as a list row's button. A narrow row drops the
-   * action under the words; the row is its own inline-size container for that. */
-  .cinder-empty-state[data-cinder-layout='row'] {
-    container-type: inline-size;
-    container-name: cinder-empty-state;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      'icon title action'
-      'icon description action';
-    align-items: center;
-    justify-content: stretch;
-    column-gap: var(--cinder-space-3);
-    row-gap: 0;
-    min-block-size: 0;
-    padding-block: var(--cinder-space-3);
-    padding-inline: var(--cinder-space-4) var(--cinder-space-2);
-    text-align: start;
-  }
-
-  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-icon {
-    grid-area: icon;
-    align-self: center;
-    margin-block-end: 0;
-    inline-size: var(--cinder-space-8);
-    block-size: var(--cinder-space-8);
-  }
-
-  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-icon > svg {
-    inline-size: var(--cinder-space-4);
-    block-size: var(--cinder-space-4);
-  }
-
-  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-title {
-    grid-area: title;
-    font-size: var(--cinder-text-base);
-  }
-
-  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-description {
-    grid-area: description;
-    max-inline-size: none;
-  }
-
-  .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-    grid-area: action;
-    justify-content: flex-end;
-    margin-block-start: 0;
-  }
-
-  /* Without a disc the words start in the first column. */
-  .cinder-empty-state[data-cinder-layout='row']:not(:has(.cinder-empty-state-icon)) {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'title action'
-      'description action';
-  }
-
-  /* A narrow row: 28rem of content box (448px), so the action keeps the inline end whenever it has
-   * room beside the words, and a full-width row on a phone still drops it. A query cannot restyle
-   * its own container, so the grid keeps its three tracks and the parts move: the words span the
-   * second track and the empty third one (whose gap they take back, so their measure is what it
-   * was), and the action takes a third line under them, across the whole row and flush with its
-   * trailing edge (the owner's trailing-edge actions, 2026-11-13), the edge a narrow ErrorState
-   * row puts its retry on, so the two share one edge in one card. Without a disc the action stays
-   * beside the words, as it always has. */
-  @container cinder-empty-state (max-width: 28rem) {
-    .cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)
-      :is(.cinder-empty-state-title, .cinder-empty-state-description) {
-      grid-column: 2 / -1;
-    }
-
-    .cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)
-      .cinder-empty-state-action {
-      grid-column: 1 / -1;
-      grid-row: 3;
-    }
-
-    .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-      justify-content: flex-end;
-      margin-block-start: var(--cinder-space-2);
-    }
-  }
-
-  /* Inline: a 32px disc beside one line, the title in bold and the sentence after it, at the inline
-   * start. It sits among rows, so it takes no region padding and the sentence has no measure. */
-  .cinder-empty-state[data-cinder-layout='inline'] {
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    gap: var(--cinder-space-3);
-    min-block-size: 0;
-    padding-block: var(--cinder-space-3);
-    padding-inline: 0;
-    text-align: start;
-  }
-
-  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-icon {
-    inline-size: var(--cinder-space-8);
-    block-size: var(--cinder-space-8);
-  }
-
-  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-icon > svg {
-    inline-size: var(--cinder-space-4);
-    block-size: var(--cinder-space-4);
-  }
-
-  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-text {
-    min-inline-size: 0;
-    font-size: var(--cinder-text-sm);
-    line-height: var(--cinder-leading-normal);
-    color: var(--cinder-text-muted);
-  }
-
-  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-title,
-  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-description {
-    display: inline;
-    max-inline-size: none;
-    font-size: inherit;
-    line-height: inherit;
-  }
-
-  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-title {
-    color: var(--cinder-text-default);
-  }
-
-  .cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-action {
-    margin-block-start: 0;
   }
 
   @media (forced-colors: active) {

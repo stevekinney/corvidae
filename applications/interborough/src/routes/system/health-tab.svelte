@@ -109,7 +109,6 @@
         {:else}
           <EmptyState
             kind="first-use"
-            size="compact"
             headingLevel={4}
             title="No workflow with an input schema"
             description="Register a workflow that takes input and its type appears here."

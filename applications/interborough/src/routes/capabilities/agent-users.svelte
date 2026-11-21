@@ -70,7 +70,6 @@
     {:else}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={5}
         title={empty.title}
         description={empty.description}

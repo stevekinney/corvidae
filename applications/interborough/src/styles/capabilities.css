@@ -13,6 +13,11 @@
   padding-block-start: var(--cinder-space-3);
 }
 
+.ib-capabilities__tab:has([data-list-empty]),
+.ib-capabilities__panel:has(> [data-list-empty]) {
+  padding-block-start: 0;
+}
+
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-capabilities__frame {
   block-size: max(28rem, calc(100dvh - 18rem));

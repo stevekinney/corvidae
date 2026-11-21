@@ -2,12 +2,13 @@
   /**
    * What the Workers page is while it has no worker to list: being read (rows 78x and 78y), read
    * and empty because work runs inside Interborough (rows 78c to 78e), or not read at all (row
-   * 78z). Each keeps the page's own heading (`workers-heading.svelte`) and draws its body with
-   * Cinder: `skeleton` for the first, `empty-state` for the second, `error-state` for the third.
+   * 78z). Loading and failed keep the page's own heading (`workers-heading.svelte`); the empty
+   * state is Cinder's `empty-state` alone, since a heading over it would say the same thing.
+   * The bodies are Cinder: `skeleton`, `empty-state` and `error-state`.
    * None of them draws a worker row, a status word, or a banner.
    */
-  import { Button, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
-  import { Cpu, ExternalLink } from '@lucide/svelte';
+  import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { Cpu } from '@lucide/svelte';
 
   import { WORKER_COPY } from './worker-copy.ts';
   import WorkersHeading from './workers-heading.svelte';
@@ -49,29 +50,17 @@
       {onCancel}
     />
   {:else if kind === 'empty'}
-    <WorkersHeading line={copy.empty.summary} />
-    <div class="ib-workers-state__card">
-      <EmptyState
-        kind="first-use"
-        bordered
-        headingLevel={3}
-        title={copy.empty.title}
-        description={copy.empty.description}
-      >
-        {#snippet icon()}<Cpu />{/snippet}
-        {#snippet action()}
-          <Button
-            variant="secondary"
-            href={copy.empty.guideAddress}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <ExternalLink aria-hidden="true" size={14} />
-            {copy.empty.howToConnect}
-          </Button>
-        {/snippet}
-      </EmptyState>
-    </div>
+    <!-- The state alone: no "Workers" heading whose line says the same thing (owner report,
+    2026-11-19), in Cinder's one empty-state layout, never in a box. -->
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title={copy.empty.title}
+      description={copy.empty.description}
+      actions={[{ label: copy.empty.howToConnect, href: copy.empty.guideAddress, external: true }]}
+    >
+      {#snippet icon()}<Cpu />{/snippet}
+    </EmptyState>
   {:else}
     <WorkersHeading />
     <ErrorState
@@ -92,9 +81,5 @@
     flex-direction: column;
     gap: var(--cinder-space-4);
     min-width: 0;
-  }
-
-  .ib-workers-state__card {
-    max-inline-size: 48rem;
   }
 </style>

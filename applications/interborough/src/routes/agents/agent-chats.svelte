@@ -26,6 +26,7 @@
     type FacetDefinition,
     type FilterSegment,
   } from '@lostgradient/cinder';
+  import { MessageSquare } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
@@ -240,7 +241,6 @@
       {#if filtered}
         <EmptyState
           kind="filtered"
-          size="compact"
           headingLevel={3}
           title={copy.filteredTitle}
           description={copy.filteredDescription}
@@ -250,26 +250,25 @@
       {:else}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={3}
           title={copy.emptyTitle}
           description={unavailable
             ? copy.unavailableDescription(pluginTitle)
             : copy.emptyDescription(name)}
+          actions={unavailable
+            ? []
+            : [
+                {
+                  label: CHAT_COPY.newChat,
+                  href: router.href(newChatPath(id)),
+                  onclick: (event) => {
+                    event.preventDefault();
+                    router.navigate(newChatPath(id));
+                  },
+                },
+              ]}
         >
-          {#snippet action()}
-            {#if !unavailable}
-              <Button
-                href={router.href(newChatPath(id))}
-                variant="primary"
-                size="sm"
-                onclick={(event) => {
-                  event.preventDefault();
-                  router.navigate(newChatPath(id));
-                }}>{CHAT_COPY.newChat}</Button
-              >
-            {/if}
-          {/snippet}
+          {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
         </EmptyState>
       {/if}
     {:else if rows.length > 0}

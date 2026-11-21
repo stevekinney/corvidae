@@ -356,24 +356,29 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('first use is the only primary Connect tools, and it opens Connect tools (32a)', async ({
-      page,
-    }) => {
+    test('first use offers Connect tools in the header and empty state (32a)', async ({ page }) => {
       await sourcesAre(page, () => []);
       await open(page, width, '/capabilities?tab=sources');
       await expect(
         page.getByRole('heading', { level: 2, name: copy.source.empty.title }),
       ).toBeVisible();
-      await expect(page.locator('main .button-variant-primary')).toHaveCount(1);
-      await expect(page.locator('main .button-variant-primary')).toHaveText(
+      const connect = page
+        .getByRole('main')
+        .getByRole('button', { name: copy.source.connect.action });
+      await expect(connect).toHaveCount(2);
+      await expect(page.locator('main .cinder-page-header .button-variant-primary')).toHaveText(
         copy.source.connect.action,
       );
+      const emptyConnect = page
+        .locator('main .cinder-empty-state')
+        .getByRole('button', { name: copy.source.connect.action });
+      await expect(emptyConnect).toContainClass('button-variant-primary');
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'sources first use',
         source: SOURCE,
       });
-      await page.locator('main .button-variant-primary').click();
+      await emptyConnect.click();
       await expect(page).toHaveURL(/\/capabilities\/connect$/);
     });
 

@@ -63,25 +63,28 @@ export const WORKFLOW_COPY = {
     fileName: (id: string): string => `${id}.json`,
     schedules: (count: number): string => `${String(count)} schedules`,
     onSignal: 'On the signal',
-    /** The card under the rows that leads to the types Interborough runs itself. */
-    internalCard: {
-      title: 'Internal workflows',
-      count: (count: number): string =>
-        `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
-      description:
-        'Interborough runs these for chats, goals and schedules. You can watch their runs but not change them.',
-    },
+    /** The header's secondary control that leads to the types Interborough runs itself. */
+    internalAction: (count: number): string => `Internal workflows (${String(count)})`,
     /** First use: the empty state is the page. */
     empty: {
       title: 'No workflows yet',
       description:
         'A workflow is a set of steps that agents and tools run in order. Build one yourself, or, once a provider is connected, describe it and an agent drafts it.',
-      askAction: 'Ask an agent to write one',
-      hintBefore: 'Or add a file to',
+      askAction: 'Ask an agent',
+      /** The sentence that says Interborough's own workflows exist, when the engine holds some. */
+      internal: (count: number): string =>
+        `Interborough also runs ${String(count)} internal ${count === 1 ? 'workflow' : 'workflows'} of its own for chats, goals and schedules.`,
+      /** The state's way to the internal workflows. */
+      internalAction: 'See internal workflows',
+      /** The closed row under the state that opens to the folder workflow files are read from. */
+      files: {
+        label: 'Where workflow files live',
+        lead: 'Interborough reads workflows from',
+        copyLabel: 'Copy the folder',
+        copiedLabel: 'Folder copied',
+      },
       /** Where the files are when the host does not say. */
       hintDirectory: '~/.interborough/workflows',
-      /** The Copy button beside that directory, the one place it shows. */
-      copyDirectory: 'Copy workflow folder',
     },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */

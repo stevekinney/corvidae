@@ -19,7 +19,7 @@
    *
    * Without `updates:write` the send form is not drawn.
    */
-  import { Button, Input, JsonEditor, Skeleton } from '@lostgradient/cinder';
+  import { Button, EmptyState, Input, JsonEditor, Skeleton } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';
@@ -181,7 +181,7 @@
         <Skeleton height="3rem" />
       </div>
     {:else if entries.length === 0}
-      <p class="weft-update-tab__empty">{copy.empty}</p>
+      <EmptyState kind="first-use" headingLevel={5} title={copy.empty} />
     {:else}
       {#each entries as entry (entry.updateId)}
         <UpdateHistoryRow {client} {entry} {runIsTerminal} now={clock.now} />
@@ -276,13 +276,6 @@
   }
 
   .weft-update-tab__notice,
-  .weft-update-tab__empty {
-    margin: 0;
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
-  }
-
   .weft-update-tab__notice {
     border-bottom: 1px solid var(--cinder-border-muted);
   }

@@ -522,6 +522,13 @@ export const AGENTS_COPY = {
     title: 'No agents yet',
     description: 'An agent is a model with instructions and tools. Create one to chat with it.',
     addPlugin: 'Add a plugin',
+    /** The closed row under the state that opens to the folder agent files are read from. */
+    files: {
+      label: 'Where agent files live',
+      lead: 'Interborough reads agents from',
+      copyLabel: 'Copy the folder',
+      copiedLabel: 'Folder copied',
+    },
   },
   /** Every agent is held back by a disabled plugin (row 36o). */
   onlyUnavailable: {

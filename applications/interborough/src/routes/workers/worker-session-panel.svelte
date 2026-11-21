@@ -102,7 +102,6 @@
     {:else if diagnostics === null}
       <EmptyState
         kind="done"
-        size="compact"
         headingLevel={3}
         title="Session closed"
         description="The server reports no registered session for this worker ID: the worker has closed, or it was removed."
@@ -119,7 +118,6 @@
     {:else}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={3}
         title="Session evidence unavailable"
         description="Worker diagnostics have not been read for this worker yet."

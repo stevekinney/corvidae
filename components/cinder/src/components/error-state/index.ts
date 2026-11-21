@@ -9,4 +9,3 @@ export type {
   ErrorStateTone,
   ErrorStateVariant,
 } from './error-state.types.ts';
-export { ErrorState };

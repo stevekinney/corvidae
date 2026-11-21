@@ -8,6 +8,7 @@
    * decided about that attempt (`goal-verdict-panel.svelte`).
    */
   import { DataList, EmptyState, StackedListItem, StatusDot } from '@lostgradient/cinder';
+  import { Target } from '@lucide/svelte';
 
   import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { followLinks } from '../../lib/follow-links.ts';
@@ -40,20 +41,28 @@
   }
 </script>
 
-<section class="ib-goal-attempts" aria-labelledby={headingId}>
-  <h2 class="ib-goal-attempts__heading" id={headingId} data-testid="goal-attempts-heading">
-    {copy.attemptsHeading}
-    <span class="ib-goal-attempts__count">{count}</span>
-  </h2>
+<section
+  class="ib-goal-attempts"
+  aria-labelledby={rows.length === 0 ? undefined : headingId}
+  aria-label={rows.length === 0 ? copy.attemptsHeading : undefined}
+>
   {#if rows.length === 0}
+    <!-- The state alone: no "Attempts" heading above it saying the same thing (owner report,
+    2026-11-19). -->
     <EmptyState
-      bordered
       kind="first-use"
       title={copy.noAttempts.title}
       description={copy.noAttempts.description}
-      headingLevel={3}
-    />
+      headingLevel={2}
+      data-testid="goal-attempts-empty"
+    >
+      {#snippet icon()}<Target aria-hidden="true" />{/snippet}
+    </EmptyState>
   {:else}
+    <h2 class="ib-goal-attempts__heading" id={headingId} data-testid="goal-attempts-heading">
+      {copy.attemptsHeading}
+      <span class="ib-goal-attempts__count">{count}</span>
+    </h2>
     <div {@attach followLinks}>
       <DataList items={[...rows]} key={rowKey} aria-label={copy.attemptsLabel}>
         {#snippet children(row: AttemptRow)}

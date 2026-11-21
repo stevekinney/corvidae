@@ -816,16 +816,14 @@
             title={copy.noAgents.title}
             description={copy.noAgents.description}
             headingLevel={3}
-          >
-            {#snippet action()}
-              <Button
-                variant="primary"
-                size="sm"
-                href={router.href('/agents/new')}
-                onclick={(event) => goTo(event, '/agents/new')}>{copy.noAgents.action}</Button
-              >
-            {/snippet}
-          </EmptyState>
+            actions={[
+              {
+                label: copy.noAgents.action,
+                href: router.href('/agents/new'),
+                onclick: (event) => goTo(event, '/agents/new'),
+              },
+            ]}
+          />
         {:else}
           {#if agentNames !== undefined}
             <FormField
