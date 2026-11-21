@@ -13,9 +13,10 @@
 #
 # Both shard jobs run through a Turborepo task (`//#ci:browser-fixtures`, `//#ci:browser-interborough`)
 # whose hash holds the shard, the image tag and every file the suite reads, so a shard whose inputs
-# did not change replays. The fixtures task takes four host slots for its four workers.
-# The packages' own browser suites (COR-2080) run through `validate:batch` in the `packages` job,
-# under the `fixtures` input, which their changes reach as well.
+# did not change replays. The tasks call Playwright directly: the root `test:browser:*` scripts wrap
+# it in the shared development host's lock and slot pool (`scripts/run-exclusively.ts`,
+# `scripts/host-slots.ts`), which a runner does not need. The packages' own browser suites (COR-2080) run through `validate:batch` in the
+# `packages` job, under the `fixtures` input, which their changes reach as well.
 name: Browser suites
 
 on:
