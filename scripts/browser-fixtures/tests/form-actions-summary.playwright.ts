@@ -70,13 +70,21 @@ async function expectNoStartSummaryWraps(bar: Locator): Promise<void> {
     const actions = element.querySelector<HTMLElement>('.cinder-form-actions');
     const summary = element.querySelector<HTMLElement>('.cinder-form-actions__summary');
     const summaryText = element.querySelector<HTMLElement>('[data-testid="long-summary"]');
-    if (actions === null || summary === null || summaryText === null)
+    const end = element.querySelector<HTMLElement>('.cinder-form-actions__end');
+    if (actions === null || summary === null || summaryText === null || end === null)
       throw new Error('The no-start FormActions fixture did not render its summary.');
 
     const range = document.createRange();
     range.selectNodeContents(summaryText);
+    const originalWhiteSpace = summaryText.style.whiteSpace;
+    summaryText.style.whiteSpace = 'nowrap';
+    const unwrappedWidth = range.getBoundingClientRect().width;
+    summaryText.style.whiteSpace = originalWhiteSpace;
+    const actionWidth = actions.getBoundingClientRect().width;
     return {
-      actionWidth: actions.getBoundingClientRect().width,
+      actionWidth,
+      unwrappedWidth,
+      actionWidthWithoutEnd: actionWidth - end.getBoundingClientRect().width,
       scrollWidth: actions.scrollWidth,
       lines: [...range.getClientRects()].filter((rect) => rect.width > 0).length,
       summaryWidth: summary.getBoundingClientRect().width,
@@ -84,6 +92,7 @@ async function expectNoStartSummaryWraps(bar: Locator): Promise<void> {
     };
   });
 
+  expect(geometry.unwrappedWidth).toBeGreaterThan(geometry.actionWidthWithoutEnd);
   expect(geometry.lines).toBeGreaterThan(1);
   expect(geometry.textWidth).toBeLessThanOrEqual(geometry.summaryWidth);
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.actionWidth);

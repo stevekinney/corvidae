@@ -29,7 +29,10 @@
 {/snippet}
 
 {#snippet longSummary()}
-  <span data-testid="long-summary">Connect is off while Interborough can’t be reached.</span>
+  <span data-testid="long-summary">
+    Connect is off while Interborough can’t be reached. The selected tools will stay in this form
+    while you check whether the host is available.
+  </span>
 {/snippet}
 
 {#snippet end()}
