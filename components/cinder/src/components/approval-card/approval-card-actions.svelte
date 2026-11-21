@@ -56,7 +56,10 @@
   const editRegionId = $derived(`${idBase}-edit-region`);
 
   // The note waits behind "Add note"; once opened it stays open, so a typed note never hides.
-  let noteOpen = $state(noteInitiallyOpen);
+  let noteOpen = $state(false);
+  $effect(() => {
+    if (noteInitiallyOpen) noteOpen = true;
+  });
   let rememberResolution = $state(false);
   let editingArguments = $state(false);
   let editedArgumentsText = $state('');
