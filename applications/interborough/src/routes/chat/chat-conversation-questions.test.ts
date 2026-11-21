@@ -213,7 +213,7 @@ describe('a question with choices', () => {
     const { bodies } = serve(ask(CHOICES));
     const { findByRole, findByText } = await open();
     await findByRole('radio', { name: 'staging' });
-    expect(await findByText('Press 1 to 9 to pick a choice.')).not.toBeNull();
+    expect(await findByText('Press 1 to 2 to pick a choice.')).not.toBeNull();
 
     expect(press('9')).toBe(true);
     expect(bodies).toHaveLength(1);

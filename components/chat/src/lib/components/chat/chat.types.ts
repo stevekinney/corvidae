@@ -258,6 +258,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   trailing?: Snippet;
   /** Set while the `trailing` content is a pending ask of the host's own, such as the question a run parked on. The assistant text directly before it is the agent talking to the person, so it keeps its full message line instead of drawing as bare narration. Chat sees an approval or question in its own messages without this. Default `false`. */
   trailingAskPending?: boolean | undefined;
+  /** The tool call ids whose approval the host knows no run waits on any more, though their result still asks (the run stopped, or the approval was decided or expired elsewhere and the history has not caught up). Chat treats each as no longer waiting: the composer draws no approval reminder for it and Send does not read Queue. Default none. */
+  lapsedApprovals?: ReadonlySet<string> | undefined;
   /** The title of the default empty state, drawn with the first-use `EmptyState` of Cinder. Has no effect when a custom `empty` snippet is provided. Default `No messages yet`. */
   emptyTitle?: string | undefined;
   /** One sentence under the empty state title, such as what the agent does. Has no effect when a custom `empty` snippet is provided. Default none. */

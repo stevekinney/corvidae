@@ -115,15 +115,10 @@
   font-weight: 500;
 }
 
-/* Under an approval's heading: the tool it wants to run, and how risky that is. */
-.ib-review-pane__wants {
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  overflow-wrap: anywhere;
-}
-
-.ib-review-pane__code {
-  font-family: var(--cinder-font-mono);
+/* Match the transcript's reading measure for approval details and their actions. */
+.ib-review-pane[data-kind='tool-approval'] {
+  inline-size: 100%;
+  max-inline-size: 47.5rem;
 }
 
 /* The workflow's draft, with the button that copies it beside its title. */
@@ -193,7 +188,6 @@
 }
 
 .ib-review-pane__input,
-.ib-review-pane__decision,
 .ib-review-pane__answer {
   display: flex;
   flex-direction: column;
@@ -210,12 +204,6 @@
   margin: 0;
   font-size: var(--cinder-text-sm);
   overflow-wrap: anywhere;
-}
-
-.ib-review-pane__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2);
 }
 
 /* Cinder's Button reaches a 44px target through its own hit area, so the buttons keep their size. */

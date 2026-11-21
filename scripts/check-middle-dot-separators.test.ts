@@ -7,6 +7,7 @@ import {
   FAILURE_ADVICE,
   findMiddleDotSeparators,
   SCANNED_DIRECTORIES,
+  scannedKindOf,
 } from './check-middle-dot-separators';
 
 // The planted cases spell the character `DOT` and `plant` writes it out, so this file holds no
@@ -57,6 +58,33 @@ describe('middle-dot separators', () => {
         'expect(text).not.toContain(String.fromCodePoint(0xb7));\nChat, Tool runner\n• item\nconst pattern = /\\b7 days/;',
       ),
     ).toEqual([]);
+  });
+
+  // COR-2438: a stylesheet's `content: '\b7'` or `'\0b7 '` draws the dot and slipped past the scan,
+  // which only knew the two-zero form.
+  test.each([
+    ['a one-digit CSS escape', ".meta > * + *::before { content: '\\b7'; }"],
+    ['a padded CSS escape', ".meta > * + *::before { content: '\\0b7 '; }"],
+    ['an escape with alternative text', ".meta::before { content: '\\b7' / ''; }"],
+  ])('reports %s in a stylesheet', (_name, source) => {
+    expect(findMiddleDotSeparators(source, 'stylesheet')).toHaveLength(1);
+    expect(findMiddleDotSeparators(source, scannedKindOf('meta.css'))).toHaveLength(1);
+  });
+
+  test("reports a CSS escape in a component's style block, and not a regular expression in its script", () => {
+    const component = [
+      '<script lang="ts">',
+      '  const week = /\\b7 days/;',
+      '</script>',
+      '<p>{week}</p>',
+      '<style>',
+      "  .meta > * + *::before { content: '\\b7'; }",
+      '</style>',
+    ].join('\n');
+    expect(
+      findMiddleDotSeparators(component, scannedKindOf('meta.svelte')).map((v) => v.line),
+    ).toEqual([6]);
+    expect(findMiddleDotSeparators(component, 'other')).toEqual([]);
   });
 
   test('accepts a line with an allow marker and a reason, on the line or the one above', () => {

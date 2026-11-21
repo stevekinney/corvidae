@@ -1,13 +1,14 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 /* The rail's running marker and summary spinner are Spinner arcs, and its rows sit on Timeline's
  * `rows` variant, so the styles travel with it. */
+@import '../badge/badge.css';
 @import '../spinner/spinner.css';
 @import '../timeline/timeline.css';
 @layer cinder.components {
   /* ========================================
  * TOOL CALL RAIL
  * One turn's tool calls: a rail of one-line rows, the first and last few with the middle folded
- * behind a dashed button, and the calls that failed or need a person always in view. Its rows are
+ * behind a disclosure, and the calls that failed or need a person always in view. Its rows are
  * entries of Timeline's `rows` variant, which draws the marker column and the connector and leaves
  * the content of each row to the rail, because a tool call has no timestamp to lead with.
  * ======================================== */
@@ -227,12 +228,34 @@
 
   .cinder-tool-call-rail__name {
     grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
     min-inline-size: 0;
-    overflow: hidden;
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-medium);
-    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .cinder-tool-call-rail__name-text {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* "Waiting on you" is a warning Badge right after the name (COR-2438). The name and its badge
+     take the name and input columns, so the badge is never cut off, and the key input moves to the
+     result column, which a waiting call leaves empty. */
+  .cinder-tool-call-rail__name > .cinder-badge {
+    flex: none;
+  }
+
+  .cinder-tool-call-rail__name[data-cinder-badged] {
+    grid-column: 1 / 3;
+  }
+
+  .cinder-tool-call-rail__item[data-cinder-status='waiting'] .cinder-tool-call-rail__input {
+    grid-column: 3;
   }
 
   /* Wide: input and result are cells of the row's grid. Narrow: they are one line under the name. */
@@ -388,17 +411,22 @@
     }
   }
 
-  /* What sits under a row: the approval a waiting call is waiting on. */
+  /* What sits under a row: the approval a waiting call is waiting on. It reaches back over the
+     marker column, so it starts where the row's marker starts, the column's own edge, and ends
+     where the rail ends (COR-2438). It does not take the row's extra bleed, which only lets a
+     selected row's tint and ring wrap the marker: with it the card stood 6px outside the column at
+     each end, wider than the messages and the composer. */
   .cinder-tool-call-rail__nested {
-    margin: var(--cinder-space-1) 0;
+    margin: var(--cinder-space-1) 0 var(--cinder-space-1)
+      calc(-1 * var(--_cinder-tool-call-rail-indent));
     min-inline-size: 0;
   }
 
   /* ----------------------------------------
- * A folded group: one dashed button and what it hides, counted from this turn only
+ * A folded group: one disclosure and what it hides, counted from this turn only
  * ---------------------------------------- */
 
-  /* The dashed button sits level with the marker Timeline draws beside it, 0.8125rem down. */
+  /* The disclosure sits level with the marker Timeline draws beside it, 0.8125rem down. */
   .cinder-tool-call-rail__group {
     min-block-size: 1.875rem;
     padding-block-start: 0.0625rem;
@@ -418,13 +446,20 @@
     gap: var(--cinder-space-1);
     block-size: 1.5rem;
     padding: 0 var(--cinder-space-2-5);
-    border: 1px dashed var(--cinder-border-control);
+    border: 0;
     border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    background: transparent;
     color: var(--cinder-text-muted);
     cursor: pointer;
     font: inherit;
     font-weight: var(--cinder-font-semibold);
+  }
+
+  @media (hover: hover) {
+    .cinder-tool-call-rail__more:hover {
+      background: var(--cinder-surface-hover);
+      color: var(--cinder-text-default);
+    }
   }
 
   .cinder-tool-call-rail__more-chevron {
@@ -516,7 +551,8 @@
       padding-block: var(--cinder-space-1-5);
     }
 
-    .cinder-tool-call-rail__name {
+    .cinder-tool-call-rail__name,
+    .cinder-tool-call-rail__name[data-cinder-badged] {
       grid-column: 1;
       grid-row: 1;
     }

@@ -21,7 +21,7 @@ import {
 } from './delivery-verification.ts';
 import { designVerdictPath } from './design-verdict.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
-import { recordMutationIntent } from './execution-state.ts';
+import { acquireDispatch, cancelDispatch, recordMutationIntent } from './execution-state.ts';
 import {
   changedAnswer,
   greenLandingAnswers,
@@ -109,6 +109,58 @@ async function approvedMembers<T extends Partial<DeliverOptions>>(
     verification,
   );
   return { ...base, verification: binding };
+}
+
+/** An issue-only request has no project lease: every member must retain its own authenticated claim. */
+async function approvedIssueOnlyMembers(): Promise<DeliverOptions> {
+  const original = readDeliveryRequest(options.verification.file, options.verification.digest);
+  const request = structuredClone(original);
+  request.operationId = `issue-only-${++operationSequence}`;
+  const identifiers = ['COR-1', 'COR-2'];
+  const claims = await Promise.all(
+    identifiers.map(async (identifier) => {
+      const acquired = await acquireDispatch(verification.state, {
+        resource: `issue:${identifier}`,
+        runId: 'run',
+        ownerId: 'linear:run',
+      });
+      if (!acquired.granted) throw new Error(acquired.reason);
+      return acquired.authority;
+    }),
+  );
+  request.authority = claims[0]!;
+  request.members = identifiers.map((identifier, index) => {
+    const member = structuredClone(original.members[0]!);
+    member.assignment.identity.identifier = identifier;
+    member.assignment.identity.digest = digest(
+      JSON.stringify({
+        ...member.assignment,
+        identity: { ...member.assignment.identity, digest: undefined },
+      }),
+    );
+    member.plan.invalidatedBy.assignment = member.assignment.identity.digest;
+    member.authority = claims[index]!;
+    return member;
+  });
+  const text = JSON.stringify(request);
+  const binding = {
+    ...options.verification,
+    file: join(control, `${request.operationId}.json`),
+    digest: digest(text),
+  };
+  writeFileSync(binding.file, text);
+  await recordMutationIntent(verification.state, request.authority, {
+    operationId: request.operationId,
+    action: 'merge',
+    intentFingerprint: digest(text),
+  });
+  await prepareDeliveryVerification(
+    binding,
+    request.members.map((member) => member.assignment),
+    { route: 'pull-request', action: 'merge' },
+    verification,
+  );
+  return { ...options, project: undefined, verification: binding };
 }
 
 async function initializeCheckout(directory: string): Promise<void> {
@@ -926,6 +978,52 @@ scenarios.describe('run', () => {
       'state COR-10',
     ]);
   });
+
+  scenarios.scenario(
+    'the actual CLI rejects stale and missing issue-only member claims before merging',
+    async () => {
+      const issueOnly = await approvedIssueOnlyMembers();
+      const request = readDeliveryRequest(
+        issueOnly.verification.file,
+        issueOnly.verification.digest,
+      );
+      const stale = request.members[1]?.authority;
+      if (stale === undefined) throw new Error('fixture did not retain the second issue claim');
+      expect(await cancelDispatch(verification.state, stale)).toBe(true);
+      const { partial, record } = seams();
+      options = issueOnly;
+      const issueOnlyArguments = argv(['--json']).filter(
+        (value) => value !== '--project' && value !== 'Widgets',
+      );
+      const staleError = await rejectionOf(run(issueOnlyArguments, partial));
+      expect(String(staleError)).toContain('transitions are revoked');
+      expect(record.merges).toEqual([]);
+
+      const missing = structuredClone(request);
+      missing.operationId = `issue-only-missing-${++operationSequence}`;
+      Reflect.deleteProperty(missing.members[1]!, 'authority');
+      const text = JSON.stringify(missing);
+      const binding = {
+        ...issueOnly.verification,
+        file: join(control, `${missing.operationId}.json`),
+        digest: digest(text),
+      };
+      writeFileSync(binding.file, text);
+      const missingError = await rejectionOf(
+        run(
+          [
+            ...issueOnlyArguments,
+            '--verification-file',
+            binding.file,
+            '--verification-digest',
+            binding.digest,
+          ],
+          seams().partial,
+        ),
+      );
+      expect(String(missingError)).toContain('lacks a member authority');
+    },
+  );
 
   scenarios.scenario(
     'exits 0 with one JSON object for a merge and 1 naming the failed step otherwise',
@@ -1997,7 +2095,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
     }
   });
 
-  scenarios.scenario('--run and --project are required on the command line', async () => {
+  scenarios.scenario('--run is required on the command line', async () => {
     const argv = [
       '--branch',
       BRANCH,
@@ -2013,7 +2111,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
       'd',
     ];
     expect(await rejectionOf(run(argv, {}))).toBeInstanceOf(UsageError);
-    expect(await rejectionOf(run([...argv, '--run', 'run'], {}))).toBeInstanceOf(UsageError);
+    expect(await rejectionOf(run([...argv, '--run', 'run'], {}))).not.toBeInstanceOf(UsageError);
   });
 });
 

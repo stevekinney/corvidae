@@ -60,7 +60,7 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 - `done`: a neutral grey dot, the result after an arrow.
 - `approved`: a green dot, for a call a person approved. `decision` writes what was decided in the person's words, without an arrow (`Approved by you 10:33 AM, $18.50 refunded`); without it the row shows `result` after an arrow like a `done` call.
 - `running`: a spinner in place of the dot, `Running…` in place of a result, and the elapsed time.
-- `waiting`: an amber shield and `Waiting on you`, as its own row.
+- `waiting`: an amber shield and `Waiting on you` as a warning Badge right after the name, at every width, as its own row. What sits under the row (the approval it waits on) bleeds as the row does, so the two share their edges.
 - `expired`: a neutral clock and `Approval expired`, as its own row. An approval deadline is not a tool failure: it carries no danger text and stays available for the nested approval's retry action.
 - `denied`: a prohibition glyph and neutral words. It is not called failed and carries no error block.
 - `interrupted`: a red circled cross and the result in red with no arrow, for a call the run ended on before it answered. Word it by the tool's risk: `Interrupted, didn't finish` for a tool that only reads, `Interrupted, may have run` for one that changes things. It never folds and is never a green or neutral dot.
