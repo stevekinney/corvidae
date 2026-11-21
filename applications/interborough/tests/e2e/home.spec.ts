@@ -250,6 +250,11 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       .getByRole('heading', { level: 2, name: 'Needs attention' })
       .boundingBox();
     expect(listBox!.y).toBeLessThan(attentionTop!.y);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'open reviews link',
+      source: SOURCE,
+    });
   });
 
   test('lists the three system problems, each with one button, and no provider banner (01h, 01i, 01j)', async ({

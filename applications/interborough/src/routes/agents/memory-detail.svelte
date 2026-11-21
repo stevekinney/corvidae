@@ -285,9 +285,11 @@
               ? MEMORY_COPY.correct.edit.submit
               : MEMORY_COPY.correct.edit.retry}</Button
           >
-          <Button variant="secondary" onclick={stopCorrecting}
-            >{MEMORY_COPY.correct.edit.cancel}</Button
-          >
+          <Button
+            variant="secondary"
+            onclick={stopCorrecting}
+            label={MEMORY_COPY.correct.edit.cancel}
+          />
         </div>
       </form>
     {:else}
@@ -306,8 +308,9 @@
             variant="secondary"
             size="sm"
             disabled={governancePending}
-            onclick={() => onShare(memory)}>{MEMORY_COPY.govern.share.action}</Button
-          >
+            onclick={() => onShare(memory)}
+            label={MEMORY_COPY.govern.share.action}
+          />
           <Button
             data-changes
             variant="secondary"
@@ -323,8 +326,9 @@
             variant="danger"
             size="sm"
             disabled={governancePending}
-            onclick={() => onQuarantine(memory)}>{MEMORY_COPY.govern.quarantine.action}</Button
-          >
+            onclick={() => onQuarantine(memory)}
+            label={MEMORY_COPY.govern.quarantine.action}
+          />
         </div>
       </section>
     </details>

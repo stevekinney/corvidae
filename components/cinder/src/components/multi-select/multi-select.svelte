@@ -50,6 +50,7 @@
     direction = 'down',
     sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     size = 'md',
+    appearance,
     class: className,
     'aria-describedby': consumerDescribedBy,
   }: MultiSelectProps<T> = $props();
@@ -474,6 +475,7 @@
       {id}
       class="cinder-_input-frame cinder-multi-select__trigger"
       data-cinder-size={size}
+      data-cinder-appearance={appearance}
       disabled={field.disabled}
       aria-invalid={triggerAriaInvalid}
       aria-describedby={triggerDescribedBy}

@@ -120,8 +120,9 @@
         size="xs"
         loading={retry.isPending}
         loadingStatus={copy.retrying}
-        onclick={() => retry.mutate()}>{copy.retry}</Button
-      >
+        onclick={() => retry.mutate()}
+        label={copy.retry}
+      />
     {:else if status.canEdit && editPath !== undefined}
       {@const target = editPath}
       <Button
@@ -130,8 +131,9 @@
         variant="secondary"
         size="xs"
         href={router.href(target)}
-        onclick={(event) => go(event, target)}>{copy.edit}</Button
-      >
+        onclick={(event) => go(event, target)}
+        label={copy.edit}
+      />
     {/if}
     {#if retryFailure !== null}
       <span class="ib-workflow-trigger__failure" role="alert" data-testid="workflow-trigger-failure"

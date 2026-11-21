@@ -61,7 +61,7 @@ for (const width of WIDTHS) {
     await captureAt(page, width, '/runs/no-such-run', 'not-found');
   });
 
-  test(`Hooks the sign-in cannot read uses the shared layout with a lock and two secondary buttons, at ${width} pixels`, async ({
+  test(`Hooks the sign-in cannot read shows a lock and one Back to Home action, at ${width} pixels`, async ({
     page,
     pageErrors,
   }) => {
@@ -89,8 +89,8 @@ for (const width of WIDTHS) {
     const state = frame.locator('.cinder-empty-state');
     await expect(state.locator('.cinder-empty-state-icon svg.lucide-lock')).toBeVisible();
     await expect(state).not.toContainText('hooks:read');
-    // Row 13a: See your scopes and Back to Home, both secondary, and nothing that asks for access.
-    await expect(frame.getByRole('link', { name: 'See your scopes' })).toBeVisible();
+    // Row 13a with the COR-2451 single-user action.
+    await expect(frame.getByRole('link', { name: 'See your scopes' })).toHaveCount(0);
     await expect(frame.getByRole('link', { name: 'Back to Home' })).toBeVisible();
     await expect(frame.locator('.button-variant-primary')).toHaveCount(0);
     await expect(frame.getByRole('button', { name: /request access/i })).toHaveCount(0);
