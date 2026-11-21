@@ -24,7 +24,7 @@ A panel imports the same component from `@lostgradient/cinder/panel`, beside `mo
 - A changed object or array nests its own differences under its key. An added or removed one shows as a one-line size, such as `{3 keys}` or `[2 items]`.
 - Each row leads with a symbol and a name besides its tint: `+` added, `-` removed, `~` changed and `=` unchanged. A changed entry reads `before → after` on one line.
 - Unchanged entries start collapsed behind a control that names how many it holds.
-- A level renders its first 200 entries; a "Show 200 more" control shows the next 200, and its accessible name gives how many are not shown. Nested levels add up, so a nested level opens by default only while the first render stays under about 900 elements; one that would not starts closed behind a "Show N changes" control, and a level that runs out of budget shows fewer than 200 before its control.
+- A level renders its first 200 entries; a "Show 200 changes" control shows the next 200 (the unchanged entries' control reads "Show 200 more"), and its accessible name gives how many are not shown. Nested levels add up, so a nested level opens by default only while the first render stays under about 900 elements; one that would not starts closed behind a "Show N changes" control, and a level that runs out of budget shows fewer than 200 before its control.
 - Every control is a link-variant `Button` with a chevron, with Button's 44px hit region on a coarse pointer. A comparison of two large values therefore creates a bounded number of elements before anyone asks for more.
 - Identical values render the text "No differences".
 - Pass what `JSON.stringify` accepts. A circular reference, which JSON cannot hold, is walked to `maxDepth` and shows there as one changed entry.

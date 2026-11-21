@@ -77,14 +77,29 @@
     `${unchangedOpen ? 'Hide' : 'Show'} ${unchangedLabel(level.unchanged.length)}`,
   );
 
-  /** The visible words of a paging control: the step only, so the total is not a second count. */
-  function moreLabel(hidden: number): string {
-    return `Show ${formatNumber(Math.min(hidden, JSON_DIFF_PAGE_SIZE))} more`;
+  /** How many entries the next press of a paging control reveals. */
+  function step(hidden: number): number {
+    return Math.min(hidden, JSON_DIFF_PAGE_SIZE);
   }
 
-  /** The accessible name of a paging control: the step, then what the level still holds. */
-  function moreName(hidden: number, noun: string): string {
-    return `${moreLabel(hidden)} ${noun}, ${formatNumber(hidden)} not shown`;
+  /**
+   * The visible words of the changes paging control, in the row's own words ("Show 200 changes",
+   * the render-budget control's "Show 150 changes"): the step only, so the total is not a second
+   * visible count.
+   */
+  function changesLabel(hidden: number): string {
+    const count = step(hidden);
+    return `Show ${formatNumber(count)} ${count === 1 ? 'change' : 'changes'}`;
+  }
+
+  /** The visible words of the unchanged-entries paging control. */
+  function unchangedMoreLabel(hidden: number): string {
+    return `Show ${formatNumber(step(hidden))} more`;
+  }
+
+  /** The accessible name of a paging control: its words, then what the level still holds. */
+  function pagingName(words: string, hidden: number): string {
+    return `${words}, ${formatNumber(hidden)} not shown`;
   }
 </script>
 
@@ -98,10 +113,10 @@
         variant="link"
         size="xs"
         class="cinder-json-diff-viewer__button"
-        aria-label={moreName(hiddenChanges, 'changes')}
+        aria-label={pagingName(changesLabel(hiddenChanges), hiddenChanges)}
         onclick={() => (morePages += 1)}
       >
-        {moreLabel(hiddenChanges)}
+        {changesLabel(hiddenChanges)}
         {#snippet trailingIcon()}<ChevronDown size={12} strokeWidth={2} />{/snippet}
       </Button>
     </li>
@@ -134,10 +149,13 @@
             variant="link"
             size="xs"
             class="cinder-json-diff-viewer__button"
-            aria-label={moreName(hiddenUnchanged, 'unchanged entries')}
+            aria-label={pagingName(
+              `${unchangedMoreLabel(hiddenUnchanged)} unchanged entries`,
+              hiddenUnchanged,
+            )}
             onclick={() => (unchangedPages += 1)}
           >
-            {moreLabel(hiddenUnchanged)}
+            {unchangedMoreLabel(hiddenUnchanged)}
             {#snippet trailingIcon()}<ChevronDown size={12} strokeWidth={2} />{/snippet}
           </Button>
         </li>

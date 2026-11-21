@@ -225,11 +225,13 @@ describe('JsonDiffViewer markers and accessibility', () => {
     const controls = buttons(container);
     // The paging control, the unchanged disclosure and a render-budget control are all present.
     const names = controls.map((button) => button.textContent?.replace(/\s+/g, ' ').trim());
-    expect(names).toContain('Show 50 more');
+    expect(names).toContain('Show 50 changes');
     expect(names).toContain('Show 1 unchanged entry');
     expect(names).toContain('Show 150 changes');
     for (const button of controls) {
       expect(button.classList.contains('cinder-button')).toBe(true);
+      // The viewer's own class reaches the Button, so the stylesheet's selectors match the markup.
+      expect(button.classList.contains('cinder-json-diff-viewer__button')).toBe(true);
       expect(button.classList.contains('button-variant-link')).toBe(true);
       expect(button.classList.contains('button-size-extra-small')).toBe(true);
       expect(button.getAttribute('data-cinder-hit-target')).toBe('44');
@@ -244,9 +246,73 @@ describe('JsonDiffViewer markers and accessibility', () => {
     expect(button).toContain('text-align: start');
     const control = /\.cinder-json-diff-viewer__control\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
     expect(control).toContain('text-align: start');
-    expect(css).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{[^@]*\.cinder-json-diff-viewer__control[^{]*\{\s*padding-block: var\(--cinder-space-3\)/,
-    );
+  });
+
+  describe('room for the 44px hit regions on a coarse pointer', () => {
+    const css = readFileSync(new URL('./json-diff-viewer.css', import.meta.url), 'utf8');
+    // The rule under `@media (any-pointer: coarse)` that adds the margin, selector and all.
+    const rule = /@media \(any-pointer: coarse\)\s*\{\s*([^{}]+?)\s*\{\s*([^}]*)\}/.exec(css);
+    const selector = rule?.[1] ?? '';
+
+    test('is one margin between two stacked controls, under the same media query Button uses', () => {
+      expect(selector).toContain('+');
+      expect(rule?.[2]).toContain('margin-block-start: calc(var(--cinder-space-3) * 2)');
+      // Padding on every control's item or row is what the rule replaced.
+      expect(css).not.toMatch(/padding-block: var\(--cinder-space-3\)/);
+      const buttonCss = readFileSync(new URL('../button/button.css', import.meta.url), 'utf8');
+      expect(buttonCss).toContain('@media (any-pointer: coarse)');
+    });
+
+    test('matches the second of two stacked controls and not a lone control', () => {
+      // One level with 250 changes and one unchanged entry: the paging control, then the unchanged
+      // disclosure directly beneath it.
+      const before: Record<string, number> = { kept: 1 };
+      const after: Record<string, number> = { kept: 1 };
+      for (let index = 0; index < 250; index += 1) {
+        before[`key-${index}`] = index;
+        after[`key-${index}`] = index + 1;
+      }
+      const stacked = render(JsonDiffViewer, { before, after });
+      const controls = Array.from(
+        stacked.container.querySelectorAll<HTMLElement>('.cinder-json-diff-viewer__control'),
+      );
+      expect(controls).toHaveLength(2);
+      expect(controls[0]?.matches(selector)).toBe(false);
+      expect(controls[1]?.matches(selector)).toBe(true);
+      cleanup();
+
+      const lone = render(JsonDiffViewer, { before: { kept: 1, a: 1 }, after: { kept: 1, a: 2 } });
+      const only = requiredInstance(
+        lone.container.querySelector('.cinder-json-diff-viewer__control'),
+        HTMLElement,
+      );
+      expect(only.matches(selector)).toBe(false);
+    });
+
+    test('matches a row holding a closed-level control only beside another control', () => {
+      const run = (offset: number) =>
+        Object.fromEntries(
+          Array.from({ length: 150 }, (_, index) => [`field-${index}`, offset + index]),
+        );
+      const { container } = render(JsonDiffViewer, {
+        before: { runs: [0, 1, 2, 3, 4].map((index) => run(index)) },
+        after: { runs: [0, 1, 2, 3, 4].map((index) => run(index + 1000)) },
+      });
+      const withControl = Array.from(
+        container.querySelectorAll<HTMLElement>(`${ROW}:has(> .cinder-json-diff-viewer__button)`),
+      );
+      // The first run opens whole; the four after it start closed, one under another.
+      expect(withControl).toHaveLength(4);
+      expect(withControl.map((row) => row.matches(selector))).toEqual([false, true, true, true]);
+      // A plain row, with no control, is never matched.
+      const plain = requiredInstance(
+        container.querySelector(
+          `${ROW}[data-cinder-diff-kind="changed"] > .cinder-json-diff-viewer__value`,
+        ),
+        HTMLElement,
+      ).parentElement;
+      expect(plain?.matches(selector)).toBe(false);
+    });
   });
 
   test('a very long key wraps inside its column instead of widening the row', () => {
@@ -324,6 +390,9 @@ describe('JsonDiffViewer identical values', () => {
     expect(empty.textContent?.trim()).toBe('No differences');
     expect(empty.getAttribute('data-cinder-layout')).toBe('inline');
     expect(empty.getAttribute('data-cinder-size')).toBe('compact');
+    // The done kind is what gives the inline layout its disc.
+    expect(empty.getAttribute('data-cinder-kind')).toBe('done');
+    expect(empty.querySelector('.cinder-empty-state-icon')).not.toBeNull();
     expect(container.querySelector(ROW)).toBeNull();
     expect(buttons(container)).toHaveLength(0);
   });
@@ -377,19 +446,21 @@ describe('JsonDiffViewer bounded rendering', () => {
     const { before, after } = bigObjects();
     const { container } = render(JsonDiffViewer, { before, after });
 
-    const more = buttonNamedBy(container, 'Show 200 more changes, 11,800 not shown');
-    // The visible words are the step only; the total lives in the accessible name.
-    expect(more.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show 200 more');
+    const more = buttonNamedBy(container, 'Show 200 changes, 11,800 not shown');
+    // The visible words are the row's own words and the step only; the total lives in the name.
+    const words = more.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    expect(words).toBe('Show 200 changes');
+    expect(words.length).toBeLessThanOrEqual(16);
     await fireEvent.click(more);
     expect(rowsOfKind(container, 'changed')).toHaveLength(400);
-    buttonNamedBy(container, 'Show 200 more changes, 11,600 not shown');
+    buttonNamedBy(container, 'Show 200 changes, 11,600 not shown');
   });
 
   test('names the last step by what remains, not by a full page', async () => {
     const before = Array.from({ length: 250 }, (_, index) => index);
     const after = before.map((value) => value + 1);
     const { container } = render(JsonDiffViewer, { before, after });
-    await fireEvent.click(buttonNamedBy(container, 'Show 50 more changes, 50 not shown'));
+    await fireEvent.click(buttonNamedBy(container, 'Show 50 changes, 50 not shown'));
     expect(rowsOfKind(container, 'changed')).toHaveLength(250);
     expect(buttons(container)).toHaveLength(0);
   });
@@ -456,7 +527,7 @@ describe('JsonDiffViewer bounded rendering', () => {
     expect(topRows.length).toBeLessThan(200);
     const more = requiredInstance(
       buttons(container).find((button) =>
-        /^Show 200 more changes, [\d,]+ not shown$/.test(button.getAttribute('aria-label') ?? ''),
+        /^Show 200 changes, [\d,]+ not shown$/.test(button.getAttribute('aria-label') ?? ''),
       ) ?? null,
       HTMLButtonElement,
     );
@@ -480,7 +551,7 @@ describe('JsonDiffViewer bounded rendering', () => {
     const after = { list: Array.from({ length: 300 }, (_, index) => index + 1) };
     const { container } = render(JsonDiffViewer, { before, after });
     expect(leafRowsOfKind(container, 'changed')).toHaveLength(200);
-    buttonNamedBy(container, 'Show 100 more changes, 100 not shown');
+    buttonNamedBy(container, 'Show 100 changes, 100 not shown');
   });
 });
 

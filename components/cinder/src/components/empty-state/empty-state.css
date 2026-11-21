@@ -8,6 +8,9 @@
    * so the content sits at the optical centre. `min-block-size: 100%` makes it fill a region of
    * known height; in an auto-height parent it is ignored and the padding alone spaces it. */
   .cinder-empty-state {
+    /* Prose, in the interface's own face, whatever it is placed inside: a state set in a
+     * monospace well (a JSON or source viewer) would otherwise inherit that font. */
+    font-family: var(--cinder-font-sans);
     display: flex;
     flex-direction: column;
     align-items: center;

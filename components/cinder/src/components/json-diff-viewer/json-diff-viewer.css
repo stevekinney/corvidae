@@ -107,13 +107,19 @@
   }
 
   /* On a coarse pointer each control's 44px hit region is Button's pseudo-element, which takes no
-   * layout and reaches past the text by half the difference. Stacked controls therefore keep room
-   * for it, so one control's region never takes another's taps: a control's item and a row that
-   * holds a control pad by that reach above and below. */
+   * layout and reaches past the text by half the difference. Button lets a region overlap what is
+   * around it invisibly, so room is added only where it would take another control's taps: between
+   * two stacked controls, each a control's item or a row that holds one. A lone control, and a
+   * tinted row beside plain rows, keep their own height. */
   @media (any-pointer: coarse) {
-    .cinder-json-diff-viewer__control,
-    .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button) {
-      padding-block: var(--cinder-space-3);
+    .cinder-json-diff-viewer__control + .cinder-json-diff-viewer__control,
+    .cinder-json-diff-viewer__control
+      + .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button),
+    .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button)
+      + .cinder-json-diff-viewer__control,
+    .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button)
+      + .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button) {
+      margin-block-start: calc(var(--cinder-space-3) * 2);
     }
   }
 
