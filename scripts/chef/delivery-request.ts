@@ -76,6 +76,7 @@ import {
 import {
   batchVerificationPlanDigest,
   readDeliveryRequest,
+  validateFrozenDeliveryMember,
   type DeliveryMember,
   type DeliveryRequest,
 } from './delivery-completion.ts';
@@ -526,6 +527,16 @@ export async function prepare(
       }
       const current = membersOf(accepted, options, plan, kept, authorities);
       const pending = readPending(pendingFile, fingerprint, dependencies.now());
+      const frozen = pending.members ?? current;
+      const frozenAuthority = authorities?.[0] ?? authority;
+      if (frozenAuthority === undefined)
+        throw new UsageError('delivery operation did not retain an authority and frozen members.');
+      for (const member of frozen)
+        validateFrozenDeliveryMember(member, {
+          repository,
+          base: options.base,
+          authority: frozenAuthority,
+        });
       if (
         pending.changed ||
         (pending.members !== undefined &&
@@ -534,7 +545,7 @@ export async function prepare(
         throw new UsageError(
           'the accepted batch changed after its operation freeze; push a new head and prepare a fresh identity.',
         );
-      members = pending.members ?? current;
+      members = frozen;
       authority = authorities?.[0] ?? authority;
       if (pending.members === undefined) {
         mkdirSync(directory, { recursive: true });
@@ -547,7 +558,14 @@ export async function prepare(
   );
   if (members === undefined || authority === undefined)
     throw new UsageError('delivery operation did not retain an authority and frozen members.');
+  const frozenMembers = members;
   const deliveryAuthority = authority;
+  for (const member of frozenMembers)
+    validateFrozenDeliveryMember(member, {
+      repository,
+      base: options.base,
+      authority: deliveryAuthority,
+    });
 
   const identityInput = {
     repository,
@@ -555,7 +573,7 @@ export async function prepare(
     base: options.base,
     candidate: options.head,
     integrationTree,
-    verificationPlanDigest: batchVerificationPlanDigest(members),
+    verificationPlanDigest: batchVerificationPlanDigest(frozenMembers),
     workflow: EVIDENCE_WORKFLOW,
     workflowPath: EVIDENCE_WORKFLOW_PATH,
     workflowRevision: options.head,
@@ -578,7 +596,7 @@ export async function prepare(
     async () =>
       withDeliveryAuthorityFences(
         dependencies.state,
-        [deliveryAuthority, ...members.flatMap((member) => member.authority ?? [])],
+        [deliveryAuthority, ...frozenMembers.flatMap((member) => member.authority ?? [])],
         async () => {
           const found = await dependencies.provider.findRuns(identity);
           if (found.length > 1)

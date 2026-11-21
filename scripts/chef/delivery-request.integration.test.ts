@@ -5,7 +5,11 @@ import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import type { CiEvidenceProvider, CiEvidenceRequest } from './ci-evidence.ts';
 import { branchRunner } from './deliver.test-support.ts';
-import { batchVerificationPlanDigest, readDeliveryRequest } from './delivery-completion.ts';
+import {
+  batchVerificationPlanDigest,
+  readDeliveryRequest,
+  type DeliveryMember,
+} from './delivery-completion.ts';
 import {
   check,
   EVIDENCE_JOB,
@@ -489,6 +493,39 @@ scenarios.describe('prepare', () => {
   });
 
   scenarios.scenario(
+    'does not dispatch when an issue-only claim is revoked after the assignment snapshot',
+    async () => {
+      const setup = await harness({}, { project: undefined });
+      const authorities = await Promise.all(
+        setup.options.issues.map(async (identifier) => {
+          const held = await acquireDispatch(setup.state, {
+            resource: `issue:${identifier}`,
+            runId: 'run',
+            ownerId: 'linear:run',
+          });
+          if (!held.granted) throw new Error(held.reason);
+          return held.authority;
+        }),
+      );
+      const revoked = authorities[1];
+      if (revoked === undefined) throw new Error('fixture did not acquire both issue claims');
+      let revoke: Promise<boolean> | undefined;
+      setup.dependencies.readAssignments = async () => {
+        // Queue the revocation behind the assignment snapshot's operation lock. It wins before
+        // the subsequent dispatch fence takes the member claims, so no provider transport may run.
+        revoke = cancelDispatch(setup.state, revoked);
+        return {
+          assignments: [assignmentFor('COR-1', ['AC1', 'AC2']), assignmentFor('COR-2', ['AC1'])],
+          refusals: [],
+        };
+      };
+      expect(String(await rejectionOf(setup.prepared()))).toContain('transitions are revoked');
+      expect(await revoke).toBe(true);
+      expect(setup.dispatched).toEqual([]);
+    },
+  );
+
+  scenarios.scenario(
     'refuses ambiguous provider reads without enqueueing another run',
     async () => {
       const setup = await harness({
@@ -594,6 +631,48 @@ scenarios.describe('prepare', () => {
       });
       expect(String(await rejectionOf(unleased.prepared()))).toContain('live lease');
       for (const refused of [blocked, dependent, unleased]) expect(refused.dispatched).toEqual([]);
+    },
+  );
+
+  scenarios.scenario(
+    'refuses an incomplete source acceptance request before any provider read',
+    async () => {
+      let providerReads = 0;
+      let savedRun = true;
+      const incomplete = assignmentFor('COR-1', ['AC1', 'AC2']);
+      const setup = await harness({
+        readAssignments: async () => ({
+          assignments: [incomplete, assignmentFor('COR-2', ['AC1'])],
+          refusals: [],
+        }),
+        provider: {
+          findRuns: async () => {
+            providerReads += 1;
+            return savedRun ? [{ state: 'pending', id: LANDING_RUN_ID, attempt: 1 }] : [];
+          },
+        },
+      });
+      const initial = await setup.prepared();
+      expect(initial.dispatched).toBe(false);
+      const pendingFile = join(
+        sandbox,
+        'tmp/chef/requests',
+        `delivery-${BRANCH}-${HEAD.slice(0, 12)}.pending.json`,
+      );
+      const pending = JSON.parse(readFileSync(pendingFile, 'utf8')) as {
+        members: DeliveryMember[];
+      };
+      pending.members[0]!.plan.obligations = pending.members[0]!.plan.obligations.filter(
+        (obligation) => obligation.criterionId !== 'AC1',
+      );
+      writeFileSync(pendingFile, JSON.stringify(pending));
+      providerReads = 0;
+      savedRun = false;
+      expect(String(await rejectionOf(setup.prepared()))).toContain(
+        'unverified acceptance criteria',
+      );
+      expect(providerReads).toBe(0);
+      expect(setup.dispatched).toEqual([]);
     },
   );
 

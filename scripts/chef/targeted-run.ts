@@ -290,7 +290,7 @@ export interface VerificationBinding {
 }
 
 /** Why `binding` is not a well-formed one, or `undefined` when it is. */
-export function bindingProblem(binding: VerificationBinding): string | undefined {
+function bindingProblem(binding: VerificationBinding): string | undefined {
   if (!/^[0-9a-f]{64}$/.test(binding.request))
     return '--verification-request must be a SHA-256 request key.';
   if (!/^[0-9a-f]{64}$/.test(binding.plan)) return '--verification-plan must be a SHA-256 digest.';

@@ -143,21 +143,20 @@ function absolute(path: string | undefined): string | undefined {
 async function leaseRefusal(
   options: DeliverOptions,
   partial: Partial<DeliverDependencies>,
+  project: string | undefined = options.project,
 ): Promise<string | undefined> {
   if (partial.readLease === undefined) return 'no lease reader was provided.';
-  if (options.project === undefined) return undefined;
+  if (project === undefined) return undefined;
   let lease: LeaseReading | null;
   try {
-    lease = await partial.readLease(options.project);
+    lease = await partial.readLease(project);
   } catch (error) {
-    return `the lease of ${options.project} could not be read: ${error instanceof Error ? error.message : String(error)}`;
+    return `the lease of ${project} could not be read: ${error instanceof Error ? error.message : String(error)}`;
   }
-  if (lease === null)
-    return `${options.project} has no lease; run ${options.run} does not hold it.`;
+  if (lease === null) return `${project} has no lease; run ${options.run} does not hold it.`;
   if (lease.run !== options.run)
-    return `${options.project} is leased to run ${lease.run}, not run ${options.run}.`;
-  if (!lease.live)
-    return `run ${options.run}'s lease on ${options.project} is released or expired.`;
+    return `${project} is leased to run ${lease.run}, not run ${options.run}.`;
+  if (!lease.live) return `run ${options.run}'s lease on ${project} is released or expired.`;
   return undefined;
 }
 
@@ -259,7 +258,10 @@ export async function deliver(
   if (!existsSync(options.worktree))
     return fail('worktree', 'delivery worktree is absent before closeout completed');
   // lease: only the coordinator run that holds the project's lease lands through here.
-  const leaseProblem = await leaseRefusal(options, partial);
+  const authorityProject = verification.request.authority.resource.startsWith('project:')
+    ? verification.request.authority.resource.slice('project:'.length)
+    : undefined;
+  const leaseProblem = await leaseRefusal(options, partial, options.project ?? authorityProject);
   if (leaseProblem !== undefined) return fail('lease', leaseProblem);
   // merge
   const usageFields =

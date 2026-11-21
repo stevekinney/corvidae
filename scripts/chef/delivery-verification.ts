@@ -15,6 +15,7 @@ import {
   recordMutationResult,
   registerDeliveryApproval,
   requireAuthority,
+  withProviderTransitionLock,
   type ExecutionStateStore,
 } from './execution-state.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
@@ -71,6 +72,31 @@ function requireDeliveryAuthorities(state: ExecutionStateStore, request: Deliver
   for (const member of request.members) {
     if (member.authority !== undefined) requireAuthority(state, member.authority);
   }
+}
+
+/** Holds every approved authority in a stable order for one consequential provider transition. */
+export async function withDeliveryAuthorityFences<T>(
+  state: ExecutionStateStore,
+  request: DeliveryRequest,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const authorities = [
+    request.authority,
+    ...request.members.flatMap((member) => member.authority ?? []),
+  ];
+  const ordered = [
+    ...new Map(authorities.map((authority) => [authority.resource, authority])).values(),
+  ].toSorted((left, right) => left.resource.localeCompare(right.resource));
+  const enter = async (index: number): Promise<T> => {
+    if (index === ordered.length) return operation();
+    const authority = ordered[index];
+    if (authority === undefined) throw new Error('delivery authority fence is empty');
+    return withProviderTransitionLock(state, authority.resource, async () => {
+      requireAuthority(state, authority);
+      return enter(index + 1);
+    });
+  };
+  return enter(0);
 }
 
 function isCommit(value: unknown): value is string {
