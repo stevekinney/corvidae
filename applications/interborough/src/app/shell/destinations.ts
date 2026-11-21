@@ -38,6 +38,9 @@ import { pluginIcon } from './plugin-icons.ts';
 /** The focus region of a ListDetail list: its keys act only there. */
 export const LIST_DETAIL_REGION = 'list-detail';
 
+/** The focus region of a chat's composer, where Enter sends (listed on the map, handled by Chat). */
+const CHAT_COMPOSER_REGION = 'chat-composer';
+
 /**
  * The sections the sidebar groups its destinations in: Home on its own at the top, then Work,
  * Build and System, which sits at the bottom of the column.
@@ -257,6 +260,14 @@ export function registerShellShortcuts(
       group: SHORTCUT_COPY.chatGroup,
       scope: 'global',
       handler: () => actions.navigate(NEW_CHAT_PATH),
+    }),
+    // Enter sends from a chat's composer. The composer handles it; the map only lists it, since no
+    // hint under the composer says so (COR-2438).
+    registry.describe({
+      keys: ['Enter'],
+      label: SHORTCUT_COPY.sendMessage,
+      group: SHORTCUT_COPY.chatGroup,
+      scope: { region: CHAT_COMPOSER_REGION },
     }),
     ...DESTINATIONS.map((destination) =>
       registry.register({

@@ -11,6 +11,7 @@ import {
   type ProviderEvidenceTransport,
   type VerificationRequest,
 } from './evidence.ts';
+import type { Authority } from './execution-state.ts';
 import {
   digest,
   gateAssignment,
@@ -27,6 +28,8 @@ export interface DeliveryPlan extends Omit<VerificationPlan, 'obligations'> {
 /** Each member retains its own criterion namespace and independently approved evidence plan. */
 export interface DeliveryMember {
   assignment: Assignment;
+  /** Issue-only batches retain the actual held authority for this member. */
+  authority?: Authority;
   plan: DeliveryPlan;
   providerRuns: VerificationRequest['providerRuns'];
   track: boolean;
@@ -76,6 +79,75 @@ const plain = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const strings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.trim() !== '');
+const validAuthority = (value: unknown): value is Authority =>
+  plain(value) &&
+  typeof value['resource'] === 'string' &&
+  value['resource'] !== '' &&
+  typeof value['runId'] === 'string' &&
+  value['runId'] !== '' &&
+  typeof value['ownerId'] === 'string' &&
+  value['ownerId'] !== '' &&
+  Number.isSafeInteger(value['generation']) &&
+  Number(value['generation']) >= 1;
+
+/** Structural member proof that is valid before a provider run exists. */
+export function validateFrozenDeliveryMember(
+  member: DeliveryMember,
+  expected: Pick<DeliveryRequest, 'repository' | 'base' | 'authority'>,
+): void {
+  if (
+    !plain(member) ||
+    !plain(member.assignment) ||
+    !gateAssignment(member.assignment, 'held').dispatchable ||
+    !plain(member.plan) ||
+    !Array.isArray(member.plan.obligations) ||
+    !plain(member.plan.invalidatedBy) ||
+    !Array.isArray(member.providerRuns) ||
+    typeof member.track !== 'boolean' ||
+    typeof member.requestedClose !== 'boolean' ||
+    !strings(member.changes) ||
+    !strings(member.blockers)
+  )
+    throw new EvidenceRequestError('delivery request has malformed member');
+  const { identity, criteria } = member.assignment;
+  if (
+    member.authority !== undefined &&
+    (!validAuthority(member.authority) ||
+      member.authority.resource !== `issue:${identity.identifier}` ||
+      member.authority.runId !== expected.authority.runId ||
+      member.authority.ownerId !== expected.authority.ownerId)
+  )
+    throw new EvidenceRequestError('delivery member has invalid issue authority');
+  if (
+    identity.repository !== expected.repository ||
+    identity.base !== expected.base ||
+    identity.digest !== member.plan.invalidatedBy.assignment
+  )
+    throw new EvidenceRequestError('delivery member has mismatched assignment identity');
+  if (
+    member.plan.obligations.some(
+      (obligation) =>
+        !['pre-integration', 'completion'].includes(obligation.phase) ||
+        !(
+          criteria.some((criterion) => criterion.id === obligation.criterionId) ||
+          (member.assignment.classification === 'no-behavior' &&
+            criteria.length === 0 &&
+            obligation.criterionId === 'STATIC')
+        ),
+    )
+  )
+    throw new EvidenceRequestError('delivery member has an unbound criterion or phase');
+  if (
+    member.assignment.classification === 'behavior' &&
+    (criteria.length === 0 ||
+      criteria.some(
+        (criterion) =>
+          !member.plan.obligations.some((obligation) => obligation.criterionId === criterion.id),
+      ))
+  )
+    throw new EvidenceRequestError('delivery member has unverified acceptance criteria');
+  validateEvidenceObligations(member.plan);
+}
 
 /** Parse a digest-pinned contract before provider reads; its fields request proof, never supply it. */
 export function readDeliveryRequest(file: string, expectedDigest: string): DeliveryRequest {
@@ -118,21 +190,10 @@ export function readDeliveryRequest(file: string, expectedDigest: string): Deliv
     throw new EvidenceRequestError('delivery request has invalid owned worktree');
   const identifiers = new Set<string>();
   for (const member of request.members) {
-    if (
-      !plain(member) ||
-      !plain(member.assignment) ||
-      !gateAssignment(member.assignment, 'held').dispatchable ||
-      !plain(member.plan) ||
-      !Array.isArray(member.plan.obligations) ||
-      !plain(member.plan.invalidatedBy) ||
-      !Array.isArray(member.providerRuns) ||
-      typeof member.track !== 'boolean' ||
-      typeof member.requestedClose !== 'boolean' ||
-      !strings(member.changes) ||
-      !strings(member.blockers)
-    )
+    validateFrozenDeliveryMember(member, request);
+    if (!Array.isArray(member.providerRuns) || !plain(member.assignment))
       throw new EvidenceRequestError('delivery request has malformed member');
-    const { identity, criteria } = member.assignment;
+    const { identity } = member.assignment;
     if (
       (member.requestedClose && !member.track) ||
       (member.track && !/^[A-Z][A-Z0-9]*-[1-9]\d*$/.test(identity.identifier))
@@ -148,29 +209,6 @@ export function readDeliveryRequest(file: string, expectedDigest: string): Deliv
         'delivery member has duplicate or mismatched assignment identity',
       );
     identifiers.add(identity.identifier);
-    if (
-      member.plan.obligations.some(
-        (obligation) =>
-          !['pre-integration', 'completion'].includes(obligation.phase) ||
-          !(
-            criteria.some((criterion) => criterion.id === obligation.criterionId) ||
-            (member.assignment.classification === 'no-behavior' &&
-              criteria.length === 0 &&
-              obligation.criterionId === 'STATIC')
-          ),
-      )
-    )
-      throw new EvidenceRequestError('delivery member has an unbound criterion or phase');
-    if (
-      member.assignment.classification === 'behavior' &&
-      (criteria.length === 0 ||
-        criteria.some(
-          (criterion) =>
-            !member.plan.obligations.some((obligation) => obligation.criterionId === criterion.id),
-        ))
-    )
-      throw new EvidenceRequestError('delivery member has unverified acceptance criteria');
-    validateEvidenceObligations(member.plan);
     const mapped = new Set(member.providerRuns.map((run) => run.obligation));
     validateVerificationRequest({
       ...request,
@@ -183,6 +221,11 @@ export function readDeliveryRequest(file: string, expectedDigest: string): Deliv
       providerRuns: member.providerRuns,
     });
   }
+  const issueOnly = request.authority.resource.startsWith('issue:');
+  if (issueOnly && request.members.some((member) => member.authority === undefined))
+    throw new EvidenceRequestError('issue-only delivery request lacks a member authority');
+  if (!issueOnly && request.members.some((member) => member.authority !== undefined))
+    throw new EvidenceRequestError('project delivery request has member authorities');
   return request;
 }
 

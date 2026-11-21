@@ -77,7 +77,7 @@ function mount(
     reload?: () => Promise<boolean>;
     locked?: boolean;
     onBusyChange?: (busy: boolean) => void;
-    onApplied?: () => void;
+    onApplied?: (label: string) => void;
   } = {},
 ) {
   const reloads: number[] = [];
@@ -141,7 +141,7 @@ async function modelsListed(): Promise<void> {
 
 const picker = (container: HTMLElement): HTMLButtonElement => listboxTrigger(container);
 
-/** The model the picker shows, by the words it is listed with: a model's own name in these tests. */
+/** The model label the picker shows. */
 const shownModel = (container: HTMLElement) => shownLabel(container);
 
 const chooseModel = (container: HTMLElement, model: string) => chooseOption(container, model);
@@ -152,8 +152,8 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: null });
 
     await modelsListed();
-    expect(await optionLabels(container)).toEqual(['claude-sonnet-5', 'claude-haiku-4-5']);
-    expect(shownModel(container)).toBe('claude-sonnet-5');
+    expect(await optionLabels(container)).toEqual(['Claude Sonnet 5', 'Claude Haiku 4.5']);
+    expect(shownModel(container)).toBe('Claude Sonnet 5');
   });
 
   test('shows a model the agent’s cost budget cannot count as disabled, and says why', async () => {
@@ -162,8 +162,8 @@ describe('which models the picker offers', () => {
 
     await modelsListed();
     expect(await optionLabels(container)).toEqual([
-      'claude-sonnet-5',
-      `claude-haiku-4-5 (${COPY.unpriced})`,
+      'Claude Sonnet 5',
+      `Claude Haiku 4.5 (${COPY.unpriced})`,
     ]);
     expect(await optionDisabled(container)).toEqual([false, true]);
   });
@@ -174,8 +174,8 @@ describe('which models the picker offers', () => {
 
     await modelsListed();
     expect(await optionLabels(container)).toEqual([
-      'claude-sonnet-5',
-      `claude-haiku-4-5 (${COPY.policyDenied})`,
+      'Claude Sonnet 5',
+      `Claude Haiku 4.5 (${COPY.policyDenied})`,
     ]);
     expect(await optionDisabled(container)).toEqual([false, true]);
   });
@@ -186,8 +186,8 @@ describe('which models the picker offers', () => {
 
     await modelsListed();
     expect(await optionLabels(container)).toEqual([
-      'claude-sonnet-5',
-      `claude-haiku-4-5 (${COPY.policyDenied})`,
+      'Claude Sonnet 5',
+      `Claude Haiku 4.5 (${COPY.policyDenied})`,
     ]);
   });
 
@@ -196,7 +196,7 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: { provider: 'anthropic', model: 'claude-haiku-4-5' } });
 
     await modelsListed();
-    expect(shownModel(container)).toBe('claude-haiku-4-5');
+    expect(shownModel(container)).toBe('Claude Haiku 4.5');
   });
 
   test('is a ghost listbox that names the setting before the model', async () => {
@@ -227,7 +227,7 @@ describe('which models the picker offers', () => {
     await modelsAnswered(client);
 
     // A select with one model to show opens to nothing, so it only shows the model.
-    expect(shownModel(container)).toBe('claude-sonnet-5');
+    expect(shownModel(container)).toBe('Claude Sonnet 5');
     expect(picker(container).disabled).toBe(true);
   });
 
@@ -237,7 +237,7 @@ describe('which models the picker offers', () => {
 
     await modelsListed();
 
-    expect(shownModel(container)).toBe('claude-sonnet-5');
+    expect(shownModel(container)).toBe('Claude Sonnet 5');
     expect(picker(container).disabled).toBe(true);
   });
 
@@ -264,13 +264,13 @@ describe('which models the picker offers', () => {
     const events: string[] = [];
     const { container } = mount({
       onBusyChange: (busy) => events.push(busy ? 'busy' : 'idle'),
-      onApplied: () => events.push('applied'),
+      onApplied: (label) => events.push(label),
     });
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
-    await waitFor(() => expect(events).toEqual(['busy', 'applied', 'idle']));
+    await waitFor(() => expect(events).toEqual(['busy', 'Claude Haiku 4.5', 'idle']));
   });
 
   test('shows a session’s model that the agent no longer lists, so the picker never shows another', async () => {
@@ -278,7 +278,7 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: { provider: 'anthropic', model: 'claude-retired-1' } });
 
     await modelsListed();
-    expect(shownModel(container)).toBe('claude-retired-1');
+    expect(shownModel(container)).toBe('Claude Retired 1');
     const disabled = await optionDisabled(container);
     expect(disabled[0]).toBe(true);
   });
@@ -288,7 +288,7 @@ describe('which models the picker offers', () => {
     const { container } = mount({ current: { provider: null, model: 'claude-haiku-4-5' } });
 
     await modelsListed();
-    expect(shownModel(container)).toBe('claude-haiku-4-5');
+    expect(shownModel(container)).toBe('Claude Haiku 4.5');
   });
 
   test('says the model is the agent’s default when the session has none and the agent names none', async () => {
@@ -309,7 +309,7 @@ describe('choosing a model', () => {
     });
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     await waitFor(() => expect(served.callsTo('bureau.contexts.steer')).toHaveLength(1));
     const params = served.callsTo('bureau.contexts.steer')[0]?.params;
@@ -321,7 +321,7 @@ describe('choosing a model', () => {
     expect(typeof params?.['commandId']).toBe('string');
     // The session is read again so the page agrees with the Bureau, and the choice stays.
     await waitFor(() => expect(reloads).toHaveLength(1));
-    expect(shownModel(container)).toBe('claude-haiku-4-5');
+    expect(shownModel(container)).toBe('Claude Haiku 4.5');
     expect(container.textContent).not.toContain(COPY.fault);
   });
 
@@ -330,10 +330,10 @@ describe('choosing a model', () => {
     const { container, reloads } = mount({ afterReload: { current: HAIKU_NAME, revision: 4 } });
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     await waitFor(() => expect(reloads).toHaveLength(1));
-    expect(shownModel(container)).toBe('claude-haiku-4-5');
+    expect(shownModel(container)).toBe('Claude Haiku 4.5');
   });
 
   test('keeps an admitted choice on screen when the session cannot be read again', async () => {
@@ -341,10 +341,10 @@ describe('choosing a model', () => {
     const { container } = mount({ reload: async () => false });
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     await waitFor(() => expect(picker(container).disabled).toBe(false));
-    expect(shownModel(container)).toBe('claude-haiku-4-5');
+    expect(shownModel(container)).toBe('Claude Haiku 4.5');
   });
 
   test('reads the session again and shows the model it has now when the switch was refused as stale', async () => {
@@ -362,12 +362,12 @@ describe('choosing a model', () => {
       afterReload: { current: { provider: 'anthropic', model: 'claude-sonnet-4-6' }, revision: 2 },
     });
     await modelsListed();
-    expect(shownModel(container)).toBe('claude-sonnet-5');
+    expect(shownModel(container)).toBe('Claude Sonnet 5');
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     expect(await findByText(COPY.staleRevision)).not.toBeNull();
-    await waitFor(() => expect(shownModel(container)).toBe('claude-sonnet-4-6'));
+    await waitFor(() => expect(shownModel(container)).toBe('Claude Sonnet 4.6'));
     expect(reloads).toHaveLength(1);
   });
 
@@ -410,10 +410,10 @@ describe('choosing a model', () => {
       const { container, reloads, findByText } = mount();
       await modelsListed();
 
-      await chooseModel(container, 'claude-haiku-4-5');
+      await chooseModel(container, 'Claude Haiku 4.5');
 
       expect(await findByText(copy)).not.toBeNull();
-      await waitFor(() => expect(shownModel(container)).toBe('claude-sonnet-5'));
+      await waitFor(() => expect(shownModel(container)).toBe('Claude Sonnet 5'));
       // Only a stale revision reads the session again.
       expect(reloads).toHaveLength(0);
     });
@@ -432,11 +432,11 @@ describe('choosing a model', () => {
     const { container, reloads, findByText } = mount();
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     expect(await findByText(reason)).not.toBeNull();
     expect(container.textContent).not.toContain(COPY.fault);
-    await waitFor(() => expect(shownModel(container)).toBe('claude-sonnet-5'));
+    await waitFor(() => expect(shownModel(container)).toBe('Claude Sonnet 5'));
     expect(reloads).toHaveLength(0);
     expect(picker(container).disabled).toBe(false);
   });
@@ -452,14 +452,14 @@ describe('choosing a model', () => {
     });
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     expect(await findByText(COPY.fault)).not.toBeNull();
     expect(COPY.fault).not.toContain('keeps');
     await waitFor(() => expect(reloads).toHaveLength(1));
     // The Bureau had taken the switch before the answer was lost, and the picker shows it.
     await waitFor(() => expect(picker(container).disabled).toBe(false));
-    expect(shownModel(container)).toBe('claude-haiku-4-5');
+    expect(shownModel(container)).toBe('Claude Haiku 4.5');
   });
 
   test('shows the previous model after a failed request when the session still has it', async () => {
@@ -473,11 +473,11 @@ describe('choosing a model', () => {
     });
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     expect(await findByText(COPY.fault)).not.toBeNull();
     await waitFor(() => expect(reloads).toHaveLength(1));
-    await waitFor(() => expect(shownModel(container)).toBe('claude-sonnet-5'));
+    await waitFor(() => expect(shownModel(container)).toBe('Claude Sonnet 5'));
   });
 
   test('retries a command that failed under the same identifier, so the Bureau never applies it twice', async () => {
@@ -492,10 +492,10 @@ describe('choosing a model', () => {
     const { container, findByText } = mount();
     await modelsListed();
 
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
     await findByText(COPY.fault);
     await waitFor(() => expect(picker(container).disabled).toBe(false));
-    await chooseModel(container, 'claude-haiku-4-5');
+    await chooseModel(container, 'Claude Haiku 4.5');
 
     await waitFor(() => expect(served.callsTo('bureau.contexts.steer')).toHaveLength(2));
     const [first, second] = served.callsTo('bureau.contexts.steer');

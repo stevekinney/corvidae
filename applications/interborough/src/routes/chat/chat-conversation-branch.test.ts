@@ -365,7 +365,7 @@ describe('the model picker in a session’s composer', () => {
     await findByText('Second answer');
 
     await waitFor(() => expect(container.querySelector('[role="combobox"]') === null).toBe(false));
-    expect(shownLabel(container, 'weft-chat-model')).toBe('claude-haiku-4-5');
+    expect(shownLabel(container, 'weft-chat-model')).toBe('Claude Haiku 4.5');
     expect(served.calls.find((call) => call.method === 'bureau.agents.models')?.params).toEqual({
       agentName: 'assistant',
     });
@@ -394,9 +394,9 @@ describe('the model picker in a session’s composer', () => {
     const { container, findByText } = mount();
     await findByText('Second answer');
     await waitFor(() => expect(container.querySelector('[role="combobox"]') === null).toBe(false));
-    expect(shownLabel(container, 'weft-chat-model')).toBe('claude-sonnet-5');
+    expect(shownLabel(container, 'weft-chat-model')).toBe('Claude Sonnet 5');
 
-    await chooseOption(container, 'claude-haiku-4-5', 'weft-chat-model');
+    await chooseOption(container, 'Claude Haiku 4.5', 'weft-chat-model');
 
     await waitFor(() =>
       expect(served.calls.filter((call) => call.method === 'bureau.contexts.steer')).toHaveLength(
@@ -406,7 +406,7 @@ describe('the model picker in a session’s composer', () => {
     const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
     expect(steer?.params['expectedRevision']).toBe(1);
     // The session is read again after the switch, which is where the new model comes from.
-    await waitFor(() => expect(shownLabel(container, 'weft-chat-model')).toBe('claude-haiku-4-5'));
+    await waitFor(() => expect(shownLabel(container, 'weft-chat-model')).toBe('Claude Haiku 4.5'));
     await waitFor(() =>
       expect(served.calls.filter((call) => call.method === 'bureau.contexts.get').length).toBe(2),
     );
@@ -431,6 +431,6 @@ describe('the model picker in a session’s composer', () => {
 
     // A select with one model to show opens to nothing, so it only shows the model.
     expect(listboxTrigger(container, 'weft-chat-model').disabled).toBe(true);
-    expect(shownLabel(container, 'weft-chat-model')).toBe('claude-sonnet-5');
+    expect(shownLabel(container, 'weft-chat-model')).toBe('Claude Sonnet 5');
   });
 });
