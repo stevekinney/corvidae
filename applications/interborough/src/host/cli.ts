@@ -149,6 +149,7 @@ async function run(arguments_: string[]): Promise<number> {
     process.once('SIGINT', onInterrupt);
     const result = await executeCli(arguments_, {
       environment: processEnvironment(),
+      worktreeDirectory: process.cwd(),
       ...(process.stdin.isTTY ? {} : { stdin: () => Bun.stdin.text() }),
       writeStdout: (chunk) => process.stdout.write(chunk),
       stdinIsTTY: process.stdin.isTTY,

@@ -3,13 +3,28 @@
   /* ========================================
  * COPYABLE VALUE
  *
- * A value in monospace that breaks anywhere when its place is narrow, followed by a copy control.
- * The value's last character and the control are one stretch that never breaks, so the control
- * is always on the value's last line.
+ * A value in monospace that breaks after its slashes, colons, question marks, ampersands and equals
+ * signs when its place is narrow, after a dot only when a part is longer than the place, and
+ * anywhere only when a piece is, followed by a copy control. The value's last character and the
+ * control are one stretch that never breaks, so the control is always on the value's last line.
  * ======================================== */
 
   .cinder-copyable-value {
     font-family: var(--cinder-font-mono);
+    overflow-wrap: anywhere;
+  }
+
+  /* A part (the text between two slashes, say) and a piece of a part (the text between two dots) is
+   * a box of its own, the technique CodeBlock draws its flags with. A browser breaks after a hyphen
+   * and, in a stretch of letters and dots, wherever its rules allow; a box that is `inline-block`
+   * breaks inside itself only when it is longer than the line (`max-inline-size`, then
+   * `overflow-wrap: anywhere`), so a host stays whole and a file name keeps its extension. A line
+   * may end between two boxes, which is the only place it ends before then, and the outer rank
+   * (after a slash) is tried before the inner (after a dot) because a piece sits inside its part. */
+  .cinder-copyable-value__part,
+  .cinder-copyable-value__piece {
+    display: inline-block;
+    max-inline-size: 100%;
     overflow-wrap: anywhere;
   }
 
@@ -22,5 +37,40 @@
     display: inline-flex;
     margin-inline-start: var(--cinder-space-2);
     vertical-align: middle;
+  }
+
+  /* The control is drawn quiet and bare, the way CodeBlock draws its Copy: no chip, no border, just
+   * the glyph in the muted text colour, with a wash on hover. It is a 24px square, the WCAG 2.5.8
+   * AA target on a fine pointer; a coarse pointer reaches it through CopyButton's own 44px
+   * pseudo-element, which takes no layout space and is clipped by nothing here, because the value
+   * and its control are inline content, not a box with `overflow: hidden`.
+   *
+   * Specificity: copy-button.css imports after this file, so the chain of three classes keeps the
+   * bordered default from leaking through, and the hover and copied rules below it match it. */
+  .cinder-copyable-value .cinder-copyable-value__control .cinder-copy-button {
+    inline-size: 1.5rem;
+    min-block-size: 1.5rem;
+    justify-content: center;
+    border: 1px solid transparent;
+    background: transparent;
+    padding: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) {
+    .cinder-copyable-value .cinder-copyable-value__control .cinder-copy-button:hover {
+      background: var(--cinder-surface-hover);
+      color: var(--cinder-text-default);
+      border-color: transparent;
+    }
+  }
+
+  /* Copied: the glyph turns to the success colour, with no border to carry it. */
+  .cinder-copyable-value .cinder-copyable-value__control .cinder-copy-button[data-cinder-copied] {
+    color: var(--cinder-status-success-text);
+    border-color: transparent;
   }
 }

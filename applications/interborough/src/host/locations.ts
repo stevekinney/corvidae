@@ -109,6 +109,8 @@ export type DatabaseKind = {
   readonly redact: (database: DatabaseLocation) => HostDatabase;
   /** Where the state lives, as a person reads it: no credential. */
   readonly describeState: (database: DatabaseLocation) => string;
+  /** The directory on this machine that is the host's home, or `undefined` when the database is not in one. */
+  readonly localHome: (database: DatabaseLocation) => string | undefined;
 };
 
 /** The database kinds a host knows, keyed by the `kind` of a {@link DatabaseLocation}. */
@@ -206,6 +208,7 @@ export const DEFAULT_DATABASE_KINDS: DatabaseKinds = {
       new BunSQLiteStorage(sqlitePath(database), now === undefined ? {} : { now }),
     redact: (database) => ({ kind: 'sqlite', path: sqlitePath(database) }),
     describeState: (database) => dirname(sqlitePath(database)),
+    localHome: (database) => dirname(sqlitePath(database)),
   },
   postgres: {
     // The Postgres pool connects when first used, and this is the only place the URL is read.
@@ -216,6 +219,7 @@ export const DEFAULT_DATABASE_KINDS: DatabaseKinds = {
       }),
     redact: (database) => ({ kind: 'postgres', location: postgresLocation(database) }),
     describeState: () => 'the configured Postgres database',
+    localHome: () => undefined,
   },
 };
 
@@ -295,6 +299,14 @@ export function describeDatabaseState(
   kinds: DatabaseKinds = DEFAULT_DATABASE_KINDS,
 ): string {
   return databaseKindOf(database, kinds).describeState(database);
+}
+
+/** The directory on this machine that is the host's home, or `undefined` when the database is not in one. */
+export function localDatabaseHome(
+  database: DatabaseLocation,
+  kinds: DatabaseKinds = DEFAULT_DATABASE_KINDS,
+): string | undefined {
+  return databaseKindOf(database, kinds).localHome(database);
 }
 
 /** The local directory that holds `content`, or `undefined` when it is not on this machine. */

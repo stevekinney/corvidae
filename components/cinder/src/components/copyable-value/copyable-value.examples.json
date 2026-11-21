@@ -6,7 +6,7 @@
     {
       "id": "basic",
       "title": "An address with its copy control",
-      "description": "The address breaks anywhere when the place is narrow, and the copy control stays on its last line, never alone on a row.",
+      "description": "The address breaks after its slashes and colons when the place is narrow, and the copy control stays on its last line, never alone on a row.",
       "code": "<script lang=\"ts\">\n  import { CopyableValue } from '@lostgradient/cinder';\n</script>\n\n<p style=\"max-inline-size: 16rem; margin: 0;\">\n  Deliveries go to\n  <CopyableValue\n    value=\"https://example.com/triggers/nightly-digest\"\n    label=\"Copy the address\"\n    copiedLabel=\"Address copied\"\n  />\n</p>\n"
     }
   ]

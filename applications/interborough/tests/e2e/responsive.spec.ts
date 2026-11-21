@@ -214,6 +214,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/settings/models': /mmmmmmmmmm/,
   // The agent that opts in is listed by its name as a person says it.
   '/settings/a2a': /Responsive long description/,
+  // The endpoint's address, which only this page prints.
+  '/settings/mcp': /\/bureau\/mcp/,
   // Each tab of the API reference prints a value only its own read gives.
   '/settings/api-reference': /\/api\//,
   '/settings/api-reference (discovery)': /\/openapi\.json/,
