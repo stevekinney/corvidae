@@ -92,6 +92,8 @@ async function executeWorkflowList(
   const result = await callCatalogOperation(connection, 'weft.workflows.list', {
     ...(command.type === undefined ? {} : { type: command.type }),
     ...(command.status === undefined ? {} : { status: command.status }),
+    ...(command.failedStep === undefined ? {} : { failedStep: command.failedStep }),
+    ...(command.retrying === true ? { retrying: true } : {}),
     ...(command.limit === undefined ? {} : { limit: command.limit }),
   });
   if (!result.ok) return failure(result);

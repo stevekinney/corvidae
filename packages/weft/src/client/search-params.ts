@@ -94,9 +94,11 @@ function appendOptionalSearchParameter(
     | 'parent_workflow_id'
     | 'parent_workflow_execution_token'
     | 'id_prefix'
+    | 'failed_step'
+    | 'retrying'
     | 'limit'
     | 'offset',
-  value: string | number | undefined,
+  value: string | number | boolean | undefined,
 ): void {
   if (value !== undefined) params.set(key, String(value));
 }
@@ -116,6 +118,8 @@ export function buildWorkflowListSearchParams(filter: ListFilter = {}): URLSearc
   appendTagFilters(params, filter.tags);
   appendOptionalSearchParameter(params, 'id_prefix', filter.idPrefix);
   appendFailureCategoryFilters(params, filter.failureCategory);
+  appendOptionalSearchParameter(params, 'failed_step', filter.failedStep);
+  appendOptionalSearchParameter(params, 'retrying', filter.retrying);
   appendTimeRange(params, 'created_at', filter.createdAt);
   appendTimeRange(params, 'updated_at', filter.updatedAt);
   appendTimeRange(params, 'execution_deadline', filter.executionDeadline);
