@@ -32,7 +32,8 @@ import {
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
-import { encode, type Outbox, VERSION as WEFT_VERSION, weftFaultPolicy } from '@lostgradient/weft';
+import { encode, type Outbox, VERSION as WEFT_VERSION } from '@lostgradient/weft';
+import { bureauFaultPolicy } from './bureau-fault-policy.ts';
 import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
@@ -1601,8 +1602,9 @@ export function createBureauHandler(
     publicPaths: [],
     // The documents are Bureau's: its own title, at the version of the Weft it is built on.
     discoveryInfo: { title: 'Bureau', version: WEFT_VERSION },
-    // Bureau's operations run on Weft's engine: its error classes and its strict-fault setting.
-    faultPolicy: weftFaultPolicy,
+    // Bureau's operations run on Weft's engine: its error classes and its strict-fault setting, with
+    // Bureau's own errors mapped to their faults in one place.
+    faultPolicy: bureauFaultPolicy,
     // `/v1/health` answers MessagePack to a client that asks for it, as it always has.
     encodeBinary: encode,
   });

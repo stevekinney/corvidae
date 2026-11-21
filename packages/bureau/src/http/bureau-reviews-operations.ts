@@ -48,9 +48,9 @@ import { z } from 'zod';
 
 import { reviewReceiptOf } from '../tasks/respond-to-task.ts';
 
+import { bureauFaultOf } from './bureau-fault-policy.ts';
 import {
   ApprovalOutcomeNotWrittenError,
-  BureauError,
   ReviewAlreadyResolvedError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
@@ -546,12 +546,12 @@ function reviewNotFound(identifier: string): OperationFault {
 }
 
 /**
- * Translate a Bureau error into the catalog fault a client branches on. Anything
- * that is not a {@link BureauError} is left to the pipeline, which masks it as an
- * internal failure.
+ * Translate a Bureau error into the catalog fault a client branches on: the refusals only a review
+ * has, then {@link bureauFault} for the rest. Anything that is not a `BureauError` is left to the
+ * pipeline, which masks it as an internal failure. `resource` names what a `NOT_FOUND` is about
+ * (`review` unless the caller holds a task's wait).
  */
-export function reviewFault(error: unknown, identifier: string): unknown {
-  if (!(error instanceof BureauError)) return error;
+export function reviewFault(error: unknown, identifier: string, resource = 'review'): unknown {
   // An answer that does not fit its question's schema: `InvalidParams`, one issue per field, with
   // each path rooted at the request's `answer` so it reads like any other invalid parameter.
   if (error instanceof ReviewAnswerInvalidError) {
@@ -565,52 +565,55 @@ export function reviewFault(error: unknown, identifier: string): unknown {
           code: issue.code,
         })),
       },
+      remediation:
+        "Correct the answer so it fits the question's schema, as each issue names, and send it again.",
     } satisfies OperationFault;
   }
-  switch (error.code) {
-    case 'NOT_FOUND':
-      return reviewNotFound(identifier);
-    case 'CONFLICT': {
-      // The decision took effect and only the write into the conversation failed,
-      // which a client must not read as another resolver having won. Weft's wire for a
-      // `Conflict` carries `data.reason` and none of the other fields, so the token a
-      // client branches on is the start of the reason: `APPROVAL_OUTCOME_NOT_WRITTEN: `.
-      if (error instanceof ApprovalOutcomeNotWrittenError) {
-        return {
-          code: 'Conflict',
-          message: error.message,
-          data: { reason: `${APPROVAL_OUTCOME_NOT_WRITTEN}: ${error.message}` },
-        };
-      }
-      // The review was replaced under the same id by another resolver's supersession, so the
-      // round the caller read is gone and nothing took effect: it reads the review again.
-      if (error instanceof ReviewRoundChangedError) {
-        return {
-          code: 'Conflict',
-          message: error.message,
-          data: { reason: `${REVIEW_ROUND_CHANGED}: ${error.message}` },
-        };
-      }
-      // COR-2426: the review was already resolved with another decision, so nothing took effect
-      // and it is no longer waiting: a client says so in its place.
-      if (error instanceof ReviewAlreadyResolvedError) {
-        return {
-          code: 'Conflict',
-          message: error.message,
-          data: { reason: `${REVIEW_ALREADY_RESOLVED}: ${error.message}` },
-        };
-      }
-      return { code: 'Conflict', message: error.message, data: { reason: error.message } };
-    }
-    case 'STORAGE_UNAVAILABLE':
-      // Not a review outcome: left to the pipeline, which masks it as an internal failure.
-      return error;
-    case 'BAD_REQUEST':
-    case 'NOT_CONFIGURED':
-    case 'RATE_LIMITED':
-    case 'UNSUPPORTED_CAPABILITY':
-      return { code: 'Unprocessable', message: error.message, data: { reason: error.message } };
+  // The decision took effect and only the write into the conversation failed, which a client must
+  // not read as another resolver having won. Weft's wire for a `Conflict` carries `data.reason`
+  // and none of the other fields, so the token a client branches on is the start of the reason:
+  // `APPROVAL_OUTCOME_NOT_WRITTEN: `.
+  if (error instanceof ApprovalOutcomeNotWrittenError) {
+    return {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: `${APPROVAL_OUTCOME_NOT_WRITTEN}: ${error.message}` },
+      remediation:
+        'The decision took effect, so do not send it again; read the conversation to see its outcome.',
+    } satisfies OperationFault;
   }
+  // The review was replaced under the same id by another resolver's supersession, so the round
+  // the caller read is gone and nothing took effect: it reads the review again.
+  if (error instanceof ReviewRoundChangedError) {
+    return {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: `${REVIEW_ROUND_CHANGED}: ${error.message}` },
+      remediation: 'Read the review again to see its new round, then decide on that round.',
+    } satisfies OperationFault;
+  }
+  // COR-2426: the review was already resolved with another decision, so nothing took effect and it
+  // is no longer waiting: a client says so in its place.
+  if (error instanceof ReviewAlreadyResolvedError) {
+    return {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: `${REVIEW_ALREADY_RESOLVED}: ${error.message}` },
+      remediation:
+        'The review is already resolved and no longer waiting; read it to see the decision.',
+    } satisfies OperationFault;
+  }
+  // A review has no `InvalidParams` of its own beyond the answer: the other refusals about a
+  // request, a capability or a rate answer `Unprocessable` with the message as the reason.
+  return bureauFaultOf(error, {
+    notFound: { resource, identifier },
+    forms: {
+      BAD_REQUEST: 'unprocessable',
+      NOT_CONFIGURED: 'unprocessable',
+      RATE_LIMITED: 'unprocessable',
+      UNSUPPORTED_CAPABILITY: 'unprocessable',
+    },
+  });
 }
 
 /** Whether `principal` may act on the review of `runId`: its run's owner, or the operator scope. */

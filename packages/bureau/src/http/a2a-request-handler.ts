@@ -86,7 +86,8 @@ import {
   canonicalJson,
   digestCommandPayload,
 } from '../command-ledger.ts';
-import { BureauError, ContextArchivedError } from '../bureau-errors.ts';
+import { ContextArchivedError } from '../bureau-errors.ts';
+import { bureauRefusalKind } from './bureau-fault-policy.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import { isTopLevelTaskOrigin } from '../task-origin.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
@@ -1239,12 +1240,10 @@ export function createBureauA2ARequestHandler(
           `messageId '${message.messageId}' was already used with a different payload.`,
         );
       }
-      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
-        throw new TaskNotFoundError(error.message);
-      }
+      const refusal = bureauRefusalKind(error);
+      if (refusal?.kind === 'not-found') throw new TaskNotFoundError(refusal.message);
       if (error instanceof ContextArchivedError) throw contextArchived(error);
-      if (error instanceof BureauError && error.code === 'BAD_REQUEST')
-        throw invalid(error.message);
+      if (refusal?.kind === 'bad-request') throw invalid(refusal.message);
       // A failure that is not a refusal may have come after the run took its row: the assets
       // that row names must outlive it, so the claim keeps them for the retry to deliver.
       if (inbound.content !== undefined) onEffect();
