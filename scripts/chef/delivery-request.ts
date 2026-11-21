@@ -824,6 +824,7 @@ export async function prepare(
     ...member,
     providerRuns: member.plan.obligations.map((obligation) => ({
       id: runId,
+      ...(automaticRun === undefined ? {} : { attempt: automaticRun.attempt }),
       obligation: `${obligation.criterionId}:${obligation.commandOrProviderJob}`,
       job: automaticRun === undefined ? EVIDENCE_JOB : PULL_REQUEST_AGGREGATE,
       workflow: automaticRun === undefined ? EVIDENCE_WORKFLOW : PULL_REQUEST_WORKFLOW,

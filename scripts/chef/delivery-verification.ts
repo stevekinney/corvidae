@@ -405,7 +405,8 @@ export async function validateDeliveryCiEvidence(
       run.requestKey !== identity.requestKey ||
       !run.jobs.includes(mapping.run.job) ||
       (mapping.run.event === 'pull_request' &&
-        !hasCompletePullRequestCoverage(mapping.member, run, identity.sourceCriteria))
+        (mapping.run.attempt !== run.attempt ||
+          !hasCompletePullRequestCoverage(mapping.member, run, identity.sourceCriteria)))
     )
       return `CI evidence for run ${mapping.run.id} is missing its successful aggregate or required job`;
   }

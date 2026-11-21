@@ -23,6 +23,7 @@ import {
 } from './delivery-request.ts';
 import {
   loadDeliveryVerification,
+  validateDeliveryCiEvidence,
   validateDeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
@@ -561,11 +562,26 @@ scenarios.describe('prepare', () => {
         workflowPath: '.github/workflows/pull-request.yml',
         workflowRevision: HEAD,
       });
+      const loaded = loadDeliveryVerification(
+        { file: result.file, digest: result.digest, stateDirectory: setup.state.stateDirectory },
+        { state: setup.state },
+      );
+      const revalidate = (attempt: number) =>
+        validateDeliveryCiEvidence(loaded, {
+          ciProvider: {
+            findRuns: async (identity) => [
+              { ...automatic, requestKey: identity.requestKey, attempt },
+            ],
+          },
+        });
+      expect(await revalidate(1)).toBeUndefined();
+      expect(await revalidate(2)).toContain('CI evidence for run 77');
       for (const member of request.members)
         expect(member.providerRuns).toEqual(
           member.plan.obligations.map((obligation) =>
             expect.objectContaining({
               id: 77,
+              attempt: 1,
               obligation: `${obligation.criterionId}:${obligation.commandOrProviderJob}`,
               job: 'Evidence aggregate',
               workflowPath: '.github/workflows/pull-request.yml',
