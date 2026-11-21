@@ -42,6 +42,23 @@ describe('the browser suites workflow', () => {
     expect(jobText('interborough')).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
   });
 
+  test('shares only the trusted, bound Interborough shard-one candidate and queues every consumer', () => {
+    const interborough = jobText('interborough');
+    expect(interborough).toContain('concurrency:\n');
+    expect(interborough).toContain('matrix.shard == 1');
+    expect(interborough).toContain('github.event.pull_request.head.repo.full_name == github.repository');
+    expect(interborough).toContain('github.event.pull_request.head.sha');
+    expect(interborough).toContain('github.event.pull_request.base.sha');
+    expect(interborough).toContain("github.event_name == 'workflow_dispatch'");
+    expect(interborough).toContain('github.event.inputs.verification_request');
+    expect(interborough).toContain('github.event.inputs.verification_plan');
+    expect(interborough).toContain('github.event.inputs.verification_base');
+    expect(interborough).toContain('github.sha');
+    expect(interborough).toContain('github.run_id');
+    expect(interborough).toContain('queue: max');
+    expect(interborough).toContain('cancel-in-progress: false');
+  });
+
   // COR-2461: the design-review capture runs where the end-to-end layout checks run, so its fonts match.
   test('runs the design-review capture in the same image, and uploads whatever it captured', () => {
     const { playwrightVersion } = readRepositoryPins();
@@ -73,5 +90,12 @@ describe('the browser suites workflow', () => {
   // Both suites gate (COR-2412). Job level only: a report upload step may fail without failing the job.
   test.each(['fixtures', 'packages', 'interborough'])('gates on the %s job', (job) => {
     expect(jobText(job)).not.toMatch(/\n {4}continue-on-error:/u);
+  });
+
+  test('keeps the Interborough Turborepo invocation and failed-run artifact for every consumer', () => {
+    const interborough = jobText('interborough');
+    expect(interborough).toContain('- run: bunx turbo run //#ci:browser-interborough\n');
+    expect(interborough).toContain('name: playwright-interborough-${{ matrix.shard }}\n');
+    expect(interborough).toContain('if: ${{ failure() }}\n');
   });
 });
