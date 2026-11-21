@@ -422,11 +422,15 @@ test.describe('schedule-editor-states: a save', () => {
         if (name !== 'bureau.schedules.update' || changed) return;
         changed = true;
         const current = await readBack(request, id);
-        await bureauCall(request, 'bureau.schedules.update', {
+        const changedElsewhere = (await bureauCall(request, 'bureau.schedules.update', {
           scheduleId: id,
+          // An update replaces the cadence wholesale, so it is always sent: the one stored now.
+          spec: current.cronExpression ?? `${String((current.intervalMs ?? 0) / 1000)}s`,
           description: 'Changed elsewhere',
           expectedRevision: current.revision,
-        });
+        })) as { revision?: number };
+        // The other caller's write must land, or the test proves nothing about the page.
+        expect(changedElsewhere.revision).toBe(current.revision + 1);
       },
     });
     await expect(app.getByLabel('When it runs')).toHaveValue('1h');
