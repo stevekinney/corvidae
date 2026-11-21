@@ -84,7 +84,7 @@ export interface ListFilter {
   failureCategory?: FailureCategory | FailureCategory[] | undefined;
   /**
    * Match failed workflows that stopped at the step with this operation label (an activity's name,
-   * for one), compared with {@link WorkflowState.failedStep}`.label`. A label longer than 200
+   * for one), compared with the `label` of {@link WorkflowState.failedStep}. A label longer than 200
    * characters is compared as the 200 characters the engine stores. The engine narrows candidates
    * with the `failed` status index and verifies the loaded state, which stays authoritative.
    *

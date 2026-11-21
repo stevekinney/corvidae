@@ -11607,6 +11607,35 @@
         "parameters": [
           {
             "in": "query",
+            "name": "failed_step",
+            "required": false,
+            "schema": {
+              "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "failure_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ],
+              "description": "Return only failed workflows in this failure category, or in any of these categories."
+            }
+          },
+          {
+            "in": "query",
             "name": "include",
             "required": false,
             "schema": {
@@ -11665,6 +11694,15 @@
               "description": "Return only direct children of the workflow with this id.",
               "minLength": 1,
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retrying",
+            "required": false,
+            "schema": {
+              "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+              "type": "boolean"
             }
           },
           {
@@ -11927,6 +11965,50 @@
         "parameters": [
           {
             "in": "query",
+            "name": "failed_step",
+            "required": false,
+            "schema": {
+              "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "failure_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "application",
+                    "timeout",
+                    "cancellation",
+                    "resource",
+                    "system"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "enum": [
+                      "application",
+                      "timeout",
+                      "cancellation",
+                      "resource",
+                      "system"
+                    ],
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              ],
+              "description": "Return only failed workflows in this failure category, or in any of these categories."
+            }
+          },
+          {
+            "in": "query",
             "name": "group_by",
             "required": false,
             "schema": {
@@ -11980,6 +12062,15 @@
               "maximum": 10000,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retrying",
+            "required": false,
+            "schema": {
+              "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+              "type": "boolean"
             }
           },
           {
