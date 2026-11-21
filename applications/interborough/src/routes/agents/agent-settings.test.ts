@@ -239,7 +239,8 @@ describe('the Settings form (rows 38u to 38w)', () => {
     serve();
     const { findByLabelText } = mount();
 
-    expect((await findByLabelText('Step limit')).getAttribute('role')).toBe('spinbutton');
+    const stepLimit = await findByLabelText('Step limit');
+    expect(stepLimit.getAttribute('role')).toBe('spinbutton');
   });
 
   test('Discard puts the form back as the file has it', async () => {

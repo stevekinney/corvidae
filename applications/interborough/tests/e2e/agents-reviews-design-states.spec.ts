@@ -130,9 +130,9 @@ for (const width of [375, 1280]) {
   }) => {
     const id = `e2e-agent-limits-${String(width)}`;
     const fits = () =>
-      page.evaluate(
-        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-      );
+      page
+        .locator('main.weft-shell-outlet')
+        .evaluate((outlet) => outlet.scrollWidth <= outlet.clientWidth);
     await page.setViewportSize({ width, height: 900 });
     try {
       await createAgentFile(request, id, {

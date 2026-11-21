@@ -577,8 +577,10 @@ describe('guardrails and spend', () => {
     );
     const { findByLabelText } = mount();
 
-    expect((await findByLabelText(copy.spendLabel)).getAttribute('role')).toBe('spinbutton');
-    expect((await findByLabelText(copy.spendRunLabel)).getAttribute('role')).toBe('spinbutton');
+    const chatLimit = await findByLabelText(copy.spendLabel);
+    const runLimit = await findByLabelText(copy.spendRunLabel);
+    expect(chatLimit.getAttribute('role')).toBe('spinbutton');
+    expect(runLimit.getAttribute('role')).toBe('spinbutton');
   });
 
   test('saves an independent run limit without changing the chat limit or warnings', async () => {
@@ -1241,7 +1243,8 @@ describe('the state', () => {
     const second = spend(state, '26');
 
     writes[0]?.fail(new Error('down'));
-    expect((await first).kind).toBe('failed');
+    const failedRunSave = await first;
+    expect(failedRunSave.kind).toBe('failed');
     expect(state.spendPerRun).toBe('7');
     expect(state.spendPerChat).toBe('26');
 
