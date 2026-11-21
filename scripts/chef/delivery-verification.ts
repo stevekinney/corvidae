@@ -302,6 +302,7 @@ const pullRequestReceiptJobs = ['static', 'workspaces', 'tests', 'browser-select
 function hasCompletePullRequestCoverage(
   member: DeliveryRequest['members'][number],
   run: Awaited<ReturnType<CiEvidenceProvider['findRuns']>>[number],
+  sourceCriteria: CiEvidenceRequest['sourceCriteria'],
 ): boolean {
   if (run === undefined || 'state' in run || !run.jobs.includes('Evidence aggregate')) return false;
   if (
@@ -320,7 +321,26 @@ function hasCompletePullRequestCoverage(
         path.startsWith('applications/interborough/'),
     ),
   );
-  return !browserRequired || run.receiptJobs['browser'] === 'success';
+  if (browserRequired) return false;
+  if (sourceCriteria === undefined || run.receiptTestFiles === undefined) return false;
+  const binding = sourceCriteria.members.find(
+    (candidate) => candidate.identifier === member.assignment.identity.identifier,
+  );
+  if (binding === undefined) return false;
+  const criteria =
+    member.assignment.criteria.length === 0 && member.assignment.classification === 'no-behavior'
+      ? ['STATIC']
+      : member.assignment.criteria.map((criterion) => criterion.id);
+  if (
+    binding.criteria.length !== criteria.length ||
+    binding.criteria.some(
+      (criterion) =>
+        !criteria.includes(criterion.criterionId) ||
+        criterion.testFiles.some((path) => !run.receiptTestFiles?.includes(path)),
+    )
+  )
+    return false;
+  return true;
 }
 
 /** Require a current authenticated aggregate for the CI runs that carry pre-merge obligations. */
@@ -384,7 +404,8 @@ export async function validateDeliveryCiEvidence(
       run.id !== mapping.run.id ||
       run.requestKey !== identity.requestKey ||
       !run.jobs.includes(mapping.run.job) ||
-      (mapping.run.event === 'pull_request' && !hasCompletePullRequestCoverage(mapping.member, run))
+      (mapping.run.event === 'pull_request' &&
+        !hasCompletePullRequestCoverage(mapping.member, run, identity.sourceCriteria))
     )
       return `CI evidence for run ${mapping.run.id} is missing its successful aggregate or required job`;
   }

@@ -61,6 +61,16 @@ function fixture(
 ) {
   const checkedRevision = options.pullRequest ? 'f'.repeat(40) : input.candidate;
   const runName = input.event === 'workflow_dispatch' ? `P07 ${input.requestKey}` : input.workflow;
+  const reportDirectory = options.pullRequest
+    ? mkdtempSync(join(scratch, 'github-junit-'))
+    : undefined;
+  if (reportDirectory !== undefined) {
+    directories.push(reportDirectory);
+    writeFileSync(
+      join(reportDirectory, 'tests.xml'),
+      '<testsuite><testcase name="passes" file="scripts/chef/ci-evidence-github.integration.test.ts" /></testsuite>',
+    );
+  }
   const produced = createCiEvidenceWorkflowReceipt({
     environment: {
       GITHUB_REPOSITORY: input.repository,
@@ -82,6 +92,9 @@ function fixture(
       ...(options.pullRequest && !options.browserMismatch
         ? { CI_EVIDENCE_NOT_APPLICABLE: '["browser"]' }
         : {}),
+      ...(reportDirectory === undefined
+        ? {}
+        : { CI_EVIDENCE_TEST_REPORT_DIRECTORY: reportDirectory }),
     },
     eventPayload: options.pullRequest
       ? { pull_request: { base: { sha: input.base }, head: { sha: input.candidate } } }

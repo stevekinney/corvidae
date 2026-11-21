@@ -49,7 +49,7 @@ interface GitHubObject {
   runId?: unknown;
   attempt?: unknown;
   reports?: unknown;
-  selectedTests?: unknown;
+  testFiles?: unknown;
   testCases?: unknown;
 }
 
@@ -82,7 +82,7 @@ interface Receipt {
   attempt: number;
   jobs: Record<string, 'success' | 'not-applicable'>;
   reports?: Record<string, { reports: number; testCases: number }>;
-  selectedTests?: string[];
+  testFiles?: string[];
 }
 
 const sha = (value: unknown): value is string =>
@@ -197,7 +197,7 @@ function parseReceipt(value: unknown): Receipt {
   const names = Object.keys(receipt);
   if (
     !names.every((name) =>
-      [...strings, 'runId', 'attempt', 'jobs', 'reports', 'selectedTests'].includes(name),
+      [...strings, 'runId', 'attempt', 'jobs', 'reports', 'testFiles'].includes(name),
     ) ||
     !['runId', 'attempt', 'jobs'].every((name) => Object.hasOwn(receipt, name))
   )
@@ -237,15 +237,15 @@ function parseReceipt(value: unknown): Receipt {
   )
     throw new CiEvidenceError('CI evidence receipt has invalid report summaries');
   if (
-    receipt.selectedTests !== undefined &&
-    (!Array.isArray(receipt.selectedTests) ||
-      receipt.selectedTests.length === 0 ||
-      !receipt.selectedTests.every(
+    receipt.testFiles !== undefined &&
+    (!Array.isArray(receipt.testFiles) ||
+      receipt.testFiles.length === 0 ||
+      !receipt.testFiles.every(
         (path) => typeof path === 'string' && /^[A-Za-z0-9_./-]+\.test\.ts$/.test(path),
       ) ||
-      new Set(receipt.selectedTests).size !== receipt.selectedTests.length)
+      new Set(receipt.testFiles).size !== receipt.testFiles.length)
   )
-    throw new CiEvidenceError('CI evidence receipt has invalid selected test inventory');
+    throw new CiEvidenceError('CI evidence receipt has invalid observed test inventory');
   return receipt as unknown as Receipt;
 }
 
@@ -519,7 +519,7 @@ export function createGitHubCiEvidenceProvider(
         checkedTree: receipt.checkedTree,
         receiptJobs: receipt.jobs,
         ...(receipt.reports === undefined ? {} : { receiptReports: receipt.reports }),
-        ...(receipt.selectedTests === undefined ? {} : { receiptTests: receipt.selectedTests }),
+        ...(receipt.testFiles === undefined ? {} : { receiptTestFiles: receipt.testFiles }),
         attempt,
         jobs: jobRecords
           .filter((job) => text(job.conclusion) === 'success')

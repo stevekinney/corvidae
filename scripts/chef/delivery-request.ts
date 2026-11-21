@@ -6,7 +6,7 @@
 //   bun scripts/chef/delivery-request.ts prepare --branch <branch> --head <sha> --worktree <path>
 //       --base <sha> --run <id> [--project <name>] --issue <ID> [--issue <ID> ...]
 //       [--route branch|pull-request] [--no-track] [--no-close] [--leave-open <ID> ...]
-//       [--classification behavior|no-behavior] [--context <json>] [--wait-minutes <n>]
+//       [--classification behavior|no-behavior] [--context <json>] [--source-criteria <json>] [--wait-minutes <n>]
 //       [--config <file>] [--json]
 //   bun scripts/chef/delivery-request.ts check --file <json> --digest <sha256>
 //       [--head <sha>] [--state-directory <dir>] [--config <file>] [--json]
@@ -73,6 +73,7 @@ import {
   type CiEvidenceProvider,
   type CiEvidenceRequest,
   type CiEvidenceRun,
+  type PullRequestSourceCriteriaBinding,
 } from './ci-evidence.ts';
 import {
   batchVerificationPlanDigest,
@@ -160,6 +161,8 @@ export interface PrepareOptions {
   classification?: 'behavior' | 'no-behavior' | undefined;
   /** The verified design sources `brief.ts --context` takes; an issue that links a design needs them. */
   sourceContext?: ReadonlyMap<string, string> | undefined;
+  /** Coordinator-approved, per-member test bindings required before automatic PR reuse. */
+  sourceCriteria?: PullRequestSourceCriteriaBinding | undefined;
   waitMinutes: number;
 }
 
@@ -240,6 +243,60 @@ function validatePrepare(options: PrepareOptions): void {
     throw new UsageError('--wait-minutes must be a whole number of minutes.');
 }
 
+function freezeSourceCriteriaBinding(
+  value: PullRequestSourceCriteriaBinding | undefined,
+  members: readonly DeliveryMember[],
+): PullRequestSourceCriteriaBinding | undefined {
+  if (value === undefined) return undefined;
+  if (value.version !== 1 || !Array.isArray(value.members))
+    throw new UsageError('--source-criteria must be a version 1 member binding.');
+  const expected = members.map((member) => ({
+    identifier: member.assignment.identity.identifier,
+    criteria:
+      member.assignment.criteria.length === 0 && member.assignment.classification === 'no-behavior'
+        ? ['STATIC']
+        : member.assignment.criteria.map((criterion) => criterion.id),
+  }));
+  if (value.members.length !== expected.length)
+    throw new UsageError('--source-criteria must bind every accepted member.');
+  const frozen = value.members.map((member, index) => {
+    const accepted = expected[index];
+    if (
+      accepted === undefined ||
+      member.identifier !== accepted.identifier ||
+      !Array.isArray(member.criteria) ||
+      member.criteria.length !== accepted.criteria.length
+    )
+      throw new UsageError('--source-criteria does not match the accepted member order.');
+    const criteria = member.criteria.map((criterion) => {
+      if (
+        typeof criterion?.criterionId !== 'string' ||
+        !Array.isArray(criterion.testFiles) ||
+        criterion.testFiles.length === 0 ||
+        !criterion.testFiles.every((path) => /^[A-Za-z0-9_./-]+\.test\.ts$/.test(path)) ||
+        new Set(criterion.testFiles).size !== criterion.testFiles.length
+      )
+        throw new UsageError('--source-criteria contains an invalid test-file binding.');
+      return { criterionId: criterion.criterionId, testFiles: [...criterion.testFiles].toSorted() };
+    });
+    if (
+      criteria
+        .map((criterion) => criterion.criterionId)
+        .toSorted()
+        .join() !== [...accepted.criteria].toSorted().join() ||
+      new Set(criteria.map((criterion) => criterion.criterionId)).size !== criteria.length
+    )
+      throw new UsageError('--source-criteria must bind every criterion exactly once.');
+    return {
+      identifier: member.identifier,
+      criteria: criteria.toSorted((left, right) =>
+        left.criterionId.localeCompare(right.criterionId),
+      ),
+    };
+  });
+  return { version: 1, members: frozen };
+}
+
 /** The assignments, accepted for `merge`: one consequential action added, the identity re-digested. */
 function acceptedAssignment(assignment: Assignment): Assignment {
   const accepted = structuredClone(assignment);
@@ -311,6 +368,7 @@ function membersOf(
 function reusablePullRequestRun(
   plan: EvidencePlan,
   runs: readonly CiEvidenceRun[],
+  binding: PullRequestSourceCriteriaBinding | undefined,
 ): CiEvidenceRun | undefined {
   if (plan.requires_full_run || runs.length !== 1) return undefined;
   const candidateRun = runs[0];
@@ -327,17 +385,18 @@ function reusablePullRequestRun(
     return undefined;
   const browserRequired =
     plan.fixture_slugs.length > 0 || plan.fixture_specs.length > 0 || plan.e2e_specs.length > 0;
-  const expectedTests = plan.unit_tests.flatMap(({ workspace, paths }) =>
-    paths.map((path) => (workspace === '' ? path : `${workspace}/${path}`)),
-  );
   if (
     browserRequired ||
-    expectedTests.length === 0 ||
-    candidateRun.receiptTests === undefined ||
-    expectedTests.some((path) => !candidateRun.receiptTests?.includes(path))
+    binding === undefined ||
+    candidateRun.receiptTestFiles === undefined ||
+    binding.members.some((member) =>
+      member.criteria.some((criterion) =>
+        criterion.testFiles.some((path) => !candidateRun.receiptTestFiles?.includes(path)),
+      ),
+    )
   )
     return undefined;
-  return candidateRun.receiptJobs['browser'] !== 'not-applicable' ? undefined : candidateRun;
+  return candidateRun;
 }
 
 function frozenFingerprint(members: readonly DeliveryMember[]): string {
@@ -500,6 +559,7 @@ export async function prepare(
       options.close,
       options.leaveOpen,
       options.classification ?? null,
+      options.sourceCriteria ?? null,
     ]),
   );
   let members: DeliveryMember[] | undefined;
@@ -597,6 +657,7 @@ export async function prepare(
   if (members === undefined || authority === undefined)
     throw new UsageError('delivery operation did not retain an authority and frozen members.');
   const frozenMembers = members;
+  const sourceCriteria = freezeSourceCriteriaBinding(options.sourceCriteria, frozenMembers);
   const deliveryAuthority = authority;
   for (const member of frozenMembers)
     validateFrozenDeliveryMember(member, {
@@ -616,6 +677,7 @@ export async function prepare(
     workflowPath: EVIDENCE_WORKFLOW_PATH,
     workflowRevision: options.head,
     event: 'workflow_dispatch',
+    ...(sourceCriteria === undefined ? {} : { sourceCriteria }),
   } satisfies Omit<CiEvidenceRequest, 'requestKey'>;
   const manualIdentity: CiEvidenceRequest = {
     ...identityInput,
@@ -657,6 +719,7 @@ export async function prepare(
                   workflow: PULL_REQUEST_WORKFLOW,
                   workflowPath: PULL_REQUEST_WORKFLOW_PATH,
                 }),
+                sourceCriteria,
               );
               if (reusable !== undefined) {
                 const automaticIdentity = {
@@ -670,6 +733,7 @@ export async function prepare(
                   workflowPath: PULL_REQUEST_WORKFLOW_PATH,
                   workflowRevision: reusable.workflowRevision,
                   event: 'pull_request' as const,
+                  ...(sourceCriteria === undefined ? {} : { sourceCriteria }),
                 };
                 identity = {
                   ...automaticIdentity,
@@ -1038,6 +1102,7 @@ export async function run(
       'route',
       'classification',
       'context',
+      'source-criteria',
       'wait-minutes',
       'config',
       'file',
@@ -1113,6 +1178,13 @@ export async function run(
     ...(parsed.values['context'] === undefined
       ? {}
       : { sourceContext: sourceContext(resolve(parsed.values['context'])) }),
+    ...(parsed.values['source-criteria'] === undefined
+      ? {}
+      : {
+          sourceCriteria: JSON.parse(
+            readFileSync(resolve(parsed.values['source-criteria']), 'utf8'),
+          ) as PullRequestSourceCriteriaBinding,
+        }),
     waitMinutes: Number(parsed.values['wait-minutes'] ?? '10'),
   };
   validatePrepare(options);

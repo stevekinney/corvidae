@@ -470,7 +470,7 @@ scenarios.describe('prepare', () => {
           'browser-selection': 'success',
           browser: 'not-applicable',
         },
-        receiptTests: ['scripts/chef/delivery-request.integration.test.ts'],
+        receiptTestFiles: ['scripts/chef/delivery-request.integration.test.ts'],
         jobs: ['Evidence aggregate'],
       };
       const setup = await harness(
@@ -498,7 +498,36 @@ scenarios.describe('prepare', () => {
             ],
           }),
         },
-        { route: 'pull-request' },
+        {
+          route: 'pull-request',
+          sourceCriteria: {
+            version: 1,
+            members: [
+              {
+                identifier: 'COR-1',
+                criteria: [
+                  {
+                    criterionId: 'AC1',
+                    testFiles: ['scripts/chef/delivery-request.integration.test.ts'],
+                  },
+                  {
+                    criterionId: 'AC2',
+                    testFiles: ['scripts/chef/delivery-request.integration.test.ts'],
+                  },
+                ],
+              },
+              {
+                identifier: 'COR-2',
+                criteria: [
+                  {
+                    criterionId: 'AC1',
+                    testFiles: ['scripts/chef/delivery-request.integration.test.ts'],
+                  },
+                ],
+              },
+            ],
+          },
+        },
       );
       const result = await setup.prepared();
       const request = readDeliveryRequest(result.file, result.digest);
