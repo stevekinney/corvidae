@@ -11,6 +11,7 @@ import { Window } from 'happy-dom';
 
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
@@ -547,7 +548,12 @@ describe('one list failing', () => {
 });
 
 describe('the approval’s details', () => {
-  const operation = (extra: Record<string, unknown>) =>
+  type ToolOperation = Extract<
+    BureauToolApproval['approval']['action'],
+    { type: 'approval' }
+  >['operation'];
+
+  const operation = (toolOperation: ToolOperation) =>
     toolApprovalFixture({
       requestedAt: Date.now() - 120_000,
       approval: {
@@ -556,13 +562,17 @@ describe('the approval’s details', () => {
           type: 'approval',
           message: 'Run it?',
           risk: 'high',
-          operation: { kind: 'command', command: '', ...extra } as never,
+          operation: toolOperation,
         },
       },
     });
 
   test('shows what the approval would run: the command and the files, without a click', async () => {
-    const approval = operation({ command: 'bun run deploy', filesTouched: ['dist/app.js'] });
+    const approval = operation({
+      kind: 'command',
+      command: 'bun run deploy',
+      filesTouched: ['dist/app.js'],
+    });
     const { container, findByText } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
@@ -571,18 +581,19 @@ describe('the approval’s details', () => {
     expect(container.textContent).toContain('It wants to run Issue refund');
   });
 
-  test('keeps the inbox usable when the operation lists one path twice', async () => {
+  test('keeps a non-unified patch readable and collapses its repeated path', async () => {
     const approval = operation({
       kind: 'patch',
-      command: 'bun run deploy',
+      diff: 'Replace the installed file with the generated output.',
       filesTouched: ['dist/app.js', 'dist/app.js'],
     });
     const { container, findByText } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await findByText('bun run deploy');
+    await findByText('Replace the installed file with the generated output.');
     expect(container.textContent).not.toContain('Something went wrong');
-    expect(container.querySelectorAll('.weft-bureau-review-operation__files li').length).toBe(1);
+    const paths = container.querySelectorAll('.cinder-approval-card__file-path');
+    expect([...paths].map((path) => path.textContent)).toEqual(['dist/app.js']);
   });
 });
 
@@ -1134,17 +1145,17 @@ describe('the Done tab', () => {
   });
 
   test('shows a decided review read only, with who decided it and the reason', async () => {
-    const { container, queryByRole, findByTestId } = open(
+    const { container, queryByRole, findByText } = open(
       { reviews: [denied] },
       AUTHORIZATION_SCOPES,
       '/reviews?tab=done',
     );
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    const resolved = await findByTestId('review-resolution');
-    expect(resolved.textContent).toContain('Denied');
-    expect(resolved.textContent).toContain('steve');
-    expect(resolved.textContent).toContain('Wrong customer.');
+    await findByText('Wrong customer.', { exact: true });
+    const resolved = container.querySelector('.cinder-approval-card__outcome');
+    expect(resolved?.textContent).toContain('Denied');
+    expect(resolved?.textContent).toContain('steve');
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(container.textContent).toContain('Refund');
