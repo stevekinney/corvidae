@@ -2221,7 +2221,7 @@ describe('the files on a row', () => {
       { id: 'a2', role: 'assistant', content: 'Done.' },
     ]);
 
-    expect(await findByText('lookup-order')).not.toBeNull();
+    expect(await findByText('Lookup order')).not.toBeNull();
   });
 
   test('shows only the files of a message that is only files, with no empty bubble', async () => {
@@ -2264,7 +2264,7 @@ describe('the files on a row', () => {
       { id: 'a2', role: 'assistant', content: 'Done.' },
     ]);
 
-    expect(await findByText('lookup-order')).not.toBeNull();
+    expect(await findByText('Lookup order')).not.toBeNull();
     await waitFor(() =>
       expect(
         container.querySelector('img[src="/bureau/assets/step-image/content"]'),
@@ -2326,7 +2326,7 @@ describe('the files on a row', () => {
 
     await sendMessage(container, 'Draw it');
 
-    expect(await findByText('lookup-order')).not.toBeNull();
+    expect(await findByText('Lookup order')).not.toBeNull();
     await waitFor(() =>
       expect(
         container.querySelector('img[src="/bureau/assets/step-image/content"]'),
