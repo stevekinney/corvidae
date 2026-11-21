@@ -128,14 +128,14 @@ export { UsageError };
  * the run starts rather than after another job, and its runner is known soonest.
  */
 export const EVIDENCE_JOB = 'Root checks, scripts tests, audit';
-export const EVIDENCE_WORKFLOW = 'Main';
-export const EVIDENCE_WORKFLOW_PATH = '.github/workflows/main.yml';
+const EVIDENCE_WORKFLOW = 'Main';
+const EVIDENCE_WORKFLOW_PATH = '.github/workflows/main.yml';
 
 const ISSUE = /^[A-Z][A-Z0-9]*-[1-9]\d*$/;
 const COMMIT = /^[0-9a-f]{40}$/;
 const POLL_INTERVAL_MILLISECONDS = 10_000;
 
-export type DeliveryRoute = 'branch' | 'pull-request';
+type DeliveryRoute = 'branch' | 'pull-request';
 
 export interface PrepareOptions {
   branch: string;
@@ -144,7 +144,7 @@ export interface PrepareOptions {
   base: string;
   run: string;
   /** A project lease, or absent when each issue claim is the delivery authority. */
-  project?: string;
+  project?: string | undefined;
   issues: string[];
   route: DeliveryRoute;
   track: boolean;
@@ -168,7 +168,7 @@ export interface PrepareResult {
 }
 
 /** One job of a workflow run as `gh api .../runs/<id>/jobs` lists it. */
-export interface RunJob {
+interface RunJob {
   name: string;
   runner: string;
   startedAt: string;
@@ -515,6 +515,7 @@ export async function prepare(
   );
   if (members === undefined || authority === undefined)
     throw new UsageError('delivery operation did not retain an authority and frozen members.');
+  const deliveryAuthority = authority;
 
   const identityInput = {
     repository,
@@ -635,7 +636,7 @@ export async function prepare(
     dependencies.state,
     `delivery-operation:${operationId}`,
     async () => {
-      await recordMutationIntent(dependencies.state, authority, {
+      await recordMutationIntent(dependencies.state, deliveryAuthority, {
         operationId,
         action: 'merge',
         intentFingerprint: digest(
@@ -778,7 +779,7 @@ export async function check(
 }
 
 /** The header's usage block. */
-export function usageText(): string {
+function usageText(): string {
   const lines = readFileSync(import.meta.path, 'utf8').split('\n');
   const start = lines.findIndex((line) => line === '// Usage:');
   const end = lines.findIndex((line, index) => index > start && line === '//');

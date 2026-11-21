@@ -476,6 +476,24 @@ scenarios.describe('prepare', () => {
   });
 
   scenarios.scenario(
+    'refuses ambiguous provider reads without enqueueing another run',
+    async () => {
+      const setup = await harness({
+        provider: {
+          findRuns: async () => [
+            { state: 'pending', id: LANDING_RUN_ID, attempt: 1 },
+            { state: 'pending', id: LANDING_RUN_ID + 1, attempt: 1 },
+          ],
+        },
+      });
+      expect(String(await rejectionOf(setup.prepared()))).toContain(
+        'cannot be told from the first',
+      );
+      expect(setup.dispatched).toHaveLength(0);
+    },
+  );
+
+  scenarios.scenario(
     'refuses check and landing verification after any issue-only claim is revoked',
     async () => {
       const setup = await harness({}, { project: undefined });
