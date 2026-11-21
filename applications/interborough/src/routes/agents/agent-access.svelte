@@ -33,7 +33,7 @@
     Checkbox,
     EmptyState,
     FilterBar,
-    Input,
+    NumberInput,
     SectionHeading,
     Skeleton,
     Spinner,
@@ -45,6 +45,7 @@
   import { Check } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
+  import type { Attachment } from 'svelte/attachments';
   import { SvelteSet } from 'svelte/reactivity';
 
   import {
@@ -313,30 +314,91 @@
     });
   }
 
-  /** Saves a typed spend limit when the field is left, unless it is one the Bureau would refuse. */
-  function commitSpend(state: AgentAccessState): void {
-    const next = state.spendPerChat;
-    const before = state.spendApplied;
-    if (state.spendLimit === undefined || next.trim() === before.trim()) return;
+  /** Preserves the editor's exact text so the existing application validation can judge it. */
+  function spendInput(field: 'chat' | 'run'): Attachment<HTMLInputElement> {
+    return (input) => {
+      const update = () => {
+        if (form === undefined) return;
+        const text = input.value;
+        if (text.trim() !== '' && Number.isFinite(Number(text.trim()))) return;
+        if (field === 'chat') form.spendPerChat = text;
+        else form.spendPerRun = text;
+      };
+      input.addEventListener('input', update);
+      return () => input.removeEventListener('input', update);
+    };
+  }
+
+  function acceptSpendValue(
+    state: AgentAccessState,
+    field: 'chat' | 'run',
+    value: number | null,
+  ): void {
+    const text = field === 'chat' ? state.spendPerChat : state.spendPerRun;
+    if (value !== null || text.trim() === '') {
+      if (field === 'chat') state.spendPerChat = value === null ? '' : String(value);
+      else state.spendPerRun = value === null ? '' : String(value);
+    }
+    commitSpend(state, field);
+  }
+
+  /** Saves one typed spend limit when the field is left, unless it is one the Bureau would refuse. */
+  function commitSpend(state: AgentAccessState, field: 'chat' | 'run'): void {
+    const next = field === 'chat' ? state.spendPerChat : state.spendPerRun;
+    const before = field === 'chat' ? state.spendApplied : state.spendRunApplied;
+    const limit = field === 'chat' ? state.spendLimit : state.spendRunLimit;
+    if (
+      limit === undefined ||
+      next.trim() === before.trim() ||
+      (field === 'run' && limit === null && state.spendLimit !== null)
+    ) {
+      return;
+    }
     void state.change({
-      key: 'spend',
-      subject: copy.spendSubject,
+      key: field === 'chat' ? 'spend-chat' : 'spend-run',
+      subject: field === 'chat' ? copy.spendSubject : copy.spendRunSubject,
       restored: before.trim() === '' ? copy.noLimit : `${before.trim()} ${copy.spendUnit}`,
       apply: () => {
-        state.spendPerChat = next;
-        state.spendApplied = next;
+        if (field === 'chat') {
+          state.spendPerChat = next;
+          state.spendApplied = next;
+        } else {
+          state.spendPerRun = next;
+          state.spendRunApplied = next;
+        }
       },
       undo: () => {
-        state.spendPerChat = before;
-        state.spendApplied = before;
+        if (field === 'chat') {
+          state.spendPerChat = before;
+          state.spendApplied = before;
+        } else {
+          state.spendPerRun = before;
+          state.spendRunApplied = before;
+        }
       },
     });
   }
 
+  function numericValue(text: string): number | null {
+    const trimmed = text.trim();
+    if (trimmed === '') return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   const spendError = $derived(
-    form?.spendLimit === undefined && form !== undefined
+    form?.spendLimit === undefined && form !== undefined && form.spendPerChat !== form.spendApplied
       ? AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd)
       : '',
+  );
+  const spendRunError = $derived(
+    form?.spendRunLimit === null && form.spendLimit !== null
+      ? copy.spendRunRequiresChatClear
+      : form?.spendRunLimit === undefined &&
+          form !== undefined &&
+          form.spendPerRun !== form.spendRunApplied
+        ? AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd)
+        : '',
   );
 </script>
 
@@ -499,25 +561,40 @@
     </fieldset>
 
     <div class="ib-access-spend" data-testid="agent-access-spend">
-      <Input
+      <NumberInput
         id="access-spend-per-chat"
         label={copy.spendLabel}
         description={copy.spendNote}
         placeholder={copy.spendPlaceholder}
-        inputmode="decimal"
+        value={numericValue(state.spendPerChat)}
         error={spendError}
         disabled={!state.editable}
         readonly={connection.unreachable}
         aria-disabled={connection.unreachable ? 'true' : undefined}
         title={connection.unreachable ? CONNECTION_COPY.changesOff : undefined}
         data-changes
-        bind:value={state.spendPerChat}
-        onchange={() => commitSpend(state)}
-      >
-        {#snippet trailing()}{copy.spendUnit}{/snippet}
-      </Input>
-      {@render saving('spend')}
-      {@render failure('spend')}
+        adornment={copy.spendUnit}
+        inputAttachment={spendInput('chat')}
+        onValueChange={(value) => acceptSpendValue(state, 'chat', value)}
+      />
+      {@render saving('spend-chat')}
+      {@render failure('spend-chat')}
+      <NumberInput
+        id="access-spend-per-run"
+        label={copy.spendRunLabel}
+        value={numericValue(state.spendPerRun)}
+        error={spendRunError}
+        disabled={!state.editable}
+        readonly={connection.unreachable}
+        aria-disabled={connection.unreachable ? 'true' : undefined}
+        title={connection.unreachable ? CONNECTION_COPY.changesOff : undefined}
+        data-changes
+        adornment={copy.spendUnit}
+        inputAttachment={spendInput('run')}
+        onValueChange={(value) => acceptSpendValue(state, 'run', value)}
+      />
+      {@render saving('spend-run')}
+      {@render failure('spend-run')}
     </div>
   </section>
 {/snippet}

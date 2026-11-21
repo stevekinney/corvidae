@@ -561,12 +561,58 @@ describe('guardrails and spend', () => {
     const spend = await findByLabelText(copy.spendLabel);
     expect(spend.getAttribute('placeholder')).toBe(copy.spendPlaceholder);
     await fireEvent.input(spend, { target: { value: '5' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
 
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
       limits: { cost: { run: 5, chat: 5 } },
     });
+  });
+
+  test('renders distinct numeric controls for the chat and run spend limits', async () => {
+    landAt('/agents/researcher/access');
+    serve(
+      {},
+      detailWith({ limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null } }),
+    );
+    const { findByLabelText } = mount();
+
+    expect((await findByLabelText(copy.spendLabel)).getAttribute('role')).toBe('spinbutton');
+    expect((await findByLabelText(copy.spendRunLabel)).getAttribute('role')).toBe('spinbutton');
+  });
+
+  test('saves an independent run limit without changing the chat limit or warnings', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null } }),
+    );
+    const { findByLabelText } = mount();
+
+    const run = await findByLabelText(copy.spendRunLabel);
+    await fireEvent.input(run, { target: { value: '7.25' } });
+    await fireEvent.blur(run);
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      limits: { cost: { run: 7.25, chat: 21, warn: [0.5] } },
+    });
+  });
+
+  test('does not clear the run limit while the chat limit remains', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null } }),
+    );
+    const { findByLabelText, findByText } = mount();
+
+    const run = await findByLabelText(copy.spendRunLabel);
+    await fireEvent.input(run, { target: { value: '' } });
+    await fireEvent.blur(run);
+
+    await findByText(copy.spendRunRequiresChatClear);
+    expect(updatesOf(served)).toHaveLength(0);
   });
 
   test('refuses an amount the Bureau would refuse, and sends nothing', async () => {
@@ -576,7 +622,7 @@ describe('guardrails and spend', () => {
 
     const spend = await findByLabelText(copy.spendLabel);
     await fireEvent.input(spend, { target: { value: 'lots' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
 
     await findByText(/Use an amount above 0/);
     expect(updatesOf(served)).toHaveLength(0);
@@ -948,6 +994,25 @@ describe('the state', () => {
     });
   }
 
+  /** Applies a typed per-run spend limit, as leaving its field does. */
+  function spendRun(state: AgentAccessState, next: string) {
+    const before = state.spendRunApplied;
+    state.spendPerRun = next;
+    return state.change({
+      key: 'spend-run',
+      subject: 'the per-run spend limit',
+      restored: before,
+      apply: () => {
+        state.spendPerRun = next;
+        state.spendRunApplied = next;
+      },
+      undo: () => {
+        state.spendPerRun = before;
+        state.spendRunApplied = before;
+      },
+    });
+  }
+
   test('marks a row saving until its write answers, and names the hash the last write returned', async () => {
     const { state, writes } = stateWith();
     const first = allow(state, 'triage-refunds', true);
@@ -1055,6 +1120,20 @@ describe('the state', () => {
     expect(state.spendLimit).toBeUndefined();
   });
 
+  test('preserves independent per-run and per-chat spend limits, warnings, and an unlimited cost record', () => {
+    const { state } = stateWith({
+      limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null },
+    });
+    expect(state.spendPerRun).toBe('7');
+    expect(state.spendPerChat).toBe('21');
+    state.spendRunApplied = '7.25';
+    expect(state.toDefinition().limits).toEqual({ cost: { run: 7.25, chat: 21, warn: [0.5] } });
+    state.spendApplied = '';
+    expect(state.toDefinition().limits).toEqual({ cost: { run: 7.25, warn: [0.5] } });
+    state.spendRunApplied = '';
+    expect(state.toDefinition().limits).toEqual({ cost: null });
+  });
+
   test('writes the spend limit as last applied, never an amount typed and refused', async () => {
     const { state, writes } = stateWith({
       limits: { steps: null, cost: { run: 10, chat: 5 }, tools: null },
@@ -1147,6 +1226,41 @@ describe('the state', () => {
     const save = state.saves.get('spend');
     if (save?.kind !== 'failed') throw new Error('expected a failed row');
     expect(save.restored).toBe('5');
+  });
+
+  test('rolls back a failed run limit without overwriting a later chat limit, preserving hash order', async () => {
+    const { state, writes } = stateWith({
+      limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null },
+    });
+    const first = spendRun(state, '8');
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({
+      hash: 'hash-1',
+      definition: { limits: { cost: { run: 8, chat: 21, warn: [0.5] } } },
+    });
+    const second = spend(state, '26');
+
+    writes[0]?.fail(new Error('down'));
+    expect((await first).kind).toBe('failed');
+    expect(state.spendPerRun).toBe('7');
+    expect(state.spendPerChat).toBe('26');
+
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]).toMatchObject({
+      hash: 'hash-1',
+      definition: { limits: { cost: { run: 7, chat: 26, warn: [0.5] } } },
+    });
+    writes[1]?.answer('hash-2');
+    expect(await second).toEqual({ kind: 'saved', hash: 'hash-2' });
+
+    const followUp = allow(state, 'triage-refunds', true);
+    await waitFor(() => expect(writes).toHaveLength(3));
+    expect(writes[2]).toMatchObject({
+      hash: 'hash-2',
+      definition: { limits: { cost: { run: 7, chat: 26, warn: [0.5] } } },
+    });
+    writes[2]?.answer('hash-3');
+    expect(await followUp).toEqual({ kind: 'saved', hash: 'hash-3' });
   });
 
   test('keeps a configured guardrail’s configuration (COR-2118)', () => {

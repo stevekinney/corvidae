@@ -45,7 +45,7 @@
     Callout,
     Chip,
     ConfirmDialog,
-    Input,
+    NumberInput,
     SectionHeading,
     Select,
     Skeleton,
@@ -53,6 +53,7 @@
     type SelectOption,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import type { Attachment } from 'svelte/attachments';
 
   import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, EFFORT_LABELS } from '../../app/copy/agents.ts';
   import { hasToastHost, showToast } from '../../app/toast-host.svelte';
@@ -211,6 +212,27 @@
   const changed = $derived(baseline === undefined ? [] : changedParts(baseline, form));
   const dirty = $derived(changed.length > 0);
   const stepError = $derived(attempted ? stepLimitError(stepLimit, baseline?.stepLimit) : '');
+
+  const stepLimitInput: Attachment<HTMLInputElement> = (input) => {
+    const update = () => {
+      const text = input.value;
+      if (text.trim() !== '' && Number.isFinite(Number(text.trim()))) return;
+      stepLimit = text;
+    };
+    input.addEventListener('input', update);
+    return () => input.removeEventListener('input', update);
+  };
+
+  function numericValue(text: string): number | null {
+    const trimmed = text.trim();
+    if (trimmed === '') return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function acceptStepLimit(value: number | null): void {
+    if (value !== null || stepLimit.trim() === '') stepLimit = value === null ? '' : String(value);
+  }
 
   function fill(next: SettingsForm, at: string | null): void {
     baseline = next;
@@ -694,15 +716,16 @@
               onchange={(event) => chooseEffort(event.currentTarget.value)}
             />
 
-            <Input
+            <NumberInput
               id={STEP_LIMIT_ID}
               label={copy.stepLimitLabel}
               description={copy.stepLimitNote}
               placeholder={copy.stepLimitPlaceholder(DEFAULT_STEP_LIMIT)}
-              inputmode="numeric"
+              value={numericValue(stepLimit)}
               error={stepError}
               disabled={save.isPending}
-              bind:value={stepLimit}
+              inputAttachment={stepLimitInput}
+              onValueChange={acceptStepLimit}
             />
           </section>
 
