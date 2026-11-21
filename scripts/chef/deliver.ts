@@ -2,9 +2,9 @@
 //
 // Usage:
 //   bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file> --verification-file <file> --verification-digest <sha256>
-//       --run <id> --project <linear-project> [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--intended <path> ...]
+//       --run <id> [--project <linear-project>] [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--intended <path> ...]
 //   bun scripts/chef/deliver.ts --pr <number> --head <sha> --worktree <path> --comment-file <file> --verification-file <file> --verification-digest <sha256>
-//       --run <id> --project <linear-project> [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--fixes-main]
+//       --run <id> [--project <linear-project>] [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--fixes-main]
 //
 // Landing refuses (exit 1, failed step `lease` or `verification`) unless `--run` holds the Linear
 // lease of `--project` (`linear.ts lease`) and the head carries its evidence (`landing-evidence.ts`).
@@ -63,7 +63,7 @@ export interface DeliverOptions {
   /** The chef run delivering; it must hold `project`'s Linear lease for a merge to start. */
   run: string;
   /** The Linear project (name, slug or id) whose lease `run` must hold. */
-  project: string;
+  project?: string | undefined;
   verification: DeliveryVerification;
 }
 
@@ -145,6 +145,7 @@ async function leaseRefusal(
   partial: Partial<DeliverDependencies>,
 ): Promise<string | undefined> {
   if (partial.readLease === undefined) return 'no lease reader was provided.';
+  if (options.project === undefined) return undefined;
   let lease: LeaseReading | null;
   try {
     lease = await partial.readLease(options.project);
@@ -187,7 +188,6 @@ export async function deliver(
   if (options.branch === undefined && (options.intended ?? []).length > 0)
     throw new UsageError('--intended applies only with --branch.');
   if (!options.run) throw new UsageError('--run is required: the run that holds the lease.');
-  if (!options.project) throw new UsageError('--project is required: the leased Linear project.');
   const verification = loadDeliveryVerification(options.verification, partial.verification);
   if (resolve(options.worktree) !== resolve(verification.request.worktree))
     throw new UsageError('worktree differs from the coordinator-approved ownership');
@@ -431,7 +431,7 @@ export async function run(
       messageFile: absolute(parsed.values['message-file']),
       expectedHead,
       run: requireOption(parsed, 'run'),
-      project: requireOption(parsed, 'project'),
+      ...(parsed.values['project'] === undefined ? {} : { project: parsed.values['project'] }),
       intended: parsed.repeated['intended'] ?? [],
       usageLog: absolute(usageLog),
       transcripts: transcripts.map((path) => resolve(path)),

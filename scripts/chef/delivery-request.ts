@@ -94,6 +94,7 @@ import {
   ExecutionStateError,
   readExecutionSnapshot,
   recordMutationIntent,
+  requireAuthority,
   withProviderTransitionLock,
   type Authority,
   type ExecutionStateStore,
@@ -308,6 +309,27 @@ function frozenFingerprint(members: readonly DeliveryMember[]): string {
   );
 }
 
+/** Holds every authority in a stable order while the provider transition spends its permission. */
+async function withDeliveryAuthorityFences<T>(
+  state: ExecutionStateStore,
+  authorities: readonly Authority[],
+  operation: () => Promise<T>,
+): Promise<T> {
+  const ordered = [
+    ...new Map(authorities.map((authority) => [authority.resource, authority])).values(),
+  ].toSorted((left, right) => left.resource.localeCompare(right.resource));
+  const enter = async (index: number): Promise<T> => {
+    if (index === ordered.length) return operation();
+    const authority = ordered[index];
+    if (authority === undefined) throw new UsageError('delivery authority fence is empty.');
+    return withProviderTransitionLock(state, authority.resource, async () => {
+      requireAuthority(state, authority);
+      return enter(index + 1);
+    });
+  };
+  return enter(0);
+}
+
 /** Writes `text` to `path` in one rename, so a reader never sees half a file. */
 function writeWhole(path: string, text: string): void {
   const staged = `${path}.${crypto.randomUUID()}`;
@@ -322,7 +344,11 @@ const PENDING_LIFETIME_MILLISECONDS = 12 * 60 * 60 * 1000;
  * The members an earlier attempt saved for `fingerprint` within the last lease lifetime, or
  * `undefined` when there are none.
  */
-function readPending(path: string, fingerprint: string, now: number): DeliveryMember[] | undefined {
+function readPending(
+  path: string,
+  fingerprint: string,
+  now: number,
+): { members?: DeliveryMember[]; changed: boolean } {
   try {
     const saved = JSON.parse(readFileSync(path, 'utf8')) as {
       fingerprint?: unknown;
@@ -331,11 +357,13 @@ function readPending(path: string, fingerprint: string, now: number): DeliveryMe
     };
     const fresh =
       typeof saved.savedAt === 'number' && now - saved.savedAt <= PENDING_LIFETIME_MILLISECONDS;
-    return fresh && saved.fingerprint === fingerprint && Array.isArray(saved.members)
-      ? (saved.members as DeliveryMember[])
-      : undefined;
+    if (!fresh) return { changed: false };
+    if (saved.fingerprint !== fingerprint) return { changed: true };
+    return Array.isArray(saved.members)
+      ? { members: saved.members as DeliveryMember[], changed: false }
+      : { changed: true };
   } catch {
-    return undefined;
+    return { changed: false };
   }
 }
 
@@ -497,14 +525,18 @@ export async function prepare(
         }
       }
       const current = membersOf(accepted, options, plan, kept, authorities);
-      const saved = readPending(pendingFile, fingerprint, dependencies.now());
-      if (saved !== undefined && frozenFingerprint(saved) !== frozenFingerprint(current))
+      const pending = readPending(pendingFile, fingerprint, dependencies.now());
+      if (
+        pending.changed ||
+        (pending.members !== undefined &&
+          frozenFingerprint(pending.members) !== frozenFingerprint(current))
+      )
         throw new UsageError(
           'the accepted batch changed after its operation freeze; push a new head and prepare a fresh identity.',
         );
-      members = saved ?? current;
+      members = pending.members ?? current;
       authority = authorities?.[0] ?? authority;
-      if (saved === undefined) {
+      if (pending.members === undefined) {
         mkdirSync(directory, { recursive: true });
         writeWhole(
           pendingFile,
@@ -543,29 +575,38 @@ export async function prepare(
   await withProviderTransitionLock(
     dependencies.state,
     `delivery-dispatch:${identity.requestKey}`,
-    async () => {
-      const found = await dependencies.provider.findRuns(identity);
-      if (found.length > 1)
-        throw new UsageError(
-          `${found.length} runs carry request key ${identity.requestKey}: a second dispatch for this head cannot be told from the first; push a new head.`,
-        );
-      if (found.length > 0 || dispatchAttempted(pendingFile, identity.requestKey)) return;
-      writeWhole(
-        pendingFile,
-        JSON.stringify({
-          fingerprint,
-          members,
-          savedAt: dependencies.now(),
-          dispatchedRequestKey: identity.requestKey,
-        }),
-      );
-      command = dependencies.dispatch(
-        options.branch,
-        { request: identity.requestKey, plan: identity.verificationPlanDigest, base: options.base },
-        cwd,
-      );
-      dispatched = true;
-    },
+    async () =>
+      withDeliveryAuthorityFences(
+        dependencies.state,
+        [deliveryAuthority, ...members.flatMap((member) => member.authority ?? [])],
+        async () => {
+          const found = await dependencies.provider.findRuns(identity);
+          if (found.length > 1)
+            throw new UsageError(
+              `${found.length} runs carry request key ${identity.requestKey}: a second dispatch for this head cannot be told from the first; push a new head.`,
+            );
+          if (found.length > 0 || dispatchAttempted(pendingFile, identity.requestKey)) return;
+          writeWhole(
+            pendingFile,
+            JSON.stringify({
+              fingerprint,
+              members,
+              savedAt: dependencies.now(),
+              dispatchedRequestKey: identity.requestKey,
+            }),
+          );
+          command = dependencies.dispatch(
+            options.branch,
+            {
+              request: identity.requestKey,
+              plan: identity.verificationPlanDigest,
+              base: options.base,
+            },
+            cwd,
+          );
+          dispatched = true;
+        },
+      ),
   );
   const observed = await poll(attempts, dependencies, async () => {
     try {
