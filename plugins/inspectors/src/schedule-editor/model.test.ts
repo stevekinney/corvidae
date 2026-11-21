@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   agentOptionsOf,
+  everySchedule,
   faultOfResult,
   isReceipt,
   isScheduleList,
@@ -126,5 +127,25 @@ describe('what a failed call says', () => {
       }),
     ).toEqual({ message: 'Stale', fields: {}, currentRevision: 7 });
     expect(faultOfResult({}).message).toBe('The request failed.');
+  });
+
+  it('reads every page of schedules, so one past the first hundred can be chosen', async () => {
+    const pages = new Map<number, unknown>([
+      [0, { schedules: [view], nextOffset: 100 }],
+      [100, { schedules: [{ ...view, id: 'later' }], nextOffset: null }],
+    ]);
+    const offsets: number[] = [];
+    const every = await everySchedule(async (offset) => {
+      offsets.push(offset);
+      return pages.get(offset);
+    });
+    expect(offsets).toEqual([0, 100]);
+    expect(every?.map((schedule) => schedule.id)).toEqual([view.id, 'later']);
+  });
+
+  it('stops on a page that does not move forward, and fails on one that is not a list', async () => {
+    const stuck = await everySchedule(async () => ({ schedules: [view], nextOffset: 0 }));
+    expect(stuck).toHaveLength(1);
+    expect(await everySchedule(async () => ({ error: 'no' }))).toBeUndefined();
   });
 });

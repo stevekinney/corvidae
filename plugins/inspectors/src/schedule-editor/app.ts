@@ -26,8 +26,8 @@ import { unmount } from 'svelte';
 import { followHostTheme } from '../host-theme.ts';
 import {
   agentOptionsOf,
+  everySchedule,
   isRecord,
-  isScheduleList,
   isScheduleView,
   scheduleOfTask,
   workflowOptionsOf,
@@ -99,11 +99,16 @@ async function start(): Promise<void> {
     }
   };
 
-  /** Reads the list of schedules again; `false` when the Bureau did not answer one. */
+  /**
+   * Reads every page of the list of schedules again, oldest first, so a newer schedule past the
+   * first page can still be chosen; `false` when the Bureau did not answer a page.
+   */
   const readSchedules = async (): Promise<boolean> => {
-    const value = await readValue('bureau.schedules.list', { limit: LIST_LIMIT });
-    if (!isScheduleList(value)) return false;
-    view.schedules = value.schedules.filter((schedule) => schedule.status !== 'cancelled');
+    const every = await everySchedule((offset) =>
+      readValue('bureau.schedules.list', { limit: LIST_LIMIT, offset }),
+    );
+    if (every === undefined) return false;
+    view.schedules = every.filter((schedule) => schedule.status !== 'cancelled');
     return true;
   };
 
@@ -204,7 +209,14 @@ async function start(): Promise<void> {
   const settle = async (id: string, outcome: string, tone: 'success' | 'danger'): Promise<void> => {
     const fresh = await readSchedule(id);
     if (fresh === undefined) {
-      say(`${outcome} It could not be read again, so the form may be out of date.`, 'danger');
+      // The write is done: saving the same draft again would make a second schedule, or write over
+      // one the form no longer shows. The form takes no save until the schedule is opened again.
+      view.stale = true;
+      say(
+        `${outcome} It could not be read again, so go back and open it before changing it further.`,
+        'danger',
+      );
+      await readSchedules();
       return;
     }
     show(fresh);

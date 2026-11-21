@@ -69,6 +69,27 @@ export function isScheduleList(
   );
 }
 
+/**
+ * Every schedule `bureau.schedules.list` holds, oldest first, read page by page from `readPage`
+ * (which answers the page at an offset) until a page names no later offset; `undefined` when any
+ * page is not a list. A page whose `nextOffset` does not move forward is the last, so a malformed
+ * answer cannot loop.
+ */
+export async function everySchedule(
+  readPage: (offset: number) => Promise<unknown>,
+): Promise<ScheduleView[] | undefined> {
+  const every: ScheduleView[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const page = await readPage(offset);
+    if (!isScheduleList(page)) return undefined;
+    every.push(...page.schedules);
+    const next: unknown = page.nextOffset;
+    offset = typeof next === 'number' && next > offset ? next : null;
+  }
+  return every;
+}
+
 /** Whether `value` is the receipt of a pause, a resume or an update. */
 export function isReceipt(value: unknown): value is ScheduleReceipt {
   return (

@@ -88,12 +88,15 @@ async function open(
   request: APIRequestContext,
   toolInput: Record<string, unknown>,
   scheme?: Scheme,
+  failing: ReadonlySet<string> = new Set(),
 ) {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.exposeFunction(
     'forwardToolCall',
     async (name: string, args: Record<string, unknown>) => {
+      // A tool this test makes fail answers as a host does when the Bureau gives no answer.
+      if (failing.has(name)) return { isError: true, content: [{ type: 'text', text: 'failed' }] };
       const response = await request.post(PANEL_ROUTE, { data: { name, arguments: args } });
       const body = (await response.json()) as Record<string, unknown>;
       // A route refusal carries no result; the panel is told it as an error, as a host would.
@@ -210,6 +213,29 @@ test.describe('the schedule editor MCP App against the running host', () => {
     // The form now shows the schedule as the Bureau holds it.
     await expect(app.getByLabel('When it runs')).toHaveValue('30m');
     expect(errors).toEqual([]);
+  });
+
+  test('takes no second save after a create it cannot read back, so it never makes the schedule twice', async ({
+    page,
+    request,
+  }) => {
+    const description = `Panel unread ${String(Date.now())}`;
+    const { app } = await open(page, request, {}, undefined, new Set(['bureau.schedules.get']));
+    await app.getByRole('button', { name: 'New schedule' }).click();
+    await app.getByLabel('When it runs').fill('30m');
+    await app.getByLabel('Agent', { exact: true }).selectOption(FIRST_AGENT);
+    await app.getByLabel('What each run sends the agent').fill('Report in');
+    await app.getByLabel('Description').fill(description);
+    await app.getByRole('button', { name: 'Create schedule' }).click();
+    await expect(app.getByRole('status')).toContainText('could not be read again');
+    await app.getByRole('button', { name: 'Create schedule' }).click({ force: true });
+
+    const listed = (await bureauCall(request, 'bureau.schedules.list', { limit: 100 })) as {
+      schedules: Stored[];
+    };
+    const mine = listed.schedules.filter((schedule) => schedule.description === description);
+    made.push(...mine.map((schedule) => schedule.id));
+    expect(mine).toHaveLength(1);
   });
 
   test('shows the Bureau’s error on the field that caused it, and writes nothing', async ({
