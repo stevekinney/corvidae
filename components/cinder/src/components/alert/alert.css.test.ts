@@ -149,6 +149,14 @@ function findRule(selector: string): Rule {
   return first;
 }
 
+test('Alert content wraps an unbroken token, including tokens in list items', () => {
+  const values: string[] = [];
+  findRule('.cinder-alert__content').walkDecls('overflow-wrap', (declaration) => {
+    values.push(declaration.value);
+  });
+  expect(values).toEqual(['anywhere']);
+});
+
 const VARIANTS = ['info', 'success', 'warning', 'danger'];
 
 describe('alert chrome — composed status-surface border', () => {
