@@ -383,6 +383,7 @@
               }
             }
             label="Note"
+            optional
             description="Saved with your decision. If you deny, the agent reads it as the reason."
             placeholder="Add a note for the agent or the record"
             rows={2}

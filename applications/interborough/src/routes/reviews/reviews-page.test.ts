@@ -248,7 +248,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note'), {
+    await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: '  Go ahead, but only this once.  ' },
     });
     await approveRefund(findByRole);
@@ -266,7 +266,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note'), {
+    await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: 'Fine for this chat.' },
     });
     await fireEvent.click(
@@ -291,13 +291,12 @@ describe('deciding a Bureau tool approval', () => {
     await findByText(REVIEWS_COPY.noteDescription);
   });
 
-  test('labels the note Note, never Note (optional)', async () => {
+  test('labels the optional note with Cinder marker text', async () => {
     const { container, findByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    // A visible label, as rows 07f and 26o draw it.
-    expect(await findByLabelText('Note')).not.toBeNull();
-    expect(container.textContent).not.toContain('Note (optional)');
+    expect(await findByLabelText('Note Optional')).not.toBeNull();
+    expect(container.textContent).toContain('Note Optional');
   });
 
   test('says the approval was not remembered when the Bureau could not store the grant', async () => {
@@ -322,7 +321,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note'), {
+    await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: 'Wrong order.' },
     });
     await fireEvent.click(await findByRole('button', { name: 'Deny' }));
@@ -389,8 +388,8 @@ describe('the keys that act on the open review', () => {
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
 
     await openRow(container, 0);
-    await waitFor(() => expect(getByLabelText('Note')).not.toBeNull());
-    await fireEvent.input(getByLabelText('Note'), {
+    await waitFor(() => expect(getByLabelText('Note Optional')).not.toBeNull());
+    await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: 'Not today.' },
     });
     press('d');
@@ -942,7 +941,7 @@ describe('an engine review', () => {
     const { container, findByRole, getByLabelText } = open({ weftReviews: [weftPending()] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+    await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: '  Fix clause 4.  ' },
     });
     await fireEvent.click(await findByRole('button', { name: 'Send back' }));
@@ -962,8 +961,7 @@ describe('an engine review', () => {
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Submit decision' })).toBeNull();
     expect(queryByLabelText(/Reviewer/)).toBeNull();
-    // Row 25p: "Note (optional)".
-    expect(getByLabelText('Note (optional)')).not.toBeNull();
+    expect(getByLabelText('Note Optional')).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflow.noteDescription)).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflow.footer)).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflowEyebrow)).not.toBeNull();

@@ -213,7 +213,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText('Note');
+    const note = await findByLabelText('Note Optional');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -248,7 +248,9 @@ describe('an approval', () => {
     expect(card.textContent).toContain('Issue refund');
     expect(card.textContent).toContain("Can't be undone");
     expect(card.textContent).not.toContain('issue-refund');
-    expect(getByLabelText('Note').tagName).toBe('TEXTAREA');
+    const note = getByLabelText('Note Optional');
+    expect(note.tagName).toBe('TEXTAREA');
+    expect(note.getAttribute('placeholder')).toBe(REVIEWS_COPY.notePlaceholder);
   });
 
   test('offers Allow for the rest of the chat', async () => {

@@ -810,6 +810,7 @@ describe('Home’s checklist on a host with no Assistant', () => {
   async function withoutAssistant(
     overrides: Partial<HomeWorld> = {},
     agents: readonly string[] = ['tool-runner'],
+    hidden: readonly string[] = [],
   ) {
     const world = freshInstallation(overrides);
     installed = installHome(world);
@@ -821,6 +822,7 @@ describe('Home’s checklist on a host with no Assistant', () => {
         definitionRevision: 1,
         kind: 'code',
         a2a: false,
+        ...(hidden.includes(name) ? { visibility: 'hidden' } : {}),
         media: { modalities: {}, mimeFamilies: [], mediaLimits: [] },
       })),
     }));
@@ -835,6 +837,19 @@ describe('Home’s checklist on a host with no Assistant', () => {
       stepOf(container, 'chat').querySelector('a') === null ? 'button' : 'link',
       { name: 'Start a chat' },
     );
+
+  test('does not offer a hidden Assistant in the checklist', async () => {
+    const { container } = await withoutAssistant(
+      { providerConnected: true },
+      ['assistant'],
+      ['assistant'],
+    );
+    const step = stepOf(container, 'agent');
+    expect(within(step).queryByRole('button', { name: 'Use Assistant' })).toBeNull();
+    expect(words(step)).not.toContain('Assistant');
+    expect(within(step).getByRole('link', { name: 'Create an agent' })).toBeDefined();
+    expect(words(stepOf(container, 'chat'))).toContain('Waits for step 2: create an agent first.');
+  });
 
   // Owner, 2026-11-19: a step that cannot be done yet is shown as waiting on the earlier step, not
   // as an active button, by the readiness rule every New chat entry point reads.

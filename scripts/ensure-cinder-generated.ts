@@ -57,8 +57,11 @@ function newestInput(directory: string, outputs: ReadonlySet<string>): number {
     if (SKIPPED.has(entry.name)) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) newest = Math.max(newest, newestInput(path, outputs));
-    else if (entry.isFile() && !outputs.has(path) && !/\.test\.[cm]?[jt]s$/.test(entry.name))
-      newest = Math.max(newest, statSync(path).mtimeMs);
+    else if (entry.isFile() && !outputs.has(path) && !/\.test\.[cm]?[jt]s$/.test(entry.name)) {
+      // A fixture can disappear between listing and reading its modification time.
+      const input = statSync(path, { throwIfNoEntry: false });
+      if (input !== undefined) newest = Math.max(newest, input.mtimeMs);
+    }
   }
   return newest;
 }

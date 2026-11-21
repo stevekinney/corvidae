@@ -7,7 +7,7 @@
    * `definition.load()` contract every domain track's `index.svelte`
    * already satisfies.
    */
-  import type { Component } from 'svelte';
+  import { untrack, type Component } from 'svelte';
 
   import { ErrorState, Skeleton } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
@@ -21,27 +21,29 @@
   import ViewFrame from '../view-frame.svelte';
   import { pageWidth } from '../views.ts';
 
-  let activeComponent = $state<Component | null>(null);
+  // Commit the loaded component and its route key together. Navigation can change the live key
+  // before this outlet's effect runs, so the old component must never render under that new key.
+  let mounted = $state.raw<{ component: Component; key: string } | null>(null);
   let loading = $state(false);
   let notFound = $state(false);
   /** Set when the matched route's code could not be fetched. */
   let loadFailed = $state(false);
   const queryClient = useQueryClient();
 
-  // The key the mounted component was loaded for. A navigation that leaves it as it was (a change
-  // to the query string, or a page that asked to be kept, `router.navigate`'s `keep`) is not a
-  // new page: it must not unmount what is on screen.
-  let loadedKey: string | undefined;
-
   $effect(() => {
     const match = router.current;
     const definition = match.route;
     const key = router.viewKey;
-    if (definition !== null && definition.redirect === undefined && key === loadedKey) return;
-    loadedKey = undefined;
+    // A query-only navigation or explicit keep preserves the instance under its existing key.
+    if (
+      definition !== null &&
+      definition.redirect === undefined &&
+      key === untrack(() => mounted?.key)
+    )
+      return;
+    mounted = null;
 
     if (!definition) {
-      activeComponent = null;
       loading = false;
       loadFailed = false;
       notFound = true;
@@ -76,8 +78,7 @@
       .load()
       .then((loadedModule) => {
         if (cancelled) return undefined;
-        activeComponent = loadedModule.default;
-        loadedKey = key;
+        mounted = { component: loadedModule.default, key };
         loading = false;
         clearChunkReloadGuard();
         return undefined;
@@ -88,7 +89,6 @@
         // page once instead of showing the failure. The skeleton stays up while the page goes.
         if (reloadOnceForMissingChunk(error)) return undefined;
         // The previous route's component must not stay on screen under the new address.
-        activeComponent = null;
         loading = false;
         loadFailed = true;
         return undefined;
@@ -124,15 +124,15 @@
           onRetry={() => window.location.reload()}
         />
       </div>
-    {:else if loading || !activeComponent}
+    {:else if loading || mounted === null || mounted.key !== router.viewKey}
       <div class="weft-shell-outlet__skeleton" role="status" aria-busy="true" aria-label="Loading">
         <Skeleton height="1.5rem" width="40%" />
         <Skeleton height="10rem" />
         <Skeleton height="10rem" />
       </div>
     {:else}
-      {#key router.viewKey}
-        {@const ActiveComponent = activeComponent}
+      {#key mounted.key}
+        {@const ActiveComponent = mounted.component}
         {@const view = router.current.route?.view}
         {#if view}
           <ViewFrame

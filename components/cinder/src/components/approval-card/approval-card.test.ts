@@ -1806,14 +1806,15 @@ describe('ApprovalCard row layout', () => {
 
       await fireEvent.click(toggle);
       await tick();
-      const field = requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement);
+      const label = layout === 'row' ? 'Note Optional' : 'Note';
+      const field = requiredInstance(view.getByLabelText(label), HTMLTextAreaElement);
       expect(document.activeElement).toBe(field);
       expect(view.queryByRole('button', { name: 'Add note' })).toBeNull();
 
       // A typed note keeps the field open through an unrelated re-render.
       await fireEvent.input(field, { target: { value: 'Check the carrier first.' } });
       await view.rerender({ ...refundRow({ layout, onResolve }), consequence: 'Sends it back' });
-      expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+      expect(requiredInstance(view.getByLabelText(label), HTMLTextAreaElement).value).toBe(
         'Check the carrier first.',
       );
     });
@@ -1824,11 +1825,11 @@ describe('ApprovalCard row layout', () => {
     const { getByLabelText, getByRole, getByText, queryByLabelText } = render(ApprovalCard, {
       props: refundRow({ onResolve }),
     });
-    expect(queryByLabelText('Note')).toBeNull();
+    expect(queryByLabelText('Note Optional')).toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Add note' }));
 
-    const field = requiredInstance(getByLabelText('Note'), HTMLTextAreaElement);
+    const field = requiredInstance(getByLabelText('Note Optional'), HTMLTextAreaElement);
     expect(field.placeholder).toBe('Add a note for the agent or the record');
     expect(
       getByText('Saved with your decision. If you deny, the agent reads it as the reason.'),
@@ -1855,18 +1856,18 @@ describe('ApprovalCard row layout', () => {
     });
     const view = render(ApprovalCard, { props });
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(view.getByLabelText('Note'), {
+    await fireEvent.input(view.getByLabelText('Note Optional'), {
       target: { value: 'Draft for the first.' },
     });
     await fireEvent.click(view.getByRole('checkbox'));
 
     await view.rerender({ ...props, consequence: 'Sends it back' });
-    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
       'Draft for the first.',
     );
 
     await view.rerender({ ...props, idempotencyKey: 'two' });
-    expect(view.queryByLabelText('Note')).toBeNull();
+    expect(view.queryByLabelText('Note Optional')).toBeNull();
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
   });
 
