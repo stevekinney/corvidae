@@ -4,7 +4,6 @@ import {
   approvalQuestion,
   argumentLine,
   declaredSummary,
-  isPolicyReason,
   policyReasonOf,
   reasonSaysAlways,
   resultSummary,
@@ -58,8 +57,6 @@ describe('policyReasonOf', () => {
 
   test('says Always for an approval whose only copy of the reason is its message', () => {
     expect(reasonSaysAlways(policyReasonOf(undefined, undefined, REASON_ALWAYS))).toBe(true);
-    expect(isPolicyReason(REASON_ALWAYS)).toBe(true);
-    expect(isPolicyReason('Run Discover agents?')).toBe(false);
   });
 });
 

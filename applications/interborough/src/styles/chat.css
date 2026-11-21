@@ -248,15 +248,11 @@
 /* On compact phones the breadcrumb already names the conversation. Keep the heading available
  * to assistive technology and leave the visible band to the status and actions. */
 @media (max-width: 360px) {
-  .weft-chat-head .cinder-page-header__title {
+  .weft-chat-heading h1 {
     position: absolute;
     inline-size: 1px;
     block-size: 1px;
     clip-path: inset(50%);
-  }
-
-  .weft-chat-head .cinder-page-header[data-cinder-narrow-actions] .cinder-page-header__row {
-    row-gap: 0;
   }
 }
 

@@ -684,9 +684,7 @@ test.describe('The composer at desktop width', () => {
 });
 
 test.describe('Keyboard hints on a phone', () => {
-  test('a phone with a mouse names the two choice keys under the question', async ({
-    page,
-  }) => {
+  test('a phone with a mouse names the two choice keys under the question', async ({ page }) => {
     await connectProvider(page);
     await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
     await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();

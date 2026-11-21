@@ -2187,6 +2187,7 @@
       <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
       {#if !choosing}
         <PageHeader
+          class="weft-chat-heading"
           data-testid="chat-header"
           title={markdownTitle}
           titleText={displayTitle}

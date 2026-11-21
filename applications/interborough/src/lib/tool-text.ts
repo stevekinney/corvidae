@@ -48,7 +48,7 @@ const POLICY_REASON =
   /^Tool "[^"]+" \([\w-]+ tier\) (?:requires approval|is denied by approval policy) \(mode: [\w-]+\)[.?]?$/;
 
 /** Whether `text` is an approval policy's reason sentence rather than words a tool wrote. */
-export function isPolicyReason(text: string | undefined): boolean {
+function isPolicyReason(text: string | undefined): boolean {
   return text !== undefined && POLICY_REASON.test(text.trim());
 }
 
