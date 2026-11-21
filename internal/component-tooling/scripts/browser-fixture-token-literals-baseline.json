@@ -11,6 +11,10 @@
     "inline-size: 6rem",
     "max-inline-size: 36rem"
   ],
+  "components/cinder/src/components/duration-field/duration-field-alignment.fixture.svelte": [
+    "inline-size: 12rem",
+    "inline-size: 32rem"
+  ],
   "components/cinder/src/components/drawer/drawer-sheet.fixture.svelte": ["min-block-size: 20rem"],
   "components/cinder/src/components/drawer/drawer.fixture.svelte": ["min-block-size: 20rem"],
   "components/cinder/src/components/dropdown/dropdown.fixture.svelte": ["min-block-size: 12rem"],

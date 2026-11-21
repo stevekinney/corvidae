@@ -7,7 +7,7 @@ import type { CodeBlockProps } from './code-block.types.ts';
 
 setupHappyDom();
 
-const { cleanup, render, waitFor } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { default: CodeBlock } = await import('./code-block.svelte');
 const { default: CodeHighlighterContextFixture } =
   await import('../../test/fixtures/code-highlighter-context-fixture.svelte');
@@ -66,7 +66,11 @@ describe('CodeBlock — static structure', () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
 
     expect(css).toMatch(/\.cinder-code-block\s*\{[^}]*user-select:\s*none/s);
+    // The CodeBlock shell must not clip CopyButton's coarse-pointer pseudo-target at the inline
+    // edge. The viewport, not the decorative shell, owns terminal/content clipping.
+    expect(css).toMatch(/\.cinder-code-block\s*\{[^}]*overflow:\s*visible/s);
     expect(css).toMatch(/\.cinder-code-block__viewport\s*\{[^}]*user-select:\s*text/s);
+    expect(css).toMatch(/\.cinder-code-block__viewport\s*\{[^}]*overflow:\s*auto/s);
   });
   test('renders code in a <pre><code> pair (no language → no highlight)', async () => {
     const highlighter = mock(contextHighlighter);
@@ -185,6 +189,34 @@ describe('CodeBlock — static structure', () => {
     const { container } = render(CodeBlock, { code: 'x', copyable: true });
     expect(container.querySelector('.cinder-code-block__meta')).not.toBeNull();
     expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
+  });
+
+  test('the CodeBlock copy control writes its code to the clipboard', async () => {
+    const originalClipboard = globalThis.navigator.clipboard;
+    const writes: string[] = [];
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => writes.push(text) },
+    });
+
+    try {
+      const { container } = render(CodeBlock, {
+        code: 'claude mcp add interborough',
+        language: 'sh',
+        highlight: false,
+        copyable: true,
+      });
+      const button = container.querySelector<HTMLButtonElement>('.cinder-copy-button');
+      if (button === null) throw new Error('CodeBlock did not render its copy control.');
+
+      await fireEvent.click(button);
+      await waitFor(() => expect(writes).toEqual(['claude mcp add interborough']));
+    } finally {
+      Object.defineProperty(globalThis.navigator, 'clipboard', {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
   });
 
   test('the copy button is named for the language it copies', () => {
@@ -357,9 +389,9 @@ describe('CodeBlock — static structure', () => {
   });
 
   // The coarse-pointer hit area is `touch-target-min` square and centred on the 24px face, so it
-  // overhangs by half the difference. The root clips its overflow, so an inset below the overhang
-  // cuts the target (a 42 by 44 one at an 8px inset).
-  test('the floating copy inset keeps the whole coarse hit area inside the clipped block', async () => {
+  // overhangs by half the difference. The painted face needs at least that inset to align with the
+  // code, while the shell leaves the complete target reachable.
+  test('the floating copy inset aligns its painted face without shrinking the coarse hit area', async () => {
     const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     const css = source.replace(/\s+/g, ' ');
     expect(css).toMatch(

@@ -34,6 +34,7 @@
       <NavigationItem {variant} href="#home" active>Home</NavigationItem>
       <NavigationItem {variant} href="#chat">Chat</NavigationItem>
       <NavigationItem {variant} href="#runs">Runs</NavigationItem>
+      <NavigationItem {variant}>More</NavigationItem>
     {/snippet}
   </NavigationBar>
 {/snippet}

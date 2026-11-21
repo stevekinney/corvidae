@@ -475,9 +475,10 @@ describe('Select — required marker', () => {
 describe('Select — docked listbox sheet geometry', () => {
   test('lets the docked panel restore the shared floating surface viewport width', () => {
     const styles = readSelectStyles();
-    const docked = /\.cinder-select__panel\.cinder-popover\[data-cinder-sheet='docked'\]\s*\{([^}]*)\}/.exec(
-      styles,
-    )?.[1];
+    const docked =
+      /\.cinder-select__panel\.cinder-popover\[data-cinder-sheet='docked'\]\s*\{([^}]*)\}/.exec(
+        styles,
+      )?.[1];
     expect(docked).toContain('max-inline-size: none');
   });
 });
