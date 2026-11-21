@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { acceptMovedBase, mergeHeadOnto } from './moved-base.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 
@@ -91,38 +92,52 @@ function world(headTouchesQuoted = false) {
   return { directory, attested, input };
 }
 
+// Each scenario starts processes, so it runs once at module scope, where no per-test clock applies,
+// and its test rethrows what it recorded.
+const sameFileWithoutConflict = await outcomeOf(async () => {
+  const w = world();
+  const first = commit(w.directory, 'shared.txt', 'one\ntwo\nmain\n', 'Main edits line three');
+  const second = commit(w.directory, 'other.txt', 'other\n', 'Main adds a file');
+  expect(acceptMovedBase(w.input(second))).toEqual({ mergedIn: [first, second] });
+});
+
+const conflictNamesPaths = await outcomeOf(async () => {
+  const w = world(true);
+  writeFileSync(join(w.directory, 'naïve.txt'), 'main\n');
+  git(w.directory, 'add', 'naïve.txt');
+  git(w.directory, 'commit', '-q', '-m', 'Main edits the quoted path');
+  const base = commit(w.directory, 'shared.txt', 'main\ntwo\nthree\n', 'Main edits line one');
+  const refused = acceptMovedBase(w.input(base));
+  expect(refused).toHaveProperty('problem');
+  const { problem } = refused as { problem: string };
+  expect(problem).toContain('conflicts with main at naïve.txt, shared.txt');
+});
+
+const notAnAncestor = await outcomeOf(async () => {
+  const w = world();
+  // A root commit holding main's tree: the history was rewritten, so no old commit is its ancestor.
+  const base = git(
+    w.directory,
+    'commit-tree',
+    git(w.directory, 'rev-parse', 'main^{tree}'),
+    '-m',
+    'Rewritten main',
+  );
+  expect(acceptMovedBase(w.input(base))).toEqual({
+    problem: expect.stringContaining('is not an ancestor of main'),
+  });
+});
+
 describe('acceptMovedBase against real Git', () => {
   test('lands when main and the head edited the same file at different lines', () => {
-    const w = world();
-    const first = commit(w.directory, 'shared.txt', 'one\ntwo\nmain\n', 'Main edits line three');
-    const second = commit(w.directory, 'other.txt', 'other\n', 'Main adds a file');
-    expect(acceptMovedBase(w.input(second))).toEqual({ mergedIn: [first, second] });
+    rethrow(sameFileWithoutConflict);
   });
 
   test('refuses a conflict, naming the path, and a non-ASCII path verbatim', () => {
-    const w = world(true);
-    writeFileSync(join(w.directory, 'naïve.txt'), 'main\n');
-    git(w.directory, 'add', 'naïve.txt');
-    git(w.directory, 'commit', '-q', '-m', 'Main edits the quoted path');
-    const base = commit(w.directory, 'shared.txt', 'main\ntwo\nthree\n', 'Main edits line one');
-    const refused = acceptMovedBase(w.input(base));
-    expect(refused).toHaveProperty('problem');
-    const { problem } = refused as { problem: string };
-    expect(problem).toContain('conflicts with main at naïve.txt, shared.txt');
+    rethrow(conflictNamesPaths);
   });
 
   test('refuses a main the attested base is not an ancestor of', () => {
-    const w = world();
-    // A root commit holding main's tree: the history was rewritten, so no old commit is its ancestor.
-    const base = git(
-      w.directory,
-      'commit-tree',
-      git(w.directory, 'rev-parse', 'main^{tree}'),
-      '-m',
-      'Rewritten main',
-    );
-    expect(acceptMovedBase(w.input(base))).toEqual({
-      problem: expect.stringContaining('is not an ancestor of main'),
-    });
+    rethrow(notAnAncestor);
   });
 });
