@@ -8,10 +8,12 @@
  */
 import { readFile } from 'node:fs/promises';
 
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import {
   agentFilePath,
   bureau,
+  createAgentFile,
   faultCodeOf,
   listedStateOf,
   removeAgent,
@@ -26,9 +28,81 @@ const COPY = 'tool-runner';
 const OLDER_COPY = 'tool-runner-older';
 const words = AGENT_PAGE_COPY.plugin;
 
+const FILE_SOURCE = 'agent-copy-without-losses';
+const EDITOR_WIDTHS =
+  designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 1920, 768, 375];
+const LONG_COPY_BEHAVIOR = 'unknown-behavior'.repeat(12);
+
+for (const copy of [
+  { state: 'copied with losses', source: SOURCE, longBehavior: false },
+  { state: 'copied without losses', source: FILE_SOURCE, longBehavior: false },
+  { state: 'copied with a long behavior name', source: SOURCE, longBehavior: true },
+]) {
+  test(`/agents/new ${copy.state} at ${EDITOR_WIDTHS.join(', ')} pixels`, async ({
+    page,
+    request,
+  }) => {
+    if (copy.source === FILE_SOURCE) await createAgentFile(request, FILE_SOURCE);
+    if (copy.longBehavior) {
+      await page.route('**/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as {
+          method?: string;
+          params?: { id?: string };
+        } | null;
+        if (call?.method !== 'bureau.agents.definitions.get' || call.params?.id !== SOURCE) {
+          await route.fallback();
+          return;
+        }
+        const response = await route.fetch();
+        const body = (await response.json()) as {
+          result: { dropped: string[] } & Record<string, unknown>;
+        };
+        await route.fulfill({
+          response,
+          json: {
+            ...body,
+            result: { ...body.result, dropped: [...body.result.dropped, LONG_COPY_BEHAVIOR] },
+          },
+        });
+      });
+    }
+
+    for (const width of EDITOR_WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/agents/new?from=${encodeURIComponent(copy.source)}`);
+      await expect(page.getByRole('textbox', { name: /^Name/ })).toBeVisible();
+      await expect(page.getByTestId('agent-copied-from')).toBeVisible();
+      const behaviors = page.getByTestId('agent-copy-dropped-behaviors');
+      if (copy.source === FILE_SOURCE) {
+        await expect(behaviors).toHaveCount(0);
+      } else {
+        await expect(behaviors.getByRole('listitem').first()).toBeVisible();
+      }
+      if (copy.longBehavior) {
+        await expect(behaviors.getByText(LONG_COPY_BEHAVIOR, { exact: true })).toBeVisible();
+        expect(
+          await behaviors.evaluate((list) => list.scrollWidth - list.clientWidth),
+        ).toBeLessThanOrEqual(0);
+      }
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: copy.state,
+        source: 'agent-duplicate.spec.ts',
+      });
+      if (copy.longBehavior && width === 375) {
+        await page.setViewportSize({ width: 320, height: 640 });
+        expect(
+          await behaviors.evaluate((list) => list.scrollWidth - list.clientWidth),
+        ).toBeLessThanOrEqual(0);
+      }
+    }
+  });
+}
+
 test.afterEach(async ({ request }) => {
   await removeAgent(request, COPY);
   await removeAgent(request, OLDER_COPY);
+  await removeAgent(request, FILE_SOURCE);
 });
 
 for (const width of WIDTHS) {

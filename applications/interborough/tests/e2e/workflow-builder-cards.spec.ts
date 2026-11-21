@@ -14,6 +14,7 @@
  */
 import type { Page, Route } from '@playwright/test';
 
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -21,7 +22,7 @@ import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
 import { openJsonTab, openTab } from './workflow-support.ts';
 
 const BUILDER = WORKFLOW_COPY.builder;
-const WIDTHS = [1280, 375] as const;
+const WIDTHS = designReviewCaptureDirectory() === undefined ? [1280, 375] : [1280, 768, 375];
 /** Below this the builder is read-only (`PHONE_VIEWPORT_BREAKPOINT`). */
 const PHONE_BELOW = 640;
 
