@@ -278,6 +278,7 @@ export const RUN_DETAIL_COPY = {
     },
     forbidden: {
       title: 'Your sign-in can’t see this run’s hooks',
+      reason: 'The rest of the run is still available.',
       /** The scope Interborough’s API checks before it lets the inspection through (`host/scope-gate.ts`). */
       requirement: 'runs:read',
     },

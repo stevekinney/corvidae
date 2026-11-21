@@ -5,7 +5,7 @@
     "background": {
       "$type": "color",
       "$value": "{surface.raised}",
-      "$description": "Secondary (default) button fill.",
+      "$description": "Secondary (default) button fill: the raised surface keeps a visible face without competing with the one primary action in the same group.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-button-background",
@@ -19,7 +19,7 @@
     "foreground": {
       "$type": "color",
       "$value": "{text.default}",
-      "$description": "Secondary (default) button label color.",
+      "$description": "Secondary (default) button label color: default text stays legible on the raised fill in both themes and does not rely on the border for its meaning.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-button-foreground",
@@ -37,7 +37,7 @@
         "components": [0.2, 0.02, 255],
         "alpha": 0.5
       },
-      "$description": "Secondary (default) button border: `border.control` in both themes, so the edge reads heavier than a container's even though the structural tiers are faint, and becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.",
+      "$description": "Secondary (default) button border: `border.control` separates its raised fill from the surrounding surface in both themes, reads heavier than a container edge, and becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-button-border",

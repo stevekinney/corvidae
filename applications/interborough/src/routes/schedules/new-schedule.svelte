@@ -1017,9 +1017,12 @@
   <div class="ib-schedule-new__footer" data-testid="new-schedule-footer">
     <p class="ib-schedule-new__summary" data-testid="new-schedule-summary">{footerLine}</p>
     <div class="ib-schedule-new__actions">
-      <Button variant="secondary" href={router.href(LIST_PATH)} onclick={cancel}
-        >{copy.cancel}</Button
-      >
+      <Button
+        variant="secondary"
+        href={router.href(LIST_PATH)}
+        onclick={cancel}
+        label={copy.cancel}
+      />
       <Button
         data-changes
         variant="primary"

@@ -42,6 +42,14 @@ async function measure(page: Page, testId: string) {
   return { hit, painted };
 }
 
+async function groupRows(page: Page) {
+  const group = page.locator('[data-testid="coarse-group"]');
+  return {
+    first: group.locator('.cinder-checkbox-row').nth(0),
+    second: group.locator('.cinder-checkbox-row').nth(1),
+  };
+}
+
 test.describe('Checkbox hit area, fine pointer', () => {
   test.beforeEach(async ({ page }) => {
     await page.emulateMedia({ media: 'screen' });
@@ -130,6 +138,25 @@ test.describe('Checkbox hit area, coarse pointer', () => {
       await expect(input).not.toBeChecked();
       await root.locator('.cinder-checkbox-row').click({ position: { x: 1, y: 1 } });
       await expect(input).toBeChecked();
+    } finally {
+      await close();
+    }
+  });
+
+  test('neighboring CheckboxGroup rows leave an 8px gap between 44px hit targets', async ({
+    browser,
+  }) => {
+    const { page, close } = await coarsePage(browser);
+    try {
+      await openAlignment(page);
+      const { first, second } = await groupRows(page);
+      const firstBox = await boxOf(first);
+      const secondBox = await boxOf(second);
+      expect(secondBox.top - firstBox.bottom).toBeGreaterThanOrEqual(8);
+
+      await first.click({ position: { x: 1, y: 1 } });
+      await expect(page.locator('#coarse-first')).toBeChecked();
+      await expect(page.locator('#coarse-second')).not.toBeChecked();
     } finally {
       await close();
     }

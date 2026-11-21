@@ -94,8 +94,9 @@
         <Button
           variant="primary"
           href={router.href(workflowNewPath())}
-          onclick={(event) => go(event, workflowNewPath())}>{copy.emptyAction}</Button
-        >
+          onclick={(event) => go(event, workflowNewPath())}
+          label={copy.emptyAction}
+        />
       {/snippet}
     </EmptyState>
   {:else}
@@ -114,9 +115,10 @@
       <Button
         variant="secondary"
         href={router.href('/runs')}
-        onclick={(event) => go(event, '/runs')}>{copy.cancel}</Button
-      >
-      <Button variant="primary" onclick={proceed}>{copy.continue}</Button>
+        onclick={(event) => go(event, '/runs')}
+        label={copy.cancel}
+      />
+      <Button variant="primary" onclick={proceed} label={copy.continue} />
     </div>
   {/if}
 </article>

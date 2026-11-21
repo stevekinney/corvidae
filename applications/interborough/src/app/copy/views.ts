@@ -130,8 +130,7 @@ export const NOT_FOUND_ROUTE_COPY = {
 export const FORBIDDEN_COPY = {
   /** The title of a view that is locked: "Your sign-in can’t open Hooks". */
   title: (label: string): string => `Your sign-in can’t open ${label}`,
-  description: 'Settings › API reference › Your scopes shows what it can do.',
-  scopes: { label: 'See your scopes', href: '/settings/api-reference?group=scopes' },
+  description: 'Interborough refused access to this page.',
   home: 'Back to Home',
 } as const;
 

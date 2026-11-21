@@ -43,6 +43,7 @@
   import { agentLabel } from '../../lib/agent-label.ts';
   import { defaultAgentQuery, listAgentsWithReadiness } from '../../lib/default-agent.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { readPreferredAgent, writePreferredAgent } from '../../lib/preferred-agent.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { storageFacts } from '../storage/storage-location.ts';
@@ -209,7 +210,7 @@
     <SettingRow
       id="weft-setting-storage-backend"
       label={copy.label}
-      identifier={copy.identifier}
+      {...phoneViewport.current ? {} : { identifier: copy.identifier }}
       description={remoteMode ? copy.remoteDescription : copy.description}
       {...remoteMode ? { managed: { message: copy.setByDeployment } } : {}}
     >
@@ -284,7 +285,7 @@
         <SettingRow
           id="weft-setting-theme"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}
@@ -309,7 +310,7 @@
         <SettingRow
           id="weft-setting-sidebar"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}
@@ -335,7 +336,7 @@
         <SettingRow
           id="weft-setting-default-agent"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}
@@ -362,7 +363,7 @@
         <SettingRow
           id="weft-settings-single-key-shortcuts"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}
