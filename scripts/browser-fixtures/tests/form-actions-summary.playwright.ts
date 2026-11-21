@@ -12,6 +12,12 @@ import { expect, type Locator } from '@playwright/test';
 const entry = loadManifest().find((candidate) => candidate.slug === 'form-actions');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'summary');
 
+async function atInlineSize(bar: Locator, inlineSize: string): Promise<void> {
+  await bar.evaluate((element, width) => {
+    (element as HTMLElement).style.inlineSize = width;
+  }, inlineSize);
+}
+
 async function expectReadableSummary(bar: Locator): Promise<void> {
   const geometry = await bar.evaluate((element) => {
     const actions = element.querySelector<HTMLElement>('.cinder-form-actions');
@@ -98,8 +104,14 @@ for (const theme of ['light', 'dark'] as const) {
       fixtureName: 'summary',
       fixtureContentHash: fixture.fixtureContentHash,
     });
-    await expectReadableSummary(page.getByTestId('form-actions-30rem'));
-    await expectReadableSummary(page.getByTestId('form-actions-45rem'));
-    await expectNoStartSummaryWraps(page.getByTestId('form-actions-long-summary'));
+    const narrow = page.getByTestId('form-actions-30rem');
+    const wide = page.getByTestId('form-actions-45rem');
+    const noStart = page.getByTestId('form-actions-long-summary');
+    await atInlineSize(narrow, '30rem');
+    await atInlineSize(wide, '45rem');
+    await atInlineSize(noStart, '28.25rem');
+    await expectReadableSummary(narrow);
+    await expectReadableSummary(wide);
+    await expectNoStartSummaryWraps(noStart);
   });
 }

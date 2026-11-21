@@ -42,9 +42,8 @@
 
   /* The left side takes the room the buttons leave and wraps rather than pushing them off. */
   .cinder-form-actions__summary {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     min-inline-size: 0;
-    white-space: nowrap;
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
@@ -64,8 +63,15 @@
   /* A start slot may hold explanatory copy. Let it use and wrap in the space between the status
    * and actions, rather than squeezing the status into a letter-wide column. */
   .cinder-form-actions__start {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-inline-size: 0;
+  }
+
+  /* A start slot's explanation gives way before a saved receipt. Without a start slot the summary
+   * retains its normal wrapping behavior beside the end actions. */
+  .cinder-form-actions__row:has(.cinder-form-actions__start) .cinder-form-actions__summary {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .cinder-form-actions__end {
@@ -85,6 +91,10 @@
 
     .cinder-form-actions__summary {
       flex-basis: 100%;
+    }
+
+    .cinder-form-actions__row:has(.cinder-form-actions__start) .cinder-form-actions__summary {
+      flex: 0 1 100%;
       white-space: normal;
     }
 

@@ -41,16 +41,10 @@
   <div class="form-actions-summary__bar" data-testid="form-actions-30rem">
     <FormActions {summary} start={start30} {end} />
   </div>
-  <div
-    class="form-actions-summary__bar form-actions-summary__bar--wide"
-    data-testid="form-actions-45rem"
-  >
+  <div class="form-actions-summary__bar" data-testid="form-actions-45rem">
     <FormActions {summary} start={start45} {end} />
   </div>
-  <div
-    class="form-actions-summary__bar form-actions-summary__bar--long-summary"
-    data-testid="form-actions-long-summary"
-  >
+  <div class="form-actions-summary__bar" data-testid="form-actions-long-summary">
     <FormActions summary={longSummary} {end} />
   </div>
 </div>
@@ -60,19 +54,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
-  }
-
-  .form-actions-summary__bar {
-    inline-size: 30rem;
-    max-inline-size: 100%;
-  }
-
-  .form-actions-summary__bar--wide {
-    inline-size: 45rem;
-  }
-
-  .form-actions-summary__bar--long-summary {
-    inline-size: 28.25rem;
   }
 
   .form-actions-summary__a2a {
