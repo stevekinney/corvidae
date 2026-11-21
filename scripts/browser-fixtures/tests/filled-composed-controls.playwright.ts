@@ -29,7 +29,12 @@ test.describe('Filled composed controls', () => {
         fixture.slug === 'number-input'
           ? page.locator('.cinder-input-group--filled').filter({ has: control })
           : control;
-      await expect.poll(async () => (await frame.boundingBox())?.height).toBe(48);
+      await expect
+        .poll(async () => {
+          const bounds = await frame.boundingBox();
+          return bounds?.height;
+        })
+        .toBe(48);
       await expect(frame).toHaveCSS('border-top-left-radius', '12px');
 
       await expect(frame).toHaveCSS('box-shadow', 'none');
