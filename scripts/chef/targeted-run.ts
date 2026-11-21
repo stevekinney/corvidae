@@ -24,6 +24,13 @@
 //   bun scripts/chef/targeted-run.ts [--ref <branch>] [--fixture-components a,b]
 //       [--fixture-spec <path>]... [--e2e-spec <path>]... [--unit-workspace <dir>]
 //       [--unit-path <path>]... [--unit-config <file>] [--dry-run] [--json]
+//   bun scripts/chef/targeted-run.ts --ref <branch> --verification-request <key>
+//       --verification-plan <sha256> --verification-base <sha> [--dry-run] [--json]
+//
+// The second form dispatches the one `main.yml` run a delivery request binds: the three inputs are
+// the ones `ci-evidence-github.ts` sends and `main.yml` records in its receipt, and the run's name
+// becomes `P07 <key>`. It always dispatches `main.yml` whatever the diff, takes no other input, and
+// plans nothing. `delivery-request.ts prepare` calls it; a coordinator rarely does.
 //
 // Without `--dry-run` it dispatches the workflow, once, on `--ref` (default: the current branch).
 // A plan that sets `requires_full_run` (a one-way door, the whole Interborough suite, or every
@@ -269,9 +276,67 @@ export function buildCommand(ref: string, inputs: TargetedInputs, planDigest = '
   return command;
 }
 
-/** The full sharded run. A plan that requires one dispatches this, never `targeted-checks.yml`. */
-export function buildFullRunCommand(ref: string): string[] {
-  return ['gh', 'workflow', 'run', 'main.yml', '--ref', ref];
+/**
+ * The identity a delivery request binds to its `main.yml` run: `main.yml`'s three
+ * `workflow_dispatch` inputs, which its run name and evidence receipt carry.
+ */
+export interface VerificationBinding {
+  /** `ciEvidenceRequestKey` of the request's CI evidence identity. */
+  request: string;
+  /** `batchVerificationPlanDigest` of the request's members. */
+  plan: string;
+  /** The candidate's base commit. */
+  base: string;
+}
+
+/** Why `binding` is not a well-formed one, or `undefined` when it is. */
+function bindingProblem(binding: VerificationBinding): string | undefined {
+  if (!/^[0-9a-f]{64}$/.test(binding.request))
+    return '--verification-request must be a SHA-256 request key.';
+  if (!/^[0-9a-f]{64}$/.test(binding.plan)) return '--verification-plan must be a SHA-256 digest.';
+  if (!/^[0-9a-f]{40}$/.test(binding.base)) return '--verification-base must be a commit SHA.';
+  return undefined;
+}
+
+/**
+ * The full sharded run. A plan that requires one dispatches this, never `targeted-checks.yml`. With
+ * a binding it carries the three inputs a delivery request pins (`main.yml` `on.workflow_dispatch`).
+ */
+export function buildFullRunCommand(ref: string, binding?: VerificationBinding): string[] {
+  const command = ['gh', 'workflow', 'run', 'main.yml', '--ref', ref];
+  if (binding !== undefined)
+    command.push(
+      '-f',
+      `verification_request=${binding.request}`,
+      '-f',
+      `verification_plan=${binding.plan}`,
+      '-f',
+      `verification_base=${binding.base}`,
+    );
+  return command;
+}
+
+/**
+ * Dispatches the bound `main.yml` run, once. It is the dispatcher `delivery-request.ts` uses.
+ * `ci-evidence-github.ts`'s provider `dispatch` sends the same three inputs and is reached only by
+ * `ci-evidence-run.ts`; sending one head's run through both would dispatch it twice. Throws a
+ * `UsageError` for a malformed binding or a failed dispatch.
+ */
+export function dispatchVerificationRun(
+  runner: Runner,
+  ref: string,
+  binding: VerificationBinding,
+  options: { cwd?: string; dryRun?: boolean } = {},
+): { command: string[]; printed: string } {
+  const problem = bindingProblem(binding);
+  if (problem !== undefined) throw new UsageError(problem);
+  if (!/^[\w./-]+$/.test(ref)) throw new UsageError(`'${ref}' is not a branch name.`);
+  const command = buildFullRunCommand(ref, binding);
+  if (options.dryRun === true) return { command, printed: '' };
+  const result = runner(command, options.cwd === undefined ? undefined : { cwd: options.cwd });
+  if (result.code !== 0)
+    throw new UsageError(`gh workflow run failed: ${result.stderr.trim().split('\n')[0] ?? ''}`);
+  return { command, printed: `${result.stdout}${result.stderr}`.trim() };
 }
 
 function emptyInputs(): TargetedInputs {
@@ -302,13 +367,64 @@ export function run(
   },
 ): { code: number; output: string; notes: string[] } {
   const parsed = parseOptions(argv, {
-    values: ['ref', 'fixture-components', 'unit-workspace', 'unit-config'],
+    values: [
+      'ref',
+      'fixture-components',
+      'unit-workspace',
+      'unit-config',
+      'verification-request',
+      'verification-plan',
+      'verification-base',
+    ],
     repeated: ['fixture-spec', 'e2e-spec', 'unit-path'],
     flags: ['dry-run', 'json'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError('targeted-run.ts takes options only; see its header.');
   const { runner } = dependencies;
+  const bindingValues = ['verification-request', 'verification-plan', 'verification-base'];
+  if (bindingValues.some((name) => parsed.values[name] !== undefined)) {
+    const ref = parsed.values['ref'];
+    const others = [
+      'fixture-components',
+      'unit-workspace',
+      'unit-config',
+      'fixture-spec',
+      'e2e-spec',
+      'unit-path',
+    ].filter((name) => parsed.values[name] !== undefined || parsed.repeated[name] !== undefined);
+    if (ref === undefined)
+      throw new UsageError('--verification-* needs --ref: a bound run is dispatched on a branch.');
+    if (bindingValues.some((name) => parsed.values[name] === undefined))
+      throw new UsageError(
+        '--verification-request, --verification-plan and --verification-base go together.',
+      );
+    if (others.length > 0)
+      throw new UsageError(
+        `--verification-* dispatches main.yml and takes no ${others.map((name) => `--${name}`).join(', ')}.`,
+      );
+    const binding: VerificationBinding = {
+      request: parsed.values['verification-request'] ?? '',
+      plan: parsed.values['verification-plan'] ?? '',
+      base: parsed.values['verification-base'] ?? '',
+    };
+    const dispatched = dispatchVerificationRun(runner, ref, binding, {
+      dryRun: parsed.flags.has('dry-run'),
+    });
+    return {
+      code: 0,
+      output: parsed.flags.has('json')
+        ? JSON.stringify({
+            ref,
+            inputs: emptyInputs(),
+            command: dispatched.command,
+            requiresFullRun: true,
+          })
+        : dispatched.command.map(shellQuote).join(' ') +
+          '\n# Dispatching main.yml, bound to the delivery request (verification inputs above).',
+      notes: dispatched.printed === '' ? [] : [`dispatched: ${dispatched.printed.split('\n')[0]}`],
+    };
+  }
   const explicit: TargetedInputs = {
     fixtureComponents: (parsed.values['fixture-components'] ?? '')
       .split(',')
