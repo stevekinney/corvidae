@@ -66,8 +66,10 @@ test('opens from the sidebar and from g then l, and lists the goal in the status
     'Done',
   );
 
-  await page.goto('/chats');
-  await page.getByRole('heading', { level: 1 }).first().waitFor();
+  // Press the shortcut once the departure view is ready. Chat can still be opening a transcript
+  // after its list heading renders, holding browser input longer than the chord window.
+  await page.goto('/agents');
+  await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
   await page.keyboard.press('g');
   await page.keyboard.press('l');
   await expect(page).toHaveURL(/\/goals$/);
