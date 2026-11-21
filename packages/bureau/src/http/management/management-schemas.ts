@@ -187,6 +187,28 @@ export const taskViewSchema = z.object({
   attention: z.array(z.enum(['stalled', 'looping'])),
   /** The instant, as ISO 8601 on the Bureau's clock, the run was seen to stall; `null` unless `attention` holds `stalled`. */
   stalledSince: z.string().nullable(),
+  /**
+   * Why a failed task failed (COR-2531), or `null` for a task that did not fail and for a failure
+   * nothing described. `step` is the step it failed at (its index and a label: the failing tool's
+   * name, `model` for a model step, or for a workflow run the engine's `failedStep.label`),
+   * `errorCode` and `errorKind` are the run's error identifiers, and `toolCall` names the tool and
+   * the call that failed. It never holds a tool's arguments or error text: the text is
+   * `statusMessage`.
+   */
+  failure: z
+    .object({
+      step: z.object({ index: z.number().int().min(0), label: z.string() }).nullable(),
+      errorCode: z.string().nullable(),
+      errorKind: z.string().nullable(),
+      toolCall: z.object({ name: z.string(), callId: z.string() }).nullable(),
+    })
+    .nullable(),
+  /**
+   * The step the run is on a second or later try of, while it runs (COR-2531): `label` is `model`
+   * for a model step, or for a workflow run the engine's retrying activity, and `attempt` is 2 or
+   * later. `null` when no step is retrying, and for a task that has ended.
+   */
+  retrying: z.object({ label: z.string(), attempt: z.number().int().min(2) }).nullable(),
 });
 
 /** The paging fields the list operations share. */
