@@ -216,6 +216,8 @@ describe('Turborepo cache in the workflows', () => {
       const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
         scripts: Record<string, string>;
       };
+      const command = manifest.scripts[script];
+      if (command === undefined) throw new Error(`missing root script ${script}`);
       const directory =
         job === 'fixtures' ? 'scripts/browser-fixtures/' : 'applications/interborough/';
       const entrypoint =
@@ -254,7 +256,7 @@ describe('Turborepo cache in the workflows', () => {
               path.startsWith('applications/interborough/tests/panels/')))
         );
       });
-      const commandRoots = manifest.scripts[script]
+      const commandRoots = command
         .split(/[\s&|;'"\\]+/u)
         .filter((token) => paths.has(token) && isCodeFile(token));
       const pending = [...new Set([...commandRoots, ...browserRuntimeRoots])];
@@ -345,7 +347,7 @@ describe('Turborepo cache in the workflows', () => {
           new Bun.Glob(input.replace(/^\$TURBO_ROOT\$\//u, '')).match(directory),
         ),
       ).toBe(true);
-      expect(manifest.scripts[script]).toContain(entrypoint);
+      expect(command).toContain(entrypoint);
       expect(commandRoots).toContain(entrypoint);
     });
 
