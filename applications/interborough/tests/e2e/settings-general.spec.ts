@@ -427,37 +427,71 @@ test.describe('Settings › General', () => {
     await captureAtBothWidths(page, 'invalid-value');
   });
 
-  test('advanced settings save failed: the typed value stays in the field, with Try again', async ({
-    page,
-    pageErrors,
-  }) => {
-    pageErrors.expectEvery({
-      pattern: /Failed to load resource|ERR_CONNECTION_FAILED|status of 5\d\d/,
-      reason: 'the test refuses the save, so the request fails',
+  test.describe('advanced settings retry touch', () => {
+    test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 900 } });
+
+    test('save failed: the typed value stays in the field, with Try again', async ({
+      page,
+      pageErrors,
+    }) => {
+      pageErrors.expectEvery({
+        pattern: /Failed to load resource|ERR_CONNECTION_FAILED|status of 5\d\d/,
+        reason: 'the test refuses the save, so the request fails',
+      });
+      let refusing = true;
+      const fixture = await stubSettings(page, { refuseUpdate: () => refusing });
+      await openGeneral(page);
+      await page.getByRole('button', { name: 'Advanced' }).click();
+      const row = settingRow(page, 'logs.maximumLinesPerRun');
+      await row.getByRole('spinbutton').fill('321');
+      await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
+      await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
+      await expect(row.getByRole('button', { name: 'Try again' })).toBeVisible();
+      await expect(row.getByRole('spinbutton')).toHaveValue('321');
+      await page.getByRole('button', { name: 'Advanced' }).click();
+      await expect(row).toHaveCount(0);
+      await page.getByRole('button', { name: 'Advanced' }).click();
+      await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
+      await expect(row.getByRole('spinbutton')).toHaveValue('321');
+      const retry = row.getByRole('button', { name: 'Try again' });
+      await expect(retry).toBeVisible();
+      await captureAtBothWidths(page, 'save-failed');
+      await page.setViewportSize({ width: 375, height: 900 });
+      await retry.scrollIntoViewIfNeeded();
+      const touch = await retry.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        const above = y - 21.5;
+        const below = y + 21.5;
+        return {
+          x,
+          above,
+          faceHeight: box.height,
+          coarsePointer: matchMedia('(pointer: coarse)').matches,
+          hits: [above, below].map((target) =>
+            button.contains(document.elementFromPoint(x, target)),
+          ),
+        };
+      });
+      expect(touch.coarsePointer).toBe(true);
+      expect(touch.faceHeight).toBeLessThan(24);
+      expect(touch.hits).toEqual([true, true]);
+      expect(
+        await row.getByRole('spinbutton').evaluate((input) => {
+          const box = input.getBoundingClientRect();
+          return input.contains(
+            document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+          );
+        }),
+      ).toBe(true);
+      refusing = false;
+      await page.touchscreen.tap(touch.x, touch.above);
+      await expect(row.getByRole('status')).toContainText('Saved just now');
+      await expect
+        .poll(() => fixture.updates)
+        .toEqual([{ 'logs.maximumLinesPerRun': 321 }, { 'logs.maximumLinesPerRun': 321 }]);
     });
-    let refusing = true;
-    const fixture = await stubSettings(page, { refuseUpdate: () => refusing });
-    await openGeneral(page);
-    await page.getByRole('button', { name: 'Advanced' }).click();
-    const row = settingRow(page, 'logs.maximumLinesPerRun');
-    await row.getByRole('spinbutton').fill('321');
-    await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
-    await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
-    await expect(row.getByRole('button', { name: 'Try again' })).toBeVisible();
-    await expect(row.getByRole('spinbutton')).toHaveValue('321');
-    await page.getByRole('button', { name: 'Advanced' }).click();
-    await expect(row).toHaveCount(0);
-    await page.getByRole('button', { name: 'Advanced' }).click();
-    await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
-    await expect(row.getByRole('spinbutton')).toHaveValue('321');
-    await expect(row.getByRole('button', { name: 'Try again' })).toBeVisible();
-    await captureAtBothWidths(page, 'save-failed');
-    refusing = false;
-    await row.getByRole('button', { name: 'Try again' }).click();
-    await expect(row.getByRole('status')).toContainText('Saved just now');
-    await expect
-      .poll(() => fixture.updates)
-      .toEqual([{ 'logs.maximumLinesPerRun': 321 }, { 'logs.maximumLinesPerRun': 321 }]);
   });
 
   test('advanced settings locked, remote mode: the backend and what the deployment owns sit in a Remote deployment card', async ({
