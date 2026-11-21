@@ -190,7 +190,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText(REVIEWS_COPY.noteLabel);
+    const note = await findByLabelText('Note Optional');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -228,7 +228,7 @@ describe('an approval', () => {
     expect(
       getByText(REVIEWS_COPY.toolApproval, { selector: '.ib-review-pane__eyebrow' }),
     ).not.toBeNull();
-    expect(getByLabelText(REVIEWS_COPY.noteLabel).getAttribute('placeholder')).toBe(
+    expect(getByLabelText('Note Optional').getAttribute('placeholder')).toBe(
       REVIEWS_COPY.notePlaceholder,
     );
   });

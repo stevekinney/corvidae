@@ -141,7 +141,7 @@ export const appFixtureDeclarations = {
   'file-upload': ['assertion'],
   'filter-bar': ['assertion'],
   'focus-trap': ['assertion'],
-  'form-field': ['assertion'],
+  'form-field': ['assertion', 'optional-labels'],
   'form-section': ['assertion'],
   'grid-list': ['assertion'],
   image: ['assertion'],

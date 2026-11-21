@@ -65,6 +65,8 @@ export type InputProps = Omit<HTMLInputAttributes, 'class' | 'size'> &
     disabled?: boolean;
     /** Marks the input as required for form validation, matching the native `required` attribute. */
     required?: boolean;
+    /** Appends "Optional" to the visible label. Do not combine with `required`; required wins. */
+    optional?: boolean;
     /** Input type controlling the browser's built-in validation and keyboard. Default `"text"`. */
     type?: InputType;
     /**

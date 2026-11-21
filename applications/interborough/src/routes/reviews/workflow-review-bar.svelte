@@ -53,6 +53,7 @@
   <Textarea
     id={`review-${reviewId}-note`}
     label={REVIEWS_COPY.noteLabel}
+    optional
     description={REVIEWS_COPY.workflow.noteDescription}
     placeholder={REVIEWS_COPY.workflow.notePlaceholder}
     bind:value={note}
