@@ -25,8 +25,11 @@ const VIEWPORTS = [
   { width: 1280, height: 800 },
 ] as const;
 
+// The Deployments tab's copy: the worker that opens beside the list (COR-2445) draws its own.
 function deployment(page: Page) {
-  return page.getByRole('region', { name: E2E_LEDGER_DEPLOYMENT_NAME, exact: true });
+  return page
+    .getByRole('tabpanel', { name: 'Deployments' })
+    .getByRole('region', { name: E2E_LEDGER_DEPLOYMENT_NAME, exact: true });
 }
 
 function buildRow(page: Page, buildId: string) {

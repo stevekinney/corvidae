@@ -105,7 +105,21 @@ describe('arriving at the inbox', () => {
     expect(router.search.get('review')).toBe(QUESTION_KEY);
   });
 
-  test('opens nothing in Done, which is read and not answered', async () => {
+  test.each([
+    ['/reviews?review=missing-review', REVIEWS_COPY.noLongerWaiting.message],
+    [
+      '/reviews?tab=done&review=missing-review',
+      'This item is not in the list. It may have been removed.',
+    ],
+  ])('keeps a missing link in an empty queue on a phone at %s', async (address, message) => {
+    measuredAt(400);
+    const { findByText, queryByText } = open({}, address);
+    expect(await findByText(message)).not.toBeNull();
+    expect(router.search.get('review')).toBe('missing-review');
+    expect(queryByText('missing-review')).toBeNull();
+  });
+
+  test('opens the latest decision in Done too, so the pane beside the list is never empty (COR-2445)', async () => {
     measuredAt(1200);
     const approved = toolApprovalFixture({
       id: 'approval:run-a:call-1',
@@ -116,7 +130,9 @@ describe('arriving at the inbox', () => {
     });
     const { container } = open({ reviews: [approved] }, '/reviews?tab=done');
     await waitFor(() => expect(rows(container).length).toBe(1));
-    expect(router.search.get('review')).toBeNull();
+    const key = rows(container)[0]?.getAttribute('data-review-row');
+    expect(key).not.toBeNull();
+    await waitFor(() => expect(router.search.get('review')).toBe(key ?? ''));
   });
 });
 
@@ -190,7 +206,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText(REVIEWS_COPY.noteLabel);
+    const note = await findByLabelText('Note Optional');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -228,7 +244,7 @@ describe('an approval', () => {
     expect(
       getByText(REVIEWS_COPY.toolApproval, { selector: '.ib-review-pane__eyebrow' }),
     ).not.toBeNull();
-    expect(getByLabelText(REVIEWS_COPY.noteLabel).getAttribute('placeholder')).toBe(
+    expect(getByLabelText('Note Optional').getAttribute('placeholder')).toBe(
       REVIEWS_COPY.notePlaceholder,
     );
   });

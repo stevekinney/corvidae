@@ -338,11 +338,11 @@ describe('admitWorker', () => {
       request: request('B', '3'),
       waitLimitMilliseconds: 0,
     });
-    // One worker of A runs: A holds 2, B takes 2, past the cap of 3, so B still waits; but the
-    // stale admission is gone.
+    // The anonymous start could belong to either dispatch, so neither can be reclaimed without a
+    // link. A therefore holds both worker places and B still waits past the cap of 3.
     expect(admission.admitted).toBe(false);
-    expect(await workersOf(directory, 'session-A')).toBe(1);
-    expect(await places(directory)).toBe(2);
+    expect(await workersOf(directory, 'session-A')).toBe(2);
+    expect(await places(directory)).toBe(3);
   });
 
   test('skips a dead waiter ahead in the queue', async () => {
@@ -875,6 +875,19 @@ describe('every session and every agent counts', () => {
 describe('release', () => {
   const releaseOptions = { readProcessTable: () => hostTable(), ...clock(), pid: 411 };
 
+  test('skips an unrelated live ledger and releases the target in the correct session', async () => {
+    const directory = await scratch();
+    const options = { ...releaseOptions, cap: 4 };
+    await admitWorker({ directory, request: request('A', 'tool-a'), ...options });
+    await admitWorker({ directory, request: request('B', 'tool-b'), ...options });
+
+    expect(await releasePlace(directory, 'tool-b', releaseOptions)).toEqual([
+      'released tool-b in session session-B: 2 place(s)',
+    ]);
+    expect(await workersOf(directory, 'session-A')).toBe(1);
+    expect(await workersOf(directory, 'session-B')).toBe(0);
+  });
+
   test('frees a pending dispatch, a running agent, or a whole session', async () => {
     const directory = await scratch();
     await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
@@ -884,11 +897,11 @@ describe('release', () => {
       'released tool-2 in session session-A: 1 place(s)',
     ]);
     expect(await releasePlace(directory, 'agent-1', releaseOptions)).toEqual([
-      'released agent-1 in session session-A: 2 place(s)',
+      'released agent-1 in session session-A: 0 place(s)',
     ]);
     await handleHookEvent(dispatch('chef-worker', 'tool-3'), context(directory));
     expect(await releasePlace(directory, 'session-', releaseOptions)).toEqual([
-      'released session session-A: 2 place(s)',
+      'released session session-A: 3 place(s)',
     ]);
     expect(await places(directory)).toBe(0);
     const refusal = await releasePlace(directory, 'nothing-here', releaseOptions).then(

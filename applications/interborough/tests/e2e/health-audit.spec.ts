@@ -611,17 +611,27 @@ test.describe('Health › Audit log on the sample world', () => {
     expect(widths.scroll).toBeLessThanOrEqual(widths.client);
   });
 
-  test('narrows by who, action and text, holds the filters in the address, and opens nothing until a row is chosen', async ({
+  test('narrows by who, action and text, holds the filters in the address, and opens the first event each filter lists', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await openAudit(page);
     const main = page.locator('main');
+    // The open event is the first row the filters list, named in the address, and the pane never
+    // says "Select an event" while there are rows (COR-2445).
+    const expectFirstOpen = async (): Promise<void> => {
+      await expect
+        .poll(async () => {
+          const first = await rows(page).first().getAttribute('data-cinder-row-id');
+          return first !== null && new URL(page.url()).searchParams.get('record') === first;
+        })
+        .toBe(true);
+      await expect(rows(page).first()).toHaveAttribute('aria-current', 'true');
+      await expect(main.getByText('Select an event to see what changed')).toHaveCount(0);
+    };
 
     await main.getByLabel('Who', { exact: true }).selectOption('agents');
     await expect(page).toHaveURL(/actor=agents/);
-    // The event the log opened on load belongs to the old filters, so the address names none.
-    await expect(page).not.toHaveURL(/[?&]record=/);
     await expect(rows(page).first()).toBeVisible();
     for (const cells of await rows(page).evaluateAll((all) =>
       all.map((row) => [...row.querySelectorAll('td, th')].map((cell) => cell.textContent?.trim())),
@@ -629,20 +639,15 @@ test.describe('Health › Audit log on the sample world', () => {
       expect(cells[1]).not.toBe('You');
       expect(cells[1]).not.toBe('Interborough');
     }
-    // 82s: with filters changed no event is open, and the pane says what to do.
-    await expect(main.getByText('Select an event to see what changed')).toBeVisible();
-    await expect(
-      main.getByText('Each event shows who did it, when, and the before and after.'),
-    ).toBeVisible();
+    await expectFirstOpen();
 
     await main.getByLabel('Who', { exact: true }).selectOption('');
     await main.getByLabel('Action', { exact: true }).selectOption('removed');
     await expect(page).toHaveURL(/action=removed/);
     await expect(rows(page)).toHaveCount(1);
-    await expect(page).not.toHaveURL(/[?&]record=/);
-    await expect(main.getByText('Select an event to see what changed')).toBeVisible();
     await expect(rows(page).first()).toContainText('Removed the Anthropic key');
     await expect(main.getByTestId('audit-count')).toHaveText('1 event');
+    await expectFirstOpen();
 
     await main.getByLabel('Action', { exact: true }).selectOption('');
     await main.getByPlaceholder('Search by actor, action or target').fill('4472');
@@ -653,7 +658,6 @@ test.describe('Health › Audit log on the sample world', () => {
       expect(text).toContain('4472');
     }
     await expect(page).toHaveURL(/q=4472/);
-    await expect(page).not.toHaveURL(/[?&]record=/);
-    await expect(main.getByText('Select an event to see what changed')).toBeVisible();
+    await expectFirstOpen();
   });
 });

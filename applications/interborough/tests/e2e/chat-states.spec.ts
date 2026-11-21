@@ -476,8 +476,16 @@ test.describe('Chat not found (frame g: 19u)', () => {
       source: SOURCE,
     });
 
+    await expect(back).toHaveAttribute('href', /\/chats$/);
     await back.click();
-    await expect(page).toHaveURL(/\/chats$/);
+    // Beside the list the latest chat opens on arrival (COR-2445): the first row's chat, in place.
+    const first = page.locator('[data-chat]').first();
+    await expect(first).toBeVisible();
+    const firstId = await first.getAttribute('data-chat');
+    expect(firstId).not.toBeNull();
+    await expect(page).toHaveURL(
+      (url) => url.pathname === `/chats/${encodeURIComponent(firstId ?? '')}`,
+    );
   });
 });
 

@@ -66,6 +66,22 @@ function serve(agents: readonly unknown[], plugins: readonly unknown[]): void {
 }
 
 describe('a new chat with no agent named', () => {
+  test('does not choose a hidden Assistant as the default', async () => {
+    serve(
+      [
+        { ...AGENT, visibility: 'hidden' },
+        { ...AGENT, name: 'tool-runner', displayName: 'Tool runner' },
+      ],
+      [],
+    );
+    landAt('/chats/new');
+
+    const { findByRole } = mount();
+    const agent = await findByRole('combobox', { name: 'Agent' });
+    await waitFor(() => expect(agent.textContent).toMatch(/tool runner/i));
+    expect(agent.textContent).not.toMatch(/assistant/i);
+  });
+
   test('starts with the first listed agent whose plugin is running, skipping one that needs setup', async () => {
     serve([BROKEN, AGENT], [pluginWithAgent('broken', 'needs-setup')]);
     landAt('/chats/new');

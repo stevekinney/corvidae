@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { outcomeOf, rethrow } from './module-scope-outcome.ts';
@@ -7,6 +7,7 @@ import { rejectionOf } from './promise-outcome.ts';
 import {
   importSvelteOnServer,
   prepareSvelteServerSource,
+  prepareSvelteServerSources,
   renderSvelteOnServer,
 } from './svelte-server.ts';
 
@@ -82,6 +83,27 @@ const preparedConditions = await outcomeOf(async () => {
   expect(await renderSvelteOnServer(conditionsSource)).toContain('<p>edited</p>');
 });
 
+const preparedTogether = await outcomeOf(async () => {
+  const directory = await mkdtemp(join(conditionsDirectory, 'multiple-'));
+  const first = join(directory, 'first', 'fixture.svelte');
+  const second = join(directory, 'second', 'fixture.svelte');
+  await Promise.all([mkdir(join(directory, 'first')), mkdir(join(directory, 'second'))]);
+  await Promise.all([
+    Bun.write(first, '<p>First fixture</p>'),
+    Bun.write(second, '<p>Second fixture</p>'),
+  ]);
+  await Promise.all([
+    prepareSvelteServerSources([first, second, first]),
+    prepareSvelteServerSource(second),
+  ]);
+  await Promise.all([
+    Bun.write(first, '<p>First changed</p>'),
+    Bun.write(second, '<p>Second changed</p>'),
+  ]);
+  expect(await renderSvelteOnServer(first)).toContain('<p>First fixture</p>');
+  expect(await renderSvelteOnServer(second)).toContain('<p>Second fixture</p>');
+});
+
 describe('isolated Svelte server execution', () => {
   test('renders source with the real Svelte server runtime', () => rethrow(renders));
 
@@ -93,6 +115,9 @@ describe('isolated Svelte server execution', () => {
 
   test('preparing a fixture preserves fresh module state for every render', () =>
     rethrow(freshState));
+
+  test('prepares same-named fixtures together and reuses them without mixing them', () =>
+    rethrow(preparedTogether));
 
   test('preparing under explicit conditions compiles the entry those conditions render', () =>
     rethrow(preparedConditions));
