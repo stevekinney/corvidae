@@ -40,6 +40,16 @@ const editorAgent = createAgent({
   generate: async () => ({ content: 'ok', toolCalls: [] }),
 });
 
+/**
+ * What the panel route answers a tool call with: the result's structured content, and `isError` for
+ * a fault, whose structured content is the fault's data. A refusal answers `{ error, message }`.
+ */
+type PanelBody = {
+  isError?: boolean;
+  structuredContent: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
 /** The editor as the host serves it: the plugin's own declarations, with a page that is not built. */
 const editor = (overrides: Partial<ServedPanel> = {}): ServedPanel => ({
   plugin: 'inspectors',
@@ -90,7 +100,7 @@ async function open(served: readonly ServedPanel[] = [editor()]) {
         { params: { name: 'inspectors', app: panel } },
       );
       const response = await post.POST(request as never);
-      return { status: response.status, body: (await response.json()) as Record<string, any> };
+      return { status: response.status, body: (await response.json()) as PanelBody };
     },
   };
 }
@@ -100,7 +110,29 @@ type Opened = Awaited<ReturnType<typeof open>>;
 async function entriesOf(opened: Opened, id: string) {
   const entries =
     (await opened.bureau.internals.auditTrail?.query({ runId: `schedule:${id}` })) ?? [];
-  return entries.toSorted((a, b) => a.sequence - b.sequence);
+  return entries.toSorted((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+}
+
+/** What the Bureau holds of schedule `id` now: its revision and status. */
+async function storedOf(opened: Opened, id: string) {
+  const schedule = await opened.bureau.schedules.get(id);
+  return { revision: schedule?.revision, status: schedule?.status };
+}
+
+async function statusOf(opened: Opened, id: string) {
+  const stored = await storedOf(opened, id);
+  return stored.status;
+}
+
+async function revisionOf(opened: Opened, id: string) {
+  const stored = await storedOf(opened, id);
+  return stored.revision;
+}
+
+/** How many schedules the Bureau holds. */
+async function totalOf(opened: Opened): Promise<number | undefined> {
+  const page = await opened.bureau.schedules.list();
+  return page?.total;
 }
 
 async function createSchedule(opened: Opened): Promise<string> {
@@ -112,7 +144,7 @@ async function createSchedule(opened: Opened): Promise<string> {
   });
   expect(created.status).toBe(200);
   expect(created.body['isError']).toBeUndefined();
-  return created.body['structuredContent']['id'] as string;
+  return created.body.structuredContent['id'] as string;
 }
 
 describe('the schedule editor through the panel route', () => {
@@ -146,13 +178,13 @@ describe('the schedule editor through the panel route', () => {
       expectedRevision: 2,
     });
     expect(paused.body['structuredContent']).toMatchObject({ status: 'paused', revision: 3 });
-    expect((await opened.bureau.schedules.get(id))?.status).toBe('paused');
+    expect(await statusOf(opened, id)).toBe('paused');
     const resumed = await opened.call('bureau.schedules.resume', {
       scheduleId: id,
       expectedRevision: 3,
     });
     expect(resumed.body['structuredContent']).toMatchObject({ status: 'active', revision: 4 });
-    expect((await opened.bureau.schedules.get(id))?.status).toBe('active');
+    expect(await statusOf(opened, id)).toBe('active');
 
     // Which agent it runs: the cadence resent as it is and no new text, so the text it sends is kept.
     const moved = await opened.call('bureau.schedules.update', {
@@ -175,7 +207,7 @@ describe('the schedule editor through the panel route', () => {
     });
     const agents = await opened.call('bureau.agents.list', {});
     expect(
-      (agents.body['structuredContent']['agents'] as { name: string }[]).map((agent) => agent.name),
+      (agents.body.structuredContent['agents'] as { name: string }[]).map((agent) => agent.name),
     ).toEqual(['writer', 'editor']);
   });
 
@@ -188,18 +220,19 @@ describe('the schedule editor through the panel route', () => {
     });
     expect(refused.status).toBe(200);
     expect(refused.body['isError']).toBe(true);
-    expect(refused.body['structuredContent']['issues']).toEqual([
+    expect(refused.body.structuredContent['issues']).toEqual([
       expect.objectContaining({ path: ['spec'] }),
     ]);
     // Nothing was written.
-    expect((await opened.bureau.schedules.get(id))?.revision).toBe(1);
+    expect(await revisionOf(opened, id)).toBe(1);
     const invalidNew = await opened.call('bureau.schedules.create', {
       agentName: 'writer',
       spec: 'not a schedule',
       input: 'x',
     });
     expect(invalidNew.body['isError']).toBe(true);
-    expect(invalidNew.body['structuredContent']['issues'][0]['path']).toEqual(['spec']);
+    const [issue] = invalidNew.body.structuredContent['issues'] as { path: unknown }[];
+    expect(issue?.path).toEqual(['spec']);
   });
 
   test('names the owner as the principal and the panel’s URI in the audit entry of each write', async () => {
@@ -236,7 +269,7 @@ describe('the schedule editor through the panel route', () => {
     );
     // The Bureau refuses or ignores an argument it does not know, and a header it does not read
     // changes nothing: either way the entry names the panel the host served.
-    const id: unknown = created.body['structuredContent']?.['id'];
+    const id: unknown = created.body.structuredContent['id'];
     if (typeof id === 'string') {
       const [entry] = await entriesOf(opened, id);
       expect(entry?.detail).toMatchObject({ panelUri: EDITOR_URI });
@@ -265,11 +298,11 @@ describe('the schedule writes a panel may not make', () => {
       const id = await createSchedule(opened);
       const refused = await opened.call(name, { scheduleId: id, spec: '5m' }, 'run-inspector');
       expect(refused.status).toBe(403);
-      expect(refused.body).toEqual({
+      expect(refused.body as unknown).toEqual({
         error: 'forbidden-tool',
         message: 'This panel may not call that tool.',
       });
-      expect((await opened.bureau.schedules.get(id))?.revision).toBe(1);
+      expect(await revisionOf(opened, id)).toBe(1);
       expect(await entriesOf(opened, id)).toHaveLength(1);
     },
   );
@@ -293,9 +326,8 @@ describe('the schedule writes a panel may not make', () => {
         input: 'x',
       });
       expect(refused.status).not.toBe(200);
-      expect((await opened.bureau.schedules.get(scheduleId))?.revision).toBe(1);
-      expect((await opened.bureau.schedules.get(scheduleId))?.status).toBe('active');
-      expect((await opened.bureau.schedules.list())?.total).toBe(1);
+      expect(await storedOf(opened, scheduleId)).toEqual({ revision: 1, status: 'active' });
+      expect(await totalOf(opened)).toBe(1);
     },
   );
 });

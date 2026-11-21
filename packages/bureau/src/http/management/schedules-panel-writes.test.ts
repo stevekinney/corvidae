@@ -92,13 +92,14 @@ async function createdSchedule(opened: OpenedBureau): Promise<string> {
 }
 
 async function revisionOf(opened: OpenedBureau, id: string): Promise<number | undefined> {
-  return (await opened.bureau.schedules.get(id))?.revision;
+  const schedule = await opened.bureau.schedules.get(id);
+  return schedule?.revision;
 }
 
 async function entriesOf(opened: OpenedBureau, id: string) {
   const entries =
     (await opened.bureau.internals.auditTrail?.query({ runId: `schedule:${id}` })) ?? [];
-  return entries.toSorted((a, b) => a.sequence - b.sequence);
+  return entries.toSorted((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 }
 
 describe('the schedule writes open to a host panel', () => {
@@ -141,8 +142,10 @@ describe('the schedule writes open to a host panel', () => {
       expect(refused, name).toBe(true);
     }
     expect(await revisionOf(opened, id)).toBe(before);
-    expect((await opened.bureau.schedules.get(id))?.status).toBe('active');
-    expect((await opened.bureau.schedules.list())?.total).toBe(1);
+    const unchanged = await opened.bureau.schedules.get(id);
+    expect(unchanged?.status).toBe('active');
+    const listed = await opened.bureau.schedules.list();
+    expect(listed?.total).toBe(1);
   });
 });
 

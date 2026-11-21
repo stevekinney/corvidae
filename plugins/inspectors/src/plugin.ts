@@ -64,7 +64,8 @@ export const workflowRevisionReview: PluginPanel = {
  * they are not MCP tools, so no model reaches them, and the host's panel route names this panel's
  * URI to the Bureau so the audit entry of each write says it came from here. `allowedTools` lists
  * every tool the page calls, which a test keeps true. It opens as a page of its own, and on a run's
- * page, which passes it a `scheduleId` when the host has one to give.
+ * page, which passes it the run's `taskId`: the editor reads that task through `bureau.tasks.get`
+ * and opens the schedule whose fire started it, and shows the list for a run nothing scheduled.
  */
 export const scheduleEditor: PluginPanel = {
   name: 'schedule-editor',
@@ -82,6 +83,7 @@ export const scheduleEditor: PluginPanel = {
     'bureau.schedules.resume',
     'bureau.agents.list',
     'bureau.workflows.list',
+    'bureau.tasks.get',
   ],
   hostOnlyTools: [
     'bureau.schedules.create',
@@ -89,10 +91,9 @@ export const scheduleEditor: PluginPanel = {
     'bureau.schedules.pause',
     'bureau.schedules.resume',
   ],
-  placements: [
-    { kind: 'page', path: 'schedules', sidebar: { group: 'work', icon: 'list-checks' } },
-    { kind: 'run' },
-  ],
+  // A page of its own, reachable from the command palette and by its path, and a run's page. No
+  // sidebar entry: the application's own Schedules page is where people look for schedules.
+  placements: [{ kind: 'page', path: 'schedules' }, { kind: 'run' }],
 };
 
 /**

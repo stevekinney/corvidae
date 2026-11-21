@@ -7,6 +7,7 @@ import {
   isScheduleList,
   isScheduleView,
   scheduleLabel,
+  scheduleOfTask,
   withCurrent,
   workflowOptionsOf,
   type ScheduleView,
@@ -35,6 +36,17 @@ describe('what the editor reads of the Bureau', () => {
     expect(isScheduleList({ schedules: [{ id: 's' }], nextOffset: null })).toBe(false);
     expect(isReceipt({ id: 's1', status: 'paused', revision: 3 })).toBe(true);
     expect(isReceipt({ id: 's1', status: 'gone', revision: 3 })).toBe(false);
+  });
+
+  it('names the schedule whose fire started a task, and none for a task another thing started', () => {
+    expect(
+      scheduleOfTask({ id: 't', origin: { kind: 'schedule', scheduleId: 's1', fireId: 'f' } }),
+    ).toBe('s1');
+    expect(scheduleOfTask({ id: 't', origin: { kind: 'person', principal: 'p' } })).toBeUndefined();
+    expect(scheduleOfTask({ id: 't', origin: null })).toBeUndefined();
+    expect(scheduleOfTask({ id: 't' })).toBeUndefined();
+    expect(scheduleOfTask({ origin: { kind: 'schedule', scheduleId: '' } })).toBeUndefined();
+    expect(scheduleOfTask(undefined)).toBeUndefined();
   });
 
   it('lists agents by name, with the display name when it differs, and leaves out a hidden one', () => {

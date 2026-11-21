@@ -33,6 +33,11 @@
 
   let { view, handlers }: { view: EditorView; handlers: Handlers } = $props();
 
+  /** A field's error as the control takes it: present only when there is one. */
+  function errorOf(message: string | undefined): { error?: string } {
+    return message === undefined ? {} : { error: message };
+  }
+
   const KIND_OPTIONS = [
     { value: 'agent', label: 'An agent' },
     { value: 'workflow', label: 'A workflow' },
@@ -121,7 +126,7 @@
             label="When it runs"
             description="A cron expression such as 0 9 * * *, or a duration such as 30s, 6h or 1d."
             value={view.draft.spec}
-            error={view.errors.spec}
+            {...errorOf(view.errors.spec)}
             disabled={locked || cancelled}
             oninput={(event: Event) =>
               handlers.onEdit({ spec: (event.currentTarget as HTMLInputElement).value })}
@@ -131,7 +136,7 @@
             label="Time zone"
             description="An IANA zone such as America/New_York. A duration runs in UTC."
             value={view.draft.timeZone}
-            error={view.errors.timeZone}
+            {...errorOf(view.errors.timeZone)}
             disabled={locked || cancelled}
             oninput={(event: Event) =>
               handlers.onEdit({ timeZone: (event.currentTarget as HTMLInputElement).value })}
@@ -153,7 +158,7 @@
             label={view.draft.targetKind === 'agent' ? 'Agent' : 'Workflow'}
             options={targets}
             value={view.draft.target}
-            error={view.errors.target}
+            {...errorOf(view.errors.target)}
             disabled={locked || cancelled}
             onValueChange={(next: string) => handlers.onEdit({ target: next })}
           />
@@ -161,12 +166,12 @@
             <Textarea
               id="schedule-input"
               label={asksText ? 'What each run sends the agent' : 'New text for each run'}
-              description={asksText
-                ? undefined
-                : 'Leave empty to keep the text the schedule sends now.'}
+              {...asksText
+                ? {}
+                : { description: 'Leave empty to keep the text the schedule sends now.' }}
               rows={3}
               value={view.draft.input}
-              error={view.errors.input}
+              {...errorOf(view.errors.input)}
               disabled={locked || cancelled}
               oninput={(event: Event) =>
                 handlers.onEdit({ input: (event.currentTarget as HTMLTextAreaElement).value })}
@@ -178,7 +183,7 @@
               description="Leave empty to start the workflow with no input."
               rows={3}
               value={view.draft.workflowInput}
-              error={view.errors.workflowInput}
+              {...errorOf(view.errors.workflowInput)}
               disabled={locked || cancelled}
               oninput={(event: Event) =>
                 handlers.onEdit({
@@ -190,7 +195,7 @@
             id="schedule-description"
             label="Description"
             value={view.draft.description}
-            error={view.errors.description}
+            {...errorOf(view.errors.description)}
             disabled={locked || cancelled}
             oninput={(event: Event) =>
               handlers.onEdit({ description: (event.currentTarget as HTMLInputElement).value })}

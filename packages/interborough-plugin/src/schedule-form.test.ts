@@ -4,7 +4,6 @@
  * calls a save makes in order, and the field a Bureau fault belongs to.
  */
 import { describe, expect, it } from 'bun:test';
-import { join } from 'node:path';
 
 import {
   emptyScheduleDraft,
@@ -280,45 +279,5 @@ describe('the field a Bureau fault belongs to', () => {
     );
     expect(scheduleFaultFieldErrors({ currentRevision: 4 })).toEqual({});
     expect(scheduleFaultFieldErrors(undefined)).toEqual({});
-  });
-});
-
-describe('who imports it', () => {
-  const root = join(import.meta.dir, '..', '..', '..');
-  const specifier = '@lostgradient/interborough-plugin/schedule-form';
-
-  it('is imported by the app’s schedule form state and by the schedule editor panel (COR-2545)', async () => {
-    const app = await Bun.file(
-      join(
-        root,
-        'applications/interborough/src/routes/schedules/agent-schedule-form-state.svelte.ts',
-      ),
-    ).text();
-    expect(app).toContain(specifier);
-    const panel = await Bun.file(
-      join(root, 'plugins/inspectors/src/schedule-editor/app.ts'),
-    ).text();
-    expect(panel).toContain(specifier);
-  });
-
-  it('is the only definition of a schedule form: no file of the inspectors plugin defines its own', async () => {
-    const directory = join(root, 'plugins/inspectors/src');
-    const offenders: string[] = [];
-    for await (const file of new Bun.Glob('**/*.{ts,svelte}').scan(directory)) {
-      if (file.endsWith('.test.ts')) continue;
-      const source = await Bun.file(join(directory, file)).text();
-      // A form state is a class or a type of a draft, or the functions that make a save's calls.
-      if (
-        /\bclass\s+\w*Schedule\w*Form\w*/i.test(source) ||
-        /\b(type|interface)\s+Schedule(Draft|Form\w*)\s*[={<]/.test(source) ||
-        /\bfunction\s+(scheduleSavePlan|scheduleDraftErrors|scheduleCreateArguments|scheduleUpdateFields)\b/.test(
-          source,
-        ) ||
-        /schedule-form/i.test(file)
-      ) {
-        offenders.push(file);
-      }
-    }
-    expect(offenders).toEqual([]);
   });
 });

@@ -97,9 +97,13 @@ async function open(
       const response = await request.post(PANEL_ROUTE, { data: { name, arguments: args } });
       const body = (await response.json()) as Record<string, unknown>;
       // A route refusal carries no result; the panel is told it as an error, as a host would.
+      const message = body['message'];
       return Array.isArray(body['content'])
         ? body
-        : { isError: true, content: [{ type: 'text', text: String(body['message'] ?? 'failed') }] };
+        : {
+            isError: true,
+            content: [{ type: 'text', text: typeof message === 'string' ? message : 'failed' }],
+          };
     },
   );
   await page.route(`${HOST_ORIGIN}/`, (route) =>
@@ -236,7 +240,8 @@ test.describe('the schedule editor MCP App against the running host', () => {
     // The error is the cadence field's alone.
     await expect(app.getByLabel('Description')).not.toHaveAttribute('aria-invalid', 'true');
     await expect(app.getByRole('status')).toContainText('Not saved');
-    expect((await readBack(request, id)).revision).toBe(1);
+    const unchanged = await readBack(request, id);
+    expect(unchanged.revision).toBe(1);
   });
 
   for (const scheme of SCHEMES) {

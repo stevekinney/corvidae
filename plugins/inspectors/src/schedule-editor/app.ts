@@ -29,6 +29,7 @@ import {
   isRecord,
   isScheduleList,
   isScheduleView,
+  scheduleOfTask,
   workflowOptionsOf,
   type ScheduleView,
 } from './model.ts';
@@ -49,6 +50,7 @@ const DECLARED_TOOLS: ReadonlySet<string> = new Set([
   'bureau.schedules.resume',
   'bureau.agents.list',
   'bureau.workflows.list',
+  'bureau.tasks.get',
 ]);
 
 /** What a call of a save did once it was written, for "The part that did go through: …". */
@@ -72,7 +74,7 @@ async function start(): Promise<void> {
   const app = new App({ name: 'bureau-schedule-editor', version: '1.0.0' });
   const applyHostTheme = followHostTheme(app);
   const view = createEditorView();
-  let requested: string | undefined;
+  let requested: { scheduleId?: string | undefined; taskId?: string | undefined } = {};
   let loaded = false;
   let tornDown = false;
 
@@ -291,10 +293,30 @@ async function start(): Promise<void> {
   };
   const mounted = mountPanel(ScheduleEditor, { target: root, props: { view, handlers } });
 
+  /**
+   * Opens what the host asked for: the schedule it named, or the schedule that started the run it
+   * is showing. A run something else started, or a host that named neither, leaves the list.
+   */
+  const openRequested = async (): Promise<void> => {
+    let id = requested.scheduleId;
+    if (id === undefined && requested.taskId !== undefined) {
+      id = scheduleOfTask(await readValue('bureau.tasks.get', { taskId: requested.taskId }));
+      if (id === undefined) {
+        say('No schedule started this run, so here are the schedules.');
+        return;
+      }
+    }
+    if (id !== undefined) await open(id);
+  };
+
   app.ontoolinput = (params) => {
-    const id = isRecord(params.arguments) ? params.arguments['scheduleId'] : undefined;
-    requested = typeof id === 'string' && id !== '' ? id : undefined;
-    if (loaded && requested !== undefined) void open(requested);
+    const input = isRecord(params.arguments) ? params.arguments : {};
+    const named = (key: string): string | undefined => {
+      const value: unknown = Object.hasOwn(input, key) ? input[key] : undefined;
+      return typeof value === 'string' && value !== '' ? value : undefined;
+    };
+    requested = { scheduleId: named('scheduleId'), taskId: named('taskId') };
+    if (loaded) void openRequested();
   };
   app.onteardown = async () => {
     tornDown = true;
@@ -306,7 +328,7 @@ async function start(): Promise<void> {
   applyHostTheme();
   await load();
   loaded = true;
-  if (requested !== undefined) await open(requested);
+  await openRequested();
 }
 
 void start();

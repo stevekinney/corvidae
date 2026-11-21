@@ -79,6 +79,19 @@ export function isReceipt(value: unknown): value is ScheduleReceipt {
   );
 }
 
+/**
+ * The schedule whose fire started the task a `bureau.tasks.get` answer describes, or `undefined`
+ * when a person, a chat, an agent or the API started it. A run's page passes the editor the run's
+ * task, and the task's origin names the schedule.
+ */
+export function scheduleOfTask(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const origin = value['origin'];
+  if (!isRecord(origin) || origin['kind'] !== 'schedule') return undefined;
+  const id = origin['scheduleId'];
+  return typeof id === 'string' && id !== '' ? id : undefined;
+}
+
 /** The agents `bureau.agents.list` answers, as picker options, in the order the Bureau lists them. */
 export function agentOptionsOf(value: unknown): PickerOption[] | undefined {
   if (!isRecord(value) || !Array.isArray(value['agents'])) return undefined;

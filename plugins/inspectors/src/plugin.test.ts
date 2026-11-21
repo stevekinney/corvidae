@@ -49,7 +49,7 @@ describe('the inspectors plugin', () => {
 
   it('places the schedule editor on a page of its own and on a run’s page, and nowhere else (COR-2545)', () => {
     expect(scheduleEditor.placements).toEqual([
-      { kind: 'page', path: 'schedules', sidebar: { group: 'work', icon: 'list-checks' } },
+      { kind: 'page', path: 'schedules' },
       { kind: 'run' },
     ]);
     // No tool opens it: a page panel needs no MCP opener, and a model has no way to open an editor
@@ -94,10 +94,43 @@ describe('the inspectors plugin', () => {
     }
   });
 
+  it('imports the one schedule form state the application’s schedule form imports, and defines none of its own (COR-2545)', async () => {
+    const directory = fileURLToPath(new URL('.', import.meta.url));
+    const specifier = '@lostgradient/interborough-plugin/schedule-form';
+    const panel = await Bun.file(join(directory, 'schedule-editor/app.ts')).text();
+    expect(panel).toContain(specifier);
+    const form = await Bun.file(
+      join(
+        directory,
+        '../../../applications/interborough/src/routes/schedules/agent-schedule-form-state.svelte.ts',
+      ),
+    ).text();
+    expect(form).toContain(specifier);
+
+    const offenders: string[] = [];
+    for await (const file of new Bun.Glob('**/*.{ts,svelte}').scan(directory)) {
+      if (file.endsWith('.test.ts')) continue;
+      const source = await Bun.file(join(directory, file)).text();
+      // A form state is a class or a type of a draft, or the functions that make a save's calls.
+      if (
+        /\bclass\s+\w*Schedule\w*Form\w*/i.test(source) ||
+        /\b(type|interface)\s+Schedule(Draft|Form\w*)\s*[={<]/.test(source) ||
+        /\bfunction\s+(scheduleSavePlan|scheduleDraftErrors|scheduleCreateArguments|scheduleUpdateFields)\b/.test(
+          source,
+        ) ||
+        /schedule-form/i.test(file)
+      ) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it('holds a row for the schedule editor in the panel tables of both READMEs (COR-2545)', async () => {
     const root = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
     for (const readme of ['plugins/inspectors/README.md', 'packages/bureau/README.md']) {
-      const rows = (await Bun.file(join(root, readme)).text())
+      const text = await Bun.file(join(root, readme)).text();
+      const rows = text
         .split('\n')
         .filter((line) => line.startsWith('|') && line.includes(scheduleEditor.uri));
       expect(rows, readme).toHaveLength(1);
