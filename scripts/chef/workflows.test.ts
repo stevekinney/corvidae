@@ -9,6 +9,7 @@ const protocolPath = join(root, '.agents', 'skills', 'chef', 'references', 'code
 const workflowFiles = readdirSync(workflowsDirectory).filter((name) => name.endsWith('.js'));
 
 type Responses = Record<string, unknown>;
+const dispatchBase = 'a'.repeat(40);
 
 interface Call {
   prompt: string;
@@ -26,6 +27,7 @@ interface DeliveryResult {
 
 /** What each step returns when the script ran clean: the stubs a test overrides by label word. */
 const cleanResponses: Responses = {
+  'fetch base': { exitCode: 0, base: dispatchBase },
   critique: {
     rows: [
       {
@@ -42,6 +44,7 @@ const cleanResponses: Responses = {
   'record override': { recorded: true, path: '/main/tmp/chef/events.jsonl' },
   implement: {
     status: 'ready-for-review',
+    startingBase: dispatchBase,
     head: 'abc',
     branch: 'chef/cor-7',
     worktree: '/worktree',
@@ -95,6 +98,7 @@ const briefRecord = (issue = 'COR-7', fields: Record<string, unknown> = {}) => (
   validated: true,
   exitCode: 0,
   briefPath: `/main/tmp/chef/briefs/${issue}.md`,
+  base: dispatchBase,
   ...fields,
 });
 const refusedBrief = (error = 'COR-1 blocks COR-7') =>
@@ -295,6 +299,42 @@ describe('workflow scripts', () => {
     expect(prompt).toContain('open no pull request');
   });
 
+  test('fetches the default branch before dispatch and gates the native checkout on that SHA', async () => {
+    const delivery = await runDelivery();
+    expect(delivery.calls.slice(0, 2).map((call) => call.label)).toEqual([
+      'fetch base COR-7',
+      'implement COR-7',
+    ]);
+    expect(delivery.calls[0]?.prompt).toContain('git fetch');
+    expect(delivery.calls[1]?.prompt).toContain('git rev-parse --verify HEAD');
+    expect(delivery.calls[1]?.prompt).toContain(dispatchBase);
+    expect(delivery.result[0]?.evidenceRequest?.['startingBase']).toBe(dispatchBase);
+  });
+
+  test('refuses dispatch when the fetched SHA differs from the validated brief or fetch failed', async () => {
+    for (const fetch of [
+      { exitCode: 0, base: 'b'.repeat(40) },
+      { exitCode: 1, base: dispatchBase },
+    ]) {
+      const delivery = await runDelivery({}, { 'fetch base': fetch });
+      expect(delivery.calls.map((call) => call.label)).toEqual(['fetch base COR-7']);
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.evidenceRequest).toBeNull();
+    }
+  });
+
+  test('refuses evidence when the native worktree starts from a different SHA', async () => {
+    const delivery = await runDelivery(
+      {},
+      {
+        implement: { ...(cleanResponses['implement'] as object), startingBase: 'b'.repeat(40) },
+      },
+    );
+    expect(delivery.labels).toEqual(['fetch', 'implement']);
+    expect(delivery.result[0]?.reason).toContain('worktree started');
+    expect(delivery.result[0]?.evidenceRequest).toBeNull();
+  });
+
   // Models come from agent frontmatter alone, so a file without `model:` runs on whatever the
   // session uses (chef-reviewer drifted that way).
   test('every agent file names its model', () => {
@@ -313,6 +353,7 @@ describe('workflow scripts', () => {
   test('deliver-issue.js drives check, dispatch, wait, compare and review to a recorded evidence request', async () => {
     const delivery = await runDelivery();
     expect(delivery.labels).toEqual([
+      'fetch',
       'implement',
       'checks',
       'dispatch',
@@ -369,7 +410,7 @@ describe('workflow scripts', () => {
           },
         },
       );
-      expect(delivery.labels).toEqual(['implement', 'checks']);
+      expect(delivery.labels).toEqual(['fetch', 'implement', 'checks']);
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
       expect(delivery.result[0]?.reason).toContain(problem);
       expect(delivery.result[0]?.evidenceRequest).toBeNull();
@@ -398,7 +439,7 @@ describe('workflow scripts', () => {
         },
       },
     );
-    expect(delivery.labels).toEqual(['implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     expect(delivery.result[0]?.evidenceRequest).toBeNull();
   });
@@ -409,6 +450,7 @@ describe('workflow scripts', () => {
       { checks: (count: number) => ({ exitCode: 1, line: 'lint failed', head: head(count) }) },
     );
     expect(delivery.labels).toEqual([
+      'fetch',
       'implement',
       'checks',
       'classify',
@@ -585,18 +627,17 @@ describe('workflow scripts', () => {
       {},
       { dispatch: { ...(cleanResponses['dispatch'] as object), dispatched: false } },
     );
-    expect(delivery.labels).toEqual(['implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
   });
 
-  test('deliver-issue.js uses the supplied validated brief without invoking a preparation model', async () => {
+  test('deliver-issue.js hands the worker the coordinator’s brief after fetching its base', async () => {
     const path = '/coordinator/verified/brief for COR-7.md';
     const delivery = await runDelivery({
       preparedBriefs: { 'COR-7': briefRecord('COR-7', { briefPath: path }) },
     });
-    expect(delivery.labels[0]).toBe('implement');
-    expect(delivery.calls[0]?.prompt).toContain(`brief file ${path} and nothing else`);
-    expect(delivery.calls.some((call) => call.options.phase === 'brief')).toBe(false);
+    expect(delivery.labels.slice(0, 2)).toEqual(['fetch', 'implement']);
+    expect(delivery.calls[1]?.prompt).toContain(`brief file ${path} and nothing else`);
   });
 
   test('deliver-issue.js dispatches no worker for missing, malformed, or refused preparation', async () => {
@@ -605,6 +646,7 @@ describe('workflow scripts', () => {
       { validated: true, exitCode: 0 },
       briefRecord('COR-7', { validated: false }),
       briefRecord('COR-7', { briefPath: 'relative/brief.md' }),
+      briefRecord('COR-7', { base: undefined }),
       refusedBrief('repository pin does not match origin'),
       refusedBrief('required context is unreadable'),
     ]) {
@@ -624,7 +666,7 @@ describe('workflow scripts', () => {
 
     test('critiques and resolves design rows before dispatching from the supplied resolved brief', async () => {
       const delivery = await runDelivery(designArguments);
-      expect(delivery.labels.slice(0, 3)).toEqual(['critique', 'resolve', 'implement']);
+      expect(delivery.labels.slice(0, 4)).toEqual(['critique', 'resolve', 'fetch', 'implement']);
       const critique = delivery.calls[0];
       expect(critique?.options.agentType).toBe('design-reviewer');
       expect(critique?.options.model).toBeUndefined();
@@ -677,7 +719,7 @@ describe('workflow scripts', () => {
       preparedBriefs: { 'COR-7': refusedBrief() },
       overrideBriefs: { 'COR-7': briefRecord('COR-7', { bytes: 2048 }) },
     });
-    expect(delivery.labels.slice(0, 2)).toEqual(['record', 'implement']);
+    expect(delivery.labels.slice(0, 3)).toEqual(['record', 'fetch', 'implement']);
     const recording = delivery.calls[0]?.prompt ?? '';
     expect(recording).toContain('tmp/chef/events.jsonl');
     const line = /: (\{.*\})\n/.exec(recording)?.[1] ?? '';
@@ -688,7 +730,7 @@ describe('workflow scripts', () => {
       reason: override.reason,
       at: override.at,
     });
-    expect(delivery.calls[1]?.prompt).toContain('brief file /main/tmp/chef/briefs/COR-7.md ');
+    expect(delivery.calls[2]?.prompt).toContain('brief file /main/tmp/chef/briefs/COR-7.md ');
     expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
     expect(delivery.result[0]?.evidenceRequest?.['override']).toEqual(override);
   });
