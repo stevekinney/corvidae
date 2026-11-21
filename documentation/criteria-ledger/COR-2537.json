@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2537",
+  "branch": "worktree-agent-a73a2e4bcaadda058",
+  "checkedAt": "f14c6252d6f730135909b2533a1f3408d266a8fc",
+  "briefVersion": "75bafe738e23",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "needs-decision",
+      "evidence": "not started; component name and slug conflict with the editor DiffViewer"
+    },
+    {
+      "id": "AC2",
+      "status": "needs-decision",
+      "evidence": "not started"
+    },
+    {
+      "id": "AC3",
+      "status": "needs-decision",
+      "evidence": "not started"
+    },
+    {
+      "id": "AC4",
+      "status": "needs-decision",
+      "evidence": "not started"
+    },
+    {
+      "id": "AC5",
+      "status": "needs-decision",
+      "evidence": "not started"
+    },
+    {
+      "id": "AC6",
+      "status": "needs-decision",
+      "evidence": "panel kit exports no components today; meaning of 'exported from the panel kit' is unspecified"
+    },
+    {
+      "id": "AC7",
+      "status": "needs-decision",
+      "evidence": "directory diff-viewer collides with the editor component slug; discover.ts assertUniqueComponentSlugs throws"
+    }
+  ]
+}
