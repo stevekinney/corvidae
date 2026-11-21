@@ -173,10 +173,8 @@ const publishDecisions = await (async () => {
     const bytes = 'fixture tarball contents';
     const integrity = 'sha512-' + createHash('sha512').update(bytes).digest('base64');
     await writeFile(join(packageDirectory, 'package-result.json'), JSON.stringify({ integrity }));
-    const decisions: { version: string; tag: string | undefined; exitCode: number | null }[] = [];
-    for (const version of ['1.0.0', '1.0.0-beta.1', '1.0.0+build-note']) {
-      await writeFile(join(packageDirectory, `interborough-${version}.tgz`), bytes);
-      const child = await runWithHangGuard(['bash', '-e', '-o', 'pipefail', '-c', publish], {
+    const runPublish = (version: string) =>
+      runWithHangGuard(['bash', '-e', '-o', 'pipefail', '-c', publish], {
         env: {
           ...process.env,
           PATH: root + ':' + process.env['PATH'],
@@ -184,6 +182,10 @@ const publishDecisions = await (async () => {
           VERSION: version,
         },
       });
+    const decisions: { version: string; tag: string | undefined; exitCode: number | null }[] = [];
+    for (const version of ['1.0.0', '1.0.0-beta.1', '1.0.0+build-note']) {
+      await writeFile(join(packageDirectory, `interborough-${version}.tgz`), bytes);
+      const child = await runPublish(version);
       if (!child.success)
         throw new Error(`Publish command failed for ${version}: ${child.stderr.toString()}`);
       const arguments_ = child.stdout.toString().split('\n');
@@ -194,16 +196,24 @@ const publishDecisions = await (async () => {
         exitCode: child.exitCode,
       });
     }
-    return decisions;
+    await writeFile(join(packageDirectory, 'interborough-1.0.0.tgz'), 'different bytes');
+    return { decisions, changedTarball: await runPublish('1.0.0') };
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 })();
 
 test('stable versions publish to latest and prereleases publish to next', () => {
-  expect(publishDecisions).toEqual([
+  expect(publishDecisions.decisions).toEqual([
     { version: '1.0.0', tag: 'latest', exitCode: 0 },
     { version: '1.0.0-beta.1', tag: 'next', exitCode: 0 },
     { version: '1.0.0+build-note', tag: 'latest', exitCode: 0 },
   ]);
+});
+
+test('the publish job reports a changed tarball and stops before calling npm', () => {
+  const { changedTarball } = publishDecisions;
+  expect(changedTarball.exitCode).toBe(1);
+  expect(changedTarball.stdout.toString()).toBe('');
+  expect(changedTarball.stderr.toString()).toContain('Tested npm tarball integrity mismatch');
 });

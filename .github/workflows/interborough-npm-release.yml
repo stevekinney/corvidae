@@ -134,7 +134,17 @@ jobs:
         run: |
           package="$RUNNER_TEMP/interborough-package/interborough-$VERSION.tgz"
           NPM_TESTED_TARBALL="$package" NPM_PACKAGE_RECEIPT="$RUNNER_TEMP/interborough-package/package-result.json" \
-            node -e 'const fs = require("node:fs"); const { createHash } = require("node:crypto"); const digest = createHash("sha512").update(fs.readFileSync(process.env.NPM_TESTED_TARBALL)).digest("base64"); const result = JSON.parse(fs.readFileSync(process.env.NPM_PACKAGE_RECEIPT, "utf8")); if ("sha512-" + digest !== result.integrity) process.exit(1);'
+            node -e '
+              const { readFileSync } = require("node:fs");
+              const { createHash } = require("node:crypto");
+              const bytes = readFileSync(process.env.NPM_TESTED_TARBALL);
+              const actual = "sha512-" + createHash("sha512").update(bytes).digest("base64");
+              const { integrity } = JSON.parse(readFileSync(process.env.NPM_PACKAGE_RECEIPT, "utf8"));
+              if (actual !== integrity) {
+                console.error("Tested npm tarball integrity mismatch: expected %s, received %s", integrity, actual);
+                process.exit(1);
+              }
+            '
           case "${VERSION%%+*}" in
             *-*) tag=next ;;
             *) tag=latest ;;
