@@ -5,7 +5,12 @@
    * Deny with an optional note the agent reads, and, in a chat, Allow for the rest of this chat.
    * A decided approval shows the same, with what became of it in place of the buttons.
    */
-  import { Alert, ApprovalCard, humanizeIdentifier, type ApprovalState } from '@lostgradient/cinder';
+  import {
+    Alert,
+    ApprovalCard,
+    humanizeIdentifier,
+    type ApprovalState,
+  } from '@lostgradient/cinder';
 
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
   import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
@@ -47,9 +52,7 @@
     if (action === undefined) return { kind: 'other' } as const;
     return { ...action.operation, argsPreview: review.approval.arguments };
   });
-  const state = $derived<ApprovalState>(
-    review.status === 'rejected' ? 'denied' : review.status,
-  );
+  const state = $derived<ApprovalState>(review.status === 'rejected' ? 'denied' : review.status);
   const resolution = $derived(review.resolution);
 
   function decide(resolution: {
@@ -57,7 +60,9 @@
     readonly reason?: string;
     readonly remember: boolean;
   }): void {
-    onDecide(resolution.decision === 'deny' ? 'deny' : resolution.remember ? 'remember' : 'approve');
+    onDecide(
+      resolution.decision === 'deny' ? 'deny' : resolution.remember ? 'remember' : 'approve',
+    );
   }
 </script>
 
@@ -81,12 +86,16 @@
     headingLevel={2}
     {question}
     context={source}
-    consequence={action === undefined ? undefined : declaredSummary(action.message, review.approval.reason)}
+    consequence={action === undefined
+      ? undefined
+      : declaredSummary(action.message, review.approval.reason)}
     rememberScope={alwaysAsks ? undefined : 'the rest of this chat'}
     bind:reason={note}
     noteInitiallyOpen
     resolving={deciding ? 'approve' : undefined}
-    failure={outcome?.tone === 'danger' ? { summary: outcome.title, detail: outcome.message } : undefined}
+    failure={outcome?.tone === 'danger'
+      ? { summary: outcome.title, detail: outcome.message }
+      : undefined}
     decidedBy={resolution?.decidedBy}
     decidedAt={resolution?.decidedAt}
     decisionNote={resolution?.reason}

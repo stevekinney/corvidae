@@ -259,7 +259,9 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }));
+    await fireEvent.click(
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
+    );
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
@@ -296,7 +298,9 @@ describe('deciding a Bureau tool approval', () => {
     await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: 'Fine for this chat.' },
     });
-    await fireEvent.click(await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }));
+    await fireEvent.click(
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
+    );
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
@@ -335,7 +339,9 @@ describe('deciding a Bureau tool approval', () => {
       receipt: 'applied',
       remembered: false,
     }));
-    await fireEvent.click(await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }));
+    await fireEvent.click(
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
+    );
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await findByText(REVIEWS_COPY.notRemembered.title);
   });

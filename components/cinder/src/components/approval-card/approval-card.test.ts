@@ -430,7 +430,9 @@ describe('ApprovalCard', () => {
     // A new request starts with the note closed and empty.
     expect(view.queryByLabelText('Note Optional')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe('');
+    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
+      '',
+    );
     expect(
       requiredInstance(
         view.getByRole('checkbox', {
