@@ -14,7 +14,7 @@
  * what it changed: the agent it disabled is enabled, the memory it forgot is kept, and the agents
  * and chats it made are removed.
  */
-import type { APIRequestContext, Page, Route } from '@playwright/test';
+import type { APIRequestContext, Locator, Page, Route } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
@@ -516,6 +516,27 @@ for (const width of WIDTHS) {
   });
 }
 
+async function expectSavedSummaryOnOneLine(actions: Locator): Promise<void> {
+  const savedCopy = editorCopy.edit.saved(1);
+  const status = actions.getByTestId('agent-save-status');
+  await expect(status).toHaveText(savedCopy);
+  const textLayout = await status.evaluate((element, copy) => {
+    const text = Array.from(element.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes(copy),
+    );
+    if (text === undefined) throw new Error('The saved status has no text node.');
+    const textRange = document.createRange();
+    textRange.selectNodeContents(text);
+    return {
+      lines: Array.from(textRange.getClientRects()).filter((rect) => rect.width > 0).length,
+      width: textRange.getBoundingClientRect().width,
+      availableWidth: element.getBoundingClientRect().width,
+    };
+  }, savedCopy);
+  expect(textLayout.lines).toBe(1);
+  expect(textLayout.width).toBeLessThanOrEqual(textLayout.availableWidth);
+}
+
 test.describe('Agent shared FormActions', () => {
   for (const width of WIDTHS) {
     test(`captures a saved agent's shared FormActions at ${width} pixels`, async ({
@@ -532,6 +553,7 @@ test.describe('Agent shared FormActions', () => {
         await page.goto(`/agents/${id}/edit`);
         const actions = page.getByRole('group', { name: 'Form actions' });
         await expect(actions).toBeVisible();
+        if (width >= 768) await expectSavedSummaryOnOneLine(actions);
         await expect(actions.getByRole('switch', { name: editorCopy.a2aLabel })).toBeVisible();
         await expect(actions.getByText(editorCopy.a2aDescription, { exact: true })).toBeVisible();
         await expect(actions.getByRole('button')).toHaveText([
@@ -740,6 +762,7 @@ test.describe('Agent shared FormActions', () => {
       await trial.getByRole('button', { name: editorCopy.try.closeSheet }).click();
       await expect(trial).toBeHidden();
       await expect(actions).toBeVisible();
+      await expectSavedSummaryOnOneLine(actions);
       await expect(description).toHaveValue('Keep this form state while trying the agent.');
       await captureForDesignReview(page, {
         route: '/agents/:agent/edit',
