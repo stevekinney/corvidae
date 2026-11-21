@@ -51,8 +51,8 @@ async function openAt(
   await page.addInitScript((selected) => {
     localStorage.setItem('weft-ui-theme', selected);
   }, theme);
-  await openStatesChat(page, request, 'discover-agents');
   await page.setViewportSize({ width, height: 900 });
+  await openStatesChat(page, request, 'discover-agents');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(card(page)).toBeVisible();
 }
@@ -152,10 +152,16 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     const lastMessage = page.locator('[data-message-role="user"]').last();
     const composer = page.locator('.chat-input-area').first();
     await expect(lastMessage).toContainText(DISCOVER_AGENTS_ASK);
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+    const approve = card(page).getByRole('button', { name: 'Approve' });
+    // Read the baseline after the click's actionability checks have brought Approve into view.
+    await approve.click({ trial: true });
     const before = await readBoxes(page, { message: lastMessage, composer });
 
     // The run that asked is gone (the thread has nothing to attach to), so nothing waits on it.
-    await card(page).getByRole('button', { name: 'Approve' }).click();
+    await approve.click();
 
     // 11. One error that says one thing, not "The agent did not answer" over the refusal.
     const alerts = page.getByTestId('chat-alerts');
@@ -187,7 +193,10 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     });
     for (const key of ['message', 'composer'] as const) {
       expect(Math.abs(after[key].x - before[key].x), key).toBeLessThanOrEqual(0.5);
-      expect(Math.abs(after[key].y - before[key].y), key).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs(after[key].y - before[key].y),
+        `${key} top before ${before[key].y}, after ${after[key].y}`,
+      ).toBeLessThanOrEqual(0.5);
       expect(Math.abs(after[key].height - before[key].height), key).toBeLessThanOrEqual(0.5);
     }
     expect(after.notice.x + after.notice.width).toBeLessThanOrEqual(after.date.x);
