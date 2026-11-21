@@ -82,6 +82,8 @@
       string,
       Extract<NonNullable<WorkflowFileRun['origin']>, { kind: 'agent-run' }>
     >;
+    /** Health Runs uses Cinder's phone card layout; scoped workflow runs retain their table floor. */
+    stackTable?: boolean;
   }
 
   let {
@@ -91,6 +93,7 @@
     recentlyChangedIds,
     revisionComparison,
     workflowOrigins,
+    stackTable = false,
   }: WorkflowTableProps = $props();
 
   const selectionEnabled = $derived(selectedIds !== undefined);
@@ -132,12 +135,12 @@
   }
 </script>
 
-<!-- The engine table keeps its table layout and its floor at every width (COR-2364). -->
+<!-- Health Runs stacks through Cinder at phone width; scoped workflow runs retain their table floor. -->
 <Table
   caption="Workflows"
   selectable={selectionEnabled}
   fit
-  stackBelow={false}
+  stackBelow={stackTable ? undefined : false}
   class="weft-workflows-table"
 >
   <colgroup>

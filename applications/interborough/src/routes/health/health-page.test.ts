@@ -143,8 +143,9 @@ function storageLineOf(view: { container: HTMLElement }): string {
 }
 
 describe('the frame', () => {
-  test('is headed Health, names where the installation runs, and has four tabs and no Diagnostics', async () => {
-    const view = open();
+  test('puts engine runs in the Health frame, with Runs after Overview and no Diagnostics tab', async () => {
+    engine = installWorkflowWorld(emptyWorld());
+    const view = open('/health/runs');
     const heading = await view.findByRole('heading', { level: 1 });
     expect(heading.textContent).toBe('Health');
     // The storage in plain words: the line holds no path (owner, 2026-11-19).
@@ -154,18 +155,20 @@ describe('the frame', () => {
     const tabs = view.getAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
       'Overview',
+      'Runs',
       'Workers',
       'Storage',
       'Audit log',
     ]);
-    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(view.getByRole('tab', { name: 'Runs' }).getAttribute('aria-selected')).toBe('true');
     for (const word of ['Diagnostics', 'Metrics', 'Alerts', 'Checks']) {
       expect(view.queryByRole('tab', { name: word })).toBeNull();
     }
   });
 
   test('has one Live indicator and no "Updated every" text', async () => {
-    const view = open();
+    engine = installWorkflowWorld(emptyWorld());
+    const view = open('/health/runs');
     await view.findByRole('heading', { level: 1 });
     await waitFor(() =>
       expect(view.getAllByRole('status', { name: /Connection/ })).toHaveLength(1),

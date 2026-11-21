@@ -1135,10 +1135,10 @@ for (const width of [320, 375]) {
   });
 }
 
-test('the engine workflow table keeps its table layout and header at 320 pixels', async ({
+test('the scoped engine workflow table keeps its table layout and header at 320 pixels', async ({
   page,
 }) => {
-  await settle(page, '/health/runs', 320);
+  await settle(page, '/workflows/:workflow/runs', 320);
   const table = page.locator('table.weft-workflows-table');
   await expect(table).toBeVisible();
   expect(await table.evaluate((element) => getComputedStyle(element).display)).toBe('table');

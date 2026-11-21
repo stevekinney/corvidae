@@ -225,6 +225,37 @@ test.describe('the sample world', () => {
     });
   }
 
+  for (const width of [1280, 375] as const) {
+    test(`engine runs in Health at ${width} pixels`, async ({ page, checkA11y }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/health/runs?type=order-processing');
+      const main = page.locator('main');
+      const table = main.locator('table.weft-workflows-table');
+      await expect(table.locator('tbody tr').first()).toBeVisible();
+
+      await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
+      await expect(main.getByRole('heading', { level: 2, name: 'Workflow runs' })).toBeVisible();
+      await expectTabOpen(main, 'Runs');
+      await expect(main.getByRole('button', { name: 'Live' })).toBeVisible();
+      await expect(main.getAllByRole('status', { name: /Connection/ })).toHaveCount(1);
+      await expect(table.locator('tbody tr').first().getByRole('link')).toBeVisible();
+
+      const scroller = main.locator('.cinder-table-scroll');
+      expect(await scroller.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      );
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await captureForDesignReview(page, {
+        route: '/health/runs',
+        state: 'engine runs in Health',
+        source: SOURCE,
+      });
+      await checkA11y(`health engine runs at ${width}px`);
+    });
+  }
+
   test('Advanced opened by an Open Diagnostics link shows Metrics, Alerts and Checks, each with a link', async ({
     page,
     checkA11y,

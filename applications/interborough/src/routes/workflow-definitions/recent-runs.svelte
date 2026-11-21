@@ -36,11 +36,12 @@
   import { getClient } from '../../lib/client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
+  import { serializeWorkflowListFilter } from '../../lib/filters.ts';
   import { usePluginTitle } from '../../lib/plugin-title.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowRunPath } from '../../lib/router.svelte.ts';
   import { listWorkflowFileRuns } from '../../lib/workflow-files.ts';
-  import { workflowRunsPath } from '../../lib/workflow-type-paths.ts';
+  import { ENGINE_RUNS_PATH } from '../../lib/workflow-type-paths.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../home/home-clock.svelte.ts';
   import {
     filterRunRows,
@@ -105,7 +106,9 @@
     undefined,
   );
 
-  const runsPath = $derived(workflowRunsPath(type));
+  const runsPath = $derived(
+    `${ENGINE_RUNS_PATH}?${serializeWorkflowListFilter({ type }).toString()}`,
+  );
 
   function agentLabel(name: string): string {
     return agentLabelOf(name, undefined);

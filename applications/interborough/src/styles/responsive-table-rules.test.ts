@@ -32,9 +32,9 @@ describe('the tables that hold long values', () => {
     }
   });
 
-  test('the engine workflow table keeps its table layout at every width', async () => {
+  test('the engine workflow table keeps its table layout for scoped workflow runs', async () => {
     const table = await read('../routes/workflows/list/workflow-table.svelte');
-    expect(table).toMatch(/<Table\s[^>]*\bfit\b[^>]*\bstackBelow=\{false\}/);
+    expect(table).toContain('stackBelow={stackTable ? undefined : false}');
   });
 
   test('the workflow table fits its box above a floor no wider than 768px gives it, and its tags are Type’s second line', async () => {
