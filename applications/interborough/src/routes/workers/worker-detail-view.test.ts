@@ -207,7 +207,8 @@ describe('a worker with a long id', () => {
   });
 
   test('keeps the identifier hidden when the worker has no name', () => {
-    const { view } = renderDetail(worker({ id, name: undefined }));
+    const { name: _name, ...unnamed } = worker({ id });
+    const { view } = renderDetail(unnamed);
     expect(view.getByRole('heading', { level: 2 }).textContent).toBe('Unnamed worker');
     expect(view.queryByText(id)).toBeNull();
   });
