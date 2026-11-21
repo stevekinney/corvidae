@@ -57,7 +57,6 @@
     /* One track that may shrink to the viewport, so a block is as wide as the screen leaves it. */
     grid-template-columns: minmax(0, 1fr);
     gap: var(--cinder-space-4);
-    max-inline-size: 36rem;
     padding: var(--cinder-space-4);
   }
 </style>

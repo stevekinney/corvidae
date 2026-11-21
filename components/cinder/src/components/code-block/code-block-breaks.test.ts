@@ -9,7 +9,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { Highlighter } from '../../utilities/highlighter.ts';
-import { breakPoints } from './code-block-lines.ts';
+import { breakPoints, splitWords } from './code-block-lines.ts';
 
 setupHappyDom();
 
