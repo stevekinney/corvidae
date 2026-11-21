@@ -1435,10 +1435,11 @@
   // A failure the transcript already says, on the row it belongs to, is not said again above it: a
   // message that never got an answer is marked "Not sent".
   const failureShownInTranscript = $derived(
-    session.failureWasTransport &&
-      Object.values(session.conversation.messages).some(
-        (row) => row.metadata['_deliveryStatus'] === 'failed',
-      ),
+    retryNoteId !== undefined ||
+      (session.failureWasTransport &&
+        Object.values(session.conversation.messages).some(
+          (row) => row.metadata['_deliveryStatus'] === 'failed',
+        )),
   );
   // The last row the transcript draws: a row that only carries a call's answer is drawn under the
   // call's own row, so it does not count, and a turn that ends on a call ends on the call's row.
@@ -2200,8 +2201,8 @@
           statusPlacement="inline"
         />
       {/if}
-      <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
-      {#if !choosing && !endedByRestart}
+      <!-- The transcript already explains a stopped or failed reply. -->
+      {#if !choosing && !endedByRestart && retryNoteId === undefined}
         <SessionTasks
           {sessionId}
           streaming={session.streaming}

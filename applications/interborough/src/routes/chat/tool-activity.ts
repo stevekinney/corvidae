@@ -11,7 +11,7 @@ import {
 } from '@lostgradient/chat';
 import { parseStepRowIdentifier } from '@lostgradient/operative';
 
-import type { ToolCallRailCall } from '@lostgradient/cinder';
+import { humanizeIdentifier, type ToolCallRailCall } from '@lostgradient/cinder';
 
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
@@ -421,8 +421,8 @@ export function toolInfoByName(
 /** A tool's identifier as a person reads it when the catalog gives no title: "lookup-order" is "Lookup order". */
 export function toolDisplayName(identifier: string, title?: string | null): string {
   if (title !== undefined && title !== null && title.trim() !== '') return title;
-  const words = identifier.replaceAll(/[-_]+/g, ' ').trim();
-  return words === '' ? identifier : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+  const name = identifier.split(/:|__/).filter(Boolean).at(-1) ?? identifier;
+  return humanizeIdentifier(name, { casing: 'sentence' });
 }
 
 /** The Bureau's tool that creates a workflow, as a call names it (`bureau:workflows-create` in the catalog). */
@@ -567,7 +567,6 @@ export function railCall(
   const named = {
     id: entry.railId ?? entry.callId,
     name: entry.title ?? entry.name,
-    identifier: entry.name,
     ...(entry.input === undefined || entry.input === '' ? {} : { input: entry.input }),
     nested,
     ...(entry.durationMilliseconds === undefined

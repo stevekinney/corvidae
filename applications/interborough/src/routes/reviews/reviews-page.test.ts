@@ -21,6 +21,7 @@ import {
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
 import { shortcuts } from '../../lib/shortcuts.ts';
+import { approveRefund } from './review-approval.test-support.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
@@ -195,24 +196,20 @@ describe('the reviews page', () => {
 
 describe('deciding a Bureau tool approval', () => {
   test('shows the tool and what it was given before it is decided', async () => {
-    const { container, findByRole, findByTestId } = open({ reviews: [APPROVAL] });
+    const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
-    // What it was given, on one line with each name in words (row 26o, COR-2426), the names muted
-    // apart from the values (design review 1).
-    const input = await findByTestId('review-input-line');
-    expect(input.textContent?.replace(/\s+/g, ' ').trim()).toBe('Order ID order-1001, Cents 4200');
-    expect(
-      [...input.querySelectorAll('.ib-review-pane__input-key')].map((key) => key.textContent),
-    ).toEqual(['Order ID', 'Cents']);
+    const input = await findByRole('group', { name: 'Input' });
+    expect(input.textContent?.replace(/\s+/g, ' ')).toContain('Order ID order-1001');
+    expect(input.textContent?.replace(/\s+/g, ' ')).toContain('Amount in cents 4200');
   });
 
   test('approves through bureau.reviews.resolve with the review’s id and round, and the row goes', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -227,7 +224,10 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.allowForChat }));
+    await fireEvent.click(
+      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+    );
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -242,10 +242,10 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+    await fireEvent.input(getByLabelText('Note'), {
       target: { value: '  Go ahead, but only this once.  ' },
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -260,10 +260,13 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+    await fireEvent.input(getByLabelText('Note'), {
       target: { value: 'Fine for this chat.' },
     });
-    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.allowForChat }));
+    await fireEvent.click(
+      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+    );
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -287,8 +290,8 @@ describe('deciding a Bureau tool approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     // A visible label, as rows 07f and 26o draw it.
-    expect(await findByLabelText('Note (optional)')).not.toBeNull();
-    expect(container.textContent).toContain('Note (optional)');
+    expect(await findByLabelText('Note')).not.toBeNull();
+    expect(container.textContent).not.toContain('Note (optional)');
   });
 
   test('says the approval was not remembered when the Bureau could not store the grant', async () => {
@@ -302,7 +305,10 @@ describe('deciding a Bureau tool approval', () => {
       receipt: 'applied',
       remembered: false,
     }));
-    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.allowForChat }));
+    await fireEvent.click(
+      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+    );
+    await approveRefund(findByRole);
     await findByText(REVIEWS_COPY.notRemembered.title);
   });
 
@@ -310,7 +316,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+    await fireEvent.input(getByLabelText('Note'), {
       target: { value: 'Wrong order.' },
     });
     await fireEvent.click(await findByRole('button', { name: 'Deny' }));
@@ -338,7 +344,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole } = open({ reviews: [APPROVAL, QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(2));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(rows(container).length).toBe(1));
     await findByRole('textbox', { name: /your answer/i });
     expect(router.search.get('review')).toBe(`bureau:${QUESTION.id}`);
@@ -362,7 +368,7 @@ describe('deciding a Bureau tool approval', () => {
     stub?.on('bureau.reviews.resolve', () => {
       throw new Error('The Bureau broke.');
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
     expect(rows(container).length).toBe(1);
   });
@@ -377,8 +383,8 @@ describe('the keys that act on the open review', () => {
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
 
     await openRow(container, 0);
-    await waitFor(() => expect(getByLabelText(REVIEWS_COPY.noteLabel)).not.toBeNull());
-    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+    await waitFor(() => expect(getByLabelText('Note')).not.toBeNull());
+    await fireEvent.input(getByLabelText('Note'), {
       target: { value: 'Not today.' },
     });
     press('d');
@@ -397,6 +403,9 @@ describe('the keys that act on the open review', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
+    press('a');
+    await findByRole('button', { name: 'Press again to approve' });
+    expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
     press('a');
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toMatchObject({
@@ -503,21 +512,20 @@ describe('the approval’s details', () => {
     await openRow(container, 0);
     await findByText('bun run deploy');
     expect(container.textContent).toContain('dist/app.js');
-    expect(container.textContent).toContain(REVIEWS_COPY.operation.command);
+    expect(container.textContent).toContain('File touched');
   });
 
   test('keeps the inbox usable when the operation lists one path twice', async () => {
     const approval = operation({
       kind: 'patch',
-      command: 'bun run deploy',
+      diff: 'diff --git a/dist/app.js b/dist/app.js\n--- a/dist/app.js\n+++ b/dist/app.js\n@@ -1 +1 @@\n-old\n+new',
       filesTouched: ['dist/app.js', 'dist/app.js'],
     });
-    const { container, findByText } = open({ reviews: [approval] });
+    const { container, findByRole } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await findByText('bun run deploy');
+    await findByRole('button', { name: 'Copy path dist/app.js' });
     expect(container.textContent).not.toContain('Something went wrong');
-    expect(container.querySelectorAll('.weft-bureau-review-operation__files li').length).toBe(1);
   });
 });
 
@@ -562,7 +570,7 @@ describe('a decision that took effect', () => {
       writeFails(world, decided.id);
       const reads = stub.callsTo('bureau.reviews.list').length;
 
-      await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+      await approveRefund(findByRole);
 
       // The refetch drops the decided review, and the warning is still on the page.
       await waitFor(() => expect(rows(container).length).toBe(others));
@@ -586,7 +594,7 @@ describe('a decision that took effect', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     writeFails(world, decided.id);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(REVIEWS_COPY.outcomeNotWritten.title);
 
     await fireEvent.click(await findByRole('button', { name: /dismiss/i }));
@@ -604,7 +612,7 @@ describe('a decision that took effect', () => {
         reason: 'Another resolver won.',
       });
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
   });
 });
@@ -629,7 +637,7 @@ describe('what became of a decision', () => {
     stub?.on('bureau.reviews.resolve', () => {
       throw new Error('The Bureau broke.');
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
 
     // The other review, opened, carries no trace of the first one's failure.
@@ -651,7 +659,7 @@ describe('a decision the Bureau gated again', () => {
       decision: 'approve',
       receipt: 'superseded',
     }));
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByText(REVIEWS_COPY.superseded);
     expect(rows(container).length).toBe(1);
   });
@@ -663,7 +671,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
     const { container, findByRole } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: approval.id,
@@ -684,7 +692,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
     });
     const reads = stub?.callsTo('bureau.reviews.list').length ?? 0;
 
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
 
     await findByText(new RegExp(REVIEWS_COPY.roundChanged.title));
     expect(container.textContent).toContain(REVIEWS_COPY.roundChanged.message);

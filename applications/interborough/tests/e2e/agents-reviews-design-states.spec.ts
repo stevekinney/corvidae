@@ -33,6 +33,7 @@ import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
+import { approveReview } from './reviews-support.ts';
 import { E2E_SKILLS } from './skills-support.ts';
 import { bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
@@ -382,7 +383,7 @@ for (const width of WIDTHS) {
       await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
       const pane = page.locator('.ib-review-pane');
       await expect(pane).toContainText('Refund order order-1001');
-      await pane.getByRole('button', { name: 'Approve' }).click();
+      await approveReview(pane);
       await expect(page.getByTestId('review-gone')).toBeVisible();
       await captureForDesignReview(page, {
         route: '/reviews',

@@ -431,6 +431,8 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       'The reply stopped partway: the model provider dropped the connection.',
     );
     await expect(line.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.locator('.weft-chat-strip')).toHaveCount(0);
+    await expect(page.getByText('The agent did not answer', { exact: true })).toHaveCount(0);
     // The conversation stays live: a provider is connected, so the composer takes a message.
     await expect(page.getByRole('textbox', { name: /^Message/ })).toBeVisible();
     await expect(blockedRow(page)).toHaveCount(0);

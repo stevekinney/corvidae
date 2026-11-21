@@ -76,6 +76,8 @@
     counts: ChatCounts | undefined;
     /** Whether the tab is its empty state: the agent has no chat and no filter is on. */
     empty?: boolean;
+    /** Whether the agent needs a model provider before it can start a chat. */
+    needsProvider?: boolean;
     /** The agent's plugin is disabled: the empty state offers no New chat and says what to enable. */
     unavailable?: boolean;
     /** The disabled plugin's title, which the empty state names. */
@@ -87,6 +89,7 @@
     name,
     counts,
     empty = $bindable(false),
+    needsProvider = false,
     unavailable = false,
     pluginTitle = '',
   }: Props = $props();
@@ -258,7 +261,7 @@
           description={unavailable
             ? copy.unavailableDescription(pluginTitle)
             : copy.emptyDescription(name)}
-          actions={unavailable
+          actions={unavailable || needsProvider
             ? []
             : [
                 {

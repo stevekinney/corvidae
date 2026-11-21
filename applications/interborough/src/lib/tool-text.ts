@@ -6,6 +6,8 @@
  * the question is made from the call's own name and arguments instead.
  */
 
+import { humanizeIdentifier } from '@lostgradient/cinder';
+
 const LONGEST_SUMMARY = 80;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,8 +112,13 @@ export function approvalQuestion(input: {
 export function resultSummary(content: unknown): string {
   if (typeof content === 'string') return shorten(content);
   if (isRecord(content)) {
-    const fields = argumentLine(content);
-    return fields === '' ? '' : shorten(fields);
+    // The expanded result can show structured data. The rail only needs short, readable fields.
+    const fields = Object.entries(content).flatMap(([key, value]) =>
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ? [`${humanizeIdentifier(key, { casing: 'sentence' })} ${String(value)}`]
+        : [],
+    );
+    return shorten(fields.join(', '));
   }
   return content === null || content === undefined ? '' : shorten(displayValue(content));
 }

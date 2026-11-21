@@ -19,6 +19,7 @@ import {
 } from '../../lib/bureau-world.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import { approveRefund } from './review-approval.test-support.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
@@ -151,7 +152,7 @@ describe('the segments', () => {
     await findByRole('radio', { name: /^Done\s*,\s*1$/ });
 
     await fireEvent.click(rows(container)[0]!);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByRole('radio', { name: /^Waiting\s*,\s*1$/ });
     await findByRole('radio', { name: /^Done\s*,\s*2$/ });
   });
@@ -163,7 +164,7 @@ describe('deciding a review', () => {
     const { container, findByLabelText, findByRole, findByTestId } = open({
       reviews: [APPROVAL, QUESTION],
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     await findByLabelText('Your answer');
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -190,7 +191,7 @@ describe('deciding a review', () => {
   test('is not announced as a review that is no longer waiting', async () => {
     measuredAt(1200);
     const { container, findByRole, queryByTestId } = open({ reviews: [APPROVAL, QUESTION] });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     expect(queryByTestId('review-gone')).toBeNull();
     expect(container.textContent).not.toContain(REVIEWS_COPY.noLongerWaiting.message);
@@ -206,7 +207,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText(REVIEWS_COPY.noteLabel);
+    const note = await findByLabelText('Note');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -232,28 +233,25 @@ describe('Enter on a row', () => {
 });
 
 describe('an approval', () => {
-  test('says what it wants to run and how risky that is, and offers the note as Add a note', async () => {
-    const { container, findByTestId, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
+  test('uses the shared approval row and keeps tool identifiers out of its title and metadata', async () => {
+    const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    const wants = await findByTestId('review-wants');
-    expect(wants.textContent).toContain(REVIEWS_COPY.wantsToRun);
-    expect(wants.textContent).toContain('Issue refund');
-    expect(wants.querySelector('code')?.textContent).toBe('issue-refund');
-    expect(wants.textContent).toContain(REVIEWS_COPY.risk.high);
-    expect(
-      getByText(REVIEWS_COPY.toolApproval, { selector: '.ib-review-pane__eyebrow' }),
-    ).not.toBeNull();
-    expect(getByLabelText(REVIEWS_COPY.noteLabel).getAttribute('placeholder')).toBe(
-      REVIEWS_COPY.notePlaceholder,
-    );
+    const card = await findByRole('article', { name: 'Refund order-1001?' });
+    expect(card.getAttribute('data-cinder-layout')).toBe('row');
+    expect(card.textContent).toContain('Issue refund');
+    expect(card.textContent).toContain("Can't be undone");
+    expect(card.textContent).not.toContain('issue-refund');
+    expect(getByLabelText('Note').tagName).toBe('TEXTAREA');
   });
 
   test('offers Allow for the rest of the chat', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    expect(await findByRole('button', { name: REVIEWS_COPY.allowForChat })).not.toBeNull();
+    expect(
+      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+    ).not.toBeNull();
   });
 
   test('does not offer it for a tool that asks every time, which allowing would not change', async () => {
@@ -268,7 +266,7 @@ describe('an approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
     await findByRole('button', { name: 'Approve' });
-    expect(queryByRole('button', { name: REVIEWS_COPY.allowForChat })).toBeNull();
+    expect(queryByRole('checkbox', { name: /for the rest of this chat$/ })).toBeNull();
   });
 });
 

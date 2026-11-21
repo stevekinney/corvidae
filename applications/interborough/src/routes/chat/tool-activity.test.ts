@@ -335,7 +335,6 @@ describe('a call the run ended on', () => {
     expect(railCall(entry, false)).toMatchObject({
       status: 'interrupted',
       name: 'Issue refund',
-      identifier: 'issue-refund',
       input: '4471',
       result: 'Interrupted, may have run',
     });
@@ -391,6 +390,8 @@ describe('how a call is named', () => {
     expect(toolDisplayName('lookup-order')).toBe('Lookup order');
     expect(toolDisplayName('issue_refund', null)).toBe('Issue refund');
     expect(toolDisplayName('lookup-order', 'Find an order')).toBe('Find an order');
+    expect(toolDisplayName('RequestHumanInput')).toBe('Request human input');
+    expect(toolDisplayName('bureau__discover-agents')).toBe('Discover agents');
     expect(toolDisplayName('', null)).toBe('');
   });
 });

@@ -121,9 +121,10 @@ describe('the header every tab of an agent’s page shares', () => {
   test('says an agent on a model cannot answer while no provider is connected, with the way to connect one', async () => {
     landAt('/agents/researcher');
     serve({}, [{ name: 'anthropic', hasKey: false, connected: false }]);
-    const { findByTestId } = mount();
+    const { findByTestId, queryByRole } = mount();
 
     const reason = await findByTestId('agent-provider-reason');
+    expect(queryByRole('link', { name: 'New chat', exact: true })).toBeNull();
     expect(reason.textContent).toContain(AGENT_PAGE_COPY.header.needsProvider);
     const link = within(reason).getByRole('link', { name: AGENT_PAGE_COPY.header.connectProvider });
     expect(link.getAttribute('href')).toBe('/settings/models');

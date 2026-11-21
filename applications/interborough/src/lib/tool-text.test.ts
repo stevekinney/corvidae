@@ -108,7 +108,10 @@ describe('the lines about a call', () => {
   test('resultSummary shows text, fields, or nothing, cut to one short line', () => {
     expect(resultSummary('found it')).toBe('found it');
     expect(resultSummary({ status: 'delivered', totalCents: 4200 })).toBe(
-      'status delivered, totalCents 4200',
+      'Status delivered, Total cents 4200',
+    );
+    expect(resultSummary({ nested: { rawKey: 1 }, signalName: 'environment' })).toBe(
+      'Signal name environment',
     );
     expect(resultSummary(null)).toBe('');
     expect(resultSummary('x'.repeat(200)).length).toBe(80);
