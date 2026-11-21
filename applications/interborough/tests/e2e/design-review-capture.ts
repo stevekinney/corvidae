@@ -65,11 +65,13 @@ export async function nextFrame(page: Page): Promise<void> {
 }
 
 /**
- * Turns on Chromium's touch emulation, which is what `(pointer: coarse)` follows, waits for the
- * layout, and answers the function that turns it off again. The override lives as long as its
- * session, so the session stays open until then.
+ * Temporarily enables Chromium's touch emulation for a non-touch page. Keep the existing pointer
+ * mode when the test already uses touch. The override lives as long as its CDP session.
  */
 async function emulateTouch(page: Page): Promise<() => Promise<void>> {
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+    return () => Promise.resolve();
+  }
   const session = await page.context().newCDPSession(page);
   await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await nextFrame(page);
