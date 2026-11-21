@@ -704,6 +704,19 @@ describe('the hook editor', () => {
     expect(chosen.querySelector('code')).toBeNull();
   });
 
+  test('keeps the Check actions in one Cinder FormActions group, Save hook before Send a test event', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });
+
+    const actions = view.getByRole('group', { name: 'Form actions' });
+    expect(actions).toHaveClass('cinder-form-actions');
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.textContent?.trim()),
+    ).toEqual([HOOKS_COPY.editor.check.create, HOOKS_COPY.editor.check.test]);
+  });
+
   test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
     const { view } = open([], { path: '/hooks/new' });
     await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });

@@ -34,7 +34,15 @@
    * (`agent-editor-no-provider.svelte`). The model is chosen in `agent-editor-model-field.svelte`,
    * and its default effort in `agent-editor-effort-field.svelte`.
    */
-  import { Button, EmptyState, FormSection, Input, Textarea, Toggle } from '@lostgradient/cinder';
+  import {
+    Button,
+    EmptyState,
+    FormActions,
+    FormSection,
+    Input,
+    Textarea,
+    Toggle,
+  } from '@lostgradient/cinder';
   import { Check, X } from '@lucide/svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
@@ -319,13 +327,8 @@
     </section>
   {/if}
 
-  <div class="weft-agent-form__footer">
-    <div class="weft-agent-form__a2a">
-      <Toggle id="agent-a2a" label={copy.a2aLabel} bind:checked={editor.a2a} disabled={busy} />
-      <p class="weft-agent-form__note">{copy.a2aDescription}</p>
-    </div>
-
-    <div class="weft-agent-form__actions">
+  <FormActions sticky class="weft-agent-form__footer">
+    {#snippet summary()}
       <p class="weft-agent-form__status" role="status" data-testid="agent-save-status">
         {#if saving}
           {newCopy.saving}
@@ -336,12 +339,20 @@
           {copy.edit.saved(savedRevision)}
         {/if}
       </p>
+    {/snippet}
+    {#snippet start()}
+      <div class="weft-agent-form__a2a">
+        <Toggle id="agent-a2a" label={copy.a2aLabel} bind:checked={editor.a2a} disabled={busy} />
+        <p class="weft-agent-form__note">{copy.a2aDescription}</p>
+      </div>
+    {/snippet}
+    {#snippet end()}
       <Button type="button" variant="ghost" onclick={onCancel} label={copy.cancelAction} />
       <Button data-changes type="submit" variant="primary" loading={saving}>
         {creating ? copy.createAction : copy.saveAction}
       </Button>
-    </div>
-  </div>
+    {/snippet}
+  </FormActions>
 </form>
 
 <!-- A dialog inside the form would put its buttons in the form, so the picker sits beside it. -->
@@ -434,38 +445,6 @@
     color: var(--cinder-text-secondary);
   }
 
-  /*
-   * What acts on the agent as a whole: the A2A switch on the left, the status and actions on the
-   * right. It stays at the foot of the outlet while the form scrolls under it, so Save is always in
-   * reach.
-   */
-  .weft-agent-form__footer {
-    position: sticky;
-    /* The outlet has no bottom padding, so the bar sticks to the bottom of what it shows. Its
-       negative margin overlaps the spacer that ends the outlet, so at the end of the form the bar
-       is flush with that bottom too, with no strip of the page under it. */
-    bottom: 0;
-    z-index: 1;
-    margin-block-end: calc(-1 * var(--cinder-space-6));
-    padding-block: var(--cinder-space-3);
-    background: var(--cinder-surface-canvas);
-    border-block-start: 1px solid var(--cinder-border);
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-3) var(--cinder-space-4);
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  /* On a short screen (a phone on its side, or a page zoomed in) the bar, the header and the shell's
-     tab bar would cover every field, so the bar ends the form instead of staying in view. */
-  @media (max-height: 480px) {
-    .weft-agent-form__footer {
-      position: static;
-      margin-block-end: 0;
-    }
-  }
-
   .weft-agent-form__a2a {
     display: flex;
     flex-wrap: wrap;
@@ -473,12 +452,11 @@
     align-items: center;
   }
 
-  .weft-agent-form__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-    align-items: center;
-    margin-inline-start: auto;
+  /* On a short screen the bar ends the form instead of covering its fields with the shell chrome. */
+  @media (max-height: 480px) {
+    .weft-agent-form__footer {
+      position: static;
+    }
   }
 
   .weft-agent-form__status {

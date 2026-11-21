@@ -963,7 +963,7 @@ describe('the delete in the page header', () => {
     expect(container.querySelector('.weft-agent-form__danger')?.textContent).toContain(
       AGENT_EDITOR_COPY.deleteAction,
     );
-    expect(container.querySelector('.weft-agent-form__footer')?.textContent).not.toContain(
+    expect(container.querySelector('.cinder-form-actions')?.textContent).not.toContain(
       AGENT_EDITOR_COPY.deleteAction,
     );
   });
