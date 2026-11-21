@@ -379,16 +379,38 @@ describe('run', () => {
     expect(parsed.command.join(' ')).not.toContain('plan_digest');
   });
 
-  test('passes the digest of the plan over the diff with every status, deletions included', () => {
+  test('a deleted protected golden dispatches the full workflow with no targeted digest', () => {
     const golden = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
     const { dependencies } = fake(['scripts/chef/a.ts'], [], [golden]);
     const command = run(['--dry-run', '--json'], dependencies).output;
-    expect(JSON.parse(command).command).toContain(
-      `plan_digest=${landingPlan(['scripts/chef/a.ts', golden]).digest}`,
-    );
+    expect(JSON.parse(command).command).toEqual([
+      'gh',
+      'workflow',
+      'run',
+      'main.yml',
+      '--ref',
+      'chef/x',
+    ]);
+    expect(JSON.parse(command).command.join(' ')).not.toContain('plan_digest');
     expect(landingPlan(['scripts/chef/a.ts', golden]).digest).not.toBe(
       landingPlan(['scripts/chef/a.ts']).digest,
     );
+  });
+
+  test('a deleted ordinary test stays targeted while a mixed deletion takes the widest tier', () => {
+    const deletedTest = 'packages/bureau/src/removed.test.ts';
+    const targeted = JSON.parse(run(['--dry-run', '--json'], fake([], [], [deletedTest]).dependencies).output);
+    expect(targeted.requiresFullRun).toBe(false);
+    expect(targeted.inputs.unitLanes).toEqual([]);
+
+    const protectedGolden = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
+    const mixed = JSON.parse(
+      run(['--dry-run', '--json'], fake(['packages/bureau/src/kept.test.ts'], [], [protectedGolden]).dependencies)
+        .output,
+    );
+    expect(mixed.requiresFullRun).toBe(true);
+    expect(mixed.command).toContain('main.yml');
+    expect(mixed.command.join(' ')).not.toContain('plan_digest');
   });
 
   test('--json with no inputs prints { ref, inputs, command, requiresFullRun } from the plan', () => {

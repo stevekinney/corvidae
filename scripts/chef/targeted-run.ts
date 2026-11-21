@@ -448,15 +448,18 @@ export function run(
       explicit.e2eSpecs.length +
       explicitLane.paths.length >
     0;
-  // A deleted file has nothing to run, so the plan reads only files the branch keeps.
+  // A deleted file has nothing executable, but it still selects the delivery tier.
   const changed = changedFiles(runner, 'origin/main');
+  const allChanged = git(runner, ['diff', '--name-only', 'origin/main...HEAD'])
+    .split('\n')
+    .filter(Boolean);
   const notes: string[] = [];
   let inputs = explicit;
-  let requiresFullRun = [...oneWayDoorMatches(changed), ...wholeSuiteMatches(changed)];
+  let requiresFullRun = [...oneWayDoorMatches(allChanged), ...wholeSuiteMatches(allChanged)];
   let fullDispatch = false;
   if (!given) {
     const plan = computeEvidencePlan(changed, dependencies.context(dependencies.knownSlugs()));
-    requiresFullRun = plan.full_run_rules;
+    requiresFullRun = [...requiresFullRun, ...plan.full_run_rules];
     const mapped = inputsFromPlan(plan);
     // A plan that needs a one-way-door check, the whole Interborough suite or every fixture slug
     // does not fit the targeted workflow's single jobs: the sharded `main.yml` runs it. So does a
@@ -466,7 +469,7 @@ export function run(
         ...requiresFullRun,
         { rule: OVERSIZE_RULE, path: mapped.undispatchable.join('; ') },
       ];
-    fullDispatch = plan.requires_full_run || mapped.undispatchable.length > 0;
+    fullDispatch = requiresFullRun.length > 0 || mapped.undispatchable.length > 0;
     inputs = fullDispatch
       ? emptyInputs()
       : explicitLane.config === ''
