@@ -39,6 +39,41 @@ const privateHistoryPrependStressFixture = chatEntry.fixtures?.find(
   (fixture) => fixture.name === 'private-history-prepend-stress',
 );
 
+test.describe('docked questions on a phone', () => {
+  test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
+
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`frames the dock once with unframed radio rows in ${colorScheme} (COR-2452)`, async ({
+      page,
+    }, testInfo) => {
+      await page.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
+      const url = new URL(
+        fixtureRoute('chat'),
+        environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+      );
+      url.searchParams.set('questionDock', '1');
+      await page.goto(url.href);
+      const dock = page.locator('[data-chat-question-dock]');
+      await expect(dock).toBeVisible();
+      const radios = dock.getByRole('radio');
+      await expect(radios).toHaveCount(2);
+      const outlines = await dock.evaluate((element) => ({
+        outer: getComputedStyle(element).borderBlockStartWidth,
+        inner: [...element.querySelectorAll('fieldset, [role="radio"]')].map(
+          (row) => getComputedStyle(row).borderBlockStartWidth,
+        ),
+      }));
+      expect(outlines).toEqual({ outer: '1px', inner: ['0px', '0px', '0px'] });
+      const juniper = dock.getByRole('radio', { name: 'Juniper' });
+      await juniper.click();
+      await expect(juniper).toHaveAttribute('aria-checked', 'true');
+      const screenshot = testInfo.outputPath('question-dock.png');
+      await dock.screenshot({ path: screenshot });
+      await testInfo.attach('question dock', { path: screenshot, contentType: 'image/png' });
+    });
+  }
+});
+
 function themeInitScriptPayload(colorScheme: 'dark' | 'light'): [string, string, string] {
   const baseUrl = environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN;
   return [THEME_STORAGE_KEY, colorScheme, new URL(baseUrl).origin];

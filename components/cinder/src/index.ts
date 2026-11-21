@@ -1517,4 +1517,9 @@ export { default as foundationTokens } from './tokens/sets/foundation.tokens.jso
 export { default as semanticTokens } from './tokens/sets/semantic.tokens.json' with { type: 'json' };
 export { default as darkThemeTokens } from './tokens/themes/dark.tokens.json' with { type: 'json' };
 export { default as lightThemeTokens } from './tokens/themes/light.tokens.json' with { type: 'json' };
-export { createBodyScrollLock, dockedToBottom, scrollEdgeFade } from './utilities/attachments.ts';
+export {
+  createBodyScrollLock,
+  dockedToBottom,
+  overflowFade,
+  scrollEdgeFade,
+} from './utilities/attachments.ts';

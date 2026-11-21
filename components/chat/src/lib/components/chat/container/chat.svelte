@@ -194,6 +194,7 @@
     typingParticipants,
     readReceipts,
     sourcesByMessageId,
+    claimSourcesByMessageId,
     adapter,
     onAdapterError,
     onPushMessage,
@@ -2669,6 +2670,9 @@
           toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
           onSuggestionSelect={handleSuggestionSelect}
           sources={message.role === 'assistant' ? sourcesByMessageId?.get(message.id) : undefined}
+          claimSources={message.role === 'assistant'
+            ? claimSourcesByMessageId?.get(message.id)
+            : undefined}
           sourcesExpanded={sourcesState.isExpanded(message.id)}
           onsourcestoggle={() => void toggleSources(message.id)}
           turnState={resolveMessageTurnState(message, messageTurnState)}
@@ -2979,32 +2983,34 @@
             {@render composerLead()}
           </div>
         {/if}
-        {#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}
-          <ChatApprovalDrawer
-            labels={chatLabels}
-            draft={composerDraft.trim() !== ''}
-            onreview={reviewPendingApproval}
-          />
-        {/if}
-        {#if followUps.discarded !== undefined}
-          <ChatFollowUpDiscardDrawer
-            discarded={followUps.discarded}
-            labels={chatLabels}
-            onrestore={restoreDiscardedFollowUps}
-            ondismiss={followUps.dismiss}
-          />
-        {/if}
-        {#if followUps.items.length > 0}
-          <ChatFollowUpDrawer
-            id={inputId}
-            items={followUps.items}
-            labels={chatLabels}
-            canSendNow={followUps.canSendNow}
-            onsendnow={followUps.sendNow}
-            onedit={editQueuedFollowUp}
-            onremove={removeQueuedFollowUp}
-          />
-        {/if}
+        <div class="chat-composer-drawers" data-chat-composer-drawers>
+          {#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}
+            <ChatApprovalDrawer
+              labels={chatLabels}
+              draft={composerDraft.trim() !== ''}
+              onreview={reviewPendingApproval}
+            />
+          {/if}
+          {#if followUps.discarded !== undefined}
+            <ChatFollowUpDiscardDrawer
+              discarded={followUps.discarded}
+              labels={chatLabels}
+              onrestore={restoreDiscardedFollowUps}
+              ondismiss={followUps.dismiss}
+            />
+          {/if}
+          {#if followUps.items.length > 0}
+            <ChatFollowUpDrawer
+              id={inputId}
+              items={followUps.items}
+              labels={chatLabels}
+              canSendNow={followUps.canSendNow}
+              onsendnow={followUps.sendNow}
+              onedit={editQueuedFollowUp}
+              onremove={removeQueuedFollowUp}
+            />
+          {/if}
+        </div>
         {#if dockedQuestion !== undefined && firstOpenQuestion !== undefined}
           <!-- One dock for the whole round, so focus stays on the previous or next button that was
                pressed; the dock resets its own choice when the question changes. Reply in chat
@@ -3836,8 +3842,8 @@
 
   .chat-input-area > :global(.chat-input-shell),
   .chat-input-area > .chat-composer-lead,
-  .chat-input-area > :global(.chat-follow-up-drawer),
-  .chat-input-area > :global(.chat-follow-up-discard),
+  .chat-composer-drawers > :global(.chat-follow-up-drawer),
+  .chat-composer-drawers > :global(.chat-follow-up-discard),
   .chat-input-area > :global(.chat-question-dock),
   .chat-input-area > .chat-composer-footer {
     max-inline-size: 100%;
@@ -3848,6 +3854,43 @@
      attachments survive, and comes back when the question is answered or replied to in chat. */
   .chat-input-area[data-question-docked] > :global(.chat-input-shell) {
     display: none;
+  }
+
+  .chat-composer-drawers {
+    display: contents;
+  }
+
+  @container (max-width: 480px) {
+    .chat-input-area:has(> .chat-composer-drawers > :global(:nth-child(2))) {
+      display: flex;
+      flex-direction: column;
+      max-block-size: 40dvh;
+      overflow-y: auto;
+    }
+
+    .chat-input-area:has(> .chat-composer-drawers > :global(:nth-child(2)))
+      > :global(:not(.chat-composer-drawers)) {
+      flex-shrink: 0;
+    }
+
+    .chat-input-area:has(> .chat-composer-drawers > :global(:nth-child(2)))
+      > :global(.chat-input-shell) {
+      inline-size: 100%;
+    }
+
+    .chat-composer-drawers:has(> :global(:nth-child(2))) {
+      display: block;
+      flex: 0 1 auto;
+      min-block-size: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scroll-padding-block: var(--cinder-space-1);
+    }
+
+    .chat-composer-drawers:has(> :global(:nth-child(2))) :global(.chat-follow-up-drawer-list) {
+      max-block-size: none;
+      overflow-y: visible;
+    }
   }
 
   /* Responsive adjustments: tighten padding at narrow widths.

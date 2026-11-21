@@ -81,6 +81,9 @@
     operationBody: Snippet | undefined;
     /** Resolution sink; undefined when the host is not wired to answer, or the approval is not actionable. */
     resolve: ((resolution: ApprovalResolution) => void) | undefined;
+    /** An additional review control backed by this row’s approval form. */
+    decisionReview:
+      Snippet<[(decision: 'approve' | 'deny') => void, disabled: boolean]> | undefined;
     /** Requests a fresh approval after this one expired. */
     onAskAgain: (() => void) | undefined;
   };
@@ -141,6 +144,7 @@
     inputRows,
     operationBody,
     resolve,
+    decisionReview,
     onAskAgain,
   }: ApprovalCardRowProps = $props();
 
@@ -393,6 +397,7 @@
               onOpen={() => (noteOpen = true)}
             />
           {/if}
+          {@render decisionReview?.(decide, actionsOff)}
           <Button
             type="button"
             variant="secondary"

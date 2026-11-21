@@ -189,6 +189,93 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   // A button's 44px hit area exists only under a coarse pointer, so the phone is a touch phone.
   test.use({ hasTouch: true, isMobile: true });
 
+  test('opens the decision deck beside the ordinary tool approval controls (COR-2452)', async ({
+    page,
+  }) => {
+    await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const approval = page.locator('[data-approval-decision]');
+    await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
+    await approval.getByRole('button', { name: 'Review in deck' }).click();
+    const deck = page.getByRole('dialog', { name: 'Review tool approval' });
+    await expect(deck).toContainText('Refund order 4471 for $42.00?');
+    await expect(deck).toContainText('Approval can’t be undone.');
+    await expect(deck).toContainText('4200');
+    await expect(deck.getByRole('button', { name: 'Back to approval controls' })).toBeVisible();
+    await page.setViewportSize({ width: 320, height: 640 });
+    for (const decision of ['Approve', 'Deny', 'Later']) {
+      const button = deck.getByRole('button', { name: decision, exact: true });
+      await expect(button).toBeInViewport({ ratio: 1 });
+      const bounds = await button.boundingBox();
+      expect(bounds?.height).toBeLessThanOrEqual(36);
+    }
+    await page.setViewportSize({ width: 375, height: 640 });
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'tool approval decision deck',
+      source: SOURCE,
+    });
+    await deck.getByRole('button', { name: 'Deny' }).click();
+    await expect(deck.getByRole('button', { name: 'Confirm denial' })).toBeVisible();
+    await expect(deck).toContainText('4200');
+    await deck.getByRole('button', { name: 'Undo' }).click();
+    await expect(deck.getByRole('button', { name: 'Confirm denial' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(deck).toHaveCount(0);
+    await expect(approval.getByRole('button', { name: 'Review in deck' })).toBeFocused();
+  });
+
+  test('keeps stacked composer drawers within 40 percent of a 640px phone (COR-2452)', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 375, height: 640 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
+    await page.locator('.chat-timeline').first().hover();
+    await page.mouse.wheel(0, -4000);
+    const approval = page.locator('[data-chat-approval-drawer]');
+    await expect(approval).toBeVisible();
+
+    const composer = page.getByRole('textbox', { name: /^Message/ });
+    const queue = page.locator('[data-chat-follow-up-drawer]');
+    for (let index = 1; index <= 8; index += 1) {
+      const followUp = `Please check the shipping record at position ${index}.`;
+      await composer.fill(followUp);
+      await composer.press('Enter');
+      await expect(queue.getByText(followUp)).toBeAttached();
+    }
+    await expect(approval).toBeVisible();
+    const stack = await approval.evaluate((first) => {
+      const second = document.querySelector('[data-chat-follow-up-drawer]')!;
+      const viewport = first.closest<HTMLElement>('[data-chat-composer-drawers]');
+      const inputArea = first.closest<HTMLElement>('.chat-input-area')!;
+      return {
+        drawersHeight:
+          viewport?.getBoundingClientRect().height ??
+          second.getBoundingClientRect().bottom - first.getBoundingClientRect().top,
+        dockHeight: inputArea.getBoundingClientRect().height,
+        viewport: window.innerHeight,
+      };
+    });
+    expect(stack.viewport).toBe(640);
+    expect(stack.drawersHeight).toBeLessThanOrEqual(stack.viewport * 0.4);
+    expect(stack.dockHeight).toBeLessThanOrEqual(stack.viewport * 0.4);
+    await expect(approval.getByRole('button', { name: 'Review approval' })).toBeVisible();
+    await expect(composer).toBeVisible();
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 640 });
+      const composerBounds = await composer.boundingBox();
+      expect(composerBounds?.width).toBeGreaterThan(width / 2);
+      await expect(composer).toBeInViewport({ ratio: 1 });
+    }
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'bounded stacked composer drawers',
+      source: SOURCE,
+    });
+  });
+
   test('lists the chats as a screen of its own: the status, a dot, then the latest message on line two (06l)', async ({
     page,
   }) => {
@@ -383,6 +470,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       };
       // The next drawn surface in the docked stack: the blocked row or the composer.
       let next = element.nextElementSibling;
+      next ??= element.closest('[data-chat-composer-drawers]')?.nextElementSibling ?? null;
       while (next !== null && next.getBoundingClientRect().height === 0) {
         next = next.nextElementSibling;
       }

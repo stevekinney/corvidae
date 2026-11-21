@@ -154,6 +154,13 @@ export const CHAT_COPY = {
   approvalTitle: 'Needs your approval',
   /** The approval row under a tool call in the transcript. */
   approval: {
+    reviewDeck: 'Review in deck',
+    deckTitle: 'Review tool approval',
+    confirmApproval: 'Confirm approval',
+    confirmDenial: 'Confirm denial',
+    selectedDecision: 'Confirm your decision',
+    returnToApproval: 'Back to approval controls',
+    irreversible: 'Approval can’t be undone.',
     /** What "Allow <tool> for …" ends with. */
     rememberScope: 'the rest of this chat',
     /** Written above Deny and Approve while Interborough cannot be reached; both name it as their description. */
