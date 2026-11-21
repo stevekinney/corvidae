@@ -10,8 +10,9 @@
 </script>
 
 <script lang="ts" generics="T">
-  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
-  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
+  // The list's own icons, never the application sidebar's panel icons beside it (COR-2438).
+  import ChevronsLeft from '@lucide/svelte/icons/chevrons-left';
+  import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
   import { tick, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -134,12 +135,16 @@
     const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
     if (stored !== null) listCollapsed = stored;
   });
-  // The toggle is drawn, and its corner of the header held, whenever the panes sit side by side and
-  // the list can be hidden, with or without an open item: the corner is never empty, and the header
-  // does not move when an item opens. One pane at a time has nothing to hide. Hiding the list with
-  // nothing open leaves the detail's empty state, with the way back on the rail.
+  // The toggle is drawn whenever the panes sit side by side and the list can be hidden, with or
+  // without an open item. While the list shows it is a handle on the divider, inside the list pane
+  // (COR-2438: never in the header beside its title or its "+"); while the list is hidden it is at
+  // the top of the rail. One pane at a time has nothing to hide. Hiding the list with nothing open
+  // leaves the detail's empty state, with the way back on the rail.
   const toggleShown = $derived(listCollapsible && !narrow);
   const collapsed = $derived(toggleShown && listCollapsed);
+  // The list pane's size, which places the handle on the divider as the divider is dragged.
+  let listPaneWidth = $state(0);
+  let listPaneHeight = $state(0);
 
   /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
   async function setListCollapsed(next: boolean): Promise<void> {
@@ -372,23 +377,17 @@
     aria-keyshortcuts={LIST_DETAIL_KEY_SHORTCUTS}
     onclick={handleClick}
     onkeydown={handleKeydown}
+    bind:clientWidth={listPaneWidth}
+    bind:clientHeight={listPaneHeight}
   >
     {#if header}
-      <!-- The list toggle stands in the header's start corner (drawn once, outside the pane), and
-           the heading starts after it, so the header keeps its full width for its own search and
-           filter. -->
+      <!-- The header keeps its whole width: its title starts on the search field's edge, and the
+           list toggle is not in it but on the divider (drawn once, outside the pane). -->
       <header class="cinder-list-detail__header">
         <CompactActions>
           {@render header()}
         </CompactActions>
       </header>
-    {:else if toggleShown}
-      <!-- No header of its own: an empty one holds the toggle's place at the top of the list. -->
-      <header
-        class="cinder-list-detail__header"
-        data-cinder-toggle-space=""
-        aria-hidden="true"
-      ></header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
       {#if loading}
@@ -449,19 +448,25 @@
       onclick={() => void setListCollapsed(!collapsed)}
     >
       {#if collapsed}
-        <PanelLeftOpen class="cinder-icon-md" aria-hidden="true" />
+        <ChevronsRight class="cinder-icon-md" aria-hidden="true" />
       {:else}
-        <PanelLeftClose class="cinder-icon-md" aria-hidden="true" />
+        <ChevronsLeft class="cinder-icon-md" aria-hidden="true" />
       {/if}
     </Button>
   </Tooltip>
 {/snippet}
 
 {#snippet toggleAnchor()}
-  <!-- One button, mounted while the list shows and while it is hidden, at one place: the start
-       corner of the list's header, which is also where the rail's top is, so the control does not
-       move when it is pressed and focus stays on it. -->
-  <div class="cinder-list-detail__toggle">{@render listToggle()}</div>
+  <!-- One button, mounted while the list shows and while it is hidden, so focus stays on it as it is
+       pressed: a handle on the divider, inside the list pane, while the list shows (shown on hover
+       and focus, always reachable by keyboard), and the top of the rail while it is hidden. -->
+  <div
+    class="cinder-list-detail__toggle"
+    style:--_cinder-list-detail-list-width={`${String(listPaneWidth)}px`}
+    style:--_cinder-list-detail-list-height={`${String(listPaneHeight)}px`}
+  >
+    {@render listToggle()}
+  </div>
 {/snippet}
 
 {#snippet detailPane()}
@@ -515,7 +520,6 @@
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (showsDetail ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
-  data-cinder-toggle-slot={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
     {#if showsDetail}

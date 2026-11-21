@@ -285,10 +285,12 @@ describe('the run a decision on another page continues the chat with (design row
     expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
     // The chat is read again on joining, so its title reads Running, not what it read while it
     // waited on the approval.
-    await until(() =>
-      expect(container.querySelector('[role="img"][aria-label="Running"]')).not.toBeNull(),
-    );
-    expect(container.querySelector('[role="img"][aria-label="Waiting on you"]')).toBeNull();
+    // The status beside the title is a Badge (COR-2438).
+    const status = () =>
+      container
+        .querySelector('[data-testid="chat-header"] .cinder-page-header__status .cinder-badge')
+        ?.textContent?.trim();
+    await until(() => expect(status()).toBe('Running'));
     await until(() =>
       expect(container.querySelector('.chat-input-status')?.textContent?.trim()).toBe(
         'A message now steers the run.',

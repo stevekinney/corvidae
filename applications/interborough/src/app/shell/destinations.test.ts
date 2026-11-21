@@ -134,7 +134,12 @@ describe('the shell’s shortcuts', () => {
     expect(registry.handleKey(key('c'), where, 20)).toBe(true);
     expect(opened).toEqual(['/chats/new', '/chats']);
     const listed = registry.groups().find((group) => group.label === SHORTCUT_COPY.chatGroup);
-    expect(listed?.shortcuts).toEqual([{ action: SHORTCUT_COPY.newChat, keys: ['C'] }]);
+    // Enter sends from a composer: listed on the map, since nothing under the composer says so
+    // (COR-2438).
+    expect(listed?.shortcuts).toEqual([
+      { action: SHORTCUT_COPY.newChat, keys: ['C'] },
+      { action: SHORTCUT_COPY.sendMessage, keys: ['Enter'] },
+    ]);
   });
 
   test('a C typed into a field starts nothing', () => {

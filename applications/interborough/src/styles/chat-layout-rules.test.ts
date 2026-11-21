@@ -63,9 +63,16 @@ describe('the chat page’s layout', () => {
     const source = await read('../routes/chat/chat-conversation.svelte');
     expect(source).toContain('class="weft-chat-head cinder-translucent-surface"');
     // Chat owns the property's name; the page writes it through Chat's constant.
-    expect(source).toContain(
-      'owner.style.setProperty(\n        CHAT_OVERLAY_INSET_START_PROPERTY,',
-    );
+    expect(source).toMatch(/owner\.style\.setProperty\(\s*CHAT_OVERLAY_INSET_START_PROPERTY,/);
+  });
+
+  // COR-2438: at 375 the details' Copy session ID ran to 398, past the screen.
+  test('the chat details are as wide as their content, at most 360px and never wider than the screen', async () => {
+    const rule = ruleOf(await read('./chat.css'), '.weft-chat-details');
+    expect(rule).toMatch(/inline-size:\s*max-content/);
+    expect(rule).toMatch(/max-inline-size:\s*min\(22\.5rem, calc\(100vw - 2\.5rem\)\)/);
+    // A percentage of the popover follows the popover's own first, narrow placement.
+    expect(rule).not.toMatch(/max-inline-size:[^;]*%/);
   });
 
   test('the conversation is one centred reading column of at most 760px', async () => {
