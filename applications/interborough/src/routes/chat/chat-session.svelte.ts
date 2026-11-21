@@ -1051,15 +1051,20 @@ export class ChatSessionState {
 
       const local = this.conversation.messages[id];
       if (local?.role !== 'user') return [];
-      const followUp = streamingSnapshot && local.metadata[FOLLOW_UP_METADATA_KEY] === true;
+      const followUp = local.metadata[FOLLOW_UP_METADATA_KEY] === true;
       if (durable === undefined) {
-        if (!followUp && local.metadata['_deliveryStatus'] !== 'failed') return [];
+        if (followUp) {
+          if (!streamingSnapshot) return [];
+        } else {
+          if (local.metadata['_deliveryStatus'] !== 'failed') return [];
+          if (!streamingSnapshot && this.#wiring.holdsAnswerRow(id)) return [];
+        }
         const ids = before.get(nextDurableId) ?? [];
         ids.push(id);
         before.set(nextDurableId, ids);
         return [[id, local] as const];
       }
-      if (!followUp || durable.role !== 'user') return [];
+      if (!streamingSnapshot || !followUp || durable.role !== 'user') return [];
 
       // A snapshot can carry the row ahead of the input receipt. Keep only the controller's
       // local queue state until its receipt arrives, alongside the server's text and metadata.
