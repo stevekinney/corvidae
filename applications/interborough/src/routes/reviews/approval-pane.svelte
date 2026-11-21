@@ -110,21 +110,24 @@
           data-changes
           variant="primary"
           disabled={deciding}
-          onclick={() => onDecide('approve')}>{REVIEWS_COPY.approve}</Button
-        >
+          onclick={() => onDecide('approve')}
+          label={REVIEWS_COPY.approve}
+        />
         <Button
           data-changes
           variant="secondary"
           disabled={deciding}
-          onclick={() => onDecide('deny')}>{REVIEWS_COPY.deny}</Button
-        >
+          onclick={() => onDecide('deny')}
+          label={REVIEWS_COPY.deny}
+        />
         {#if !alwaysAsks}
           <Button
             data-changes
             variant="ghost"
             disabled={deciding}
-            onclick={() => onDecide('remember')}>{REVIEWS_COPY.allowForChat}</Button
-          >
+            onclick={() => onDecide('remember')}
+            label={REVIEWS_COPY.allowForChat}
+          />
         {/if}
       </div>
     </div>

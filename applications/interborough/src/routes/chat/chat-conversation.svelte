@@ -2312,9 +2312,8 @@
               variant="secondary"
               disabled={!session.canRetryTurn}
               onclick={() => void retryTurn()}
-            >
-              {CHAT_COPY.stopLine.retry}
-            </Button>
+              label={CHAT_COPY.stopLine.retry}
+            />
           {/if}
         {/snippet}
         {#snippet row({ message }, renderDefault)}

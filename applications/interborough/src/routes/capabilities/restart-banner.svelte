@@ -80,8 +80,9 @@
       variant="primary"
       size="sm"
       disabled={locked}
-      onclick={() => void restart()}>{copy.action}</Button
-    >
+      onclick={() => void restart()}
+      label={copy.action}
+    />
   </Alert>
 {/if}
 

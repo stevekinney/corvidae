@@ -151,8 +151,9 @@
         <Button
           variant="secondary"
           size="sm"
-          onclick={() => void copyValue(wholeTarget, copy.copiedKey)}>{copy.copyKey}</Button
-        >
+          onclick={() => void copyValue(wholeTarget, copy.copiedKey)}
+          label={copy.copyKey}
+        />
       </div>
     </section>
   {/if}
@@ -161,9 +162,12 @@
     {#each model.links as link (link.href)}
       <Link href={router.href(link.href)}>{link.label} ›</Link>
     {/each}
-    <Button variant="secondary" size="sm" onclick={() => void copyValue(json, copy.copiedAsJson)}
-      >{copy.copyAsJson}</Button
-    >
+    <Button
+      variant="secondary"
+      size="sm"
+      onclick={() => void copyValue(json, copy.copiedAsJson)}
+      label={copy.copyAsJson}
+    />
   </div>
 
   <p class="ib-audit-detail__footer" {@attach followLinks}>

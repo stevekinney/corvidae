@@ -120,14 +120,15 @@
       </div>
     {/snippet}
     {#snippet footer()}
-      <Button variant="secondary" onclick={onClose}>{copy.cancel}</Button>
+      <Button variant="secondary" onclick={onClose} label={copy.cancel} />
       <Button
         data-changes
         variant="danger"
         loading={removal.isPending}
         disabled={preview.isPending || preview.isFetching}
-        onclick={() => removal.mutate()}>{copy.confirm}</Button
-      >
+        onclick={() => removal.mutate()}
+        label={copy.confirm}
+      />
     {/snippet}
   </Modal>
 {/if}

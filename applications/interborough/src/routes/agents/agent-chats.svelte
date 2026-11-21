@@ -308,8 +308,9 @@
             variant="secondary"
             size="sm"
             disabled={sessions.isFetchingNextPage}
-            onclick={() => void sessions.fetchNextPage()}>{CHAT_COPY.loadMore}</Button
-          >
+            onclick={() => void sessions.fetchNextPage()}
+            label={CHAT_COPY.loadMore}
+          />
         </div>
       {/if}
     {/if}

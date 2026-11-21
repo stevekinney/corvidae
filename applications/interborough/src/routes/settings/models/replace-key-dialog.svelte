@@ -91,10 +91,14 @@
     </form>
   {/snippet}
   {#snippet footer()}
-    <Button variant="secondary" onclick={close} disabled={flow.saving}>{copy.cancel}</Button>
-    <Button data-changes variant="primary" disabled={flow.busy} onclick={() => void flow.submit()}
-      >{copy.replace}</Button
-    >
+    <Button variant="secondary" onclick={close} disabled={flow.saving} label={copy.cancel} />
+    <Button
+      data-changes
+      variant="primary"
+      disabled={flow.busy}
+      onclick={() => void flow.submit()}
+      label={copy.replace}
+    />
   {/snippet}
 </Modal>
 

@@ -477,7 +477,7 @@
       {#if exportMutation.isPending}
         <div class="ib-audit__progress" data-testid="audit-export-progress">
           <InlineLoading status="active" description={copy.exportProgress(exportCount)} />
-          <Button variant="ghost-accent" onclick={cancelExport}>{copy.exportCancel}</Button>
+          <Button variant="ghost-accent" onclick={cancelExport} label={copy.exportCancel} />
         </div>
       {/if}
 
@@ -488,9 +488,11 @@
             {auditExportFailure(exportMutation.error)}
           </p>
           {#snippet actions()}
-            <Button variant="secondary" onclick={() => exportMutation.mutate()}
-              >{copy.exportFailed.again}</Button
-            >
+            <Button
+              variant="secondary"
+              onclick={() => exportMutation.mutate()}
+              label={copy.exportFailed.again}
+            />
           {/snippet}
         </Alert>
       {/if}

@@ -524,9 +524,8 @@
           href={router.href('/chats/new')}
           variant="secondary"
           onclick={openNewChat}
-        >
-          {CHAT_COPY.newChat}
-        </Button>
+          label={CHAT_COPY.newChat}
+        />
       {/snippet}
     </EmptyState>
   {:else if listState === 'no-match'}
@@ -537,9 +536,7 @@
       description={CHAT_COPY.list.noMatchDescription}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.clearSearch}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.clearSearch} />
       {/snippet}
     </EmptyState>
   {:else if showingArchived}
@@ -569,9 +566,7 @@
       description={empty.description}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.showAll}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.showAll} />
       {/snippet}
     </EmptyState>
   {/if}
@@ -742,9 +737,8 @@
                 href={router.href('/chats/new')}
                 variant="primary"
                 onclick={openNewChat}
-              >
-                {CHAT_COPY.newChat}
-              </Button>
+                label={CHAT_COPY.newChat}
+              />
             {/snippet}
           </EmptyState>
         {/if}

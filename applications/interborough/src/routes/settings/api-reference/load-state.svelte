@@ -34,13 +34,13 @@
   >
     {copy.loadFailed.description(status)}
     {#snippet actions()}
-      <Button variant="secondary" size="sm" onclick={onRetry}>{copy.loading.tryAgain}</Button>
+      <Button variant="secondary" size="sm" onclick={onRetry} label={copy.loading.tryAgain} />
     {/snippet}
   </Banner>
 {:else if kind === 'canceled'}
   <div data-testid="api-reference-canceled">
     <p>{copy.loading.canceled}</p>
-    <Button variant="secondary" size="sm" onclick={onRetry}>{copy.loading.tryAgain}</Button>
+    <Button variant="secondary" size="sm" onclick={onRetry} label={copy.loading.tryAgain} />
   </div>
 {:else}
   <Skeleton

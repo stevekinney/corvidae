@@ -485,16 +485,20 @@
     >
       {copy.loadFailed.description(failureStatus)}
       {#snippet actions()}
-        <Button variant="secondary" size="sm" onclick={tryAgain}>{copy.loading.tryAgain}</Button>
-        <Button variant="ghost" size="sm" href={router.href('/health')} onclick={openHealth}
-          >{copy.loadFailed.openHealth}</Button
-        >
+        <Button variant="secondary" size="sm" onclick={tryAgain} label={copy.loading.tryAgain} />
+        <Button
+          variant="ghost"
+          size="sm"
+          href={router.href('/health')}
+          onclick={openHealth}
+          label={copy.loadFailed.openHealth}
+        />
       {/snippet}
     </Banner>
   {:else if canceled}
     <div data-testid="plugins-canceled">
       <p class="ib-plugins__alert">{copy.loading.canceled}</p>
-      <Button variant="secondary" size="sm" onclick={tryAgain}>{copy.loading.tryAgain}</Button>
+      <Button variant="secondary" size="sm" onclick={tryAgain} label={copy.loading.tryAgain} />
     </div>
   {:else}
     <!-- The navigation and heading are real. The placeholder is the loaded page's own frame and
