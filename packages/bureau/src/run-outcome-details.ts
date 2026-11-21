@@ -173,6 +173,19 @@ export function peekTaskFailure(
   return observation === undefined ? undefined : taskFailureOf(observation);
 }
 
+/** `error` and the errors it carries as `cause`, outermost first, as far as they are objects. */
+function causeChainOf(error: unknown): object[] {
+  const chain: object[] = [];
+  let current: unknown = error;
+  // Bounded: a cycle of causes must not hold the run's own dispatch.
+  while (typeof current === 'object' && current !== null && chain.length < 8) {
+    if (chain.includes(current)) break;
+    chain.push(current);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return chain;
+}
+
 /** The event types {@link observeRunOutcome} listens for. */
 type ObservedEventType =
   | 'tool.settled'
@@ -217,27 +230,40 @@ export function observeRunOutcome(
     disposers.push(() => activeRun.removeEventListener(type, listener));
   };
 
-  // The first tool call that settled in error in the latest step that had one: the step's own
-  // failure names it, and only the step it failed in.
-  let failedCall: { readonly step: unknown; readonly call: TaskFailureToolCall } | undefined;
+  // The calls that settled in error in the latest step that had one, each with the error it settled
+  // with. A call that fails recoverably does not end the run (the default `collect` mode hands its
+  // error back to the model), so a terminal error of the same step can come from another cause
+  // altogether, such as a guardrail on a later call's result. The run's own error names a call only
+  // by carrying that call's error, as the cause the toolbox rejected with, so a call is attached to
+  // the failure only when its error is the run error or one of its causes, never by step alone.
+  let failedCalls: {
+    readonly step: unknown;
+    readonly calls: Array<{ readonly call: TaskFailureToolCall; readonly error: object }>;
+  } = { step: undefined, calls: [] };
   listen('tool.settled', (event) => {
     if (event['status'] !== 'error') return;
     // Another run's call can reach this run's emitter (a delegation's child announces on it): only
     // this run's own are its failure's.
     if (typeof event['runId'] === 'string' && event['runId'] !== runId) return;
-    const { toolName, toolCallId, step } = event;
+    const { toolName, toolCallId, step, error } = event;
     if (typeof toolName !== 'string' || typeof toolCallId !== 'string') return;
-    if (failedCall?.step === step) return;
-    failedCall = { step, call: { name: toolName, callId: toolCallId } };
+    // An error that is not an object cannot be told from another call's, so it names no call.
+    if (typeof error !== 'object' || error === null) return;
+    if (failedCalls.step !== step) failedCalls = { step, calls: [] };
+    failedCalls.calls.push({ call: { name: toolName, callId: toolCallId }, error });
   });
   listen('run.error', (event) => {
     const error = event['error'] as { code: string; kind: string };
     const step = event['step'] as number;
+    const failedCall =
+      failedCalls.step === step
+        ? failedCalls.calls.find(({ error: callError }) => causeChainOf(error).includes(callError))
+        : undefined;
     recorder.record(runId, {
       step,
       error,
       ...(event['reconstructed'] === true ? { reconstructed: true as const } : {}),
-      ...(failedCall?.step === step ? { toolCall: failedCall.call } : {}),
+      ...(failedCall === undefined ? {} : { toolCall: failedCall.call }),
     });
   });
 
@@ -266,7 +292,9 @@ export function observeRunOutcome(
   };
   listen('generate.started', (event) => {
     const step = event['step'];
-    recoveries = step === startedStep ? recoveries + 1 : 0;
+    // The same step starting again is a whole-step re-run: every provider call the earlier run of the
+    // step made counts as a try, so the count only rises.
+    recoveries = step === startedStep ? recoveries + providerAttempt : 0;
     startedStep = step;
     providerAttempt = 1;
     reportTries();

@@ -163,14 +163,18 @@ describe('attachRunEventFeed and the outcome details (COR-2095)', () => {
     attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
     const stamp = { agentName: 'default', runId: 'run-1', step: 2 };
 
-    // A call that succeeded, one in another step, and the call that failed; the first error wins.
+    // A call that succeeded, one in another step, and two that failed in this one: the failure
+    // names the call whose error the run's own error carries, not the first or the last.
+    const earlier = new Error('earlier ARGUMENT-MARKER');
+    const charge = new Error('charge ARGUMENT-MARKER');
+    const sibling = new Error('sibling ARGUMENT-MARKER');
     dispatch(
       new ToolSettledBubbleEvent(stamp, { toolName: 'lookup', toolCallId: 'a', status: 'success' }),
     );
     dispatch(
       new ToolSettledBubbleEvent(
         { ...stamp, step: 1 },
-        { toolName: 'earlier', toolCallId: 'b', status: 'error', error: 'ARGUMENT-MARKER' },
+        { toolName: 'earlier', toolCallId: 'b', status: 'error', error: earlier },
       ),
     );
     dispatch(
@@ -178,32 +182,90 @@ describe('attachRunEventFeed and the outcome details (COR-2095)', () => {
         toolName: 'charge-card',
         toolCallId: 'c',
         status: 'error',
-        error: 'ARGUMENT-MARKER',
+        error: charge,
       }),
     );
     dispatch(
-      new ToolSettledBubbleEvent(stamp, { toolName: 'sibling', toolCallId: 'd', status: 'error' }),
+      new ToolSettledBubbleEvent(stamp, {
+        toolName: 'sibling',
+        toolCallId: 'd',
+        status: 'error',
+        error: sibling,
+      }),
     );
-    dispatch(new RunErrorEvent(2, TOOL_FAILURE));
+    dispatch(
+      new RunErrorEvent(
+        2,
+        new AgentRunError('x', { kind: 'tool', code: 'UNKNOWN', cause: sibling }),
+      ),
+    );
 
     const entry = details.take('run-1');
-    expect(entry?.toolCall).toEqual({ name: 'charge-card', callId: 'c' });
-    expect(entry?.stepLabel).toBe('charge-card');
+    expect(entry?.toolCall).toEqual({ name: 'sibling', callId: 'd' });
+    expect(entry?.stepLabel).toBe('sibling');
     expect(JSON.stringify(entry)).not.toContain('ARGUMENT-MARKER');
+
+    // The error the toolbox rejected with is the run error's cause, however deep it is wrapped.
+    dispatch(
+      new RunErrorEvent(
+        2,
+        new AgentRunError('outer', {
+          kind: 'tool',
+          code: 'UNKNOWN',
+          cause: new AgentRunError('inner', { kind: 'tool', code: 'UNKNOWN', cause: charge }),
+        }),
+      ),
+    );
+    expect(details.take('run-1')?.toolCall).toEqual({ name: 'charge-card', callId: 'c' });
+  });
+
+  it('names no call for a terminal error of the same step that no failed call’s error caused', () => {
+    const details = createRunOutcomeDetails();
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+    const stamp = { agentName: 'default', runId: 'run-1', step: 2 };
+    // A call fails recoverably (the default collect mode hands its error back to the model), and a
+    // later call's result trips a guardrail: the policy error ends the run, and is not the call's.
+    dispatch(
+      new ToolSettledBubbleEvent(stamp, {
+        toolName: 'flaky',
+        toolCallId: 'a',
+        status: 'error',
+        error: new Error('recoverable'),
+      }),
+    );
+    dispatch(
+      new ToolSettledBubbleEvent(stamp, { toolName: 'fetch', toolCallId: 'b', status: 'success' }),
+    );
+
+    dispatch(
+      new RunErrorEvent(
+        2,
+        new AgentRunError('tripwire', { kind: 'policy', code: 'TRIPWIRE' }),
+        'policy',
+      ),
+    );
+
+    const entry = details.take('run-1');
+    expect(entry).not.toHaveProperty('toolCall');
+    expect(entry).not.toHaveProperty('stepLabel');
   });
 
   it('names no call for a failure in a step where no call settled in error', () => {
     const details = createRunOutcomeDetails();
     const { run, dispatch } = fakeRun();
+    const cause = new Error('earlier step');
     attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
     dispatch(
       new ToolSettledBubbleEvent(
         { agentName: 'default', runId: 'run-1', step: 1 },
-        { toolName: 'charge-card', toolCallId: 'c', status: 'error' },
+        { toolName: 'charge-card', toolCallId: 'c', status: 'error', error: cause },
       ),
     );
 
-    dispatch(new RunErrorEvent(2, TOOL_FAILURE));
+    dispatch(
+      new RunErrorEvent(2, new AgentRunError('x', { kind: 'tool', code: 'UNKNOWN', cause })),
+    );
 
     expect(details.take('run-1')).not.toHaveProperty('toolCall');
   });
@@ -265,15 +327,42 @@ describe('attachRunEventFeed and the outcome details (COR-2095)', () => {
     const { run, dispatch } = fakeRun();
     attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
 
+    const cause = new Error('the child’s tool failed');
     dispatch(
       new ToolSettledBubbleEvent(
         { agentName: 'child', runId: 'child-run', step: 2 },
-        { toolName: 'child-tool', toolCallId: 'x', status: 'error' },
+        { toolName: 'child-tool', toolCallId: 'x', status: 'error', error: cause },
       ),
     );
-    dispatch(new RunErrorEvent(2, TOOL_FAILURE));
+    dispatch(
+      new RunErrorEvent(2, new AgentRunError('x', { kind: 'tool', code: 'UNKNOWN', cause })),
+    );
 
     expect(details.take('run-1')).not.toHaveProperty('toolCall');
+  });
+
+  it('keeps the provider tries across a whole-step re-run, so the count only rises', () => {
+    const changes: unknown[] = [];
+    const details = createRunOutcomeDetails({
+      onRetrying: (_runId, change) => changes.push(change),
+    });
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+
+    // `retry: { attempts: 3 }`: the provider is tried three times, then the error hook asks for the
+    // step to run again, and its first provider call is the fourth try.
+    dispatch(new GenerateStartedEvent(0));
+    dispatch(new GenerateRetryEvent(0, 1, new Error('overloaded')));
+    dispatch(new GenerateRetryEvent(0, 2, new Error('overloaded')));
+    dispatch(new GenerateErrorEvent(0, new Error('overloaded'), 5));
+    dispatch(new GenerateStartedEvent(0));
+
+    expect(changes).toEqual([
+      { label: 'model', attempt: 2 },
+      { label: 'model', attempt: 3 },
+      null,
+      { label: 'model', attempt: 4 },
+    ]);
   });
 
   it('does not report a retry for a step that never retried', () => {
