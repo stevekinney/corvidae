@@ -25,6 +25,7 @@ export const SPECIFICATION_WEIGHTS: Readonly<Record<string, number>> = {
   'health-storage.spec.ts': 120,
   'settings-models.spec.ts': 115,
   'health-workers-states.spec.ts': 100,
+  'list-empty-states.spec.ts': 100,
   'agent-plugin-editing.spec.ts': 100,
   'schedules-detail.spec.ts': 85,
   'workflow-builder-cards.spec.ts': 80,

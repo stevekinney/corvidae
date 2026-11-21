@@ -457,7 +457,7 @@ describe('the list of sessions', () => {
 
     const { findByRole } = mount();
 
-    const empty = await findByRole('heading', { level: 3, name: 'No chats yet' });
+    const empty = await findByRole('heading', { level: 2, name: 'No chats yet' });
     expect(empty.closest('.cinder-empty-state')).not.toBeNull();
   });
 

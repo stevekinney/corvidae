@@ -37,10 +37,12 @@
     StackedListItem,
     type FilterSegment,
   } from '@lostgradient/cinder';
-  import { Plug, Plus } from '@lucide/svelte';
+  import { Bot, Plug, Plus } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
+  import FileLocationDetail from '../../app/file-location-detail.svelte';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { AGENT_EDITOR_COPY, AGENTS_COPY } from '../../app/copy/agents.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { RETRY_LABEL, STALE_DATA_LABEL } from '../../app/copy/views.ts';
@@ -51,7 +53,7 @@
   import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { listAllContexts } from '../../lib/bureau-client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
-  import { agentRelativePath } from '../../lib/host-paths.ts';
+  import { agentRelativePath, getHostPaths } from '../../lib/host-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
@@ -96,9 +98,6 @@
     undefined,
   );
   const invalid = $derived((definitions.data ?? []).filter((entry) => entry.state === 'invalid'));
-
-  // A broken file is named by its path relative to the Interborough home, as the editor names it:
-  // a host path never shows in a row (owner, 2026-11-19).
 
   // A model agent cannot answer while no provider is connected, so its New chat says so.
   const providers = useHostProviders();
@@ -194,6 +193,12 @@
   const nothing = $derived(
     agents.isSuccess && availableRows.length === 0 && heldRows.length === 0 && invalid.length === 0,
   );
+  const hostPaths = createQuery(() => ({
+    queryKey: queryKeys.hostPaths(),
+    queryFn: ({ signal }) => getHostPaths({ signal }),
+    enabled: nothing,
+  }));
+  const directory = $derived(hostPaths.data?.agentDirectory ?? AGENT_EDITOR_COPY.fallbackDirectory);
   const onlyHeld = $derived(agents.isSuccess && availableRows.length === 0 && heldRows.length > 0);
   const nothingShown = $derived(
     matchedAvailable.length === 0 && shownHeld.length === 0 && shownInvalid.length === 0,
@@ -301,14 +306,15 @@
     {/if}
 
     {#if failed}
-      <ErrorState
-        bordered
-        title={VIEW_COPY.agents.error.title}
-        description={VIEW_COPY.agents.error.description}
-        headingLevel={2}
-        retryLabel={RETRY_LABEL}
-        onRetry={tryAgain}
-      />
+      <div role="alert">
+        <EmptyState
+          kind="blocked"
+          title={VIEW_COPY.agents.error.title}
+          description={VIEW_COPY.agents.error.description}
+          headingLevel={2}
+          actions={[{ label: RETRY_LABEL, variant: 'primary', onclick: tryAgain }]}
+        />
+      </div>
     {:else if loading}
       <Skeleton
         variant="list"
@@ -321,23 +327,37 @@
         onCancel={cancelLoading}
       />
     {:else if nothing}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19): the Agents icon, New agent and Add
+           a plugin as buttons, and the folder behind a closed row, never in the sentence. -->
+      <ListPageEmpty
+        view="agents"
         title={AGENTS_COPY.empty.title}
         description={AGENTS_COPY.empty.description}
-        headingLevel={2}
+        create={{
+          label: AGENT_EDITOR_COPY.newAction,
+          href: router.href('/agents/new'),
+          onclick: (event) => go(event, '/agents/new'),
+        }}
+        secondary={[
+          {
+            label: AGENTS_COPY.empty.addPlugin,
+            href: router.href(PLUGINS_PATH),
+            onclick: (event) => go(event, PLUGINS_PATH),
+          },
+        ]}
       >
-        {#snippet action()}
-          {@render newAgentAction('primary')}
-          <Button variant="secondary" href={router.href(PLUGINS_PATH)}>
-            {AGENTS_COPY.empty.addPlugin}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        <FileLocationDetail
+          label={AGENTS_COPY.empty.files.label}
+          lead={AGENTS_COPY.empty.files.lead}
+          {directory}
+          copyLabel={AGENTS_COPY.empty.files.copyLabel}
+          copiedLabel={AGENTS_COPY.empty.files.copiedLabel}
+          data-testid="agents-file-location"
+        />
+      </ListPageEmpty>
     {:else if onlyHeld}
+      <!-- Nothing can run: the list page's empty state too, in its one layout with the Agents icon. -->
       <EmptyState
-        bordered
         kind="disabled"
         title={AGENTS_COPY.onlyUnavailable.title}
         description={AGENTS_COPY.onlyUnavailable.description(
@@ -345,7 +365,9 @@
           heldPlugins.map((plugin) => plugin.title),
         )}
         headingLevel={2}
+        data-list-empty="agents"
       >
+        {#snippet icon()}<Bot aria-hidden="true" />{/snippet}
         {#snippet action()}
           {@render enableAction('primary')}
           {@render newAgentAction('secondary')}
@@ -365,7 +387,6 @@
 
       {#if nothingShown}
         <EmptyState
-          bordered
           kind="filtered"
           title={AGENTS_COPY.noMatch.title}
           description={AGENTS_COPY.noMatch.description}
@@ -402,15 +423,13 @@
 
       {#if noneOfYours}
         <EmptyState
-          bordered
-          layout="row"
-          size="compact"
           kind="first-use"
           title={AGENTS_COPY.noneOfYours.title}
           description={AGENTS_COPY.noneOfYours.description}
           headingLevel={2}
           data-testid="agents-none-of-yours"
         >
+          {#snippet icon()}<Bot aria-hidden="true" />{/snippet}
           {#snippet action()}
             {@render newAgentAction('primary')}
           {/snippet}

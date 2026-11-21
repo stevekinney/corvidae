@@ -219,26 +219,24 @@ describe('the activity region', () => {
     await waitUntil(() => world.hub.opened('fleet') === 1 && world.hub.opened('bureau') === 1);
     world.hub.write('fleet', REPLAY_COMPLETE_CHUNK);
     world.hub.write('bureau', REPLAY_COMPLETE_CHUNK);
-    await waitUntil(() => workflow(container).querySelector('h3') !== null);
-    await waitUntil(() => agents(container).querySelector('h3') !== null);
-    expect(workflow(container).querySelector('h3')?.textContent?.trim()).toBe(
-      'No workflow activity yet',
-    );
+    await waitUntil(() => workflow(container).querySelector('.cinder-empty-state-title') !== null);
+    await waitUntil(() => agents(container).querySelector('.cinder-empty-state-title') !== null);
+    expect(
+      workflow(container).querySelector('.cinder-empty-state-title')?.textContent?.trim(),
+    ).toBe('No workflow activity yet');
     expect(workflow(container).textContent).toContain(
       'Workflow runs, steps and workers appear here as they happen.',
     );
-    expect(agents(container).querySelector('h3')?.textContent?.trim()).toBe(
+    expect(agents(container).querySelector('.cinder-empty-state-title')?.textContent?.trim()).toBe(
       'No agent activity yet',
     );
     expect(agents(container).textContent).toContain(
       'Chats, reviews, goals, schedules and hooks appear here as they happen.',
     );
     expect(container.querySelectorAll('button')).toHaveLength(0);
-    // The one-line form, with EmptyState's own tinted disc around the band's glyph.
+    // Cinder's one empty state, with its own tinted disc around the band's glyph.
     for (const element of [workflow(container), agents(container)]) {
-      expect(element.querySelector('.cinder-empty-state')?.getAttribute('data-cinder-layout')).toBe(
-        'row',
-      );
+      expect(element.querySelector('.cinder-empty-state')).not.toBeNull();
       expect(element.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
     }
   });
@@ -246,10 +244,10 @@ describe('the activity region', () => {
   test('outside the shell, with no feed to read, each band says it has no activity', () => {
     open({ bureau: false, fleet: false });
     const container = document.body;
-    expect(workflow(container).querySelector('h3')?.textContent?.trim()).toBe(
-      'No workflow activity yet',
-    );
-    expect(agents(container).querySelector('h3')?.textContent?.trim()).toBe(
+    expect(
+      workflow(container).querySelector('.cinder-empty-state-title')?.textContent?.trim(),
+    ).toBe('No workflow activity yet');
+    expect(agents(container).querySelector('.cinder-empty-state-title')?.textContent?.trim()).toBe(
       'No agent activity yet',
     );
   });
@@ -268,7 +266,7 @@ describe('the activity region', () => {
     expect(failure.textContent).toContain('Couldn’t load workflow activity.');
     expect(failure.textContent).toContain('The rest of Home is live.');
     // The other band is not held by this one.
-    await waitUntil(() => agents(container).querySelector('h3') !== null);
+    await waitUntil(() => agents(container).querySelector('.cinder-empty-state-title') !== null);
     expect(agents(container).querySelector('[data-testid="home-card-error"]')).toBeNull();
 
     const retry = within(failure).getByRole('button', { name: 'Try again' });
@@ -276,10 +274,10 @@ describe('the activity region', () => {
     await waitUntil(() => opened.world.hub.opened('fleet') === 1);
     expect(workflow(container).querySelector('[data-testid="home-card-error"]')).toBeNull();
     opened.world.hub.write('fleet', REPLAY_COMPLETE_CHUNK);
-    await waitUntil(() => workflow(container).querySelector('h3') !== null);
-    expect(workflow(container).querySelector('h3')?.textContent?.trim()).toBe(
-      'No workflow activity yet',
-    );
+    await waitUntil(() => workflow(container).querySelector('.cinder-empty-state-title') !== null);
+    expect(
+      workflow(container).querySelector('.cinder-empty-state-title')?.textContent?.trim(),
+    ).toBe('No workflow activity yet');
   });
 
   test('after Try again, a connection that answers and then drops says so at once', async () => {
@@ -414,7 +412,7 @@ describe('the hold across the activity region (F7-39)', () => {
     );
     // Never the empty state over a window that has rows: the window is drawn at once.
     await waitUntil(() => rowsOf(workflow(container)).length === 1);
-    expect(workflow(container).querySelector('h3')).toBeNull();
+    expect(workflow(container).querySelector('.cinder-empty-state-title')).toBeNull();
     expect(titlesOf(workflow(container))).toEqual(['Run started']);
     await fireEvent.pointerLeave(agentList, { pointerType: 'mouse' });
   });

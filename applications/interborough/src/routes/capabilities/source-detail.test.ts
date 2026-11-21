@@ -569,7 +569,7 @@ describe('the tool table', () => {
 });
 
 describe('connecting tools from the Sources tab', () => {
-  test('has one primary button when no source is connected, and a secondary "+" in the header (rows 31z, 32a)', async () => {
+  test('has Connect tools in the empty state and as the header’s labelled primary when no source is connected (rows 31z, 32a)', async () => {
     serve({ sources: [] });
     landAt('/capabilities?tab=sources');
     const { container, findByText } = mount();
@@ -582,14 +582,13 @@ describe('connecting tools from the Sources tab', () => {
         button.textContent?.trim() === copy.source.connect.action ||
         button.getAttribute('aria-label') === copy.source.connect.action,
     );
-    expect(
-      buttons.map((button) =>
-        [...button.classList].find((name) => name.startsWith('button-variant-')),
-      ),
-    ).toEqual(['button-variant-secondary', 'button-variant-primary']);
-    // The header's is icon only; the empty state's is the one with words.
-    expect(buttons[0]?.hasAttribute('data-cinder-icon-only')).toBe(true);
-    expect(container.querySelectorAll('.button-variant-primary')).toHaveLength(1);
+    // The header's and the empty state's Connect tools, both labelled primaries with the same words
+    // (owner report, 2026-11-19).
+    for (const button of buttons) {
+      expect(button.classList.contains('button-variant-primary')).toBe(true);
+    }
+    expect(buttons[0]?.hasAttribute('data-cinder-icon-only')).toBe(false);
+    expect(buttons[0]?.classList.contains('cinder-page-header__create')).toBe(true);
   });
 
   test('opens the same Connect tools page from the empty state and from the header (row 33b)', async () => {
@@ -624,6 +623,7 @@ describe('connecting tools from the Sources tab', () => {
         button.getAttribute('aria-label') === copy.source.connect.action,
     );
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(buttons[0]?.classList.contains('button-variant-primary')).toBe(true);
+    expect(buttons[0]?.classList.contains('cinder-page-header__create')).toBe(true);
   });
 });

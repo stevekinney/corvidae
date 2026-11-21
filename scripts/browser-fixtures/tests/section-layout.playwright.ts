@@ -243,27 +243,23 @@ test.describe('GroupedList layout', () => {
     ).toBeLessThanOrEqual(1);
   });
 
-  test('a narrow empty row and a narrow failed row drop their actions under the words, ending on the list buttons’ edge (COR-2329, COR-2394)', async ({
+  test('a narrow failed row drops its action under the words, ending on the list buttons’ edge (COR-2329, COR-2394)', async ({
     page,
   }) => {
-    // The fixture's list is 28rem wide, at the rows' 28rem container threshold, so on a wide
-    // viewport both rows take their narrow form: each action takes a line of its own under the
-    // words and ends on the row's trailing edge (trailing-edge actions everywhere, owner
-    // 2026-11-13), the edge the list's own buttons end on, so the two actions share one edge.
+    // The fixture's list is 28rem wide, at the row's 28rem container threshold, so on a wide
+    // viewport the row takes its narrow form: the action takes a line of its own under the words
+    // and ends on the row's trailing edge (trailing-edge actions everywhere, owner 2026-11-13),
+    // the edge the list's own buttons end on. An empty list has no row form: it draws Cinder's
+    // one EmptyState layout (owner report, 2026-11-19).
     await page.setViewportSize({ width: 1024, height: 800 });
-    const emptyRow = page.getByTestId('grouped-list-empty-row');
     const errorRow = page.getByTestId('grouped-list-error-row');
-    const [listButton, emptyAction, emptyText, retry, errorText] = await Promise.all([
+    const [listButton, retry, errorText] = await Promise.all([
       page.getByTestId('grouped-list-actions').getByRole('link', { name: 'Answer' }).boundingBox(),
-      emptyRow.getByRole('button', { name: 'Open Health' }).boundingBox(),
-      emptyRow.locator('.cinder-empty-state-title').boundingBox(),
       errorRow.getByRole('button', { name: 'Try again' }).boundingBox(),
       errorRow.locator('.cinder-error-state-text').boundingBox(),
     ]);
     const listEdge = listButton!.x + listButton!.width;
-    expect(Math.abs(emptyAction!.x + emptyAction!.width - listEdge)).toBeLessThanOrEqual(1);
     expect(Math.abs(retry!.x + retry!.width - listEdge)).toBeLessThanOrEqual(1);
-    expect(emptyAction!.y).toBeGreaterThanOrEqual(emptyText!.y + emptyText!.height - 1);
     expect(retry!.y).toBeGreaterThanOrEqual(errorText!.y + errorText!.height - 1);
   });
 

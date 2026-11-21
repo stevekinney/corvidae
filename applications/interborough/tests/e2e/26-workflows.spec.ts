@@ -15,7 +15,6 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
-import { newChatFromWorkflowsPath } from '../../src/lib/new-chat-address.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -197,11 +196,10 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         await expect(row(page, SEEDED_WORKFLOWS.digest)).toBeVisible();
 
-        const link = area(page).getByTestId('internal-workflows-card');
+        // A secondary control in the header beside New workflow (owner report, 2026-11-19).
+        const link = area(page).getByTestId('internal-workflows-action');
         await expect(link).toHaveAttribute('href', '/internal-workflows');
-        await expect(area(page).getByTestId('internal-workflows-count')).toHaveText(
-          WORKFLOW_COPY.list.internalCard.count(ENGINE_TYPES.length),
-        );
+        await expect(link).toHaveText(WORKFLOW_COPY.list.internalAction(ENGINE_TYPES.length));
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
         await checkA11y(`the list without the Bureau’s own types at ${width}px`);
 
@@ -262,19 +260,22 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
         await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
-        // The header keeps its "+", and the empty state has its two actions and the hint.
+        // The header and state each offer a way to internal workflows alongside New workflow.
         await expect(
           page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
         ).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
-        ).toHaveAttribute('href', newChatFromWorkflowsPath());
-        // The directory is shown only inside a copy control (owner, 2026-11-19).
-        await expect(area(page).getByTestId('workflow-directory')).toContainText(
-          await workflowDirectory(request),
-        );
-        // First use is the page: no filter row and no Internal workflows card.
-        await expect(area(page).getByTestId('internal-workflows-card')).toHaveCount(0);
+        ).toHaveCount(0);
+        await expect(
+          empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.internalAction }),
+        ).toHaveAttribute('href', '/internal-workflows');
+        await expect(area(page).getByTestId('internal-workflows-action')).toBeVisible();
+        const directory = await workflowDirectory(request);
+        await expect(empty).not.toContainText(directory);
+        await empty.getByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }).click();
+        await expect(area(page).getByTestId('file-location-directory')).toContainText(directory);
+        // First use is the page: no filter row.
         await expect(page.getByRole('radio')).toHaveCount(0);
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
         await checkA11y(`the list of a host with no workflow at ${width}px`);

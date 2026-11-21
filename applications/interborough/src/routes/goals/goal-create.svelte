@@ -16,7 +16,7 @@
    * then on, because a second submit repeats the idempotency key, comes back `existing`, and would
    * leave as if the goal had started.
    */
-  import { Button, EmptyState, PageHeader, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, PageHeader, Skeleton } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { tick, untrack } from 'svelte';
 
@@ -199,16 +199,14 @@
       title={copy.noAgents.title}
       description={copy.noAgents.description}
       headingLevel={2}
-    >
-      {#snippet action()}
-        <Button
-          href={router.href('/agents/new')}
-          variant="primary"
-          size="sm"
-          onclick={(event) => leave(event, '/agents/new')}>{AGENT_EDITOR_COPY.newAction}</Button
-        >
-      {/snippet}
-    </EmptyState>
+      actions={[
+        {
+          label: AGENT_EDITOR_COPY.newAction,
+          href: router.href('/agents/new'),
+          onclick: (event) => leave(event, '/agents/new'),
+        },
+      ]}
+    />
   </section>
 {:else}
   <GoalForm

@@ -35,12 +35,11 @@
     {:else}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={3}
         title={RUN_PAGE_COPY.eventsLockedTitle}
         description={RUN_PAGE_COPY.lockedSection('events:read')}
       >
-        {#snippet icon()}<Lock size={24} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<Lock aria-hidden="true" />{/snippet}
       </EmptyState>
     {/if}
   </Collapsible>

@@ -63,8 +63,6 @@ export const WORKER_COPY = {
     /** How long a read runs before the placeholders say it is taking longer than usual. */
     stillLoadingMilliseconds: 10_000,
     empty: {
-      /** The one line under the heading when nothing is connected: nothing runs elsewhere, so nothing is counted. */
-      summary: 'Work runs inside Interborough, 0 running, 0 waiting',
       title: 'No workers connected',
       description: 'Work runs inside Interborough. Connect a worker to run it elsewhere.',
       howToConnect: 'How to connect a worker',

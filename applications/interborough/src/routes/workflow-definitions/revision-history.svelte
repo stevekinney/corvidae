@@ -62,7 +62,6 @@
   {:else if revisions.data.length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={3}
       title={copy.emptyTitle}
       description={copy.emptyDescription}
