@@ -1,6 +1,6 @@
 name = "design-reviewer"
 description = "Read-only UI, UX, interaction and visual design reviewer for Interborough and Cinder. Use through the design-review skill, with screenshot or design image paths, to sweep existing pages for UI issues, critique a proposed design before it is built, review an implementation against the agreed design row by row, or audit a whole canvas for drift; it returns findings routed to Cinder tokens, Cinder components, or Interborough pages, and never edits files."
-model = "gpt-5.6-terra"
+model = "gpt-6.1-terra"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = '''
