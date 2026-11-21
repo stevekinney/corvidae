@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2502",
+  "branch": "steve/cor-2502-optional-field-labels",
+  "checkedAt": "3268d044830c572a96f195a482d774129fa0d4f2",
+  "briefVersion": "f423f9857389",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Label optional marker implementation and DOM regressions; remote Chromium computed-style assertion is queued in run 44871838103."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "FormField forwarding implementation and regression test passed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Label, FormField, Input, and Textarea accessible-name tests passed; remote fixture queries real accessible names."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Generated Label/FormField/Input/Textarea README metadata and FormField example updated; both-props rule documented."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Interborough consumers use optional props; suffix scan found no remaining Note/Title optional labels."
+    },
+    {
+      "id": "delivery-boundary",
+      "status": "not-met",
+      "evidence": "Provider run 44871838103 and coordinator design capture/reviewer verdict remain pending."
+    }
+  ]
+}
