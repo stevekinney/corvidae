@@ -3,6 +3,8 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import type { ConfirmDialogProps } from './confirm-dialog.types.ts';
   import Button from '../button/button.svelte';
   import Callout from '../callout/callout.svelte';
@@ -56,7 +58,8 @@
   const normalizedTypeToConfirmLabel = $derived(typeToConfirmLabel?.trim() || undefined);
   let typedConfirmation = $state('');
   let previousOpen = open;
-  let previousPending = pending;
+  // The first value is read once, on purpose: the effect below compares it with every later one.
+  let previousPending = untrack(() => pending);
   const typedConfirmationMatches = $derived(
     normalizedTypeToConfirm === undefined ||
       typedConfirmation.trim().toLowerCase() === normalizedTypeToConfirm.toLowerCase(),

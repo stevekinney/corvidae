@@ -15,7 +15,7 @@ import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
  * `<Button>` directly. `aria-describedby` works best with short, plain-text descriptions.
  */
 /** The action {@link ConfirmDialogProps.errorAction} offers in the failure callout. */
-export type ConfirmDialogErrorAction = {
+type ConfirmDialogErrorAction = {
   /** The action's label, such as "Refresh preview" or "Retry". */
   label: string;
   /** Called when the action is pressed. The dialog stays open; the page decides what follows. */
