@@ -23,9 +23,15 @@ const items = [
 ];
 
 describe('DecisionDeck round controls', () => {
-  test('every round action is drawn at or below 36px, with 20px and 16px glyphs', () => {
+  test('keeps the standalone 40px actions and uses 36px in a host-composed layout', () => {
     expect(css).toMatch(
-      /\.cinder-decision-deck__action\.cinder-button\[data-cinder-icon-only\] \{[^}]*inline-size: 2\.25rem;[^}]*block-size: 2\.25rem/,
+      /\.cinder-decision-deck \{[^}]*--_cinder-decision-deck-action-face: 2\.5rem;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-decision-deck\[data-cinder-custom-layout\] \{[^}]*--_cinder-decision-deck-action-face: 2\.25rem;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-decision-deck__action\.cinder-button\[data-cinder-icon-only\] \{[^}]*inline-size: var\(--_cinder-decision-deck-action-face\);[^}]*block-size: var\(--_cinder-decision-deck-action-face\)/,
     );
     expect(css).toMatch(
       /\[data-decision-action='later'\] \{[^}]*inline-size: 2rem;[^}]*block-size: 2rem/,
@@ -41,6 +47,7 @@ describe('DecisionDeck round controls', () => {
 
   test('every control keeps Button hit area, which reaches 44px on a coarse pointer', () => {
     const { container } = render(DecisionDeck, { items });
+    expect(container.querySelector('[data-cinder-custom-layout]')).toBeNull();
     for (const name of ['reject', 'later', 'accept']) {
       const button = requiredInstance(
         container.querySelector(`[data-decision-action="${name}"]`),
@@ -48,7 +55,7 @@ describe('DecisionDeck round controls', () => {
       );
       expect(button.getAttribute('data-cinder-hit-target'), name).toBe('44');
     }
-    // The pseudo-element grows the 36px and 32px faces to the touch minimum, and is Button's own.
+    // The pseudo-element grows the painted faces to the touch minimum and is Button's own.
     expect(buttonCss).toMatch(
       /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\[data-cinder-hit-target='44'\]::before\s*\{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\)/,
     );

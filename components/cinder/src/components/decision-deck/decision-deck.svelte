@@ -460,6 +460,7 @@
   bind:this={rootElement}
   class={classNames('cinder-decision-deck', className)}
   aria-label={label}
+  data-cinder-custom-layout={layout === undefined ? undefined : ''}
 >
   {#if layout}
     {@render layout(content, actions)}
