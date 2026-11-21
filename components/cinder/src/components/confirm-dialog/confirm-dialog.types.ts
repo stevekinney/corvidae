@@ -14,6 +14,14 @@ import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
  * For richer body content (markup, lists, multi-paragraph text), compose `<Modal>` +
  * `<Button>` directly. `aria-describedby` works best with short, plain-text descriptions.
  */
+/** The action {@link ConfirmDialogProps.errorAction} offers in the failure callout. */
+export type ConfirmDialogErrorAction = {
+  /** The action's label, such as "Refresh preview" or "Retry". */
+  label: string;
+  /** Called when the action is pressed. The dialog stays open; the page decides what follows. */
+  onAction: () => void;
+};
+
 /**
  * Cancel semantics (shared vocabulary from {@link DialogCancelProps}): the
  * cancel button ALWAYS renders, defaulting its label to "Cancel". `onCancel`
@@ -96,6 +104,48 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    * Clear it to hide the callout.
    */
   error?: string | undefined;
+  /**
+   * Tone of the failure callout: `danger` (the default) for work that failed, `warning` for a
+   * refusal that nothing was done about, such as a preview that went stale before it was confirmed.
+   * @default 'danger'
+   */
+  errorTone?: 'danger' | 'warning';
+  /**
+   * An action in the failure callout, in place of the confirm button. Without it, the failure keeps
+   * the confirm button armed and pressing it again is the retry. With it, the confirm button is
+   * gone while the failure shows, because pressing it again is the wrong next step (a preview that
+   * must be counted again, work that cannot be repeated as it was), and the callout offers the
+   * right one: `label` names it and `onAction` runs it. Shown only with `error`.
+   */
+  errorAction?: ConfirmDialogErrorAction | undefined;
+  /**
+   * True while what the dialog confirms is still being worked out, such as a count the server has
+   * not answered: the description and options show a skeleton, the typed field waits, and the
+   * confirm button cannot be pressed. Cancel stays enabled and focusable. Entering `pending`
+   * clears the typed text, so a new answer is confirmed afresh.
+   * @default false
+   */
+  pending?: boolean;
+  /**
+   * What the skeleton is waiting for, announced once as a status when `pending` starts, such as
+   * "Counting the workflows a purge would delete".
+   * @default 'Loading'
+   */
+  pendingLabel?: string | undefined;
+  /**
+   * Whether the confirm button can be pressed. Set `false` while the answer it confirms is
+   * incomplete, such as a form in `options` that is not valid yet. The typed confirmation and
+   * `pending` disable it as well.
+   * @default true
+   */
+  confirmEnabled?: boolean;
+  /**
+   * Whether the confirm button is drawn. Set `false` when there is nothing to confirm, such as the
+   * answer to a finished action: Cancel is then the one action, so name it with `cancelLabel`
+   * ("Close").
+   * @default true
+   */
+  confirmVisible?: boolean;
   /**
    * Whether the dialog closes itself when the confirm button is pressed. Set `false` when the
    * confirmed work can fail and the page needs the dialog to stay open to show it: the page then

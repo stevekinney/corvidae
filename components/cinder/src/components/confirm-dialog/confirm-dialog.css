@@ -14,11 +14,21 @@
     font-size: var(--cinder-text-sm);
   }
 
-  /* Monospace inside the sentence (a key, an identifier) reads as part of the sentence. */
+  /* Monospace inside the sentence (a key, an identifier) reads as part of the sentence. An
+   * identifier is one long unbroken token, so it wraps at any character rather than widening the
+   * dialog. */
   .cinder-confirm-dialog__description :where(code) {
     font-family: var(--cinder-font-mono);
     font-size: 0.95em;
     color: var(--cinder-text-default);
+    overflow-wrap: anywhere;
+  }
+
+  /* The same in options: a filter summary or a workflow id in a list row or a note. */
+  .cinder-confirm-dialog__options :where(code) {
+    font-family: var(--cinder-font-mono);
+    font-size: 0.95em;
+    overflow-wrap: anywhere;
   }
 
   /* The description, the options and the typed field are one column, a step apart. */

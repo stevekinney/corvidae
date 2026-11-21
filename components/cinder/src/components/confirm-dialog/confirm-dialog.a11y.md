@@ -65,6 +65,8 @@ On open, supporting screen readers announce:
 2. The accessible name (from `aria-labelledby`, the title).
 3. When `description` is provided: the description text (from `aria-describedby`).
 
+While `pending`, the skeleton's `pendingLabel` is announced once as a status and nothing describes the dialog. The failure region is mounted before any failure and is a live alert, so a failure that arrives, including one that carries an `errorAction`, is announced. Cancel stays enabled in both states. When `errorAction` removes the confirm button that held focus, the dialog's own focus trap keeps focus inside the dialog; a page that wants it somewhere specific (the action, or the refreshed description) moves it itself.
+
 ## Label Guidelines
 
 `confirmLabel` is required. The component is scoped to action confirmation; making the label required forces consumers to name the specific action rather than ship a generic affirmative:
