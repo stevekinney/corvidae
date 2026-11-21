@@ -710,6 +710,7 @@ describe('results', () => {
     await run.result();
     const after = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     const counted = byId(after, 'digest')?.['runs'] as {
+      total: number;
       active: number;
       last24Hours: number;
       lastRunAt: string | null;
