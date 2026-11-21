@@ -7,7 +7,6 @@ import {
   defineOperation,
   isFaultCode,
   principalFromApiKey,
-  type OperationFault,
 } from '@lostgradient/backchannel';
 import { createAgent } from '@lostgradient/operative';
 import { describe, expect, it, spyOn } from 'bun:test';
@@ -185,7 +184,7 @@ describe('an operation that maps nothing of its own', () => {
       expect(body.error?.message, code).toBe(expected.message);
       expect(body.error?.data?.['remediation'], code).toBe(BUREAU_ERROR_REMEDIATION[code]);
       expect(body.error?.data?.['retryable'], code).toBeDefined();
-      expect((expected as OperationFault).code, code).not.toBe('EngineFailure');
+      expect(body.error?.message, code).not.toBe('internal error');
     }
   });
 

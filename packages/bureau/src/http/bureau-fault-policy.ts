@@ -57,7 +57,7 @@ export const BUREAU_ERROR_REMEDIATION: Readonly<Record<BureauErrorCode, string>>
  * `unprocessable` answers `Unprocessable` with the message as its reason, and `shutting-down`
  * answers `Unavailable` with the reason `shutting-down`.
  */
-export type BureauRefusalForm = 'unprocessable' | 'shutting-down';
+type BureauRefusalForm = 'unprocessable' | 'shutting-down';
 
 /** What an operation knows that its {@link BureauError} does not. Every field is optional. */
 export type BureauFaultContext = {
