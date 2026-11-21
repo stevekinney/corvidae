@@ -197,7 +197,7 @@ import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
 import { recordedRunEvent as recordedRunEventOf } from './recorded-run-events.ts';
 import { announceRunOutcome } from './run-outcome-announcement.ts';
-import { createRunOutcomeDetails } from './run-outcome-details.ts';
+import { createRunOutcomeDetails, peekTaskFailure } from './run-outcome-details.ts';
 import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
@@ -755,7 +755,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   // is registered and reaped when it is removed. See
   // `run-event-feed-attachment.ts`.
   const runEventFeeds = createAgentRunEventRegistry();
-  const runOutcomeDetails = createRunOutcomeDetails();
+  const runOutcomeDetails = createRunOutcomeDetails({
+    // COR-2531: the step a run is on a second or later try of is written to its task, so a process
+    // that does not hold the run reads it. The registry is built below, before any run starts.
+    onRetrying: (runId, retrying) => {
+      tasks.recordRetrying(runId, retrying).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record whether task "${runId}" is retrying: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+    },
+  });
   // Snapshot `agents` synchronously, before the first `await` below — the
   // "fixed at createBureau() call time" catalog contract otherwise has a
   // real mutation window: a caller that mutates the SAME `agents` object it
@@ -3772,7 +3785,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           runtimeServices.timers.setTimeout(resolve, milliseconds);
         }),
       // COR-2423: the schedule tick and the instances of workflow files, which have no task record.
-      engineRuns: () => engineRunTasks.list(),
+      engineRuns: (filter) => engineRunTasks.list(filter),
       holdsEngineRun: (runId) => engineRunTasks.holds(runId),
       // COR-2526: a live claim another process holds is the same read recovery makes of a run
       // "preparing elsewhere"; a lapsed or absent claim leaves the writer the holder. The holder
@@ -3908,6 +3921,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       now: runtimeServices.clock.nowISO,
       ownerOf: ownerOrLocal,
       originatingMessage: originatingMessageText,
+      // COR-2531: what the run's own events said of its failure, kept on the task with the settlement.
+      failureOf: (runId) => peekTaskFailure(runOutcomeDetails, runId),
     }),
   );
 

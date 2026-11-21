@@ -29,11 +29,10 @@ import {
   type AgentRunEventFeed,
   createAgentRunEventFeed,
   PUBLISHED_RUN_EVENT_KINDS,
-  RunErrorEvent,
 } from '@lostgradient/operative';
 
 import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
-import type { RunOutcomeDetailRecorder } from './run-outcome-details.ts';
+import { observeRunOutcome, type RunOutcomeDetailRecorder } from './run-outcome-details.ts';
 
 /** The mutable half of operative's registry, as this module needs it. */
 export type MutableAgentRunEventRegistry = {
@@ -125,15 +124,7 @@ export function attachRunEventFeed(
   if (outcomeDetails !== undefined) {
     // Guarded like the listeners above, for the same reason: a throw here would surface inside the
     // run's own `run.error` dispatch.
-    const recordFailure = (event: RunErrorEvent): void => {
-      try {
-        outcomeDetails.record(runId, event);
-      } catch (error) {
-        options.onError?.(error, RunErrorEvent.type);
-      }
-    };
-    activeRun.addEventListener(RunErrorEvent.type, recordFailure);
-    disposers.push(() => activeRun.removeEventListener(RunErrorEvent.type, recordFailure));
+    disposers.push(observeRunOutcome(activeRun, runId, outcomeDetails, options.onError));
   }
 
   return () => {
