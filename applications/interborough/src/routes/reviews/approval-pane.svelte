@@ -5,20 +5,10 @@
    * Deny with an optional note the agent reads, and, in a chat, Allow for the rest of this chat.
    * A decided approval shows the same, with what became of it in place of the buttons.
    */
-  import { Alert, Button, Input, humanizeIdentifier } from '@lostgradient/cinder';
+  import { Alert, ApprovalCard, humanizeIdentifier, type ApprovalState } from '@lostgradient/cinder';
 
-  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
-  import IdentifierText from '../../lib/identifier-text.svelte';
-  import {
-    approvalQuestion,
-    argumentEntries,
-    declaredSummary,
-    reasonSaysAlways,
-  } from '../../lib/tool-text.ts';
-  import BureauReviewOperation from './bureau-review-operation.svelte';
-  import { inputParts } from './review-items.ts';
-  import ReviewResolution from './review-resolution.svelte';
+  import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
   import ReviewSource from './review-source.svelte';
   import type { ReviewOutcome } from './review-outcome.ts';
 
@@ -43,95 +33,65 @@
       summary: declaredSummary(review.approval.action.message, review.approval.reason),
     }),
   );
-  const entries = $derived(argumentEntries(review.approval.arguments));
-  const operation = $derived(
-    review.approval.action.type === 'approval' ? review.approval.action.operation : undefined,
-  );
   /** The tool as a person says it ("Issue refund"), beside its identifier. */
   const toolLabel = $derived(humanizeIdentifier(review.approval.toolName, { casing: 'sentence' }));
-  /** How risky the call is, when it is: what the approval declares, said in words. */
-  const riskWords = $derived.by(() => {
-    const action = review.approval.action;
-    if (action.type !== 'approval') return undefined;
-    if (action.risk === 'high') return REVIEWS_COPY.risk.high;
-    if (action.risk === 'medium') return REVIEWS_COPY.risk.medium;
-    return undefined;
-  });
   /**
    * Whether the tool asks on every call (its mode is Always), which allowing it for the rest of the
    * chat would not change, so the choice is not offered.
    */
   const alwaysAsks = $derived(reasonSaysAlways(review.approval.reason));
+  const action = $derived(
+    review.approval.action.type === 'approval' ? review.approval.action : undefined,
+  );
+  const operation = $derived.by(() => {
+    if (action === undefined) return { kind: 'other' } as const;
+    return { ...action.operation, argsPreview: review.approval.arguments };
+  });
+  const state = $derived<ApprovalState>(
+    review.status === 'rejected' ? 'denied' : review.status,
+  );
+  const resolution = $derived(review.resolution);
+
+  function decide(resolution: {
+    readonly decision: 'approve' | 'deny';
+    readonly reason?: string;
+    readonly remember: boolean;
+  }): void {
+    onDecide(resolution.decision === 'deny' ? 'deny' : resolution.remember ? 'remember' : 'approve');
+  }
 </script>
 
-<div class="ib-review-pane" data-kind="tool-approval" data-review={review.id}>
-  <p class="ib-review-pane__eyebrow">{REVIEWS_COPY.toolApproval}</p>
-  <h2 class="ib-review-pane__question" id={`review-${review.id}-question`}>
-    <IdentifierText text={question} identifiers={[review.approval.toolName]} />
-  </h2>
-  <ReviewSource {review} {waiting} />
-  <p class="ib-review-pane__wants" data-testid="review-wants">
-    {REVIEWS_COPY.wantsToRun}
-    {toolLabel}
-    <code class="ib-review-pane__code">{review.approval.toolName}</code
-    >{#if riskWords !== undefined},
-      {riskWords}{/if}
-  </p>
-  <section class="ib-review-pane__input" aria-label={REVIEWS_COPY.inputLabel}>
-    {#if entries.length === 0}
-      <p class="ib-review-pane__note">{REVIEWS_COPY.noInput}</p>
-    {:else}
-      <!-- What the call was given, on one line (row 26o). -->
-      <p class="ib-review-pane__input-line" data-testid="review-input-line">
-        <!-- prettier-ignore -->
-        {#each inputParts(review.approval.arguments) as [key, value], index (index)}{#if index > 0}{', '}{/if}<span class="ib-review-pane__input-key">{key}</span> {value}{/each}
-      </p>
-    {/if}
-    {#if operation !== undefined}
-      <BureauReviewOperation {operation} />
-    {/if}
-  </section>
-  {#if waiting}
-    <div class="ib-review-pane__decision">
-      <Input
-        id={`review-${review.id}-note`}
-        label={REVIEWS_COPY.noteLabel}
-        optional
-        description={REVIEWS_COPY.noteDescription}
-        placeholder={REVIEWS_COPY.notePlaceholder}
-        bind:value={note}
-        disabled={deciding}
-      />
-      <div
-        class="ib-review-pane__actions"
-        role="group"
-        aria-labelledby={`review-${review.id}-question`}
-      >
-        <Button
-          data-changes
-          variant="primary"
-          disabled={deciding}
-          onclick={() => onDecide('approve')}>{REVIEWS_COPY.approve}</Button
-        >
-        <Button
-          data-changes
-          variant="secondary"
-          disabled={deciding}
-          onclick={() => onDecide('deny')}>{REVIEWS_COPY.deny}</Button
-        >
-        {#if !alwaysAsks}
-          <Button
-            data-changes
-            variant="ghost"
-            disabled={deciding}
-            onclick={() => onDecide('remember')}>{REVIEWS_COPY.allowForChat}</Button
-          >
-        {/if}
-      </div>
-    </div>
-  {:else}
-    <ReviewResolution {review} />
-  {/if}
+<div data-kind="tool-approval" data-review={review.id}>
+  {#snippet source()}
+    <ReviewSource {review} {waiting} />
+  {/snippet}
+  <ApprovalCard
+    layout="detail"
+    tool={{
+      name: review.approval.toolName,
+      label: toolLabel,
+      risk: action?.risk ?? 'low',
+      irreversible: action?.risk === 'high',
+    }}
+    {operation}
+    policyVersion="bureau-review"
+    idempotencyKey={`${review.id}:${review.round}`}
+    expiresAt={action?.expiresAt}
+    {state}
+    headingLevel={2}
+    {question}
+    context={source}
+    consequence={action === undefined ? undefined : declaredSummary(action.message, review.approval.reason)}
+    rememberScope={alwaysAsks ? undefined : 'the rest of this chat'}
+    bind:reason={note}
+    noteInitiallyOpen
+    resolving={deciding ? 'approve' : undefined}
+    failure={outcome?.tone === 'danger' ? { summary: outcome.title, detail: outcome.message } : undefined}
+    decidedBy={resolution?.decidedBy}
+    decidedAt={resolution?.decidedAt}
+    decisionNote={resolution?.reason}
+    onResolve={decide}
+  />
   {#if outcome !== undefined}
     <Alert variant={outcome.tone}>
       <p class="ib-decision__failure">

@@ -70,8 +70,8 @@ const inboxAt = (review: WaitingReview, tab?: 'done'): string =>
 const rowOf = (page: Page, review: WaitingReview) =>
   page.locator(`[data-review-row="bureau:${review.id}"]`);
 
-/** The open review's pane. */
-const paneOf = (page: Page) => page.locator('.ib-review-pane');
+/** The open review detail, whether it is a shared approval card or a question/workflow pane. */
+const paneOf = (page: Page) => page.locator('.ib-reviews__detail');
 
 /** Whether a tool result in a conversation carries `refundedCents`, which only a refund that ran does. */
 function refundRan(messages: unknown[]): boolean {
@@ -186,13 +186,18 @@ test.describe('a tool approval', () => {
     expect(refundRan(await threadMessages(request, denied.threadId))).toBe(false);
   });
 
-  test('Allow for the rest of this chat approves the tool and sends remember', async ({
+  test('shared Reviews approval detail remembers an On changes approval only when approved', async ({
     page,
     request,
   }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-remember');
     const resolves = recordResolves(page);
-    await paneOf(page).getByRole('button', { name: 'Allow for the rest of this chat' }).click();
+    const remember = paneOf(page).getByRole('checkbox', {
+      name: /allow .* for the rest of this chat/i,
+    });
+    await remember.check();
+    await expect.poll(() => resolves).toHaveLength(0);
+    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
 
     await expect(rowOf(page, review)).toHaveCount(0);
     expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
@@ -280,7 +285,7 @@ test.describe('a tool approval', () => {
 
     await page.goto(inboxAt(review, 'done'));
     await expect(rowOf(page, review)).toContainText('Approved');
-    await expect(paneOf(page).getByTestId('review-resolution')).toContainText('Approved');
+    await expect(paneOf(page)).toContainText('Approved');
     await expect(paneOf(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(paneOf(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
     // Done is read through the same list, asked for what was resolved.

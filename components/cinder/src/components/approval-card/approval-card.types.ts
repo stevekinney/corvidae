@@ -244,6 +244,10 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
      * Always, which never offers it. Checking it sets `remember` on the resolution.
      */
     rememberScope?: string;
+    /** A host-owned decision note, retained when the host changes the open approval. */
+    reason?: string;
+    /** Opens the decision note field when the card first renders. */
+    noteInitiallyOpen?: boolean;
     /** Who decided, once the approval is decided: `you`. Written as "Denied by you". */
     decidedBy?: string;
     /** When the approval was decided, written as a time of day after the outcome ("Denied by you, 10:40 AM"). */
@@ -362,6 +366,10 @@ export type ApprovalCardSchemaProps = {
   consequence?: string;
   /** Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always. */
   rememberScope?: string;
+  /** A host-owned decision note, retained when the host changes the open approval. */
+  reason?: string;
+  /** Opens the decision note field when the card first renders. */
+  noteInitiallyOpen?: boolean;
   /** Who decided, once the approval is decided: `you`. Written as "Denied by you". */
   decidedBy?: string;
   /** When the approval was decided, as an ISO timestamp, written as a time of day after the outcome. */

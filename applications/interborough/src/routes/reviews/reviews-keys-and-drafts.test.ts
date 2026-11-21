@@ -60,7 +60,7 @@ async function openRow(container: HTMLElement, index: number): Promise<void> {
 /** The field the open question is answered in. */
 function answerField(container: HTMLElement): HTMLInputElement | HTMLTextAreaElement {
   const field = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-    '.ib-review-pane__answer input:not([type="radio"]):not([type="checkbox"]), .ib-review-pane__answer textarea',
+    '.ib-review-detail__answer input:not([type="radio"]):not([type="checkbox"]), .ib-review-detail__answer textarea',
   );
   if (field === null) throw new Error('The open question has no field to answer in.');
   return field;
@@ -211,7 +211,7 @@ describe('a key never decides a review the person has not seen', () => {
     );
     // The first decision is settled, so only the wait for the next review to be seen holds the key.
     await waitFor(() =>
-      expect(container.querySelector('.ib-review-pane button')?.hasAttribute('disabled')).toBe(
+      expect(container.querySelector('.ib-review-detail button')?.hasAttribute('disabled')).toBe(
         false,
       ),
     );

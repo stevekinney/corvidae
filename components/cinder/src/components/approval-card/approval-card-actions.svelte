@@ -21,6 +21,10 @@
     toolName: string;
     /** The checkbox's scope ("the rest of this chat"), or `undefined` when the tool never offers it. */
     rememberScope: string | undefined;
+    /** A host-owned decision note. */
+    reason?: string;
+    /** Whether the note field starts open. */
+    noteInitiallyOpen?: boolean;
     /** Why Deny and Approve are off, when they are. */
     disabledReason: string | undefined;
     /** The answer on its way, or `undefined` when none is. */
@@ -38,6 +42,8 @@
     requestKey,
     toolName,
     rememberScope,
+    reason = $bindable(''),
+    noteInitiallyOpen = false,
     disabledReason,
     resolving,
     canEditArguments,
@@ -49,9 +55,8 @@
   const disabledReasonId = $derived(`${idBase}-disabled-reason`);
   const editRegionId = $derived(`${idBase}-edit-region`);
 
-  let resolutionReason = $state('');
   // The note waits behind "Add note"; once opened it stays open, so a typed note never hides.
-  let noteOpen = $state(false);
+  let noteOpen = $state(noteInitiallyOpen);
   let rememberResolution = $state(false);
   let editingArguments = $state(false);
   let editedArgumentsText = $state('');
@@ -69,7 +74,7 @@
   $effect(() => {
     if (requestKey === previousRequestKey) return;
     previousRequestKey = requestKey;
-    resolutionReason = '';
+    reason = '';
     noteOpen = false;
     rememberResolution = false;
     // A new request must never leave a stale editor open, even if its
@@ -102,7 +107,7 @@
 
   function emitResolution(decision: ApprovalResolutionDecision, editedArgs?: unknown): void {
     if (actionsOff) return;
-    const trimmedReason = resolutionReason.trim();
+    const trimmedReason = reason.trim();
     const resolution: ApprovalResolution = {
       decision,
       remember: rememberResolution,
@@ -137,10 +142,11 @@
     <div class="cinder-approval-card__resolution-controls">
       <Textarea
         id={reasonId}
-        bind:value={resolutionReason}
+        bind:value={reason}
         label="Note"
+        optional
         description="Saved with your decision. If you deny, the agent reads it as the reason."
-        placeholder="Add a note for the agent or the record"
+        placeholder="Add a note"
         rows={2}
         disabled={isBusy}
       />

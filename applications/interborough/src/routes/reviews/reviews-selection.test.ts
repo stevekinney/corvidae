@@ -232,28 +232,29 @@ describe('Enter on a row', () => {
 });
 
 describe('an approval', () => {
-  test('says what it wants to run and how risky that is, and offers the note as Add a note', async () => {
-    const { container, findByTestId, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
+  test('uses the shared detail with its tool, declared risk, and note', async () => {
+    const { container, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    const wants = await findByTestId('review-wants');
-    expect(wants.textContent).toContain(REVIEWS_COPY.wantsToRun);
-    expect(wants.textContent).toContain('Issue refund');
-    expect(wants.querySelector('code')?.textContent).toBe('issue-refund');
-    expect(wants.textContent).toContain(REVIEWS_COPY.risk.high);
+    expect(container.querySelector('[data-cinder-layout="detail"]')).not.toBeNull();
+    expect(container.textContent).toContain('Issue refund');
+    expect(container.textContent).toContain('issue-refund');
+    expect(container.textContent).toContain('Dangerous');
     expect(
-      getByText(REVIEWS_COPY.toolApproval, { selector: '.ib-review-pane__eyebrow' }),
+      getByText(REVIEWS_COPY.toolApproval, { selector: '.cinder-approval-card__detail-eyebrow' }),
     ).not.toBeNull();
     expect(getByLabelText('Note Optional').getAttribute('placeholder')).toBe(
       REVIEWS_COPY.notePlaceholder,
     );
   });
 
-  test('offers Allow for the rest of the chat', async () => {
+  test('offers a remembered-approval checkbox', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    expect(await findByRole('button', { name: REVIEWS_COPY.allowForChat })).not.toBeNull();
+    expect(
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
+    ).not.toBeNull();
   });
 
   test('does not offer it for a tool that asks every time, which allowing would not change', async () => {
@@ -268,7 +269,7 @@ describe('an approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
     await findByRole('button', { name: 'Approve' });
-    expect(queryByRole('button', { name: REVIEWS_COPY.allowForChat })).toBeNull();
+    expect(queryByRole('checkbox', { name: /allow .* for the rest of this chat/i })).toBeNull();
   });
 });
 

@@ -405,7 +405,7 @@
   /** Moves focus to the first control of the open review's decision or answer, and presses none. */
   function focusDecision(): void {
     const region = detailElement?.querySelector<HTMLElement>(
-      '.ib-review-pane__decision, .ib-review-pane__answer',
+      '.cinder-approval-card__actions, .ib-review-detail__decision, .ib-review-detail__answer',
     );
     region
       ?.querySelector<HTMLElement>(

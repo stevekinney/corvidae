@@ -194,6 +194,38 @@ describe('the reviews page', () => {
 });
 
 describe('deciding a Bureau tool approval', () => {
+  test('shared approval detail maps all fields and raw JSON', async () => {
+    const approval = toolApprovalFixture({
+      approval: {
+        ...APPROVAL.approval,
+        toolName: 'issue-refund',
+        arguments: { orderId: 'order-1001', amount: 42, reason: 'Duplicate charge' },
+      },
+    });
+    const { container, findByRole, findByText } = open({ reviews: [approval] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    expect(container.querySelector('[data-cinder-layout="detail"]')).not.toBeNull();
+    expect(await findByRole('heading', { name: /refund order-1001/i })).not.toBeNull();
+    expect(await findByText('Order ID')).not.toBeNull();
+    expect(await findByText('Amount')).not.toBeNull();
+    expect(await findByText('Reason')).not.toBeNull();
+    await fireEvent.click(await findByRole('radio', { name: 'JSON' }));
+    const json = container.querySelector('.cinder-json-viewer')?.textContent?.replace(/\s+/g, '');
+    expect(json).toContain('{orderId:"order-1001"amount:42reason:"Duplicatecharge"}');
+  });
+
+  test('checking remember alone sends no decision', async () => {
+    const { container, getByLabelText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    await fireEvent.click(getByLabelText(/allow .* for the rest of this chat/i));
+
+    expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
+  });
+
   test('shows the tool and what it was given before it is decided', async () => {
     const { container, findByRole, findByTestId } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -201,11 +233,11 @@ describe('deciding a Bureau tool approval', () => {
     await findByRole('button', { name: 'Approve' });
     // What it was given, on one line with each name in words (row 26o, COR-2426), the names muted
     // apart from the values (design review 1).
-    const input = await findByTestId('review-input-line');
-    expect(input.textContent?.replace(/\s+/g, ' ').trim()).toBe('Order ID order-1001, Cents 4200');
-    expect(
-      [...input.querySelectorAll('.ib-review-pane__input-key')].map((key) => key.textContent),
-    ).toEqual(['Order ID', 'Cents']);
+    const input = container.querySelector('.cinder-payload-inspector');
+    expect(input?.textContent).toContain('Order ID');
+    expect(input?.textContent).toContain('order-1001');
+    expect(input?.textContent).toContain('Cents');
+    expect(input?.textContent).toContain('4200');
   });
 
   test('approves through bureau.reviews.resolve with the review’s id and round, and the row goes', async () => {
@@ -227,7 +259,8 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.allowForChat }));
+    await fireEvent.click(await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }));
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -256,14 +289,15 @@ describe('deciding a Bureau tool approval', () => {
     });
   });
 
-  test('sends the note typed before Allow for the rest of the chat as the reason', async () => {
+  test('sends the note typed before an approved remembered decision as the reason', async () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: 'Fine for this chat.' },
     });
-    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.allowForChat }));
+    await fireEvent.click(await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }));
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -301,7 +335,8 @@ describe('deciding a Bureau tool approval', () => {
       receipt: 'applied',
       remembered: false,
     }));
-    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.allowForChat }));
+    await fireEvent.click(await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }));
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await findByText(REVIEWS_COPY.notRemembered.title);
   });
 

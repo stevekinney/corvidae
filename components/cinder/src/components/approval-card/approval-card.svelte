@@ -97,6 +97,8 @@
     requestedAt,
     consequence,
     rememberScope,
+    reason = $bindable(''),
+    noteInitiallyOpen = false,
     decidedBy,
     decidedAt,
     decisionNote,
@@ -800,6 +802,8 @@
           requestKey={idempotencyKey}
           toolName={tool.label ?? tool.name}
           {rememberScope}
+          bind:reason
+          {noteInitiallyOpen}
           {disabledReason}
           {resolving}
           {canEditArguments}
@@ -992,6 +996,8 @@
             requestKey={idempotencyKey}
             toolName={tool.label ?? tool.name}
             {rememberScope}
+            bind:reason
+            {noteInitiallyOpen}
             {disabledReason}
             {resolving}
             {canEditArguments}
