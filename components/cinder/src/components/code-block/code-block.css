@@ -550,8 +550,12 @@
       var(--cinder-space-2),
       calc((var(--cinder-touch-target-min) - var(--_cinder-code-block-float-size)) / 2)
     );
-    --_cinder-code-block-float-reserve: calc(
-      var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset)
+    /* Copy needs its face and touch inset; visible language or status metadata can be wider.
+     * The component measures the painted metadata after mount, while this fallback keeps the
+     * original Copy-only rail during server rendering. */
+    --_cinder-code-block-float-reserve: max(
+      calc(var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset)),
+      var(--_cinder-code-block-float-meta-width, 0px)
     );
     /* The distance from the block's top to the middle of the first line: the block's padding plus
      * half a line box. The button is centred on it and, in a wrapping block, so is the end of the

@@ -19,14 +19,95 @@ const entry = loadManifest().find((candidate) => candidate.slug === 'code-block'
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'rail');
 const ENDPOINT = 'http://127.0.0.1:7439/bureau/mcp';
 
-async function open(componentPage: ComponentPageFixture, width: number) {
+async function open(
+  componentPage: ComponentPageFixture,
+  width: number,
+  theme: 'light' | 'dark' = 'light',
+  metadataRail = false,
+) {
   if (entry === undefined || fixture === undefined) throw new Error('No code block rail fixture.');
-  return componentPage.open({
+  const page = await componentPage.open({
     entry,
-    theme: 'light',
+    theme,
     viewport: { name: width < 768 ? 'mobile' : 'desktop', width, height: 900 },
     fixtureName: 'rail',
     fixtureContentHash: fixture.fixtureContentHash,
+  });
+  if (metadataRail) {
+    const route = new URL(page.url());
+    route.searchParams.set('metadata-rail', '1');
+    await page.goto(route.toString(), { waitUntil: 'load' });
+  }
+  return page;
+}
+
+async function readFloatingMetadataOverlap(page: Page, testId: string) {
+  return page.getByTestId(testId).evaluate((host) => {
+    const root = host.firstElementChild;
+    const metadata = root?.firstElementChild?.querySelector('span');
+    const viewport = root?.lastElementChild;
+    const code = viewport?.querySelector('code');
+    if (!(code instanceof HTMLElement) || !(metadata instanceof HTMLElement)) {
+      throw new Error('No code or floating metadata.');
+    }
+    if (!(viewport instanceof HTMLElement)) throw new Error('No code viewport.');
+    const metadataBox = metadata.getBoundingClientRect();
+    const viewportBox = viewport.getBoundingClientRect();
+    const visibleCode = () => {
+      const rects: { top: number; right: number; bottom: number; left: number }[] = [];
+      const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if (!(node instanceof Text) || node.data.trim() === '') continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects()) {
+          if (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.right > viewportBox.left &&
+            rect.left < viewportBox.right &&
+            rect.bottom > viewportBox.top &&
+            rect.top < viewportBox.bottom
+          ) {
+            rects.push({
+              top: Math.max(rect.top, viewportBox.top),
+              right: Math.min(rect.right, viewportBox.right),
+              bottom: Math.min(rect.bottom, viewportBox.bottom),
+              left: Math.max(rect.left, viewportBox.left),
+            });
+          }
+        }
+      }
+      return rects;
+    };
+    const read = () => {
+      const rects = visibleCode();
+      return {
+        visibleCode: rects.length,
+        overlap: rects.filter(
+          (rect) =>
+            rect.right > metadataBox.left &&
+            rect.left < metadataBox.right &&
+            rect.bottom > metadataBox.top &&
+            rect.top < metadataBox.bottom,
+        ).length,
+      };
+    };
+    viewport.scrollLeft = 0;
+    const start = read();
+    viewport.scrollLeft = viewport.scrollWidth;
+    const end = read();
+    viewport.scrollLeft = 0;
+    return {
+      measuredMetadataWidth:
+        root instanceof HTMLElement
+          ? root.style.getPropertyValue('--_cinder-code-block-float-meta-width')
+          : '',
+      metadataWidth: metadataBox.width,
+      scrollable: viewport.scrollWidth > viewport.clientWidth,
+      start,
+      end,
+    };
   });
 }
 
@@ -208,4 +289,68 @@ test('a scrolling floating block still keeps the rail on every row', async ({ co
   });
   // The scrollport ends before the button, so a scrolled line never runs under it.
   expect(reading.viewportRight).toBeLessThanOrEqual(reading.buttonLeft);
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const width of [320, 1280]) {
+    test(`floating language metadata reserves the visible code rail at ${width} in ${theme}`, async ({
+      componentPage,
+    }, testInfo) => {
+      const page = await open(componentPage, width, theme, true);
+      const reading = await readFloatingMetadataOverlap(page, 'floating-language');
+      expect(reading.measuredMetadataWidth).not.toBe('');
+      expect(reading.metadataWidth).toBeGreaterThan(0);
+      expect(reading.start.visibleCode).toBeGreaterThan(0);
+      expect(reading.start.overlap).toBe(0);
+      if (reading.scrollable) {
+        expect(reading.end.visibleCode).toBeGreaterThan(0);
+        expect(reading.end.overlap).toBe(0);
+      }
+      for (const state of ['floating-language', 'wrapped']) {
+        await testInfo.attach(`code-block-${state}-${width}-${theme}`, {
+          body: await page.getByTestId(state).screenshot(),
+          contentType: 'image/png',
+        });
+      }
+    });
+
+    test(`floating streaming status reserves the visible code rail at ${width} in ${theme}`, async ({
+      componentPage,
+    }, testInfo) => {
+      const page = await open(componentPage, width, theme, true);
+      const reading = await readFloatingMetadataOverlap(page, 'floating-streaming-status');
+      expect(reading.measuredMetadataWidth).not.toBe('');
+      expect(reading.metadataWidth).toBeGreaterThan(0);
+      expect(reading.start.visibleCode).toBeGreaterThan(0);
+      expect(reading.start.overlap).toBe(0);
+      if (reading.scrollable) {
+        expect(reading.end.visibleCode).toBeGreaterThan(0);
+        expect(reading.end.overlap).toBe(0);
+      }
+      await testInfo.attach(`code-block-floating-streaming-status-${width}-${theme}`, {
+        body: await page.getByTestId('floating-streaming-status').screenshot(),
+        contentType: 'image/png',
+      });
+    });
+  }
+}
+
+test('a wrapped floating language block gives later rows the full width', async ({
+  componentPage,
+}) => {
+  const page = await open(componentPage, 320, 'light', true);
+  const reading = await page.getByTestId('floating-language-wrapped').evaluate((host) => {
+    const root = host.firstElementChild;
+    const metadata = root?.firstElementChild;
+    const code = root?.lastElementChild?.querySelector('code');
+    if (!(code instanceof HTMLElement) || !(metadata instanceof HTMLElement)) {
+      throw new Error('No wrapped code or metadata.');
+    }
+    const range = document.createRange();
+    range.selectNodeContents(code);
+    const rowRights = [...range.getClientRects()].map((rect) => rect.right);
+    return { metadataLeft: metadata.getBoundingClientRect().left, rowRights };
+  });
+  expect(reading.rowRights.length).toBeGreaterThan(1);
+  expect(Math.max(...reading.rowRights.slice(1))).toBeGreaterThan(reading.metadataLeft);
 });
