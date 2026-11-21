@@ -206,6 +206,18 @@ describe('the failure and retrying filters of bureau.tasks.list (COR-2531)', () 
     expect(same.error).toBeUndefined();
     expect(same.tasks.length).toBeGreaterThan(0);
   });
+
+  it('refuses a failedStep past 1,000 characters, and takes one at the bound', async () => {
+    const served = await serveWorkflows(cleanups);
+    const refused = await ownerRpc(served.owner, 'bureau.tasks.list', {
+      failedStep: 'x'.repeat(1001),
+    });
+    expect(refused.error).toBeDefined();
+    const accepted = await ownerRpc(served.owner, 'bureau.tasks.list', {
+      failedStep: 'x'.repeat(1000),
+    });
+    expect(accepted.error).toBeUndefined();
+  });
 });
 
 describe('the engine’s runs under the failure and retrying filters (COR-2531)', () => {

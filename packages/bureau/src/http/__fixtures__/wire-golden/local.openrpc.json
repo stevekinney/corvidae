@@ -2007,6 +2007,7 @@
           "required": false,
           "schema": {
             "description": "Only the tasks that failed at the step with this label (`failure.step.label`): a tool’s name, `model` for a model step, or for a workflow run the engine’s `failedStep.label`. A label longer than 200 characters is compared as its first 200.",
+            "maxLength": 1000,
             "minLength": 1,
             "type": "string"
           }
@@ -2829,6 +2830,7 @@
           },
           "failedStep": {
             "description": "Only the tasks that failed at the step with this label (`failure.step.label`): a tool’s name, `model` for a model step, or for a workflow run the engine’s `failedStep.label`. A label longer than 200 characters is compared as its first 200.",
+            "maxLength": 1000,
             "minLength": 1,
             "type": "string"
           },

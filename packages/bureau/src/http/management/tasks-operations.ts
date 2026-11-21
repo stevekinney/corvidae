@@ -119,6 +119,9 @@ const tasksListInput = z.object({
   failedStep: z
     .string()
     .min(1)
+    // Only the first 200 characters are compared, and the value is bound into the page token:
+    // a label past 1,000 is refused rather than carried.
+    .max(1000)
     .optional()
     .describe(
       'Only the tasks that failed at the step with this label (`failure.step.label`): a tool’s name, `model` for a model step, or for a workflow run the engine’s `failedStep.label`. A label longer than 200 characters is compared as its first 200.',
