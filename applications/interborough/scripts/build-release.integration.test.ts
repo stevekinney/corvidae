@@ -758,6 +758,7 @@ describe('release arguments', () => {
     }
   });
 
+  // spawn-free: the fixture stubs every command and missing packages fail before the relocated host can start.
   test.each(PANEL_RUNTIME_PACKAGES.map((name) => [name]))(
     'rejects a release whose frozen install has no %s to stage',
     async (name) => {

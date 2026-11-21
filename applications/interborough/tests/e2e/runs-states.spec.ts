@@ -656,6 +656,36 @@ test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => 
     await expect(main.locator('li[data-run]').first()).toBeVisible();
   });
 
+  test('keeps the Started by menu open when loading finishes (runs filter race)', async ({
+    page,
+  }) => {
+    const release = await openLoading(page, 1280);
+    try {
+      const main = page.locator('main');
+      const chip = filterBar(page).getByRole('button', { name: 'Started by', exact: true });
+      const choices = page.locator('.cinder-filter-bar__options');
+      await page.clock.runFor(300);
+
+      await chip.click();
+      await expect(choices).toBeVisible();
+
+      await page.clock.resume();
+      release();
+      await expect(main.locator('li[data-run]').first()).toBeVisible();
+      expect(await chip.getAttribute('aria-expanded')).toBe('true');
+      await expect(choices).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/runs',
+        state: 'filter menu open after loading',
+        source: SOURCE,
+      });
+      await choices.getByText('Schedules', { exact: true }).click();
+      await expect(page).toHaveURL(/startedBy=schedule/);
+    } finally {
+      release();
+    }
+  });
+
   test('says it is taking longer than usual after 10 s, and Cancel leaves Loading canceled with Try again', async ({
     page,
     checkA11y,
