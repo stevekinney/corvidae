@@ -234,4 +234,13 @@ describe('WorkflowTable', () => {
 
     expect(container.querySelector('.weft-workflows-table__row--recent')).not.toBeNull();
   });
+
+  test("keeps the scoped-table width floor out of Health's stacked table", () => {
+    const scoped = render(WorkflowTable, { props: { rows: [summary()] } });
+    expect(scoped.container.querySelector('.weft-workflows-table--with-floor')).not.toBeNull();
+    scoped.unmount();
+
+    const health = render(WorkflowTable, { props: { rows: [summary()], stackTable: true } });
+    expect(health.container.querySelector('.weft-workflows-table--with-floor')).toBeNull();
+  });
 });

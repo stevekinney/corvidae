@@ -53,9 +53,20 @@
      * ignored and the list offers no filter for it.
      */
     scopedType?: string | undefined;
+    /** The enclosing page already owns the level-one heading. */
+    headingLevel?: 1 | 2;
+    /** Health Run rows stack with Cinder's fitted-table layout on a phone. */
+    stackTable?: boolean;
+    /** The Health frame owns the page-level connection indicator. */
+    showConnectionIndicator?: boolean;
   }
 
-  let { scopedType = undefined }: WorkflowListProps = $props();
+  let {
+    scopedType = undefined,
+    headingLevel = 1,
+    stackTable = false,
+    showConnectionIndicator = true,
+  }: WorkflowListProps = $props();
 
   const client = getClient();
   const principalStore = getPrincipalStore();
@@ -290,7 +301,7 @@
       </div>
     {/if}
   {/snippet}
-  <PageHeader title={heading} headingLevel={1} description={snapshot} actions={headerActions} />
+  <PageHeader title={heading} {headingLevel} description={snapshot} actions={headerActions} />
 
   {#if listGate.disabled}
     <EmptyState kind="first-use" title="Access restricted" description={deniedDescription}>
@@ -315,10 +326,12 @@
     {/if}
 
     <div class="weft-workflow-list__toolbar">
-      <ConnectionIndicator
-        status={liveController.enabled ? liveController.status : 'closed'}
-        {...liveController.enabled ? {} : { label: 'Live off' }}
-      />
+      {#if showConnectionIndicator}
+        <ConnectionIndicator
+          status={liveController.enabled ? liveController.status : 'closed'}
+          {...liveController.enabled ? {} : { label: 'Live off' }}
+        />
+      {/if}
       <Button
         size="sm"
         variant={liveController.enabled ? 'primary' : 'secondary'}
@@ -382,6 +395,7 @@
     {:else}
       <WorkflowTable
         {rows}
+        {stackTable}
         {workflowOrigins}
         {selectedIds}
         onSelectionChange={(next) => (selectedIds = next)}

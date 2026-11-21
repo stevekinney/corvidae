@@ -82,6 +82,8 @@
       string,
       Extract<NonNullable<WorkflowFileRun['origin']>, { kind: 'agent-run' }>
     >;
+    /** Health Runs uses Cinder's phone card layout; scoped workflow runs retain their table floor. */
+    stackTable?: boolean;
   }
 
   let {
@@ -91,6 +93,7 @@
     recentlyChangedIds,
     revisionComparison,
     workflowOrigins,
+    stackTable = false,
   }: WorkflowTableProps = $props();
 
   const selectionEnabled = $derived(selectedIds !== undefined);
@@ -132,13 +135,13 @@
   }
 </script>
 
-<!-- The engine table keeps its table layout and its floor at every width (COR-2364). -->
+<!-- Health Runs stacks through Cinder at phone width; scoped workflow runs retain their table floor. -->
 <Table
   caption="Workflows"
   selectable={selectionEnabled}
   fit
-  stackBelow={false}
-  class="weft-workflows-table"
+  {...stackTable ? {} : { stackBelow: false }}
+  class={`weft-workflows-table${stackTable ? '' : ' weft-workflows-table--with-floor'}`}
 >
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}
@@ -174,7 +177,7 @@
         <Table.Cell>
           <StatusLabel word={workflowRunStatusWord(row.status)} />
         </Table.Cell>
-        <Table.Cell as="th" clamp={false}>
+        <Table.Cell as="th" clamp={false} class="weft-workflows-table__run-identity">
           <span class="weft-workflows-table__id-cell">
             <span class="weft-workflows-table__id-line">
               <Tooltip text={row.id} placement="top">
