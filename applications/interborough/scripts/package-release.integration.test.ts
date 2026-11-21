@@ -207,19 +207,35 @@ test('only protected main can validate a pinned source for npm publishing', () =
   expect(publishInputResults.protectedMain.success).toBe(true);
   expect(publishInputResults.rehearsal.success).toBe(true);
   expect(workflow.jobs.publish.if).toBe(
-    "${{ inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
+    "${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
   );
+  expect(workflow.jobs.verify.if).toBe(workflow.jobs.publish.if);
+});
+
+test('rehearses only a main push that changes the npm workflow', async () => {
+  const releaseWorkflow = await readFile(
+    resolve(import.meta.dir, '../../../.github/workflows/interborough-npm-release.yml'),
+    'utf8',
+  );
+  expect(releaseWorkflow).toContain(
+    '  push:\n    branches: [main]\n    paths: [.github/workflows/interborough-npm-release.yml]',
+  );
+  expect(releaseWorkflow).toContain("SOURCE_SHA: ${{ inputs.source_sha || github.sha }}");
+  expect(releaseWorkflow).toContain("VERSION: ${{ inputs.version || '0.0.0-candidate.0' }}");
+  expect(releaseWorkflow).toContain(
+    "PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
+  );
+  expect(releaseWorkflow).toContain('version: ${{ steps.release-inputs.outputs.version }}');
 });
 
 test('the package, publish and verify jobs use the same versioned artifact name', () => {
-  const name = 'interborough-${{ inputs.version }}-darwin-arm64-npm-package';
   expect(
     workflow.jobs.package.steps.find((step) => step.name === 'Upload tested package')?.with?.name,
-  ).toBe(name);
+  ).toBe('interborough-${{ steps.release-inputs.outputs.version }}-darwin-arm64-npm-package');
   for (const job of [workflow.jobs.publish, workflow.jobs.verify])
     expect(
       job.steps.find((step) => step.uses?.startsWith('actions/download-artifact@'))?.with?.name,
-    ).toBe(name);
+    ).toBe('interborough-${{ needs.package.outputs.version }}-darwin-arm64-npm-package');
 });
 
 const publishDecisions = await (async () => {
