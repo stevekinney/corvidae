@@ -1,6 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { HTMLInputAttributes } from 'svelte/elements';
+import type { InputProps } from '../input/input.types.ts';
 export interface NumberInputSchemaProps {
   id: string;
   value?: number | null;
@@ -25,6 +26,8 @@ export interface NumberInputSchemaProps {
    * @default "md"
    */
   size?: 'sm' | 'md' | 'lg';
+  /** The shared Input frame treatment. `filled` opts into the inset control surface. */
+  appearance?: 'outlined' | 'filled';
   /**
    * Reports each number as it is typed, not only when the field is left or Enter is pressed. Text
    * that is not a number yet (such as `-`) is not reported and does not mark the field invalid
@@ -99,6 +102,8 @@ export type NumberInputProps = Omit<
    * @default "md"
    */
   size?: 'sm' | 'md' | 'lg';
+  /** The shared Input frame treatment. `filled` opts into the inset control surface. */
+  appearance?: InputProps['appearance'];
   /**
    * Reports each number as it is typed, not only when the field is left or Enter is pressed. Text
    * that is not a number yet (such as `-`) is not reported and does not mark the field invalid

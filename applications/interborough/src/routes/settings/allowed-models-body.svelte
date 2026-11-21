@@ -39,6 +39,7 @@
     type SettingsSnapshot,
   } from '../../lib/bureau-settings.ts';
   import { getProviders, type ProviderModel } from '../../lib/host-providers.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
@@ -318,7 +319,7 @@
       <p class="weft-allowed__muted">
         {stale ? SETTINGS_COPY.stale.description : SETTINGS_COPY.changedElsewhere.description}
       </p>
-      <Button variant="secondary" size="sm" onclick={reset}>{SETTINGS_COPY.reloadAction}</Button>
+      <Button variant="secondary" size="sm" onclick={reset} label={SETTINGS_COPY.reloadAction} />
     </div>
   {/if}
 
@@ -355,9 +356,12 @@
       {#if providers.isError}
         <p class="weft-allowed__muted" role="alert">
           {copy.models.loadFailed}
-          <Button variant="secondary" size="sm" onclick={() => void providers.refetch()}
-            >{copy.models.tryAgain}</Button
-          >
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => void providers.refetch()}
+            label={copy.models.tryAgain}
+          />
         </p>
       {:else if providers.isPending}
         <p class="weft-allowed__muted" role="status">{copy.models.loading}</p>
@@ -392,7 +396,7 @@
         <SettingRow
           id="weft-allowed-prefer"
           label={copy.preferences.prefer.label}
-          identifier={copy.preferences.prefer.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.preferences.prefer.identifier }}
           description={copy.preferences.prefer.description}
           disabled={held}
         >
@@ -414,7 +418,7 @@
         <SettingRow
           id="weft-allowed-effort"
           label={copy.preferences.effort.label}
-          identifier={copy.preferences.effort.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.preferences.effort.identifier }}
           description={copy.preferences.effort.description}
           disabled={held}
         >
@@ -447,13 +451,14 @@
     <FormActions sticky unsavedChanges={changes} error={failure} errorTitle={copy.saveFailed.title}>
       {#snippet summary()}{copy.effect}{/snippet}
       {#snippet end()}
-        <Button variant="secondary" disabled={saving} onclick={reset}>{copy.reset}</Button>
+        <Button variant="secondary" disabled={saving} onclick={reset} label={copy.reset} />
         <Button
           data-changes
           variant="primary"
           disabled={saving || locked}
-          onclick={() => void save()}>{copy.save}</Button
-        >
+          onclick={() => void save()}
+          label={copy.save}
+        />
       {/snippet}
     </FormActions>
   {/if}

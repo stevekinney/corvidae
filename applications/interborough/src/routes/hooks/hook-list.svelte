@@ -230,9 +230,11 @@
           onRetry={retry}
         >
           {#snippet secondaryAction()}
-            <Button variant="secondary" href={router.href(copy.loadFailed.openHealthPath)}
-              >{copy.loadFailed.openHealth}</Button
-            >
+            <Button
+              variant="secondary"
+              href={router.href(copy.loadFailed.openHealthPath)}
+              label={copy.loadFailed.openHealth}
+            />
           {/snippet}
         </ErrorState>
       {:else if stopped}

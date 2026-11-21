@@ -261,16 +261,20 @@
     {/if}
   {/snippet}
   {#snippet footer()}
-    <Button variant="secondary" onclick={dismiss} disabled={step.kind === 'applying'}>Cancel</Button
-    >
+    <Button
+      variant="secondary"
+      onclick={dismiss}
+      disabled={step.kind === 'applying'}
+      label="Cancel"
+    />
     {#if step.kind === 'confirm'}
       <Button data-changes variant="primary" onclick={confirm}
         >Confirm {TITLE[request.kind].toLowerCase()}</Button
       >
     {:else if step.kind === 'form' && request.kind === 'setrouting'}
-      <Button variant="primary" onclick={preview} disabled={formInvalid}>Preview change</Button>
+      <Button variant="primary" onclick={preview} disabled={formInvalid} label="Preview change" />
     {:else if step.kind === 'stale' || step.kind === 'failed'}
-      <Button variant="primary" onclick={preview}>Preview again</Button>
+      <Button variant="primary" onclick={preview} label="Preview again" />
     {/if}
   {/snippet}
 </Modal>

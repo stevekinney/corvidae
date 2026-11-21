@@ -171,7 +171,7 @@ describe('the rows (16f, 16g, 11h)', () => {
     ).not.toContain('Tool runner');
   });
 
-  test('sit under day bands that name the day and the zone the times are in', async () => {
+  test('sit under day bands that name each day and show the time zone once', async () => {
     serveChats();
     landAt('/chats');
 
@@ -184,8 +184,8 @@ describe('the rows (16f, 16g, 11h)', () => {
     const zoneName = zoneLabel(NOW, zone);
     expect(bands).toEqual([
       `Today ${zoneName}`,
-      `Yesterday, ${dateLine(NOW - 24 * HOUR, zone)} ${zoneName}`,
-      `${dateLine(NOW - 72 * HOUR, zone)} ${zoneName}`,
+      `Yesterday, ${dateLine(NOW - 24 * HOUR, zone)}`,
+      dateLine(NOW - 72 * HOUR, zone),
     ]);
   });
 });
