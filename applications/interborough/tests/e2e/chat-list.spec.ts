@@ -560,7 +560,10 @@ test.describe('the states of the chat list', () => {
           await page.goto('/chats');
 
           const state = page.getByTestId('chats-first-use');
-          await expect(state.getByRole('heading', { level: 1, name: setup.title })).toBeVisible();
+          await expect(state.getByRole('heading', { level: 1 })).toHaveText(
+            width === 375 ? 'Chat' : 'Chats',
+          );
+          await expect(state.getByRole('heading', { level: 2, name: setup.title })).toBeVisible();
           await expect(state.getByRole('link', { name: setup.action })).toHaveAttribute(
             'href',
             setup.href,
