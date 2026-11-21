@@ -147,6 +147,45 @@ test.describe('Settings › General', () => {
     await captureAtBothWidths(page, 'advanced settings open');
   });
 
+  test.describe('advanced settings touch reach', () => {
+    test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 900 } });
+
+    test('reaches both edges and leaves the first advanced control usable', async ({ page }) => {
+      await openGeneral(page);
+      const disclosure = page.getByRole('button', { name: 'Advanced', exact: true });
+      await disclosure.scrollIntoViewIfNeeded();
+      const hit = await disclosure.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const x = bounds.x + bounds.width / 2;
+        const y = bounds.y + bounds.height / 2;
+        const above = y - 21.5;
+        const below = y + 21.5;
+        return {
+          x,
+          above,
+          face: bounds.height,
+          reachesEdges: [above, below].map((target) =>
+            element.contains(document.elementFromPoint(x, target)),
+          ),
+        };
+      });
+      expect(hit.face).toBeLessThan(44);
+      expect(hit.reachesEdges).toEqual([true, true]);
+      await page.touchscreen.tap(hit.x, hit.above);
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      const decide = settingRow(page, 'tools.decide').getByRole('switch', { name: 'Decide' });
+      await decide.scrollIntoViewIfNeeded();
+      expect(
+        await decide.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2),
+          );
+        }),
+      ).toBe(true);
+    });
+  });
+
   test('reverted: Revert puts the waiting change back to the running value, with an Undo toast', async ({
     page,
   }) => {
