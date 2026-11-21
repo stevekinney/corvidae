@@ -22,6 +22,12 @@
     },
     {
       "kind": "panel",
+      "id": "inspectors:schedule-editor",
+      "version": "1.0.1",
+      "schema": "sha256:44cbb2a953211a29da9f429e16c791f2d5e4a053efabed7385738b79c54ce690"
+    },
+    {
+      "kind": "panel",
       "id": "inspectors:workflow-revision-review",
       "version": "1.0.1",
       "schema": "sha256:ac3860356c25c7ec275dcbe588705d9c1beb455612eda907e12c7fd10c2c1d4c"

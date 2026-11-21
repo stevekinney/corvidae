@@ -27,7 +27,7 @@
  *
  * @module panel-routes
  */
-import { HOST_PANEL_OPERATIONS } from '@lostgradient/bureau';
+import { HOST_PANEL_OPERATIONS, runAsHostPanel } from '@lostgradient/bureau';
 import { MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 
 import { MCP_APP_UI_META, type ServedPanel } from './panel-mounts.ts';
@@ -135,31 +135,35 @@ export function panelRoutes(apps: readonly ServedPanel[], refuse: Refuse, callBu
     // Preserve only authentication credentials for the in-process Bureau verifier. Never forward
     // caller-selected identity, workspace, cookies, origin or arbitrary headers.
     const mcpUrl = new URL(hostOnly ? '/jsonrpc' : '/mcp', request.url);
-    const answer = await callBureau(
-      new Request(mcpUrl, {
-        method: 'POST',
-        headers: {
-          accept: 'application/json, text/event-stream',
-          'content-type': 'application/json',
-          'mcp-protocol-version': MCP_LEGACY_PROTOCOL_VERSION,
-          ...Object.fromEntries(
-            ['authorization', 'x-api-key'].flatMap((header) => {
-              const value = request.headers.get(header);
-              return value === null ? [] : [[header, value]];
-            }),
-          ),
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: hostOnly ? name : 'tools/call',
-          params: hostOnly
-            ? Object.fromEntries(Object.entries(args))
-            : { name, arguments: Object.fromEntries(Object.entries(args)) },
-        }),
-        signal: request.signal,
+    const toBureau = new Request(mcpUrl, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': MCP_LEGACY_PROTOCOL_VERSION,
+        ...Object.fromEntries(
+          ['authorization', 'x-api-key'].flatMap((header) => {
+            const value = request.headers.get(header);
+            return value === null ? [] : [[header, value]];
+          }),
+        ),
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: hostOnly ? name : 'tools/call',
+        params: hostOnly
+          ? Object.fromEntries(Object.entries(args))
+          : { name, arguments: Object.fromEntries(Object.entries(args)) },
       }),
-    );
+      signal: request.signal,
+    });
+    // A host-only call names the panel it came through to the Bureau, for the audit trail
+    // (COR-2545). The URI is the host's own, read from the panel it served; it travels in the
+    // call's in-process scope and never in the request, so no client can name another panel's.
+    const answer = await (hostOnly
+      ? runAsHostPanel(app.uri, () => callBureau(toBureau))
+      : callBureau(toBureau));
     let result: Record<string, unknown> | undefined;
     try {
       const responseText = await answer.text();

@@ -35,3 +35,12 @@ export const WORKFLOW_REVISION_STYLES = `${BASE_STYLES}
 .revision-footer{display:flex;justify-content:flex-end;gap:var(--cinder-space-2)}
 @media (max-width:600px){.revision-columns{display:none}.revision-row{grid-template-columns:1fr}.revision-value--proposed{border-inline-start:2px dashed var(--cinder-border)}}
 `;
+
+/** The schedule editor's styles: the shared ones plus its list of schedules and its form. */
+export const SCHEDULE_EDITOR_STYLES = `${BASE_STYLES}
+.panel-actions{display:flex;flex-wrap:wrap;gap:var(--cinder-space-2);margin-top:var(--cinder-space-2)}
+.schedule-list{list-style:none;padding-inline-start:0}
+.schedule-list li{display:flex;align-items:center;justify-content:space-between;gap:var(--cinder-space-3);padding:var(--cinder-space-2) 0;border-top:1px solid var(--cinder-border-muted)}
+.schedule-list li span{min-width:0;overflow-wrap:anywhere}
+.schedule-form{display:flex;flex-direction:column;gap:var(--cinder-space-3);max-width:40rem}
+`;
