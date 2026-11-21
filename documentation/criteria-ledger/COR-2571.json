@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2571",
+  "branch": "steve/cor-2571-release-rehearsal",
+  "checkedAt": "d250269570a5be2b19b048fa0153a4b076e8ec73",
+  "briefVersion": "d78ec473ffc8",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Both workflow regression suites assert main-push SHA and 0.0.0-candidate.0 rehearsal inputs."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Each workflow is scoped to its own main push path; changing both paths selects both workflows once."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Publication and public registry jobs require workflow_dispatch, publish=true, protected main, and the existing pinned-SHA guard."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Focused checks passed with event-matrix and publication-guard regressions; coordinator owns post-merge provider receipts."
+    }
+  ]
+}
