@@ -2,7 +2,11 @@ import { faultWireAdvice } from '../fault-remediation.ts';
 import { extractFaultDataPayload } from '../fault-to-json-rpc.ts';
 import { wireSafeFault } from '../fault-wire-safety.ts';
 import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
-import { shapeRestFaultAsJson, type OperationFault } from '../operation-fault.ts';
+import {
+  shapeRestFaultAsJson,
+  type OperationFault,
+  type RestFaultResponseOptions,
+} from '../operation-fault.ts';
 import { decodeCursor, type Cursor } from '../sequence-cursor.ts';
 
 const textEncoder = new TextEncoder();
@@ -75,11 +79,14 @@ export function readServerSentEventsCursor(value: string | null): Cursor | undef
 }
 
 /** Shapes a fault into the response a Server-Sent Events route answers with. */
-export function shapeServerSentEventsFault(fault: OperationFault): Response {
+export function shapeServerSentEventsFault(
+  fault: OperationFault,
+  options: Pick<RestFaultResponseOptions, 'isKnownErrorCode'> = {},
+): Response {
   if (fault.code === 'InvalidParams' && fault.message === SSE_ACCEPT_REQUIRED_MESSAGE) {
-    return shapeRestFaultAsJson(fault, { status: 406 });
+    return shapeRestFaultAsJson(fault, { ...options, status: 406 });
   }
-  return shapeRestFaultAsJson(fault);
+  return shapeRestFaultAsJson(fault, options);
 }
 
 /** Format a single Server-Sent Events message. */
