@@ -230,11 +230,13 @@ function selectedTests(directory: string | undefined): string[] | undefined {
       version?: unknown;
       workspaces?: unknown;
     };
-    if (manifest.version !== 1 || record(manifest.workspaces) === undefined) return undefined;
-    const paths = Object.entries(manifest.workspaces).flatMap(([workspace, entry]) => {
-      const files = record(entry)?.['files'];
-      if (!Array.isArray(files) || !files.every((file) => typeof file === 'string')) return [];
-      return files.map((file) => (workspace === '.' ? file : `${workspace}/${file}`));
+    const workspaces = record(manifest.workspaces);
+    if (manifest.version !== 1 || workspaces === undefined) return undefined;
+    const paths = Object.entries(workspaces).flatMap(([workspace, entry]) => {
+      const selected = record(entry)?.['files'];
+      if (!Array.isArray(selected) || !selected.every((file) => typeof file === 'string'))
+        return [];
+      return selected.map((file) => (workspace === '.' ? file : `${workspace}/${file}`));
     });
     return paths.length === 0 ||
       paths.some((path) => !/^[A-Za-z0-9_./-]+\.(?:test|integration\.test)\.ts$/.test(path))
@@ -390,6 +392,7 @@ export function createCiEvidenceWorkflowReceipt(input: {
     : '';
   const attempt = requiredPositiveInteger(environment.GITHUB_RUN_ATTEMPT, 'GITHUB_RUN_ATTEMPT');
   const reportDirectory = environment.CI_EVIDENCE_ARTIFACT_DIRECTORY;
+  const selection = selectedTests(environment.CI_EVIDENCE_SELECTION_DIRECTORY);
   return {
     repository: environment.GITHUB_REPOSITORY,
     event,
@@ -417,13 +420,7 @@ export function createCiEvidenceWorkflowReceipt(input: {
             expectedArtifacts,
           ),
         }),
-    ...(event === 'pull_request'
-      ? {
-          ...(selectedTests(environment.CI_EVIDENCE_SELECTION_DIRECTORY) === undefined
-            ? {}
-            : { selectedTests: selectedTests(environment.CI_EVIDENCE_SELECTION_DIRECTORY) }),
-        }
-      : {}),
+    ...(event === 'pull_request' && selection !== undefined ? { selectedTests: selection } : {}),
   };
 }
 
