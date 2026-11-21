@@ -25,6 +25,7 @@ jobs:
           bun-version-file: package.json
       - shell: bash
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = 9a261ce1410ec609bdbdd83acde8522f698b717c
           bun install --frozen-lockfile
           bun run --cwd components/cinder metadata
