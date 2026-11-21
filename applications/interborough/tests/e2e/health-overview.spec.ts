@@ -17,7 +17,7 @@ import type { Page } from '@playwright/test';
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { answerRecentActivityAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BASE_URL, E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { touchHeight } from './hit-area.ts';
 import { readBoxes } from './read-boxes.ts';
@@ -228,7 +228,9 @@ test.describe('the sample world', () => {
   for (const width of [1280, 375] as const) {
     test(`engine runs in Health at ${width} pixels`, async ({ page, checkA11y }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/health/runs?type=order-processing');
+      // The showcase host owns Health's board data but has no engine run rows. The seeded engine
+      // host carries the real order-processing run this screen must make usable.
+      await page.goto(`${E2E_BASE_URL}/health/runs?type=order-processing`);
       const main = page.locator('main');
       const table = main.locator('table.weft-workflows-table');
       await expect(table.locator('tbody tr').first()).toBeVisible();
@@ -237,7 +239,7 @@ test.describe('the sample world', () => {
       await expect(main.getByRole('heading', { level: 2, name: 'Workflow runs' })).toBeVisible();
       await expectTabOpen(main, 'Runs');
       await expect(main.getByRole('button', { name: 'Live' })).toBeVisible();
-      await expect(main.getAllByRole('status', { name: /Connection/ })).toHaveCount(1);
+      await expect(main.getByRole('status', { name: /Connection/ })).toHaveCount(1);
       await expect(table.locator('tbody tr').first().getByRole('link')).toBeVisible();
 
       const scroller = main.locator('.cinder-table-scroll');

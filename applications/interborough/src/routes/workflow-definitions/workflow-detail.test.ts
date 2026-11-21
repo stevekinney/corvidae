@@ -1365,7 +1365,12 @@ describe('the links on a type’s page', () => {
     ]);
     await openTab(root, TABS.runs);
     clickEach([
-      ['/workflows/digest/runs', root.querySelector<HTMLAnchorElement>('a[href$="/runs"]')],
+      [
+        '/health/runs',
+        [...root.querySelectorAll<HTMLAnchorElement>('a')].find(
+          (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
+        ) ?? null,
+      ],
     ]);
   });
 });

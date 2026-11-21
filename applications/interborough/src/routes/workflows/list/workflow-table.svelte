@@ -140,7 +140,7 @@
   caption="Workflows"
   selectable={selectionEnabled}
   fit
-  stackBelow={stackTable ? undefined : false}
+  {...stackTable ? {} : { stackBelow: false }}
   class="weft-workflows-table"
 >
   <colgroup>

@@ -20,6 +20,7 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { timesShowIn } from '../../lib/format/clock.ts';
+import { FleetEventSource } from '../../lib/live-source/fleet-event-source.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
   forbiddenVisibleText,
@@ -129,6 +130,7 @@ function open(
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: AUTHORIZATION_SCOPES,
+      fleetEvents: new FleetEventSource({ baseUrl: 'http://weft.test' }),
     },
   } as never);
 }
@@ -206,7 +208,7 @@ describe('loading (rows 76w and 76x)', () => {
     const view = await openHanging();
     advance(299);
     expect(view.getByRole('heading', { level: 1, name: 'Health' })).not.toBeNull();
-    expect(view.getAllByRole('tab')).toHaveLength(4);
+    expect(view.getAllByRole('tab')).toHaveLength(5);
     expect(view.queryByTestId('needs-attention')).toBeNull();
     expect(view.queryByRole('group', { name: 'Health counts' })).toBeNull();
     expect(view.container.querySelector('.cinder-skeleton')).toBeNull();
