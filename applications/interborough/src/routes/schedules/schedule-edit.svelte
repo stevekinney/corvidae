@@ -121,8 +121,9 @@
           onclick={(event) => {
             event.preventDefault();
             router.navigate(workflowEditPath(kind.file.id));
-          }}>{SCHEDULE_COPY.editWorkflowAction}</Button
-        >
+          }}
+          label={SCHEDULE_COPY.editWorkflowAction}
+        />
       </Alert>
     {/if}
   </section>

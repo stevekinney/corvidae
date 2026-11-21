@@ -422,7 +422,7 @@ describe('every view, in every state', () => {
       const { requests } = stub(view, 'content');
       const { container, unmount } = mount(view, { scopes: [] });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain('See your scopes');
+      expect(container.textContent).toContain('Back to Home');
       for (const scope of VIEWS[view].scopes) expect(container.textContent).not.toContain(scope);
       expect(requests).toEqual([]);
       unmount();
@@ -461,7 +461,7 @@ describe('the Health view', () => {
     const { requests } = stub('health', 'content');
     const { container } = mount('health', { scopes: ['schedules:read'] });
     expect(frame(container).dataset['state']).toBe('forbidden');
-    expect(container.textContent).toContain('See your scopes');
+    expect(container.textContent).toContain('Back to Home');
     expect(container.textContent).not.toContain('system:read');
     expect(container.textContent).not.toContain('workflows:read');
     expect(requests).toEqual([]);
@@ -993,7 +993,7 @@ describe('the Workflows area', () => {
       const stub = world();
       const { container } = mount('workflows', { scopes: [], parameters, pattern });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain('See your scopes');
+      expect(container.textContent).toContain('Back to Home');
       expect(container.textContent).not.toContain('workflows:read');
       expect(stub.calls).toEqual([]);
     });

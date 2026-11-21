@@ -61,8 +61,9 @@
       variant="secondary"
       size="sm"
       disabled={restart.running}
-      onclick={() => (confirming = true)}>{copy.enable}</Button
-    >
+      onclick={() => (confirming = true)}
+      label={copy.enable}
+    />
   {/snippet}
 </Banner>
 

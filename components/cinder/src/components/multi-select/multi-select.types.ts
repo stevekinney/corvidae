@@ -69,6 +69,12 @@ export type MultiSelectProps<T extends string = string> = {
    * @default "md"
    */
   size?: 'sm' | 'md' | 'lg';
+  /**
+   * `filled` draws the trigger on the inset surface with a 12px radius. Under comfortable density,
+   * an unset appearance uses the same filled treatment and a 48px medium control; `outlined`
+   * opts out of that density default.
+   */
+  appearance?: 'outlined' | 'filled';
   /** Additional class names merged with `.cinder-multi-select`. */
   class?: string;
   /** External id(s) composed into aria-describedby. */

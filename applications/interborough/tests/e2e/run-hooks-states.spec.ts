@@ -275,7 +275,7 @@ for (const width of WIDTHS) {
       await checkA11y(`run hooks, failing, at ${width}px`);
     });
 
-    test('a read that was refused is an inline access gate with the scope in monospace and only See your scopes (C3-17)', async ({
+    test('a refused read explains the inline access gate and leaves the rest of the run reachable (C3-17, COR-2451)', async ({
       page,
       pageErrors,
       checkA11y,
@@ -290,9 +290,8 @@ for (const width of WIDTHS) {
       const body = section(page);
       await expect(body).toContainText('Your sign-in can’t see this run’s hooks');
       await expect(body).toContainText('requires runs:read');
-      await expect(body.getByRole('link', { name: 'See your scopes' })).toContainClass(
-        'button-variant-secondary',
-      );
+      await expect(body).toContainText('The rest of the run is still available.');
+      await expect(body.getByRole('link')).toHaveCount(0);
       await expect(body.getByRole('button')).toHaveCount(0);
       await captured(page, 'forbidden');
       await checkA11y(`run hooks, refused, at ${width}px`);

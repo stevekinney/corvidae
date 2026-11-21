@@ -533,7 +533,7 @@
       <Check aria-hidden="true" size={18} />
       <span>{REVIEWS_COPY.noLongerWaiting.message}</span>
     </p>
-    <Button variant="primary" onclick={openNext}>{REVIEWS_COPY.noLongerWaiting.next}</Button>
+    <Button variant="primary" onclick={openNext} label={REVIEWS_COPY.noLongerWaiting.next} />
   </div>
 {/snippet}
 

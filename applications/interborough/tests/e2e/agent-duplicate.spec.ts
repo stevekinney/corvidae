@@ -112,7 +112,21 @@ for (const width of WIDTHS) {
     checkA11y,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(`/agents/${encodeURIComponent(SOURCE)}`);
+    await page.goto(`/agents/${encodeURIComponent(SOURCE)}/instructions`);
+    const header = page.locator('main .cinder-page-header');
+    const duplicate = header.getByRole('button', { name: words.duplicate });
+    await expect(duplicate).toHaveAttribute('data-cinder-icon-only', '');
+    await expect(duplicate).toContainClass('button-variant-secondary');
+    const primary = header.locator('.button-variant-primary');
+    await expect(primary).toHaveCount(1);
+    await expect(primary).toHaveText('New chat');
+    await duplicate.hover();
+    await expect(page.getByRole('tooltip', { name: words.duplicate })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/agents/:agent',
+      state: 'labeled primary and duplicate tooltip',
+      source: 'agent-duplicate.spec.ts',
+    });
     await page.getByRole('button', { name: words.duplicate }).click();
 
     const dialog = page.getByRole('dialog');

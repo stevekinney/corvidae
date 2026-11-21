@@ -10,6 +10,7 @@
    * the Bureau's record of its trigger, result and error.
    */
   import {
+    Alert,
     Badge,
     Button,
     Collapsible,
@@ -19,7 +20,6 @@
     VisuallyHidden,
   } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { CircleX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
@@ -252,14 +252,10 @@
      the step that failed (`failureOnStep`) is told there instead. -->
 {#snippet failure()}
   {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
-    <div class="weft-overview-tab__failure" data-run-failure>
-      <div class="weft-overview-tab__failure-title">
-        <CircleX aria-hidden="true" size={18} />
-        <span>Failed</span>
-        {#if workflow.failureCategory !== undefined}
-          <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
-        {/if}
-      </div>
+    <Alert variant="danger" class="weft-overview-tab__failure" data-run-failure heading="Failed">
+      {#if workflow.failureCategory !== undefined}
+        <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
+      {/if}
       {#if workflow.failureCategory !== undefined}
         <p class="weft-overview-tab__failure-explanation">
           {failureCategoryExplanation(workflow.failureCategory)}
@@ -276,7 +272,7 @@
           <pre class="weft-send-tab__result">{errorStack}</pre>
         </Collapsible>
       {/if}
-    </div>
+    </Alert>
   {:else if task !== undefined && workflow === undefined && task.status === 'failed' && bureauFailure !== ''}
     <!-- A run only the Bureau holds says why in its own words, here and not only in the rail, which
          sits under everything on a phone (COR-2489). -->

@@ -269,8 +269,9 @@
                 size="sm"
                 data-changes
                 disabled={retrying.isPending}
-                onclick={() => retrying.mutate(delivery)}>{copy.retryNow}</Button
-              >
+                onclick={() => retrying.mutate(delivery)}
+                label={copy.retryNow}
+              />
             </p>
           {/if}
         </li>

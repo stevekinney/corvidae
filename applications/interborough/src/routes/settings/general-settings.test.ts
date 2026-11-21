@@ -10,6 +10,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import { SETTINGS_COPY } from '../../app/copy/settings.ts';
 import { KeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
@@ -189,6 +190,30 @@ describe('the page', () => {
     expect(renew?.textContent).toContain(
       'How often a worker renews its claim on a running workflow. Shorter intervals recover from a crashed worker sooner.',
     );
+  });
+
+  test('keeps every General label while omitting configuration identifiers on a phone', async () => {
+    const view = open(servedSettings());
+    await view.findByRole('group', READY);
+    await waitFor(() => expect(row(view.container, 'storage.backend')).not.toBeNull());
+    const testWindow = window;
+    if (!(testWindow instanceof Window)) throw new Error('expected a happy-dom test window');
+    try {
+      for (const width of [320, 375]) {
+        testWindow.happyDOM.setViewport({ width, height: 800 });
+        await waitFor(() =>
+          expect(view.container.querySelectorAll('.cinder-setting-row__identifier')).toHaveLength(
+            0,
+          ),
+        );
+        expect(row(view.container, 'tools.humanInput')?.textContent).toContain('Human input');
+        expect(row(view.container, 'engine.maxConcurrentRuns')?.textContent).toContain(
+          'Max concurrent runs',
+        );
+      }
+    } finally {
+      testWindow.happyDOM.setViewport({ width: 1024, height: 768 });
+    }
   });
 
   test('lists Max concurrent runs second under Runs, counted in runs', async () => {
