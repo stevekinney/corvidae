@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2542",
+  "branch": "worktree-agent-a8024d4f41b6e06c6",
+  "checkedAt": "9ed6a9cddc84bbac7b06ac5e76967645fdea7402",
+  "briefVersion": "eff9351798b3",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "ui://inspectors/run-timeline/v1 in plugins/inspectors/src/plugin.ts; model.ts lays bars out with stepWaterfall from @lostgradient/interborough-plugin/step-waterfall; model.test.ts proves the rows equal stepWaterfall's bars and say status, duration and tries; timeline.test.ts renders them; focused checks exit 0 at 9ed6a9cddc."
+    },
+    {
+      "id": "AC2",
+      "status": "needs-decision",
+      "evidence": "Met: placements [{kind:'run'}] puts it on the run page (the run page opens it with {taskId}, which the panel reads) and opensFromTool is bureau.runs.timeline for an MCP host. Not met: Chat opens a panel only through a chat-tool placement naming an agent tool id (chatToolPanelFor), and no agent tool wraps bureau.runs.timeline; bureau:workflows-runs-history serves a different projection. Recommendation: owner chooses between a chat-tool placement on bureau:workflows-runs-history (the panel reads the timeline by the runId in the call's arguments and ignores the history result; workflow runs only) and a new agent tool over the timeline read."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "allowedTools is ['bureau.runs.timeline']; plugin.test.ts scans every non-test source in run-timeline/ and asserts the set of bureau.* names equals allowedTools; focused checks exit 0."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "plugins/inspectors/plugin-identities.json holds inspectors:run-timeline; bun scripts/check-plugin-identities.ts exit 0; the other three entries' hashes are unchanged."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "plugins/inspectors/README.md panel table row and packages/bureau/README.md resource row and a run-timeline column in Panels by host, both external-host cells 'Not yet recorded'; prettier passes in focused checks."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "The spec exists, its passing is NOT verified: applications/interborough/tests/panels/run-timeline.spec.ts renders the panel for a fixture run in the sandboxed reference host; written and typechecked but not run on this host (owner decision: no browser suites); CI on the pushed branch is the evidence."
+    }
+  ]
+}
