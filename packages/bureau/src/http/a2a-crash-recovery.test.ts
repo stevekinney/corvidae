@@ -446,6 +446,26 @@ describe('a command retried after a crash before its receipt, on a process that 
       expect(state).toBe('applied');
     });
   });
+
+  it('input: still reports applied when retried after its task has completed', async () => {
+    const run = gated();
+    await withService(run.generate, async (service) => {
+      const started = await service.send(userMessage('m-start', 'start'));
+      const input = userMessage('m-input', 'also this', started.id, {});
+      service.crashNextComplete();
+      await rejectionOf(service.send(input));
+      service.restart();
+      await service.send(input);
+
+      run.release();
+      await waitForCondition(async () => {
+        const view = await service.bureau.internals.taskRegistry.get(started.id);
+        return view?.status === 'completed';
+      }, 'the task never completed');
+      const again = await service.send(input);
+      expect(receiptOf(again).receipt.state).toBe('applied');
+    });
+  });
 });
 
 describe('a completed task’s reply, after a restart that pruned its history', () => {
