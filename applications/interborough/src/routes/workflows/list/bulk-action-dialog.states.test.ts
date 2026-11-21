@@ -1,6 +1,6 @@
 import { requireElement } from '../../../../tests/dom.test-support.ts';
 
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
@@ -47,17 +47,12 @@ function footerButtonNames(): (string | undefined)[] {
   );
 }
 
-async function typeAndConfirm(
-  view: Pick<ReturnType<typeof render>, 'getByLabelText' | 'getByRole'>,
-  label: string,
-  phrase: string,
-  button: string,
-): Promise<void> {
+async function typeAndConfirm(label: string, phrase: string, button: string): Promise<void> {
   await waitFor(() => {
-    expect(view.getByLabelText(label)).not.toBeNull();
+    expect(screen.getByLabelText(label)).not.toBeNull();
   });
-  await fireEvent.input(view.getByLabelText(label), { target: { value: phrase } });
-  await fireEvent.click(view.getByRole('button', { name: button }));
+  await fireEvent.input(screen.getByLabelText(label), { target: { value: phrase } });
+  await fireEvent.click(screen.getByRole('button', { name: button }));
 }
 
 describe('the footer is present in every phase', () => {
@@ -203,7 +198,7 @@ describe('every fault is one callout with its re-run action in the same slot', (
         onClose: () => {},
       },
     });
-    await typeAndConfirm(view, ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
+    await typeAndConfirm(ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
     await waitFor(() => {
       expect(view.getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
     });
@@ -228,7 +223,7 @@ describe('every fault is one callout with its re-run action in the same slot', (
         onClose: () => {},
       },
     });
-    await typeAndConfirm(view, ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
+    await typeAndConfirm(ACTION_PHRASE, 'cancel 47 workflows', 'Cancel 47 workflows');
     await waitFor(() => {
       expect(view.getByRole('button', { name: 'Retry' })).not.toBeNull();
     });
@@ -250,7 +245,7 @@ describe('every fault is one callout with its re-run action in the same slot', (
         onClose: () => {},
       },
     });
-    await typeAndConfirm(view, PURGE_PHRASE, 'purge 47 workflows', 'Purge 47 workflows');
+    await typeAndConfirm(PURGE_PHRASE, 'purge 47 workflows', 'Purge 47 workflows');
     await waitFor(() => {
       expect(view.getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
     });
@@ -274,7 +269,7 @@ describe('every fault is one callout with its re-run action in the same slot', (
         onClose: () => {},
       },
     });
-    await typeAndConfirm(view, PURGE_PHRASE, 'purge 47 workflows', 'Purge 47 workflows');
+    await typeAndConfirm(PURGE_PHRASE, 'purge 47 workflows', 'Purge 47 workflows');
     await waitFor(() => {
       expect(view.getByRole('button', { name: 'Refresh preview' })).not.toBeNull();
     });

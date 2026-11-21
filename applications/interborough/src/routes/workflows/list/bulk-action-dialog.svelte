@@ -343,8 +343,9 @@
 <ConfirmDialog
   bind:open={isOpen, stayMounted}
   {title}
-  description={showsDescription ? phaseDescription : undefined}
-  options={showsOptions ? phaseOptions : undefined}
+  {...showsDescription ? { description: phaseDescription } : {}}
+  {...showsOptions ? { options: phaseOptions } : {}}
+  {...hasMatches ? { typeToConfirm: phrase } : {}}
   {confirmLabel}
   destructive={destructive && phase !== 'params'}
   confirmEnabled={phase !== 'params' || parametersValid}
@@ -353,7 +354,6 @@
   pending={phase === 'loading'}
   pendingLabel={loadingLabel}
   busy={phase === 'committing'}
-  typeToConfirm={hasMatches ? phrase : undefined}
   error={fault?.body}
   errorTitle={fault?.title}
   errorTone={fault?.tone ?? 'danger'}

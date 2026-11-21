@@ -80,7 +80,7 @@
   {runDryRun}
   runCommit={runPurge}
   {onClose}
-  {onSuccess}
+  {...onSuccess ? { onSuccess } : {}}
   {lead}
   {details}
   loadingLabel={BULK_PURGE_COPY.loading}
