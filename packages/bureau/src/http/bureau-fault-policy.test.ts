@@ -477,6 +477,28 @@ describe('the real operations, in strict mode', () => {
   });
 });
 
+describe('a BureauError message a caller reads', () => {
+  // The policy sends a BureauError’s message to the caller (COR-2518), so it is never built from
+  // an engine error’s own description, which names internals; that goes to the operator’s log.
+  it('is never an engine error’s own description or reason', async () => {
+    const sourceDirectory = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const fromEngineText =
+      /new BureauError\(\s*(?:describeError\(|serializeUnknownError\(|[\w.]+\.reason\s*,|String\(\s*error\s*\)|error\.message\s*,)/g;
+    const offences: string[] = [];
+    let scanned = 0;
+    for await (const path of new Glob('**/*.ts').scan({ cwd: sourceDirectory, absolute: true })) {
+      if (/\.test(-support)?\.ts$/.test(path)) continue;
+      scanned += 1;
+      const text = await readFile(path, 'utf8');
+      for (const match of text.matchAll(fromEngineText)) {
+        offences.push(`${relative(sourceDirectory, path)}: ${match[0]}`);
+      }
+    }
+    expect(scanned).toBeGreaterThan(100);
+    expect(offences).toEqual([]);
+  });
+});
+
 describe('a BureauError message the Weft fallback used to read', () => {
   // Weft's message fallback turned a pass-through message containing "not found", "already
   // exists" or "timeout" into `NotFound`, `Conflict` or `Timeout`. No Bureau error is raised with
