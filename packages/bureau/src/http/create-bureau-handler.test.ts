@@ -1,14 +1,11 @@
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
 import {
   createAgent,
   ScheduleAttemptedEvent,
   SessionCreatedEvent,
   SteeringAcceptedEvent,
 } from '@lostgradient/operative';
-import {
-  AUTHORIZATION_SCOPES,
-  type OperationHandlerMount,
-  principalFromApiKey,
-} from '@lostgradient/backchannel';
+import { type OperationHandlerMount, principalFromApiKey } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from '../assets/storage';

@@ -37,6 +37,7 @@ export interface ForkPreviewStep {
  * ```
  */
 export interface ForkPreview {
+  /** Identifies a preview that did not create a workflow. */
   dryRun: true;
   /** The run that would be forked. */
   workflowId: WorkflowId;

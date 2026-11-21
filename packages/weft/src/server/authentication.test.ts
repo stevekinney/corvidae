@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 
 import {
   type AuthAuditEvent,
@@ -341,10 +342,13 @@ describe('JWT verification', () => {
 
 describe('createAuthenticator — API keys', () => {
   it('accepts a valid API key via Authorization Bearer header', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -359,10 +363,13 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('accepts a valid API key via X-API-Key header', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -377,10 +384,13 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('prefers X-API-Key header over Authorization Bearer', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY, 'other-key'],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY, 'other-key'],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -393,10 +403,13 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('rejects an invalid API key', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -408,10 +421,13 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('rejects a request with no credentials', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('http://localhost/v1/workflows'));
 
@@ -422,10 +438,13 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('deep-freezes default API key scopes while preserving ReadonlySet iteration helpers', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read', 'workflows:write'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read', 'workflows:write'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -485,7 +504,9 @@ describe('createAuthenticator — API keys', () => {
 describe('createAuthenticator — JWT', () => {
   it('accepts a valid JWT via Authorization Bearer header', async () => {
     const config: AuthConfig = { jwt: { secret: TEST_SECRET } };
-    const authenticate = await createAuthenticator(config);
+    const authenticate = await createAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
     const token = await signJWT({ sub: 'user-1' }, TEST_SECRET);
 
     const result = await authenticate(
@@ -503,7 +524,9 @@ describe('createAuthenticator — JWT', () => {
 
   it('rejects an expired JWT', async () => {
     const config: AuthConfig = { jwt: { secret: TEST_SECRET, clockTolerance: 0 } };
-    const authenticate = await createAuthenticator(config);
+    const authenticate = await createAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
     const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
     const token = await signJWT({ sub: 'user-1', exp: pastExpiry }, TEST_SECRET);
 
@@ -518,7 +541,9 @@ describe('createAuthenticator — JWT', () => {
 
   it('rejects a JWT signed with the wrong secret', async () => {
     const config: AuthConfig = { jwt: { secret: TEST_SECRET } };
-    const authenticate = await createAuthenticator(config);
+    const authenticate = await createAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
     const token = await signJWT({ sub: 'user-1' }, 'completely-different-secret-string!');
 
     const result = await authenticate(
@@ -542,7 +567,9 @@ describe('createAuthenticator — combined methods', () => {
       defaultApiKeyScopes: ['workflows:read'],
       jwt: { secret: TEST_SECRET },
     };
-    const authenticate = await createAuthenticator(config);
+    const authenticate = await createAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -562,7 +589,9 @@ describe('createAuthenticator — combined methods', () => {
       defaultApiKeyScopes: ['workflows:read'],
       jwt: { secret: TEST_SECRET },
     };
-    const authenticate = await createAuthenticator(config);
+    const authenticate = await createAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
     const token = await signJWT({ sub: 'user-1' }, TEST_SECRET);
 
     const result = await authenticate(
@@ -583,7 +612,9 @@ describe('createAuthenticator — combined methods', () => {
       defaultApiKeyScopes: ['workflows:read'],
       jwt: { secret: TEST_SECRET },
     };
-    const authenticate = await createAuthenticator(config);
+    const authenticate = await createAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -601,10 +632,13 @@ describe('createAuthenticator — combined methods', () => {
 
 describe('createAuthenticator — public paths', () => {
   it('bypasses authentication for /v1/health by default', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('http://localhost/v1/health'));
 
@@ -615,10 +649,13 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('bypasses authentication for /v1/metrics by default', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('http://localhost/v1/metrics'));
 
@@ -629,10 +666,13 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('bypasses authentication for /openapi.json by default', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('http://localhost/openapi.json'));
 
@@ -643,10 +683,13 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('bypasses authentication for /openrpc.json by default', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('http://localhost/openrpc.json'));
 
@@ -657,11 +700,14 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('uses custom public paths when provided', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-      publicPaths: ['/v1/health', '/v1/custom'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+        publicPaths: ['/v1/health', '/v1/custom'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const healthResult = await authenticate(makeRequest('http://localhost/v1/health'));
     expect(healthResult.authenticated).toBe(true);
@@ -675,10 +721,13 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('requires authentication for non-public paths', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('http://localhost/v1/workflows'));
     expect(result.authenticated).toBe(false);
@@ -693,7 +742,7 @@ describe('createAuthenticator — mTLS', () => {
   it('authenticates via mTLS when the transport attests that it verified the client certificate', async () => {
     const authenticate = await createAuthenticator(
       { mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' } },
-      { transportVerifiesClientCertificates: true },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, transportVerifiesClientCertificates: true },
     );
 
     // serve()'s enforcing listener refused every connection without a verified certificate
@@ -706,11 +755,14 @@ describe('createAuthenticator — mTLS', () => {
   });
 
   it('tries API key and JWT before falling through to mTLS', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-      mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+        mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     // With a valid API key, the method should be 'api-key', not 'mtls'
     const result = await authenticate(
@@ -726,11 +778,14 @@ describe('createAuthenticator — mTLS', () => {
   });
 
   it('rejects invalid API key even when mTLS is also configured', async () => {
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-      mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
-    });
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+        mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -742,10 +797,13 @@ describe('createAuthenticator — mTLS', () => {
   });
 
   it('rejects invalid JWT even when mTLS is also configured', async () => {
-    const authenticate = await createAuthenticator({
-      jwt: { secret: TEST_SECRET, clockTolerance: 0 },
-      mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
-    });
+    const authenticate = await createAuthenticator(
+      {
+        jwt: { secret: TEST_SECRET, clockTolerance: 0 },
+        mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
     const token = await signJWT({ sub: 'user-1', exp: pastExpiry }, TEST_SECRET);
@@ -759,10 +817,13 @@ describe('createAuthenticator — mTLS', () => {
   });
 
   it('rejects non-JWT Bearer token even when mTLS is also configured', async () => {
-    const authenticate = await createAuthenticator({
-      jwt: { secret: TEST_SECRET },
-      mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
-    });
+    const authenticate = await createAuthenticator(
+      {
+        jwt: { secret: TEST_SECRET },
+        mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     // A Bearer token without dots is not a JWT — still counts as explicit auth
     const result = await authenticate(
@@ -781,7 +842,7 @@ describe('createAuthenticator — mTLS', () => {
         defaultApiKeyScopes: ['workflows:read'],
         mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
       },
-      { transportVerifiesClientCertificates: true },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, transportVerifiesClientCertificates: true },
     );
 
     // No auth headers — should fall through to mTLS
@@ -801,7 +862,7 @@ describe('createAuthenticator — mTLS', () => {
         auditSink: (event) => auditEvents.push(event),
       },
       // serve() never attests a listener that admits unverified clients.
-      { transportVerifiesClientCertificates: false },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, transportVerifiesClientCertificates: false },
     );
 
     const result = await authenticate(makeRequest('https://localhost/v1/workflows'));
@@ -811,9 +872,12 @@ describe('createAuthenticator — mTLS', () => {
   });
 
   it('rejects a certificate-less request when no listener attests verification (TLS terminated elsewhere)', async () => {
-    const authenticate = await createAuthenticator({
-      mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
-    });
+    const authenticate = await createAuthenticator(
+      {
+        mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('https://localhost/v1/workflows'));
 
@@ -822,18 +886,21 @@ describe('createAuthenticator — mTLS', () => {
 
   it('authenticates via mTLS when verifyClientCertificate confirms a verified certificate', async () => {
     const seen: Request[] = [];
-    const authenticate = await createAuthenticator({
-      mtls: {
-        ca: 'ca-pem',
-        cert: 'cert-pem',
-        key: 'key-pem',
-        rejectUnauthorized: false,
-        verifyClientCertificate: async (request) => {
-          seen.push(request);
-          return request.headers.get('X-Client-Certificate-Verified') === 'SUCCESS';
+    const authenticate = await createAuthenticator(
+      {
+        mtls: {
+          ca: 'ca-pem',
+          cert: 'cert-pem',
+          key: 'key-pem',
+          rejectUnauthorized: false,
+          verifyClientCertificate: async (request) => {
+            seen.push(request);
+            return request.headers.get('X-Client-Certificate-Verified') === 'SUCCESS';
+          },
         },
       },
-    });
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const verified = await authenticate(
       makeRequest('http://localhost/v1/workflows', { 'X-Client-Certificate-Verified': 'SUCCESS' }),
@@ -855,7 +922,7 @@ describe('createAuthenticator — mTLS', () => {
           verifyClientCertificate: () => false,
         },
       },
-      { transportVerifiesClientCertificates: true },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, transportVerifiesClientCertificates: true },
     );
 
     const result = await authenticate(makeRequest('https://localhost/v1/workflows'));
@@ -865,15 +932,18 @@ describe('createAuthenticator — mTLS', () => {
 
   it('admits mTLS only when the verifier returns a literal true', async () => {
     for (const truthy of ['false', 'FAILURE', 1, {}]) {
-      const authenticate = await createAuthenticator({
-        mtls: {
-          ca: 'ca-pem',
-          cert: 'cert-pem',
-          key: 'key-pem',
-          // An untyped host can hand back a non-boolean truthy value.
-          verifyClientCertificate: () => truthy as unknown as boolean,
+      const authenticate = await createAuthenticator(
+        {
+          mtls: {
+            ca: 'ca-pem',
+            cert: 'cert-pem',
+            key: 'key-pem',
+            // An untyped host can hand back a non-boolean truthy value.
+            verifyClientCertificate: () => truthy as unknown as boolean,
+          },
         },
-      });
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+      );
 
       const result = await authenticate(makeRequest('https://localhost/v1/workflows'));
 
@@ -882,16 +952,19 @@ describe('createAuthenticator — mTLS', () => {
   });
 
   it('treats a throwing verifier as unverified instead of rejecting the authenticate call', async () => {
-    const authenticate = await createAuthenticator({
-      mtls: {
-        ca: 'ca-pem',
-        cert: 'cert-pem',
-        key: 'key-pem',
-        verifyClientCertificate: () => {
-          throw new Error('verifier unavailable');
+    const authenticate = await createAuthenticator(
+      {
+        mtls: {
+          ca: 'ca-pem',
+          cert: 'cert-pem',
+          key: 'key-pem',
+          verifyClientCertificate: () => {
+            throw new Error('verifier unavailable');
+          },
         },
       },
-    });
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('https://localhost/v1/workflows'));
 
@@ -900,19 +973,22 @@ describe('createAuthenticator — mTLS', () => {
 
   it('does not consult the verifier when an explicit credential was presented and rejected', async () => {
     let verifierCalls = 0;
-    const authenticate = await createAuthenticator({
-      apiKeys: [TEST_API_KEY],
-      defaultApiKeyScopes: ['workflows:read'],
-      mtls: {
-        ca: 'ca-pem',
-        cert: 'cert-pem',
-        key: 'key-pem',
-        verifyClientCertificate: () => {
-          verifierCalls += 1;
-          return true;
+    const authenticate = await createAuthenticator(
+      {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+        mtls: {
+          ca: 'ca-pem',
+          cert: 'cert-pem',
+          key: 'key-pem',
+          verifyClientCertificate: () => {
+            verifierCalls += 1;
+            return true;
+          },
         },
       },
-    });
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', { Authorization: 'Bearer wrong-key' }),
@@ -939,20 +1015,29 @@ describe('createAuthenticator — no admission without positive evidence', () =>
   > = {
     'api-key': async () =>
       (
-        await createAuthenticator({
-          apiKeys: [TEST_API_KEY],
-          defaultApiKeyScopes: ['workflows:read'],
-        })
+        await createAuthenticator(
+          {
+            apiKeys: [TEST_API_KEY],
+            defaultApiKeyScopes: ['workflows:read'],
+          },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        )
       )(makeRequest('http://localhost/v1/workflows', { 'X-API-Key': 'not-the-key' })),
     jwt: async () =>
-      (await createAuthenticator({ jwt: { secret: TEST_SECRET } }))(
-        makeRequest('http://localhost/v1/workflows', { Authorization: 'Bearer a.b.c' }),
-      ),
+      (
+        await createAuthenticator(
+          { jwt: { secret: TEST_SECRET } },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        )
+      )(makeRequest('http://localhost/v1/workflows', { Authorization: 'Bearer a.b.c' })),
     mtls: async () =>
       (
-        await createAuthenticator({
-          mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem', rejectUnauthorized: false },
-        })
+        await createAuthenticator(
+          {
+            mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem', rejectUnauthorized: false },
+          },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        )
       )(makeRequest('https://localhost/v1/workflows')),
   };
 
@@ -964,7 +1049,10 @@ describe('createAuthenticator — no admission without positive evidence', () =>
   }
 
   it('does not report jwt when no bearer token is presented', async () => {
-    const authenticate = await createAuthenticator({ jwt: { secret: TEST_SECRET } });
+    const authenticate = await createAuthenticator(
+      { jwt: { secret: TEST_SECRET } },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const result = await authenticate(makeRequest('http://localhost/v1/workflows'));
 

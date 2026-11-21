@@ -45,42 +45,45 @@
 </script>
 
 <div class="ib-a2a-calls" data-section="recent-calls">
-  <FormSection grouped heading={copy.heading}>
-    {#if calls.data === undefined && calls.isError}
-      <ErrorState
-        headingLevel={3}
-        title={copy.loadFailed.title}
-        description={copy.loadFailed.description}
-        retryLabel={copy.retry}
-        onRetry={() => void calls.refetch()}
-        data-testid="a2a-calls-failed"
-      />
-    {:else if calls.data === undefined}
-      <div role="status" aria-busy="true" aria-label={copy.loading}>
-        <Skeleton height="1.25rem" width="60%" />
-        <Skeleton height="1.25rem" />
-      </div>
-    {:else if calls.data.length === 0}
-      <EmptyState
-        kind="first-use"
-        size="compact"
-        headingLevel={3}
-        title={copy.empty.title}
-        description={copy.empty.description}
-        data-testid="a2a-calls-empty"
-      >
-        {#snippet icon()}<Activity size={16} aria-hidden="true" />{/snippet}
-      </EmptyState>
-    {:else}
-      {#each calls.data as call (call.taskId)}
-        <div class="ib-a2a-call" data-task={call.taskId} data-testid="a2a-call">
-          <RelativeTime date={call.at} format="absolute" class="ib-a2a-call__when" />
-          <span class="ib-a2a-call__caller" title={call.principal}>{copy.caller(call)}</span>
-          <span class="ib-a2a-call__agent">{copy.answeredBy(agentName(call.agent))}</span>
+  {#if calls.data !== undefined && calls.data.length === 0}
+    <!-- The state alone, in no grouped box and with no "Recent calls" heading above it saying the
+    same thing (owner report, 2026-11-19). -->
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title={copy.empty.title}
+      description={copy.empty.description}
+      data-testid="a2a-calls-empty"
+    >
+      {#snippet icon()}<Activity aria-hidden="true" />{/snippet}
+    </EmptyState>
+  {:else}
+    <FormSection grouped heading={copy.heading}>
+      {#if calls.data === undefined && calls.isError}
+        <ErrorState
+          headingLevel={3}
+          title={copy.loadFailed.title}
+          description={copy.loadFailed.description}
+          retryLabel={copy.retry}
+          onRetry={() => void calls.refetch()}
+          data-testid="a2a-calls-failed"
+        />
+      {:else if calls.data === undefined}
+        <div role="status" aria-busy="true" aria-label={copy.loading}>
+          <Skeleton height="1.25rem" width="60%" />
+          <Skeleton height="1.25rem" />
         </div>
-      {/each}
-    {/if}
-  </FormSection>
+      {:else}
+        {#each calls.data as call (call.taskId)}
+          <div class="ib-a2a-call" data-task={call.taskId} data-testid="a2a-call">
+            <RelativeTime date={call.at} format="absolute" class="ib-a2a-call__when" />
+            <span class="ib-a2a-call__caller" title={call.principal}>{copy.caller(call)}</span>
+            <span class="ib-a2a-call__agent">{copy.answeredBy(agentName(call.agent))}</span>
+          </div>
+        {/each}
+      {/if}
+    </FormSection>
+  {/if}
 </div>
 
 <style>

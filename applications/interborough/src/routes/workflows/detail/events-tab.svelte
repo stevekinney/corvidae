@@ -54,6 +54,7 @@
     ConnectionIndicator,
     Dropdown,
     Collapsible,
+    EmptyState,
     Feed,
     type FeedConnectionState,
     JsonViewer,
@@ -272,7 +273,16 @@
     </Dropdown>
   </div>
 
-  {#if connectionState === undefined}
+  {#if !eventsQuery.isPending && streamEvents.length === 0}
+    <!-- Cinder's one empty state, in place of an empty log (owner report, 2026-11-19). -->
+    <EmptyState
+      kind="first-use"
+      headingLevel={3}
+      title="No events yet"
+      description="This run’s events show up here as they happen."
+      data-testid="events-empty"
+    />
+  {:else if connectionState === undefined}
     <Feed kind="log" loading={eventsQuery.isPending} label="Workflow events">
       {@render streamEntries()}
     </Feed>
@@ -294,9 +304,6 @@
       {/if}
     </Feed.Event>
   {/each}
-  {#if !eventsQuery.isPending && streamEvents.length === 0}
-    <li class="weft-events-tab__empty"><span role="status">No events to display.</span></li>
-  {/if}
 {/snippet}
 
 <style>
@@ -317,13 +324,5 @@
      (EventStreamViewer's built-ins are gone) — keep them compact and muted. */
   .weft-events-tab :global(.weft-events-tab__details) {
     margin-top: var(--cinder-space-1);
-  }
-
-  .weft-events-tab__empty {
-    list-style: none;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-    padding: var(--cinder-space-4);
-    margin: 0;
   }
 </style>

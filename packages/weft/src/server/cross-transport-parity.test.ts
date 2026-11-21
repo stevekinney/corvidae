@@ -1,5 +1,6 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 import { createWeftDiscoverDocument } from './weft-documents.ts';
 
 import { runStdioSession } from '@lostgradient/backchannel/internals';
@@ -244,6 +245,7 @@ async function invokeStdioJsonRpcEnvelope(
   const output = collectingWritable();
   try {
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input: readableFromLines([
         JSON.stringify({
           jsonrpc: '2.0',

@@ -73,7 +73,6 @@
   kind="first-use"
   title={copy.title}
   headingLevel={2}
-  align="start"
   description={copy.description}
   {...canConnect ? { action: connectAction } : {}}
   class="weft-no-provider"
@@ -130,13 +129,7 @@
 {/snippet}
 
 <style>
-  /* The outlet already pads the page; the state adds only a little air above its steps, and its steps fill the width. */
-  :global(.weft-no-provider) {
-    padding-inline: 0;
-    padding-block: var(--cinder-space-4);
-    align-items: stretch;
-  }
-
+  /* The state itself is Cinder's one layout (owner report, 2026-11-19); only its steps are styled here. */
   .weft-no-provider__steps {
     display: flex;
     flex-direction: column;

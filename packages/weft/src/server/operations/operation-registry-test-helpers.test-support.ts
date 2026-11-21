@@ -1,4 +1,5 @@
 import { expect } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import {
   principalFromApiKey,
@@ -60,7 +61,10 @@ export async function assertOperationRejectsInsufficientScope(
     options.operationName,
     {},
     {
-      principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
+      principal: principalFromJwtClaims(
+        { sub: 'user', scope: 'workflows:read' },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+      ),
       host: options.engine,
       transport: 'jsonRpcStdio',
       registry: options.liveRegistry,

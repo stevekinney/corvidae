@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import type { GenerateFunction } from '@lostgradient/operative';
 import {
@@ -655,6 +656,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
           operations: BUREAU_HANDLER_OPERATIONS,
           host,
           authenticate: createOperationHandlerAuthenticator(authentication, {
+            scopeVocabulary: WEFT_SCOPE_VOCABULARY,
             additionalScopes: BUREAU_SCOPES,
           }),
         });
@@ -856,11 +858,11 @@ describe('bureau.tasks.respond over the wire, for a credential that names no own
       const host = buildBureauHandlerHost(opened.bureau, []);
       const writer = principalFromJwtClaims(
         { sub: 'alice', scope: 'bureau.tasks:write' },
-        { additionalScopes: new Set(BUREAU_SCOPES) },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: new Set(BUREAU_SCOPES) },
       );
       const stranger = principalFromJwtClaims(
         { sub: 'alice' },
-        { additionalScopes: new Set(BUREAU_SCOPES) },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: new Set(BUREAU_SCOPES) },
       );
       const input = { taskId: run.id, messageId: 'm1', answer: 'x' };
 

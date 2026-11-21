@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
+import { getPrincipalOperation } from './get-principal.ts';
 
 import {
   anonymousPrincipal,
-  getPrincipalOperation,
   principalFromApiKey,
   principalFromJwtClaims,
 } from '@lostgradient/backchannel';
@@ -161,7 +162,10 @@ describe('weft.system.principal', () => {
       {
         // A JWT without a `sub` claim is the legitimate subjectless
         // construction path (`principalFromApiKey` requires a subject).
-        principal: principalFromJwtClaims({ scope: 'system:read' }),
+        principal: principalFromJwtClaims(
+          { scope: 'system:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([getPrincipalOperation]),

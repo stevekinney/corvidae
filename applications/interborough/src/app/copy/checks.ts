@@ -137,10 +137,4 @@ export const CHECKS_COPY = {
     description: 'Change or clear the filters to see more checks.',
   },
   clearAction: 'Clear filters',
-  /**
-   * The scope the frame's forbidden page names (design row C2-23): the one Interborough's API
-   * checks before it lets the list through (`host/scope-gate.ts`), which is what a refusal of the
-   * list means.
-   */
-  forbiddenRequirement: 'runs:read',
 } as const;

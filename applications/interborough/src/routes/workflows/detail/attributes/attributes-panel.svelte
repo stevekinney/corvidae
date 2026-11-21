@@ -8,7 +8,7 @@
    * (`readAttributes`). A rejected `set` shows its fault in the page's fault banner and leaves what
    * the page displays as it was: the displayed values only ever come from a read.
    */
-  import { Section, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, Section, Skeleton } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
@@ -69,7 +69,15 @@
   );
 </script>
 
-{#if canRead}
+{#if canRead && viewState === 'empty'}
+  <EmptyState
+    kind="first-use"
+    headingLevel={3}
+    title={copy.empty}
+    data-state={viewState}
+    data-testid="attributes-panel"
+  />
+{:else if canRead}
   <!-- Cinder's Section, as the run page's other blocks are, with no box or band of its own
        (COR-2489). -->
   <Section level={3} title={copy.heading} data-state={viewState} data-testid="attributes-panel">
@@ -87,8 +95,6 @@
             <AttributeRow {entry} {canWrite} onSave={save} />
           {/each}
         </ul>
-      {:else}
-        <p class="weft-attributes__empty">{copy.empty}</p>
       {/if}
     </div>
   </Section>
@@ -106,11 +112,5 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-  }
-
-  .weft-attributes__empty {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
   }
 </style>

@@ -1,3 +1,4 @@
+import type { BuiltInAuthorizationScope } from '@lostgradient/weft';
 /**
  * `operative.runs.events` — an agent run's feed, as a catalog subscription.
  *
@@ -166,7 +167,10 @@ export const runEventsSubscriptionOperation = defineOperation<
   outputSchema: runEventsSubscriptionEnvelope,
   producibleFaults: ['InvalidParams', 'NotFound'],
   eventSchema: runEventEnvelopeSchema,
-  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['events:read'] } },
+  access: {
+    kind: 'scoped',
+    scopes: { kind: 'anyOf', scopes: ['events:read' satisfies BuiltInAuthorizationScope] },
+  },
   discoverable: true,
   // WebSocket for a session that holds a socket, and HTTP for a fetch handler
   // that cannot accept one. A run's event feed is long-lived and resumable;

@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-1560 — `bureau.contexts.fork` branches a context after a completed agent reply and answers
  * with the new `contextId` and the outcome of carrying the parent's model override. Each way a
@@ -312,7 +313,7 @@ describe('bureau.contexts.fork refusals', () => {
       },
       authenticate: async () => ({
         method: 'unauthenticated-local' as const,
-        principal: unauthenticatedLocalAuthContext().principal!,
+        principal: unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal!,
       }),
       publicPaths: [],
     });

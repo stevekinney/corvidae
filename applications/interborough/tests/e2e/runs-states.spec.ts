@@ -126,7 +126,7 @@ const filterBar = (page: Page) => page.getByRole('search', { name: 'Filter runs'
 
 // Every title names `/runs`, so a design review's route filter (`--grep '/runs'`) runs it.
 test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
-  test('on a phone is two-line rows under day bands, with a Status select and a Filter button beside a secondary "+" (05t, 05v)', async ({
+  test('on a phone is two-line rows under day bands with a Status select, Filter and a labelled Start run (05t, 05v)', async ({
     page,
     checkA11y,
   }) => {
@@ -134,7 +134,8 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     const main = page.locator('main');
     await expect(main.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible();
     await expect(main.getByText('What your agents have done, newest first.')).toBeVisible();
-    await expect(headerCreate(page)).toContainClass('button-variant-secondary');
+    await expect(headerCreate(page)).toContainClass('button-variant-primary');
+    await expect(headerCreate(page)).toHaveText('Start run');
     // The segments fold into one select and the chips into a Filter menu.
     await expect(filterBar(page).locator('.cinder-filter-bar__segments-select')).toContainText(
       'Status: All',
@@ -184,7 +185,7 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await expect(bar.getByRole('button', { name: 'Started by', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Agent', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Search runs' })).toBeVisible();
-    await expect(headerCreate(page)).toContainClass('button-variant-secondary');
+    await expect(headerCreate(page)).toContainClass('button-variant-primary');
     // The status leads each row in its fixed column, never on line two (05x): the rows follow the
     // window, which is no phone, though the rail leaves each row under 640px.
     const main = page.locator('main');
@@ -253,7 +254,7 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
 
 for (const width of WIDTHS) {
   test.describe(`/runs: the states of the list, at ${width} pixels`, () => {
-    test('first use is "No runs yet" with the only primary Start run beside a secondary Chat with an agent (52v, 52w)', async ({
+    test('first use is "No runs yet" with Start run beside a secondary Chat with an agent (52v, 52w)', async ({
       page,
       checkA11y,
     }) => {
@@ -277,9 +278,9 @@ for (const width of WIDTHS) {
       );
       // The empty state is the page: no filter bar.
       await expect(filterBar(page)).toHaveCount(0);
-      await expect(headerCreate(page)).toContainClass('button-variant-secondary');
-      await expect(primaries(page)).toHaveCount(1);
-      await expect(primaries(page).first()).toHaveText('Start run');
+      await expect(headerCreate(page)).toContainClass('button-variant-primary');
+      const start = main.locator('.cinder-empty-state').getByRole('link', { name: 'Start run' });
+      await expect(start).toContainClass('button-variant-primary');
       await expect(main.getByRole('link', { name: 'Chat with an agent' })).toContainClass(
         'button-variant-secondary',
       );
@@ -290,7 +291,7 @@ for (const width of WIDTHS) {
       await captureForDesignReview(page, { route: '/runs', state: 'first use', source: SOURCE });
       await checkA11y(`runs first use at ${width}px`);
 
-      await primaries(page).first().click();
+      await start.click();
       await expect(page).toHaveURL(/\/runs\/new$/);
     });
 
@@ -307,7 +308,7 @@ for (const width of WIDTHS) {
         main.getByRole('heading', { level: 2, name: 'No runs match these filters' }),
       ).toBeVisible();
       await expect(main).toContainText('Model switcher has no runs. Try another agent.');
-      await expect(headerCreate(page)).toContainClass('button-variant-secondary');
+      await expect(headerCreate(page)).toContainClass('button-variant-primary');
       if (width >= 1024) {
         // The bar draws its segments as radios when its row fits; with the Workflow and Started by
         // chips beside the Agent chip it steps down to a Status select that holds the same counts.
@@ -339,7 +340,7 @@ for (const width of WIDTHS) {
       await expect(state.getByRole('button')).toHaveCount(1);
       const clear = state.getByRole('button', { name: 'Clear filters' });
       await expect(clear).toContainClass('button-variant-secondary');
-      await expect(primaries(page)).toHaveCount(0);
+      await expect(primaries(page)).toHaveCount(1);
 
       await captureForDesignReview(page, {
         route: '/runs',
@@ -681,8 +682,8 @@ test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => 
       ).toBeVisible();
     }
     await expect(main.locator('.cinder-skeleton-row')).toHaveCount(0);
-    await expect(primaries(page)).toHaveCount(1);
-    await expect(primaries(page).first()).toHaveText('Try again');
+    const retry = main.getByRole('button', { name: 'Try again' });
+    await expect(retry).toContainClass('button-variant-primary');
     await captureForDesignReview(page, {
       route: '/runs',
       state: 'loading canceled',
@@ -692,7 +693,7 @@ test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => 
     await checkA11y('runs loading canceled');
 
     release();
-    await primaries(page).first().click();
+    await retry.click();
     await expect(main.locator('li[data-run]').first()).toBeVisible();
   });
 });

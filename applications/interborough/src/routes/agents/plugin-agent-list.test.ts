@@ -198,9 +198,11 @@ describe('the agents a disabled plugin holds back', () => {
       control.textContent?.trim(),
     );
     expect(buttons).toEqual(['Enable and restart', 'New agent']);
-    // No filter row is drawn, and the header keeps its "+".
+    // No filter row is drawn, and the header keeps its labelled New agent.
     expect(queryByRole('radio', { name: /^All/ })).toBeNull();
-    expect(container.querySelector('a[aria-label="New agent"]')).not.toBeNull();
+    expect(container.querySelector('.cinder-page-header__create')?.textContent?.trim()).toBe(
+      'New agent',
+    );
   });
 });
 

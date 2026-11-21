@@ -174,15 +174,16 @@ async function listed(container: HTMLElement): Promise<HTMLElement[]> {
 }
 
 describe('the heading and the header action', () => {
-  test('is Schedules, with its timetable subtitle and a "+" that makes a schedule', async () => {
+  test('is Schedules, with its timetable subtitle and a labelled New schedule that makes one', async () => {
     const { container, findByRole } = open();
     await listed(container);
 
     expect(within(container).getByRole('heading', { level: 1, name: 'Schedules' })).not.toBeNull();
     expect(container.textContent).toMatch(/Runs that start on a timetable\. Times are in .+\./);
     const create = await findByRole('button', { name: 'New schedule' });
-    expect(create.textContent?.trim()).toBe('');
-    expect(create.classList.contains('button-variant-secondary')).toBe(true);
+    // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
+    expect(create.textContent?.trim()).toBe('New schedule');
+    expect(create.classList.contains('button-variant-primary')).toBe(true);
     await fireEvent.click(create);
     expect(router.pathname).toBe('/schedules/new');
   });

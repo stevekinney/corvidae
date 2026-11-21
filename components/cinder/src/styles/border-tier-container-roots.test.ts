@@ -21,7 +21,6 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
     button: 'a control; the border is its boundary',
     'description-list': 'rules between rows are its structure',
     'docked-action-bar': 'docked chrome; the rule separates it from the page',
-    'empty-state': 'a framed placeholder panel',
     'error-state': 'a framed status panel',
     'find-bar': 'docked chrome; the rule separates it from content',
     footer: 'page chrome; the rule separates it from content',

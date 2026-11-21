@@ -1,4 +1,5 @@
 import type { ServerWebSocket } from 'bun';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { type AuthConfig, authContextToPrincipal } from '@lostgradient/backchannel';
 import {
@@ -119,7 +120,7 @@ function resolveTaskPrincipal(
     (!url.pathname.startsWith('/v1/tasks/') && !url.pathname.startsWith('/v1/worker-sessions'))
   )
     return undefined;
-  return authContextToPrincipal(authContext);
+  return authContextToPrincipal(authContext, WEFT_SCOPE_VOCABULARY);
 }
 
 export async function handleServerFetchRequest(
@@ -196,7 +197,7 @@ async function dispatchServerFetchRequest(
       endpoint: context.mcpEndpoint,
       authRequired: context.authenticatorPromise !== null,
       ...(authentication.authContext !== undefined
-        ? { principal: authContextToPrincipal(authentication.authContext) }
+        ? { principal: authContextToPrincipal(authentication.authContext, WEFT_SCOPE_VOCABULARY) }
         : {}),
       ...(options.publicOrigin !== undefined ? { publicOrigin: options.publicOrigin } : {}),
       ...(options.trustedHosts !== undefined ? { trustedHosts: options.trustedHosts } : {}),

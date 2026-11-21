@@ -10,21 +10,28 @@ export {
   type AuthAuditSink,
 } from './authentication/audit.ts';
 export {
+  createApiKeyVerifier,
   createAuthenticator,
+  createJwtVerifier,
+  createMutualTlsVerifier,
   validateAuthConfig,
   type CreateAuthenticatorOptions,
+  type CredentialVerification,
+  type CredentialVerifier,
 } from './authentication/index.ts';
 export {
   createRateLimiter,
   validateRateLimitConfig,
   type RateLimitConfig,
   type RateLimitDecision,
+  type RateLimitStore,
   type RateLimiter,
 } from './authentication/rate-limiter.ts';
 export { isSensitiveHeader, redactCredential, redactHeaders } from './authentication/redaction.ts';
 export {
   createRotatingApiKeyStore,
   type ApiKeyRegistration,
+  type ApiKeyStore,
   type RotatingApiKeyStore,
 } from './authentication/rotating-api-key-store.ts';
 export type {
@@ -38,13 +45,13 @@ export type {
   MTLSConfig,
 } from './authentication/types.ts';
 export {
-  AUTHORIZATION_SCOPES,
   PACKAGE_AUTHORIZATION_SCOPE_PATTERN,
+  createScopeVocabulary,
   isAuthorizationScope,
   isPackageAuthorizationScope,
   type AuthorizationScope,
-  type BuiltInAuthorizationScope,
   type PackageAuthorizationScope,
+  type ScopeVocabulary,
 } from './authorization-scope.ts';
 export { bindFeedLifetime } from './bind-feed-lifetime.ts';
 export type { DiscoveryInfo } from './discovery-info.ts';
@@ -78,12 +85,24 @@ export {
   type InMemoryReplayLiveBackendOptions,
 } from './in-memory-replay-live-backend.ts';
 export {
+  dispatchJsonRpc,
+  type DispatchJsonRpcContext,
+  type DispatchJsonRpcResult,
+  type JsonRpcSubscription,
+} from './json-rpc-dispatch.ts';
+export {
   stringifyCatalogSnapshot,
   type CatalogAccessSnapshot,
   type CatalogOperationSnapshot,
   type CatalogRestBindingSnapshot,
   type CatalogSnapshot,
 } from './operation-catalog-snapshot.ts';
+export {
+  createOperationRegistry,
+  type DispatchResult,
+  type OperationRegistry,
+  type OperationRegistryOptions,
+} from './operation-catalog/index.ts';
 export {
   OPERATION_NAME_PATTERN,
   isValidOperationName,
@@ -111,7 +130,10 @@ export {
   type ClosableAsyncIterable,
   type ReplayAwareClosableIterable,
 } from './operations/closable-iterable.ts';
-export { getPrincipalOperation, type GetPrincipalOutput } from './operations/get-principal.ts';
+export {
+  createGetPrincipalOperation,
+  type GetPrincipalOutput,
+} from './operations/get-principal.ts';
 export {
   anonymousPrincipal,
   principalFromApiKey,
@@ -138,3 +160,9 @@ export {
   type Cursor,
   type SequencedEventEnvelope,
 } from './sequence-cursor.ts';
+
+export type {
+  OperationHostFactory,
+  OperationInterceptor,
+  OperationInterceptorContext,
+} from './operation-catalog/operation-interceptors.ts';

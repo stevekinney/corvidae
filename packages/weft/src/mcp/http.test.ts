@@ -1,6 +1,7 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 
 import { anonymousPrincipal, principalFromJwtClaims } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -1094,7 +1095,10 @@ describe('MCP Streamable HTTP transport', () => {
     const authenticated = await handleMcpHttpRequest({
       request: jsonRequest({ jsonrpc: '2.0', id: 'tools', method: 'tools/list', params: {} }),
       endpoint,
-      principal: principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' }),
+      principal: principalFromJwtClaims(
+        { sub: 'reader', scope: 'workflows:read' },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+      ),
       authRequired: true,
     });
     expect(authenticated.status).toBe(200);
@@ -1155,7 +1159,10 @@ describe('MCP Streamable HTTP transport', () => {
         }),
       });
     const search = 'weft://workflows/search?status=running';
-    const unscoped = principalFromJwtClaims({ sub: 'signaller', scope: 'signals:write' });
+    const unscoped = principalFromJwtClaims(
+      { sub: 'signaller', scope: 'signals:write' },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
     const refused = await handleMcpHttpRequest({
       request: listen([search]),
       endpoint,
@@ -1168,7 +1175,10 @@ describe('MCP Streamable HTTP transport', () => {
       error: { code: -32011, message: 'Subscribing to workflow resources requires workflows:read' },
     });
 
-    const reader = principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' });
+    const reader = principalFromJwtClaims(
+      { sub: 'reader', scope: 'workflows:read' },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
     const events = await handleMcpHttpRequest({
       request: listen(['weft://workflows/w-1/events']),
       endpoint,
@@ -1184,7 +1194,10 @@ describe('MCP Streamable HTTP transport', () => {
   it('refuses tool calls and resource reads the principal has no scope for', async () => {
     const engine = createEngine();
     const endpoint = trackEndpoint(createMcpEndpoint(engine));
-    const reader = principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' });
+    const reader = principalFromJwtClaims(
+      { sub: 'reader', scope: 'workflows:read' },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
     const handle = await engine.start('hold-for-cancel', { label: 'scoped' });
 
     const started = await readJsonRpcResponse(
