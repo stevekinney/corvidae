@@ -31,7 +31,7 @@ function stateOf(run: WorkflowSummary, change: Partial<WorkflowState> = {}): Wor
     updatedAt: run.updatedAt,
     versionTuple: { workflowVersion: '1' },
     ...change,
-  } as WorkflowState;
+  };
 }
 
 /** The engine's runs as `list` answers them, and the filters each list asked with. */

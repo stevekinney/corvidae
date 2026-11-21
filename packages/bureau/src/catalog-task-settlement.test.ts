@@ -234,8 +234,9 @@ describe('settling a catalog task from the hook', () => {
       message: 'it failed',
       content: null,
     });
-    expect((await registry.record('agent-run-1'))?.failure).toEqual(failure);
-    expect((await registry.record('agent-run-1'))?.settled).not.toHaveProperty('failure');
+    const stored = await registry.record('agent-run-1');
+    expect(stored?.failure).toEqual(failure);
+    expect(stored?.settled).not.toHaveProperty('failure');
 
     // A completed run is not asked for a failure, and stores none.
     const completed = build(found, [], (runId) => {
@@ -243,13 +244,15 @@ describe('settling a catalog task from the hook', () => {
       return failure;
     });
     await completed.settler(settlement);
-    expect((await completed.registry.record('agent-run-1'))?.failure).toBeUndefined();
+    const storedCompleted = await completed.registry.record('agent-run-1');
+    expect(storedCompleted?.failure).toBeUndefined();
     expect(asked).toEqual(['agent-run-1']);
 
     // A failed run no live event described (another process's) stores no failure.
     const unseen = build(found, [], () => undefined);
     await unseen.settler({ ...settlement, status: 'failed', finishReason: 'error', content: null });
-    expect((await unseen.registry.record('agent-run-1'))?.failure).toBeUndefined();
+    const storedUnseen = await unseen.registry.record('agent-run-1');
+    expect(storedUnseen?.failure).toBeUndefined();
   });
 
   it('writes nothing for a run it has no recovery record for, or for a fresh dispatch with no task record', async () => {
