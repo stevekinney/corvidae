@@ -24,11 +24,10 @@ import { join } from 'node:path';
 import { outcomeOf, rethrow } from '@lostgradient/testing';
 
 import { DEV_RELOAD_ROUTE } from '../src/host/dev-reload.ts';
+import { BUILD_ASSET_DIRECTORY, linkedStylesheets } from './browser-build.ts';
 import {
   type ApplicationBuild,
-  BUILD_ASSET_DIRECTORY,
   buildApplication,
-  linkedStylesheets,
   PACKAGE_DIRECTORY,
   REPOSITORY_ROOT,
 } from './build.ts';
@@ -127,7 +126,7 @@ describe('buildApplication', () => {
     // messages with Markdown, which registers its own curated set (`BUNDLED_LANGUAGES` in
     // `packages/markdown/src/rendering/highlighter.ts`) and the grammars those embed (`postcss`
     // for CSS inside Svelte and HTML, `shellscript` for the shell family). The complete registries
-    // Cinder offers are never reachable: `curatedShikiPlugin` (`build.ts`) resolves them to
+    // Cinder offers are never reachable: `curatedShikiPlugin` (`browser-build.ts`) resolves them to
     // `src/lib/curated-shiki-registries.ts`, whose tables Chat's highlighter reads.
     expect(emittedModules(metafile, GRAMMAR_MODULE)).toEqual([
       'bash',
