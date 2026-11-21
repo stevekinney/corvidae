@@ -35,7 +35,8 @@ import { type SessionInputAdmissionOutcome, sessionOwnerOf } from '@lostgradient
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, ContextArchivedError } from '../../bureau-errors.ts';
+import { ContextArchivedError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { contextArchivedFault } from './contexts-archive-operation.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
@@ -194,25 +195,12 @@ export const contextsInputOperation = defineOperation<
         payload: input.input.payload as never,
       });
     } catch (error) {
-      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
-        throw {
-          code: 'InvalidParams',
-          message: error.message,
-          data: {
-            issues: [{ path: ['input', 'payload'], message: error.message, code: 'custom' }],
-          },
-        } satisfies OperationFault;
-      }
       // Before the generic `CONFLICT` below, which is a Bureau shutting down.
       if (error instanceof ContextArchivedError) throw contextArchivedFault(error.message);
-      if (error instanceof BureauError && error.code === 'CONFLICT') {
-        throw {
-          code: 'Unavailable',
-          message: error.message,
-          data: { reason: 'shutting-down' },
-        } satisfies OperationFault;
-      }
-      throw error;
+      throw bureauFaultOf(error, {
+        invalidPath: ['input', 'payload'],
+        forms: { CONFLICT: 'shutting-down' },
+      });
     }
     if (outcome.outcome === 'admitted' || outcome.outcome === 'replayed') {
       return { outcome: outcome.outcome, receipt: { ...outcome.receipt } };
