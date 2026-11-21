@@ -251,14 +251,14 @@ async function start(): Promise<void> {
         return;
       }
       const saved = savedParts(outcome.done);
-      // What may have been written is read back, so the form is built on the schedule as it is,
-      // and what was typed to send is spent; the rest of the draft stays for another try.
+      // What may have been written is read back, and the form is rebuilt from it: the draft and the
+      // revision it is fenced by stay one pair, so a field another caller changed meanwhile is
+      // shown, never sent back over their write under the newer revision.
       if (outcome.id !== undefined && (outcome.done.length > 0 || outcome.kind === 'unanswered')) {
         const fresh = await readSchedule(outcome.id);
         if (fresh !== undefined) {
           view.source = fresh;
-          view.draft.input = '';
-          view.draft.workflowInput = '';
+          view.draft = scheduleDraftOf(fresh);
         }
       }
       if (outcome.kind === 'refused') {

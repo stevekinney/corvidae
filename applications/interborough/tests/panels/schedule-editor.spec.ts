@@ -89,12 +89,15 @@ async function open(
   toolInput: Record<string, unknown>,
   scheme?: Scheme,
   failing: ReadonlySet<string> = new Set(),
+  before: (name: string) => Promise<void> = async () => undefined,
 ) {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.exposeFunction(
     'forwardToolCall',
     async (name: string, args: Record<string, unknown>) => {
+      // Whatever another caller does just before this call is answered, done first.
+      await before(name);
       // A tool this test makes fail answers as a host does when the Bureau gives no answer.
       if (failing.has(name)) return { isError: true, content: [{ type: 'text', text: 'failed' }] };
       const response = await request.post(PANEL_ROUTE, { data: { name, arguments: args } });
@@ -183,6 +186,43 @@ test.describe('the schedule editor MCP App against the running host', () => {
     expect(afterPause.revision).toBe(4);
     await expect(app.getByRole('switch', { name: 'Paused' })).toBeChecked();
     expect(errors).toEqual([]);
+  });
+
+  test('rebuilds the form from what a half-finished save left, so it never writes back over another caller', async ({
+    page,
+    request,
+  }) => {
+    const id = await fixtureSchedule(request);
+    // Between the page's update and its pause, another caller changes the description; the pause
+    // then gets no answer, so the page reads the schedule again.
+    const { app } = await open(
+      page,
+      request,
+      { scheduleId: id },
+      undefined,
+      new Set(['bureau.schedules.pause']),
+      async (name) => {
+        if (name !== 'bureau.schedules.pause') return;
+        const current = await readBack(request, id);
+        await bureauCall(request, 'bureau.schedules.update', {
+          scheduleId: id,
+          description: 'Changed elsewhere',
+          expectedRevision: current.revision,
+        });
+      },
+    );
+    await expect(app.getByLabel('When it runs')).toHaveValue('1h');
+    await app.getByLabel('When it runs').fill('2h');
+    await app.getByRole('switch', { name: 'Paused' }).click();
+    await app.getByRole('button', { name: 'Save changes' }).click();
+    await expect(app.getByLabel('Description')).toHaveValue('Changed elsewhere');
+    await expect(app.getByLabel('When it runs')).toHaveValue('2h');
+
+    // Saving again sends nothing that would undo the other caller's description.
+    await app.getByRole('button', { name: 'Save changes' }).click();
+    const stored = await readBack(request, id);
+    expect(stored.description).toBe('Changed elsewhere');
+    expect(stored.intervalMs).toBe(7_200_000);
   });
 
   test('makes a new schedule with the same fields and reads it back from the Bureau', async ({
