@@ -5,7 +5,7 @@ import { spawnWithHangGuard } from '../hang-guard.ts';
 
 const compileProgram = `
 import { sveltePlugin } from '@lostgradient/testing';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 const { sourcePaths, root, conditions } = await Bun.stdin.json();
 if (typeof document !== 'undefined' || typeof window !== 'undefined') {
@@ -54,9 +54,9 @@ const result = await Bun.build({
 });
 if (!result.success) throw new AggregateError(result.logs, 'Server component compilation failed');
 const artifacts = new Map(result.outputs.filter((output) => output.kind === 'entry-point')
-  .map((output) => [output.path, output]));
+  .map((output) => [resolve(root, output.path), output]));
 const code = await Promise.all(sourcePaths.map(async (sourcePath) => {
-  const name = './' + relative(root, sourcePath).replace(/[.][^./]+$/, '.js');
+  const name = join(dirname(sourcePath), basename(sourcePath, extname(sourcePath)) + '.js');
   const artifact = artifacts.get(name);
   if (!artifact) throw new Error('Missing server component artifact: ' + sourcePath);
   return artifact.text();
