@@ -532,6 +532,8 @@ test.describe('Agent shared FormActions', () => {
         await page.goto(`/agents/${id}/edit`);
         const actions = page.getByRole('group', { name: 'Form actions' });
         await expect(actions).toBeVisible();
+        await expect(actions.getByRole('switch', { name: editorCopy.a2aLabel })).toBeVisible();
+        await expect(actions.getByText(editorCopy.a2aDescription, { exact: true })).toBeVisible();
         await expect(actions.getByRole('button')).toHaveText([
           editorCopy.cancelAction,
           editorCopy.saveAction,
@@ -547,38 +549,65 @@ test.describe('Agent shared FormActions', () => {
     });
   }
 
-  test.describe('at 320 pixels with a coarse pointer', () => {
-    test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  for (const width of [320, 375]) {
+    test.describe(`at ${width} pixels with a coarse pointer`, () => {
+      test.use({ viewport: { width, height: 640 }, hasTouch: true, isMobile: true });
 
-    test('keeps the shared FormActions actions reachable above phone navigation', async ({
-      page,
-    }) => {
-      await page.goto('/agents/new');
-      const actions = page.getByRole('group', { name: 'Form actions' });
-      const save = actions.getByRole('button', { name: editorCopy.createAction });
-      await save.scrollIntoViewIfNeeded();
-      await expect(save).toBeInViewport();
-      const reachability = await save.evaluate((button) => {
-        const box = button.getBoundingClientRect();
-        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-        return {
-          coarse: matchMedia('(pointer: coarse)').matches,
-          width: box.width,
-          height: box.height,
-          receivesPointer: button.contains(hit),
-        };
-      });
-      expect(reachability.coarse).toBe(true);
-      expect(reachability.width).toBeGreaterThanOrEqual(44);
-      expect(reachability.height).toBeGreaterThanOrEqual(44);
-      expect(reachability.receivesPointer).toBe(true);
-      await captureForDesignReview(page, {
-        route: '/agents/new',
-        state: 'shared FormActions, 320 coarse pointer',
-        source: SOURCE,
+      test('keeps the shared FormActions actions reachable above phone navigation', async ({
+        page,
+      }) => {
+        await page.goto('/agents/new');
+        const actions = page.getByRole('group', { name: 'Form actions' });
+        const instructions = page.getByRole('textbox', { name: editorCopy.instructionsLabel });
+        await instructions.scrollIntoViewIfNeeded();
+        await expect(instructions).toBeInViewport();
+        expect(
+          await instructions.evaluate((field) => {
+            const box = field.getBoundingClientRect();
+            return field.contains(
+              document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+            );
+          }),
+        ).toBe(true);
+        await expect(actions.getByTestId('agent-save-status')).toHaveText(
+          editorCopy.try.notSavedYet,
+        );
+        await expect(actions).toHaveCSS('position', 'sticky');
+        for (const name of [editorCopy.cancelAction, editorCopy.createAction]) {
+          const action = actions.getByRole('button', { name });
+          await action.scrollIntoViewIfNeeded();
+          await expect(action).toBeInViewport();
+          const reachability = await action.evaluate((button) => {
+            const box = button.getBoundingClientRect();
+            const centerX = box.left + box.width / 2;
+            const centerY = box.top + box.height / 2;
+            const halfTouchTarget = 21.5;
+            const touchPoints = [
+              [centerX - halfTouchTarget, centerY],
+              [centerX + halfTouchTarget, centerY],
+              [centerX, centerY - halfTouchTarget],
+              [centerX, centerY + halfTouchTarget],
+            ] as const;
+            return {
+              coarse: matchMedia('(pointer: coarse)').matches,
+              receivesPointer: touchPoints.every(([x, y]) =>
+                button.contains(document.elementFromPoint(x, y)),
+              ),
+            };
+          });
+          expect(reachability.coarse).toBe(true);
+          expect(reachability.receivesPointer).toBe(true);
+        }
+        await captureForDesignReview(page, {
+          route: '/agents/new',
+          state: `shared FormActions, ${width} coarse pointer`,
+          source: SOURCE,
+        });
+        await page.setViewportSize({ width, height: 480 });
+        await expect(actions).toHaveCSS('position', 'static');
       });
     });
-  });
+  }
 
   test('keeps the same shared FormActions after Try it opens and closes at 768 pixels', async ({
     page,
