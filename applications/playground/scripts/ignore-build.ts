@@ -26,6 +26,12 @@ export const PLAYGROUND_PACKAGE = '@lostgradient/playground';
 
 /** Root files that change what `bun install` resolves or how TypeScript reads the sources. */
 const ROOT_INPUT = /^(package\.json|bun\.lock|bunfig\.toml|tsconfig[^/]*\.json)$/;
+const DEPLOYMENT_CONFIGURATION = new Set([
+  'applications/playground/vercel.json',
+  'applications/playground/scripts/ignore-build.sh',
+  'applications/playground/scripts/ignore-build.ts',
+  'applications/playground/scripts/environment-configuration.ts',
+]);
 
 /**
  * Files only a test runner reads. The static export imports none of them, so a change confined to
@@ -121,14 +127,19 @@ export type ChangeInputs = {
   closure: readonly Workspace[];
 };
 
+/** Whether a repository path can change this deployment or the rule that decides to build it. */
+export function reachesPlaygroundDeployment(file: string, closure: readonly Workspace[]): boolean {
+  return (
+    ROOT_INPUT.test(file) ||
+    DEPLOYMENT_CONFIGURATION.has(file) ||
+    (!TEST_ONLY.test(file) &&
+      closure.some((workspace) => file.startsWith(`${workspace.directory}/`)))
+  );
+}
+
 /** Whether the files changed since the last successful deployment can change the site. */
 export function decideFromChanges({ changedFiles, closure }: ChangeInputs): Decision {
-  const relevant = changedFiles.filter(
-    (file) =>
-      ROOT_INPUT.test(file) ||
-      (!TEST_ONLY.test(file) &&
-        closure.some((workspace) => file.startsWith(`${workspace.directory}/`))),
-  );
+  const relevant = changedFiles.filter((file) => reachesPlaygroundDeployment(file, closure));
   if (relevant.length > 0) {
     const shown = relevant.slice(0, 10).join(', ');
     const more = relevant.length > 10 ? ` and ${relevant.length - 10} more` : '';

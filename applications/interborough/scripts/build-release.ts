@@ -220,6 +220,21 @@ async function verifyFrozenInstall(
   const archive = join(root, 'source.tar');
   await command(['git', 'archive', sourceSha, '-o', archive]);
   await command(['tar', '-xf', archive, '-C', source]);
+  // Cinder's generated token files are ignored by Git, and its generator needs the pinned
+  // development toolchain (including Prettier). This source is disposable; runtime staging below
+  // still comes only from the subsequent frozen production install.
+  await command(
+    [
+      process.execPath,
+      'install',
+      '--frozen-lockfile',
+      '--ignore-scripts',
+      '--no-progress',
+      '--no-summary',
+    ],
+    source,
+  );
+  await materializePanelRuntimeAssets(source, command);
   await command(
     [
       process.execPath,
@@ -240,6 +255,21 @@ async function verifyFrozenInstall(
     source,
     dependencies: join(source, 'applications', 'interborough', 'node_modules'),
   };
+}
+
+/** Generate Cinder's ignored token outputs in the pinned release source before staging it. */
+async function materializePanelRuntimeAssets(
+  source: string,
+  command: ReleaseCommand = runCommand,
+): Promise<void> {
+  await command(
+    [process.execPath, 'components/cinder/scripts/tokens/generate-validators.ts'],
+    source,
+  );
+  await command(
+    [process.execPath, 'components/cinder/scripts/tokens/generate-artifacts.ts', '--ignored-only'],
+    source,
+  );
 }
 
 async function bundleSdk(
@@ -398,8 +428,8 @@ mountPanel(Proof, { props: { label: 'external runtime' } });
     const giveUpTimer = setTimeout(() => giveUp.resolve(undefined), 20_000);
     const port = await Promise.race([reported.promise, giveUp.promise]);
     clearTimeout(giveUpTimer);
-    while (now() < deadline) {
-      // Without a reported port there is nothing to ask; `listing` stays undefined below.
+    // A host that reported its bound port gets one request. The startup clock only limits retries.
+    do {
       if (port === undefined) break;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/host/plugins`);
@@ -418,8 +448,9 @@ mountPanel(Proof, { props: { label: 'external runtime' } });
       } catch {
         // The supervisor may not have bound its port yet.
       }
+      if (now() >= deadline) break;
       await sleep(100);
-    }
+    } while (now() < deadline);
     if (listing === undefined || Reflect.get(listing, 'status') !== 'running') {
       const exitBeforeCleanup = childProcess.exitCode;
       await stopChild();

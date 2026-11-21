@@ -31,6 +31,7 @@ export interface EvidenceRecord {
   reports?: { path: string; digest: string }[] | undefined;
   artifacts?: { path: string; digest: string }[] | undefined;
   localRoot?: string | undefined;
+  installedReleaseIdentity?: string | undefined;
   provider?: {
     runId: number;
     attempt: number;
@@ -72,6 +73,111 @@ export interface EvidenceValidation {
   records: EvidenceRecord[];
 }
 
+/** The coordinator's expected identity for a disposable installed-release verification. */
+export interface InstalledReleaseReceiptExpectation {
+  sourceRevision: string;
+  target: 'darwin-arm64';
+  archiveDigest: string;
+  configuration: readonly { readonly path: string; readonly sha256: string }[];
+}
+
+/**
+ * Compare the machine-written installed-release receipt with its accepted obligation. A receipt is
+ * not a completion claim: publication and deployment need their own authenticated evidence.
+ */
+export function compareInstalledReleaseReceipt(
+  receipt: unknown,
+  expected: InstalledReleaseReceiptExpectation,
+): string[] {
+  if (typeof receipt !== 'object' || receipt === null || Array.isArray(receipt))
+    return ['installed-release receipt is not an object'];
+  const value = receipt as Record<string, unknown>;
+  const archive = value['archive'];
+  const producer = value['producer'];
+  const configuration = value['configuration'];
+  const assertions = value['assertions'];
+  const problems: string[] = [];
+  if (value['version'] !== 1 || value['outcome'] !== 'pass')
+    problems.push('installed-release receipt is not a successful version 1 receipt');
+  if (typeof archive !== 'object' || archive === null || Array.isArray(archive))
+    problems.push('installed-release receipt has no archive identity');
+  else {
+    const manifest = (archive as Record<string, unknown>)['manifest'];
+    if ((archive as Record<string, unknown>)['sha256'] !== expected.archiveDigest)
+      problems.push('installed-release receipt archive digest does not match the obligation');
+    if ((archive as Record<string, unknown>)['target'] !== expected.target)
+      problems.push('installed-release receipt target does not match the obligation');
+    if (
+      typeof manifest !== 'object' ||
+      manifest === null ||
+      Array.isArray(manifest) ||
+      (manifest as Record<string, unknown>)['sourceSha'] !== expected.sourceRevision
+    )
+      problems.push('installed-release receipt source revision does not match the obligation');
+  }
+  if (typeof value['installedExecutable'] !== 'string' || value['installedExecutable'] === '')
+    problems.push('installed-release receipt has no installed executable');
+  if (!Array.isArray(assertions) || assertions.length === 0)
+    problems.push('installed-release receipt has no verification assertions');
+  else if (
+    assertions.some(
+      (assertion) =>
+        typeof assertion !== 'object' ||
+        assertion === null ||
+        Array.isArray(assertion) ||
+        (assertion as Record<string, unknown>)['exit'] !== 0,
+    )
+  )
+    problems.push('installed-release receipt has a failed verification assertion');
+  if (
+    typeof producer !== 'object' ||
+    producer === null ||
+    Array.isArray(producer) ||
+    (producer as Record<string, unknown>)['script'] !==
+      'applications/interborough/scripts/test-installed-release.ts'
+  )
+    problems.push('installed-release receipt has an unexpected producer');
+  if (!Array.isArray(configuration))
+    problems.push('installed-release receipt has no configuration');
+  else
+    for (const required of expected.configuration)
+      if (
+        !configuration.some(
+          (entry) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            !Array.isArray(entry) &&
+            (entry as Record<string, unknown>)['path'] === required.path &&
+            (entry as Record<string, unknown>)['sha256'] === required.sha256,
+        )
+      )
+        problems.push(
+          `installed-release receipt lacks configuration identity for ${required.path}`,
+        );
+  return problems;
+}
+
+interface InstalledReleaseRun extends InstalledReleaseReceiptExpectation {
+  receiptPath: string;
+  archivePath: string;
+}
+
+function installedReleaseIdentity(release: InstalledReleaseRun): string {
+  return sha256(
+    JSON.stringify([
+      release.sourceRevision,
+      release.target,
+      release.archivePath,
+      release.archiveDigest,
+      release.receiptPath,
+      release.configuration.map(({ path, sha256: configurationDigest }) => [
+        path,
+        configurationDigest,
+      ]),
+    ]),
+  );
+}
+
 export interface VerificationRequest {
   repository: string;
   revision: string;
@@ -95,6 +201,7 @@ export interface VerificationRequest {
     argv: string[];
     reportPaths: string[];
     artifactPaths?: string[];
+    installedRelease?: InstalledReleaseRun;
   }[];
 }
 
@@ -437,6 +544,26 @@ export function collectLocalEvidence(
       )
         throw new EvidenceRequestError('verification request has invalid local path');
       else if (existsSync(resolve(safeCwd, path))) validateLocalPath(safeCwd, path);
+    if (item.risk === 'installed-artifacts') {
+      const receipt = run.installedRelease;
+      if (
+        receipt === undefined ||
+        !safeProviderInput(receipt.receiptPath) ||
+        !safeProviderInput(receipt.archivePath) ||
+        !/^[0-9a-f]{64}$/.test(receipt.archiveDigest) ||
+        receipt.sourceRevision !== request.revision ||
+        receipt.target !== 'darwin-arm64' ||
+        !Array.isArray(receipt.configuration) ||
+        !receipt.configuration.every(
+          (entry) => safeProviderInput(entry.path) && /^[0-9a-f]{64}$/.test(entry.sha256),
+        ) ||
+        existsSync(resolve(safeCwd, receipt.receiptPath))
+      )
+        throw new EvidenceRequestError(
+          'installed-release obligation has an invalid or stale receipt',
+        );
+    } else if (run.installedRelease !== undefined)
+      throw new EvidenceRequestError('non-artifact obligation has an installed-release receipt');
     return { item, run };
   });
   const inputPaths = [...new Set(obligations.flatMap((item) => item.relevantInputs))];
@@ -460,6 +587,25 @@ export function collectLocalEvidence(
         const path = validateLocalPath(safeCwd, artifactPath);
         return { path: relative(safeCwd, path), digest: sha256(readFileSync(path)) };
       });
+      let installedReleasePassed = true;
+      if (run.installedRelease !== undefined) {
+        const receiptPath = validateLocalPath(safeCwd, run.installedRelease.receiptPath);
+        const archivePath = validateLocalPath(safeCwd, run.installedRelease.archivePath);
+        const receipt = JSON.parse(readFileSync(receiptPath, 'utf8')) as unknown;
+        const problems = compareInstalledReleaseReceipt(receipt, {
+          sourceRevision: run.installedRelease.sourceRevision,
+          target: run.installedRelease.target,
+          archiveDigest: run.installedRelease.archiveDigest,
+          configuration: run.installedRelease.configuration,
+        });
+        installedReleasePassed =
+          problems.length === 0 &&
+          sha256(readFileSync(archivePath)) === run.installedRelease.archiveDigest;
+        artifacts.push(
+          { path: relative(safeCwd, receiptPath), digest: sha256(readFileSync(receiptPath)) },
+          { path: relative(safeCwd, archivePath), digest: sha256(readFileSync(archivePath)) },
+        );
+      }
       const after = localProvenance(safeCwd, request.base, inputPaths);
       const stableInputs = before.inputIdentity === after.inputIdentity;
       const identityMatches =
@@ -478,7 +624,7 @@ export function collectLocalEvidence(
           !stableInputs ||
           lacksRequiredTestProof
             ? 'pending'
-            : result.exitCode === 0 && assertionPassed !== false
+            : result.exitCode === 0 && assertionPassed !== false && installedReleasePassed
               ? 'pass'
               : 'fail',
         revision: after.revision,
@@ -497,6 +643,9 @@ export function collectLocalEvidence(
         sourceRevision: before.revision,
         inputIdentity: after.inputIdentity,
         localRoot: safeCwd,
+        ...(run.installedRelease === undefined
+          ? {}
+          : { installedReleaseIdentity: installedReleaseIdentity(run.installedRelease) }),
         ...(reports.length === 0 ? {} : { reports }),
         ...(artifacts.length === 0 ? {} : { artifacts }),
       };
@@ -616,8 +765,20 @@ export function reuseLocalEvidence(
         return false;
       }
     });
+    const matchingRuns = request.localRuns?.filter(
+      (run) => run.obligation === obligationKey(obligation),
+    );
+    const requestedRelease = matchingRuns?.[0]?.installedRelease;
+    const sameRelease =
+      obligation.risk === 'installed-artifacts'
+        ? matchingRuns?.length === 1 &&
+          requestedRelease !== undefined &&
+          requestedRelease.sourceRevision === request.revision &&
+          prior.installedReleaseIdentity === installedReleaseIdentity(requestedRelease)
+        : prior.installedReleaseIdentity === undefined && requestedRelease === undefined;
     const reusable =
       prior.status === 'pass' &&
+      sameRelease &&
       prior.command === obligation.commandOrProviderJob &&
       prior.inputIdentity === current.inputIdentity &&
       prior.environment === current.runtime &&

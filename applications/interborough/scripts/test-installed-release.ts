@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES } from '@lostgradient/bureau';
 import { enableDemoPlugin } from '../src/host/demo-plugin-home.ts';
 import { startHost } from '../src/host/host.ts';
-import { expectedReleaseSourceSha, pluginIdentityBase } from './environment-configuration.ts';
+import { expectedReleaseSourceSha } from './environment-configuration.ts';
 import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
 import { linkPluginRuntime, writeFixture } from './test-installed-release-fixture.ts';
 import {
@@ -24,6 +24,15 @@ export { parseRunStartedRunId } from './test-installed-release-transport.ts';
 
 const DEFAULT_EVIDENCE = 'tmp/chef/COR-2039';
 const TIMEOUT = 240_000;
+const APPLICATION_DIRECTORY = resolve(import.meta.dir, '..');
+const REPOSITORY_ROOT = resolve(APPLICATION_DIRECTORY, '..', '..');
+const RECEIPT_CONFIGURATION_PATHS = [
+  'bun.lock',
+  'applications/interborough/package.json',
+  'applications/interborough/scripts/build-release.ts',
+  'applications/interborough/scripts/environment-configuration.ts',
+  'applications/interborough/scripts/test-installed-release.ts',
+] as const;
 
 export type InstalledReleaseArguments =
   | { readonly mode: 'archive'; readonly archive: string; readonly evidence?: string }
@@ -60,6 +69,68 @@ type Acceptance = {
   readonly exit: number;
   readonly details?: Record<string, unknown>;
 };
+
+type InstalledReleaseReceipt = {
+  readonly version: 1;
+  readonly outcome: 'pass' | 'fail';
+  readonly archive?: {
+    readonly path: string;
+    readonly sha256: string;
+    readonly manifest: Record<string, unknown>;
+    readonly target: 'darwin-arm64';
+  };
+  readonly installedExecutable?: string;
+  readonly assertions: readonly Acceptance[];
+  readonly configuration: readonly { readonly path: string; readonly sha256: string }[];
+  readonly producer: {
+    readonly script: 'applications/interborough/scripts/test-installed-release.ts';
+    readonly bun: string;
+    readonly platform: string;
+    readonly architecture: string;
+  };
+  readonly failure?: { readonly name: string; readonly message: string; readonly stack?: string };
+  readonly commandTrace?: unknown;
+  readonly relocatedCommandTrace?: unknown;
+};
+
+async function configurationIdentity(): Promise<InstalledReleaseReceipt['configuration']> {
+  return Promise.all(
+    RECEIPT_CONFIGURATION_PATHS.map(async (path) => ({
+      path,
+      sha256: createHash('sha256')
+        .update(await readFile(join(REPOSITORY_ROOT, path)))
+        .digest('hex'),
+    })),
+  );
+}
+
+function receiptProducer(): InstalledReleaseReceipt['producer'] {
+  return {
+    script: 'applications/interborough/scripts/test-installed-release.ts',
+    bun: Bun.version,
+    platform: process.platform,
+    architecture: process.arch,
+  };
+}
+
+function archiveReceipt(
+  archive: string,
+  unpacked: { sha256: string; manifest: Record<string, unknown> },
+): NonNullable<InstalledReleaseReceipt['archive']> {
+  if (unpacked.manifest['target'] !== 'darwin-arm64')
+    throw new Error(`Archive target ${String(unpacked.manifest['target'])} is not darwin-arm64`);
+  if (
+    typeof unpacked.manifest['sourceSha'] !== 'string' ||
+    !/^[0-9a-f]{40}$/i.test(unpacked.manifest['sourceSha'])
+  )
+    throw new Error('Archive manifest has no valid source SHA');
+  return {
+    path: relative(REPOSITORY_ROOT, archive),
+    sha256: unpacked.sha256,
+    manifest: unpacked.manifest,
+    target: 'darwin-arm64',
+  };
+}
 
 let installedCommandTracePath: string | undefined;
 const installedCommandTrace: Array<Record<string, unknown>> = [];
@@ -1238,11 +1309,15 @@ export async function runInstalledRelease(
   const unpackOperation = operations.unpack ?? unpack;
   const runOperation = operations.runInstalled ?? runInstalled;
   const root = await mkdtemp(join(tmpdir(), 'interborough-installed-release-'));
+  let receiptArchive: InstalledReleaseReceipt['archive'];
+  let installedExecutable: string | undefined;
   try {
     let executable: string;
     if (options.mode === 'archive') {
       const archive = await unpackOperation(options.archive, root);
       executable = archive.executable;
+      receiptArchive = archiveReceipt(options.archive, archive);
+      installedExecutable = relative(root, executable);
       assertions.push({
         assertion: 'archive SHA-256 and disposable unpack',
         command: `sha256sum ${options.archive}`,
@@ -1276,10 +1351,16 @@ export async function runInstalledRelease(
     const evidenceDirectory = options.evidence ?? DEFAULT_EVIDENCE;
     const evidence = join(evidenceDirectory, `installed-release-${Date.now()}.json`);
     await mkdir(evidenceDirectory, { recursive: true });
-    await writeFile(
-      evidence,
-      `${JSON.stringify({ archive: options.mode === 'archive' ? options.archive : undefined, assertions }, null, 2)}\n`,
-    );
+    const receipt: InstalledReleaseReceipt = {
+      version: 1,
+      outcome: 'pass',
+      ...(receiptArchive === undefined ? {} : { archive: receiptArchive }),
+      ...(installedExecutable === undefined ? {} : { installedExecutable }),
+      assertions,
+      configuration: await configurationIdentity(),
+      producer: receiptProducer(),
+    };
+    await writeFile(evidence, `${JSON.stringify(receipt, null, 2)}\n`);
     return evidence;
   } catch (error) {
     const evidenceDirectory = options.evidence ?? DEFAULT_EVIDENCE;
@@ -1293,24 +1374,29 @@ export async function runInstalledRelease(
     const relocatedTrace = (await Bun.file(relocatedTracePath).exists())
       ? await readFile(relocatedTracePath, 'utf8')
       : undefined;
-    await writeFile(
-      evidence,
-      `${JSON.stringify(
-        {
-          archive: options.mode === 'archive' ? options.archive : undefined,
-          failure:
-            error instanceof Error
-              ? { name: error.name, message: error.message, stack: error.stack }
-              : String(error),
-          source: pluginIdentityBase(),
-          commandTrace: trace === undefined ? undefined : JSON.parse(trace),
-          relocatedCommandTrace:
-            relocatedTrace === undefined ? undefined : JSON.parse(relocatedTrace),
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    const failure =
+      error instanceof Error
+        ? {
+            name: error.name,
+            message: error.message,
+            ...(error.stack === undefined ? {} : { stack: error.stack }),
+          }
+        : { name: 'Error', message: String(error) };
+    const receipt: InstalledReleaseReceipt = {
+      version: 1,
+      outcome: 'fail',
+      ...(receiptArchive === undefined ? {} : { archive: receiptArchive }),
+      ...(installedExecutable === undefined ? {} : { installedExecutable }),
+      assertions,
+      configuration: await configurationIdentity(),
+      producer: receiptProducer(),
+      failure,
+      ...(trace === undefined ? {} : { commandTrace: JSON.parse(trace) }),
+      ...(relocatedTrace === undefined
+        ? {}
+        : { relocatedCommandTrace: JSON.parse(relocatedTrace) }),
+    };
+    await writeFile(evidence, `${JSON.stringify(receipt, null, 2)}\n`);
     throw error;
   } finally {
     await rm(root, { recursive: true, force: true });
