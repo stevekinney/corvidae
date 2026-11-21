@@ -14,7 +14,12 @@
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
-  import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
+  import {
+    approvalQuestion,
+    argumentEntries,
+    declaredSummary,
+    reasonSaysAlways,
+  } from '../../lib/tool-text.ts';
   import ReviewSource from './review-source.svelte';
   import type { ReviewOutcome } from './review-outcome.ts';
 
@@ -49,7 +54,7 @@
   const action = $derived(
     review.approval.action.type === 'approval' ? review.approval.action : undefined,
   );
-  const hasInput = $derived(Object.keys(review.approval.arguments).length > 0);
+  const hasInput = $derived(argumentEntries(review.approval.arguments).length > 0);
   const operation = $derived({
     ...(action?.operation ?? { kind: 'other' as const }),
     argsPreview: hasInput ? review.approval.arguments : undefined,
@@ -91,9 +96,6 @@
     headingLevel={2}
     {question}
     context={source}
-    consequence={action === undefined
-      ? undefined
-      : declaredSummary(action.message, review.approval.reason)}
     rememberScope={alwaysAsks ? undefined : 'the rest of this chat'}
     bind:reason={note}
     noteInitiallyOpen

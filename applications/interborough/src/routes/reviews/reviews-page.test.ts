@@ -200,7 +200,13 @@ describe('deciding a Bureau tool approval', () => {
       approval: {
         ...APPROVAL.approval,
         toolName: 'issue-refund',
-        arguments: { orderId: 'order-1001', amount: 42, reason: 'Duplicate charge' },
+        arguments: { orderId: '4471', amount: '$42.00', reason: 'Arrived damaged' },
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'other' },
+          message: 'Refund order 4471 for $42.00?',
+        },
       },
     });
     const { container, findByRole, findByText } = open({ reviews: [approval] });
@@ -208,13 +214,16 @@ describe('deciding a Bureau tool approval', () => {
     await openRow(container, 0);
 
     expect(container.querySelector('[data-cinder-layout="detail"]')).not.toBeNull();
-    expect(await findByRole('heading', { name: /refund order-1001/i })).not.toBeNull();
+    expect(await findByRole('heading', { name: 'Refund order 4471 for $42.00?' })).not.toBeNull();
     expect(await findByText('Order ID')).not.toBeNull();
     expect(await findByText('Amount')).not.toBeNull();
     expect(await findByText('Reason')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card__detail-risk')?.textContent?.trim()).toBe(
+      "Can't be undone.",
+    );
     await fireEvent.click(await findByRole('radio', { name: 'JSON' }));
     const json = container.querySelector('.cinder-json-viewer')?.textContent?.replace(/\s+/g, '');
-    expect(json).toContain('{orderId:"order-1001"amount:42reason:"Duplicatecharge"}');
+    expect(json).toContain('{orderId:"4471"amount:"$42.00"reason:"Arriveddamaged"}');
   });
 
   test('checking remember alone sends no decision', async () => {
