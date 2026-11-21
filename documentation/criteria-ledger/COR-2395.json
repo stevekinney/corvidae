@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2395",
+  "branch": "steve/cor-2395-static-export-worker",
+  "checkedAt": "c929ccc858e7de186c5d71ab1d655135ff29cc2e",
+  "briefVersion": "0d6284a047d0",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Mechanism established from source: static-export.integration.test.ts drives static-export.ts, which renders featured examples through renderFeaturedExample; each uncached render spawns a fresh Bun worker serially. Coordinator must record this in the issue comment."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "featured-example-server-renderer.integration.test.ts injects a child that exits 17 after writing both streams; it asserts the renderer error includes exit code, stdout, and stderr."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Not run locally: owner policy forbids workers from running bun run harden. Coordinator must dispatch paired five-iteration gate-run.ts control under that load on the pushed branch and base."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Reviewed c929ccc85 diff: no timeout, retries, or HANG_GUARD_MILLISECONDS change; the existing 120000 worker hang detector is untouched."
+    }
+  ]
+}
