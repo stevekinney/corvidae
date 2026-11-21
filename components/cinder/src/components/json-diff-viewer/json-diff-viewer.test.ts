@@ -44,6 +44,48 @@ function buttons(container: HTMLElement): HTMLButtonElement[] {
   return Array.from(container.querySelectorAll<HTMLButtonElement>('button'));
 }
 
+/**
+ * A selector with the stylesheet's line breaks taken out, as the DOM's selector parser wants it:
+ * the formatter wraps a long `:has(...)` across lines, which a browser accepts and happy-dom does not.
+ */
+function compactSelector(selector: string): string {
+  return selector.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').trim();
+}
+
+const CROSS_LEVEL_GROUP =
+  ':has(> .cinder-json-diff-viewer__list > .cinder-json-diff-viewer__control:last-child)';
+
+/**
+ * Whether the coarse-pointer rule's selector list matches `element`. happy-dom evaluates a
+ * `:last-child` inside `:has()` as if it were absent, so the two cross-level groups, the only ones
+ * that use it, are checked by what they say in the stylesheet: the previous sibling is a row whose
+ * inner list ends in a control, and the element is a control or a row holding a button. Every other
+ * group is matched by the DOM's own selector engine.
+ */
+function ruleMatches(element: HTMLElement, selectorList: string): boolean {
+  const groups = selectorList.split(/,(?![^(]*\))/).map((group) => group.trim());
+  return groups.some((group) => {
+    if (!group.includes(':last-child')) return element.matches(group);
+    expect(group).toContain(CROSS_LEVEL_GROUP.replace(/^/, '.cinder-json-diff-viewer__row'));
+    const previous = element.previousElementSibling;
+    const lastOfInner = previous?.querySelector(
+      ':scope > .cinder-json-diff-viewer__list',
+    )?.lastElementChild;
+    const previousEndsInControl =
+      previous?.classList.contains('cinder-json-diff-viewer__row') === true &&
+      lastOfInner?.classList.contains('cinder-json-diff-viewer__control') === true;
+    const isControl = element.classList.contains('cinder-json-diff-viewer__control');
+    const holdsButton =
+      element.classList.contains('cinder-json-diff-viewer__row') &&
+      element.querySelector(':scope > .cinder-json-diff-viewer__button') !== null;
+    const followedBy = group.split(' + ')[1] ?? '';
+    return (
+      previousEndsInControl &&
+      (followedBy.startsWith('.cinder-json-diff-viewer__control') ? isControl : holdsButton)
+    );
+  });
+}
+
 /** The button whose accessible name is exactly `name`: its `aria-label`, else its text. */
 function buttonNamedBy(container: HTMLElement, name: string): HTMLButtonElement {
   return requiredInstance(
@@ -252,7 +294,7 @@ describe('JsonDiffViewer markers and accessibility', () => {
     const css = readFileSync(new URL('./json-diff-viewer.css', import.meta.url), 'utf8');
     // The rule under `@media (any-pointer: coarse)` that adds the margin, selector and all.
     const rule = /@media \(any-pointer: coarse\)\s*\{\s*([^{}]+?)\s*\{\s*([^}]*)\}/.exec(css);
-    const selector = rule?.[1] ?? '';
+    const selector = compactSelector(rule?.[1] ?? '');
 
     test('is one margin between two stacked controls, under the same media query Button uses', () => {
       expect(selector).toContain('+');
@@ -277,8 +319,8 @@ describe('JsonDiffViewer markers and accessibility', () => {
         stacked.container.querySelectorAll<HTMLElement>('.cinder-json-diff-viewer__control'),
       );
       expect(controls).toHaveLength(2);
-      expect(controls[0]?.matches(selector)).toBe(false);
-      expect(controls[1]?.matches(selector)).toBe(true);
+      expect(ruleMatches(requiredInstance(controls[0], HTMLElement), selector)).toBe(false);
+      expect(ruleMatches(requiredInstance(controls[1], HTMLElement), selector)).toBe(true);
       cleanup();
 
       const lone = render(JsonDiffViewer, { before: { kept: 1, a: 1 }, after: { kept: 1, a: 2 } });
@@ -286,7 +328,7 @@ describe('JsonDiffViewer markers and accessibility', () => {
         lone.container.querySelector('.cinder-json-diff-viewer__control'),
         HTMLElement,
       );
-      expect(only.matches(selector)).toBe(false);
+      expect(ruleMatches(only, selector)).toBe(false);
     });
 
     test('matches a row holding a closed-level control only beside another control', () => {
@@ -303,7 +345,12 @@ describe('JsonDiffViewer markers and accessibility', () => {
       );
       // The first run opens whole; the four after it start closed, one under another.
       expect(withControl).toHaveLength(4);
-      expect(withControl.map((row) => row.matches(selector))).toEqual([false, true, true, true]);
+      expect(withControl.map((row) => ruleMatches(row, selector))).toEqual([
+        false,
+        true,
+        true,
+        true,
+      ]);
       // A plain row, with no control, is never matched.
       const plain = requiredInstance(
         container.querySelector(
@@ -311,7 +358,62 @@ describe('JsonDiffViewer markers and accessibility', () => {
         ),
         HTMLElement,
       ).parentElement;
-      expect(plain?.matches(selector)).toBe(false);
+      expect(ruleMatches(requiredInstance(plain, HTMLElement), selector)).toBe(false);
+    });
+  });
+
+  describe('room across levels on a coarse pointer', () => {
+    const css = readFileSync(new URL('./json-diff-viewer.css', import.meta.url), 'utf8');
+    const selector = compactSelector(
+      /@media \(any-pointer: coarse\)\s*\{\s*([^{}]+?)\s*\{\s*margin-block-start/.exec(css)?.[1] ??
+        '',
+    );
+    // The shape of the stacked-levels playground example: a nested level that ends in its own
+    // "Show N unchanged" control, and the parent level's control directly under it.
+    const before = {
+      settings: { retries: 3, timeout: 30, region: 'us-east-1' },
+      name: 'Nightly ETL',
+    };
+    const after = {
+      settings: { retries: 5, timeout: 30, region: 'us-east-1' },
+      name: 'Nightly ETL',
+    };
+
+    test("matches the parent level's control under a nested level that ends in a control", () => {
+      const { container } = render(JsonDiffViewer, { before, after });
+      const rootList = requiredInstance(
+        container.querySelector('.cinder-json-diff-viewer > ul'),
+        HTMLElement,
+      );
+      const parentControl = requiredInstance(
+        rootList.querySelector(':scope > .cinder-json-diff-viewer__control'),
+        HTMLElement,
+      );
+      const nestedControl = requiredInstance(
+        rootList.querySelector(':scope > li > ul > .cinder-json-diff-viewer__control:last-child'),
+        HTMLElement,
+      );
+      expect(ruleMatches(parentControl, selector)).toBe(true);
+      // The nested control sits under a plain row of its own level, so it gets no margin.
+      expect(ruleMatches(nestedControl, selector)).toBe(false);
+    });
+
+    test('stops matching once the nested control is no longer the last thing in its list', async () => {
+      const { container } = render(JsonDiffViewer, { before, after });
+      const rootList = requiredInstance(
+        container.querySelector('.cinder-json-diff-viewer > ul'),
+        HTMLElement,
+      );
+      const nestedButton = requiredInstance(
+        rootList.querySelector(':scope > li > ul > .cinder-json-diff-viewer__control button'),
+        HTMLButtonElement,
+      );
+      await fireEvent.click(nestedButton);
+      const parentControl = requiredInstance(
+        rootList.querySelector(':scope > .cinder-json-diff-viewer__control'),
+        HTMLElement,
+      );
+      expect(ruleMatches(parentControl, selector)).toBe(false);
     });
   });
 
@@ -322,7 +424,12 @@ describe('JsonDiffViewer markers and accessibility', () => {
 
     const css = readFileSync(new URL('./json-diff-viewer.css', import.meta.url), 'utf8');
     const row = /\.cinder-json-diff-viewer__row\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
-    expect(row).toContain('grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr)');
+    // Marker, key, value: the key is held to half the row, and the value keeps at least 12ch (or
+    // 40% of a narrower row) however long the key is.
+    const columns = /grid-template-columns:\s*([^;]+);/.exec(row)?.[1] ?? '';
+    expect(columns).toBe('auto fit-content(50%) minmax(min(12ch, 40%), 1fr)');
+    const valueFloor = /minmax\(min\((\d+)ch,\s*40%\),\s*1fr\)$/.exec(columns)?.[1];
+    expect(Number(valueFloor)).toBeGreaterThanOrEqual(12);
     const keyRule = /\.cinder-json-diff-viewer__key\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
     expect(keyRule).toContain('overflow-wrap: anywhere');
   });

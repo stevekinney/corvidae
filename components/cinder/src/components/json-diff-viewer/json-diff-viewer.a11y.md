@@ -37,7 +37,7 @@ The comparison is a named group (`label`, "JSON differences" by default) holding
 
 ## Touch targets
 
-Every control is Cinder's `Button` in the `link` variant at the `xs` size, so on a coarse pointer each carries Button's 44px hit region (`data-cinder-hit-target="44"`, a pseudo-element that takes no layout). Button lets a hit region overlap what is around it invisibly, so the viewer adds room only where it would take another control's taps: on a coarse pointer, between two stacked controls (a control's item, or a row that holds one), the second gains a block-start margin of twice `--cinder-space-3`. A lone control, and a tinted row beside plain rows, keep their own height. The label stays on one line, starting at the inline start.
+Every control is Cinder's `Button` in the `link` variant at the `xs` size, so on a coarse pointer each carries Button's 44px hit region (`data-cinder-hit-target="44"`, a pseudo-element that takes no layout). Button lets a hit region overlap what is around it invisibly, so the viewer adds room only where it would take another control's taps: on a coarse pointer, between two stacked controls (a control's item, or a row that holds one), the second gains a block-start margin of twice `--cinder-space-3`. The same margin applies across levels: when a row's inner list ends in a control, the parent level's control (or a row holding one) directly under it gains it too. A lone control, and a tinted row beside plain rows, keep their own height. The label stays on one line, starting at the inline start.
 
 ## Forced colors
 

@@ -33,11 +33,12 @@
     border-inline-start: 1px dashed var(--cinder-border-muted);
   }
 
-  /* The key column is as wide as its key, never wider than the row: a very long key wraps inside
-   * its column instead of making the viewer scroll sideways. */
+  /* A short key keeps its own width; a long key is held to half the row and wraps inside it, so it
+   * never makes the viewer scroll sideways. The value's track keeps at least 12 characters (or 40%
+   * of a narrower row), so a long key can never squeeze the value to one character wide. */
   .cinder-json-diff-viewer__row {
     display: grid;
-    grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr);
+    grid-template-columns: auto fit-content(50%) minmax(min(12ch, 40%), 1fr);
     column-gap: var(--cinder-space-2);
     align-items: baseline;
     border-radius: var(--cinder-radius-sm);
@@ -110,7 +111,9 @@
    * layout and reaches past the text by half the difference. Button lets a region overlap what is
    * around it invisibly, so room is added only where it would take another control's taps: between
    * two stacked controls, each a control's item or a row that holds one. A lone control, and a
-   * tinted row beside plain rows, keep their own height. */
+   * tinted row beside plain rows, keep their own height. The last two selectors cross levels: a
+   * row whose inner list ends in a control, then the parent level's own control (or a row holding
+   * one) directly under it. */
   @media (any-pointer: coarse) {
     .cinder-json-diff-viewer__control + .cinder-json-diff-viewer__control,
     .cinder-json-diff-viewer__control
@@ -118,6 +121,14 @@
     .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button)
       + .cinder-json-diff-viewer__control,
     .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button)
+      + .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button),
+    .cinder-json-diff-viewer__row:has(
+        > .cinder-json-diff-viewer__list > .cinder-json-diff-viewer__control:last-child
+      )
+      + .cinder-json-diff-viewer__control,
+    .cinder-json-diff-viewer__row:has(
+        > .cinder-json-diff-viewer__list > .cinder-json-diff-viewer__control:last-child
+      )
       + .cinder-json-diff-viewer__row:has(> .cinder-json-diff-viewer__button) {
       margin-block-start: calc(var(--cinder-space-3) * 2);
     }

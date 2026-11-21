@@ -2271,6 +2271,7 @@
 ["files","applications/playground/src/examples/json-diff-viewer/long-key.example.svelte","applications/playground/src/examples/json-diff-viewer/long-key.example.svelte"]
 ["files","applications/playground/src/examples/json-diff-viewer/many-changes.example.svelte","applications/playground/src/examples/json-diff-viewer/many-changes.example.svelte"]
 ["files","applications/playground/src/examples/json-diff-viewer/render-budget.example.svelte","applications/playground/src/examples/json-diff-viewer/render-budget.example.svelte"]
+["files","applications/playground/src/examples/json-diff-viewer/stacked-levels.example.svelte","applications/playground/src/examples/json-diff-viewer/stacked-levels.example.svelte"]
 ["files","applications/playground/src/examples/json-diff-viewer/type-change.example.svelte","applications/playground/src/examples/json-diff-viewer/type-change.example.svelte"]
 ["files","applications/playground/src/examples/json-diff-viewer/unchanged-open.example.svelte","applications/playground/src/examples/json-diff-viewer/unchanged-open.example.svelte"]
 ["files","applications/playground/src/examples/json-editor/basic.example.svelte","applications/playground/src/examples/json-editor/basic.example.svelte"]
