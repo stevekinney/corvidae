@@ -580,7 +580,7 @@ describe('the hooks list', () => {
     const buttons = view.getAllByRole('button', { name: HOOKS_COPY.newAction });
     expect(buttons.length).toBe(2);
     for (const button of buttons) {
-      expect(button.getAttribute('data-cinder-variant')).toBe('primary');
+      expect(button.classList.contains('button-variant-primary')).toBe(true);
       expect(button.textContent?.trim()).toBe(HOOKS_COPY.newAction);
     }
     const primary = buttons.filter(

@@ -163,7 +163,7 @@ for (const list of LIST_PAGES) {
           const create = header.locator('.cinder-button').filter({ hasText: list.create });
           await expect(create).toBeVisible();
           await expect(create).toHaveText(list.create);
-          await expect(create).toHaveAttribute('data-cinder-variant', 'primary');
+          await expect(create).toContainClass('button-variant-primary');
           await expect(create).not.toHaveAttribute('data-cinder-icon-only', /.*/);
         }
         if (list.view === 'chat') {

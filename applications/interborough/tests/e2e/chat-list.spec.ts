@@ -72,7 +72,7 @@ test.describe('the chat list on the sample world', () => {
     await expect(header.getByRole('heading', { level: 1, name: 'Chats' })).toBeVisible();
     const plus = header.getByRole('link', { name: 'New chat' });
     // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
-    await expect(plus).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(plus).toContainClass('button-variant-primary');
     await expect(plus).toHaveText('New chat');
     await expect(plus).toHaveAttribute('href', '/chats/new');
     const field = header.getByRole('searchbox', { name: 'Search chats' });
@@ -382,9 +382,8 @@ test.describe('the chat list at other widths', () => {
     await openChats(page, 375);
     const header = list(page).locator('header');
     await expect(header.getByRole('heading', { level: 1, name: 'Chat' })).toBeVisible();
-    await expect(header.getByRole('link', { name: 'New chat' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(header.getByRole('link', { name: 'New chat' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(header.getByRole('searchbox')).toHaveCount(0);
     await expect(list(page).locator('.cinder-data-list-group__header')).toHaveText([
@@ -435,15 +434,14 @@ test.describe('the states of the chat list', () => {
     await expect(state.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
     await expect(state).not.toHaveAttribute('data-cinder-layout', /.*/);
     await expect(state).toContainText('Start one with an agent.');
-    await expect(state.getByRole('link', { name: 'New chat' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(state.getByRole('link', { name: 'New chat' })).toContainClass(
+      'button-variant-primary',
     );
     const header = list(page)
       .locator('.cinder-page-header')
       .getByRole('link', { name: 'New chat' });
     await expect(header).toHaveText('New chat');
-    await expect(header).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(header).toContainClass('button-variant-primary');
     // No search or segments over nothing (owner report, 2026-11-19).
     await expect(list(page).getByRole('searchbox')).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats', state: 'first use', source: SOURCE });
@@ -512,9 +510,8 @@ test.describe('the states of the chat list', () => {
       state.getByRole('heading', { level: 3, name: 'Couldn’t load chats' }),
     ).toBeVisible();
     await expect(state).toContainText('Interborough didn’t send them back.');
-    await expect(state.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(state.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-secondary',
     );
     // The rest of the page is live: the shell, the header, and the pane beside the list.
     await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible();

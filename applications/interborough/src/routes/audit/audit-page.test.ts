@@ -303,7 +303,7 @@ describe('the table', () => {
     expect(getByPlaceholderText('Search by actor, action or target')).not.toBeNull();
     expect(getByTestId('audit-count').textContent).toBe('4 events');
     const exportButton = getByRole('button', { name: AUDIT_COPY.exportAction });
-    expect(exportButton.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(exportButton.classList.contains('button-variant-secondary')).toBe(true);
     expect(exportButton.querySelector('svg')).not.toBeNull();
     // The count reads before Export in the document, so the button ends the row.
     expect(
@@ -955,7 +955,7 @@ describe('who may see it', () => {
     expect(container.querySelector('[data-page="health"]')).not.toBeNull();
     expect(container.querySelector('[role="search"]')).toBeNull();
     const retry = getByRole('button', { name: RETRY_LABEL });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
     expect(retry.querySelector('svg')).not.toBeNull();
     expect(container.querySelector('.cinder-error-state a')).toBeNull();
     expect(container.textContent).not.toContain('Check Health');

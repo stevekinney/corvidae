@@ -318,7 +318,7 @@ describe('nothing yet', () => {
     expect(makers).toHaveLength(2);
     for (const maker of makers) {
       expect(maker.textContent?.trim()).toBe(GOALS_COPY.newAction);
-      expect(maker.getAttribute('data-cinder-variant')).toBe('primary');
+      expect(maker.classList.contains('button-variant-primary')).toBe(true);
     }
     const stateButton = view.container.querySelector<HTMLElement>(
       '[data-cinder-kind="first-use"] button',

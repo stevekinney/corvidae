@@ -23,15 +23,17 @@ describe('DropdownTrigger as half of a split button', () => {
     });
     const element = trigger(container);
     expect(element.classList.contains('cinder-button')).toBe(true);
-    expect(element.dataset['cinderVariant']).toBe('primary');
-    expect(element.dataset['cinderSize']).toBe('sm');
+    expect(element.classList.contains('button-variant-primary')).toBe(true);
+    expect(element.classList.contains('button-size-small')).toBe(true);
+    expect(element.hasAttribute('data-cinder-variant')).toBe(false);
+    expect(element.hasAttribute('data-cinder-size')).toBe(false);
   });
 
   test("beside a Button with no variant it takes Button's default, soft at md", () => {
     const { container } = render(SplitButtonFixture, {});
     const element = trigger(container);
-    expect(element.dataset['cinderVariant']).toBe('soft');
-    expect(element.dataset['cinderSize']).toBe('md');
+    expect(element.classList.contains('button-variant-soft')).toBe(true);
+    expect(element.classList.contains('button-size-medium')).toBe(true);
   });
 
   test('its own variant wins over the Button beside it', () => {
@@ -39,16 +41,18 @@ describe('DropdownTrigger as half of a split button', () => {
       actionVariant: 'primary',
       triggerVariant: 'secondary',
     });
-    expect(trigger(container).dataset['cinderVariant']).toBe('secondary');
+    expect(trigger(container).classList.contains('button-variant-secondary')).toBe(true);
   });
 
   test('outside a group it keeps its own bordered face unless a variant is set', () => {
     const plain = render(SplitButtonFixture, { grouped: false });
     expect(trigger(plain.container).classList.contains('cinder-button')).toBe(false);
-    expect(trigger(plain.container).dataset['cinderVariant']).toBeUndefined();
+    expect(
+      [...trigger(plain.container).classList].some((name) => /^button-(size|variant)-/.test(name)),
+    ).toBe(false);
     cleanup();
     const styled = render(SplitButtonFixture, { grouped: false, triggerVariant: 'ghost' });
     expect(trigger(styled.container).classList.contains('cinder-button')).toBe(true);
-    expect(trigger(styled.container).dataset['cinderVariant']).toBe('ghost');
+    expect(trigger(styled.container).classList.contains('button-variant-ghost')).toBe(true);
   });
 });

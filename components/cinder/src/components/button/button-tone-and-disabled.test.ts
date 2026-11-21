@@ -77,10 +77,11 @@ function disabledDeclarations(variant: ButtonVariant, iconOnly = false): Map<str
           disabledSelector.test(selector) && loadingExcluded.test(selector) && applies(selector),
       ),
     );
-  const hasVariant = (selector: string) => selector.includes(`[data-cinder-variant='${variant}']`);
+  const hasVariant = (selector: string) =>
+    new RegExp(`\\.button-variant-${variant}(?![a-z-])`).test(selector);
   const isIconOnly = (selector: string) => selector.includes('[data-cinder-icon-only]');
   const layers = [
-    matching((selector) => !/\[data-cinder-variant=/.test(selector)),
+    matching((selector) => !/\.button-variant-/.test(selector)),
     matching((selector) => hasVariant(selector) && !isIconOnly(selector)),
     ...(iconOnly ? [matching((selector) => hasVariant(selector) && isIconOnly(selector))] : []),
   ];
@@ -95,7 +96,7 @@ function disabledDeclarations(variant: ButtonVariant, iconOnly = false): Map<str
 describe('Button disabled looks disabled in every variant', () => {
   test('the variant list covers every variant the stylesheet knows', () => {
     const named = new Set(
-      [...buttonCss.matchAll(/\[data-cinder-variant='([a-z-]+)'\]/g)].map((match) => match[1]),
+      [...buttonCss.matchAll(/\.button-variant-([a-z-]+)/g)].map((match) => match[1]),
     );
     expect([...named].sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
       [...VARIANTS].sort((a, b) => a.localeCompare(b)),
@@ -159,11 +160,11 @@ describe('a primary Button never takes a container tone', () => {
   test('a primary Button inside a danger Card renders the primary tone', () => {
     const { container } = render(InDangerCard);
     const card = container.querySelector('.cinder-card');
-    const primary = container.querySelector("button[data-cinder-variant='primary']");
+    const primary = container.querySelector('button.button-variant-primary');
     expect(card?.getAttribute('data-cinder-tone')).toBe('danger');
     expect(primary).not.toBeNull();
     expect(primary?.closest('.cinder-card')).toBe(card);
-    expect(primary?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(primary?.classList.contains('button-variant-primary')).toBe(true);
   });
 
   test('the primary face reads the accent tokens, which no container rebinds', () => {
@@ -171,7 +172,7 @@ describe('a primary Button never takes a container tone', () => {
     let background: string | undefined;
     let color: string | undefined;
     primary.walkRules((rule) => {
-      if (rule.selector !== ".cinder-button[data-cinder-variant='primary']") return;
+      if (rule.selector !== '.cinder-button.button-variant-primary') return;
       rule.walkDecls('background', (declaration) => {
         background = declaration.value;
       });
@@ -195,8 +196,8 @@ describe('a primary Button never takes a container tone', () => {
 
   test('the hero band exception covers only the PageHeader accent and night bands', () => {
     const planted = [
-      ".cinder-card[data-cinder-tone='danger'] .cinder-button[data-cinder-variant='primary'] { background: red; }",
-      ".cinder-page-header[data-cinder-tone='tint'] .cinder-button[data-cinder-variant='primary'] { background: red; }",
+      ".cinder-card[data-cinder-tone='danger'] .cinder-button.button-variant-primary { background: red; }",
+      ".cinder-page-header[data-cinder-tone='tint'] .cinder-button.button-variant-primary { background: red; }",
       ":is(.cinder-page-header[data-cinder-tone='accent'], .cinder-card[data-cinder-tone='danger']) .cinder-button { color: red; }",
     ].join('\n');
     // A status or tone ancestor still fails, in PageHeader's own file and in any other.
@@ -204,7 +205,7 @@ describe('a primary Button never takes a container tone', () => {
     expect(retoningSelectors('components/card/card.css', planted)).toHaveLength(3);
 
     const heroBand =
-      ":is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night']) .cinder-button[data-cinder-variant='primary'] { background: white; }";
+      ":is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night']) .cinder-button.button-variant-primary { background: white; }";
     expect(retoningSelectors('components/page-header/page-header.css', heroBand)).toEqual([]);
     // The same selector in another component's stylesheet is not excepted.
     expect(retoningSelectors('components/card/card.css', heroBand)).toHaveLength(1);

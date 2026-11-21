@@ -913,7 +913,7 @@ for (const width of WIDTHS) {
     // R10-04: the switch and a secondary small Duplicate button; no More actions menu, no Delete.
     await expect(head.getByRole('switch')).toBeVisible();
     const duplicate = head.getByRole('button', { name: defaults.duplicate, exact: true });
-    await expect(duplicate).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(duplicate).toContainClass('button-variant-secondary');
     // R10-05: drawn no taller than 36 px, with the 44 pixel hit area Cinder gives a compact button
     // (the page asks for size sm; Cinder draws it as its compact size).
     await expect(duplicate).toHaveAttribute('data-cinder-hit-target', '44');

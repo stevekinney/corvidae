@@ -139,8 +139,8 @@ describe('the composer’s settings', () => {
       expect(
         control(container, id)
           ?.closest('.cinder-select-field')
-          ?.getAttribute('data-cinder-variant'),
-      ).toBe('ghost');
+          ?.classList.contains('select-variant-ghost'),
+      ).toBe(true);
     }
   });
 

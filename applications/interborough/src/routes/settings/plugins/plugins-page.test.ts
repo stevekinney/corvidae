@@ -903,8 +903,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('danger');
+        .classList.contains('button-variant-danger'),
+    ).toBe(true);
     // Cinder draws the list: it sits directly in the dialog's options, with no wrapper of the page's.
     expect(
       dialog.querySelector('[data-testid="plugin-disable-impacts"]')?.parentElement?.className,
@@ -982,8 +982,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // One question, which confirms with the one press: no second step.
     await fireEvent.click(
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
@@ -1026,8 +1026,8 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
     expect(
       within(dialog)
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('danger');
+        .classList.contains('button-variant-danger'),
+    ).toBe(true);
     // Disabling is never blocked on a read: the question still confirms.
     await fireEvent.click(
       within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),

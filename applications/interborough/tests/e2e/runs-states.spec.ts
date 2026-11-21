@@ -121,7 +121,7 @@ async function answerOperation(
 /** The header's "+": a secondary icon button named for what it starts. */
 const headerCreate = (page: Page) => page.locator('main .cinder-page-header__create');
 /** Every primary button or link on the page, which a list page keeps to the one its state offers. */
-const primaries = (page: Page) => page.locator('main [data-cinder-variant="primary"]');
+const primaries = (page: Page) => page.locator('main .button-variant-primary');
 const filterBar = (page: Page) => page.getByRole('search', { name: 'Filter runs' });
 
 // Every title names `/runs`, so a design review's route filter (`--grep '/runs'`) runs it.
@@ -134,7 +134,7 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     const main = page.locator('main');
     await expect(main.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible();
     await expect(main.getByText('What your agents have done, newest first.')).toBeVisible();
-    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(headerCreate(page)).toContainClass('button-variant-primary');
     await expect(headerCreate(page)).toHaveText('Start run');
     // The segments fold into one select and the chips into a Filter menu.
     await expect(filterBar(page).locator('.cinder-filter-bar__segments-select')).toContainText(
@@ -185,7 +185,7 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
     await expect(bar.getByRole('button', { name: 'Started by', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Agent', exact: true })).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Search runs' })).toBeVisible();
-    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(headerCreate(page)).toContainClass('button-variant-primary');
     // The status leads each row in its fixed column, never on line two (05x): the rows follow the
     // window, which is no phone, though the rail leaves each row under 640px.
     const main = page.locator('main');
@@ -278,12 +278,11 @@ for (const width of WIDTHS) {
       );
       // The empty state is the page: no filter bar.
       await expect(filterBar(page)).toHaveCount(0);
-      await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(headerCreate(page)).toContainClass('button-variant-primary');
       const start = main.locator('.cinder-empty-state').getByRole('link', { name: 'Start run' });
-      await expect(start).toHaveAttribute('data-cinder-variant', 'primary');
-      await expect(main.getByRole('link', { name: 'Chat with an agent' })).toHaveAttribute(
-        'data-cinder-variant',
-        'secondary',
+      await expect(start).toContainClass('button-variant-primary');
+      await expect(main.getByRole('link', { name: 'Chat with an agent' })).toContainClass(
+        'button-variant-secondary',
       );
       const disc = main.locator('.cinder-empty-state-icon');
       await expect(disc).toHaveCount(1);
@@ -309,7 +308,7 @@ for (const width of WIDTHS) {
         main.getByRole('heading', { level: 2, name: 'No runs match these filters' }),
       ).toBeVisible();
       await expect(main).toContainText('Model switcher has no runs. Try another agent.');
-      await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(headerCreate(page)).toContainClass('button-variant-primary');
       if (width >= 1024) {
         // The bar draws its segments as radios when its row fits; with the Workflow and Started by
         // chips beside the Agent chip it steps down to a Status select that holds the same counts.
@@ -340,7 +339,7 @@ for (const width of WIDTHS) {
       await expect(state).toHaveAttribute('data-cinder-kind', 'filtered');
       await expect(state.getByRole('button')).toHaveCount(1);
       const clear = state.getByRole('button', { name: 'Clear filters' });
-      await expect(clear).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(clear).toContainClass('button-variant-secondary');
       await expect(primaries(page)).toHaveCount(1);
 
       await captureForDesignReview(page, {
@@ -404,13 +403,12 @@ for (const width of WIDTHS) {
       await expect(main.getByRole('region', { name: /problem/ })).toHaveCount(0);
       await expect(primaries(page)).toHaveCount(1);
       await expect(primaries(page).first()).toHaveText('Try again');
-      await expect(main.getByRole('link', { name: 'Check Health' })).toHaveAttribute(
-        'data-cinder-variant',
-        'secondary',
+      await expect(main.getByRole('link', { name: 'Check Health' })).toContainClass(
+        'button-variant-secondary',
       );
       await expect(main.getByText('Show the error details')).toBeVisible();
       // The header's "+" is the secondary icon button, muted: inert, so Try again is the one strong action.
-      await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(headerCreate(page)).toContainClass('button-variant-secondary');
       await expect(headerCreate(page)).toHaveAttribute('aria-disabled', 'true');
 
       await captureForDesignReview(page, { route: '/runs', state: 'failing', source: SOURCE });
@@ -685,7 +683,7 @@ test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => 
     }
     await expect(main.locator('.cinder-skeleton-row')).toHaveCount(0);
     const retry = main.getByRole('button', { name: 'Try again' });
-    await expect(retry).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(retry).toContainClass('button-variant-primary');
     await captureForDesignReview(page, {
       route: '/runs',
       state: 'loading canceled',

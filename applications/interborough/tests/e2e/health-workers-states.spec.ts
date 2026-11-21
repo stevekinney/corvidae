@@ -845,9 +845,8 @@ for (const width of STATE_WIDTHS) {
     await expect(
       region.getByText('Still loading. This is taking longer than usual.'),
     ).toBeVisible();
-    await expect(region.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
-      'data-cinder-variant',
-      'ghost',
+    await expect(region.getByRole('button', { name: 'Cancel' })).toContainClass(
+      'button-variant-ghost',
     );
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -916,9 +915,8 @@ for (const width of STATE_WIDTHS) {
       'data-cinder-bordered',
       '',
     );
-    await expect(region.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(region.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-primary',
     );
     // This page is a Health tab, so the error offers no way back to Health.
     await expect(region.getByRole('link', { name: 'Open Health' })).toHaveCount(0);

@@ -11,6 +11,7 @@
     resolveActionVariant,
   } from '../../_internal/action-emphasis-context.ts';
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
+  import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
   import {
     getStaleRegionContext,
     isStaleInert,
@@ -68,16 +69,21 @@
 
   // Prop-derived values must use `$derived` so they update when the consumer flips a prop
   // (most importantly `loading`) after the initial render.
-  const mergedClassName = $derived(classNames('cinder-button', customClassName));
   // A page header with a full-page error under it draws its primary buttons as secondary, so the
   // error's own "Try again" is the only primary on the page.
   const actionEmphasis = getActionEmphasisContext();
   const resolvedVariant = $derived(resolveActionVariant(actionEmphasis, variant));
   // Inside a header's actions every button draws at `xs`, so the header keeps its title's height.
   const resolvedSize = $derived(resolveActionSize(actionEmphasis, size));
+  const mergedClassName = $derived(
+    classNames(
+      'cinder-button',
+      `button-variant-${resolvedVariant}`,
+      `button-size-${CONTROL_SIZE_NAMES[resolvedSize]}`,
+      customClassName,
+    ),
+  );
   const dataAttributes = $derived({
-    'data-cinder-variant': resolvedVariant,
-    'data-cinder-size': resolvedSize,
     'data-cinder-compact': actionEmphasis?.compact === true ? '' : undefined,
     'data-cinder-full-width': fullWidth ? '' : undefined,
     'data-cinder-loading': loading ? '' : undefined,

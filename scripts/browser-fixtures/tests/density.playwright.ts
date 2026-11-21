@@ -97,7 +97,7 @@ test.describe('COR-2310: density reaches Button, Card and PageHeader', () => {
     }) => {
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
       await applyDensity(page, density);
-      const style = await computedStyle(page, ".cinder-button[data-cinder-variant='primary']", [
+      const style = await computedStyle(page, '.cinder-button.button-variant-primary', [
         'min-height',
         'border-top-left-radius',
       ]);

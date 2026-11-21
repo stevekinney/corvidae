@@ -149,7 +149,7 @@ for (const width of WIDTHS) {
       await expect(state).toHaveAttribute('data-cinder-kind', 'filtered');
       await expect(state.locator('.cinder-empty-state-icon svg')).toBeVisible();
       const clear = state.getByRole('button', { name: 'Clear filters' });
-      await expect(clear).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(clear).toContainClass('button-variant-secondary');
       await captureForDesignReview(page, {
         route: '/health/audit',
         state: 'empty-filtered',
@@ -253,7 +253,7 @@ for (const width of WIDTHS) {
         state.getByText('The server answered with an error (500). Nothing you did caused it.'),
       ).toBeVisible();
       const retry = state.getByRole('button', { name: 'Try again' });
-      await expect(retry).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(retry).toContainClass('button-variant-primary');
       await expect(retry.locator('svg')).toBeVisible();
       // This page is already on Health, so the error offers no link to it.
       await expect(state.getByRole('link')).toHaveCount(0);

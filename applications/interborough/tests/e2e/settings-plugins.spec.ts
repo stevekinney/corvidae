@@ -844,7 +844,7 @@ test.describe('Settings › Plugins', () => {
     await expect(question).not.toContainText('works as before');
     await expect(
       question.getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
-    ).toHaveAttribute('data-cinder-variant', 'danger');
+    ).toContainClass('button-variant-danger');
     await captureAtEveryWidth(page, 'disable-confirm-runs-unknown');
     await question.getByRole('button', { name: 'Cancel' }).click();
   });

@@ -515,7 +515,7 @@ describe('Table fit stacks into cards', () => {
     flushSync();
     await waitUntil(() => container.querySelector('.cinder-table__stack-sort') !== null);
     const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
-    expect(select.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(select.classList.contains('select-variant-ghost')).toBe(true);
     const labels = Array.from(select.options)
       .map((option) => option.textContent?.trim() ?? '')
       .filter((label) => label !== '' && label !== 'Sort by');
@@ -539,7 +539,7 @@ describe('Table fit stacks into cards', () => {
       /\.cinder-table__stack-sort-hit \{[^}]*padding-block: var\(--cinder-space-1\);/,
     );
     expect(css).toMatch(
-      /\.cinder-table__stack-sort-hit \.cinder-select\[data-cinder-variant='ghost'\]\[data-cinder-size\] \{[^}]*min-block-size: 2\.25rem;[^}]*max-block-size: 2\.25rem;/,
+      /\.cinder-table__stack-sort-hit\s+\.cinder-select\.select-variant-ghost:is\(\s*\.select-size-small,\s*\.select-size-medium,\s*\.select-size-large\s*\)\s*\{[^}]*min-block-size: 2\.25rem;[^}]*max-block-size: 2\.25rem;/,
     );
   });
 

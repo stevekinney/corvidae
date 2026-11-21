@@ -867,9 +867,8 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     const dialog = page.getByRole('dialog', { name: copy.title('Anthropic') });
     await expect(dialog).toBeVisible();
 
-    await expect(dialog.getByRole('button', { name: copy.confirm })).toHaveAttribute(
-      'data-cinder-variant',
-      'danger',
+    await expect(dialog.getByRole('button', { name: copy.confirm })).toContainClass(
+      'button-variant-danger',
     );
     // The agents are named in the order the sample world lists them (SHOWCASE_AGENT_IDENTIFIERS).
     await expect(dialog).toContainText(

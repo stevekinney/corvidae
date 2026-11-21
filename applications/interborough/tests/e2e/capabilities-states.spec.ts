@@ -366,13 +366,13 @@ for (const width of WIDTHS) {
         .getByRole('main')
         .getByRole('button', { name: copy.source.connect.action });
       await expect(connect).toHaveCount(2);
-      await expect(
-        page.locator('main .cinder-page-header [data-cinder-variant="primary"]'),
-      ).toHaveText(copy.source.connect.action);
+      await expect(page.locator('main .cinder-page-header .button-variant-primary')).toHaveText(
+        copy.source.connect.action,
+      );
       const emptyConnect = page
         .locator('main .cinder-empty-state')
         .getByRole('button', { name: copy.source.connect.action });
-      await expect(emptyConnect).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(emptyConnect).toContainClass('button-variant-primary');
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'sources first use',

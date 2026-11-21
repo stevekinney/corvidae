@@ -105,9 +105,9 @@ describe('the header of a source', () => {
     expect(textIn(detail, '[data-testid="tools-note"]')).toBe(copy.source.tools.note(2, 3));
     expect(copy.source.tools.note(2, 3).startsWith('2 of 3 tools are on.')).toBe(true);
     // Test connection is secondary, and the list row is titled by the name, not the identifier.
-    expect(buttonNamed(detail, copy.source.test.action).getAttribute('data-cinder-variant')).toBe(
-      'secondary',
-    );
+    expect(
+      buttonNamed(detail, copy.source.test.action).classList.contains('button-variant-secondary'),
+    ).toBe(true);
     expect(container.querySelector('[data-source-row="github"]')?.textContent).toContain('GitHub');
   });
 
@@ -231,10 +231,12 @@ describe('a source that needs a sign-in', () => {
       copy.source.signIn.action,
       copy.source.test.action,
     ]);
-    expect(actions.slice(0, 2).map((button) => button.getAttribute('data-cinder-variant'))).toEqual(
-      ['primary', 'secondary'],
-    );
-    expect(detail.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
+    expect(
+      actions
+        .slice(0, 2)
+        .map((button) => [...button.classList].find((name) => name.startsWith('button-variant-'))),
+    ).toEqual(['button-variant-primary', 'button-variant-secondary']);
+    expect(detail.querySelectorAll('.button-variant-primary')).toHaveLength(1);
   });
 
   test('keeps the same rows, paused and inert, with the line under the table (row 31u)', async () => {
@@ -582,10 +584,9 @@ describe('connecting tools from the Sources tab', () => {
     );
     // The header's and the empty state's Connect tools, both labelled primaries with the same words
     // (owner report, 2026-11-19).
-    expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
-      'primary',
-      'primary',
-    ]);
+    for (const button of buttons) {
+      expect(button.classList.contains('button-variant-primary')).toBe(true);
+    }
     expect(buttons[0]?.hasAttribute('data-cinder-icon-only')).toBe(false);
     expect(buttons[0]?.classList.contains('cinder-page-header__create')).toBe(true);
   });
@@ -622,7 +623,7 @@ describe('connecting tools from the Sources tab', () => {
         button.getAttribute('aria-label') === copy.source.connect.action,
     );
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(buttons[0]?.classList.contains('button-variant-primary')).toBe(true);
     expect(buttons[0]?.classList.contains('cinder-page-header__create')).toBe(true);
   });
 });

@@ -10,7 +10,12 @@ describe('design-review geometry probe', () => {
       const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
       await page.setContent(`
         <main>
-          <div class="scrollport"><button aria-label="Padding face">Padding face</button></div>
+          <div class="scrollport">
+            <button class="cinder-button button-size-small button-variant-primary" aria-label="Padding face">Padding face</button>
+          </div>
+          <select class="cinder-select select-size-medium select-variant-ghost" aria-label="Filter">
+            <option>All</option>
+          </select>
         </main>
         <style>
           button {
@@ -31,6 +36,11 @@ describe('design-review geometry probe', () => {
       expect(control?.layout.height).toBe(44);
       expect(control?.rect.height).toBe(28);
       expect(control?.hit.height).toBe(44);
+      expect(control?.name).toBe('button.cinder-button[size=small]');
+      expect(control?.variant).toBe('primary');
+      const select = facts.controls.find((candidate) => candidate.accessibleLabel === 'Filter');
+      expect(select?.name).toBe('select.cinder-select[size=medium]');
+      expect(select?.variant).toBe('ghost');
     } finally {
       await browser.close();
     }

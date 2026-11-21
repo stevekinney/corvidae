@@ -96,14 +96,22 @@ describe('Select listbox presentation: trigger', () => {
     expect(container.textContent).toContain('This model is no longer offered.');
   });
 
-  test('is a ghost trigger when variant is ghost', () => {
+  test('uses ghost modifier classes and exposes open state through aria-expanded', async () => {
     const { container } = renderListbox({ variant: 'ghost', value: 'assistant' });
-    expect(trigger(container).getAttribute('data-cinder-variant')).toBe('ghost');
+    const control = trigger(container);
+    expect(control.classList.contains('select-variant-ghost')).toBe(true);
+    expect(control.classList.contains('select-size-medium')).toBe(true);
+    expect(control.hasAttribute('data-cinder-variant')).toBe(false);
+    expect(control.hasAttribute('data-cinder-size')).toBe(false);
     expect(
-      container.querySelector('.cinder-select-field')?.getAttribute('data-cinder-variant'),
-    ).toBe('ghost');
+      container.querySelector('.cinder-select-field')?.classList.contains('select-variant-ghost'),
+    ).toBe(true);
     // The chevron is kept.
     expect(container.querySelector('.cinder-select-field__chevron')).not.toBeNull();
+    expect(control.getAttribute('aria-expanded')).toBe('false');
+    await openByClick(container);
+    expect(control.getAttribute('aria-expanded')).toBe('true');
+    expect(control.hasAttribute('data-cinder-open')).toBe(false);
   });
 
   test('submits through a hidden input when it has a name', () => {

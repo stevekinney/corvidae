@@ -785,8 +785,10 @@ describe('managing a connected provider', () => {
       .filter((label) => label !== undefined && label !== '');
     expect(labels).toEqual([copy.removeKey, copy.replaceKey, copy.done]);
     expect(
-      within(dialog).getByRole('button', { name: copy.done }).getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+      within(dialog)
+        .getByRole('button', { name: copy.done })
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // The saved key is never shown again: there is no field.
     expect(dialog.querySelector('input')).toBeNull();
     expect(writes()).toEqual([]);
@@ -965,7 +967,7 @@ describe('removing a provider’s key', () => {
       ),
     );
     expect(dialog.textContent).not.toContain('Assistant');
-    expect(confirm(dialog).getAttribute('data-cinder-variant')).toBe('danger');
+    expect(confirm(dialog).classList.contains('button-variant-danger')).toBe(true);
     expect(within(dialog).getByRole('button', { name: copy.cancel })).toBeDefined();
     expect(writes()).toEqual([]);
   });

@@ -506,8 +506,8 @@ describe('the failure line under the strip', () => {
       ];
       expect(buttons.length).toBeGreaterThan(0);
       for (const button of buttons) {
-        expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
-        expect(button.getAttribute('data-cinder-size')).toBe('sm');
+        expect(button.classList.contains('button-variant-secondary')).toBe(true);
+        expect(button.classList.contains('button-size-small')).toBe(true);
       }
       unmount(instance);
     }

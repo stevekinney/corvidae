@@ -193,7 +193,7 @@ describe('Workers route while the workers are being read (rows 78x and 78y)', ()
       'Still loading. This is taking longer than usual.',
     );
     const cancel = within(region).getByRole('button', { name: 'Cancel' });
-    expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(cancel.classList.contains('button-variant-ghost')).toBe(true);
     // Not a banner, and not an alert: the line is the skeleton's own status.
     expect(region.querySelector('.cinder-banner, [role="alert"]')).toBeNull();
   });
@@ -265,7 +265,7 @@ describe('Workers route when the workers could not be read (row 78z)', () => {
     const view = renderRoute();
 
     const retry = await view.findByRole('button', { name: copy.failed.tryAgain });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
     expect(retry.querySelector('svg')).not.toBeNull();
     expect(view.container.querySelector('.cinder-error-state a')).toBeNull();
   });

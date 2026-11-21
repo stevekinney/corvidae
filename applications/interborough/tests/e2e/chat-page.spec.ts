@@ -332,9 +332,8 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     await expect(canceled).toContainText('Loading was canceled');
     await expect(page).toHaveURL(new RegExp(`/chats/${SAMPLE_WORLD_THREADS.refund}$`));
     // One label for one job (COR-2327 Q1): Try again, as a failed read and a failing list say it.
-    await expect(canceled.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(canceled.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(canceled.getByRole('button', { name: 'All conversations' })).toBeVisible();
     // Said once (COR-2327 B6): no notice over the composer, only the reason beside Send.
@@ -382,13 +381,11 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
     await expect(state).toContainText(
       'Interborough didn’t send it back. Nothing was lost; the messages are stored with the chat.',
     );
-    await expect(state.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(state.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-primary',
     );
-    await expect(state.getByRole('button', { name: 'All conversations' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(state.getByRole('button', { name: 'All conversations' })).toContainClass(
+      'button-variant-secondary',
     );
     // Nothing old to show, so no banner; nothing to send to, so no composer.
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);

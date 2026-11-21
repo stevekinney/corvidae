@@ -797,7 +797,7 @@ describe('the Skills tab', () => {
     expect(container.querySelector('input[type="search"]')).toBeNull();
     const add = getByRole('link', { name: copy.skill.empty.action.label });
     expect(add.getAttribute('href')).toBe('/settings/plugins');
-    expect(add.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(add.classList.contains('button-variant-primary')).toBe(true);
     expect(container.querySelector('[data-testid="tab-count-skills"]')).toBeNull();
     await fireEvent.click(add);
     expect(router.pathname).toBe('/settings/plugins');

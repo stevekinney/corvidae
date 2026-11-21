@@ -183,7 +183,7 @@ describe('the heading and the header action', () => {
     const create = await findByRole('button', { name: 'New schedule' });
     // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
     expect(create.textContent?.trim()).toBe('New schedule');
-    expect(create.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(create.classList.contains('button-variant-primary')).toBe(true);
     await fireEvent.click(create);
     expect(router.pathname).toBe('/schedules/new');
   });

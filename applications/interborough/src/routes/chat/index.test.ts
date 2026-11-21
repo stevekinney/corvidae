@@ -151,8 +151,8 @@ describe('a chat that cannot be loaded (design rows 17c, 17d, 17e)', () => {
 
     const retry = await findByRole('button', { name: CHAT_COPY.load.tryAgain });
     const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
-    expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
+    expect(back.classList.contains('button-variant-secondary')).toBe(true);
     await fireEvent.click(back);
 
     expect(router.current.route?.pattern).toBe('/chats');
@@ -278,7 +278,7 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(router.current.route?.pattern).toBe('/chats/:chat');
     expect(container.textContent).toContain(CHAT_COPY.load.canceledTitle);
     const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
-    expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(back.classList.contains('button-variant-secondary')).toBe(true);
     // Said once (COR-2327 B6): no notice over the composer, and the reason Send is off beside it.
     expect(container.querySelector('[data-chat-composer-drawer]')).toBeNull();
     const send = container.querySelector<HTMLButtonElement>('button[data-chat-send]')!;

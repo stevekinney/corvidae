@@ -234,7 +234,7 @@ describe('every list page’s empty state', () => {
         ].find((button) => button.textContent?.trim() === page.create);
         expect(create).toBeDefined();
         expect(create?.hasAttribute('data-cinder-icon-only')).toBe(false);
-        expect(create?.getAttribute('data-cinder-variant')).toBe('primary');
+        expect(create?.classList.contains('button-variant-primary')).toBe(true);
       }
 
       // One state, in Cinder's one layout, in no box.
@@ -250,7 +250,7 @@ describe('every list page’s empty state', () => {
       const actions = expectButtonsAndPlainWords(state);
       if (page.create !== null && page.view !== 'checks') {
         expect(actions[0]?.textContent?.trim()).toBe(page.create);
-        expect(actions[0]?.getAttribute('data-cinder-variant')).toBe('primary');
+        expect(actions[0]?.classList.contains('button-variant-primary')).toBe(true);
       }
 
       // No controls over nothing: no count, search, filter or segments.

@@ -167,7 +167,7 @@ describe('the list of workflows', () => {
     expect(action.getAttribute('href')).toBe('/workflows/new');
     // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
     expect(action.textContent?.trim()).toBe(WORKFLOW_COPY.newAction);
-    expect(action.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(action.classList.contains('button-variant-primary')).toBe(true);
     expect(action.closest('.cinder-page-header')).not.toBeNull();
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
@@ -420,7 +420,7 @@ describe('the header’s Internal workflows', () => {
     const action = testId(container, 'internal-workflows-action');
     expect(action?.tagName).toBe('A');
     expect(action?.getAttribute('href')).toBe('/internal-workflows');
-    expect(action?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action?.classList.contains('button-variant-secondary')).toBe(true);
     expect(action?.textContent?.trim()).toBe('Internal workflows (3)');
     // In the header, before New workflow (owner report, 2026-11-19); no card under the rows.
     const header = container.querySelector('.cinder-page-header');
@@ -499,7 +499,7 @@ describe('a host with no workflow of its own', () => {
     for (const maker of makers) expect(maker.getAttribute('href')).toBe('/workflows/new');
     const ask = await findByRole('link', { name: WORKFLOW_COPY.list.empty.askAction });
     expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows');
-    expect(ask.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(ask.classList.contains('button-variant-secondary')).toBe(true);
     // With no type of its own, it says nothing of internal workflows.
     expect(testId(container, 'internal-workflows-action')).toBeNull();
     expect(state?.textContent).not.toContain(WORKFLOW_COPY.list.empty.internalAction);
@@ -517,7 +517,7 @@ describe('a host with no workflow of its own', () => {
       name: WORKFLOW_COPY.list.empty.internalAction,
     });
     expect(see.getAttribute('href')).toBe('/internal-workflows');
-    expect(see.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(see.classList.contains('button-variant-secondary')).toBe(true);
     // The header's Internal workflows stays beside New workflow.
     expect(testId(container, 'internal-workflows-action')?.textContent?.trim()).toBe(
       'Internal workflows (2)',

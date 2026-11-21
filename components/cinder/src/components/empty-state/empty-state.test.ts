@@ -426,9 +426,9 @@ describe('EmptyState parts', () => {
     const { getByRole } = render(EmptyState, {
       props: { title: 'No matches', kind: 'filtered', onClearFilters: () => {} },
     });
-    expect(getByRole('button', { name: 'Clear filters' }).getAttribute('data-cinder-size')).toBe(
-      'md',
-    );
+    expect(
+      getByRole('button', { name: 'Clear filters' }).classList.contains('button-size-medium'),
+    ).toBe(true);
   });
 });
 
@@ -452,10 +452,8 @@ describe('EmptyState actions (one empty state everywhere, owner report 2026-11-1
       'Ask an agent',
     ]);
     expect(buttons.every((button) => button.classList.contains('cinder-button'))).toBe(true);
-    expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
-      'primary',
-      'secondary',
-    ]);
+    expect(buttons[0]?.classList.contains('button-variant-primary')).toBe(true);
+    expect(buttons[1]?.classList.contains('button-variant-secondary')).toBe(true);
     expect(buttons[0]?.querySelector('[data-testid="plus"]')).not.toBeNull();
     expect(getByRole('link', { name: 'Ask an agent' }).getAttribute('href')).toBe('/chats/new');
     await fireEvent.click(getByRole('button', { name: 'New goal' }));
@@ -493,7 +491,7 @@ describe('EmptyState actions (one empty state everywhere, owner report 2026-11-1
       },
     });
     const button = getByRole('button', { name: 'New schedule' });
-    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(button.classList.contains('button-variant-secondary')).toBe(true);
     expect(button.getAttribute('aria-disabled')).toBe('true');
     const reason = container.querySelector(`#${button.getAttribute('aria-describedby') ?? ''}`);
     expect(reason?.textContent).toBe('You can’t create schedules');

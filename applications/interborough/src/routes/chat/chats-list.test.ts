@@ -103,7 +103,7 @@ describe('the pane header', () => {
     const plus = within(header).getByRole('link', { name: 'New chat' });
     expect(plus.getAttribute('href')).toBe('/chats/new');
     // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
-    expect(plus.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(plus.classList.contains('button-variant-primary')).toBe(true);
     expect(plus.textContent?.trim()).toBe('New chat');
     expect(plus.hasAttribute('data-cinder-icon-only')).toBe(false);
     // With no chat open the list is all there is, so it offers no toggle to hide it (COR-2327).
@@ -256,8 +256,10 @@ describe('the states of the list', () => {
     ).not.toBeNull();
     expect(state.textContent).toContain('Start one with an agent.');
     expect(
-      within(state).getByRole('link', { name: 'New chat' }).getAttribute('data-cinder-variant'),
-    ).toBe('primary');
+      within(state)
+        .getByRole('link', { name: 'New chat' })
+        .classList.contains('button-variant-primary'),
+    ).toBe(true);
     // The header's New chat is labelled too, and nothing searches or filters nothing.
     expect(
       container.querySelector('.cinder-page-header a[href="/chats/new"]')?.textContent?.trim(),
@@ -313,8 +315,10 @@ describe('the states of the list', () => {
     const state = title.closest('.cinder-error-state') as HTMLElement;
     expect(state.textContent).toContain('Interborough didn’t send them back.');
     expect(
-      within(state).getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+      within(state)
+        .getByRole('button', { name: 'Try again' })
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
     const pane = await findByRole('region', { name: 'Open chat' });
     expect(pane).not.toBeNull();
     // The list is not there to choose from, so the pane does not point at it.

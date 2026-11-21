@@ -131,11 +131,11 @@ describe('DropdownTrigger', () => {
       HTMLElement,
     );
     expect(inHeader.classList.contains('cinder-button')).toBe(true);
-    expect(inHeader.dataset['cinderSize']).toBe(button.dataset['cinderSize']);
-    expect(inHeader.dataset['cinderSize']).toBe('xs');
+    expect(inHeader.classList.contains('button-size-extra-small')).toBe(true);
+    expect(button.classList.contains('button-size-extra-small')).toBe(true);
     expect(inHeader.hasAttribute('data-cinder-compact')).toBe(true);
     expect(button.hasAttribute('data-cinder-compact')).toBe(true);
-    expect(inHeader.dataset['cinderVariant']).toBe('secondary');
+    expect(inHeader.classList.contains('button-variant-secondary')).toBe(true);
     expect(inHeader.dataset['cinderHitTarget']).toBe('44');
     expect(inHeader.hasAttribute('data-cinder-icon-only')).toBe(true);
 
