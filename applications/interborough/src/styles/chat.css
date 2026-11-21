@@ -194,6 +194,10 @@
   border-block-end: 1px solid var(--cinder-border-muted);
 }
 
+.weft-chat-heading__reserved-status {
+  visibility: hidden;
+}
+
 /* The errors of the conversation lie over its top, directly under the header band, in the same
  * column at the same inset. They are not in the band, whose height is the transcript's top inset,
  * so an error that appears or goes moves no message and not the composer (COR-2438). Only the

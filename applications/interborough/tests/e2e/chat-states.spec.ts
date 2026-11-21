@@ -69,7 +69,10 @@ const railRow = (page: Page, tool: string): Locator =>
  */
 async function statusOf(page: Page): Promise<{ word: string; dot: string | null }> {
   const heading = header(page);
-  const dot = heading.locator('.cinder-page-header__status .cinder-badge').first();
+  const dot = heading
+    .locator('.cinder-page-header__status .cinder-badge')
+    .filter({ visible: true })
+    .first();
   const shown = await heading.innerText();
   const text = shown.replace(/\s+/g, ' ');
   return {

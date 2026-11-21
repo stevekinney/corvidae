@@ -151,14 +151,17 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     await openAt(page, request, 1280, designReviewColorScheme() ?? 'dark');
     const lastMessage = page.locator('[data-message-role="user"]').last();
     const composer = page.locator('.chat-input-area').first();
+    const header = page.getByTestId('chat-header');
+    const status = header.locator('.cinder-page-header__status .cinder-badge');
     await expect(lastMessage).toContainText(DISCOVER_AGENTS_ASK);
+    await expect(status).toBeHidden();
     await page.evaluate(async () => {
       await document.fonts.ready;
     });
     const approve = card(page).getByRole('button', { name: 'Approve' });
     // Read the baseline after the click's actionability checks have brought Approve into view.
     await approve.click({ trial: true });
-    const before = await readBoxes(page, { message: lastMessage, composer });
+    const before = await readBoxes(page, { message: lastMessage, composer, header });
 
     // The run that asked is gone (the thread has nothing to attach to), so nothing waits on it.
     await approve.click();
@@ -177,8 +180,8 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     await expectNoLongerWaitingBadge(page);
 
     // 14. The list's row (which the segment counts read) and the header say what the card says.
-    const header = page.locator('[data-testid="chat-header"] .cinder-page-header__status');
-    await expect(header.locator('.cinder-badge')).toHaveText(CHAT_COPY.status.done);
+    await expect(status).toBeVisible();
+    await expect(status).toHaveText(CHAT_COPY.status.done);
     const listed = page.locator('[data-chat]').filter({ hasText: DISCOVER_AGENTS_ASK });
     await expect(listed).toHaveCount(1);
     await expect(listed).not.toContainText(CHAT_COPY.status.waiting);
@@ -188,10 +191,11 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     const after = await readBoxes(page, {
       message: lastMessage,
       composer,
+      header,
       notice: alerts.getByRole('alert'),
       date: page.locator('.chat-date-separator-text').first(),
     });
-    for (const key of ['message', 'composer'] as const) {
+    for (const key of ['message', 'composer', 'header'] as const) {
       expect(Math.abs(after[key].x - before[key].x), key).toBeLessThanOrEqual(0.5);
       expect(
         Math.abs(after[key].y - before[key].y),

@@ -2141,9 +2141,16 @@
 {/snippet}
 
 {#snippet headerStatus()}
-  {#if chatStatus !== undefined}
-    <!-- A Badge, as on the tool-call row: "Waiting on you" is the warning one (COR-2438). -->
-    <Badge variant={chatStatusTone(chatStatus)} size="sm">{chatStatus}</Badge>
+  {@const status = approvalWaits ? CHAT_COPY.status.done : chatStatus}
+  {#if status !== undefined}
+    <!-- An approval shows its waiting Badge on the tool row. Reserve the heading's settled Badge
+         space so a long title keeps the same height when a refused decision ends the approval. -->
+    <Badge
+      variant={chatStatusTone(status)}
+      size="sm"
+      {...approvalWaits ? { class: 'weft-chat-heading__reserved-status', 'aria-hidden': true } : {}}
+      >{status}</Badge
+    >
   {/if}
 {/snippet}
 
@@ -2201,7 +2208,7 @@
           narrowActions="beside-status"
           {...context.data?.parentContextId ? { description: details } : {}}
           {...gone ? {} : { actions: headerActions }}
-          {...gone || chatStatus === undefined || approvalWaits ? {} : { status: headerStatus }}
+          {...gone || chatStatus === undefined ? {} : { status: headerStatus }}
           statusPlacement="inline"
         />
       {/if}
