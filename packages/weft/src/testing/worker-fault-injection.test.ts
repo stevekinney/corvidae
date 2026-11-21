@@ -301,19 +301,20 @@ function interceptSockets(options: { endThrows: boolean }): { handlers: () => So
   };
 }
 
-function servePlainHttp(): ReturnType<typeof Bun.serve> {
+function servePlainHttp(): number {
   const server = Bun.serve({
     hostname: LOOPBACK,
     port: 0,
     fetch: () => new Response('no upgrade', { status: 200 }),
   });
   cleanups.push(() => server.stop(true));
-  return server;
+  if (server.port === undefined) throw new Error('The plain HTTP fixture has no port.');
+  return server.port;
 }
 
 describe('connection failures', () => {
   it('owns the loopback address for a plain HTTP handshake refusal', () => {
-    const { port } = servePlainHttp();
+    const port = servePlainHttp();
     expect(() => {
       const shadow = Bun.serve({ hostname: LOOPBACK, port, fetch: () => new Response('shadow') });
       cleanups.push(() => shadow.stop(true));
@@ -338,22 +339,22 @@ describe('connection failures', () => {
   });
 
   it('rejects when the server answers the upgrade with a plain HTTP response', async () => {
-    const server = servePlainHttp();
+    const port = servePlainHttp();
 
     expect(
       await throwingRejectionOf(
-        connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:${String(server.port)}/` }),
+        connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:${String(port)}/` }),
       ),
     ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
   });
 
   it('still rejects a refused handshake when the socket cannot be ended', async () => {
     interceptSockets({ endThrows: true });
-    const server = servePlainHttp();
+    const port = servePlainHttp();
 
     expect(
       await throwingRejectionOf(
-        connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:${String(server.port)}/` }),
+        connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:${String(port)}/` }),
       ),
     ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
   });
