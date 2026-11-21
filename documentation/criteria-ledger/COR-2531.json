@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2531",
+  "branch": "chef/cor-2531-failure-reasons",
+  "checkedAt": "4463da0f82",
+  "briefVersion": "cfafbc1be0a2",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "TaskRecord.failure ({step:{index,label}, errorCode, errorKind, toolCall:{name,callId}}) is written in the settlement's compare-and-swap (run-bookkeeping recordTaskSettlement and the catalog settler, both peeking runOutcomeDetails). task-run-failure.test.ts fails a tool call under failFast, in process and durably, and reads every field from the stored record and the view, plus the model label for a failed model step and the call named when a step has several calls. The call is attached only when its settled error is the run error or one of its causes (identity), never by step alone (run-outcome-details.test.ts: a recoverable error plus a later policy tripwire names no call). Workflow runs: engine-run-tasks.ts fills failure from Weft's failedStep and errorCode (engine-run-tasks.test.ts, tasks-failure-filters.test.ts against a real failed instance). Narrower than a flat reading: a failure no tool call or model step caused (tripwire, step limit, hook throw) and a reconstructed step have no step; a settlement by a process that did not see the run fail (schedule fire, recovered run, owner-lost) has no failure."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "task-run-failure.test.ts 'AC2': a second Bureau on the same SQLite store and a third Bureau after dispose and reopen both read the failure through bureau.tasks.get."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "TaskRecord.retrying {label, attempt} written by fenced queued writes on generate.retry and on a same-step second generate.started (the onError hook's re-run, adding the provider tries the earlier run spent so the count only rises: 2, 3, null, 4), cleared on generate.completed, generate.error, a different step starting, the settlement, a cancel, and a recovered run's attach. task-run-retrying.test.ts reads it from a second Bureau during the second try and cleared once the step settles, in process and durably; task-run-attention-takeover.test.ts covers the stale record a dead holder leaves and the old holder's refused write. Operative has no tool-call retry (generate.retry and the onError re-run are its only retries), so only a model step is ever retrying for an agent run; a workflow run shows Weft's retrying activity and attempt."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "tasksListInput accepts failedStep and retrying (bound into the page token, listing key v8). tasks-failure-filters.test.ts filters seeded records by each (including a 260-character label cut to 200 and a page-token refusal under a changed filter) and asserts, with a spy on the engine's list, that failedStep and retrying reach engine.list for the instance type; engine-run-tasks.test.ts asserts the exact filters handed to the engine."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "tasks-failure-filters.test.ts 'AC5' stores a failed record written as before this change (settlement only) and reads it through bureau.tasks.get, the registry and the list: failure and retrying are null on the view and absent on the record. Validators reject a malformed stored failure or retrying (task-registry.test.ts)."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "task-run-failure.test.ts 'AC6' fails a tool call whose arguments hold a marker string and asserts the marker is absent from the JSON of the stored record and of the task view, in process and durably; run-outcome-details.test.ts asserts an errored settlement's error text never enters the observation."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "wire-golden/authenticated.openrpc.json and local.openrpc.json regenerated with bun scripts/update-wire-golden.ts, the MCP snapshot with bun test --update-snapshots, workspace-projection-fields.json from the computed inventory; wire-golden.test.ts, mcp-wire-golden.test.ts and workspace-privacy.test.ts pass without the update flag. Interborough's generated client regenerated with bun run generate:bureau-client."
+    }
+  ]
+}
