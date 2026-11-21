@@ -167,6 +167,9 @@ const SHOWCASE_SPECIFICATIONS = [
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
+  // Run Setup's real workflow-file states: schema input, invalid input, paused, no input, capacity,
+  // and scheduling (COR-2433). Its named states let the design reviewer trace every capture to a row.
+  'tests/e2e/run-setup.spec.ts',
   // The Runs list and the run page in the states the sample world does not hold, and the run page
   // in each state it does (COR-2423, COR-2424).
   'tests/e2e/runs-states.spec.ts',

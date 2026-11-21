@@ -422,6 +422,20 @@ describe('JsonEditor — toolbar status (rows 29q, 29u, 29v)', () => {
       ),
     );
   });
+
+  test('a caller can name invalid JSON while the editor keeps its danger status', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '{',
+      invalidStatusLabel: 'Invalid JSON',
+    });
+    await mountedView(view);
+
+    const status = view.getByRole('status');
+    expect(status.textContent?.trim()).toBe('Invalid JSON');
+    expect(status.classList.contains('cinder-json-editor__status--danger')).toBe(true);
+  });
 });
 
 describe('JsonEditor — marked lines', () => {

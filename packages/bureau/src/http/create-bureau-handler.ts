@@ -1422,6 +1422,7 @@ export function buildBureauHandlerHost(
     },
     dryRun: dryRunEffectsOf(bureau),
     workflows: bureau.workflows,
+    workflowConcurrency: () => bureau.durableEngine()?.runConcurrency() ?? undefined,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);
       const engine = bureau.durableEngine();

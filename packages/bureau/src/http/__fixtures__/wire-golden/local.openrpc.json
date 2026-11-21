@@ -22396,7 +22396,7 @@
       }
     },
     {
-      "description": "Starts one instance of the ready, unpaused workflow `id` with `input` and returns its `runId`. The instance’s `trigger` is `{ kind: \"manual\", input, origin }`, where `origin` is `{ kind: \"person\", principal, surface }` (the caller’s owner string and `surface`), and the run is tagged `origin:person`. An `input` that does not satisfy the workflow’s `inputSchema` is `InvalidParams` whose `data.issues` locates every failure, and nothing is created; a raw `weft.workflows.start` is not checked first. A workflow that is missing, invalid, or paused is `NotFound`. An earlier file change the engine has not followed is `Unavailable` (`workflow-apply-failed`). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
+      "description": "Starts one instance of the ready, unpaused workflow `id` with `input` and returns its `runId`. The instance’s `trigger` is `{ kind: \"manual\", input, origin }`, where `origin` is `{ kind: \"person\", principal, surface }` (the caller’s owner string and `surface`), and the run is tagged `origin:person`. An `idempotencyKey` makes the start at-most-once for that authorized caller and workflow: an exact retry answers the first run while its run record exists. An input that does not satisfy the workflow’s `inputSchema` is `InvalidParams` whose `data.issues` locates every failure, and nothing is created; a raw `weft.workflows.start` is not checked first. A workflow that is missing, invalid, or paused is `NotFound`. An earlier file change the engine has not followed is `Unavailable` (`workflow-apply-failed`). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -22462,6 +22462,49 @@
             },
             "description": "The identifier of the workflow.",
             "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "idempotencyKey",
+          "required": false,
+          "schema": {
+            "$defs": {
+              "__schema0": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "description": "The caller’s key for one manual start. Retrying the same key for the same authorized caller and workflow returns the run the first request started while its record exists, and never starts another.",
+            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           }
@@ -22628,6 +22671,12 @@
           "id": {
             "description": "The identifier of the workflow.",
             "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "The caller’s key for one manual start. Retrying the same key for the same authorized caller and workflow returns the run the first request started while its record exists, and never starts another.",
+            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           },

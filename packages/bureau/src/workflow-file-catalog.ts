@@ -71,7 +71,8 @@ export interface WorkflowListing {
   readonly triggerKind: string | null;
   /**
    * The file's trigger as written (`kind` and the keys of that kind, a schedule's `timezone`,
-   * `catchUp`, `name`, and `input` included), for a ready file, else `null`.
+   * `catchUp`, `name`, and `input` included), for a ready file. An invalid file's detail may
+   * still identify a readable schedule or signal without its operational data.
    */
   readonly trigger: WorkflowFileTrigger | null;
   /** The file's steps as written (`title` and `review` included), for a ready file, else `null`. */
@@ -188,6 +189,7 @@ interface WorkflowEntry {
   readonly revision: number;
   readonly file?: ReadyWorkflowFile;
   readonly problem?: WorkflowFileProblem;
+  readonly readableTrigger?: WorkflowFileTrigger;
 }
 
 function sourceProblem(problem: {
@@ -234,7 +236,14 @@ export function createWorkflowFileCatalog(
       return invalid({ code: 'not-utf8', message: 'The file is not valid UTF-8.' });
     }
     const parsed = parseWorkflowFile(id, text, host, plugin);
-    if (!parsed.ok) return invalid(parsed.problem);
+    if (!parsed.ok) {
+      return {
+        ...invalid(parsed.problem),
+        ...(parsed.readableTrigger === undefined
+          ? {}
+          : { readableTrigger: parsed.readableTrigger }),
+      };
+    }
     if (options.isCodeWorkflow(id)) {
       return invalid({
         code: 'shadows-code-workflow',
@@ -469,7 +478,10 @@ export function createWorkflowFileCatalog(
       const text = entry.problem === undefined ? decodeWorkflowFile(entry.bytes) : undefined;
       const listing = listingOf(evaluated);
       return {
-        listing,
+        listing:
+          evaluated.readableTrigger === undefined
+            ? listing
+            : { ...listing, trigger: evaluated.readableTrigger },
         ...(text === undefined ? {} : { text }),
         ...(evaluated.file === undefined ? {} : { file: evaluated.file }),
       };

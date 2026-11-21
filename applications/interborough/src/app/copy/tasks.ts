@@ -73,6 +73,7 @@ export const TASK_COPY = {
       `failed at step ${String(at)} of ${String(total)}`,
     /** What an instance parked at an `await-signal` step waits for, and how long it has. */
     waitingForSignal: (signal: string): string => `waiting for signal ${signal}`,
+    waitingForRunSlot: 'waiting for a run slot',
     /** When a run that asked to be woken is due, at the end of line two: "due today at 11:00 AM". */
     dueAt: (when: string): string => `due ${when}`,
     due: { today: 'today', tomorrow: 'tomorrow' },
