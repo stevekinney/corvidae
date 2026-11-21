@@ -15,6 +15,7 @@ export function createEvent(
 ) {
   const jar = new Bun.CookieMap(request.headers.get("cookie") ?? "");
   type CookieScope = {
+    cookie: Bun.Cookie;
     path: string;
     secure: boolean;
     domain?: string;
@@ -42,6 +43,8 @@ export function createEvent(
   const pathMatches = (path: string, pathname: string) =>
     pathname === path ||
     pathname.startsWith(path.endsWith("/") ? path : `${path}/`);
+  const scopeKey = (name: string, path: string, domain?: string) =>
+    JSON.stringify([name, domain?.toLowerCase().replace(/^\./, ""), path]);
   const storeCookie = (
     cookie: Bun.Cookie,
     source: URL,
@@ -49,7 +52,9 @@ export function createEvent(
   ) => {
     if (!domainMatches(cookie.domain, source.hostname)) return;
     const path = cookie.path ?? defaultPath;
-    cookieScopes.set(cookie.name, {
+    const key = scopeKey(cookie.name, path, cookie.domain);
+    cookieScopes.set(key, {
+      cookie,
       path,
       secure: cookie.secure,
       domain: cookie.domain,
@@ -109,10 +114,15 @@ export function createEvent(
           candidate.headers.set("origin", url.origin);
         if (target.origin === url.origin && candidate.credentials !== "omit") {
           if (!candidate.headers.has("cookie")) {
-            const value = [...jar]
-              .filter(([name]) => {
-                const scope = cookieScopes.get(name);
-                if (!scope) return true;
+            const scopedNames = new Set(
+              [...cookieScopes.values()].map(({ cookie }) => cookie.name),
+            );
+            const ambientCookies = [...jar]
+              .filter(([name]) => !scopedNames.has(name))
+              .map(([name, cookie]) => `${name}=${cookie}`);
+            const scoped = [...cookieScopes.values()]
+              .filter((scope) => {
+                const { cookie } = scope;
                 if (!pathMatches(scope.path, target.pathname)) return false;
                 if (scope.secure && target.protocol !== "https:") return false;
                 if (!domainMatches(scope.domain, target.hostname)) return false;
@@ -123,10 +133,13 @@ export function createEvent(
                   return false;
                 if (scope.expires && scope.expires.getTime() <= Date.now())
                   return false;
+                if (cookie.maxAge !== undefined && cookie.maxAge <= 0)
+                  return false;
                 return true;
               })
-              .map(([name, cookie]) => `${name}=${cookie}`)
-              .join("; ");
+              .toSorted((left, right) => right.path.length - left.path.length)
+              .map(({ cookie }) => `${cookie.name}=${cookie.value}`);
+            const value = [...scoped, ...ambientCookies].join("; ");
             if (value) {
               candidate.headers.set("cookie", value);
               ambient.add("cookie");
@@ -270,8 +283,8 @@ export function createEvent(
     apply(response: Response) {
       const combined = new Headers(response.headers);
       for (const [name, value] of headers) combined.set(name, value);
-      for (const cookie of jar.toSetCookieHeaders())
-        combined.append("set-cookie", cookie);
+      for (const { cookie } of cookieScopes.values())
+        combined.append("set-cookie", cookie.serialize());
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,

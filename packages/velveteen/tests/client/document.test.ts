@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { createSveltePlugin } from "../../src/compiler/index.ts";
 import { encodePayload } from "../../src/data/codec.ts";
+import { fetchKey, loadRequest } from "../../src/data/fetch.ts";
 
 const pagePayload = {
   version: 1,
@@ -38,6 +39,7 @@ let browser: Browser;
 let page: Page;
 let server: ReturnType<typeof Bun.serve>;
 let temporary: string;
+let settlementFrame: unknown;
 beforeAll(async () => {
   temporary = await mkdtemp(
     join(process.cwd(), ".velveteen/build/document-test-"),
@@ -59,21 +61,36 @@ beforeAll(async () => {
       },
     ],
   });
+  const captureURL = "https://capture.test/";
+  const prerendered = encodePayload({
+    ...pagePayload,
+    url: captureURL,
+    prerendered: true,
+    fetched: [
+      {
+        key: await fetchKey(loadRequest("/captured", undefined, captureURL)),
+        status: 200,
+        statusText: "OK",
+        headers: [["content-type", "text/plain"]],
+        body: new TextEncoder().encode("captured"),
+      },
+    ],
+  });
   const reader = encoded.settlements.getReader();
   first.resolve("one");
   const firstFrame = (await reader.read()).value;
   second.resolve("two");
-  const secondFrame = (await reader.read()).value;
+  settlementFrame = (await reader.read()).value;
   await mkdir(join(temporary, "build"), { recursive: true });
   await Bun.write(
     join(temporary, "page.svelte"),
-    "<script>let {data}=$props();</script>{#await data.pending}<p>Pending</p>{:then value}<p>{value}</p>{:catch error}<p>{error.message}</p>{/await}",
+    "<script>let {data}=$props();</script><p data-captured>{data.captured}</p><p data-second>{data.second}</p>{#await data.pending}<p>Pending</p>{:then value}<p>{value}</p>{:catch error}<p>{error.message}</p>{/await}",
   );
   await Bun.write(
     join(temporary, "entry.ts"),
     `import {startClient} from ${JSON.stringify(join(process.cwd(), "src/client/index.ts"))};import Root from ${JSON.stringify(join(process.cwd(), "src/client/root.svelte"))};import Page from './page.svelte';
-const registry={Root,nodes:[{page:async()=>({default:Page})}],manifest:{version:1,nodes:[],routes:[{id:'/',pattern:'^/$',params:[],node:0,leaf:0,ancestors:[0],layouts:[null],errors:[null]}]}};
-import { readInitialDocument } from ${JSON.stringify(join(process.cwd(), "src/client/document.ts"))}; if(location.pathname==='/client-truncated'){globalThis.session=await startClient(registry,{onError:error=>globalThis.documentError=String(error)});} else if(location.pathname==='/malformed'){try{readInitialDocument()}catch(error){globalThis.documentError=String(error)}} else if(location.pathname==='/truncated'){const session=readInitialDocument(); globalThis.session=session; session.activate((error)=>globalThis.documentError=String(error));} else {const session=readInitialDocument(); globalThis.session=session; const values=session.payload.nodes[0].data; session.activate((error)=>globalThis.documentError=String(error)); globalThis.values=values; const script=document.createElement('script'); script.type='application/json'; script.dataset.velveteenSettlement=''; script.textContent=${JSON.stringify(JSON.stringify(secondFrame))}; document.body.append(script);}`,
+const prerendered=new URLSearchParams(location.search).has('prerendered');const node={page:async()=>({default:Page})};if(prerendered)node.pageUniversal=async()=>({load:async({fetch})=>({captured:await (await fetch('/captured')).text()})});if(location.pathname==='/early')node.pageUniversal=async()=>({load:async({data})=>({second:await data.second})});const registry={Root,nodes:[node],manifest:{version:1,nodes:[],routes:[{id:'/',pattern:'^/$',params:[],node:0,leaf:0,ancestors:[0],layouts:[null],errors:[null]}]}};globalThis.startClient=startClient;globalThis.registry=registry;
+import { readInitialDocument } from ${JSON.stringify(join(process.cwd(), "src/client/document.ts"))}; if(prerendered||['/client-truncated','/early'].includes(location.pathname)){globalThis.session=await startClient(registry,{onError:error=>globalThis.documentError=String(error)});} else if(location.pathname==='/malformed'){try{readInitialDocument()}catch(error){globalThis.documentError=String(error)}} else if(location.pathname==='/truncated'){const session=readInitialDocument(); globalThis.session=session; session.activate((error)=>globalThis.documentError=String(error));} else {const session=readInitialDocument(); globalThis.session=session; const values=session.payload.nodes[0].data; session.activate((error)=>globalThis.documentError=String(error)); globalThis.values=values; if(location.pathname!=='/early'){const script=document.createElement('script'); script.type='application/json'; script.dataset.velveteenSettlement=''; script.textContent=${JSON.stringify(JSON.stringify(settlementFrame))}; document.body.append(script);}}`,
   );
   const built = await Bun.build({
     entrypoints: [join(temporary, "entry.ts")],
@@ -92,13 +109,16 @@ import { readInitialDocument } from ${JSON.stringify(join(process.cwd(), "src/cl
         return new Response(bundle, {
           headers: { "content-type": "text/javascript" },
         });
-      const initial =
-        url.pathname === "/malformed"
+      if (url.pathname === "/captured") return new Response("network");
+      const isPrerendered = url.searchParams.has("prerendered");
+      const initial = isPrerendered
+        ? JSON.stringify(prerendered.initial)
+        : url.pathname === "/malformed"
           ? "not-json"
           : ["/truncated", "/client-truncated"].includes(url.pathname)
             ? JSON.stringify(truncated.initial)
             : JSON.stringify(encoded.initial);
-      const script = `<script id="velveteen-data" type="application/json">${initial}</script>${url.pathname === "/" ? `<script type="application/json" data-velveteen-settlement>${JSON.stringify(firstFrame)}</script>` : ""}<script type="module" src="/entry.js"></script>`;
+      const script = `<script id="velveteen-data" type="application/json">${initial}</script>${!isPrerendered && ["/", "/early"].includes(url.pathname) ? `<script type="application/json" data-velveteen-settlement>${JSON.stringify(firstFrame)}</script>${url.pathname === "/early" ? `<script type="application/json" data-velveteen-settlement>${JSON.stringify(settlementFrame)}</script>` : ""}` : ""}<script type="module" src="/entry.js"></script>`;
       return new Response(
         `<!doctype html><body><div id="app"></div>${script}</body>`,
         {
@@ -170,6 +190,34 @@ test("reports truncated pending initial data at document completion", async () =
     ).includes("Data stream was truncated"),
   );
   await truncated.close();
+});
+
+test("activates document settlements before universal loads await them", async () => {
+  const early = await browser.newPage();
+  await early.goto(`http://localhost:${server.port}/early`);
+  await early.waitForFunction(() =>
+    Boolean((globalThis as typeof globalThis & { session?: unknown }).session),
+  );
+  expect(await early.locator("[data-second]").textContent()).toBe("two");
+  await early.close();
+});
+
+test("replays prerendered fetches after the document moves to a different origin", async () => {
+  const relocated = await browser.newPage();
+  const networkRequests: string[] = [];
+  relocated.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/captured")
+      networkRequests.push(request.url());
+  });
+  try {
+    await relocated.goto(`http://localhost:${server.port}/?prerendered`);
+    expect(await relocated.locator("[data-captured]").textContent()).toBe(
+      "captured",
+    );
+    expect(networkRequests).toEqual([]);
+  } finally {
+    await relocated.close();
+  }
 });
 
 test("truncated HTML transport terminates the client page instead of claiming successful hydration", async () => {

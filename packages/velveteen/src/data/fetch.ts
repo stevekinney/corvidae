@@ -208,7 +208,8 @@ export function createReplayFetch(
     if (capturedBaseURL && url.origin === new URL(baseURL).origin) {
       const captured = new URL(capturedBaseURL);
       url.protocol = captured.protocol;
-      url.host = captured.host;
+      url.hostname = captured.hostname;
+      url.port = captured.port;
     }
     const key = await fetchKey(request, url.href);
     const index = available.findIndex((record) => record.key === key);

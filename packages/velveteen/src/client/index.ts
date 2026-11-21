@@ -46,6 +46,7 @@ export async function startClient(
     ? undefined
     : readInitialDocument(document, registry.transport);
   let initial = options.initial ?? documentData!.payload;
+  const capturedBaseURL = initial.prerendered ? initial.url : undefined;
   if (initial.prerendered) initial = { ...initial, url: location.href };
   assertRegistryPayload(initial, registry);
   const initialController = new AbortController();
@@ -72,6 +73,12 @@ export async function startClient(
   let failTransport = (error: unknown) => {
     transportFailure = error;
   };
+  documentData?.activate((error) => failTransport(error));
+  const cleanupStartupFailure = (error: unknown): never => {
+    documentData?.dispose();
+    initialController.abort(error);
+    throw error;
+  };
   const observed = (work: Prepared) => {
     void work.done.catch((error) => {
       if (!work.controller.signal.aborted && active === work.controller)
@@ -97,21 +104,26 @@ export async function startClient(
       await readLoadedPage(response, registry, url, base, controller),
     );
   }
-  if (!initial.options.ssr && initial.options.csr && options.csr !== false) {
-    const initialResponse = await read(currentUrl, initialController);
-    initial = initialResponse.payload;
+  let page: Awaited<ReturnType<typeof runUniversalLoads>>;
+  try {
+    if (!initial.options.ssr && initial.options.csr && options.csr !== false) {
+      const initialResponse = await read(currentUrl, initialController);
+      initial = initialResponse.payload;
+    }
+    const initialFetch = createReplayFetch(
+      initial.fetched,
+      initial.url,
+      fetcher,
+      initialController.signal,
+      initial.prerendered ? capturedBaseURL : undefined,
+    );
+    page = await runUniversalLoads(registry, initial, {
+      fetch: initialFetch,
+      signal: initialController.signal,
+    });
+  } catch (error) {
+    return cleanupStartupFailure(error);
   }
-  const initialFetch = createReplayFetch(
-    initial.fetched,
-    initial.url,
-    fetcher,
-    initialController.signal,
-    initial.prerendered ? initial.url : undefined,
-  );
-  let page = await runUniversalLoads(registry, initial, {
-    fetch: initialFetch,
-    signal: initialController.signal,
-  });
   const pageIdentity = createPageIdentity(options.pageKey, initial);
   const state: ApplicationState = createState(
     page,
@@ -190,15 +202,19 @@ export async function startClient(
       },
     };
   }
-  await ensureStylesheets(initial.stylesheets, initialController.signal);
   const shouldHydrate =
     initial.options.ssr &&
     options.ssr !== false &&
     target.childNodes.length > 0;
-  const instance = shouldHydrate
-    ? hydrate(registry.Root, { target, recover: false, props: { state } })
-    : mount(registry.Root, { target, props: { state } });
-  documentData?.activate(failTransport);
+  let instance: ReturnType<typeof mount>;
+  try {
+    await ensureStylesheets(initial.stylesheets, initialController.signal);
+    instance = shouldHydrate
+      ? hydrate(registry.Root, { target, recover: false, props: { state } })
+      : mount(registry.Root, { target, props: { state } });
+  } catch (error) {
+    return cleanupStartupFailure(error);
+  }
   const historyOwner = createHistory();
   const removeSnapshotPersistence = snapshots.attach(
     historyOwner.current,

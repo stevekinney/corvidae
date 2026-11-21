@@ -1,6 +1,5 @@
 import { throwingRejectionOf } from "@lostgradient/testing/promise-outcome";
 import { expect, test } from "bun:test";
-import type { ProductionGeneration } from "../../src/build/manifest-types.ts";
 import type { Fetch } from "../../src/data/contract.ts";
 import { createEvent } from "../../src/server/request.ts";
 import type { ApplicationOptions } from "../../src/server/types.ts";
@@ -23,7 +22,7 @@ const options: ApplicationOptions = {
       assets: [],
       outputs: [],
     },
-  } as ProductionGeneration,
+  },
 };
 
 function eventFor(
@@ -134,7 +133,8 @@ test("strips ambient credentials on cross-origin redirects", async () => {
           headers: { location: `http://127.0.0.1:${server.port}/external` },
         }),
     );
-    expect(await (await event.fetch("/start")).text()).toBe("external");
+    const response = await event.fetch("/start");
+    expect(await response.text()).toBe("external");
     expect(observed).toEqual({ cookie: null, authorization: null });
   } finally {
     server.stop(true);
@@ -159,6 +159,70 @@ test("scopes cookies learned from internal responses by path", async () => {
     { path: "/set", cookie: null },
     { path: "/public", cookie: null },
     { path: "/private/child", cookie: "private=1" },
+  ]);
+});
+
+test("preserves same-name cookies across path and domain scopes", async () => {
+  const seen: Array<{ path: string; cookie: string | null }> = [];
+  const event = eventFor(async (request) => {
+    const path = new URL(request.url).pathname;
+    seen.push({ path, cookie: request.headers.get("cookie") });
+    if (path === "/set") {
+      const headers = new Headers();
+      headers.append("set-cookie", "session=private; Path=/private");
+      headers.append("set-cookie", "session=domain; Domain=app.test; Path=/");
+      return new Response("set", { headers });
+    }
+    if (path === "/replace")
+      return new Response("replace", {
+        headers: { "set-cookie": "session=private-new; Path=/private" },
+      });
+    return new Response("ok");
+  });
+  await event.fetch("/set");
+  await event.fetch("/private/child");
+  await event.fetch("/public");
+  await event.fetch("/replace");
+  await event.fetch("/private/child");
+  expect(seen).toEqual([
+    { path: "/set", cookie: "ambient=1" },
+    {
+      path: "/private/child",
+      cookie: "session=private; session=domain; ambient=1",
+    },
+    { path: "/public", cookie: "session=domain; ambient=1" },
+    { path: "/replace", cookie: "session=domain; ambient=1" },
+    {
+      path: "/private/child",
+      cookie: "session=private-new; session=domain; ambient=1",
+    },
+  ]);
+});
+
+test("composes distinct cookie scopes and replaces only an exact scope", () => {
+  const context = createEvent(
+    new Request("http://app.test/"),
+    new URL("http://app.test/"),
+    new AbortController().signal,
+    async () => new Response("ok"),
+    options,
+  );
+  context.event.cookies.set("session", "private", { path: "/private" });
+  context.event.cookies.set("session", "root", {
+    domain: "app.test",
+    path: "/",
+  });
+  context.event.cookies.set("session", "private-new", { path: "/private" });
+  const response = context.apply(new Response("ok"));
+  expect(response.headers.getSetCookie()).toEqual([
+    "session=private-new; Path=/private; HttpOnly; SameSite=Lax",
+    "session=root; Domain=app.test; Path=/; HttpOnly; SameSite=Lax",
+  ]);
+  context.event.cookies.delete("session", { path: "/private" });
+  context.event.cookies.delete("session", { domain: "app.test", path: "/" });
+  expect(context.apply(new Response("ok")).headers.getSetCookie()).toEqual([
+    "session=; Path=/private; Max-Age=0; HttpOnly; SameSite=Lax",
+    "session=; Domain=app.test; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
   ]);
 });
 
