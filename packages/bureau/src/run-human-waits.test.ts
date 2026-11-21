@@ -172,7 +172,9 @@ it('hides an externally closed catalog review while the live run still holds the
   );
   const [review] = waits.list();
   expect(review).toMatchObject({ runId: 'live-1', signalName: 'answer' });
-  const rejection = await rejectionOf(waits.resolve({ id: review!.id, decision: 'approve' }));
+  const rejection = await rejectionOf(
+    waits.resolve({ id: review!.id, decision: 'approve', principal: 'alice' }),
+  );
   expect(rejection).toMatchObject({ code: 'NOT_FOUND' });
   expect(waits.list()).toEqual([]);
 });
