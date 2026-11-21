@@ -172,7 +172,7 @@
             "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook",
             "timeout": 1260,
             "onFailure": "block",
-            "statusMessage": "Waiting for a host place if none is free (bun scripts/host-sessions.ts status lists the holders)"
+            "statusMessage": "Recording the dispatch (no host cap; bun scripts/host-sessions.ts status lists the agents)"
           }
         ]
       },
