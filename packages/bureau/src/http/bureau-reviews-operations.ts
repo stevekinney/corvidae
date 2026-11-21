@@ -607,6 +607,7 @@ export function reviewFault(error: unknown, identifier: string, resource = 'revi
   // request, a capability or a rate answer `Unprocessable` with the message as the reason.
   return bureauFaultOf(error, {
     notFound: { resource, identifier },
+    answers: ['CONFLICT'],
     forms: {
       BAD_REQUEST: 'unprocessable',
       NOT_CONFIGURED: 'unprocessable',

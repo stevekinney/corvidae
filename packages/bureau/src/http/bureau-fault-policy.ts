@@ -15,7 +15,12 @@
 import type { FaultCode, FaultPolicy, OperationFault } from '@lostgradient/backchannel';
 import { weftFaultPolicy } from '@lostgradient/weft';
 
-import { BUREAU_ERROR_CODES, BureauError, type BureauErrorCode } from '../bureau-errors.ts';
+import {
+  BUREAU_ERROR_CODES,
+  BureauError,
+  type BureauErrorCode,
+  BureauShuttingDownError,
+} from '../bureau-errors.ts';
 
 /**
  * The fault code each {@link BureauErrorCode} answers by default. The record is exhaustive over
@@ -81,6 +86,12 @@ export type BureauFaultContext = {
   readonly capability?: string;
   /** Codes this operation answers in their other form. */
   readonly forms?: Readonly<Partial<Record<BureauErrorCode, BureauRefusalForm>>>;
+  /**
+   * Codes this operation declares and answers in their default form, for a caller that reads the
+   * thrown fault itself (an A2A continuation reads `bureau.tasks.respond`'s) and so cannot leave
+   * the code to the policy.
+   */
+  readonly answers?: readonly BureauErrorCode[];
 };
 
 /** A message every {@link BureauError} that is a storage outage answers with, in place of its own. */
@@ -162,12 +173,28 @@ function bureauFault(error: BureauError, context: BureauFaultContext = {}): Oper
   }
 }
 
+/** Whether `context` says something about an error of `code`: what the operation refines it with. */
+function refines(code: BureauErrorCode, context: BureauFaultContext): boolean {
+  if (context.forms?.[code] !== undefined || context.answers?.includes(code) === true) return true;
+  if (code === 'NOT_FOUND') return context.notFound !== undefined;
+  if (code === 'BAD_REQUEST') return context.invalidPath !== undefined;
+  if (code === 'NOT_CONFIGURED') return context.capability !== undefined;
+  return false;
+}
+
 /**
- * `error` as the fault {@link bureauFault} makes of it when it is a {@link BureauError}, and
- * `error` itself otherwise, so an operation's `catch` ends in `throw bureauFaultOf(error, ...)`.
+ * The fault {@link bureauFault} makes of `error`, for an operation that refines it in `context`
+ * (it names the resource, the field, the capability or the other form of that code). Anything
+ * else comes back as it is: an error `context` says nothing about is left to
+ * {@link bureauFaultPolicy}, which answers it as any operation's would. That keeps a thrown fault
+ * to the ones an operation declared: only a refined code is built here, as the operation always
+ * built it, and the rest is classified by the policy, which the declared-faults check does not
+ * read. An operation's `catch` ends in `throw bureauFaultOf(error, ...)`.
  */
-export function bureauFaultOf(error: unknown, context?: BureauFaultContext): unknown {
-  return error instanceof BureauError ? bureauFault(error, context) : error;
+export function bureauFaultOf(error: unknown, context: BureauFaultContext = {}): unknown {
+  return error instanceof BureauError && refines(error.code, context)
+    ? bureauFault(error, context)
+    : error;
 }
 
 /**
@@ -194,6 +221,14 @@ export function bureauRefusalKind(
  */
 export const bureauFaultPolicy: FaultPolicy = Object.freeze({
   ...weftFaultPolicy,
-  classifyError: (error: unknown): OperationFault | undefined =>
-    error instanceof BureauError ? bureauFault(error) : weftFaultPolicy.classifyError?.(error),
+  classifyError: (error: unknown): OperationFault | undefined => {
+    if (!(error instanceof BureauError)) return weftFaultPolicy.classifyError?.(error);
+    // A Bureau that is closing is `Unavailable` wherever it is raised, for an operation that passes
+    // it through: the same class is the `shutting-down` form. An operation that answers `CONFLICT`
+    // itself keeps the fault it declared.
+    return bureauFault(
+      error,
+      error instanceof BureauShuttingDownError ? { forms: { CONFLICT: 'shutting-down' } } : {},
+    );
+  },
 });
