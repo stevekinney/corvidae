@@ -60,7 +60,7 @@ describe('toolGroups', () => {
       ['lookup-order', 'done'],
       ['issue-refund', 'needs-you'],
     ]);
-    expect(entries[0]?.summary).toBe('status delivered');
+    expect(entries[0]?.summary).toBe('Status delivered');
   });
 
   test('marks an approval expired at its observed deadline without changing its identity', () => {
@@ -192,7 +192,7 @@ describe('toolGroups', () => {
     );
     const entries = groups.get('s0')?.entries ?? [];
     expect(entries.map((entry) => [entry.name, entry.state, entry.summary])).toEqual([
-      ['lookup-order', 'failed', 'status unreachable'],
+      ['lookup-order', 'failed', 'Status unreachable'],
       ['issue-refund', 'failed', 'The card was declined.'],
       ['close-ticket', 'running', ''],
     ]);

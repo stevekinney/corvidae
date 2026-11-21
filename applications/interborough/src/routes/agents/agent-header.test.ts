@@ -124,7 +124,7 @@ describe('the header every tab of an agent’s page shares', () => {
     const { findByTestId, queryByRole } = mount();
 
     const reason = await findByTestId('agent-provider-reason');
-    expect(queryByRole('link', { name: 'New chat', exact: true })).toBeNull();
+    expect(queryByRole('link', { name: /^New chat$/ })).toBeNull();
     expect(reason.textContent).toContain(AGENT_PAGE_COPY.header.needsProvider);
     const link = within(reason).getByRole('link', { name: AGENT_PAGE_COPY.header.connectProvider });
     expect(link.getAttribute('href')).toBe('/settings/models');

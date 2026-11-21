@@ -109,12 +109,12 @@ describe('an approval in the chat', () => {
     landAt('/chats/session-1');
     const { findByRole, findByText, getByTestId, queryByRole } = mount();
 
-    await fireEvent.click(await findByRole('button', { name: 'Approve', exact: true }));
+    await fireEvent.click(await findByRole('button', { name: /^Approve$/ }));
 
     await findByText(CHAT_COPY.approval.notWaiting);
     await findByText(CHAT_COPY.approval.lapsed);
     expect(getByTestId('chat-header').textContent).toContain(CHAT_COPY.status.done);
-    expect(queryByRole('button', { name: 'Approve', exact: true })).toBeNull();
+    expect(queryByRole('button', { name: /^Approve$/ })).toBeNull();
     await waitFor(() => expect(reads).toBeGreaterThan(1));
   });
 
