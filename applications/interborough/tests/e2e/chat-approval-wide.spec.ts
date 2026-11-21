@@ -51,8 +51,9 @@ async function openAt(
   await page.addInitScript((selected) => {
     localStorage.setItem('weft-ui-theme', selected);
   }, theme);
-  await page.setViewportSize({ width, height: 900 });
   await openStatesChat(page, request, 'discover-agents');
+  await page.setViewportSize({ width, height: 900 });
+  expect(page.viewportSize()).toEqual({ width, height: 900 });
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(card(page)).toBeVisible();
 }
