@@ -69,6 +69,8 @@ jobs:
         run: bun scripts/build-release.ts --version "$VERSION" --outdir "$RUNNER_TEMP/interborough-release"
       - name: Test the packaged archive before publication
         working-directory: applications/interborough
+        env:
+          CORVIDAE_EXPECTED_RELEASE_SHA: ${{ steps.release-inputs.outputs.source_sha }}
         run: |
           bun scripts/test-installed-release.ts \
             --archive "$RUNNER_TEMP/interborough-release/interborough-$VERSION-darwin-arm64.tar.gz" \

@@ -31,6 +31,9 @@ describe('Interborough Homebrew release workflow', () => {
     expect(chromium).toBeGreaterThan(workflow.indexOf('bun install --frozen-lockfile'));
     expect(chromium).toBeLessThan(workflow.indexOf('bun scripts/test-installed-release.ts'));
     expect(workflow).toContain('bun scripts/test-installed-release.ts');
+    expect(workflow).toContain(
+      'CORVIDAE_EXPECTED_RELEASE_SHA: ${{ steps.release-inputs.outputs.source_sha }}',
+    );
     expect(workflow).toContain('shasum -a 256 "interborough-$VERSION-darwin-arm64.tar.gz"');
   });
 
