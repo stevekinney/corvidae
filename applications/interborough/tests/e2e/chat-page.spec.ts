@@ -429,7 +429,9 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     // Pause before navigation at 10:44 AM, two minutes before the sample "now". Reading a running
     // clock and then pausing at that reading + 500 ms races the next command under load (COR-2553).
     const loadedAt = SAMPLE_NOW_MILLISECONDS - 2 * 60_000;
-    await page.clock.pauseAt(loadedAt);
+    // Captures already fix Date at SAMPLE_NOW. Pause there first, then set the paused clock back.
+    await page.clock.pauseAt(SAMPLE_NOW);
+    await page.clock.setSystemTime(loadedAt);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
