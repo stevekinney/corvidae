@@ -159,6 +159,11 @@ test('an acknowledged cancellation is attributed to the owning attempt', async (
       route: '/health/workers (task ledger)',
       state: 'acknowledged cancellation',
       source: '06-explore-task-ledger.spec.ts',
+      async ready() {
+        const acknowledgement = cancellation.getByText('Acknowledged by owning attempt');
+        await acknowledgement.scrollIntoViewIfNeeded();
+        await expect(acknowledgement).toBeInViewport({ ratio: 1 });
+      },
     });
     await checkA11y(`workers—task with acknowledged cancellation at ${viewport.width}px`);
   }
