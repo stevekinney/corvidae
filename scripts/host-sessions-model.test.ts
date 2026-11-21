@@ -22,14 +22,18 @@ import {
   type SessionState,
 } from './host-sessions-model.ts';
 
-const admit = (toolUseId: string, at = 0): SessionEvent => ({
+const admit = (toolUseId: string, at = 0): Extract<SessionEvent, { kind: 'admit' }> => ({
   kind: 'admit',
   toolUseId,
   at,
   description: `Deliver ${toolUseId}`,
   dispatcher: '',
 });
-const start = (agentId: string, at = 0): SessionEvent => ({ kind: 'start', agentId, at });
+const start = (agentId: string, at = 0): Extract<SessionEvent, { kind: 'start' }> => ({
+  kind: 'start',
+  agentId,
+  at,
+});
 const stop = (agentId: string, at = 0): SessionEvent => ({ kind: 'stop', agentId, at });
 const launched = (toolUseId: string, agentId: string): SessionEvent => ({
   kind: 'launched',
@@ -230,6 +234,69 @@ describe('the session count', () => {
     const events = [admit('t'), failed('t'), launched('t', 'a')];
     expect(placesAfterEach(events)).toEqual([1, 0, 0]);
     expect(foldSession(events).dispatches.get('t')).toMatchObject({ status: 'failed' });
+  });
+
+  test('unobserved type differences do not distinguish equivalent fallback assignments', () => {
+    const count = 24;
+    const dispatches: SessionEvent[] = Array.from({ length: count }, (_, index) => ({
+      ...admit('tool-' + String(index)),
+      agentType: 'type-' + String(index),
+    }));
+    const starts: SessionEvent[] = Array.from({ length: count }, (_, index) => ({
+      ...start('agent-' + String(index)),
+      agentType: 'unknown-type',
+    }));
+    const state = foldSession([...dispatches, ...starts]);
+    expect(workerPlaces(state)).toBe(count);
+    expect(
+      [...state.dispatches.values()].filter((dispatch) => dispatch.status === 'started'),
+    ).toHaveLength(count);
+  });
+
+  test('counts each role after many anonymous starts that cannot be distinguished by future hooks', () => {
+    const count = 18;
+    const dispatches: SessionEvent[] = Array.from({ length: count }, (_, index) => ({
+      ...admit('mixed-tool-' + String(index)),
+      readOnly: index % 3 === 0,
+      opus: index % 3 === 1,
+    }));
+    const starts = Array.from({ length: count }, (_, index) =>
+      start('mixed-agent-' + String(index)),
+    );
+    const state = foldSession([...dispatches, ...starts, stop('mixed-agent-0')]);
+    expect(workerPlaces(state)).toBe(12);
+    expect(readOnlyAgents(state)).toBe(6);
+    expect(opusPlaces(state)).toBe(6);
+    const linked = applySessionEvent(state, launched('mixed-tool-0', 'mixed-agent-0'));
+    expect(workerPlaces(linked)).toBe(12);
+    expect(readOnlyAgents(linked)).toBe(5);
+    expect(opusPlaces(linked)).toBe(6);
+  });
+
+  test('refines dozens of interchangeable starts when delayed links name the reverse order', () => {
+    const ids = Array.from({ length: 24 }, (_, index) => String(index));
+    let state = foldSession([
+      ...ids.map((id): SessionEvent => ({ ...admit(`tool-${id}`), bypass: true })),
+      ...ids.map((id) => start(`agent-${id}`)),
+    ]);
+    expect(workerPlaces(state)).toBe(ids.length);
+
+    for (const [index, agent] of ids.entries()) {
+      const tool = ids.at(-1 - index)!;
+      state = applySessionEvent(state, launched(`tool-${tool}`, `agent-${agent}`));
+      expect(state.dispatches.get(`tool-${tool}`)?.agentId).toBe(`agent-${agent}`);
+      expect(workerPlaces(state)).toBe(ids.length);
+    }
+    for (const [index, agent] of ids.entries()) {
+      state = applySessionEvent(state, stop(`agent-${agent}`));
+      expect(workerPlaces(state)).toBe(ids.length - index - 1);
+    }
+  });
+
+  test('does not manufacture an unadmitted start to satisfy a later contradictory link', () => {
+    const events = [admit('t'), start('a'), start('b'), launched('t', 'b')];
+    expect(placesAfterEach(events)).toEqual([1, 1, 2, 2]);
+    expect(foldSession(events).dispatches.get('t')?.agentId).toBe('a');
   });
 
   test('expires a dispatch only when every compatible history still has it pending', () => {

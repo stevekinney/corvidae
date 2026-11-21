@@ -340,7 +340,7 @@ const keepsReplacementWhenOwnerlessLockChangesInode = await inScratchDirectory(a
   const before = await stat(lockDirectory);
   const originalReadFile = fileSystem.readFile;
   let replaced = false;
-  const read = spyOn(fileSystem, 'readFile').mockImplementation(async (...arguments_) => {
+  const readWithReplacement = async (...arguments_: Parameters<typeof originalReadFile>) => {
     try {
       return await originalReadFile(...arguments_);
     } finally {
@@ -352,7 +352,11 @@ const keepsReplacementWhenOwnerlessLockChangesInode = await inScratchDirectory(a
         await fileSystem.rename(replacement, lockDirectory);
       }
     }
-  });
+  };
+  // The wrapper forwards the argument-dependent string or binary result of every overload.
+  const read = spyOn(fileSystem, 'readFile').mockImplementation(
+    readWithReplacement as typeof originalReadFile,
+  );
   try {
     expect(await reclaimAbandoned(lockDirectory, 0)).toBe(false);
   } finally {

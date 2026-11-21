@@ -225,26 +225,25 @@ function compatibleAfter(history: CompatibleHistory, event: SessionEvent): Compa
   return [next];
 }
 
-function maximumCompatiblePlaces(events: readonly (SessionEvent | 'survey')[]): number {
-  let histories = [emptyHistory];
-  for (const event of events) {
-    if (event !== 'survey') {
-      histories = histories.flatMap((history) => compatibleAfter(history, event));
-      continue;
-    }
-    const expired = [...(histories[0]?.dispatches.keys() ?? [])].filter((toolUseId) =>
-      histories.every((history) => {
-        const dispatch = history.dispatches.get(toolUseId);
-        return dispatch?.status === 'pending' && dispatch.agentId === undefined;
-      }),
-    );
-    histories = histories.map((history) => {
-      const next = copyHistory(history);
-      for (const toolUseId of expired) next.dispatches.set(toolUseId, { status: 'expired' });
-      return next;
-    });
+function afterObservation(
+  histories: readonly CompatibleHistory[],
+  event: SessionEvent | 'survey',
+): CompatibleHistory[] {
+  if (event !== 'survey') {
+    return histories.flatMap((history) => compatibleAfter(history, event));
   }
-  return Math.max(0, ...histories.map(heldBy));
+  const expired = [...(histories[0]?.dispatches.keys() ?? [])].filter((toolUseId) =>
+    histories.every((history) => {
+      const dispatch = history.dispatches.get(toolUseId);
+      return dispatch?.status === 'pending' && dispatch.agentId === undefined;
+    }),
+  );
+  if (expired.length === 0) return [...histories];
+  return histories.map((history) => {
+    const next = copyHistory(history);
+    for (const toolUseId of expired) next.dispatches.set(toolUseId, { status: 'expired' });
+    return next;
+  });
 }
 
 function survey(state: SessionState, apply: ApplyEvent): SessionState {
@@ -266,9 +265,9 @@ function describeStep(event: SessionEvent | 'survey'): string {
  * that the session holds exactly the admitted-or-running.
  * Resolves to how many prefixes it checked and the first few that failed.
  *
- * A survey expires only dispatches with no recorded start. A late start therefore takes an expired
- * dispatch before it can consume a newer pending dispatch, which keeps the model conservative
- * until a later `PostToolUse` supplies the missing identity (COR-2506).
+ * The oracle carries the independent physical histories down each branch. A survey can expire a
+ * dispatch only when every history leaves it pending. A delayed name then selects the compatible
+ * histories for its actual dispatch (COR-2506).
  */
 export function exploreInterleavings(
   kinds: readonly DispatchKind[],
@@ -281,7 +280,7 @@ export function exploreInterleavings(
   const trail: Array<SessionEvent | 'survey'> = [];
   let surveys = 0;
   let prefixes = 0;
-  const visit = (state: SessionState) => {
+  const visit = (state: SessionState, histories: readonly CompatibleHistory[]) => {
     for (const [dispatch, own] of steps.entries()) {
       const flags = done[dispatch];
       if (flags === undefined) continue;
@@ -293,7 +292,8 @@ export function exploreInterleavings(
         trail.push(step.event);
         const next = step.event === 'survey' ? survey(state, apply) : apply(state, step.event);
         prefixes += 1;
-        const expected = maximumCompatiblePlaces(trail);
+        const nextHistories = afterObservation(histories, step.event);
+        const expected = Math.max(0, ...nextHistories.map(heldBy));
         const held = workerPlaces(next);
         const wrong = held !== expected;
         if (wrong && failures.length < 3) {
@@ -301,14 +301,14 @@ export function exploreInterleavings(
             `${kinds.join(',')}: held ${held}, expected ${expected}: ${trail.map(describeStep).join(' ')}`,
           );
         }
-        visit(next);
+        visit(next, nextHistories);
         trail.pop();
         flags[index] = false;
         if (step.event === 'survey') surveys -= 1;
       }
     }
   };
-  visit(emptySession);
+  visit(emptySession, [emptyHistory]);
   return { prefixes, failures };
 }
 
