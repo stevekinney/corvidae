@@ -19,7 +19,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 
-import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { MEMORY_COPY } from '../../src/app/copy/memory.ts';
 import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { REVIEW_ALREADY_RESOLVED } from '../../src/lib/bureau-reviews.ts';
@@ -125,6 +125,90 @@ function decidedApprovals(now: number): Record<string, unknown>[] {
 
 for (const width of WIDTHS) {
   test.describe(`/agents design states at ${width} pixels`, () => {
+    test(`/agents/:agent/edit, /agents/:agent/settings and /agents/:agent/access show shared agent delete states at ${width} pixels`, async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const id = `e2e-design-shared-delete-${String(width)}`;
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      try {
+        await createAgentFile(request, id, { name: 'Shared delete agent' });
+
+        await page.goto(`/agents/${id}/edit`);
+        await page.getByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }).click();
+        const editDialog = page.getByRole('dialog', { name: 'Delete Shared delete agent?' });
+        await expect(editDialog).toBeVisible();
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared agent delete open',
+          source: SOURCE,
+        });
+        await editDialog.getByLabelText(`Type ${id} to confirm`).fill(id);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared agent delete typed confirmed',
+          source: SOURCE,
+        });
+
+        await standIn(page, 'bureau.agents.definitions.delete', async (route, call) => {
+          await held;
+          await route.fulfill({
+            json: {
+              jsonrpc: '2.0',
+              id: call.id,
+              error: {
+                code: -32000,
+                message: 'The disk is full.',
+                data: { httpStatus: 500, weftCode: 'EngineFailure' },
+              },
+            },
+          });
+        });
+        await editDialog
+          .getByRole('button', { name: AGENT_EDITOR_COPY.deleteDialog.confirm })
+          .click();
+        await expect(editDialog.getByRole('button', { name: 'Deleting…' })).toBeVisible();
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared agent delete held',
+          source: SOURCE,
+        });
+        release();
+        await expect(editDialog.getByRole('alert')).toContainText('The disk is full.');
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared agent delete error',
+          source: SOURCE,
+        });
+        await page.unrouteAll({ behavior: 'wait' });
+
+        await page.goto(`/agents/${id}/settings`);
+        await page.getByRole('button', { name: settingsCopy.deleteAction }).click();
+        const settingsDialog = page.getByRole('dialog', { name: 'Delete Shared delete agent?' });
+        await expect(settingsDialog).toBeVisible();
+        await settingsDialog.getByLabelText(`Type ${id} to confirm`).fill(id);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/settings',
+          state: 'shared agent delete typed confirmed',
+          source: SOURCE,
+        });
+
+        await page.goto(`/agents/${id}/access`);
+        await expect(page.getByRole('button', { name: settingsCopy.deleteAction })).toHaveCount(0);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/access',
+          state: 'shared agent delete absent',
+          source: SOURCE,
+        });
+      } finally {
+        release();
+        await page.unrouteAll({ behavior: 'wait' });
+        await removeAgent(request, id);
+      }
+    });
+
     test(`/agents/:agent/settings asks before Disable, offers Enable agent once disabled, and /chats/:chat of the agent is read-only, at ${width} pixels`, async ({
       page,
       request,

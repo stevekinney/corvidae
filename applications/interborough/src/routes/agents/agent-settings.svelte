@@ -86,6 +86,7 @@
   } from '../agent-editor/agent-editor-models.ts';
   import { providerDisplayName } from '../settings/models/format-model.ts';
   import type { OverridesWriter } from './agent-overrides.ts';
+  import AgentDeleteDialog from './agent-delete-dialog.svelte';
   import AgentPluginNote from './agent-plugin-note.svelte';
   import AgentVersions from './agent-versions.svelte';
   import {
@@ -451,30 +452,30 @@
   // ── Delete ───────────────────────────────────────────────────────────────────────────────────
 
   let confirmingDelete = $state(false);
-
-  // What finds the agent, read once the delete question opens. A failure leaves it unsaid.
-  const references = createQuery(
-    () => ({
-      queryKey: queryKeys.agents.references(id),
-      queryFn: ({ signal }) => listAgentReferences(id, { signal }),
-      enabled: confirmingDelete,
-      retry: false,
-    }),
-    undefined,
-  );
+  let deleteError = $state<string | undefined>();
 
   const removal = createMutation(() => ({
     mutationFn: (expectedHash: string) => deleteAgent(id, expectedHash),
     onMutate: () => {
       problem = null;
+      deleteError = undefined;
     },
     onSuccess: () => {
+      confirmingDelete = false;
       guard.release();
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
       router.navigate('/agents');
     },
-    onError: (error) => refuse(agentFaultOf(error), copy.deleteFailed),
+    onError: (error) => {
+      const fault = agentFaultOf(error);
+      if (fault.kind === 'rejected' || fault.kind === 'other') {
+        deleteError = fault.message;
+        return;
+      }
+      confirmingDelete = false;
+      refuse(fault, copy.deleteFailed);
+    },
   }));
 
   function confirmDelete(): void {
@@ -752,7 +753,10 @@
                 variant="ghost-danger"
                 size="sm"
                 disabled={hash === null || removal.isPending}
-                onclick={() => (confirmingDelete = true)}
+                onclick={() => {
+                  deleteError = undefined;
+                  confirmingDelete = true;
+                }}
                 label={copy.deleteAction}
               />
             {/snippet}
@@ -823,14 +827,12 @@
   onConfirm={() => toggle.mutate('disable')}
 />
 
-<ConfirmDialog
+<AgentDeleteDialog
   bind:open={confirmingDelete}
-  title={copy.deleteDialog.title(name)}
-  description={copy.deleteDialog.description(chats, dependentsLine(references.data))}
-  typeToConfirm={id}
-  typeToConfirmLabel={copy.deleteDialog.typeLabel(id)}
-  confirmLabel={copy.deleteDialog.confirm}
-  destructive
+  {id}
+  {name}
+  busy={removal.isPending}
+  error={deleteError}
   onConfirm={confirmDelete}
 />
 
