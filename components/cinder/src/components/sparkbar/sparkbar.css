@@ -85,7 +85,7 @@
   }
 
   .cinder-sparkbar[data-cinder-variant='warning'] .cinder-sparkbar__fill {
-    background: var(--cinder-status-warning-solid);
+    background: var(--cinder-status-warning-indicator);
   }
 
   /* ----------------------------------------
