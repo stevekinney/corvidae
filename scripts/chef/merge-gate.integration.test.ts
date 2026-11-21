@@ -1272,7 +1272,7 @@ scenarios.describe('a base that moved after the evidence', () => {
   const plan: EvidencePlan = {
     changed: ['src/feature.ts'],
     unit_tests: [],
-    root_checks: [],
+    root_checks: ['lint:root', 'typecheck:root'],
     fixture_slugs: [],
     fixture_specs: [],
     e2e_specs: [],
