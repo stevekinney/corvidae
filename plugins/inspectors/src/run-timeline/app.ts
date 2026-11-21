@@ -17,6 +17,7 @@ import {
   type Timeline,
   type TimelineModel,
 } from './model.ts';
+import TimelinePage from './timeline.svelte';
 import { createTimelineView } from './view.svelte.ts';
 
 const REFRESH_MILLISECONDS = 3000;

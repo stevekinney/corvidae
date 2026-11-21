@@ -12,7 +12,7 @@ import {
 } from '@lostgradient/interborough-plugin/step-waterfall';
 
 /** The status of a step as the engine reports it. */
-export type StepStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
+type StepStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
 
 /** One step of a run, as `bureau.runs.timeline` serves it: names and timings, never a payload. */
 export type TimelineEntry = {
@@ -104,10 +104,10 @@ export function runIdOf(argumentsOfCall: unknown): string | undefined {
 }
 
 /** A Cinder badge variant. */
-export type StatusVariant = 'success' | 'danger' | 'info' | 'neutral';
+type StatusVariant = 'success' | 'danger' | 'info' | 'neutral';
 
 /** One step as the page draws it. */
-export type TimelineRow = {
+type TimelineRow = {
   readonly step: number;
   /** What the step is: an activity's name, `sleep`, `await-signal`. */
   readonly label: string;

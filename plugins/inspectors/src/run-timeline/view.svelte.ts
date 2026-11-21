@@ -5,7 +5,7 @@ import type { TimelineModel } from './model.ts';
  * `unreadable` when the host answered that the run could not be read, and `offline` when the host
  * does not let the page call a tool and no result opened it.
  */
-export type TimelinePhase = 'loading' | 'ready' | 'unreadable' | 'offline';
+type TimelinePhase = 'loading' | 'ready' | 'unreadable' | 'offline';
 
 /** What the run timeline shows, and what it has just said to the live region. */
 export type TimelineView = {
