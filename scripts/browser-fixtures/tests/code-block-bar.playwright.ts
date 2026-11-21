@@ -116,9 +116,11 @@ for (const width of [320, 375]) {
       entry,
       theme: 'light',
       viewport: { name: 'mobile', width, height: 900 },
+      hasTouch: true,
       fixtureName: 'bar',
       fixtureContentHash: fixture.fixtureContentHash,
     });
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
     const fixtureHost = page.getByTestId('language-and-copy');
     await fixtureHost.locator('.cinder-copy-button').waitFor();
 
