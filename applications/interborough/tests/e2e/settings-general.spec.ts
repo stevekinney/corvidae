@@ -266,6 +266,7 @@ test.describe('Settings › General', () => {
     await expect(settingRow(page, 'future.setting')).toHaveCount(0);
     await page.getByRole('button', { name: 'Advanced' }).click();
     await expect(settingRow(page, 'future.setting').getByRole('switch')).toBeVisible();
+    await captureAtBothWidths(page, 'advanced settings unmatched General key');
 
     await page.unroute('**/jsonrpc');
     await stubSettings(page, {
@@ -288,6 +289,7 @@ test.describe('Settings › General', () => {
     await expect(page.getByRole('button', { name: 'Advanced' })).toHaveCount(0);
     await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
     await expect(settingRow(page, 'engine.maxConcurrentRuns')).toBeVisible();
+    await captureAtBothWidths(page, 'advanced settings no qualifying rows');
   });
 
   test.describe('advanced settings touch reach', () => {
@@ -383,11 +385,13 @@ test.describe('Settings › General', () => {
     await expect(banner).toContainText('2 changes wait for a restart');
     await page.getByRole('button', { name: 'Advanced' }).click();
     await expect(banner).toContainText('2 changes wait for a restart');
+    await captureAtBothWidths(page, 'advanced settings collapsed with two pending changes');
     await page.getByRole('button', { name: 'Advanced' }).click();
     await expect(row.getByRole('spinbutton')).toHaveValue('31');
     await expect(row.getByRole('status')).toContainText('Saved, waiting for a restart');
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
     expect(fixture.restarts()).toBe(0);
+    await captureAtBothWidths(page, 'advanced settings reopened with a pending restart');
   });
 
   test('advanced settings: Decide sends one normal patch and keeps the saved setting after reopening', async ({
@@ -404,7 +408,11 @@ test.describe('Settings › General', () => {
     await expect(settingRow(page, 'tools.decide')).toHaveCount(0);
     await disclosure.click();
     await expect(decide).toHaveAttribute('aria-checked', 'false');
+    await expect(settingRow(page, 'tools.decide').getByRole('status')).toContainText(
+      'Saved just now',
+    );
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+    await captureAtBothWidths(page, 'advanced settings Decide saved and reopened');
   });
 
   test('invalid value: a number past its limit fails at its field, with Nothing was saved', async ({
@@ -419,7 +427,7 @@ test.describe('Settings › General', () => {
     await captureAtBothWidths(page, 'invalid-value');
   });
 
-  test('save failed: the typed value stays in the field, with Try again', async ({
+  test('advanced settings save failed: the typed value stays in the field, with Try again', async ({
     page,
     pageErrors,
   }) => {
@@ -442,16 +450,17 @@ test.describe('Settings › General', () => {
     await page.getByRole('button', { name: 'Advanced' }).click();
     await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
     await expect(row.getByRole('spinbutton')).toHaveValue('321');
+    await expect(row.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await captureAtBothWidths(page, 'save-failed');
     refusing = false;
     await row.getByRole('button', { name: 'Try again' }).click();
     await expect(row.getByRole('status')).toContainText('Saved just now');
     await expect
       .poll(() => fixture.updates)
       .toEqual([{ 'logs.maximumLinesPerRun': 321 }, { 'logs.maximumLinesPerRun': 321 }]);
-    await captureAtBothWidths(page, 'save-failed');
   });
 
-  test('locked, remote mode: the backend and what the deployment owns sit in a Remote deployment card', async ({
+  test('advanced settings locked, remote mode: the backend and what the deployment owns sit in a Remote deployment card', async ({
     page,
   }) => {
     await page.route('**/host/paths', async (route) => {
