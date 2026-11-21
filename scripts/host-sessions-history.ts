@@ -1,5 +1,10 @@
 import type { Agent, Dispatch, SessionEvent, SessionState } from './host-sessions-model.ts';
 
+/** The reservation was returned before the agent was recorded starting. */
+export function reservationReturned(dispatch: Dispatch): boolean {
+  return dispatch.status === 'expired' || dispatch.status === 'released';
+}
+
 /** Identity names still observable in this replay. A later hook causes a new replay. */
 export interface ReplayNames {
   readonly dispatches: ReadonlyMap<string, number>;
@@ -83,6 +88,7 @@ function orderedHistoryKey(state: SessionState): string {
       agent.runs,
       agent.toolUseId,
       agent.overCap,
+      agent.returnedReservation === true,
     ]),
   ]);
 }
@@ -114,6 +120,7 @@ function projectedHistoryKey(state: SessionState, names: ReplayNames): string {
       agent.running,
       agent.runs,
       agent.overCap,
+      agent.returnedReservation === true,
       dispatch !== undefined && identified(dispatch) ? dispatch.toolUseId : undefined,
       dispatch?.opus === true,
       dispatch === undefined ? agent.readOnly === true : dispatch.readOnly === true,
@@ -127,7 +134,7 @@ function projectedHistoryKey(state: SessionState, names: ReplayNames): string {
     dispatches
       .filter(
         (dispatch) =>
-          !identified(dispatch) && (dispatch.status === 'pending' || dispatch.status === 'expired'),
+          !identified(dispatch) && (dispatch.status === 'pending' || reservationReturned(dispatch)),
       )
       .map(dispatchKey)
       .toSorted(),

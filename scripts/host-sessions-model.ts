@@ -45,15 +45,17 @@ export type Agent = {
   readonly running: boolean;
   /** How many runs started: more than one once `SendMessage` resumed it. */
   readonly runs: number;
-  /** The dispatch whose place the agent's first run took; absent when it took none. */
+  /** The dispatch for the agent's first run, when it came from a recorded dispatch. */
   readonly toolUseId?: string | undefined;
+  /** Its first start arrived after the dispatch's reservation had been returned. */
+  readonly returnedReservation?: boolean;
   /** Whether the current run started without an admission while the host had no place free. */
   readonly overCap: boolean;
 };
 
 /** Whether an agent's current run started without taking an admitted dispatch's place. */
 export function runsWithoutAdmission(agent: Agent): boolean {
-  return agent.runs > 1 || agent.toolUseId === undefined;
+  return agent.runs > 1 || agent.toolUseId === undefined || agent.returnedReservation === true;
 }
 
 export type SessionEvent =
@@ -139,6 +141,14 @@ function project(observation: Observation): SessionState {
  * distinguish histories that counted alike before it arrived.
  */
 export function applySessionEvent(state: SessionState, event: SessionEvent): SessionState {
+  // Every compatible history contains the same admitted and observed agent IDs.
+  if (
+    event.kind === 'release' &&
+    !state.dispatches.has(event.target) &&
+    !state.agents.has(event.target)
+  ) {
+    return state;
+  }
   const previous = observations.get(state);
   const initial = previous?.initial ?? state;
   const events = [...(previous?.events ?? []), event];

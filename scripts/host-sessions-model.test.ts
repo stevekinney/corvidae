@@ -230,6 +230,67 @@ describe('the session count', () => {
     ).toEqual([1, 2, 2, 2, 2, 1, 0, 0]);
   });
 
+  test('keeps a new reservation while a manually released dispatch can still start late', () => {
+    const events: SessionEvent[] = [
+      admit('released'),
+      { kind: 'release', target: 'released', at: 0 },
+      admit('pending'),
+      start('agent'),
+    ];
+    const unlinked = foldSession(events);
+    expect(workerPlaces(applySessionEvent(unlinked, launched('released', 'agent')))).toBe(2);
+    expect(workerPlaces(applySessionEvent(unlinked, launched('pending', 'agent')))).toBe(1);
+    expect(workerPlaces(unlinked)).toBe(2);
+    const failedBeforeStart = foldSession([
+      ...events.slice(0, 2),
+      failed('released'),
+      ...events.slice(2),
+    ]);
+    expect(workerPlaces(failedBeforeStart)).toBe(1);
+  });
+
+  test('counts a possible late Opus start before the dispatch link resolves it', () => {
+    const observed: SessionEvent[] = [
+      { ...admit('returned-opus'), opus: true },
+      { kind: 'expire', toolUseId: 'returned-opus', at: 1 },
+      admit('pending-worker', 2),
+      start('agent', 3),
+    ];
+    const state = foldSession(observed);
+    expect(opusPlaces(state)).toBe(1);
+    expect(opusPlaces(applySessionEvent(state, launched('returned-opus', 'agent')))).toBe(1);
+    expect(opusPlaces(applySessionEvent(state, launched('pending-worker', 'agent')))).toBe(0);
+  });
+
+  test('a launch observed after the reservation was returned holds its place without a start', () => {
+    for (const reason of ['expire', 'release'] as const) {
+      const returned: SessionEvent =
+        reason === 'expire'
+          ? { kind: 'expire', toolUseId: 'first', at: 1 }
+          : { kind: 'release', target: 'first', at: 1 };
+      const prefix = [admit('first'), returned, launched('first', 'agent')];
+      expect(
+        placesAfterEach([...prefix, launched('first', 'agent'), admit('fresh'), start('agent')]),
+      ).toEqual([1, 0, 1, 1, 2, 2]);
+      expect(
+        placesAfterEach([...prefix, completed('first', 'agent'), admit('fresh'), start('other')]),
+      ).toEqual([1, 0, 1, 0, 1, 1]);
+      expect(placesAfterEach([...prefix, stop('agent'), admit('fresh'), start('other')])).toEqual([
+        1, 0, 1, 0, 1, 1,
+      ]);
+    }
+  });
+
+  test('a duplicate launch does not reclaim a released place before a late start', () => {
+    const original = launched('first', 'agent');
+    const released: SessionEvent = { kind: 'release', target: 'first', at: 1 };
+    const prefix = [admit('first'), original, released, original, admit('fresh')];
+    expect(placesAfterEach([...prefix, start('agent')])).toEqual([1, 1, 0, 0, 1, 2]);
+    expect(placesAfterEach([...prefix, stop('agent'), start('other')])).toEqual([
+      1, 1, 0, 0, 1, 1, 1,
+    ]);
+  });
+
   test('rejects a stale link without reinstating a dispatch its failure already released', () => {
     const events = [admit('t'), failed('t'), launched('t', 'a')];
     expect(placesAfterEach(events)).toEqual([1, 0, 0]);
