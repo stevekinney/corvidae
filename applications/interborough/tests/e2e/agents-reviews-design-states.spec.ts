@@ -123,6 +123,61 @@ function decidedApprovals(now: number): Record<string, unknown>[] {
   });
 }
 
+for (const width of [375, 1280]) {
+  test(`/agents/:agent/access and /agents/:agent/settings show agent limit controls at ${width} pixels`, async ({
+    page,
+    request,
+  }) => {
+    const id = `e2e-agent-limits-${String(width)}`;
+    const fits = () =>
+      page
+        .locator('main.weft-shell-outlet')
+        .evaluate((outlet) => outlet.scrollWidth <= outlet.clientWidth);
+    await page.setViewportSize({ width, height: 900 });
+    try {
+      await createAgentFile(request, id, {
+        name: 'Refund helper',
+        limits: { steps: 20, cost: { run: 7, chat: 21, warn: [0.5] } },
+      });
+
+      await page.goto(`/agents/${id}/access`);
+      const access = page.getByTestId('agent-access-spend');
+      await expect(
+        access.getByRole('spinbutton', { name: AGENT_PAGE_COPY.access.spendLabel }),
+      ).toHaveValue('21');
+      await expect(
+        access.getByRole('spinbutton', { name: AGENT_PAGE_COPY.access.spendRunLabel }),
+      ).toHaveValue('7');
+      await expect(access.getByText(AGENT_PAGE_COPY.access.spendUnit, { exact: true })).toHaveCount(
+        2,
+      );
+      await expect(
+        access.getByText(AGENT_PAGE_COPY.access.spendNote, { exact: true }),
+      ).toBeVisible();
+      expect(await fits()).toBe(true);
+      await captureForDesignReview(page, {
+        route: '/agents/:agent/access',
+        state: 'run and chat spend limits',
+        source: SOURCE,
+      });
+
+      await page.goto(`/agents/${id}/settings`);
+      await expect(page.getByRole('spinbutton', { name: settingsCopy.stepLimitLabel })).toHaveValue(
+        '20',
+      );
+      await expect(page.getByText(settingsCopy.stepLimitNote, { exact: true })).toBeVisible();
+      expect(await fits()).toBe(true);
+      await captureForDesignReview(page, {
+        route: '/agents/:agent/settings',
+        state: 'step limit',
+        source: SOURCE,
+      });
+    } finally {
+      await removeAgent(request, id);
+    }
+  });
+}
+
 for (const width of WIDTHS) {
   test.describe(`/agents design states at ${width} pixels`, () => {
     test(`/agents/:agent/settings asks before Disable, offers Enable agent once disabled, and /chats/:chat of the agent is read-only, at ${width} pixels`, async ({
