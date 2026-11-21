@@ -1,4 +1,9 @@
-import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
+import {
+  storageValuesEqual,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type Storage,
+} from '@lostgradient/storage';
 
 import type { ContextOperationRequest } from '../context.ts';
 import type { EngineInternals } from './internals.ts';
@@ -8,6 +13,82 @@ export type AtomicWorkflowCommitSideEffects = {
   conditions: ConditionalBatchCondition[];
   operations: BatchOperation[];
 };
+
+type SharedReceiptTransition = {
+  readonly operation: Extract<BatchOperation, { type: 'put' }>;
+  readonly condition: ConditionalBatchCondition;
+};
+
+const sharedReceiptTransitions = new WeakMap<BatchOperation, SharedReceiptTransition>();
+
+/** Give every consumer of one keyed result the same receipt transition. */
+export function shareActivityReceiptTransition(sideEffects: {
+  operations: [SharedReceiptTransition['operation']];
+  conditions: [ConditionalBatchCondition];
+}): void {
+  const [operation] = sideEffects.operations;
+  const [condition] = sideEffects.conditions;
+  sharedReceiptTransitions.set(operation, { operation, condition });
+}
+
+/**
+ * Coalesce repeated copies within one batch and reuse a sibling's durable receipt.
+ * A storage acknowledgement can be lost even after the checkpoint landed. Only
+ * the exact completed bytes permit dropping a repeated put, and the final batch
+ * still compares those bytes along with its checkpoint and lease preconditions.
+ */
+export function prepareSharedActivityReceiptTransitions(
+  storage: Pick<Storage, 'get'>,
+  operations: BatchOperation[],
+  conditions: ConditionalBatchCondition[],
+): Promise<AtomicWorkflowCommitSideEffects> | undefined {
+  const transitions = new Map<ConditionalBatchCondition, SharedReceiptTransition>();
+  for (const operation of operations) {
+    const shared = sharedReceiptTransitions.get(operation);
+    if (shared === undefined) continue;
+    if (!conditions.includes(shared.condition)) {
+      throw new Error('Shared activity receipt transition has no matching checkpoint condition');
+    }
+    transitions.set(shared.condition, shared);
+  }
+  if (transitions.size === 0) return undefined;
+  return consolidateReceiptTransitions(storage, operations, conditions, transitions);
+}
+
+async function consolidateReceiptTransitions(
+  storage: Pick<Storage, 'get'>,
+  operations: BatchOperation[],
+  conditions: ConditionalBatchCondition[],
+  transitions: ReadonlyMap<ConditionalBatchCondition, SharedReceiptTransition>,
+): Promise<AtomicWorkflowCommitSideEffects> {
+  const committed = new Set<SharedReceiptTransition>();
+  await Promise.all(
+    [...transitions.values()].map(async (transition) => {
+      const stored = await storage.get(transition.operation.key);
+      if (storageValuesEqual(stored, transition.operation.value)) committed.add(transition);
+    }),
+  );
+
+  const repeatedWrites = new Set<SharedReceiptTransition>();
+  const writes = operations.filter((operation) => {
+    const shared = sharedReceiptTransitions.get(operation);
+    if (shared === undefined) return true;
+    if (committed.has(shared) || repeatedWrites.has(shared)) return false;
+    repeatedWrites.add(shared);
+    return true;
+  });
+  const repeatedChecks = new Set<SharedReceiptTransition>();
+  const checks = conditions.flatMap((condition) => {
+    const shared = transitions.get(condition);
+    if (shared === undefined) return [condition];
+    if (repeatedChecks.has(shared)) return [];
+    repeatedChecks.add(shared);
+    return [
+      committed.has(shared) ? { ...condition, expectedValue: shared.operation.value } : condition,
+    ];
+  });
+  return { operations: writes, conditions: checks };
+}
 
 export function stageAtomicWorkflowCommitSideEffects(
   internals: EngineInternals,
