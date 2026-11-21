@@ -251,9 +251,13 @@ describe('ensureController after another engine takes the start claim', () => {
         { goalRunId: stale.goalRunId },
         { id: controllerId },
       );
-      await waitUntil(async () => (await winningEngine.get(controllerId))?.status === 'running', {
-        message: 'the winning controller is running and waiting for its signal',
-      });
+      await waitUntil(
+        async () => {
+          const controller = await winningEngine.get(controllerId);
+          return controller?.status === 'running';
+        },
+        { message: 'the winning controller is running and waiting for its signal' },
+      );
       release.resolve();
       const result = await ensuring;
       expect(firstCommitResult).toBe(false);
