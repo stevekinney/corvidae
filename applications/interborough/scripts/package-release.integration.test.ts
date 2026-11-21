@@ -2,10 +2,11 @@ import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 
+import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
 import { parsePackageReleaseArguments } from './package-release.ts';
 
 const script = join(import.meta.dir, 'package-release.ts');
@@ -173,11 +174,12 @@ const publishDecisions = await (async () => {
     const bytes = 'fixture tarball contents';
     const integrity = 'sha512-' + createHash('sha512').update(bytes).digest('base64');
     await writeFile(join(packageDirectory, 'package-result.json'), JSON.stringify({ integrity }));
+    const environment = rootScriptEnvironment();
     const runPublish = (version: string) =>
       runWithHangGuard(['bash', '-e', '-o', 'pipefail', '-c', publish], {
         env: {
-          ...process.env,
-          PATH: root + ':' + process.env['PATH'],
+          ...environment,
+          PATH: [root, environment['PATH']].filter(Boolean).join(delimiter),
           RUNNER_TEMP: root,
           VERSION: version,
         },
