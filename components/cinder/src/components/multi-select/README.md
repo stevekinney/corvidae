@@ -48,6 +48,7 @@ Give items a `group` name to render them under headings. Ungrouped items come fi
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | `filled` draws the trigger on the inset surface with a 12px radius. Under comfortable density, an unset appearance uses the same filled treatment and a 48px medium control; `outlined` opts out of that density default. |
 | `aria-describedby` | `string` | no | — | External id(s) composed into aria-describedby. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-multi-select`. |
 | `description` | `string` | no | — | Helper text displayed below the trigger; wired via aria-describedby. |
