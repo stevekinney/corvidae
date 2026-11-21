@@ -180,9 +180,8 @@
           variant="secondary"
           href={router.href(FORBIDDEN_COPY.scopes.href)}
           onclick={(event) => open(event, FORBIDDEN_COPY.scopes.href)}
-        >
-          {FORBIDDEN_COPY.scopes.label}
-        </Button>
+          label={FORBIDDEN_COPY.scopes.label}
+        />
       {/snippet}
     </AccessGate>
   </Section>

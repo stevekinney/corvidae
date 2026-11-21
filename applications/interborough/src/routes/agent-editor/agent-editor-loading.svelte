@@ -33,9 +33,9 @@
       {copy.edit.loading}
     </p>
     <div class="weft-agent-loading__actions">
-      <Button type="button" variant="ghost" onclick={onCancel}>{copy.cancelAction}</Button>
+      <Button type="button" variant="ghost" onclick={onCancel} label={copy.cancelAction} />
       <Tooltip text={copy.edit.loading}>
-        <Button type="button" variant="primary" aria-disabled="true">{copy.saveAction}</Button>
+        <Button type="button" variant="primary" aria-disabled="true" label={copy.saveAction} />
       </Tooltip>
     </div>
   </div>

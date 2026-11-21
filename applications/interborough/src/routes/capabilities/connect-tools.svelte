@@ -764,9 +764,12 @@
     <Callout variant="warning" semantic="note" data-testid="connect-edit-refused">
       {toolSourceFaultTreatment(editing.error).message}
       {#snippet action()}
-        <Button variant="secondary" size="sm" onclick={() => router.navigate(SOURCES_PATH)}
-          >{copy.edit.back}</Button
-        >
+        <Button
+          variant="secondary"
+          size="sm"
+          onclick={() => router.navigate(SOURCES_PATH)}
+          label={copy.edit.back}
+        />
       {/snippet}
     </Callout>
   {:else if editId !== undefined && !filledFromSaved}
@@ -796,10 +799,12 @@
               </ul>
             {/if}
             <div class="ib-connect__success-actions">
-              <Button variant="secondary" onclick={() => (giving = true)}
-                >{copy.success.give}</Button
-              >
-              <Button variant="primary" onclick={viewInCapabilities}>{copy.success.view}</Button>
+              <Button
+                variant="secondary"
+                onclick={() => (giving = true)}
+                label={copy.success.give}
+              />
+              <Button variant="primary" onclick={viewInCapabilities} label={copy.success.view} />
             </div>
           </div>
         {/snippet}
@@ -930,7 +935,7 @@
             {#if spec.kind === 'reading' && spec.from === 'url'}
               <div class="ib-connect__fetching" data-testid="connect-spec-fetching">
                 <InlineLoading status="active" description={copy.spec.fetching} />
-                <Button variant="ghost" size="sm" onclick={cancelSpec}>{copy.spec.cancel}</Button>
+                <Button variant="ghost" size="sm" onclick={cancelSpec} label={copy.spec.cancel} />
               </div>
             {/if}
           {:else}
@@ -1177,9 +1182,12 @@
         <Callout variant="warning" semantic="note" data-testid="connect-edit-stale">
           {copy.edit.stale}
           {#snippet action()}
-            <Button variant="secondary" size="sm" onclick={() => void reloadSaved()}
-              >{copy.edit.reload}</Button
-            >
+            <Button
+              variant="secondary"
+              size="sm"
+              onclick={() => void reloadSaved()}
+              label={copy.edit.reload}
+            />
           {/snippet}
         </Callout>
       {/if}
@@ -1192,9 +1200,13 @@
             {phase.message}
             {copy.connectFailed.kept}
           </p>
-          <Button data-changes variant="secondary" size="sm" onclick={runConnect}
-            >{copy.connectFailed.retry}</Button
-          >
+          <Button
+            data-changes
+            variant="secondary"
+            size="sm"
+            onclick={runConnect}
+            label={copy.connectFailed.retry}
+          />
         </div>
       {/if}
 
@@ -1222,7 +1234,7 @@
           {/if}
         {/snippet}
         {#snippet end()}
-          <Button variant="secondary" onclick={cancel}>{copy.actions.cancel}</Button>
+          <Button variant="secondary" onclick={cancel} label={copy.actions.cancel} />
           <Button
             data-changes
             variant="primary"

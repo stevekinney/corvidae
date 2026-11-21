@@ -386,9 +386,12 @@
       {:else if spec.kind === 'form' && !hasValue && !revealed && !locked}
         <div class="weft-setting__unset">
           <span>{SETTINGS_COPY.notSet}</span>
-          <Button variant="secondary" size="sm" onclick={() => (revealed = true)}>
-            {SETTINGS_COPY.setAction}
-          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => (revealed = true)}
+            label={SETTINGS_COPY.setAction}
+          />
         </div>
       {:else if spec.kind === 'form' || spec.kind === 'json'}
         <span class="weft-setting__unset">{hasValue ? '' : SETTINGS_COPY.notSet}</span>

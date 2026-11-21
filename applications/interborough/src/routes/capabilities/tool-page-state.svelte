@@ -73,9 +73,12 @@
     data-testid="tool-not-found"
   >
     {#snippet action()}
-      <Button variant="secondary" href={router.href(CAPABILITIES_PATH)} onclick={back}
-        >{copy.notFound.back}</Button
-      >
+      <Button
+        variant="secondary"
+        href={router.href(CAPABILITIES_PATH)}
+        onclick={back}
+        label={copy.notFound.back}
+      />
     {/snippet}
   </EmptyState>
 {/if}

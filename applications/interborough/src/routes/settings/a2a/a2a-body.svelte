@@ -269,9 +269,12 @@
       {/if}
     {:else if agents.isError}
       <span class="ib-a2a__muted">{copy.agents.loadFailed}</span>
-      <Button variant="secondary" size="sm" onclick={() => void agents.refetch()}
-        >{copy.agents.retry}</Button
-      >
+      <Button
+        variant="secondary"
+        size="sm"
+        onclick={() => void agents.refetch()}
+        label={copy.agents.retry}
+      />
     {:else}
       <div role="status" aria-busy="true" aria-label={copy.agents.loading}>
         <Skeleton height="1.25rem" />

@@ -263,8 +263,9 @@
           variant="ghost-accent"
           size="sm"
           data-testid="run-setup-edit-as-json"
-          onclick={editAsJson}>{copy.editAsJson}</Button
-        >
+          onclick={editAsJson}
+          label={copy.editAsJson}
+        />
       {/if}
     </div>
   {/if}

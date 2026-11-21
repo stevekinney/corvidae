@@ -177,8 +177,8 @@
             size="sm"
             href={router.href(copy.connectProviderPath)}
             onclick={(event) => leave(event, copy.connectProviderPath)}
-            >{copy.connectProvider}</Button
-          >
+            label={copy.connectProvider}
+          />
           {#if scripted !== undefined}
             <Button
               type="button"
@@ -290,9 +290,13 @@
         <span class="ib-goal-form__alert-title">{failure.title}</span>
         {failure.message}
         {#snippet actions()}
-          <Button type="submit" variant="secondary" size="sm" disabled={busy}
-            >{copy.tryAgain}</Button
-          >
+          <Button
+            type="submit"
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            label={copy.tryAgain}
+          />
         {/snippet}
       </Alert>
     {/if}

@@ -318,7 +318,7 @@
       <p class="weft-allowed__muted">
         {stale ? SETTINGS_COPY.stale.description : SETTINGS_COPY.changedElsewhere.description}
       </p>
-      <Button variant="secondary" size="sm" onclick={reset}>{SETTINGS_COPY.reloadAction}</Button>
+      <Button variant="secondary" size="sm" onclick={reset} label={SETTINGS_COPY.reloadAction} />
     </div>
   {/if}
 
@@ -355,9 +355,12 @@
       {#if providers.isError}
         <p class="weft-allowed__muted" role="alert">
           {copy.models.loadFailed}
-          <Button variant="secondary" size="sm" onclick={() => void providers.refetch()}
-            >{copy.models.tryAgain}</Button
-          >
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => void providers.refetch()}
+            label={copy.models.tryAgain}
+          />
         </p>
       {:else if providers.isPending}
         <p class="weft-allowed__muted" role="status">{copy.models.loading}</p>
@@ -447,13 +450,14 @@
     <FormActions sticky unsavedChanges={changes} error={failure} errorTitle={copy.saveFailed.title}>
       {#snippet summary()}{copy.effect}{/snippet}
       {#snippet end()}
-        <Button variant="secondary" disabled={saving} onclick={reset}>{copy.reset}</Button>
+        <Button variant="secondary" disabled={saving} onclick={reset} label={copy.reset} />
         <Button
           data-changes
           variant="primary"
           disabled={saving || locked}
-          onclick={() => void save()}>{copy.save}</Button
-        >
+          onclick={() => void save()}
+          label={copy.save}
+        />
       {/snippet}
     </FormActions>
   {/if}

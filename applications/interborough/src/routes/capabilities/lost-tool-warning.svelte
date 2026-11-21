@@ -76,8 +76,9 @@
         size="sm"
         href={router.href(sourcePath)}
         onclick={reconnect}
-        data-testid="tool-lost-reconnect">{copy.reconnect}</Button
-      >
+        data-testid="tool-lost-reconnect"
+        label={copy.reconnect}
+      />
     {:else}
       <Button
         data-changes
@@ -85,8 +86,9 @@
         size="sm"
         loading={restart.running}
         onclick={() => (confirming = true)}
-        data-testid="tool-lost-enable">{copy.enable}</Button
-      >
+        data-testid="tool-lost-enable"
+        label={copy.enable}
+      />
     {/if}
   {/snippet}
 </Callout>

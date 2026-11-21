@@ -328,16 +328,18 @@
                   variant="ghost"
                   size="sm"
                   aria-label={copy.viewLabel(version.revision)}
-                  onclick={() => (viewing = version.revision)}>{copy.viewAction}</Button
-                >
+                  onclick={() => (viewing = version.revision)}
+                  label={copy.viewAction}
+                />
                 <Button
                   data-changes
                   variant="secondary"
                   size="sm"
                   aria-label={copy.restoreLabel(version.revision)}
                   disabled={currentHash === null || restore.isPending}
-                  onclick={() => askRestore(version.revision)}>{copy.restoreAction}</Button
-                >
+                  onclick={() => askRestore(version.revision)}
+                  label={copy.restoreAction}
+                />
               </div>
             {/if}
           </li>
