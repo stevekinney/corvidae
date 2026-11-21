@@ -94,7 +94,7 @@ describe('weft.workflows.suspend', () => {
         restBindings: bindings,
       });
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     } finally {
       engine.suspend = originalSuspend;
       await engine[Symbol.asyncDispose]();

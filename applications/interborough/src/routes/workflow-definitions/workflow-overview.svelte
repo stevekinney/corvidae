@@ -113,16 +113,16 @@
 
   {#if sources !== undefined}
     <section class="ib-workflow__section" aria-label={copy.stepsLabel}>
-      <SectionHeading level={2} title={`${copy.stepsLabel} ${String(rows.length)}`} />
       {#if rows.length === 0}
+        <!-- The state alone: no "Steps 0" heading above it saying the same thing (owner report, 2026-11-19). -->
         <EmptyState
           kind="first-use"
-          size="compact"
-          headingLevel={3}
+          headingLevel={2}
           title={copy.page.overview.stepsEmptyTitle}
           description={copy.page.overview.stepsEmptyDescription}
         />
       {:else}
+        <SectionHeading level={2} title={`${copy.stepsLabel} ${String(rows.length)}`} />
         <WorkflowSteps steps={rows} />
       {/if}
     </section>

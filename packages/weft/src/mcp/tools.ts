@@ -435,6 +435,8 @@ function builtInTools(): ToolImplementation[] {
           tags: { type: 'array', items: { type: 'string' } },
           limit: { type: 'number' },
           offset: { type: 'number' },
+          failedStep: { type: 'string', minLength: 1 },
+          retrying: { type: 'boolean' },
         }),
       },
       call: async (argumentsValue, context) => {

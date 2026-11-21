@@ -8,10 +8,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -22,7 +33,21 @@
         "code": -32099,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "EngineFailure",
@@ -35,10 +60,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -80,10 +116,21 @@
               },
               "readOnly": true,
               "type": "array"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "issues"
+            "issues",
+            "retryable"
           ],
           "type": "object"
         },
@@ -97,10 +144,21 @@
           "properties": {
             "method": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "method"
+            "method",
+            "retryable"
           ],
           "type": "object"
         },
@@ -115,12 +173,23 @@
             "identifier": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "resource": {
               "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "resource"
+            "resource",
+            "retryable"
           ],
           "type": "object"
         },
@@ -131,7 +200,21 @@
         "code": -32025,
         "data": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "NotImplemented",
@@ -144,10 +227,21 @@
           "properties": {
             "maxBytes": {
               "type": "number"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "maxBytes"
+            "maxBytes",
+            "retryable"
           ],
           "type": "object"
         },
@@ -159,10 +253,23 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "RateLimited",
@@ -184,10 +291,21 @@
                 "string",
                 "number"
               ]
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "currentRevision"
+            "currentRevision",
+            "retryable"
           ],
           "type": "object"
         },
@@ -202,13 +320,24 @@
             "droppedCount": {
               "type": "number"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "subscriptionId": {
               "type": "string"
             }
           },
           "required": [
             "subscriptionId",
-            "droppedCount"
+            "droppedCount",
+            "retryable"
           ],
           "type": "object"
         },
@@ -223,10 +352,23 @@
             "operationName": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "updateId": {
               "type": "string"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Timeout",
@@ -239,10 +381,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -257,10 +410,23 @@
             "reason": {
               "type": "string"
             },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
             "retryAfterSeconds": {
               "type": "number"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
+          "required": [
+            "retryable"
+          ],
           "type": "object"
         },
         "message": "Unavailable",
@@ -273,10 +439,21 @@
           "properties": {
             "reason": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "reason"
+            "reason",
+            "retryable"
           ],
           "type": "object"
         },
@@ -290,10 +467,21 @@
           "properties": {
             "capability": {
               "type": "string"
+            },
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
             }
           },
           "required": [
-            "capability"
+            "capability",
+            "retryable"
           ],
           "type": "object"
         },
@@ -305,6 +493,16 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "remediation": {
+              "description": "One line of plain text saying what to do next",
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "retryable": {
+              "description": "Whether repeating the identical call later can succeed",
+              "type": "boolean"
+            },
             "supported": {
               "items": {
                 "enum": [
@@ -332,7 +530,8 @@
           },
           "required": [
             "transport",
-            "supported"
+            "supported",
+            "retryable"
           ],
           "type": "object"
         },
@@ -801,7 +1000,7 @@
       }
     },
     {
-      "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
+      "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, failing step, whether an activity is being retried, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1000,6 +1199,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -1080,6 +1288,14 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -1344,6 +1560,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -1398,6 +1619,10 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
@@ -1656,6 +1881,15 @@
           }
         },
         {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "failureCategory",
           "required": false,
           "schema": {
@@ -1758,6 +1992,14 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -2083,6 +2325,11 @@
             },
             "type": "object"
           },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
+          },
           "failureCategory": {
             "anyOf": [
               {
@@ -2164,6 +2411,10 @@
             "minLength": 1,
             "type": "string"
           },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
+          },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
             "minLength": 1,
@@ -2244,7 +2495,7 @@
       }
     },
     {
-      "description": "Permanently delete terminal workflows (completed, failed, cancelled, or timed out) that match the filter, removing every record they own, and report how many were removed. Irreversible; with no filter it matches every terminal workflow. Requires workflows:admin.",
+      "description": "Permanently delete terminal workflows (completed, failed, cancelled, or timed out) that match the filter, removing every record they own, and report how many were removed. Irreversible; with no filter it matches every terminal workflow. Run it first with `dryRun: true` to preview the matches and receive a `confirmationToken`, then repeat the same filter with that token to commit; the commit deletes the previewed workflows and is refused with `Conflict` when the filter no longer produces the token; run the preview again. Requires workflows:admin.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -2257,6 +2508,9 @@
         },
         {
           "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/Conflict"
         }
       ],
       "name": "weft.workflows.purge",
@@ -2386,6 +2640,26 @@
           }
         },
         {
+          "name": "bulkConcurrency",
+          "required": false,
+          "schema": {
+            "description": "Number of matched workflows to process at once.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "confirmationToken",
+          "required": false,
+          "schema": {
+            "description": "Token returned by the dry run of the same request; required to commit.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
           "name": "createdAt",
           "required": false,
           "schema": {
@@ -2413,6 +2687,14 @@
           }
         },
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When true, preview the matching workflows and return a confirmationToken without changing anything.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "executionDeadline",
           "required": false,
           "schema": {
@@ -2437,6 +2719,15 @@
               }
             },
             "type": "object"
+          }
+        },
+        {
+          "name": "failedStep",
+          "required": false,
+          "schema": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
           }
         },
         {
@@ -2518,6 +2809,24 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          }
+        },
+        {
+          "name": "requestId",
+          "required": false,
+          "schema": {
+            "description": "Caller-chosen id that identifies this bulk request.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "retrying",
+          "required": false,
+          "schema": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           }
         },
         {
@@ -2617,16 +2926,739 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": {},
-          "properties": {
-            "deleted": {
-              "type": "number"
+          "anyOf": [
+            {
+              "additionalProperties": {},
+              "properties": {
+                "auditEvent": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "cancel",
+                        "signal",
+                        "delete",
+                        "tag:add",
+                        "tag:remove",
+                        "retry-failed",
+                        "purge"
+                      ],
+                      "type": "string"
+                    },
+                    "affectedCount": {
+                      "type": "number"
+                    },
+                    "confirmationToken": {
+                      "type": "string"
+                    },
+                    "filterSummary": {
+                      "additionalProperties": {},
+                      "properties": {
+                        "attributes": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {
+                              "gt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "gte": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "key": {
+                                "type": "string"
+                              },
+                              "lt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "lte": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  {
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {}
+                                      ]
+                                    },
+                                    "type": "array"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "failedStep": {
+                          "type": "string"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "offset": {
+                          "type": "number"
+                        },
+                        "retrying": {
+                          "type": "boolean"
+                        },
+                        "scheduleId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "pending",
+                                "running",
+                                "completed",
+                                "failed",
+                                "cancelled",
+                                "timed-out",
+                                "suspended"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "enum": [
+                                  "pending",
+                                  "running",
+                                  "completed",
+                                  "failed",
+                                  "cancelled",
+                                  "timed-out",
+                                  "suspended"
+                                ],
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "tags": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "principal": {
+                      "additionalProperties": {},
+                      "properties": {
+                        "method": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method"
+                      ],
+                      "type": "object"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "sampleWorkflowIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "scope": {
+                      "additionalProperties": {},
+                      "properties": {
+                        "filter": {
+                          "additionalProperties": {},
+                          "properties": {
+                            "attributes": {
+                              "items": {
+                                "additionalProperties": {},
+                                "properties": {
+                                  "gt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  "gte": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "lt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  "lte": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "boolean"
+                                          },
+                                          {}
+                                        ]
+                                      },
+                                      {
+                                        "items": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {}
+                                          ]
+                                        },
+                                        "type": "array"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "key"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "failedStep": {
+                              "type": "string"
+                            },
+                            "limit": {
+                              "type": "number"
+                            },
+                            "offset": {
+                              "type": "number"
+                            },
+                            "retrying": {
+                              "type": "boolean"
+                            },
+                            "scheduleId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "pending",
+                                    "running",
+                                    "completed",
+                                    "failed",
+                                    "cancelled",
+                                    "timed-out",
+                                    "suspended"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "items": {
+                                    "enum": [
+                                      "pending",
+                                      "running",
+                                      "completed",
+                                      "failed",
+                                      "cancelled",
+                                      "timed-out",
+                                      "suspended"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              ]
+                            },
+                            "tags": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "type": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "matched": {
+                          "type": "number"
+                        },
+                        "sampleLimit": {
+                          "type": "number"
+                        },
+                        "sampleWorkflowIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "statuses": {
+                          "items": {
+                            "enum": [
+                              "pending",
+                              "running",
+                              "completed",
+                              "failed",
+                              "cancelled",
+                              "timed-out",
+                              "suspended"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "workflowTypes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "matched",
+                        "filter",
+                        "statuses",
+                        "workflowTypes",
+                        "sampleWorkflowIds",
+                        "sampleLimit"
+                      ],
+                      "type": "object"
+                    },
+                    "timestamp": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "const": "bulk-operation:audit",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "action",
+                    "requestId",
+                    "timestamp",
+                    "principal",
+                    "filterSummary",
+                    "scope",
+                    "affectedCount",
+                    "sampleWorkflowIds",
+                    "confirmationToken"
+                  ],
+                  "type": "object"
+                },
+                "deleted": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "deleted"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": {},
+              "properties": {
+                "action": {
+                  "enum": [
+                    "cancel",
+                    "signal",
+                    "delete",
+                    "tag:add",
+                    "tag:remove",
+                    "retry-failed",
+                    "purge"
+                  ],
+                  "type": "string"
+                },
+                "confirmationToken": {
+                  "type": "string"
+                },
+                "confirmationTokenVersion": {
+                  "const": 1,
+                  "type": "number"
+                },
+                "dryRun": {
+                  "const": true,
+                  "type": "boolean"
+                },
+                "matched": {
+                  "type": "number"
+                },
+                "requestId": {
+                  "type": "string"
+                },
+                "sampleWorkflowIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "scope": {
+                  "additionalProperties": {},
+                  "properties": {
+                    "filter": {
+                      "additionalProperties": {},
+                      "properties": {
+                        "attributes": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {
+                              "gt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "gte": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "key": {
+                                "type": "string"
+                              },
+                              "lt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "lte": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {}
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {}
+                                    ]
+                                  },
+                                  {
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {}
+                                      ]
+                                    },
+                                    "type": "array"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "failedStep": {
+                          "type": "string"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "offset": {
+                          "type": "number"
+                        },
+                        "retrying": {
+                          "type": "boolean"
+                        },
+                        "scheduleId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "pending",
+                                "running",
+                                "completed",
+                                "failed",
+                                "cancelled",
+                                "timed-out",
+                                "suspended"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "enum": [
+                                  "pending",
+                                  "running",
+                                  "completed",
+                                  "failed",
+                                  "cancelled",
+                                  "timed-out",
+                                  "suspended"
+                                ],
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "tags": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "matched": {
+                      "type": "number"
+                    },
+                    "sampleLimit": {
+                      "type": "number"
+                    },
+                    "sampleWorkflowIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "statuses": {
+                      "items": {
+                        "enum": [
+                          "pending",
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out",
+                          "suspended"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "workflowTypes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "matched",
+                    "filter",
+                    "statuses",
+                    "workflowTypes",
+                    "sampleWorkflowIds",
+                    "sampleLimit"
+                  ],
+                  "type": "object"
+                },
+                "skippedTeardownPending": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "dryRun",
+                "action",
+                "matched",
+                "requestId",
+                "scope",
+                "sampleWorkflowIds",
+                "confirmationToken",
+                "confirmationTokenVersion"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "deleted"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Purge terminal workflows",
@@ -2766,6 +3798,18 @@
             },
             "type": "array"
           },
+          "bulkConcurrency": {
+            "description": "Number of matched workflows to process at once.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "confirmationToken": {
+            "description": "Token returned by the dry run of the same request; required to commit.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
           "createdAt": {
             "additionalProperties": false,
             "description": "Return only workflows created within this time range.",
@@ -2789,6 +3833,10 @@
             },
             "type": "object"
           },
+          "dryRun": {
+            "description": "When true, preview the matching workflows and return a confirmationToken without changing anything.",
+            "type": "boolean"
+          },
           "executionDeadline": {
             "additionalProperties": false,
             "description": "Return only workflows whose execution deadline falls within this time range.",
@@ -2811,6 +3859,11 @@
               }
             },
             "type": "object"
+          },
+          "failedStep": {
+            "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+            "minLength": 1,
+            "type": "string"
           },
           "failureCategory": {
             "anyOf": [
@@ -2868,6 +3921,16 @@
             "description": "Return only direct children of the workflow with this id.",
             "minLength": 1,
             "type": "string"
+          },
+          "requestId": {
+            "description": "Caller-chosen id that identifies this bulk request.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retrying": {
+            "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+            "type": "boolean"
           },
           "scheduleId": {
             "description": "Return only workflows started by the schedule with this id.",
@@ -3900,7 +4963,7 @@
       }
     },
     {
-      "description": "Request cancellation of a running workflow by `id`. Cancellation is cooperative: the workflow observes a cancellation signal and unwinds via its own cleanup logic, so this is irreversible from the caller perspective. Faults with NotFound when the workflow is not visible.",
+      "description": "Request cancellation of a running workflow by `id`. Cancellation is cooperative: the workflow observes a cancellation signal and unwinds via its own cleanup logic, so this is irreversible from the caller perspective. Pass `dryRun: true` to learn the workflow's status and whether a cancel would take effect, without cancelling. Faults with NotFound when the workflow is not visible.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -3925,6 +4988,14 @@
       "paramStructure": "by-name",
       "params": [
         {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When true, report the workflow status and whether a cancel would take effect, and change nothing.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "workflowId",
           "required": true,
           "schema": {
@@ -3938,7 +5009,7 @@
         "name": "result",
         "required": true,
         "schema": {
-          "oneOf": [
+          "anyOf": [
             {
               "additionalProperties": false,
               "properties": {
@@ -3982,6 +5053,40 @@
                 "terminalStatus"
               ],
               "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cancellable": {
+                  "type": "boolean"
+                },
+                "dryRun": {
+                  "const": true,
+                  "type": "boolean"
+                },
+                "status": {
+                  "enum": [
+                    "pending",
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "timed-out",
+                    "suspended"
+                  ],
+                  "type": "string"
+                },
+                "workflowId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "dryRun",
+                "workflowId",
+                "status",
+                "cancellable"
+              ],
+              "type": "object"
             }
           ]
         }
@@ -4004,6 +5109,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When true, report the workflow status and whether a cancel would take effect, and change nothing.",
+            "type": "boolean"
+          },
           "workflowId": {
             "description": "Id of the workflow to cancel.",
             "minLength": 1,
@@ -4932,7 +6041,7 @@
       }
     },
     {
-      "description": "Start a new workflow from a checkpoint of an existing one, leaving the source untouched, and return the new workflow `id`. Forks from `fromStep` or the latest checkpoint, optionally onto a different installed `revision`. Faults with NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and Conflict for an unavailable or version-incompatible revision.",
+      "description": "Start a new workflow from a checkpoint of an existing one, leaving the source untouched, and return the new workflow `id`. Forks from `fromStep` or the latest checkpoint, optionally onto a different installed `revision`. With `dryRun: true` it writes nothing and instead answers the steps the fork would keep, the steps it would run again, and whether the revision would change. Faults with NotFound for a missing workflow or checkpoint, InvalidParams for a bad step, and Conflict for an unavailable or version-incompatible revision.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -4956,6 +6065,14 @@
       "name": "weft.workflows.fork",
       "paramStructure": "by-name",
       "params": [
+        {
+          "name": "dryRun",
+          "required": false,
+          "schema": {
+            "description": "When true, answer what the fork would keep and run again, and whether the revision would change, and write nothing.",
+            "type": "boolean"
+          }
+        },
         {
           "name": "fromStep",
           "required": false,
@@ -4986,16 +6103,121 @@
         "name": "result",
         "required": true,
         "schema": {
-          "additionalProperties": false,
-          "properties": {
-            "id": {
-              "type": "string"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dryRun": {
+                  "const": true,
+                  "type": "boolean"
+                },
+                "forkPoint": {
+                  "type": "number"
+                },
+                "forkRevision": {
+                  "type": "string"
+                },
+                "keptSteps": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "index": {
+                        "type": "number"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "operationType",
+                      "label",
+                      "status"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "rerunSteps": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "index": {
+                        "type": "number"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "operationType",
+                      "label",
+                      "status"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "revisionWouldChange": {
+                  "type": "boolean"
+                },
+                "sourceRevision": {
+                  "type": "string"
+                },
+                "workflowId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "dryRun",
+                "workflowId",
+                "forkPoint",
+                "keptSteps",
+                "rerunSteps",
+                "revisionWouldChange"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "id"
-          ],
-          "type": "object"
+          ]
         }
       },
       "summary": "Fork a workflow from a checkpoint",
@@ -5016,6 +6238,10 @@
       "x-weft-paramsSchema": {
         "additionalProperties": false,
         "properties": {
+          "dryRun": {
+            "description": "When true, answer what the fork would keep and run again, and whether the revision would change, and write nothing.",
+            "type": "boolean"
+          },
           "fromStep": {
             "description": "Checkpoint step to fork from, as a non-negative integer. Omit it to fork from the latest checkpoint."
           },
@@ -5610,6 +6836,13 @@
           }
         },
         {
+          "name": "metadata",
+          "required": false,
+          "schema": {
+            "description": "A plain JSON object stored with the schedule and returned with it, such as who owns it. It is not passed to the runs the schedule starts. Runtime validation requires a JSON object."
+          }
+        },
+        {
           "name": "overlap",
           "required": false,
           "schema": {
@@ -5692,6 +6925,9 @@
           },
           "jitter": {
             "description": "Deterministic delay spread over each occurrence, as milliseconds or a duration string such as \"30s\"."
+          },
+          "metadata": {
+            "description": "A plain JSON object stored with the schedule and returned with it, such as who owns it. It is not passed to the runs the schedule starts. Runtime validation requires a JSON object."
           },
           "overlap": {
             "description": "What to do when a tick fires while the previous run is still active: \"skip\", \"queue\", \"cancel-running\", or \"allow\"."
@@ -5780,6 +7016,13 @@
           }
         },
         {
+          "name": "metadata",
+          "required": false,
+          "schema": {
+            "description": "A plain JSON object stored with the schedule and returned with it, replacing the stored metadata whole. Omitted, the schedule keeps its metadata. It is not passed to the runs the schedule starts."
+          }
+        },
+        {
           "name": "overlap",
           "required": false,
           "schema": {
@@ -5859,6 +7102,9 @@
           },
           "jitter": {
             "description": "Deterministic delay spread over each occurrence, as milliseconds or a duration string such as \"30s\"."
+          },
+          "metadata": {
+            "description": "A plain JSON object stored with the schedule and returned with it, replacing the stored metadata whole. Omitted, the schedule keeps its metadata. It is not passed to the runs the schedule starts."
           },
           "overlap": {
             "description": "What to do when a tick fires while the previous run is still active: \"skip\", \"queue\", \"cancel-running\", or \"allow\"."
@@ -7303,6 +8549,216 @@
         "properties": {
           "workflowId": {
             "description": "Id of the workflow whose timeline is read.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflowId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Take the id of a workflow made by `weft.workflows.fork` and return its source run, the fork point, and the two timelines aligned by durable step: for each step the operation type, label, status, input and output on each side. A step before the fork point is `shared` and carries the source entry on both sides. Payload fields are redacted as the timeline read redacts them. Pages by step (`limit`, 100 by default) with `nextCursor`. Read-only. Faults with NotFound when the fork or its source is not visible, and with Unprocessable, naming what to do, when the workflow is not a fork.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        }
+      ],
+      "name": "weft.workflows.compare",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "workflowId",
+          "required": true,
+          "schema": {
+            "description": "Id of the fork to compare with its source.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "forkPoint": {
+              "type": "number"
+            },
+            "nextCursor": {
+              "type": "string"
+            },
+            "sourceWorkflowId": {
+              "type": "string"
+            },
+            "steps": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "fork": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "input": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "type": "string"
+                      },
+                      "output": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  },
+                  "index": {
+                    "type": "number"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "input": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "type": "string"
+                      },
+                      "output": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "index",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "workflowId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "workflowId",
+            "sourceWorkflowId",
+            "forkPoint",
+            "steps"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Compare a fork with its source, step by step",
+      "tags": [
+        {
+          "name": "Workflows"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "scoped",
+        "scopes": {
+          "kind": "anyOf",
+          "scopes": [
+            "workflows:read"
+          ]
+        }
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "workflowId": {
+            "description": "Id of the fork to compare with its source.",
             "minLength": 1,
             "type": "string"
           }

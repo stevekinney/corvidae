@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import type { FaultTreatment } from '../../lib/faults.ts';
 import FaultBanner from './fault-banner.svelte';
 
@@ -44,11 +45,11 @@ describe('FaultBanner', () => {
     const { queryByRole, getByRole, rerender } = render(FaultBanner, {
       props: { treatment },
     });
-    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
 
     let retried = false;
     await rerender({ treatment, onRetry: () => (retried = true) });
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
     expect(retried).toBe(true);
   });
 });

@@ -1,3 +1,4 @@
+import type { OperationHostFactory, OperationInterceptor } from './operation-interceptors.ts';
 import { classifyEngineError } from './pipeline-helpers.ts';
 import {
   checkAccess,
@@ -6,16 +7,14 @@ import {
   parseAndApplyUnknownKeyPolicy,
   tracePipeline,
 } from './pipeline-stages.ts';
+import { closeAbandonedSubscription, isSubscriptionInvocation } from './subscription-lifecycle.ts';
 import type {
   DispatchContext,
   DispatchResult,
   OperationContext,
+  OperationKind,
   OperationMetadata,
-  StreamOperationDefinition,
-  StreamOperationInvocation,
-  SubscriptionOperationDefinition,
   SubscriptionOperationInvocation,
-  UnaryOperationDefinition,
 } from './types.ts';
 
 type DispatchableOperation<Host> = {
@@ -23,84 +22,101 @@ type DispatchableOperation<Host> = {
   readonly context: DispatchContext<Host>;
 };
 
-export async function dispatchUnary<Input, InvokeOutput, SchemaOutput, Host>(
-  operation: UnaryOperationDefinition<Input, InvokeOutput, SchemaOutput, Host>,
+type InvokableOperation<Input, SchemaOutput, Host> = OperationMetadata<
+  Input,
+  SchemaOutput,
+  Host
+> & {
+  readonly kind?: OperationKind;
+  readonly invoke: (context: OperationContext<Input, Host>) => Promise<unknown>;
+};
+
+/** Run the common pipeline before any unary, stream, or subscription invocation. */
+export async function dispatchOperation<Input, SchemaOutput, Host>(
+  operation: InvokableOperation<Input, SchemaOutput, Host>,
   { rawInput, context }: DispatchableOperation<Host>,
-): Promise<DispatchResult<InvokeOutput>> {
+): Promise<DispatchResult<unknown>> {
   const prepared = await prepareTypedInput(operation, rawInput, context);
   if (!prepared.ok) return prepared;
   try {
-    const output = await operation.invoke(operationContext(prepared.value.input, context));
-    tracePipeline(context.pipelineTrace, 'invoked');
-    return { ok: true, value: output };
+    return await invokeWithInterceptors(operation, prepared.value, context);
   } catch (error) {
     return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
   }
 }
 
-export async function dispatchStream<
-  Input,
-  InvokeOutput,
-  SchemaOutput,
-  InvokeElement,
-  Element,
-  Host,
->(
-  operation: StreamOperationDefinition<
-    Input,
-    InvokeOutput,
-    SchemaOutput,
-    InvokeElement,
-    Element,
-    Host
-  >,
-  { rawInput, context }: DispatchableOperation<Host>,
-): Promise<DispatchResult<InvokeOutput | StreamOperationInvocation<InvokeElement>>> {
-  const prepared = await prepareTypedInput(operation, rawInput, context);
-  if (!prepared.ok) return prepared;
-  try {
-    const output = await operation.invoke(operationContext(prepared.value.input, context));
+async function invokeWithInterceptors<Input, SchemaOutput, Host>(
+  operation: InvokableOperation<Input, SchemaOutput, Host>,
+  invocation: OperationContext<Input, Host>,
+  context: DispatchContext<Host>,
+): Promise<DispatchResult<unknown>> {
+  let settled = false;
+  let started: SubscriptionOperationInvocation<unknown, unknown> | undefined;
+  const invoke = async (): Promise<DispatchResult<unknown>> => {
+    if (settled)
+      return { ok: false, fault: { code: 'EngineFailure', message: 'internal error', data: {} } };
+    const value = await operation.invoke(invocation);
     tracePipeline(context.pipelineTrace, 'invoked');
-    return { ok: true, value: output };
-  } catch (error) {
-    return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
+    if (operation.kind === 'subscription' && isSubscriptionInvocation(value)) {
+      if (settled) await closeAbandonedSubscription(value);
+      else started = value;
+    }
+    return { ok: true, value };
+  };
+  if (context.interceptors === undefined || context.interceptors.length === 0) return invoke();
+  let result: DispatchResult<unknown> | undefined;
+  try {
+    result = await callInterceptors(operation, invocation, context.interceptors, invoke);
+    return result;
+  } finally {
+    settled = true;
+    if (started !== undefined && !retainsSubscription(result, started)) {
+      await closeAbandonedSubscription(started);
+    }
   }
 }
 
-export async function dispatchSubscription<
-  Input,
-  InvokeOutput,
-  SchemaOutput,
-  InvokeElement,
-  Element,
-  Host,
->(
-  operation: SubscriptionOperationDefinition<
-    Input,
-    InvokeOutput,
-    SchemaOutput,
-    InvokeElement,
-    Element,
-    Host
-  >,
-  { rawInput, context }: DispatchableOperation<Host>,
-): Promise<DispatchResult<SubscriptionOperationInvocation<InvokeElement, InvokeOutput>>> {
-  const prepared = await prepareTypedInput(operation, rawInput, context);
-  if (!prepared.ok) return prepared;
-  try {
-    const output = await operation.invoke(operationContext(prepared.value.input, context));
-    tracePipeline(context.pipelineTrace, 'invoked');
-    return { ok: true, value: output };
-  } catch (error) {
-    return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
-  }
+function callInterceptors<Input, SchemaOutput, Host>(
+  operation: InvokableOperation<Input, SchemaOutput, Host>,
+  invocation: OperationContext<Input, Host>,
+  interceptors: readonly OperationInterceptor[],
+  invoke: () => Promise<DispatchResult<unknown>>,
+): Promise<DispatchResult<unknown>> {
+  const { kind, summary, tags, destructive, access } = operation;
+  const { input, principal, transport, signal } = invocation;
+  const interception = {
+    name: operation.name,
+    metadata: { ...(kind === undefined ? {} : { kind }), summary, tags, destructive, access },
+    input,
+    principal,
+    transport,
+    ...(signal === undefined ? {} : { signal }),
+  };
+  const chain = interceptors.reduceRight<typeof invoke>((next, interceptor) => {
+    let called: ReturnType<typeof invoke> | undefined;
+    return () => interceptor(interception, () => (called ??= next()));
+  }, invoke);
+  return chain();
+}
+
+function retainsSubscription(
+  result: DispatchResult<unknown> | undefined,
+  started: SubscriptionOperationInvocation<unknown, unknown>,
+): boolean {
+  return (
+    result?.ok === true &&
+    isSubscriptionInvocation(result.value) &&
+    (result.value.close === started.close ||
+      (result.value.subscriptionId === started.subscriptionId &&
+        result.value.iterable === started.iterable))
+  );
 }
 
 async function prepareTypedInput<Input, SchemaOutput, Host>(
   operation: OperationMetadata<Input, SchemaOutput, Host>,
   rawInput: unknown,
   context: DispatchContext<Host>,
-): Promise<DispatchResult<{ input: Input }>> {
+): Promise<DispatchResult<OperationContext<Input, Host>>> {
   const transportFailure = checkTransport(operation, context);
   if (transportFailure !== null) return transportFailure;
   tracePipeline(context.pipelineTrace, 'transport-checked');
@@ -117,21 +133,26 @@ async function prepareTypedInput<Input, SchemaOutput, Host>(
   );
   if (parseOutcome.kind === 'failure') return { ok: false, fault: parseOutcome.fault };
 
-  const authorizationFailure = await checkAuthorization(operation, parseOutcome.input, context);
+  const { principal, transport, signal } = context;
+  const source = context.host;
+  let host: Host;
+  try {
+    host =
+      typeof source === 'function'
+        ? await (source as OperationHostFactory<Host>)({ principal, transport })
+        : source;
+  } catch {
+    return { ok: false, fault: { code: 'EngineFailure', message: 'internal error', data: {} } };
+  }
+  const invocation = {
+    input: parseOutcome.input,
+    principal,
+    host,
+    transport,
+    ...(signal === undefined ? {} : { signal }),
+  };
+  const authorizationFailure = await checkAuthorization(operation, { ...invocation });
   if (authorizationFailure !== null) return authorizationFailure;
   tracePipeline(context.pipelineTrace, 'authorized');
-  return { ok: true, value: { input: parseOutcome.input } };
-}
-
-function operationContext<Input, Host>(
-  input: Input,
-  context: DispatchContext<Host>,
-): OperationContext<Input, Host> {
-  return {
-    input,
-    principal: context.principal,
-    host: context.host,
-    transport: context.transport,
-    ...(context.signal === undefined ? {} : { signal: context.signal }),
-  };
+  return { ok: true, value: invocation };
 }

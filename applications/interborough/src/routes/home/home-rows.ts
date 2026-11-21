@@ -328,11 +328,29 @@ function alertRow(key: string, alert: Extract<AttentionItem, { kind: 'alert' }>)
 }
 
 /** One chat, as Home's Recent chats card lists it. */
+/**
+ * Whether two lines say the same words, whatever their spacing, case or a trailing ellipsis a
+ * title cut short ends with: a snippet that is the title again, or the title cut short.
+ */
+function sameWords(snippet: string, title: string): boolean {
+  const cutShort = /(?:…|\.\.\.)\s*$/u;
+  const words = (text: string) =>
+    text.replace(cutShort, '').replaceAll(/\s+/g, ' ').trim().toLowerCase();
+  const line = words(snippet);
+  const heading = words(title);
+  if (line === heading) return true;
+  // A title cut short is the start of the message it was made from.
+  return heading !== '' && cutShort.test(title) && line.startsWith(heading);
+}
+
 export interface RecentChatRow {
   readonly id: string;
   readonly title: string;
-  /** The latest message the chat holds, which is line two. */
-  readonly latest: string;
+  /**
+   * The latest message the chat holds, which is line two after the status, or `undefined` when it
+   * only repeats the title (a chat titled by its first message): the row never says it twice.
+   */
+  readonly latest: string | undefined;
   /** The status word, which leads the row: the word and its tone come from Cinder's table. */
   readonly status: ChatStatusWord;
   /** When it last changed, as the row says it ("10:42 AM", "Yesterday, 4:12 PM"). */
@@ -359,7 +377,7 @@ export function recentChatRows(
     return {
       id: context.id,
       title: row.title,
-      latest: row.snippet,
+      latest: sameWords(row.snippet, row.title) ? undefined : row.snippet,
       status: chatStatusWord(context, failedChats, waitingChats),
       time: row.updatedAt === null ? '' : rowTime(row.updatedAt, now, zone),
       timestamp: row.updatedAt,

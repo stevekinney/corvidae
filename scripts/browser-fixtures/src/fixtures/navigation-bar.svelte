@@ -38,10 +38,7 @@
 </section>
 
 <section aria-label="Five tabs on a phone preview">
-  <div
-    data-testid="navigation-bar-five-tabs"
-    style="inline-size: 20rem; border: 1px solid var(--cinder-border-muted);"
-  >
+  <div data-testid="navigation-bar-five-tabs" class="navigation-bar-five-tabs-layout">
     <NavigationBar placement="bottom" label="Phone primary navigation">
       {#snippet items({ variant })}
         {#each phoneTabs as tab (tab.id)}
@@ -58,3 +55,10 @@
     </NavigationBar>
   </div>
 </section>
+
+<style>
+  .navigation-bar-five-tabs-layout {
+    inline-size: 20rem;
+    border: 1px solid var(--cinder-border-muted);
+  }
+</style>

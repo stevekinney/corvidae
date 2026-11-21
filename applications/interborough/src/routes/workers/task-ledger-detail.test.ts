@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import TaskLedgerDetailView from './task-ledger-detail-view.svelte';
 import TaskLedgerPanel from './task-ledger-panel.svelte';
 import { MalformedTaskLedgerError, parseTaskLedgerDetail } from './workers-data.ts';
@@ -734,7 +735,7 @@ describe('TaskLedgerPanel — query states', () => {
         onRetry: () => (retried += 1),
       },
     });
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
     expect(retried).toBe(1);
   });
 

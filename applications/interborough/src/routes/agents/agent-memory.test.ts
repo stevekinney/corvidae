@@ -12,6 +12,7 @@
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { flushSync, tick } from 'svelte';
 
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import { MEMORY_COPY } from '../../app/copy/memory.ts';
@@ -218,6 +219,35 @@ const factOf = (detail: HTMLElement, term: string): HTMLElement | null =>
     HTMLElement | undefined) ?? null;
 
 describe('the list', () => {
+  test('beside the list opens the first memory, and opens none over the page the person leaves for', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      bureau();
+      open();
+      await waitFor(() => expect(router.search.get('selected')).toBe(AISLE.id));
+
+      // The outlet unmounts the tab a tick after the address leaves it: no memory opens in that tick.
+      router.navigate('/agents');
+      flushSync();
+      await tick();
+      expect(router.pathname).toBe('/agents');
+      expect(router.search.get('selected')).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+  });
+
   test('lists what the agent remembers, newest first, in two lines: the text, then its kind, writer and time', async () => {
     const served = bureau();
     const view = open();

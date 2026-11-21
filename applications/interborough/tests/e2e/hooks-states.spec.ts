@@ -31,10 +31,11 @@ test.describe('/hooks: the hooks list states', () => {
   const BUREAU_CALLS = '**/jsonrpc';
   const BUREAU_LOGGED = /\/jsonrpc/;
 
-  /** The header's "+": a secondary icon button named for what it makes. */
+  /** The header's New hook: a labelled primary button (owner report, 2026-11-19). */
   const headerCreate = (page: Page) => page.locator('main .cinder-page-header__create');
-  /** Every primary button on the page, which a list page keeps to the one its state offers. */
-  const primaryButtons = (page: Page) => page.locator('main button[data-cinder-variant="primary"]');
+  /** Every primary button under the header, which a list page keeps to the one its state offers. */
+  const primaryButtons = (page: Page) =>
+    page.locator('main button.button-variant-primary:not(.cinder-page-header__create)');
 
   /** A hook as `bureau.hooks.list` answers it, field for field, with the newest delivery. */
   function listedHook(overrides: Record<string, unknown> = {}) {
@@ -88,7 +89,8 @@ test.describe('/hooks: the hooks list states', () => {
       'Run something when something happens: send a webhook, start a workflow, or notify you.',
     );
     await expect(headerCreate(page)).toHaveAccessibleName('New hook');
-    await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(headerCreate(page)).toHaveText('New hook');
+    await expect(headerCreate(page)).toContainClass('button-variant-primary');
     await expect(main.getByTestId('hooks-count')).toHaveText('5 hooks');
 
     const rows = main.locator('li[data-hook]');
@@ -288,7 +290,7 @@ test.describe('/hooks: the hooks list states', () => {
       const main = page.locator('main');
       await expect(main.locator('li[data-hook]')).toHaveCount(5);
 
-      // The read keeps failing until Retry now is pressed, so the banner's own countdown cannot
+      // The read keeps failing until Try again is pressed, so the banner's own countdown cannot
       // recover it and remove the button under the click.
       let pressed: () => Promise<boolean> = async () => false;
       await answerList(page, { status: 500 }, () => pressed());
@@ -297,8 +299,8 @@ test.describe('/hooks: the hooks list states', () => {
       const banner = main.getByRole('region', { name: 'Refresh problem' });
       await expect(banner).toBeVisible();
       await expect(banner).toContainText('Showing what loaded as of');
-      await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
-      pressed = await pressRecorder(page, 'Retry now');
+      await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
+      pressed = await pressRecorder(page, 'Try again');
       await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
       // The rows stay at full contrast, links stay live, and what changes something is held.
       await expect(main.locator('li[data-hook]')).toHaveCount(5);
@@ -317,7 +319,7 @@ test.describe('/hooks: the hooks list states', () => {
       });
       await checkA11y(`hooks failed refresh at ${width}px`);
 
-      await banner.getByRole('button', { name: 'Retry now' }).click();
+      await banner.getByRole('button', { name: 'Try again' }).click();
       await expect(banner).toHaveCount(0);
     });
 

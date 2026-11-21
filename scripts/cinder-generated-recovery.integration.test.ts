@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
+import { HangGuardProgress, spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { CINDER_GENERATED_OUTPUTS } from './ensure-cinder-generated.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 
@@ -18,6 +18,7 @@ import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 // checkout under test. It is removed afterwards.
 
 const root = join(import.meta.dir, '..');
+const progress = new HangGuardProgress();
 
 async function run(command: string[], cwd: string): Promise<{ code: number; output: string }> {
   const child = spawnWithHangGuard(command, { cwd, stdout: 'pipe', stderr: 'pipe' });
@@ -26,6 +27,7 @@ async function run(command: string[], cwd: string): Promise<{ code: number; outp
     new Response(child.stderr).text(),
     child.exited,
   ]);
+  progress.progressed();
   return { code, output: `${stdout}${stderr}` };
 }
 
@@ -40,7 +42,7 @@ let freshMissing: string[] = [];
 let buildResult: Recorded | undefined;
 let testResult: Recorded | undefined;
 
-const scenario = await outcomeOf(async () => {
+async function verifyRecovery(): Promise<void> {
   const scratch = await mkdtemp(join(tmpdir(), 'corvidae-recovery-'));
   const copy = join(scratch, 'checkout');
   const cinder = join(copy, 'components/cinder');
@@ -82,7 +84,9 @@ const scenario = await outcomeOf(async () => {
     await run(['git', 'worktree', 'remove', '--force', copy], root);
     await rm(scratch, { recursive: true, force: true });
   }
-});
+}
+
+const scenario = await outcomeOf(verifyRecovery, undefined, progress);
 
 test('the isolated checkout is created and installed', () => {
   rethrow(scenario);

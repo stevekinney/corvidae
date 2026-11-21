@@ -23,6 +23,7 @@ import type { RetryPolicy } from '../core/types.ts';
 import type { PrometheusExporter } from '../observability/metrics.ts';
 import { type RoutingPolicy, WorkerRegistry } from '../worker/registry.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
+import type { WorkflowReadAuthorizer } from './operations/compare-workflow.ts';
 import { createServerWebSocketHandlers } from './runtime/authentication-bridge.ts';
 import {
   type EventBroadcastingHandle,
@@ -51,6 +52,8 @@ import {
 import type { SchedulingPolicy } from './task-queue-types.ts';
 import { TaskQueue } from './task-queue.ts';
 import type { WorkerAdmissionPolicy } from './worker-admission-policy.ts';
+
+export type { WorkflowReadAuthorizer } from './operations/compare-workflow.ts';
 
 /** Point-in-time counts of active server transport subscribers and workers. */
 export type WeftServerConnections = {
@@ -379,6 +382,17 @@ export interface ServeOptions {
    */
   workerAdmissionPolicy?: WorkerAdmissionPolicy;
   /**
+   * Per-run read gate, evaluated after the `workflows:read` scope check, for
+   * the operations that read a run other than the one the caller named.
+   * `weft.workflows.compare` calls it for the fork and for its source, and
+   * answers `NotFound` (the fault a missing fork gets, naming only the fork)
+   * when either is denied, so a caller cleared for a fork cannot read its
+   * source through it. Return `false` to deny; a throw is an internal error,
+   * never a denial. Defaults to `undefined`, which leaves the scope alone to
+   * decide.
+   */
+  authorizeWorkflowRead?: WorkflowReadAuthorizer;
+  /**
    * Scheduling policy used by the {@link TaskQueue} when ordering pending tasks
    * within a queue. Defaults to `'priority'`.
    */
@@ -523,6 +537,8 @@ export interface WeftServer extends AsyncDisposable {
   readonly url: string;
   readonly registry: WorkerRegistry;
   readonly taskQueue: TaskQueue;
+  /** All registered operation names for in-process composition, including hidden operations. */
+  readonly operationNames: readonly string[];
   /**
    * Resolves once startup task-ledger recovery (WFT-23) has reconstructed
    * every non-terminal task's in-memory indexes from durable storage;
@@ -732,6 +748,7 @@ export function serve(options: ServeOptions): WeftServer {
     url: `${scheme}://${resolvedHostname}:${resolvedPort}`,
     registry: context.registry,
     taskQueue: context.taskQueue,
+    operationNames: Object.freeze(context.liveOperationRegistry.list().map(({ name }) => name)),
     ready: context.taskLedgerRecovery.ready,
     connections: () => ({ ...context.connectionCounts }),
     async stop() {

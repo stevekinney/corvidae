@@ -12,7 +12,7 @@ import type { WorkflowState } from '../types.ts';
 import { workflow } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
-import { applyForkWorkerBindingInheritance } from './lifecycle/fork-helpers.ts';
+import { applyForkWorkerBindingInheritance } from './lifecycle/fork-worker-binding.ts';
 import { createInitialWorkflowState } from './lifecycle/start-state.ts';
 
 describe('workflow worker versioning integration', () => {

@@ -456,7 +456,7 @@ describe('worker drain operations', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: '' });
+    expect(await response.json()).toEqual({ error: '', retryable: false });
     expect(workerRegistry.getWorkerSummaries(2000)[0]?.health).toBe('active');
   });
 

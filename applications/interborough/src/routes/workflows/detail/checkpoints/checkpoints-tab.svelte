@@ -100,7 +100,6 @@
   {:else if (checkpointsQuery.data ?? []).length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
       title={RUN_CHECKPOINTS_COPY.emptyTitle}
       description={RUN_CHECKPOINTS_COPY.emptyDescription}
     />
@@ -127,7 +126,6 @@
         {#if selectedStep === null}
           <EmptyState
             kind="first-use"
-            size="compact"
             title={RUN_CHECKPOINTS_COPY.chooseTitle}
             description={RUN_CHECKPOINTS_COPY.chooseDescription}
           />

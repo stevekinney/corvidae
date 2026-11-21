@@ -10,8 +10,11 @@ import { readPreferences } from './cli-client-preferences.ts';
 import { request, type CliTarget } from './cli-client-transport.ts';
 import { executeConfiguration } from './cli-configuration.ts';
 import { executeDefinitions } from './cli-definitions.ts';
+import { executeMcp } from './cli-mcp.ts';
 import { executeMemory } from './cli-memory.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
+import { liveInstanceUrl } from './instance-record.ts';
+import { worktreeHomeFor } from './worktree-instance.ts';
 /** Version of the CLI JSON envelope. */
 export const CLI_SCHEMA_VERSION = 1;
 /** Default loopback management endpoint. */
@@ -74,6 +77,13 @@ export type CliClientDependencies = {
   readonly open?: (url: string) => Promise<void> | void;
   /** Preferences file location. */
   readonly preferencesPath?: string;
+  /**
+   * The directory the command runs in, which `cli.ts` passes. When it is inside a linked git
+   * worktree, a command given neither `--url` nor `--connection` targets the host recorded in that
+   * worktree's home (`instance-record.ts`). Omitted, no worktree is looked for, which is what the
+   * tests that stand in for a host want.
+   */
+  readonly worktreeDirectory?: string;
   /** Environment used for home and credential lookup. */
   readonly environment?: NodeJS.ProcessEnv;
   /** Optional clock seam. */
@@ -107,6 +117,7 @@ export const CLI_OPERATION_MAPPINGS = Object.freeze({
   status: ['GET /host/status'],
   doctor: ['GET /host/status'],
   open: [],
+  mcp: [],
   restart: ['GET /host/status', 'POST /host/restart'],
   api: ['GET /openrpc.json'],
   chat: [
@@ -335,6 +346,7 @@ const commandOptions: Record<string, readonly string[]> = {
   status: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
   doctor: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
   open: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
+  mcp: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
   restart: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace', 'yes'],
   api: [
     'help',
@@ -640,6 +652,7 @@ const helpText: Record<string, string> = {
   status: 'Usage: interborough status [options]',
   doctor: 'Usage: interborough doctor [options]',
   open: 'Usage: interborough open [options]',
+  mcp: 'Usage: interborough mcp [options]\n\n  Prints the MCP endpoint (/bureau/mcp) and the configuration for Claude Code and for any other MCP client. Add --output json for the same details as data.',
   restart: 'Usage: interborough restart [options]\n\n  --yes  Confirm the restart request',
   api: 'Usage: interborough api <list|describe|call> [operation] [options]\n\n  --input-file <path>  JSON input, or - for stdin\n  --all  Explicitly request all pages',
   chat: 'Usage: interborough chat --agent <name> [message]\n\n  --message-file <path>  Read one message from a file',
@@ -677,6 +690,7 @@ const commandExamples: Record<string, string> = {
   status: 'status --timeout 30000',
   doctor: 'doctor --output json',
   open: 'open',
+  mcp: 'mcp --output json',
   restart: 'restart --yes',
   api: 'api list --limit 20',
   chat: 'chat --agent assistant Hello',
@@ -969,16 +983,41 @@ function authorityFrom(value: unknown): CliTarget['authority'] | undefined {
   };
 }
 
+/**
+ * The address of the host the linked worktree around `directory` runs, when one does: its home's
+ * record (`INTERBOROUGH_HOME` in `environment` names the home, else the worktree's own) read for a
+ * live process that answers. `undefined` in the main checkout and wherever the record is stale.
+ */
+async function worktreeInstanceUrl(
+  directory: string,
+  environment: NodeJS.ProcessEnv,
+): Promise<string | undefined> {
+  const home = worktreeHomeFor(directory, environment);
+  return home === undefined ? undefined : liveInstanceUrl(home);
+}
+
 async function resolveTarget(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<CliTarget | CliResult> {
   const environment = { ...dependencies.environment };
-  const preferences = await readPreferences(dependencies);
+  // Run from a linked git worktree, with no --url and no named connection, the command targets the
+  // host that worktree runs (COR-2540): ahead of the active saved connection, whose credential then
+  // never goes with it, and ahead of the default address.
+  const worktreeInstance =
+    parsed.url === undefined &&
+    parsed.connection === undefined &&
+    dependencies.worktreeDirectory !== undefined
+      ? await worktreeInstanceUrl(dependencies.worktreeDirectory, environment)
+      : undefined;
+  const preferences =
+    worktreeInstance === undefined ? await readPreferences(dependencies) : undefined;
   const connection =
-    parsed.connection === undefined
-      ? preferences.connections.find((entry) => entry.name === preferences.activeConnection)
-      : preferences.connections.find((entry) => entry.name === parsed.connection);
+    preferences === undefined
+      ? undefined
+      : parsed.connection === undefined
+        ? preferences.connections.find((entry) => entry.name === preferences.activeConnection)
+        : preferences.connections.find((entry) => entry.name === parsed.connection);
   if (parsed.connection !== undefined && connection === undefined)
     return { stdout: '', stderr: `Unknown connection: ${parsed.connection}.`, exitCode: 1 };
   if (
@@ -991,7 +1030,7 @@ async function resolveTarget(
       stderr: 'An explicit --url cannot override a saved connection credential for another host.',
       exitCode: 1,
     };
-  const raw = parsed.url ?? connection?.url ?? CLI_DEFAULT_URL;
+  const raw = parsed.url ?? worktreeInstance ?? connection?.url ?? CLI_DEFAULT_URL;
   const credential =
     connection?.credentialReference === undefined
       ? undefined
@@ -1107,6 +1146,7 @@ async function execute(
     )(resolved.url);
     return { data: { url: resolved.url } };
   }
+  if (parsed.command === 'mcp') return executeMcp(resolved, parsed);
   if (parsed.command === 'chat' || parsed.command === 'chats')
     return executeChat(resolved, parsed, dependencies);
   if (parsed.command === 'reviews' || parsed.command === 'runs' || parsed.command === 'events')

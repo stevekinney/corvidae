@@ -72,6 +72,7 @@ export type {
   GovernedSearchHit,
   GovernedSearchOptions,
   GovernedWriteOptions,
+  MemoryDeletionPreview,
   MemoryDeletionPropagation,
   MemoryDeletionPropagationRequest,
   MemoryDeletionPropagationResult,

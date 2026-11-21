@@ -283,7 +283,7 @@ test('g then a letter opens a view', async ({ page }) => {
   await expect(page).toHaveURL(/\/agents$/);
   await page.keyboard.press('g');
   await page.keyboard.press('c');
-  await expect(page).toHaveURL(/\/chats$/);
+  await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
   await page.keyboard.press('g');
   await page.keyboard.press('h');
   await expect(page).toHaveURL(/\/$/);

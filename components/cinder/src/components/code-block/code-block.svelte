@@ -10,11 +10,14 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
+  import { IDENTIFIER_ACRONYMS } from '../../utilities/humanize-identifier.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
   import {
     annotationToneClass,
     decorateHighlightedLines,
+    hangWrappedLines,
     keepFlagsWhole,
+    leadingIndent,
     markNumericTokens,
     splitFlags,
     lineToneClass,
@@ -27,7 +30,8 @@
     highlight,
     highlighter,
     copyable = false,
-    copyFloating = false,
+    copyFloating,
+    copyLabel,
     languageLabelVisible = true,
     streaming = false,
     streamingLabel = 'Writing…',
@@ -55,16 +59,32 @@
 
   // Code that is still arriving cannot be copied yet: the copy action returns with the last token.
   const copyVisible = $derived(copyable && !streaming);
-  // The copy action names what it copies, so a reader of several blocks hears which one.
-  const copyLabel = $derived(language ? `Copy ${language} code` : 'Copy code');
-  const metaVisible = $derived(
-    Boolean(language && languageLabelVisible) || copyVisible || streaming,
+  // The copy action names what it copies, so a reader of several blocks hears which one. The
+  // page's `copyLabel` wins; otherwise the language is named, an acronym such as JSON or SQL in its
+  // canonical spelling.
+  const copyName = $derived(
+    copyLabel ??
+      (language
+        ? `Copy ${
+            IDENTIFIER_ACRONYMS.find(
+              (acronym) => acronym.toLowerCase() === language.toLowerCase(),
+            ) ?? language
+          } code`
+        : 'Copy code'),
   );
+  const languageShown = $derived(Boolean(language && languageLabelVisible));
+  const metaVisible = $derived(languageShown || copyVisible || streaming);
+  // With no language label to share a row with, the copy action floats over the code's corner
+  // instead of spending a header row on one icon. `copyFloating` states either choice outright.
+  const floatingMeta = $derived(metaVisible && (copyFloating ?? (copyable && !languageShown)));
 
   // Numbered lines and notes need one element per line. Plain code is split here; highlighted
   // code is decorated after it renders (see `code-block-lines.ts`). A highlighter that draws no
   // line elements leaves `lined` false, and the block shows the plain rendering instead.
-  const hasLineFeatures = $derived(lineNumbers || (annotations?.length ?? 0) > 0);
+  const needsLines = $derived(lineNumbers || (annotations?.length ?? 0) > 0);
+  // A wrapping block hangs the continuation of a long line, which takes one element per line. While
+  // streaming it stays one run of text, so the caret can follow the last character.
+  const hasLineFeatures = $derived(needsLines || (wrap && !streaming));
   const codeLines = $derived(
     hasLineFeatures ? (code.endsWith('\n') ? code.slice(0, -1) : code).split('\n') : [],
   );
@@ -165,7 +185,12 @@
             class={classNames(
               'cinder-code-block__line',
               notes[0] && lineToneClass(notes[0].tone ?? 'danger'),
-            )}>{text}</span
+            )}
+            style:--_cinder-code-block-indent-spaces={wrap ? leadingIndent(text).spaces : undefined}
+            style:--_cinder-code-block-indent-tabs={wrap ? leadingIndent(text).tabs : undefined}
+            >{#if wrap}{#each splitFlags(text) as run, runIndex (runIndex)}{#if run.flag}<span
+                    class="cinder-code-block__flag">{run.text}</span
+                  >{:else}{run.text}{/if}{/each}{:else}{text}{/if}</span
           >{#each notes as annotation, noteIndex (noteIndex)}{@render note(
               annotation,
             )}{/each}{/each}{#if streaming}{@render caret()}{/if}</code
@@ -188,7 +213,7 @@
     'cinder-code-block',
     lineNumbers && 'cinder-code-block--numbered',
     wrap && 'cinder-code-block--wrap',
-    copyFloating && 'cinder-code-block--floating-meta',
+    floatingMeta && 'cinder-code-block--floating-meta',
     streaming && 'cinder-code-block--streaming',
     className,
   )}
@@ -207,7 +232,7 @@
         <CopyButton
           value={code}
           class="cinder-code-block__copy"
-          label={copyLabel}
+          label={copyName}
           copiedLabel="Code copied"
         />
       {/if}
@@ -235,7 +260,7 @@
          container `<div>` so the previous render is contained inside an
          element Svelte can replace in place. -->
     <svelte:boundary>
-      {#if highlighted !== null && (lined || !hasLineFeatures)}
+      {#if highlighted !== null && (lined || !needsLines)}
         {#key highlighted}
           <div
             class="cinder-code-block__highlighted"
@@ -244,6 +269,7 @@
               : noopScrollFadeAttachment}
             {@attach markNumericTokens}
             {@attach wrap ? keepFlagsWhole : noopScrollFadeAttachment}
+            {@attach wrap ? hangWrappedLines : noopScrollFadeAttachment}
           >
             {@html highlighted}
           </div>

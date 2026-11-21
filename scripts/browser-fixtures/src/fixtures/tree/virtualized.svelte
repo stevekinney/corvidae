@@ -15,5 +15,11 @@
   virtualized
   virtualizationEstimatedRowHeight={36}
   virtualizationHeight={320}
-  style="border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);"
+  class="virtualized-fixture-tree rounded-medium"
 />
+
+<style>
+  :global(.virtualized-fixture-tree) {
+    border: 1px solid var(--cinder-border);
+  }
+</style>

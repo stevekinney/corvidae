@@ -216,7 +216,7 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(drawer.getAttribute('data-cinder-variant')).toBe('neutral');
     expect(drawer.classList.contains('cinder-callout--fit-action')).toBe(true);
     const review = getByRole(drawer, 'button', { name: 'Review approval' });
-    expect(review.getAttribute('data-cinder-size')).toBe('sm');
+    expect(review.classList.contains('button-size-small')).toBe(true);
     expect(review.querySelector('.chat-approval-drawer-action-short')?.textContent).toBe('Review');
 
     // The short words show only in a narrow column: the Callout is its own inline-size container,

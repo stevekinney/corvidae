@@ -19,6 +19,7 @@ import {
   reconcileWorkflowSchedules,
   scheduleTrigger,
   workflowScheduleId,
+  workflowScheduleOwnerOf,
   type DesiredWorkflowSchedule,
 } from './workflow-schedule';
 import { createWorkflowDocumentHost } from './workflow-host';
@@ -467,4 +468,29 @@ it('persists authority holds across peers, rescans and input generation replacem
     expect(await statusOf(peer, replacement)).toBe('paused');
     expect(await inputOf(peer, replacement)).toMatchObject({ authorityHold });
   }
+});
+
+describe('the owner of a schedule a caller made for a workflow', () => {
+  it('is read from the metadata’s own data property, never from a getter or an inherited one', () => {
+    expect(workflowScheduleOwnerOf({ workflowType: 'kit__echo', metadata: { owner: 'ada' } })).toBe(
+      'ada',
+    );
+
+    let read = false;
+    const accessor = {
+      get owner() {
+        read = true;
+        return 'mallory';
+      },
+    };
+    const inherited = Object.create({ owner: 'mallory' }) as Record<string, unknown>;
+    for (const metadata of [accessor, inherited, {}, [], null, { owner: '' }, { owner: 7 }]) {
+      expect(workflowScheduleOwnerOf({ workflowType: 'kit__echo', metadata })).toBeUndefined();
+    }
+    expect(read).toBe(false);
+    // An agent schedule has no workflow owner, whatever its metadata says.
+    expect(workflowScheduleOwnerOf({ workflowType: 'agentRun', metadata: { owner: 'ada' } })).toBe(
+      undefined,
+    );
+  });
 });

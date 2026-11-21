@@ -7,7 +7,7 @@
    * agents are refused it), where it came from, the tools it asks to keep, and the agents that use
    * it.
    */
-  import { Alert, Badge, SectionHeading, Table } from '@lostgradient/cinder';
+  import { Alert, Badge, CopyableValue, SectionHeading, Table } from '@lostgradient/cinder';
 
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import type { Skill } from '../../lib/bureau-skills.ts';
@@ -81,9 +81,6 @@
 >
   <header class="ib-capability__name-line">
     <h3 class="ib-capability__name">{heading}</h3>
-    <code class="ib-capability__code ib-capability__identifier" data-testid="skill-identifier"
-      >{skill.name}</code
-    >
   </header>
 
   {#if unavailable !== undefined}
@@ -148,7 +145,9 @@
         {#if skill.source.plugin !== null}
           <span class="ib-capability__identifier">{skill.source.plugin}</span>
         {/if}
-        <code class="ib-capability__location">{skill.source.location}</code>
+        <!-- A host path is shown only inside a copy control (owner, 2026-11-19; the sweep found
+             /tmp/interborough-e2e-… here). -->
+        <CopyableValue value={skill.source.location} label={copy.copyLocation} />
       </dd>
     </div>
     {#if skill.allowedTools.length > 0}

@@ -39,6 +39,7 @@
     ErrorState,
     ListDetail,
     LoadMore,
+    PageHeader,
     SearchField,
     SectionHeading,
     Segment,
@@ -46,7 +47,7 @@
     Skeleton,
     StackedListItem,
     StatusDot,
-    Tooltip,
+    type ListDetailSelectionChange,
   } from '@lostgradient/cinder';
   import { Archive, ChevronLeft, ChevronRight, MessageSquare, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
@@ -54,6 +55,7 @@
   import { useChatReadiness } from '../../app/chat-readiness.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { CHAT_READINESS_PATHS } from '../../app/first-run.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getContext, listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
@@ -100,8 +102,11 @@
     router.current.route?.pattern === '/chats/new' ? crypto.randomUUID() : null,
   );
   const isNew = $derived(router.current.route?.pattern === '/chats/new');
+  // The outlet can still hold Chat for a tick after navigation leaves it.
+  const onChats = $derived(router.current.route?.pattern.startsWith('/chats') === true);
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
+  let automaticallyOpened = $state<string | null>(null);
   // The chats that are not archived. The archived ones are their own list, read only while their
   // view is shown, so a chat put away leaves All, Waiting on you and Done.
   const sessions = createInfiniteQuery(
@@ -297,11 +302,15 @@
   );
   const searching = $derived(search.trim() !== '');
 
-  // The open chat always has a row to open it in, so its pane is shown even when the Bureau has not
-  // (yet) said anything about it, or a search leaves it out of the list: the pane reports a chat
-  // that cannot be read in its own words.
+  // Automatic selection follows the filter. A directly opened chat, or one that just moved
+  // between the regular and archived lists, keeps its pane so the person can finish reading it.
+  const automaticChatInList = $derived(
+    openId !== null &&
+      openId === automaticallyOpened &&
+      (showingArchived ? archivedRows : allRows).some((row) => row.id === openId),
+  );
   const items = $derived<SessionRow[]>(
-    openId === null || visible.some((row) => row.id === openId)
+    openId === null || automaticChatInList || visible.some((row) => row.id === openId)
       ? visible
       : [
           allRows.find((row) => row.id === openId) ??
@@ -368,13 +377,15 @@
     return chatSessionPath(id, viewSearch(showingArchived));
   }
 
-  /** This address in the archived view, or out of it: the open chat stays open. */
+  /** Keep an explicitly chosen chat across views. An automatic selection belongs to its list. */
   function viewPath(archivedView: boolean): string {
     const parameters = new URLSearchParams(router.current.search);
     if (archivedView) parameters.set(VIEW_PARAMETER, ARCHIVED_VIEW);
     else parameters.delete(VIEW_PARAMETER);
     const query = parameters.toString();
-    return query === '' ? router.pathname : `${router.pathname}?${query}`;
+    const pathname =
+      automaticallyOpened !== null && automaticallyOpened === openId ? '/chats' : router.pathname;
+    return query === '' ? pathname : `${pathname}?${query}`;
   }
 
   /**
@@ -388,7 +399,9 @@
     }
     event.preventDefault();
     typed = '';
-    router.navigate(viewPath(archivedView));
+    const destination = viewPath(archivedView);
+    automaticallyOpened = null;
+    router.navigate(destination, { keep: true });
     await tick();
     const target = archivedView
       ? listPane?.querySelector<HTMLElement>('[data-chats-view-back]')
@@ -396,15 +409,18 @@
     target?.focus();
   }
 
-  /** Opens the chosen row's chat, or the list alone when Back clears the choice. */
-  function openChat(key: string | null): void {
+  /** Automatic selection keeps the current view and history entry. */
+  function openChat(key: string | null, change?: ListDetailSelectionChange): void {
     if (key === openId) return;
+    const automatic = change?.automatic === true;
+    automaticallyOpened = automatic ? key : null;
+    const options = automatic ? { replace: true, keep: true } : {};
     if (key !== null) {
-      router.navigate(chatPath(key));
+      router.navigate(chatPath(key), options);
       return;
     }
     const query = viewSearch(showingArchived).toString();
-    router.navigate(query === '' ? '/chats' : `/chats?${query}`);
+    router.navigate(query === '' ? '/chats' : `/chats?${query}`, options);
   }
 
   /**
@@ -426,19 +442,38 @@
 </script>
 
 {#snippet newChatButton()}
-  <Tooltip text={CHAT_COPY.newChat}>
-    <Button
-      data-changes
-      href={router.href('/chats/new')}
-      variant="secondary"
-      iconOnly
-      size="sm"
-      aria-label={CHAT_COPY.newChat}
-      onclick={openNewChat}
-    >
-      <Plus aria-hidden="true" size={16} />
-    </Button>
-  </Tooltip>
+  <!-- A labelled primary button, never a "+" alone, as on every list page (owner report, 2026-11-19). -->
+  <Button
+    data-changes
+    href={router.href('/chats/new')}
+    variant="primary"
+    size="sm"
+    onclick={openNewChat}
+  >
+    {#snippet leadingIcon()}<Plus aria-hidden="true" size={16} />{/snippet}
+    {CHAT_COPY.newChat}
+  </Button>
+{/snippet}
+
+{#snippet firstUseState(headingLevel: 2 | 3)}
+  {@const ready = readiness()}
+  {@const missing = ready === undefined || ready === 'ready' ? undefined : ready}
+  {@const destination = missing === undefined ? '/chats/new' : CHAT_READINESS_PATHS[missing]}
+  <ListPageEmpty
+    view="chat"
+    title={missing === undefined ? CHAT_COPY.list.emptyTitle : CHAT_COPY.readiness[missing].title}
+    description={missing === undefined
+      ? CHAT_COPY.list.emptyDescription
+      : CHAT_COPY.readiness[missing].description}
+    {headingLevel}
+    create={ready === undefined
+      ? undefined
+      : {
+          label: missing === undefined ? CHAT_COPY.newChat : CHAT_COPY.readiness[missing].action,
+          href: router.href(destination),
+          onclick: (event: MouseEvent) => openPath(event, destination),
+        }}
+  />
 {/snippet}
 
 {#snippet loadMore()}
@@ -512,31 +547,11 @@
     <!-- The first chat is being started beside it: the new chat's pane is the one thing to say
          (its greeting, or why a chat cannot work yet), never a second empty state here (COR-2438). -->
   {:else if listState === 'first-use'}
-    <EmptyState
-      kind="first-use"
-      size="compact"
-      headingLevel={3}
-      title={CHAT_COPY.list.emptyTitle}
-      description={CHAT_COPY.list.emptyDescription}
-    >
-      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
-      {#snippet action()}
-        <Button
-          data-changes
-          href={router.href('/chats/new')}
-          variant="primary"
-          size="sm"
-          onclick={openNewChat}
-        >
-          {CHAT_COPY.newChat}
-        </Button>
-      {/snippet}
-    </EmptyState>
+    {@render firstUseState(3)}
   {:else if listState === 'all-archived'}
     {@const empty = CHAT_COPY.list.allArchived}
     <EmptyState
       kind="filtered"
-      size="compact"
       headingLevel={3}
       title={empty.title}
       description={empty.description}
@@ -547,7 +562,6 @@
           data-changes
           href={router.href('/chats/new')}
           variant="secondary"
-          size="sm"
           onclick={openNewChat}
         >
           {CHAT_COPY.newChat}
@@ -557,13 +571,12 @@
   {:else if listState === 'no-match'}
     <EmptyState
       kind="not-found"
-      size="compact"
       headingLevel={3}
       title={CHAT_COPY.list.noMatchTitle(search.trim())}
       description={CHAT_COPY.list.noMatchDescription}
     >
       {#snippet action()}
-        <Button variant="secondary" size="sm" onclick={clearFilters}>
+        <Button variant="secondary" onclick={clearFilters}>
           {CHAT_COPY.list.clearSearch}
         </Button>
       {/snippet}
@@ -572,7 +585,6 @@
     {@const empty = CHAT_COPY.list.archivedEmpty}
     <EmptyState
       kind="filtered"
-      size="compact"
       headingLevel={3}
       title={empty.title}
       description={empty.description}
@@ -580,7 +592,6 @@
       {#snippet action()}
         <Button
           variant="secondary"
-          size="sm"
           href={router.href(viewPath(false))}
           onclick={(event: MouseEvent) => void switchView(event, false)}
         >
@@ -592,13 +603,12 @@
     {@const empty = CHAT_COPY.list.segmentEmpty[segment === 'done' ? 'done' : 'waiting']}
     <EmptyState
       kind="filtered"
-      size="compact"
       headingLevel={3}
       title={empty.title}
       description={empty.description}
     >
       {#snippet action()}
-        <Button variant="secondary" size="sm" onclick={clearFilters}>
+        <Button variant="secondary" onclick={clearFilters}>
           {CHAT_COPY.list.showAll}
         </Button>
       {/snippet}
@@ -639,49 +649,16 @@
   {/if}
 {/snippet}
 
+<!-- On a phone the top bar's Chat link is the way back to the list. -->
 {#if firstUse}
-  <!-- No chat at all: no list pane, one empty state centred in the page (COR-2438). Its action is
-       the step a chat is missing, or New chat once a chat can work, and none while that is read. -->
-  {@const ready = readiness()}
-  {@const missing = ready === undefined || ready === 'ready' ? undefined : ready}
-  <div class="ib-chats ib-chats--first-use" data-testid="chats-first-use">
-    <EmptyState
-      kind="first-use"
-      headingLevel={1}
-      title={missing === undefined ? CHAT_COPY.list.emptyTitle : CHAT_COPY.readiness[missing].title}
-      description={missing === undefined
-        ? CHAT_COPY.list.emptyDescription
-        : CHAT_COPY.readiness[missing].description}
-    >
-      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
-      {#snippet action()}
-        {#if missing !== undefined}
-          <Button
-            data-changes
-            href={router.href(CHAT_READINESS_PATHS[missing])}
-            variant="primary"
-            size="sm"
-            onclick={(event: MouseEvent) => openPath(event, CHAT_READINESS_PATHS[missing])}
-          >
-            {CHAT_COPY.readiness[missing].action}
-          </Button>
-        {:else if ready === 'ready'}
-          <Button
-            data-changes
-            href={router.href('/chats/new')}
-            variant="primary"
-            size="sm"
-            onclick={openNewChat}
-          >
-            {CHAT_COPY.newChat}
-          </Button>
-        {/if}
-      {/snippet}
-    </EmptyState>
-  </div>
+  <section class="ib-records" data-chat-first-use data-testid="chats-first-use">
+    <PageHeader
+      title={phone.current ? CHAT_COPY.sessionsTitlePhone : CHAT_COPY.sessionsTitle}
+      description={CHAT_COPY.list.description}
+    />
+    {@render firstUseState(2)}
+  </section>
 {:else}
-  <!-- On a phone the top bar's "‹ Chat" is the way back to the list (design rows 04y, 06m), so the pane
-     draws no second Back of its own; between 640px and the width a pane stacks at, it still does. -->
   <div class="ib-chats" data-shortcut-region="list-detail" bind:this={listPane}>
     <ListDetail
       {items}
@@ -690,6 +667,7 @@
       detailLabel={CHAT_COPY.list.detailLabel}
       selectedKey={openId}
       onSelectedKeyChange={openChat}
+      openFirst={onChats && !isNew}
       selectionParameter={null}
       storageKey="interborough-chats"
       listCollapsible
@@ -728,12 +706,13 @@
                 : CHAT_COPY.sessionsTitle}
           >
             {#snippet actions()}
-              <!-- The "+" alone: the toggle that hides the list is ListDetail's, on the divider. -->
+              <!-- The hide-list control is on the divider. -->
               {@render newChatButton()}
             {/snippet}
           </SectionHeading>
         </div>
-        {#if !phone.current}
+        <!-- No search or segments over nothing: they come with the first chat (owner report, 2026-11-19). -->
+        {#if !phone.current && listState !== 'first-use'}
           <SearchField
             size="md"
             aria-label={CHAT_COPY.list.searchLabel}
@@ -769,11 +748,15 @@
         />
       {/snippet}
       {#snippet empty()}
-        <!-- With chats listed and none open the pane is a quiet hint, never a second empty state
-           beside the list's (COR-2438): the list and its "+" are the ways in. -->
-        <p class="ib-chats__no-chat" data-testid="chats-no-chat-open">
-          {CHAT_COPY.list.noChatTitle}
-        </p>
+        {#if listState === 'loading'}
+          <div class="ib-chats__loading-detail" data-chats-loading-detail aria-hidden="true">
+            <Skeleton lines={5} delay={300} />
+          </div>
+        {:else if listState === 'rows' || listState === 'failed'}
+          <p class="ib-chats__no-chat" data-testid="chats-no-chat-open">
+            {CHAT_COPY.list.noChatTitle}
+          </p>
+        {/if}
       {/snippet}
     </ListDetail>
   </div>

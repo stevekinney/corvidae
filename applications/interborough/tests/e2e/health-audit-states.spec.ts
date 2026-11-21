@@ -100,31 +100,25 @@ const rows = (page: Page) => page.locator('main tbody tr[data-cinder-row-id]');
 
 for (const width of WIDTHS) {
   test.describe(`Health › Audit log states at ${width} pixels`, () => {
-    test('nothing selected: the pane says what to do', async ({ page, checkA11y }) => {
+    test('filters that list different events: the first of them opens, never "Select an event"', async ({
+      page,
+      checkA11y,
+    }) => {
       test.skip(width < 600, 'below its push breakpoint the log shows the table alone');
       await open(page, width);
       const main = page.locator('main');
       await expect(rows(page).first()).toBeVisible();
 
-      // Filters that list different events leave none of them open.
+      // COR-2445: the pane beside the table is never empty while the filters list an event.
       await main.getByLabel('Who', { exact: true }).selectOption('agents');
       await expect(page).toHaveURL(/actor=agents/);
       const pane = main.locator('.cinder-list-detail__detail');
-      // 82s: a document icon in an accent disc, the title, and the line under it.
+      await expect(rows(page).first()).toHaveAttribute('aria-current', 'true');
+      await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(1);
       await expect(
         pane.getByRole('heading', { name: 'Select an event to see what changed' }),
-      ).toBeVisible();
-      await expect(
-        pane.getByText('Each event shows who did it, when, and the before and after.'),
-      ).toBeVisible();
-      await expect(pane.locator('.cinder-empty-state-icon svg')).toBeVisible();
-      await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(0);
-      await captureForDesignReview(page, {
-        route: '/health/audit',
-        state: 'nothing-selected',
-        source: SOURCE,
-      });
-      await checkA11y(`health audit, nothing selected at ${width}px`);
+      ).toHaveCount(0);
+      await checkA11y(`health audit, the first filtered event open at ${width}px`);
     });
 
     test('filters that match nothing: 0 events, a search icon in a neutral disc, and Clear filters', async ({
@@ -149,7 +143,7 @@ for (const width of WIDTHS) {
       await expect(state).toHaveAttribute('data-cinder-kind', 'filtered');
       await expect(state.locator('.cinder-empty-state-icon svg')).toBeVisible();
       const clear = state.getByRole('button', { name: 'Clear filters' });
-      await expect(clear).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(clear).toContainClass('button-variant-secondary');
       await captureForDesignReview(page, {
         route: '/health/audit',
         state: 'empty-filtered',
@@ -158,9 +152,30 @@ for (const width of WIDTHS) {
       await checkA11y(`health audit, filters that match nothing at ${width}px`);
 
       await clear.click();
-      await expect(page).toHaveURL(/\/health\/audit$/);
+      await expect(page).toHaveURL(/\/health\/audit(\?record=[^&]+)?$/);
       await expect(main.getByLabel('Who', { exact: true })).toHaveValue('');
       await expect(main.getByLabel('Period', { exact: true })).toHaveValue('7d');
+    });
+
+    test('an unavailable event in an empty Audit log has one missing detail and a way back', async ({
+      page,
+    }) => {
+      await answerAudit(page, () => NOTHING);
+      await open(page, width, '/health/audit?record=missing-record');
+      const main = page.locator('main');
+      const missing = main.getByRole('heading', { name: 'Event not found' });
+      await expect(missing).toBeVisible();
+      await expect(main.locator('.cinder-empty-state')).toHaveCount(1);
+      await expect(main.getByText('missing-record', { exact: true })).toHaveCount(0);
+      await captureForDesignReview(page, {
+        route: '/health/audit',
+        state: 'missing event on empty log',
+        source: SOURCE,
+      });
+
+      await main.getByRole('button', { name: 'Back to Audit log' }).click();
+      await expect(page).toHaveURL(/\/health\/audit$/);
+      await expect(main.getByRole('heading', { name: 'Nothing recorded yet' })).toBeVisible();
     });
 
     test('a search with no match keeps what was typed, names it, and Clear filters resets the search too', async ({
@@ -253,7 +268,7 @@ for (const width of WIDTHS) {
         state.getByText('The server answered with an error (500). Nothing you did caused it.'),
       ).toBeVisible();
       const retry = state.getByRole('button', { name: 'Try again' });
-      await expect(retry).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(retry).toContainClass('button-variant-primary');
       await expect(retry.locator('svg')).toBeVisible();
       // This page is already on Health, so the error offers no link to it.
       await expect(state.getByRole('link')).toHaveCount(0);
@@ -282,7 +297,7 @@ for (const width of WIDTHS) {
       });
       let failing = false;
       let failedReads = 0;
-      // The reads keep failing until Retry now is pressed, so the banner's own countdown cannot
+      // The reads keep failing until Try again is pressed, so the banner's own countdown cannot
       // recover them and remove the button under the click.
       let pressed: () => Promise<boolean> = async () => false;
       await answerAudit(page, async (read) => {
@@ -308,11 +323,11 @@ for (const width of WIDTHS) {
         .toBeGreaterThan(0);
       const banner = main.getByRole('region', { name: 'Refresh problem' });
 
-      // 83a: the shared preset's words, with Retry now, and nothing to dismiss.
+      // 83a: the shared preset's words, with Try again, and nothing to dismiss.
       await expect(banner).toContainText('Couldn’t refresh this page.');
       await expect(banner).toContainText(/Showing what loaded as of \d{1,2}:\d{2} (AM|PM)/);
-      await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
-      pressed = await pressRecorder(page, 'Retry now');
+      await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
+      pressed = await pressRecorder(page, 'Try again');
       await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
       // 83b: the filter row and the rows stay, at full contrast.
       await expect(rows(page)).toHaveCount(count);
@@ -327,7 +342,7 @@ for (const width of WIDTHS) {
           }),
         ).toBe(true);
       }
-      // 83c: Export is inert and says why; filters, search, rows and Retry now are live.
+      // 83c: Export is inert and says why; filters, search, rows and Try again are live.
       const exportButton = main.getByRole('button', { name: 'Export' });
       await expect(exportButton).toHaveAttribute('aria-disabled', 'true');
       await expect(exportButton).toHaveAccessibleDescription('Off until the audit log loads again');
@@ -335,7 +350,7 @@ for (const width of WIDTHS) {
         'aria-disabled',
         'true',
       );
-      await expect(banner.getByRole('button', { name: 'Retry now' })).not.toHaveAttribute(
+      await expect(banner.getByRole('button', { name: 'Try again' })).not.toHaveAttribute(
         'aria-disabled',
         'true',
       );
@@ -346,7 +361,7 @@ for (const width of WIDTHS) {
       });
       await checkA11y(`health audit, a failed refresh at ${width}px`);
 
-      await banner.getByRole('button', { name: 'Retry now' }).click();
+      await banner.getByRole('button', { name: 'Try again' }).click();
       await expect(banner).toHaveCount(0);
       await expect(exportButton).not.toHaveAttribute('aria-disabled', 'true');
     });

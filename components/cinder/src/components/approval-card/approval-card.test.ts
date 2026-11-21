@@ -1337,9 +1337,9 @@ describe('ApprovalCard card layout anatomy', () => {
       props: refundRow({ layout: 'card', rememberScope: undefined }),
     });
 
-    expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
-      'secondary',
-    );
+    expect(
+      getByRole('button', { name: 'Deny' }).classList.contains('button-variant-secondary'),
+    ).toBe(true);
     expect(queryByLabelText('Note')).toBeNull();
     expect(getByRole('group', { name: 'Approval actions' }).textContent).toContain('Add note');
     expect(queryByRole('checkbox')).toBeNull();
@@ -1587,13 +1587,13 @@ describe('ApprovalCard row layout', () => {
   test('Deny is secondary and Approve is the only primary action', () => {
     const { getByRole, container } = render(ApprovalCard, { props: refundRow() });
 
-    expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
-      'secondary',
-    );
-    expect(getByRole('button', { name: 'Approve' }).getAttribute('data-cinder-variant')).toBe(
-      'primary',
-    );
-    expect(container.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
+    expect(
+      getByRole('button', { name: 'Deny' }).classList.contains('button-variant-secondary'),
+    ).toBe(true);
+    expect(
+      getByRole('button', { name: 'Approve' }).classList.contains('button-variant-primary'),
+    ).toBe(true);
+    expect(container.querySelectorAll('.button-variant-primary')).toHaveLength(1);
   });
 
   test('approve and deny forward resolutions without a note', async () => {
@@ -2978,7 +2978,7 @@ describe('ApprovalCard on a phone', () => {
 
     // Intrinsic width, never equal or full width.
     expect(css).toMatch(
-      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \.cinder-button\[data-cinder-size\] \{\s*flex: 0 1 auto;\s*min-height: var\(--cinder-touch-target-min\);/,
+      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons\s+\.cinder-button:is\(\s*\.button-size-extra-small,\s*\.button-size-small,\s*\.button-size-medium,\s*\.button-size-large\s*\)\s*\{\s*flex: 0 1 auto;\s*min-height: var\(--cinder-touch-target-min\);/,
     );
     expect(css).toMatch(
       /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \{\s*flex: 1 1 100%;\s*justify-content: flex-end;/,
@@ -3009,7 +3009,7 @@ describe('ApprovalCard on a phone', () => {
       /\.cinder-approval-card__row-actions \{[\s\S]*?flex-wrap: wrap;[\s\S]*?inline-size: 100%;[\s\S]*?min-inline-size: 0;/,
     );
     expect(css).toMatch(
-      /\.cinder-approval-card__row-actions \.cinder-button\[data-cinder-size\] \{[\s\S]*?min-inline-size: var\(--cinder-touch-target-min\);/,
+      /\.cinder-approval-card__row-actions\s+\.cinder-button:is\(\s*\.button-size-extra-small,\s*\.button-size-small,\s*\.button-size-medium,\s*\.button-size-large\s*\)\s*\{[\s\S]*?min-inline-size: var\(--cinder-touch-target-min\);/,
     );
     expect(css).toMatch(
       /\.cinder-approval-card__row-actions \.cinder-inline-confirm__two-press-hint \{[\s\S]*?flex: 1 0 100%;/,
@@ -3038,7 +3038,7 @@ describe('ApprovalCard on a phone', () => {
       /\.cinder-approval-card__row-actions \{[\s\S]*?gap: var\(--cinder-space-1\);/,
     );
     expect(css).toMatch(
-      /\.cinder-approval-card__row-actions \.cinder-button\[data-cinder-size\] \{[\s\S]*?min-inline-size: var\(--cinder-touch-target-min\);/,
+      /\.cinder-approval-card__row-actions\s+\.cinder-button:is\(\s*\.button-size-extra-small,\s*\.button-size-small,\s*\.button-size-medium,\s*\.button-size-large\s*\)\s*\{[\s\S]*?min-inline-size: var\(--cinder-touch-target-min\);/,
     );
   });
 });

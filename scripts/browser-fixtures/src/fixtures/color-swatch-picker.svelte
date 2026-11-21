@@ -19,6 +19,6 @@
   label="Accent color"
   onValueChange={(color) => (selected = color)}
 />
-<p style="margin-top: var(--cinder-space-2); color: var(--cinder-text-muted);">
+<p class="margin-block-start-2 text-muted">
   Selected: {selected}
 </p>

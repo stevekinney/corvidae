@@ -1,3 +1,5 @@
+import '@lostgradient/cinder/utilities.css';
+
 import type { Component } from 'svelte';
 
 import {

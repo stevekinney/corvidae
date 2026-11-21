@@ -2,6 +2,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createRawSnippet } from 'svelte';
+import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
 setupHappyDom();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Button } = await import('./button.svelte');
@@ -69,7 +70,7 @@ function expectColorMixBackgroundHasFallback(block: string): void {
 describe('Button sizes', () => {
   test('the size ladder stops at lg', () => {
     expect(readTokenSource()).not.toContain('--cinder-button-height-xl');
-    expect(readButtonSource()).not.toContain("data-cinder-size='xl'");
+    expect(readButtonSource()).not.toContain('.button-size-extra-large');
   });
 
   test('sizes read the shared 24/28/32/40px control height scale', () => {
@@ -117,16 +118,16 @@ describe('Button icon size', () => {
 });
 
 describe('Button link variant', () => {
-  test('renders data-cinder-variant="link" as a button', () => {
+  test('renders the link variant as a button', () => {
     const { container } = render(Button, { props: { label: 'Add the key', variant: 'link' } });
     const button = container.querySelector('button');
-    expect(button?.getAttribute('data-cinder-variant')).toBe('link');
+    expect(button?.classList.contains('button-variant-link')).toBe(true);
     expect(button?.getAttribute('type')).toBe('button');
   });
 
   test('is an underlined accent word in the sentence’s type, with no fill, border or padding', () => {
     const source = readButtonSource();
-    const block = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='link']");
+    const block = readCssRuleBlock(source, '.cinder-button.button-variant-link');
     expectDeclaration(block, 'background', 'transparent');
     expectDeclaration(block, 'border-color', 'transparent');
     expectDeclaration(block, 'color', 'var(--cinder-accent-text)');
@@ -138,15 +139,12 @@ describe('Button link variant', () => {
     // The underline stays on hover (every other button drops it), and a coarse pointer's raised
     // height never reaches the word: its 44px is the hit area's pseudo-element.
     expectDeclaration(
-      readCssRuleBlock(source, ".cinder-button[data-cinder-variant='link']:hover"),
+      readCssRuleBlock(source, '.cinder-button.button-variant-link:hover'),
       'text-decoration',
       'underline',
     );
     expectDeclaration(
-      readCssRuleBlock(
-        source,
-        ".cinder-button[data-cinder-hit-target='44'][data-cinder-variant='link']",
-      ),
+      readCssRuleBlock(source, ".cinder-button[data-cinder-hit-target='44'].button-variant-link"),
       'min-height',
       '0',
     );
@@ -157,21 +155,15 @@ describe('Button icon-only ghost CSS contract', () => {
   test('non-icon ghost variants remain transparent at rest', () => {
     const source = readButtonSource();
 
-    const ghostBlock = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='ghost']");
+    const ghostBlock = readCssRuleBlock(source, '.cinder-button.button-variant-ghost');
     expectDeclaration(ghostBlock, 'background', 'transparent');
     expectDeclaration(ghostBlock, 'border-color', 'transparent');
 
-    const ghostDangerBlock = readCssRuleBlock(
-      source,
-      ".cinder-button[data-cinder-variant='ghost-danger']",
-    );
+    const ghostDangerBlock = readCssRuleBlock(source, '.cinder-button.button-variant-ghost-danger');
     expectDeclaration(ghostDangerBlock, 'background', 'transparent');
     expectDeclaration(ghostDangerBlock, 'border-color', 'transparent');
 
-    const ghostAccentBlock = readCssRuleBlock(
-      source,
-      ".cinder-button[data-cinder-variant='ghost-accent']",
-    );
+    const ghostAccentBlock = readCssRuleBlock(source, '.cinder-button.button-variant-ghost-accent');
     expectDeclaration(ghostAccentBlock, 'background', 'transparent');
     expectDeclaration(ghostAccentBlock, 'border-color', 'transparent');
     expectDeclaration(ghostAccentBlock, 'color', 'var(--cinder-accent-text)');
@@ -182,7 +174,7 @@ describe('Button icon-only ghost CSS contract', () => {
 
     const ghostBlock = readCssRuleBlock(
       source,
-      ".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost']",
+      '.cinder-button[data-cinder-icon-only].button-variant-ghost',
     );
     expectDeclaration(ghostBlock, 'background', 'var(--cinder-surface)');
     expectDeclaration(ghostBlock, 'border-color', 'var(--cinder-border-muted)');
@@ -190,7 +182,7 @@ describe('Button icon-only ghost CSS contract', () => {
 
     const ghostDangerBlock = readCssRuleBlock(
       source,
-      ".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost-danger']",
+      '.cinder-button[data-cinder-icon-only].button-variant-ghost-danger',
     );
     expectDeclaration(ghostDangerBlock, 'background', 'var(--cinder-status-danger-background)');
     expectDeclaration(ghostDangerBlock, 'border-color', 'var(--cinder-status-danger-border)');
@@ -200,12 +192,12 @@ describe('Button icon-only ghost CSS contract', () => {
   test('a quiet icon-only ghost rests as the bare glyph, after the resting chrome it replaces (row 02r)', () => {
     const source = readButtonSource();
     const quietSelector =
-      ".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'][data-cinder-quiet]";
+      '.cinder-button[data-cinder-icon-only].button-variant-ghost[data-cinder-quiet]';
     const block = readCssRuleBlock(source, quietSelector);
     expectDeclaration(block, 'background', 'transparent');
     expectDeclaration(block, 'border-color', 'transparent');
     expect(source.indexOf(quietSelector)).toBeGreaterThan(
-      source.indexOf(".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'] {"),
+      source.indexOf('.cinder-button[data-cinder-icon-only].button-variant-ghost {'),
     );
   });
 
@@ -214,14 +206,14 @@ describe('Button icon-only ghost CSS contract', () => {
 
     const transparentLoadingBlock = readCssRuleBlock(
       source,
-      ".cinder-button[data-cinder-variant='ghost-danger'][data-cinder-loading]",
+      '.cinder-button.button-variant-ghost-danger[data-cinder-loading]',
     );
     expectDeclaration(transparentLoadingBlock, 'background', 'transparent');
     expectDeclaration(transparentLoadingBlock, 'border-color', 'transparent');
 
     const iconOnlyLoadingBlock = readCssRuleBlock(
       source,
-      ".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost-danger'][data-cinder-loading]",
+      '.cinder-button[data-cinder-icon-only].button-variant-ghost-danger[data-cinder-loading]',
     );
     expectDeclaration(iconOnlyLoadingBlock, 'background', 'var(--cinder-status-danger-background)');
     expectDeclaration(iconOnlyLoadingBlock, 'border-color', 'var(--cinder-status-danger-border)');
@@ -237,7 +229,7 @@ describe('Button icon-only ghost CSS contract', () => {
 
     const ghostBlock = readCssRuleBlocks(
       source,
-      ".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost']",
+      '.cinder-button[data-cinder-icon-only].button-variant-ghost',
     ).find((block) => block.includes('ButtonFace'));
     if (ghostBlock === undefined) throw new Error('Missing forced-colors icon-only ghost rule.');
     expectDeclaration(ghostBlock, 'background', 'ButtonFace');
@@ -246,7 +238,7 @@ describe('Button icon-only ghost CSS contract', () => {
 
     const ghostDangerBlock = readCssRuleBlocks(
       source,
-      ".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost-danger']",
+      '.cinder-button[data-cinder-icon-only].button-variant-ghost-danger',
     ).find((block) => block.includes('ButtonFace'));
     if (ghostDangerBlock === undefined) {
       throw new Error('Missing forced-colors icon-only ghost-danger rule.');
@@ -260,19 +252,19 @@ describe('Button icon-only ghost CSS contract', () => {
 describe('Button is a filled pill by default (COR-2312)', () => {
   test('a Button with no variant draws the filled soft face', () => {
     const { getByRole } = render(Button, { props: { label: 'Save draft' } });
-    expect(getByRole('button', { name: 'Save draft' }).getAttribute('data-cinder-variant')).toBe(
-      'soft',
-    );
+    expect(
+      getByRole('button', { name: 'Save draft' }).classList.contains('button-variant-soft'),
+    ).toBe(true);
   });
 
   test('the soft face is a tinted fill with no outline, and primary is unchanged', () => {
     const source = readButtonSource();
-    const soft = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='soft']");
+    const soft = readCssRuleBlock(source, '.cinder-button.button-variant-soft');
     expectDeclaration(soft, 'border-color', 'transparent');
     expectDeclaration(soft, 'color', 'var(--cinder-accent-text)');
     expect(soft).toContain('background: color-mix(in oklch, var(--cinder-accent-solid)');
 
-    const primary = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='primary']");
+    const primary = readCssRuleBlock(source, '.cinder-button.button-variant-primary');
     expectDeclaration(primary, 'background', 'var(--cinder-accent-solid)');
     expectDeclaration(primary, 'color', 'var(--cinder-accent-contrast)');
   });
@@ -284,7 +276,10 @@ describe('Button is a filled pill by default (COR-2312)', () => {
     }
     for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
       expect(
-        readCssRuleBlock(readButtonSource(), `.cinder-button[data-cinder-size='${size}']`),
+        readCssRuleBlock(
+          readButtonSource(),
+          `.cinder-button.button-size-${CONTROL_SIZE_NAMES[size]}`,
+        ),
       ).toContain(`border-radius: var(--cinder-button-radius-${size});`);
     }
   });
@@ -292,10 +287,7 @@ describe('Button is a filled pill by default (COR-2312)', () => {
 
 describe('Button secondary surface states', () => {
   test('uses the public component variables for its resting surface', () => {
-    const block = readCssRuleBlock(
-      readButtonSource(),
-      ".cinder-button[data-cinder-variant='secondary']",
-    );
+    const block = readCssRuleBlock(readButtonSource(), '.cinder-button.button-variant-secondary');
     expectDeclaration(block, 'background', 'var(--cinder-button-background)');
     expectDeclaration(block, 'color', 'var(--cinder-button-foreground)');
     expectDeclaration(block, 'border-color', 'var(--cinder-button-border)');
@@ -304,10 +296,10 @@ describe('Button secondary surface states', () => {
   test('derives hover and pressed feedback from the raised resting fill', () => {
     const source = readButtonSource();
     expect(source).toMatch(
-      /data-cinder-variant='secondary'\]:hover[\s\S]*?background:\s*var\(--cinder-surface-raised-hover\)/,
+      /\.button-variant-secondary:hover[\s\S]*?background:\s*var\(--cinder-surface-raised-hover\)/,
     );
     expect(source).toMatch(
-      /data-cinder-variant='secondary'\]:active[\s\S]*?background:\s*var\(--cinder-surface-raised-pressed\)/,
+      /\.button-variant-secondary:active[\s\S]*?background:\s*var\(--cinder-surface-raised-pressed\)/,
     );
   });
 });
@@ -317,7 +309,7 @@ describe('the pressed state of a toggle button', () => {
     const source = readButtonSource();
     const [face] = readCssRuleBlocks(
       source,
-      ".cinder-button[aria-pressed='true']:not([data-cinder-variant='primary']):not(\n      [data-cinder-variant='danger']\n    ):not(:disabled):not([aria-disabled='true'])",
+      ".cinder-button[aria-pressed='true']:not(.button-variant-primary):not(.button-variant-danger):not(\n      :disabled\n    ):not([aria-disabled='true'])",
     );
     expect(face).toContain('background: var(--cinder-accent-solid);');
     expect(face).toContain('color: var(--cinder-accent-contrast);');
@@ -336,5 +328,37 @@ describe('the pressed state of a toggle button', () => {
     expect(getByRole('button', { name: 'Capture' }).getAttribute('aria-pressed')).toBe('true');
     void rerender({ label: 'Capture', 'aria-pressed': 'false' });
     expect(getByRole('button', { name: 'Capture' }).getAttribute('aria-pressed')).toBe('false');
+  });
+});
+
+// COR-2489: a quiet button that starts a line under text sat 13px inside the text edge (its 12px
+// padding and its 1px transparent border).
+describe('Button flush', () => {
+  test('marks only a quiet button with a label', () => {
+    const marked = (props: Record<string, unknown>) => {
+      const view = render(Button, { props: { label: 'Show raw payloads', flush: true, ...props } });
+      const result = view.getByRole('button').hasAttribute('data-cinder-flush');
+      view.unmount();
+      return result;
+    };
+    expect(marked({ variant: 'ghost-accent' })).toBe(true);
+    expect(marked({ variant: 'ghost' })).toBe(true);
+    expect(marked({ variant: 'ghost-danger' })).toBe(true);
+    expect(marked({ variant: 'secondary' })).toBe(false);
+    expect(marked({ variant: 'primary' })).toBe(false);
+    expect(marked({ variant: 'ghost-accent', flush: false })).toBe(false);
+  });
+
+  test('pulls the button back by its own inline padding and border at each size', () => {
+    const css = readButtonSource().replace(/\s+/g, ' ');
+    expect(css).toContain(
+      '.cinder-button[data-cinder-flush] { margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-sm) + 1px)); }',
+    );
+    for (const size of ['xs', 'md', 'lg'] as const) {
+      expect(css).toContain(
+        `.cinder-button[data-cinder-flush].button-size-${CONTROL_SIZE_NAMES[size]} { margin-inline-start: calc(-1 * (var(--cinder-button-padding-x-${size}) + 1px)); }`,
+      );
+    }
+    expect(css).toContain('border: 1px solid var(--cinder-button-border);');
   });
 });

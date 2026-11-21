@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2539_COR-2540",
+  "branch": "chef/b4-dev-host",
+  "checkedAt": "54ed04706ec33c4ef515328b59df9bdc10ba5933",
+  "briefVersion": "c0a9a244ddaa",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "environment-read",
+      "status": "met-on-branch",
+      "evidence": "worktree-instances.integration.test.ts uses processEnvironment(); focused-checks 6 passed at f8e60002db"
+    },
+    {
+      "id": "home-comparison",
+      "status": "met-on-branch",
+      "evidence": "localHome on DatabaseKind, localDatabaseHome in locations.ts; focused-checks 6 passed at f8e60002db"
+    },
+    {
+      "id": "code-block-rail-spec",
+      "status": "met-on-branch",
+      "evidence": "targeted run 44819781912 Chromium fixtures job success on 54ed04706e, including code-block-rail.playwright.ts at 320 and 375 with the bound unchanged"
+    },
+    {
+      "id": "code-block-bar-spec",
+      "status": "met-on-branch",
+      "evidence": "targeted run 44819781912 Chromium fixtures job success on 54ed04706e, including code-block-bar.playwright.ts with the bound of 10"
+    }
+  ]
+}

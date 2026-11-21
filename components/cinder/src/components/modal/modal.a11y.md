@@ -45,6 +45,7 @@ If the content fits `AlertDialog`'s plain-text `description` constraint, prefer 
 ## Focus Management
 
 - When the dialog opens, the browser moves focus to the first focusable element with `autofocus`, or to the modal body container (`tabindex="-1"`) if no child carries `autofocus`.
+- When the control that holds focus is removed from the DOM while the dialog is open (a "Refresh" button that starts a reload and unmounts), focus moves to the modal body container instead of dropping to `<body>` behind the dialog. A browser fires no `blur` for a removal, so the focus trap remembers the last focused element and recovers when it is gone and focus has fallen to `<body>`. A removal while focus sits on another control moves nothing.
 - When the dialog closes, focus is restored to `triggerRef` if provided, otherwise to the element that held focus when the dialog opened (`capturedFocus`).
 
 ## Dismissal Callbacks (`onDismiss`)

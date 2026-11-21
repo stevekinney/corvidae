@@ -893,6 +893,23 @@ describe('an engine review', () => {
     );
   });
 
+  test('draws a Markdown artifact as rendered Markdown, not as a field row', async () => {
+    const markdown =
+      '## Refund policy update\n\n| Amount | Approver |\n| --- | --- |\n| Up to $25 | Tool runner |';
+    const pending = weftPending({ artifact: { markdown } });
+    const { container, getByRole } = open({ weftReviews: [pending] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    await waitFor(() =>
+      expect(getByRole('heading', { name: 'Refund policy update' })).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-testid="review-draft-fields"]')).toBeNull();
+    expect(
+      container.querySelector('.ib-review-draft .cinder-markdown-content td')?.textContent,
+    ).toBe('Up to $25');
+  });
+
   test('is approved from its own bar as the caller, and goes from the list', async () => {
     const { container, findByRole } = open({ weftReviews: [weftPending()] });
     await waitFor(() => expect(rows(container).length).toBe(1));

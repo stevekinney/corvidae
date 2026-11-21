@@ -10,6 +10,7 @@
 // link or a checkout outside Git changes nothing.
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { rootScriptEnvironment } from './environment-configuration.ts';
 
 const CONFIG = join('.turbo', 'config.json');
 
@@ -45,7 +46,7 @@ function worktrees(main: string): string[] {
 
 if (import.meta.main) {
   try {
-    const here = process.env['CLAUDE_PROJECT_DIR'] ?? process.cwd();
+    const here = rootScriptEnvironment()['CLAUDE_PROJECT_DIR'] ?? process.cwd();
     const main = mainCheckout(here);
     if (main !== undefined) {
       const targets = process.argv.includes('--all') ? worktrees(main) : [here];

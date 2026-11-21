@@ -539,8 +539,8 @@ describe('a default hook’s page (rows R10-04 to R10-09 and R10-17)', () => {
     expect(
       within(header)
         .getByRole('button', { name: 'Add the key' })
-        .getAttribute('data-cinder-variant'),
-    ).toBe('link');
+        .classList.contains('button-variant-link'),
+    ).toBe(true);
     await waitFor(() => {
       expect(view.getByTestId('hook-test-reason').textContent).toBe(
         copy.check.testPluginNeedsSetup('Calendar'),
@@ -747,7 +747,7 @@ describe('a hook the owner made that runs a plugin’s action (rows R10-10 to R1
       within(warning as HTMLElement).getByRole('button', { name: 'Add the key' }),
     );
 
-    expect(await view.findByRole('dialog', { name: 'Save slack-signing-key' })).toBeTruthy();
+    expect(await view.findByRole('dialog', { name: 'Save Slack signing key' })).toBeTruthy();
   });
 
   test('with no key to choose the Select is disabled and says where one is saved', async () => {

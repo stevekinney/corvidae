@@ -113,7 +113,7 @@ describe('Chat composer status and approval row', () => {
     expect(statusLine(container)).toBeUndefined();
     expect(container.querySelector('.chat-input-hint')).not.toBeNull();
     const send = container.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
-    expect(send.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(send.classList.contains('button-variant-secondary')).toBe(true);
     expect(send.disabled).toBe(true);
   });
 

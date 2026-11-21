@@ -23,7 +23,10 @@ import {
   parseBulkOperationControlFromBody,
   type BulkOperationControlInput,
 } from './bulk-operation-controls.ts';
-import { validatedListFilterFromBulkInput } from './bulk-operation-helpers.ts';
+import {
+  staleConfirmationFault,
+  validatedListFilterFromBulkInput,
+} from './bulk-operation-helpers.ts';
 
 const bulkDeleteWorkflowsInput = bulkListFilterInputSchema.merge(bulkOperationControlInputSchema);
 
@@ -37,14 +40,15 @@ export const bulkDeleteWorkflowsOperation = defineOperation({
   description:
     'Delete every terminal workflow that matches the filter. Irreversible. Run it ' +
     'first with `dryRun: true` to preview the matches and receive a ' +
-    '`confirmationToken`, then repeat the same filter with that token to commit. ' +
-    'Requires workflows:admin.',
+    '`confirmationToken`, then repeat the same filter with that token to commit; a ' +
+    'commit whose token no longer matches is refused with `Conflict`, so run the ' +
+    'preview again. Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkDeleteWorkflowsInput,
   outputSchema: bulkDeleteOutputSchema,
   access: bulkOperatorAccessPolicy,
-  producibleFaults: ['Unprocessable'],
+  producibleFaults: ['Conflict', 'Unprocessable'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine, principal }): Promise<BulkDeleteWorkflowsOutput> => {
@@ -61,7 +65,7 @@ export const bulkDeleteWorkflowsOperation = defineOperation({
       return await e.deleteAll(filter, operationOptions);
     } catch (error) {
       if (error instanceof BulkOperationConfirmationError) {
-        throw invalidParamsFault(error.message);
+        throw staleConfirmationFault(error);
       }
       if (error instanceof BulkDeleteRequiresTerminalWorkflowsError) {
         throw unprocessableFault(error.message);

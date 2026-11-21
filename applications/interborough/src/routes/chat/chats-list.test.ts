@@ -90,7 +90,7 @@ async function list() {
 }
 
 describe('the pane header', () => {
-  test('is "Chats" with a secondary "+" named New chat, then a Search chats field (16c)', async () => {
+  test('is "Chats" with a labelled primary New chat, then a Search chats field (16c)', async () => {
     serveChats();
     landAt('/chats');
 
@@ -101,11 +101,10 @@ describe('the pane header', () => {
     const header = region.querySelector('header') as HTMLElement;
     const plus = within(header).getByRole('link', { name: 'New chat' });
     expect(plus.getAttribute('href')).toBe('/chats/new');
-    expect(plus.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(plus.textContent?.trim()).toBe('');
-    // The tooltip says the same words as the accessible name.
-    const tooltips = within(header).getAllByRole('tooltip', { hidden: true });
-    expect(tooltips.map((tooltip) => tooltip.textContent?.trim())).toContain('New chat');
+    // Its words are on the button, never a "+" alone (owner report, 2026-11-19).
+    expect(plus.classList.contains('button-variant-primary')).toBe(true);
+    expect(plus.textContent?.trim()).toBe('New chat');
+    expect(plus.hasAttribute('data-cinder-icon-only')).toBe(false);
     // With no chat open the list is all there is, so it offers no toggle to hide it (COR-2327).
     expect(within(header).queryByRole('button', { name: 'Hide chats' })).toBeNull();
     // The field is below the title row, not beside it.
@@ -273,19 +272,22 @@ describe('the states of the list', () => {
 
     const { findByRole, container, queryByRole } = mount();
 
-    const title = await findByRole('heading', { level: 1, name: 'No chats yet' });
+    const title = await findByRole('heading', { level: 2, name: 'No chats yet' });
     const state = title.closest('.cinder-empty-state') as HTMLElement;
     expect(state.textContent).toContain('Start one with an agent.');
     await waitFor(() =>
-      expect(
-        within(state).getByRole('link', { name: 'New chat' }).getAttribute('data-cinder-variant'),
-      ).toBe('primary'),
+      expect(within(state).getByRole('link', { name: 'New chat' }).classList).toContain(
+        'button-variant-primary',
+      ),
     );
     // One empty state: no list pane, and no second state where a chat would open.
     expect(container.querySelectorAll('.cinder-empty-state')).toHaveLength(1);
-    expect(container.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
+    expect(container.querySelectorAll('.button-variant-primary')).toHaveLength(1);
     expect(queryByRole('region', { name: 'Chats' })).toBeNull();
     expect(queryByRole('region', { name: 'Open chat' })).toBeNull();
+    expect(state.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
+    expect(state.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
+    expect(container.querySelector('.cinder-search-field, .cinder-segmented-control')).toBeNull();
     expect(container.textContent).not.toContain('No chat open');
   });
 
@@ -295,7 +297,7 @@ describe('the states of the list', () => {
 
     const { findByRole, container } = mount();
 
-    const title = await findByRole('heading', { level: 1, name: 'Connect a provider first' });
+    const title = await findByRole('heading', { level: 2, name: 'Connect a provider first' });
     const state = title.closest('.cinder-empty-state') as HTMLElement;
     const action = within(state).getByRole('link', { name: 'Connect a provider' });
     expect(action.getAttribute('href')).toBe('/settings/models');
@@ -308,7 +310,7 @@ describe('the states of the list', () => {
 
     const { findByRole, container } = mount();
 
-    const title = await findByRole('heading', { level: 1, name: 'Create an agent first' });
+    const title = await findByRole('heading', { level: 2, name: 'Create an agent first' });
     const state = title.closest('.cinder-empty-state') as HTMLElement;
     expect(within(state).getByRole('link', { name: 'Create an agent' }).getAttribute('href')).toBe(
       '/agents/new',
@@ -370,8 +372,10 @@ describe('the states of the list', () => {
     const state = title.closest('.cinder-error-state') as HTMLElement;
     expect(state.textContent).toContain('Interborough didn’t send them back.');
     expect(
-      within(state).getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant'),
-    ).toBe('secondary');
+      within(state)
+        .getByRole('button', { name: 'Try again' })
+        .classList.contains('button-variant-secondary'),
+    ).toBe(true);
     const pane = await findByRole('region', { name: 'Open chat' });
     expect(pane).not.toBeNull();
     // The list is not there to choose from, so the pane does not point at it: a quiet hint, with no

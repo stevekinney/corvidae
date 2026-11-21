@@ -502,6 +502,7 @@ export async function getToolSourceEditing(
   return readJson(response, editingSchema);
 }
 
+/** Probe a saved tool source and return the result. */
 export async function testToolSource(id: string, options: Options = {}): Promise<ToolSourceProbe> {
   const response = await send(
     sourcePath(id, '/test'),

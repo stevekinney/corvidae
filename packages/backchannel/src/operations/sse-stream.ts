@@ -1,5 +1,12 @@
+import { faultWireAdvice } from '../fault-remediation.ts';
+import { extractFaultDataPayload } from '../fault-to-json-rpc.ts';
+import { wireSafeFault } from '../fault-wire-safety.ts';
 import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
-import { shapeRestFaultAsJson, type OperationFault } from '../operation-fault.ts';
+import {
+  shapeRestFaultAsJson,
+  type OperationFault,
+  type RestFaultResponseOptions,
+} from '../operation-fault.ts';
 import { decodeCursor, type Cursor } from '../sequence-cursor.ts';
 
 const textEncoder = new TextEncoder();
@@ -72,11 +79,14 @@ export function readServerSentEventsCursor(value: string | null): Cursor | undef
 }
 
 /** Shapes a fault into the response a Server-Sent Events route answers with. */
-export function shapeServerSentEventsFault(fault: OperationFault): Response {
+export function shapeServerSentEventsFault(
+  fault: OperationFault,
+  options: Pick<RestFaultResponseOptions, 'isKnownErrorCode'> = {},
+): Response {
   if (fault.code === 'InvalidParams' && fault.message === SSE_ACCEPT_REQUIRED_MESSAGE) {
-    return shapeRestFaultAsJson(fault, { status: 406 });
+    return shapeRestFaultAsJson(fault, { ...options, status: 406 });
   }
-  return shapeRestFaultAsJson(fault);
+  return shapeRestFaultAsJson(fault, options);
 }
 
 /** Format a single Server-Sent Events message. */
@@ -107,22 +117,37 @@ function encodeFrame(frame: { id?: string; event?: string; data: string }): Uint
   return textEncoder.encode(formatServerSentEvent(frame));
 }
 
+/** What an error frame says of a failure that discloses nothing: the masked internal error. */
+const MASKED_FAULT: OperationFault = {
+  code: 'EngineFailure',
+  message: 'Internal server error',
+  data: {},
+};
+
+/**
+ * The `event: error` frame for a stream that fails after it started: the fault's `code`, `message`
+ * and allowlisted `data`, with the `retryable` (always) and `remediation` (when set) every other
+ * transport sends. A failure that is not an operation fault, an `EngineFailure`, and a fault whose
+ * data JSON cannot carry are the masked internal error, which never carries a remediation.
+ */
 function sanitizedErrorFrame(error: unknown): { id?: string; event: string; data: string } {
-  if (isOperationFault(error) && error.code !== 'EngineFailure') {
+  const fault = isOperationFault(error) ? wireSafeFault(error) : MASKED_FAULT;
+  if (fault.code === 'EngineFailure') {
+    const { retryable } = faultWireAdvice(MASKED_FAULT);
     return {
       event: 'error',
-      data: JSON.stringify({
-        code: error.code,
-        message: error.message,
-        data: error.data,
-      }),
+      data: JSON.stringify({ code: 'EngineFailure', message: MASKED_FAULT.message, retryable }),
     };
   }
+  const { retryable, remediation } = faultWireAdvice(fault);
   return {
     event: 'error',
     data: JSON.stringify({
-      code: 'EngineFailure',
-      message: 'Internal server error',
+      code: fault.code,
+      message: fault.message,
+      data: extractFaultDataPayload(fault),
+      retryable,
+      ...(remediation === undefined ? {} : { remediation }),
     }),
   };
 }

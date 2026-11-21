@@ -1,4 +1,5 @@
-import { AUTHORIZATION_SCOPES } from '@lostgradient/backchannel';
+import { AUTHORIZATION_SCOPES } from '../authorization-scopes.ts';
+
 import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

@@ -41,6 +41,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.tasks.list', 'runs:read'],
   ['bureau.tasks.get', 'runs:read'],
   ['bureau.tasks.inspect', 'runs:read'],
+  // A run's step timeline, for the run timeline panel and an MCP client: names and timings only.
+  ['bureau.runs.timeline', 'runs:read'],
   // COR-2113: every check result links to the run or goal it judged, so the list is a read of runs.
   ['bureau.checks.list', 'runs:read'],
   ['bureau.workflows.start', 'runs:write'],
@@ -145,7 +147,8 @@ function forbiddenMessage(id: unknown, scope: ApiScope): Record<string, unknown>
     error: {
       code: FORBIDDEN_CODE,
       message: reason,
-      data: { reason, scope, weftCode: 'Forbidden', httpStatus: 403 },
+      // `retryable` as every `Forbidden` fault says it: the session must hold the scope first.
+      data: { reason, scope, weftCode: 'Forbidden', httpStatus: 403, retryable: false },
     },
   };
 }

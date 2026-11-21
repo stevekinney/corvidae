@@ -52,6 +52,7 @@ describe('list-schedules — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Query parameter "status" must be one of active, paused, cancelled',
+      retryable: false,
     });
   });
 
@@ -66,6 +67,7 @@ describe('list-schedules — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Query parameter "limit" must be a positive integer',
+      retryable: false,
     });
   });
 
@@ -80,6 +82,7 @@ describe('list-schedules — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Query parameter "offset" must be a non-negative integer',
+      retryable: false,
     });
   });
 
@@ -94,6 +97,7 @@ describe('list-schedules — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Query parameter "status" must be one of active, paused, cancelled',
+      retryable: false,
     });
   });
 });

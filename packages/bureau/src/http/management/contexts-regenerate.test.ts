@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-2296 — `bureau.contexts.regenerate` replaces a context's latest answer with a new one from
  * the model, without running a tool, and answers the context, the message and the committed
@@ -238,7 +239,7 @@ describe('bureau.contexts.regenerate refusals', () => {
       },
       authenticate: async () => ({
         method: 'unauthenticated-local' as const,
-        principal: unauthenticatedLocalAuthContext().principal!,
+        principal: unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal!,
       }),
       publicPaths: [],
     });

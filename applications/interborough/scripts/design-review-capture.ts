@@ -11,8 +11,9 @@
  *
  * It runs those three Playwright specifications with `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` set, so they
  * screenshot each page once it holds its content (`tests/e2e/design-review-capture.ts`), and writes
- * `manifest.jsonl` (one line per capture) and `summary.json` (what ran and how it exited) beside
- * the screenshots, then holds what each page measured to the rubric's thresholds
+ * `manifest.jsonl` (one line per capture), `review-order.jsonl` (the same lines in the order a
+ * review reads them: 1920 and 1280 first, then 768 and 375, light then dark, `reviewOrder`) and
+ * `summary.json` (what ran and how it exited) beside the screenshots, then holds what each page measured to the rubric's thresholds
  * (`scripts/design-review-geometry.ts`) and writes `geometry-report.md` and `geometry-findings.json`
  * there too. Every page of a capture runs at the sample world's "now", Monday, Nov 2, 2026,
  * 10:46 AM in America/Chicago (`fixtures/sample-now.ts`): the specifications' shared fixture
@@ -23,7 +24,16 @@
  *
  *   bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both]
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
- *     [--expect <expected-captures.json>]
+ *     [--shard <index>/<count>] [--expect <expected-captures.json>]
+ *
+ * `--shard` captures one shard of the specifications the other flags chose (`design-review-shards.ts`
+ * plans them by weight, whole files each), so a runner takes a sixth of a sweep; the workflow runs
+ * each scheme's shards in parallel and merges them (`design-review-merge.ts`). A shard the filter
+ * does not reach exits 0 with nothing captured, since only the merge sees the whole run.
+ *
+ * Every capture at 1280 pixels is repeated at 1920, and every phone capture at 320 by 640; each
+ * file is named for its specification, its world (sample world, stress, first run), its route,
+ * tab and state, its width and its scheme, and the capture fails when two screens resolve to one name.
  *
  * `--expect` holds the capture to the states its design rows declare (`design-review-rows.ts
  * --manifest` writes the file from the issue's `rows.resolved.json`): after the run, each expected
@@ -63,6 +73,7 @@ import {
   type CaptureExpectation,
   type CaptureManifest,
 } from './design-review-rows.ts';
+import { parseShard, planShards } from './design-review-shards.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,6 +110,18 @@ const SPECIFICATIONS = {
  * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
  * state of its board (`hooks-states.spec.ts`).
  */
+/**
+ * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
+ * 375 and so 320 (`captureForDesignReviewWithPhone`, COR-2489).
+ */
+export const HOME_STATES_CAPTURED_ON_A_PHONE = [
+  'loading',
+  'still loading',
+  'one card fails',
+  'nothing waiting',
+  'something needs you',
+] as const;
+
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/00-showcase.spec.ts',
   'tests/e2e/shell-chrome.spec.ts',
@@ -120,6 +143,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/settings-allowed-models.spec.ts',
   'tests/e2e/settings-models.spec.ts',
   'tests/e2e/settings-a2a.spec.ts',
+  'tests/e2e/settings-mcp.spec.ts',
   'tests/e2e/settings-plugins.spec.ts',
   'tests/e2e/settings-data-and-retention.spec.ts',
   'tests/e2e/api-reference.spec.ts',
@@ -151,10 +175,15 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/run-page-live-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
+  // The Checks page in each state of its design rows: first use, filtered to nothing, loading,
+  // failing and a Load more that failed (COR-2114).
+  'tests/e2e/checks-states.spec.ts',
   // Capabilities and Connect tools in the states the sample world does not hold (COR-2435, COR-2436).
   'tests/e2e/capabilities-states.spec.ts',
   // The Goals list while its goals are read (COR-2425, row 68k).
   'tests/e2e/goals-list-states.spec.ts',
+  // The shared first-use state across every top-level list (COR-2431).
+  'tests/e2e/list-empty-states.spec.ts',
   // Every view loading, empty, failed and forbidden, which a route filter (`--grep '/runs'`) reaches
   // through each title's address, and the goal check's loading states.
   'tests/e2e/15-view-states.spec.ts',
@@ -174,6 +203,8 @@ interface Options {
   readonly schemes: readonly Scheme[];
   readonly specifications: readonly string[];
   readonly grep: string | undefined;
+  /** The shard this run captures, of the specifications the other flags chose, or `undefined` for all of them. */
+  readonly shard: { readonly index: number; readonly count: number } | undefined;
   /** The expected-captures file (`design-review-rows.ts --manifest`) the capture is held to. */
   readonly expect?: string;
 }
@@ -191,6 +222,7 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   let data: 'showcase' | 'stress' | 'both' | undefined;
   let specsGiven = false;
   let grep: string | undefined;
+  let shard: Options['shard'];
   let expectFile: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -219,6 +251,12 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
       case '--grep':
         grep = value;
         break;
+      case '--shard': {
+        const parsed = parseShard(value);
+        if (typeof parsed === 'string') return parsed;
+        shard = parsed;
+        break;
+      }
       case '--expect':
         expectFile = resolve(value);
         break;
@@ -240,8 +278,12 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   return {
     out,
     schemes,
-    specifications,
+    specifications:
+      shard === undefined
+        ? specifications
+        : (planShards(specifications, shard.count)[shard.index - 1]?.specifications ?? []),
     grep,
+    shard,
     ...(expectFile === undefined ? {} : { expect: expectFile }),
   };
 }
@@ -365,6 +407,56 @@ export function portIsFree(port: number): boolean {
   }
 }
 
+/**
+ * The order a review reads the captures in (owner, 2026-11-19): 1920 and 1280 first, then 768 and
+ * 375, then any other width, each width in light then dark, and the routes in the order they were
+ * captured within that. A width that is not listed comes last, widest first.
+ */
+export const REVIEW_WIDTH_ORDER = [1920, 1280, 768, 375] as const;
+
+/** One capture, as far as the review order reads it. */
+export interface ReviewOrderEntry {
+  readonly width: number;
+  readonly colorScheme: 'light' | 'dark';
+}
+
+/** `entries` in the order a review reads them; the input is left as it is. */
+export function reviewOrder<Entry extends ReviewOrderEntry>(entries: readonly Entry[]): Entry[] {
+  const rank = (width: number): number => {
+    const at = (REVIEW_WIDTH_ORDER as readonly number[]).indexOf(width);
+    return at >= 0 ? at : REVIEW_WIDTH_ORDER.length + 10_000 - width;
+  };
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .toSorted(
+      (left, right) =>
+        rank(left.entry.width) - rank(right.entry.width) ||
+        Number(left.entry.colorScheme === 'dark') - Number(right.entry.colorScheme === 'dark') ||
+        left.index - right.index,
+    )
+    .map(({ entry }) => entry);
+}
+
+/** Writes `review-order.jsonl` beside the manifest: the manifest's lines in the order a review reads them. */
+export async function writeReviewOrder(out: string): Promise<number> {
+  let text: string;
+  try {
+    text = await readFile(join(out, 'manifest.jsonl'), 'utf8');
+  } catch {
+    return 0;
+  }
+  const entries = text
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as ReviewOrderEntry);
+  const ordered = reviewOrder(entries);
+  await writeFile(
+    join(out, 'review-order.jsonl'),
+    ordered.map((entry) => `${JSON.stringify(entry)}\n`).join(''),
+  );
+  return ordered.length;
+}
+
 /** Counts the lines of the manifest, which is one capture each. */
 export async function captureCount(out: string): Promise<number> {
   try {
@@ -426,6 +518,18 @@ export async function captureDesignReview(
     return 2;
   }
   await mkdir(options.out, { recursive: true });
+  // A shard the filter does not reach has nothing to capture, which is not a failure: the merge
+  // judges the whole run, and Playwright would exit 1 with "No tests found" for it.
+  if (options.shard !== undefined && !shardHasTests(options)) {
+    environment.standardOutput(
+      `design review: shard ${options.shard.index}/${options.shard.count} holds no test the filter reaches\n`,
+    );
+    await writeFile(
+      join(options.out, 'summary.json'),
+      `${JSON.stringify({ out: options.out, captures: 0, shard: options.shard, specifications: options.specifications, grep: options.grep ?? null, runs: [], clean: true }, null, 2)}\n`,
+    );
+    return 0;
+  }
   const runs: { scheme: Scheme; exitCode: number; ranNothing: string[] }[] = [];
   for (const scheme of options.schemes) {
     // The JSON report says how many tests each specification ran, so one that ran none is named.
@@ -463,6 +567,7 @@ export async function captureDesignReview(
     runs.push({ scheme, exitCode, ranNothing });
   }
   const captures = await captureCount(options.out);
+  await writeReviewOrder(options.out);
   const geometry = await auditGeometry(options.out);
   const ranNothing = runs.some((run) => run.ranNothing.length > 0);
   // Coverage comes before anything else counts: a declared state that no capture shows is named,
@@ -472,6 +577,7 @@ export async function captureDesignReview(
   const summary = {
     out: options.out,
     captures,
+    shard: options.shard ?? null,
     specifications: options.specifications,
     grep: options.grep ?? null,
     runs,
@@ -488,7 +594,31 @@ export async function captureDesignReview(
   environment.standardOutput(
     `design review: ${captures} captures in ${options.out}${summary.clean ? '' : ' (a specification failed; see summary.json)'}\n`,
   );
-  return captures > 0 && !ranNothing && (coverage?.complete ?? true) ? 0 : 1;
+  if (captures > 0 && !ranNothing) return (coverage?.complete ?? true) ? 0 : 1;
+  // A shard of a filtered run may hold none of the tests the filter matches (Playwright says "No
+  // tests found" and exits 1). Its exit codes are in `summary.json`; whether the run captured
+  // anything at all is the merge's verdict.
+  if (options.shard !== undefined && options.grep !== undefined && captures === 0) return 0;
+  return 1;
+}
+
+/** Whether any listed specification has a test whose title path the filter matches (all do without one). */
+function shardHasTests(options: Options): boolean {
+  if (options.grep === undefined) return options.specifications.length > 0;
+  let filter: RegExp;
+  try {
+    filter = new RegExp(options.grep);
+  } catch {
+    // A pattern JavaScript cannot read is not ruled out here: Playwright runs and reports it.
+    return options.specifications.length > 0;
+  }
+  // A title written as a template (`${view} is ${state}…`) is only known once it runs, so it may be
+  // one the filter reaches: only a title that is plain text can be ruled out from the source.
+  return options.specifications.some((specification) =>
+    testsOf(readSourceOf(specification)).some(
+      (test) => test.path.includes('${') || filter.test(test.path),
+    ),
+  );
 }
 
 /** What a capture covered of the captures a manifest expects. */

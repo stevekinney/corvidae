@@ -31,7 +31,11 @@ describe('the signed release archive', () => {
           'utf8',
         ),
       ).exports as Record<string, string>;
-      expect(exportsMap).toEqual({ '.': './index.js', './testing': './testing/index.js' });
+      expect(exportsMap).toEqual({
+        '.': './index.js',
+        './step-waterfall': './step-waterfall.js',
+        './testing': './testing/index.js',
+      });
       // `buildRelease` has already started the relocated executable with `PATH` empty and had it
       // build a folder plugin's Cinder panel (a Svelte component through `@lostgradient/cinder/panel`)
       // from the staged runtime, and refused the release otherwise (COR-2217). What it built from is

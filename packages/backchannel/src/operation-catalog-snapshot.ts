@@ -114,6 +114,11 @@ export type CatalogOperationSnapshot = {
   readonly tags: ReadonlyArray<string>;
   /** Whether the operation changes or deletes state. */
   readonly destructive: boolean;
+  /**
+   * `true` when the operation's input takes a boolean `dryRun` that performs its authorization
+   * and validation, writes nothing, and answers what the call would do; absent otherwise.
+   */
+  readonly supportsDryRun?: true;
   /** The operation's access policy. */
   readonly access: CatalogAccessSnapshot;
   /** The input field the required scope depends on, with its variants. */
@@ -244,6 +249,7 @@ function operationToSnapshot(
     ...(operation.description === undefined ? {} : { description: operation.description }),
     tags: [...operation.tags].toSorted(compareStrings),
     destructive: operation.destructive ?? false,
+    ...(operation.supportsDryRun === true ? { supportsDryRun: true as const } : {}),
     access: accessToSnapshot(operation.access),
     ...(operation.parameterizedAccess === undefined
       ? {}

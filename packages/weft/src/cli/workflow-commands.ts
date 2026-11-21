@@ -20,7 +20,7 @@ import {
   prettyJson,
   truncateToWidth,
 } from './output.ts';
-import { callCatalogOperation, failureExitCode } from './server-client.ts';
+import { NOT_FOUND_EXIT_CODE, callCatalogOperation, failureExitCode } from './server-client.ts';
 import type { CommandOutput, WorkflowCommand } from './types.ts';
 
 type WorkflowSummaryRow = {
@@ -92,6 +92,8 @@ async function executeWorkflowList(
   const result = await callCatalogOperation(connection, 'weft.workflows.list', {
     ...(command.type === undefined ? {} : { type: command.type }),
     ...(command.status === undefined ? {} : { status: command.status }),
+    ...(command.failedStep === undefined ? {} : { failedStep: command.failedStep }),
+    ...(command.retrying === true ? { retrying: true } : {}),
     ...(command.limit === undefined ? {} : { limit: command.limit }),
   });
   if (!result.ok) return failure(result);
@@ -196,12 +198,7 @@ async function executeWorkflowCancel(
   command: Extract<WorkflowCommand, { action: 'cancel' }>,
   connection: ConnectionOptions,
 ): Promise<CommandOutput> {
-  if (command.dryRun) {
-    const stdout = command.json
-      ? prettyJson({ affected: 1, workflowId: command.workflowId })
-      : `Would cancel 1 workflow: ${command.workflowId}`;
-    return { stdout, exitCode: 0 };
-  }
+  if (command.dryRun) return executeWorkflowCancelDryRun(command, connection);
 
   const decision = await confirmDestructive({
     prompt: `Cancel workflow ${command.workflowId}?`,
@@ -228,6 +225,42 @@ async function executeWorkflowCancel(
     stdout: command.quiet ? '' : `Cancelled workflow ${command.workflowId}`,
     exitCode: 0,
   };
+}
+
+/**
+ * `weft workflow cancel <id> --dry-run`: asks the server what a cancel would do (the run's status,
+ * and whether it can be cancelled) and prints the answer. Nothing is cancelled and no confirmation
+ * is asked for. An id the server has no run for exits with {@link NOT_FOUND_EXIT_CODE}.
+ */
+async function executeWorkflowCancelDryRun(
+  command: Extract<WorkflowCommand, { action: 'cancel' }>,
+  connection: ConnectionOptions,
+): Promise<CommandOutput> {
+  const result = await callCatalogOperation(connection, 'weft.workflows.cancel', {
+    workflowId: command.workflowId,
+    dryRun: true,
+  });
+  if (!result.ok) {
+    return result.kind === 'operation' && result.notFound === true
+      ? { stdout: '', stderr: result.message, exitCode: NOT_FOUND_EXIT_CODE }
+      : failure(result);
+  }
+
+  if (command.json) return { stdout: prettyJson(result.value), exitCode: 0 };
+  const answer: unknown = result.value;
+  if (!isRecord(answer) || typeof answer['status'] !== 'string') {
+    return {
+      stdout: '',
+      stderr: `workflow cancel: the server answered the dry run with an unexpected shape`,
+      exitCode: 1,
+    };
+  }
+  const status = answer['status'];
+  const stdout =
+    answer['cancellable'] === true
+      ? `Would cancel workflow ${command.workflowId} (status: ${status})`
+      : `Cannot cancel workflow ${command.workflowId}: it is already ${status}`;
+  return { stdout, exitCode: 0 };
 }
 
 async function executeWorkflowSignal(

@@ -1,13 +1,13 @@
 /**
  * The rows of Home's two activity bands (COR-2227): Workflow activity, from the engine's fleet feed
  * worded by {@link FLEET_EVENT_RULES}, and Agent activity, from the Bureau's feed worded by
- * `bureau.events.format`. Both bands draw one row shape: the kind's glyph, the title, a StatusDot
- * word on line two for a warning or critical event followed by the body, the time, and the link as
+ * `bureau.events.format`. Both bands draw one row shape: the kind's glyph, the title, a status
+ * badge on line two for a warning or critical event followed by the body, the time, and the link as
  * the whole row.
  *
  * An event the application could not word (a Bureau kind no formatter claims, an event of a format
  * call that failed, or a fleet kind with no rule) has one form: its kind in plain words as the
- * title, the raw kind on line two, the neutral activity glyph, no tier, and a link whenever it names
+ * title, the neutral activity glyph, no tier, and a link whenever it names
  * a run. A row's tier comes only from the formatter's tier or the rule's, never from its words.
  */
 import {
@@ -73,6 +73,7 @@ import type { FormattedBureauEvent } from '../../lib/bureau-event-format.ts';
 import type { BureauEventFrame } from '../../lib/live-source/bureau-event-frame.ts';
 import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
 import { workflowDetailPath } from '../../lib/router.svelte.ts';
+import { workflowTypeName } from '../../lib/workflow-type-name.ts';
 import { eventWords } from '../hooks/hook-presentation.ts';
 import { RECENT_CHAT_LIMIT } from './home-rows.ts';
 
@@ -99,22 +100,19 @@ export interface ActivityEntry {
   readonly tier: ActivityTier;
   /** More detail, after the tier word on line two. */
   readonly body?: string | undefined;
-  /** The raw kind of an event the application could not word, which is its line two. */
-  readonly rawKind?: string | undefined;
   /** The router-relative path the whole row opens. */
   readonly href?: string | undefined;
 }
 
-/** The StatusDot word that says a row's tier: none for an info row. */
+/** The status label that says a row's tier: none for an info row. */
 export function tierWord(tier: ActivityTier): 'Warning' | 'Critical' | undefined {
   if (tier === 'warning') return 'Warning';
   if (tier === 'critical') return 'Critical';
   return undefined;
 }
 
-/** Line two of a row as text, for its tooltip: the tier word and the body, or the raw kind. */
+/** Line two of a row as text, for its tooltip: the tier label and the body. */
 export function lineTwoText(entry: ActivityEntry): string | undefined {
-  if (entry.rawKind !== undefined) return entry.rawKind;
   const word = tierWord(entry.tier);
   const parts = [word, entry.body].filter(
     (part): part is string => part !== undefined && part !== '',
@@ -237,7 +235,6 @@ function unworded(key: string, at: number, kind: string, runId: string | undefin
     // `eventWords` splits a Bureau kind at its dots; a fleet kind's family ends in a colon.
     title: eventWords(kind.replaceAll(':', '.')),
     tier: 'info',
-    rawKind: kind,
     ...(runId === undefined ? {} : { href: workflowDetailPath(runId) }),
   };
 }
@@ -294,8 +291,11 @@ export interface OmittedFleetEvent {
 const words = HOME_COPY.activity.workflowEvents;
 const OMIT: OmittedFleetEvent = { omit: true };
 
-const workflowType = (payload: Readonly<Record<string, unknown>>) =>
-  stringField(payload, 'workflowType');
+const workflowType = (payload: Readonly<Record<string, unknown>>) => {
+  const type = stringField(payload, 'workflowType');
+  if (type === undefined) return undefined;
+  return /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(type) ? workflowTypeName(type) : type;
+};
 const errorText = (payload: Readonly<Record<string, unknown>>) => stringField(payload, 'error');
 const stepLine = (payload: Readonly<Record<string, unknown>>) => {
   const name = stringField(payload, 'activityName');
@@ -307,7 +307,7 @@ const stepAndError = (payload: Readonly<Record<string, unknown>>) =>
 
 /**
  * How Workflow activity words each fleet kind, by kind. A kind with no entry here is shown in the
- * unworded form (its kind in plain words, the raw kind on line two); an omitted kind is not listed.
+ * unworded form (its kind in plain words); an omitted kind is not listed.
  */
 export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule | OmittedFleetEvent>> = {
   'workflow:started': {

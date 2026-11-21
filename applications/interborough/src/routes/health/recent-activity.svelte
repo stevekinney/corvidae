@@ -1,12 +1,16 @@
 <script lang="ts">
   /**
    * Recent activity: the latest nine things that happened, one line each (two at most, then Show all) with the time at the right,
-   * under a heading that names the zone ("Recent activity (Central time)"), as Storage's column does, and a link to the whole
-   * audit log with the number of events it holds. A line is a run, a schedule, a provider key, the
-   * server or a chat (`recent-activity.ts`); step noise is the run's own timeline.
+   * under its heading, with the sentence every page uses for the zone its times are in, the viewer's
+   * own ("Times show in Mountain time (MST)", `timesShowIn`, as Home's date line says it), and a link
+   * to the whole audit log with the number of events it holds. No parentheses and no middle dots
+   * (owner, 2026-11-19). A line is a run, a schedule, a provider key, the server or a chat
+   * (`recent-activity.ts`); step noise is the run's own timeline.
    */
-  import { Button, Skeleton, Text } from '@lostgradient/cinder';
+  import { Button, EmptyState, Skeleton, Text } from '@lostgradient/cinder';
+  import { Activity } from '@lucide/svelte';
 
+  import { timesShowIn } from '../../lib/format/clock.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HEALTH_ACTIVITY_COPY as copy } from './health-copy.ts';
   import type { ActivityLine } from './recent-activity.ts';
@@ -24,6 +28,8 @@
   let { lines, total, failed = false, onRetry = undefined }: Props = $props();
 
   const AUDIT_PATH = '/health/audit';
+  /** Read and holding nothing: the empty state stands for the section, with no heading over it. */
+  const empty = $derived(!failed && lines !== undefined && lines.length === 0);
 
   function openAudit(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -34,15 +40,22 @@
   }
 </script>
 
-<section class="ib-recent-activity" aria-labelledby="ib-recent-activity-title">
-  <div class="ib-recent-activity__heading-row">
-    <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">
-      {copy.title} <span class="ib-recent-activity__zone">({copy.zone})</span>
-    </h2>
-    <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
-      {copy.auditLink(total)} ›
-    </a>
-  </div>
+<section
+  class="ib-recent-activity"
+  aria-labelledby={empty ? undefined : 'ib-recent-activity-title'}
+  aria-label={empty ? copy.title : undefined}
+>
+  {#if !empty}
+    <div class="ib-recent-activity__heading-row">
+      <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">{copy.title}</h2>
+      <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
+        {copy.auditLink(total)} ›
+      </a>
+    </div>
+    <p class="ib-recent-activity__zone" data-testid="recent-activity-zone">
+      {timesShowIn(Date.now())}.
+    </p>
+  {/if}
 
   {#if failed}
     <div class="ib-recent-activity__note" role="alert">
@@ -58,7 +71,15 @@
       {/each}
     </div>
   {:else if lines.length === 0}
-    <p class="ib-recent-activity__note">{copy.empty}</p>
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title={copy.empty.title}
+      description={copy.empty.description}
+      data-testid="recent-activity-empty"
+    >
+      {#snippet icon()}<Activity aria-hidden="true" />{/snippet}
+    </EmptyState>
   {:else}
     <!-- A plain log line, not a list row: the text in regular weight and the time at the right.
          Cinder has no component for it, and a row's bold title is for something a person opens. -->
@@ -96,9 +117,9 @@
   }
 
   .ib-recent-activity__zone {
+    margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-    font-weight: 400;
   }
 
   .ib-recent-activity__audit {

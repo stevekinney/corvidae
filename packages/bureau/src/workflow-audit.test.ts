@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-1529 — every write to a workflow file is an audit entry under `workflow:<identifier>`,
  * whether an agent's tool or an HTTP caller made it: its actor is `agent-run:<runId>` for the tool
@@ -207,7 +208,7 @@ describe('a write made over HTTP', () => {
     });
     expect(resourceOwner).toBe(served.bureau.workflows!.owner);
 
-    const owner = unauthenticatedLocalAuthContext().principal!;
+    const owner = unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY).principal!;
     const alice = principalFromApiKey({ subject: 'alice', scopes: [] });
     const see = (principal: typeof owner) =>
       mayAccessOwnedResource({ principal, resourceOwner, operatorScope: 'bureau.workflows:read' });

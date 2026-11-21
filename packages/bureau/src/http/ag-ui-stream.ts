@@ -44,6 +44,7 @@ import {
   errorOf,
   type NativeTerminal,
   RECORDED,
+  recordedCostUsd,
   RunProjector,
   stepName,
   usageOf,
@@ -73,7 +74,7 @@ import type {
 export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> & {
   readonly tasks: Pick<
     BureauTasks,
-    'detail' | 'snapshot' | 'wait' | 'workflow' | 'events' | 'subscribeEvents'
+    'detail' | 'get' | 'snapshot' | 'wait' | 'workflow' | 'events' | 'subscribeEvents'
   >;
 } & {
   readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'>;
@@ -644,13 +645,15 @@ export function openRunStream(
       const interrupts = pendingFor(bureau, request.nativeRunId).map(toInterrupt);
       const outcome: RunFinishedOutcome =
         interrupts.length > 0 ? { type: 'interrupt', interrupts } : { type: 'success' };
+      const recorded = await recordedCostUsd(bureau.tasks, request.nativeRunId);
+      if (ended) return;
       last = stamp(
         {
           type: EventType.RUN_FINISHED,
           threadId,
           runId,
           outcome,
-          usage: usageOf(terminal.detail),
+          usage: usageOf(terminal.detail, recorded),
         },
         stampContext,
         label,

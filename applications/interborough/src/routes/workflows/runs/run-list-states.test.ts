@@ -94,8 +94,11 @@ const headerCreate = (container: HTMLElement): HTMLElement => {
   if (button === null) throw new Error('the page header has no create action');
   return button;
 };
+/** The primary buttons under the header (whose Start run is a labelled primary of its own). */
 const primaryButtons = (container: HTMLElement): HTMLElement[] => [
-  ...container.querySelectorAll<HTMLElement>('[data-cinder-variant="primary"]'),
+  ...container.querySelectorAll<HTMLElement>(
+    '.button-variant-primary:not(.cinder-page-header__create)',
+  ),
 ];
 const toolbar = (container: HTMLElement): Element | null =>
   container.querySelector(`[aria-label="${TASK_COPY.filtersLabel}"]`);
@@ -112,16 +115,19 @@ describe('nothing run yet (rows 52v and 52w)', () => {
     expect(toolbar(view.container)).toBeNull();
     expect(view.container.querySelectorAll('[data-run]')).toHaveLength(0);
 
-    // The header's "+" stays secondary, and Start run, the state's primary, is the only one.
-    expect(headerCreate(view.container).getAttribute('data-cinder-variant')).toBe('secondary');
+    // The header's Start run is a labelled primary (owner report, 2026-11-19), and the state repeats
+    // it as its one primary.
+    expect(headerCreate(view.container).classList.contains('button-variant-primary')).toBe(true);
+    expect(headerCreate(view.container).textContent?.trim()).toBe(TASK_COPY.startRun);
     const primaries = primaryButtons(view.container);
     expect(primaries).toHaveLength(1);
     expect(primaries[0]?.textContent?.trim()).toBe(TASK_COPY.startRun);
     expect(primaries[0]?.querySelector('svg')).not.toBeNull();
     const chat = view.getByRole('link', { name: TASK_COPY.empty.chatAction });
-    expect(chat.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(chat.classList.contains('button-variant-secondary')).toBe(true);
     expect(chat.getAttribute('href')).toBe(TASK_COPY.empty.chatPath);
-    expect(chat.querySelector('svg')).not.toBeNull();
+    // Every list page's secondary is its words alone; only the create action carries the "+".
+    expect(chat.querySelector('svg')).toBeNull();
 
     // An accent disc with the play glyph: the first-use kind, not a neutral one.
     const empty = state.closest('.cinder-empty-state');
@@ -144,14 +150,14 @@ describe('filtered to nothing (rows 10q, 10r, 12r, 12s, 12t, 52x and 52y)', () =
     expect(
       view.getByRole('button', { name: `Remove filter: ${TASK_COPY.agentLabel}: Model switcher` }),
     ).not.toBeNull();
-    expect(headerCreate(view.container).getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(headerCreate(view.container).classList.contains('button-variant-primary')).toBe(true);
 
     // A neutral disc with a funnel, and the secondary Clear filters as the only action.
     const state = title.closest('.cinder-empty-state') as HTMLElement;
     expect(state.getAttribute('data-cinder-kind')).toBe('filtered');
     expect(within(state).getAllByRole('button')).toHaveLength(1);
     const clear = within(state).getByRole('button', { name: TASK_COPY.clearAction });
-    expect(clear.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(clear.classList.contains('button-variant-secondary')).toBe(true);
     expect(primaryButtons(view.container)).toHaveLength(0);
 
     await fireEvent.click(clear);
@@ -252,7 +258,7 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
     expect(view.container.textContent).toContain(TASK_COPY.list.stillLoading);
     const status = view.container.querySelector('.cinder-skeleton-status') as HTMLElement;
     const cancel = within(status).getByRole('button', { name: 'Cancel' });
-    expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(cancel.classList.contains('button-variant-ghost')).toBe(true);
     // It is the skeleton's own line, not a banner.
     expect(view.container.querySelector('[role="region"][aria-label*="problem"]')).toBeNull();
     release();
@@ -320,7 +326,7 @@ describe('a list that could not be read (rows 12u, 12v, 14s and 53b)', () => {
     const retry = view.getByRole('button', { name: RETRY_LABEL });
     expect(primaryButtons(view.container)).toEqual([retry]);
     const create = headerCreate(view.container);
-    expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(create.classList.contains('button-variant-secondary')).toBe(true);
     // Muted: inert, with its reason as its description (53b).
     expect(create.getAttribute('aria-disabled')).toBe('true');
     expect(
@@ -328,7 +334,7 @@ describe('a list that could not be read (rows 12u, 12v, 14s and 53b)', () => {
         ?.textContent,
     ).toBe(TASK_COPY.list.loadFailed.startOffReason);
     const health = view.getByRole('link', { name: TASK_COPY.list.loadFailed.checkHealth });
-    expect(health.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(health.classList.contains('button-variant-secondary')).toBe(true);
     expect(health.getAttribute('href')).toBe('/health');
 
     // The codes and the operation that failed sit behind the disclosure.

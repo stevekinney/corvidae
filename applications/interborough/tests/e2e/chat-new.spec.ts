@@ -97,7 +97,7 @@ test.describe('New chat on the sample world (23a, 23b, 23c, 23e, 23g, 23j)', () 
     await expect(page.getByText(REASON)).toHaveCount(0);
     // Send is secondary and disabled until there is text, then live.
     const send = page.getByRole('button', { name: 'Send message' });
-    await expect(send).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(send).toContainClass('button-variant-secondary');
     await expect(send).toBeDisabled();
     await composerBox(page).fill('Say hello');
     await expect(send).toBeEnabled();
@@ -212,7 +212,7 @@ test.describe('New chat with no model provider (COR-2285 V4)', () => {
     const state = unconfigured(page);
     await expect(state.getByRole('heading', { level: 2 })).toHaveText('Connect a model provider');
     const connect = state.getByRole('button', { name: 'Connect provider' });
-    await expect(connect).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(connect).toContainClass('button-variant-primary');
     // An empty chat has nothing to keep readable, so the greeting and the composer give way.
     await expect(welcome(page)).toBeHidden();
     await expect(composerBox(page)).toBeHidden();

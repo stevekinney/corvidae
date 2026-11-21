@@ -304,9 +304,9 @@ describe('transcript presentation', () => {
       onRemoveQueued: () => undefined,
     });
 
-    expect(getByRole('button', { name: 'Remove' }).getAttribute('data-cinder-variant')).toBe(
-      'ghost-accent',
-    );
+    expect(
+      getByRole('button', { name: 'Remove' }).classList.contains('button-variant-ghost-accent'),
+    ).toBe(true);
   });
 
   test('a reply that is still streaming has no line under it, and ends in a caret drawn after its last text', async () => {

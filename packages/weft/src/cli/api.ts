@@ -23,7 +23,12 @@ export async function executeApi(command: ApiCommand): Promise<CommandOutput> {
   const inputResult = await readInput(command);
   if (!inputResult.ok) return inputResult.output;
 
-  const validation = validateInput(operationResult.liveOperation, inputResult.value);
+  // `--dry-run` sets `dryRun: true` on the input, over a `dryRun` the input itself carries.
+  const input =
+    command.dryRun && isRecord(inputResult.value)
+      ? { ...inputResult.value, dryRun: true }
+      : inputResult.value;
+  const validation = validateInput(operationResult.liveOperation, input);
   if (!validation.ok) return validation.output;
 
   return callOperation(command, operation.name, validation.value);
@@ -48,8 +53,27 @@ function resolveInvokableOperation(
   const liveOperation = createLiveOperationRegistry().get(command.operationName);
   if (operation === undefined || liveOperation === undefined)
     return { ok: false, output: usageError(formatUnknownOperation(command.operationName)) };
-  const invokable = assertInvokableOperation(operation, command.yes);
+  if (command.dryRun && !inputAcceptsDryRun(liveOperation)) {
+    return {
+      ok: false,
+      output: usageError(
+        `api: ${command.operationName} does not support --dry-run: its input has no dryRun field`,
+      ),
+    };
+  }
+  // A dry run changes nothing, so a destructive operation needs no `--yes` to be previewed.
+  const invokable = assertInvokableOperation(operation, command.yes || command.dryRun === true);
   return invokable.ok ? { ...invokable, liveOperation } : invokable;
+}
+
+/** Whether the operation's input schema is an object with a `dryRun` field. */
+function inputAcceptsDryRun(operation: ErasedOperation): boolean {
+  const shape: unknown = Reflect.get(operation.inputSchema, 'shape');
+  return typeof shape === 'object' && shape !== null && Object.hasOwn(shape, 'dryRun');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function assertInvokableOperation(

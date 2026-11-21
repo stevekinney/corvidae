@@ -36,18 +36,20 @@
     type AppliedFilter,
     type FacetDefinition,
   } from '@lostgradient/cinder';
-  import { Plus, Search, Target } from '@lucide/svelte';
+  import { Search } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import {
     CONNECTION_MAX_ATTEMPTS,
     ConnectionMonitor,
+    CONNECTION_RETRY_LABEL,
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { GOALS_COPY } from '../../app/copy/goals.ts';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
@@ -167,7 +169,7 @@
   // The shell leaves its banner to this page while it is on screen.
   $effect(() => connection.claimBanner());
 
-  /** Banner's Retry now: the connection's own tries again, or this read's, and the frame's probe of it. */
+  /** Banner's Try again: the connection's own tries again, or this read's, and the frame's probe of it. */
   function retryNow(): void {
     if (connection.unreachable) {
       void connection.retryNow();
@@ -261,6 +263,7 @@
     {#if stale && !restartActivity.active}
       <Banner
         preset={connectionBannerPreset(tries)}
+        retryLabel={CONNECTION_RETRY_LABEL}
         dataUpdatedAt={connection.unreachable ? connection.lastHealthyAt : goals.dataUpdatedAt}
         retryInSeconds={tries.retryInSeconds}
         attempt={tries.browserOffline || tries.attempt === 0 ? undefined : tries.attempt}
@@ -310,20 +313,13 @@
         onCancel={stopLoading}
       />
     {:else if nothingYet}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The one list-page first use (owner report, 2026-11-19). -->
+      <ListPageEmpty
+        view="goals"
         title={GOALS_COPY.empty.title}
         description={GOALS_COPY.empty.description}
-        headingLevel={2}
-      >
-        {#snippet icon()}<Target aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          <Button variant="primary" label={GOALS_COPY.newAction} onclick={newGoal} mutating>
-            {#snippet leadingIcon()}<Plus />{/snippet}
-          </Button>
-        {/snippet}
-      </EmptyState>
+        create={{ label: GOALS_COPY.newAction, onclick: newGoal }}
+      />
     {:else}
       <FilterBar
         aria-label={GOALS_COPY.filtersLabel}
@@ -339,7 +335,6 @@
 
       {#if visibleRows.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={GOALS_COPY.noMatch.title}
           description={noMatchSentence}

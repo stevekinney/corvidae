@@ -1,5 +1,4 @@
 /** Static operations that require no per-server configuration. */
-import { getPrincipalOperation } from '@lostgradient/backchannel';
 import type { RegistrableOperation } from '@lostgradient/backchannel/internals';
 import { activateWorkflowRevisionOperation } from './activate-workflow-revision.ts';
 import { addWorkflowTagsOperation } from './add-workflow-tags.ts';
@@ -13,6 +12,7 @@ import { bulkSignalWorkflowsOperation } from './bulk-signal-workflows.ts';
 import { cancelScheduleOperation } from './cancel-schedule.ts';
 import { cancelWorkflowOperation } from './cancel-workflow.ts';
 import { clearTaskDeadLetterOperation } from './clear-task-dead-letter.ts';
+import { compareWorkflowOperation } from './compare-workflow.ts';
 import { createScheduleOperation } from './create-schedule.ts';
 import { fleetEventsSseOperation } from './fleet-events-sse.ts';
 import { fleetEventsSubscriptionOperation } from './fleet-events-subscription.ts';
@@ -20,6 +20,7 @@ import { forkWorkflowOperation } from './fork-workflow.ts';
 import { getActiveWorkflowRevisionOperation } from './get-active-workflow-revision.ts';
 import { getCatalogDiagnosticsOperation } from './get-catalog-diagnostics.ts';
 import { getCheckpointAtOperation } from './get-checkpoint-at.ts';
+import { getPrincipalOperation } from './get-principal.ts';
 import { getRealmDiagnosticsOperation } from './get-realm-diagnostics.ts';
 import { getRefreshDiagnosticsOperation } from './get-refresh-diagnostics.ts';
 import { getRegistryOperation } from './get-registry.ts';
@@ -155,6 +156,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   listCheckpointsOperation,
   getCheckpointAtOperation,
   getWorkflowTimelineOperation,
+  compareWorkflowOperation,
   addWorkflowTagsOperation,
   removeWorkflowTagsOperation,
   submitReviewDecisionOperation,

@@ -16,7 +16,6 @@
  */
 
 import { redactCredential } from './redaction.ts';
-import type { AuthMethod } from './types.ts';
 
 /**
  * A single authentication audit record. Emitted once per authenticated request
@@ -44,7 +43,7 @@ export type AuthAuditEvent = {
   /** Whether the request was admitted (`success`) or rejected (`failure`). */
   outcome: 'success' | 'failure';
   /** Admission path that decided the request, or `unknown` when no method matched. */
-  method: AuthMethod | 'unknown';
+  method: string;
   /** Authenticated principal subject, when one was established. */
   subject?: string;
   /** Request path the decision applied to (already prefix-normalized). */
@@ -113,7 +112,7 @@ export function defaultAuthAuditSink(event: AuthAuditEvent): void {
  */
 export type AuthAuditContext = {
   outcome: 'success' | 'failure';
-  method: AuthMethod | 'unknown';
+  method: string;
   subject: string | undefined;
   request: Request;
   reason?: string | undefined;

@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES } from '../authorization-scopes.ts';
 /**
  * Authorization scopes on Weft's catalog operations (COR-1466).
  *
@@ -11,7 +12,6 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   anonymousPrincipal,
-  AUTHORIZATION_SCOPES,
   principalFromApiKey,
   type AuthorizationScope,
   type Principal,
@@ -34,6 +34,7 @@ const REQUIRED_SCOPE_BY_OPERATION: Readonly<Record<string, AuthorizationScope>> 
   'weft.workflows.result.get': 'workflows:read',
   'weft.workflows.checkpoints.get': 'workflows:read',
   'weft.workflows.checkpoints.list': 'workflows:read',
+  'weft.workflows.compare': 'workflows:read',
   'weft.workflows.scheduleprovenance.get': 'workflows:read',
   'weft.workflows.finalizer.get': 'workflows:read',
   'weft.updates.result.get': 'workflows:read',

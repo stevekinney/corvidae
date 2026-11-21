@@ -8,7 +8,7 @@ Complete this record before merge. Automated checks can detect malformed APIs, m
 - Review outcome: Pending. The design-reviewer verdict has not been recorded yet.
 - Nearest neighbours: Statistic, StatisticGroup, StatusDot.
 - Why this component exists: A screen reads best with one focal value. Statistic is a labelled tile in a grid, so nothing on a screen is the first thing to read. Spotlight is that one value at display size, in neutral text.
-- Findings and resolutions: The value uses the default text colour, never the accent, which is reserved for actions. Liveness is a status dot with a word, never colour alone. A caveat directly under the value shows staleness in warning text.
+- Findings and resolutions: The value uses the accent's text colour (`--cinder-accent-text`, which clears 4.5:1 on the surfaces in both themes), so the screen's focus carries Cinder's colour (owner decision 2026-11-16); it is never underlined and never a link, so the colour does not make it read as an action. Liveness is a status dot with a word, never colour alone. A caveat directly under the value shows staleness in warning text.
 
 ## Novel interaction accessibility review
 

@@ -15,7 +15,6 @@
     EmptyState,
     ErrorState,
     FormSection,
-    Link,
     StatusDot,
     Table,
     Text,
@@ -126,32 +125,29 @@
         {/each}
       </Table.Body>
     </Table>
-  {:else}
+  {:else if failure !== undefined}
     <FormSection grouped heading={copy.heading} description={copy.emptyDescription}>
-      {#if failure !== undefined}
-        <ErrorState
-          headingLevel={3}
-          title={copy.loadFailed.title}
-          description={copy.loadFailed.description(failure.providers, failure.status)}
-          retryLabel={copy.loadFailed.retry}
-          {onRetry}
-          data-testid="models-catalog-failed"
-        />
-      {:else}
-        <EmptyState
-          kind="first-use"
-          headingLevel={3}
-          title={copy.empty.title}
-          description={copy.empty.description}
-          data-testid="models-empty"
-        >
-          {#snippet icon()}<Cpu size={24} aria-hidden="true" />{/snippet}
-          {#snippet action()}
-            <Link href={PROVIDERS_ANCHOR} onclick={goToProviders}>{copy.empty.action}</Link>
-          {/snippet}
-        </EmptyState>
-      {/if}
+      <ErrorState
+        headingLevel={3}
+        title={copy.loadFailed.title}
+        description={copy.loadFailed.description(failure.providers, failure.status)}
+        retryLabel={copy.loadFailed.retry}
+        {onRetry}
+        data-testid="models-catalog-failed"
+      />
     </FormSection>
+  {:else}
+    <!-- The state alone, in no grouped box and under no "Models" heading (owner report, 2026-11-19). -->
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title={copy.empty.title}
+      description={copy.empty.description}
+      data-testid="models-empty"
+      actions={[{ label: copy.empty.action, href: PROVIDERS_ANCHOR, onclick: goToProviders }]}
+    >
+      {#snippet icon()}<Cpu aria-hidden="true" />{/snippet}
+    </EmptyState>
   {/if}
 </div>
 

@@ -38,7 +38,11 @@ Plain code is split into lines by the block itself. Highlighted code is decorate
 
 ## Scrolling and wrapping
 
-A code block scrolls inside its own box, with a scrollbar that is always painted from the shared scrollbar tokens. `wrap` breaks a long line instead.
+A code block scrolls inside its own box, with a scrollbar that is always painted from the shared scrollbar tokens. `wrap` breaks a long line instead, and hangs the rows after the first by two characters so each line of code reads as one unit. The copied text is the code as written.
+
+## Copy
+
+`copyable` adds an icon-only copy button. With a visible language label, the label and the button share a row above the code. With no visible label, the button floats over the code's top inline-end corner and the block has no header row at all; `copyFloating` chooses either layout outright. The button is named "Copy code", or for the language ("Copy SQL code", an acronym in its canonical case); `copyLabel` names it for the page ("Copy the Claude Code command"). A floating button reserves a rail at the inline end: a block that scrolls stops its scrollport before the rail on every row, and a block that wraps reserves the rail beside its first row only, so every further row keeps the whole width.
 
 ## Props
 
@@ -49,7 +53,8 @@ A code block scrolls inside its own box, with a scrollbar that is always painted
 | `class` | `string` | no | — | Additional class names merged with `.cinder-code-block`. |
 | `code` | `string` | yes | — | The code to render. |
 | `copyable` | `boolean` | no | — | When true, render an icon-only copy button above the code. The block has no header bar or frame. |
-| `copyFloating` | `boolean` | no | `false` | Float the copy button (and the language label, when shown) over the top inline-end corner of the code instead of giving them a row above it. The copy button is named for the language it copies, such as "Copy sql code". Defaults to `false`. |
+| `copyFloating` | `boolean` | no | — | Float the copy button (and the language label, when shown) over the top inline-end corner of the code instead of giving them a row above it. Unset, the copy button floats whenever no language label is visible, so a block with only Copy has no header row; with a visible language label it shares a row with it. Pass `true` or `false` to choose either way. |
+| `copyLabel` | `string` | no | — | The accessible name of the copy button, also its tooltip. Defaults to "Copy code", or "Copy SQL code" when `language` is set, an acronym such as JSON or SQL in its canonical spelling. Say what is copied when the page has more than one block ("Copy the Claude Code command"). |
 | `highlight` | `boolean` | no | — | Whether to highlight. Defaults to `true` whenever `language` is set and a highlighter resolves from the `highlighter` prop or from context. `highlight={false}` is an absolute off switch: it disables ALL highlighting — including an explicit `highlighter` prop and a context highlighter. The block renders the escaped plain `<pre><code>` fallback while keeping the `language` label. When highlighting is enabled, client-side colorization may appear after first paint, but the block keeps stable layout metrics. |
 | `language` | `string` | no | — | Optional language label rendered above the code (there is no header bar); also selects the grammar for highlighting. |
 | `languageLabelVisible` | `boolean` | no | — | Whether to render the language label above the code. Default `true`. Pass `false` to keep `language`-driven highlighting without the visible label; with `copyable` also unset, nothing renders above the code. |

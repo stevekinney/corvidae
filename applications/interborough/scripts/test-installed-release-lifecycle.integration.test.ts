@@ -675,7 +675,7 @@ const archiveScenario = await (async () => {
     await writeFile(join(source, 'interborough/bin/interborough'), 'fixture executable');
     await writeFile(
       join(source, 'interborough/release.json'),
-      JSON.stringify({ sourceSha: 'fixture-source' }),
+      JSON.stringify({ sourceSha: 'a'.repeat(40), target: 'darwin-arm64' }),
     );
     const archive = join(root, 'fixture.tar.gz');
     const tar = await runWithHangGuard(['tar', '-czf', archive, '-C', source, 'interborough']);
@@ -691,10 +691,10 @@ const archiveScenario = await (async () => {
     const first = await Bun.file(await invoke()).json();
     const second = await Bun.file(await invoke()).json();
     const previous = process.env['CORVIDAE_EXPECTED_RELEASE_SHA'];
-    process.env['CORVIDAE_EXPECTED_RELEASE_SHA'] = 'fixture-source';
+    process.env['CORVIDAE_EXPECTED_RELEASE_SHA'] = 'a'.repeat(40);
     try {
       const bound = await Bun.file(await invoke()).json();
-      expect(bound.assertions[0].details.manifest.sourceSha).toBe('fixture-source');
+      expect(bound.assertions[0].details.manifest.sourceSha).toBe('a'.repeat(40));
       process.env['CORVIDAE_EXPECTED_RELEASE_SHA'] = 'wrong-source';
       expect(await throwingRejectionOf(invoke())).toThrow('did not match wrong-source');
     } finally {
@@ -728,7 +728,12 @@ test('runs command mode and cleans its disposable prefix on success and failure'
         return [];
       },
     });
-    expect(await Bun.file(evidence).json()).toEqual({ assertions: [] });
+    expect(await Bun.file(evidence).json()).toMatchObject({
+      version: 1,
+      outcome: 'pass',
+      assertions: [],
+      producer: { script: 'applications/interborough/scripts/test-installed-release.ts' },
+    });
     expect(await Bun.file(prefix).exists()).toBe(false);
     expect(
       await throwingRejectionOf(
@@ -764,7 +769,11 @@ test('records non-Error journey failures and removes the disposable installation
     expect(files).toHaveLength(1);
     expect(files[0]).toStartWith('installed-release-failure-');
     const evidence = await Bun.file(join(root, files[0]!)).json();
-    expect(evidence.failure).toBe(failure);
+    expect(evidence).toMatchObject({
+      version: 1,
+      outcome: 'fail',
+      failure: { name: 'Error', message: failure },
+    });
     expect(prefix).not.toBe('');
     expect(await rejectionOf(stat(prefix))).toMatchObject({ code: 'ENOENT' });
   } finally {
@@ -785,6 +794,32 @@ test('rejects an unreadable archive instead of recording successful extraction',
   }
 });
 
+test('rejects and records an archive receipt for a different target', async () => {
+  const evidenceDirectory = await mkdtemp(join(tmpdir(), 'installed-release-wrong-target-'));
+  try {
+    expect(
+      await throwingRejectionOf(
+        runInstalledRelease(['--archive', './fixture.tar.gz', '--evidence', evidenceDirectory], {
+          unpack: async (_archive, prefix) => ({
+            executable: join(prefix, 'interborough/bin/interborough'),
+            sha256: 'fixture-hash',
+            manifest: { sourceSha: 'a'.repeat(40), target: 'linux-x64' },
+          }),
+        }),
+      ),
+    ).toThrow('is not darwin-arm64');
+    const files = await readdir(evidenceDirectory);
+    expect(files).toHaveLength(1);
+    expect(await Bun.file(join(evidenceDirectory, files[0]!)).json()).toMatchObject({
+      version: 1,
+      outcome: 'fail',
+      failure: { message: expect.stringContaining('is not darwin-arm64') },
+    });
+  } finally {
+    await rm(evidenceDirectory, { recursive: true, force: true });
+  }
+});
+
 test('retains initial and relocated command traces when the relocated journey fails', async () => {
   const evidenceDirectory = await mkdtemp(join(tmpdir(), 'installed-relocation-failure-'));
   const initialTrace = [{ arguments: ['doctor'], exitCode: 0 }];
@@ -799,7 +834,11 @@ test('retains initial and relocated command traces when the relocated journey fa
             recursive: true,
           });
           await writeFile(executable, 'fixture');
-          return { executable, sha256: 'fixture-hash', manifest: { sourceSha: 'fixture-source' } };
+          return {
+            executable,
+            sha256: 'fixture-hash',
+            manifest: { sourceSha: 'a'.repeat(40), target: 'darwin-arm64' },
+          };
         },
         runInstalled: async (_executable, prefix, relocated) => {
           await mkdir(join(prefix, 'home/plugins'), { recursive: true });

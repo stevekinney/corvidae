@@ -284,7 +284,7 @@ describe('the states (C3-15, C3-16, C3-17)', () => {
     expect(view.getByText(copy.loadFailed.description)).not.toBeNull();
     const retry = section(view.container)!.querySelector('button')!;
     expect(retry.textContent?.trim()).toBe(RETRY_LABEL);
-    expect(retry.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.classList.contains('button-variant-secondary')).toBe(true);
     // The rest of the page is unchanged.
     expect(view.container.querySelector('[data-section="what-happened"]')).not.toBeNull();
   });
@@ -311,7 +311,7 @@ describe('the states (C3-15, C3-16, C3-17)', () => {
     expect(body.textContent).toContain(`requires ${copy.forbidden.requirement}`);
     const actions = [...body.querySelectorAll('a, button')];
     expect(actions.map((action) => action.textContent?.trim())).toEqual(['See your scopes']);
-    expect(actions[0]?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(actions[0]?.classList.contains('button-variant-secondary')).toBe(true);
     expect(hookIds(view.container)).toEqual([]);
   });
 });

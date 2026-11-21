@@ -14,7 +14,7 @@ Full-width announcement strip for page-level alerts, promotions, or system messa
 
 ### Connection presets
 
-A `preset` carries the tone, the accessible name, the words, a glyph and the actions of a connection or restart state, so no page words its own. Every preset is non-dismissible and labels its retry "Retry now". Pass the facts; the preset writes the sentence:
+A `preset` carries the tone, the accessible name, the words, a glyph and the actions of a connection or restart state, so no page words its own. Every preset is non-dismissible and labels its retry "Try again". Pass the facts; the preset writes the sentence:
 
 ```svelte
 <script lang="ts">
@@ -37,17 +37,17 @@ That reads "Can’t reach the Interborough server. Showing what loaded as of 10:
 
 | Preset | Tone | Words | Actions |
 | --- | --- | --- | --- |
-| `offline` | warning | **You’re offline.** Showing what loaded as of 10:44 AM CST. Changes are off until you’re back. Retrying in 8 s. | Retry now |
-| `unreachable` | warning | **Can’t reach the Interborough server.** Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. Retrying in 4 s (attempt 3 of 8). | Retry now |
-| `stopped` | warning | **Stopped retrying.** Can’t reach the Interborough server. Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. | Retry now (primary) |
-| `out-of-date` | warning | **Can’t reach the Interborough server.** Showing what loaded as of 10:44 AM CST. Retries stopped after 8 attempts. | Retry now (primary) |
-| `refresh-failed` | warning | **Couldn’t refresh this page.** Showing what loaded as of 10:44 AM CST. | Retry now |
+| `offline` | warning | **You’re offline.** Showing what loaded as of 10:44 AM CST. Changes are off until you’re back. Retrying in 8 s. | Try again |
+| `unreachable` | warning | **Can’t reach the Interborough server.** Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. Retrying in 4 s (attempt 3 of 8). | Try again |
+| `stopped` | warning | **Stopped retrying.** Can’t reach the Interborough server. Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. | Try again (primary) |
+| `out-of-date` | warning | **Can’t reach the Interborough server.** Showing what loaded as of 10:44 AM CST. Retries stopped after 8 attempts. | Try again (primary) |
+| `refresh-failed` | warning | **Couldn’t refresh this page.** Showing what loaded as of 10:44 AM CST. | Try again |
 | `restarting` | info | **Restarting Interborough.** Your changes are saved. Running work picks up where it stopped; reviews stay waiting. | none |
-| `reconnecting` | info | **Reconnecting… attempt 2 of 8.** Your changes are saved. Running work picks up where it stopped; reviews stay waiting. | Retry now |
+| `reconnecting` | info | **Reconnecting… attempt 2 of 8.** Your changes are saved. Running work picks up where it stopped; reviews stay waiting. | Try again |
 | `restart-failed` | warning | **Interborough didn’t come back.** Your changes were saved first. Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. | Restart again (primary), Open Health |
 | `back-online` | success | Back online. Updated just now. | none |
 
-`out-of-date` is `stopped` for a page that is only read (Health), and a read-only page that is still retrying passes `consequence={false}` to `unreachable` so no sentence says changes are off. `offline` shows a wifi-off glyph, and `unreachable`, `stopped` and `out-of-date` an unplugged glyph; pass `icon` to draw another. `restarting`, `restart-failed` and `back-online` never offer Retry now, with or without `onRetry`. `restart-failed` takes `onRestart` and `onOpenHealth`, or `healthHref` to make Open Health a link. `back-online` is a toast in the design; the preset carries the same words for a surface that cannot show one, and `BANNER_BACK_ONLINE_COPY` is the string a toast uses.
+`out-of-date` is `stopped` for a page that is only read (Health), and a read-only page that is still retrying passes `consequence={false}` to `unreachable` so no sentence says changes are off. `offline` shows a wifi-off glyph, and `unreachable`, `stopped` and `out-of-date` an unplugged glyph; pass `icon` to draw another. `restarting`, `restart-failed` and `back-online` never offer Try again, with or without `onRetry`. `restart-failed` takes `onRestart` and `onOpenHealth`, or `healthHref` to make Open Health a link. `back-online` is a toast in the design; the preset carries the same words for a surface that cannot show one, and `BANNER_BACK_ONLINE_COPY` is the string a toast uses.
 
 A page changes facts, not wording. `subject` completes "Showing … as of …" ("Showing reviews as of 10:44 AM CST."), `consequence` replaces the sentence that says what is off ("Start run is off until the connection is back.") or, as `false`, leaves it out, and `title` replaces the bold lead. `retryVariant="primary"` moves the emphasis for a page whose retries have stopped. `bannerPresetCopy(preset, facts)` writes the same words for anywhere else they are needed.
 
@@ -117,8 +117,8 @@ When to show one:
 | `maxAttempts` | `number` | no | `8` | How many attempts there are. |
 | `preset` | `"offline"` \| `"unreachable"` \| `"stopped"` \| `"out-of-date"` \| `"refresh-failed"` \| `"restarting"` \| `"reconnecting"` \| `"restart-failed"` \| `"back-online"` | no | — | Applies a ready-made configuration: the tone, the accessible name, the words, a glyph and the actions of a connection or restart state (see {@link BannerPreset}). The preset overrides `variant`, makes the banner non-dismissible and, when `children` is omitted, writes its copy from `dataUpdatedAt`, `subject`, `retryInSeconds`, `attempt` and `consequence`. Passing `children` replaces the generated words and keeps the rest. |
 | `retryInSeconds` | `number` | no | — | Seconds until the next automatic retry. A preset writes "Retrying in 4 s". |
-| `retryLabel` | `string` | no | `"Retry"` | Label of the Retry button. A preset labels it "Retry now" unless this says otherwise. |
-| `retryVariant` | `"primary"` \| `"secondary"` | no | — | How prominent the Retry button is. A preset makes it `primary` where Retry now is the way back (`stopped`) and `secondary` everywhere else, so one action at a time looks primary. |
+| `retryLabel` | `string` | no | `"Try again"` | Label of the Retry button: "Try again", Cinder's one word for asking again (ErrorState's and LoadMore's too), with or without a preset, unless this says otherwise. |
+| `retryVariant` | `"primary"` \| `"secondary"` | no | — | How prominent the Retry button is. A preset makes it `primary` where Try again is the way back (`stopped`) and `secondary` everywhere else, so one action at a time looks primary. |
 | `stackActions` | `boolean` | no | `false` | Below 640px, puts the actions on a row of their own under the words, one above the next, each a full-width 44px button, for a banner whose buttons are bars on a phone. Without it the actions sit at the inline end of the message's row, or in a row under the words when the banner is narrower than 560px, at 44px. |
 | `staleDataLabel` | `string` | no | `"Showing data from"` | Text that precedes the relative time in the stale-data notice. |
 | `sticky` | `boolean` | no | — | Keeps the banner at the top of its scroll container while the page scrolls under it. |

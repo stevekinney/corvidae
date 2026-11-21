@@ -392,13 +392,6 @@
   padding: var(--cinder-space-6) var(--cinder-space-4);
 }
 
-/* No chat at all: one empty state centred in the page, with no list pane (COR-2438). The outlet
- * pads the page, so this root adds no padding of its own (37-visual-system). */
-.ib-chats--first-use {
-  display: grid;
-  place-items: center;
-}
-
 /* With chats listed and none open, the pane says so quietly, centred, with no disc and no action. */
 .ib-chats__no-chat {
   display: grid;
@@ -420,6 +413,11 @@
 .ib-chats__back-row {
   display: flex;
   margin-inline-start: calc(-1 * var(--cinder-space-2));
+}
+
+/* The open chat's skeleton while the list is read keeps the inset a detail pane would have. */
+.ib-chats__loading-detail {
+  padding: var(--cinder-space-4);
 }
 
 /* The agent that line two names in a pane wide enough for it keeps the muted line's colour. */

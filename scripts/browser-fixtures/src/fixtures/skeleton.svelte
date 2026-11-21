@@ -7,15 +7,13 @@
   ];
 </script>
 
-<div style="display: flex; flex-direction: column; gap: var(--cinder-space-3);">
+<div class="example-layout gap-3">
   <Skeleton height="1rem" width="60%" />
   <Skeleton height="1rem" width="80%" />
   <Skeleton height="1rem" width="40%" />
-  <div
-    style="display: flex; align-items: center; gap: var(--cinder-space-4); margin-top: var(--cinder-space-2);"
-  >
+  <div class="profile-placeholder gap-4 margin-block-start-2">
     <Skeleton width="3rem" height="3rem" radius="50%" />
-    <div style="flex: 1; display: flex; flex-direction: column; gap: var(--cinder-space-2);">
+    <div class="profile-text gap-2">
       <Skeleton height="0.875rem" width="50%" />
       <Skeleton height="0.875rem" width="30%" />
     </div>
@@ -49,10 +47,7 @@
   </div>
   <!-- The list placeholder beside the list it stands for (COR-2449): a two-line pair and a
        three-line pair, each as tall as the rows that load, and flat on the canvas. -->
-  <div
-    style="display: flex; flex-direction: column; gap: var(--cinder-space-4);"
-    data-testid="skeleton-footprint"
-  >
+  <div class="example-layout gap-4" data-testid="skeleton-footprint">
     {#each [{ name: 'two', detail: false }, { name: 'three', detail: true }] as pair (pair.name)}
       <div data-testid={`skeleton-footprint-${pair.name}`}>
         <div data-testid="footprint-placeholder">
@@ -85,24 +80,54 @@
   </div>
   <!-- A page's own placeholder whose first block holds the line, beside the same page before the
        line appears: the real text and the blocks after it are in the same places. -->
-  <div style="display: flex; gap: var(--cinder-space-4);">
-    <div data-testid="skeleton-page-waiting" style="flex: 1;">
+  <div class="page-comparison gap-4">
+    <div data-testid="skeleton-page-waiting" class="page-placeholder">
       <Skeleton
         stillLoadingAfter={600_000}
         stillLoadingLabel="Still loading Home."
         onCancel={() => {}}
       >
-        <p style="margin: 0;">Monday, Nov 2.</p>
+        <p class="paragraph">Monday, Nov 2.</p>
         <Skeleton width="11rem" height="2.2rem" holdsStatusLine />
-        <p style="margin: 0;" data-testid="after-place">Failed in 24 hours</p>
+        <p class="paragraph" data-testid="after-place">Failed in 24 hours</p>
       </Skeleton>
     </div>
-    <div data-testid="skeleton-page-slow" style="flex: 1;">
+    <div data-testid="skeleton-page-slow" class="page-placeholder">
       <Skeleton stillLoadingAfter={0} stillLoadingLabel="Still loading Home." onCancel={() => {}}>
-        <p style="margin: 0;">Monday, Nov 2.</p>
+        <p class="paragraph">Monday, Nov 2.</p>
         <Skeleton width="11rem" height="2.2rem" holdsStatusLine />
-        <p style="margin: 0;" data-testid="after-place">Failed in 24 hours</p>
+        <p class="paragraph" data-testid="after-place">Failed in 24 hours</p>
       </Skeleton>
     </div>
   </div>
 </div>
+
+<style>
+  .example-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .profile-placeholder {
+    display: flex;
+    align-items: center;
+  }
+
+  .profile-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page-comparison {
+    display: flex;
+  }
+
+  .page-placeholder {
+    flex: 1;
+  }
+
+  .paragraph {
+    margin: 0;
+  }
+</style>

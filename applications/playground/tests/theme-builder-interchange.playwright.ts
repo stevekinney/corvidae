@@ -128,6 +128,7 @@ test.describe('export and re-import', () => {
     const dialog = await openExport(page);
     // The shipped theme carries review and advisory items; CSS and DTCG wait for acknowledgement.
     await expect(dialog.getByTestId('export-css-blocked')).toContainText('acknowledgement');
+    await expect(dialog.getByTestId('export-tailwind-blocked')).toContainText('acknowledgement');
     await dialog.getByLabel(/I have read the \d+ items/).check();
     await expect(dialog.getByTestId('export-source')).toContainText('Cinder Theme v1');
     await expect(dialog.getByTestId('export-source')).toContainText('not a standard DTCG');
@@ -137,6 +138,13 @@ test.describe('export and re-import', () => {
     await expect(dialog.getByTestId('export-portable-subset')).toContainText('Subset');
     await expect(dialog.getByTestId('export-css')).toContainText('cinder-theme layer');
     await expect(dialog.getByTestId('export-report')).toContainText('Cinder base');
+    const download = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: /^Download .*\.tailwind-theme\.css$/ }).click();
+    const downloaded = await download;
+    const css = await readFile(await downloaded.path(), 'utf8');
+    expect(css).toContain('@layer cinder-theme {');
+    expect(css).toContain('@theme inline {');
+    expect(css).toContain('--color-surface: var(--cinder-surface);');
   });
 });
 

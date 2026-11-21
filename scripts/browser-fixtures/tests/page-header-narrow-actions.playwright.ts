@@ -10,6 +10,18 @@
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
 
+test('spacing utilities resolve scoped theme values', async ({ page }) => {
+  await page.goto(fixtureRoute('page-header'), { waitUntil: 'load' });
+  const largeTitle = page.getByTestId('large-title-rest');
+  const hero = page.getByTestId('hero-accent');
+  await expect(largeTitle).toHaveCSS('margin-block-start', '16px');
+  await page.addStyleTag({
+    content: '[data-testid="large-title-rest"] { --cinder-space-4: 27px; }',
+  });
+  await expect(largeTitle).toHaveCSS('margin-block-start', '27px');
+  await expect(hero).toHaveCSS('margin-block-start', '16px');
+});
+
 test('a narrow header puts its actions beside the status only when asked, and is shorter for it', async ({
   page,
 }) => {

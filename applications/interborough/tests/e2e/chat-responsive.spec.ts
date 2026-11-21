@@ -771,9 +771,8 @@ test.describe('Chat with no provider (14h)', () => {
     const state = page.locator('[data-chat-availability="unconfigured"]');
     await expect(state).toBeVisible();
     await expect(state.getByRole('heading', { level: 2 })).toHaveText(REASON);
-    await expect(state.getByRole('button', { name: CONNECT })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(state.getByRole('button', { name: CONNECT })).toContainClass(
+      'button-variant-primary',
     );
     // No text box to type into, so nothing can be sent and nothing waits to be.
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeHidden();

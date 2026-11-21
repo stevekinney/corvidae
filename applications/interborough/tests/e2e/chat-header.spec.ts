@@ -400,7 +400,8 @@ test('deletes the chat after asking, and returns to the list', async ({
   await page.getByRole('menuitem', { name: MORE.delete }).click();
   await page.getByRole('dialog').getByRole('button', { name: MORE.deleteDialog.confirm }).click();
 
-  await expect(page).toHaveURL(/\/chats$/);
+  await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
+  await expect(page.getByRole('region', { name: 'Chats' })).toBeVisible();
   const gone = await bureauCall(request, 'bureau.contexts.get', { contextId: threadId });
   expect(gone.error?.data?.weftCode).toBe('NotFound');
 });

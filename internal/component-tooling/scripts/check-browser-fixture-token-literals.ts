@@ -15,6 +15,7 @@ const fixtureLocations = [
 ];
 
 type FixtureLiteral = { line: number; property: string; value: string };
+type FixtureStyles = { literals: FixtureLiteral[]; inlineStyleLines: number[] };
 type SourceNode = Record<string, unknown>;
 type Baseline = Record<string, readonly string[]>;
 
@@ -124,7 +125,13 @@ function styleValues(value: unknown): string[] {
 
 /** Find authored declarations with raw design colors or dimensions; preserve source line numbers. */
 export function findFixtureLiterals(source: string, filePath: string): FixtureLiteral[] {
+  return inspectFixtureStyles(source, filePath).literals;
+}
+
+/** Inspect fixture styles and locate inline attributes, directives, and style props. */
+export function inspectFixtureStyles(source: string, filePath: string): FixtureStyles {
   const found: FixtureLiteral[] = [];
+  const inlineStyleLines: number[] = [];
   function scanDeclarations(styles: string, firstLine: number, inline = false): void {
     const css = inline ? `fixture{${styles}}` : styles;
     const root = parseCss(css, { from: filePath });
@@ -141,7 +148,7 @@ export function findFixtureLiterals(source: string, filePath: string): FixtureLi
 
   if (filePath.endsWith('.css')) {
     scanDeclarations(source, 1);
-    return found;
+    return { literals: found, inlineStyleLines };
   }
 
   const ast = parse(source, { filename: filePath, modern: true });
@@ -173,10 +180,12 @@ export function findFixtureLiterals(source: string, filePath: string): FixtureLi
       ((key['type'] === 'Identifier' && key['name'] === 'style') ||
         (key['type'] === 'Literal' && key['value'] === 'style'));
     if (styleProperty || (value['type'] === 'Attribute' && name === 'style')) {
+      inlineStyleLines.push(lineAt(value['start']));
       for (const styles of styleValues(value['value'])) {
         scanDeclarations(styles, lineAt(value['start']), true);
       }
     } else if (value['type'] === 'StyleDirective' && typeof name === 'string') {
+      inlineStyleLines.push(lineAt(value['start']));
       for (const styles of styleValues(value['value'])) {
         scanDeclarations(`${name}: ${styles}`, lineAt(value['start']), true);
       }
@@ -188,19 +197,18 @@ export function findFixtureLiterals(source: string, filePath: string): FixtureLi
   visit(ast.fragment);
   if (ast.css) scanDeclarations(ast.css.content.styles, lineAt(ast.css.content.start));
 
-  return found.toSorted((left, right) => left.line - right.line);
+  return { literals: found.toSorted((left, right) => left.line - right.line), inlineStyleLines };
 }
 
 /** Collect only authored fixtures, including Svelte fixtures colocated with Cinder components. */
-export async function scanBrowserFixtureLiterals(): Promise<Map<string, FixtureLiteral[]>> {
-  const found = new Map<string, FixtureLiteral[]>();
+async function scanBrowserFixtureStyles(): Promise<Map<string, FixtureStyles>> {
+  const found = new Map<string, FixtureStyles>();
   for (const { directory, pattern } of fixtureLocations) {
     const glob = new Glob(pattern);
     for await (const file of glob.scan({ cwd: join(repository, directory) })) {
       const relativePath = `${directory}/${file.replaceAll('\\', '/')}`;
       const source = await Bun.file(join(repository, relativePath)).text();
-      const literals = findFixtureLiterals(source, relativePath);
-      if (literals.length > 0) found.set(relativePath, literals);
+      found.set(relativePath, inspectFixtureStyles(source, relativePath));
     }
   }
   return found;
@@ -240,21 +248,33 @@ export async function checkBrowserFixtureLiterals({
   strict = false,
   update = false,
 }: { strict?: boolean; update?: boolean } = {}): Promise<void> {
-  const found = await scanBrowserFixtureLiterals();
+  const fixtures = await scanBrowserFixtureStyles();
   const baseline: Baseline = await Bun.file(baselinePath).json();
+  const found = new Map<string, FixtureLiteral[]>();
+  let inlineStyleCount = 0;
   let newCount = 0;
-  for (const [file, declarations] of found) {
+  for (const [file, { literals, inlineStyleLines }] of fixtures) {
+    for (const line of inlineStyleLines) {
+      inlineStyleCount += 1;
+      process.stdout.write(`${file}:${line}: inline fixture style\n`);
+    }
+    if (literals.length > 0) found.set(file, literals);
     const previous = Object.hasOwn(baseline, file) ? (baseline[file] ?? []) : [];
-    for (const declaration of newFixtureLiterals(declarations, previous)) {
+    for (const declaration of newFixtureLiterals(literals, previous)) {
       newCount += 1;
       process.stdout.write(`${file}:${declaration.line}: ${declarationKey(declaration)}\n`);
     }
   }
 
-  if (newCount > 0) {
+  if (inlineStyleCount > 0)
+    process.stdout.write(
+      `Found ${inlineStyleCount} inline fixture style(s). Use utilities, components, or fixture CSS.\n`,
+    );
+  if (newCount > 0)
     process.stdout.write(
       `Found ${newCount} new raw fixture declaration(s). Use Cinder components or CSS variables for color, spacing, and sizing.\n`,
     );
+  if (inlineStyleCount + newCount > 0) {
     if (strict || update) process.exitCode = 1;
     return;
   }

@@ -1,10 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import {
-  atRuleDeclarationsFor,
-  declarationsFor,
-} from '@lostgradient/component-tooling/test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
@@ -197,28 +194,47 @@ test('breaks a long unbroken name inside the title and the sentence instead of o
   ).toBe('anywhere');
 });
 
-describe('EmptyState align', () => {
-  test('centres by default and marks no alignment attribute', () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty' } });
-    expect(container.querySelector('.cinder-empty-state')?.hasAttribute('data-cinder-align')).toBe(
-      false,
-    );
+describe('EmptyState has one layout (owner report, 2026-11-19)', () => {
+  test('the root carries no layout, size, alignment or border variant, whatever a caller passes', () => {
+    const { container } = render(EmptyState, {
+      props: {
+        title: 'Empty',
+        // A caller that still passes an old variant prop gets the one layout regardless.
+        ...({ layout: 'row', size: 'compact', align: 'start', bordered: true } as object),
+      },
+    });
+    const root = container.querySelector('.cinder-empty-state');
+    for (const attribute of [
+      'data-cinder-layout',
+      'data-cinder-size',
+      'data-cinder-align',
+      'data-cinder-bordered',
+    ]) {
+      expect(root?.hasAttribute(attribute)).toBe(false);
+    }
   });
 
-  test("align='start' marks the root and its rule aligns content to the inline start", () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty', align: 'start' } });
-    expect(container.querySelector('.cinder-empty-state')?.getAttribute('data-cinder-align')).toBe(
-      'start',
-    );
-    const declarations = declarationsFor(
-      emptyStateCss,
-      ".cinder-empty-state[data-cinder-align='start']",
-    );
-    expect(declarations.get('align-items')).toBe('flex-start');
-    expect(declarations.get('text-align')).toBe('start');
+  test('the stylesheet has no variant rule for a caller to reach', () => {
+    expect(emptyStateCss).not.toMatch(/data-cinder-(layout|size|align|bordered)/);
+  });
+
+  test('is stacked and centred across, top-aligned at one offset, never boxed', () => {
     const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
+    expect(base.get('flex-direction')).toBe('column');
     expect(base.get('align-items')).toBe('center');
     expect(base.get('text-align')).toBe('center');
+    expect(base.get('justify-content')).toBe('flex-start');
+    expect(base.get('min-block-size')).toBe('0');
+    expect(base.get('padding-block')).toBe('var(--cinder-space-12)');
+    expect(base.has('border')).toBe(false);
+    expect(base.has('background')).toBe(false);
+  });
+
+  test('holds the title, the sentence and the details to a measure of about 60 characters', () => {
+    for (const part of ['title', 'description', 'details']) {
+      const words = declarationsFor(emptyStateCss, `.cinder-empty-state-${part}`);
+      expect(words.get('max-inline-size')).toBe('60ch');
+    }
   });
 });
 
@@ -384,122 +400,16 @@ describe('EmptyState default glyphs', () => {
   });
 });
 
-describe('EmptyState bordered', () => {
-  test('is off by default and marks the root when on', () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty' } });
-    expect(rootOf(container)?.hasAttribute('data-cinder-bordered')).toBe(false);
-    cleanup();
-    const bordered = render(EmptyState, { props: { title: 'Empty', bordered: true } });
-    expect(rootOf(bordered.container)?.hasAttribute('data-cinder-bordered')).toBe(true);
-    const rule = declarationsFor(emptyStateCss, '.cinder-empty-state[data-cinder-bordered]');
-    expect(rule.get('border')).toBe('var(--cinder-border-width) solid var(--cinder-border)');
-    expect(rule.get('border-radius')).toBe('var(--cinder-radius-lg)');
-  });
-});
-
-describe('EmptyState size', () => {
-  test('defaults to the default size', () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty' } });
-    expect(rootOf(container)?.getAttribute('data-cinder-size')).toBe('default');
-  });
-
-  test('compact marks the root and shrinks padding, disc, and title in the stylesheet', () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty', size: 'compact' } });
-    expect(rootOf(container)?.getAttribute('data-cinder-size')).toBe('compact');
-    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-size='compact']");
-    expect(root.get('padding-block')).toBe('var(--cinder-space-6)');
-    const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
-    expect(base.get('padding-block')).toBe(
-      'var(--cinder-space-12) calc(var(--cinder-space-12) + var(--cinder-space-2))',
-    );
-    const title = declarationsFor(
-      emptyStateCss,
-      ".cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-title",
-    );
-    expect(title.get('font-size')).toBe('var(--cinder-text-base)');
-  });
-
-  test('compact makes the Clear filters button small', () => {
-    const { getByRole } = render(EmptyState, {
-      props: { title: 'No matches', kind: 'filtered', size: 'compact', onClearFilters: () => {} },
-    });
-    expect(getByRole('button', { name: 'Clear filters' }).getAttribute('data-cinder-size')).toBe(
-      'sm',
-    );
-  });
-
-  test('an unknown size falls back to default', () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty', size: 'huge' as never } });
-    expect(rootOf(container)?.getAttribute('data-cinder-size')).toBe('default');
-  });
-});
-
-describe('EmptyState layout', () => {
-  test('is stacked by default, and a row marks the root', () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty' } });
-    expect(rootOf(container)?.hasAttribute('data-cinder-layout')).toBe(false);
-    cleanup();
-    const row = render(EmptyState, { props: { title: 'Empty', layout: 'row' } });
-    expect(rootOf(row.container)?.getAttribute('data-cinder-layout')).toBe('row');
-  });
-
-  test('a row puts the disc, the words and the action on one line, the action at the end', () => {
-    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
-    expect(root.get('display')).toBe('grid');
-    expect(root.get('grid-template-columns')).toBe('auto minmax(0, 1fr) auto');
-    expect(root.get('text-align')).toBe('start');
-    // A grouped list row's insets, so the action ends on the same edge as a list row's button
-    // (COR-2329: it ended 8px short).
-    expect(root.get('padding-inline')).toBe('var(--cinder-space-4) var(--cinder-space-2)');
-    const action = declarationsFor(
-      emptyStateCss,
-      ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
-    );
-    expect(action.get('grid-area')).toBe('action');
-    expect(action.get('justify-content')).toBe('flex-end');
-  });
-
-  test('a narrow row drops the action under the words, by its own width, not the viewport (COR-2394)', () => {
-    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
-    expect(root.get('container-type')).toBe('inline-size');
-    expect(root.get('container-name')).toBe('cinder-empty-state');
-    expect(emptyStateCss).not.toMatch(/@media[^{]*width/);
-    // 28rem: the action keeps the inline end whenever it has room beside the words, and a
-    // full-width row on a phone still drops it (actions at the inline end on wide layouts).
-    const narrow = (selector: string) =>
-      atRuleDeclarationsFor(
-        emptyStateCss,
-        'container',
-        'cinder-empty-state (max-width: 28rem)',
-        selector,
-      );
-    const withDisc = ".cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)";
-    const words = narrow(
-      `${withDisc} :is(.cinder-empty-state-title, .cinder-empty-state-description)`,
-    );
-    expect(words.get('grid-column')).toBe('2 / -1');
-    // A dropped action spans the whole row and ends on its trailing edge (trailing-edge actions
-    // everywhere, owner 2026-11-13), the edge a narrow ErrorState row ends its retry on.
-    const action = narrow(`${withDisc} .cinder-empty-state-action`);
-    expect(action.get('grid-column')).toBe('1 / -1');
-    expect(action.get('grid-row')).toBe('3');
-    const anyAction = narrow(
-      ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
-    );
-    expect(anyAction.get('justify-content')).toBe('flex-end');
-    expect(anyAction.get('margin-block-start')).toBe('var(--cinder-space-2)');
-  });
-
-  test('a row keeps its parts in reading order: disc, title, description, action', () => {
+describe('EmptyState parts', () => {
+  test('keeps its parts in reading order: disc, title, description, action', () => {
     const action = createRawSnippet(() => ({
-      render: () => '<a href="/reviews">Open Reviews</a>',
+      render: () => '<button type="button">Open Reviews</button>',
     }));
     const { container } = render(EmptyState, {
       props: {
         title: 'Nothing is waiting',
         description: 'Approvals show up here.',
         kind: 'done',
-        layout: 'row',
         action,
       },
     });
@@ -512,80 +422,125 @@ describe('EmptyState layout', () => {
     ]);
   });
 
-  test('an unknown layout falls back to stacked', () => {
-    const { container } = render(EmptyState, {
-      props: { title: 'Empty', layout: 'diagonal' as never },
+  test('draws the Clear filters button at the one button size', () => {
+    const { getByRole } = render(EmptyState, {
+      props: { title: 'No matches', kind: 'filtered', onClearFilters: () => {} },
     });
-    expect(rootOf(container)?.hasAttribute('data-cinder-layout')).toBe(false);
+    expect(
+      getByRole('button', { name: 'Clear filters' }).classList.contains('button-size-medium'),
+    ).toBe(true);
+  });
+});
+
+describe('EmptyState actions (one empty state everywhere, owner report 2026-11-19)', () => {
+  const plus = createRawSnippet(() => ({ render: () => '<svg data-testid="plus"></svg>' }));
+
+  test('draws its actions as buttons: the first primary, the rest secondary', async () => {
+    let pressed = 0;
+    const { container, getByRole } = render(EmptyState, {
+      props: {
+        title: 'No goals yet',
+        actions: [
+          { label: 'New goal', icon: plus, onclick: () => (pressed += 1) },
+          { label: 'Ask an agent', href: '/chats/new' },
+        ],
+      },
+    });
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'New goal',
+      'Ask an agent',
+    ]);
+    expect(buttons.every((button) => button.classList.contains('cinder-button'))).toBe(true);
+    expect(buttons[0]?.classList.contains('button-variant-primary')).toBe(true);
+    expect(buttons[1]?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(buttons[0]?.querySelector('[data-testid="plus"]')).not.toBeNull();
+    expect(getByRole('link', { name: 'Ask an agent' }).getAttribute('href')).toBe('/chats/new');
+    await fireEvent.click(getByRole('button', { name: 'New goal' }));
+    expect(pressed).toBe(1);
+  });
+
+  test('an external action opens its address in a new tab', () => {
+    const { getByRole } = render(EmptyState, {
+      props: {
+        title: 'No workers connected',
+        actions: [
+          { label: 'How to connect a worker', href: 'https://example.com', external: true },
+        ],
+      },
+    });
+    const link = getByRole('link', { name: 'How to connect a worker' });
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link.classList.contains('cinder-button')).toBe(true);
+  });
+
+  test('an action can choose its variant, and an inert one says why and presses nothing', async () => {
+    let pressed = 0;
+    const { getByRole, container } = render(EmptyState, {
+      props: {
+        title: 'No schedules yet',
+        actions: [
+          {
+            label: 'New schedule',
+            variant: 'secondary',
+            inertReason: 'You can’t create schedules',
+            onclick: () => (pressed += 1),
+          },
+        ],
+      },
+    });
+    const button = getByRole('button', { name: 'New schedule' });
+    expect(button.classList.contains('button-variant-secondary')).toBe(true);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    const reason = container.querySelector(`#${button.getAttribute('aria-describedby') ?? ''}`);
+    expect(reason?.textContent).toBe('You can’t create schedules');
+    await fireEvent.click(button);
+    expect(pressed).toBe(0);
+  });
+
+  test('puts the actions before the action snippet, and draws details under them', () => {
+    const action = createRawSnippet(() => ({ render: () => '<span data-testid="extra"></span>' }));
+    const children = createRawSnippet(() => ({ render: () => '<p data-testid="detail"></p>' }));
+    const { container } = render(EmptyState, {
+      props: {
+        title: 'No agents yet',
+        actions: [{ label: 'New agent' }],
+        action,
+        children,
+      },
+    });
+    const parts = [...(container.querySelector('.cinder-empty-state-action')?.children ?? [])];
+    expect(
+      parts.map((part) => part.textContent?.trim() || part.getAttribute('data-testid')),
+    ).toEqual(['New agent', 'extra']);
+    expect(
+      container.querySelector('.cinder-empty-state-details [data-testid="detail"]'),
+    ).not.toBeNull();
   });
 });
 
 describe('EmptyState restyle', () => {
-  test('disc is 48px, title is 16px semibold, the sentence holds 380px and the actions row is spaced', () => {
+  test('disc is 48px, title is 16px semibold, and the actions row is spaced', () => {
     const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');
     expect(disc.get('inline-size')).toBe('var(--cinder-space-12)');
     expect(disc.get('block-size')).toBe('var(--cinder-space-12)');
     const title = declarationsFor(emptyStateCss, '.cinder-empty-state-title');
     expect(title.get('font-size')).toBe('var(--cinder-text-lg)');
     expect(title.get('font-weight')).toBe('var(--cinder-font-semibold)');
-    const description = declarationsFor(emptyStateCss, '.cinder-empty-state-description');
-    expect(description.get('max-inline-size')).toBe('23.75rem');
     const action = declarationsFor(emptyStateCss, '.cinder-empty-state-action');
     expect(action.get('gap')).toBe('var(--cinder-space-2)');
     expect(action.get('flex-wrap')).toBe('wrap');
+    expect(action.get('justify-content')).toBe('flex-end');
+    expect(action.get('max-inline-size')).toBe('60ch');
   });
 
-  test('is centred in the height it is given, with 8px extra bottom padding for optical centre', () => {
-    const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
-    expect(base.get('justify-content')).toBe('center');
-    expect(base.get('min-block-size')).toBe('100%');
-  });
-});
-
-describe('EmptyState inline layout (COR-2018, row 73b)', () => {
-  test('is stacked by default and marks the root when inline', () => {
-    const { container } = render(EmptyState, { props: { title: 'Empty' } });
-    expect(rootOf(container)?.hasAttribute('data-cinder-layout')).toBe(false);
-    expect(container.querySelector('.cinder-empty-state-text')).toBeNull();
-    cleanup();
-    const inline = render(EmptyState, {
-      props: { title: 'No runs yet.', description: 'It will start soon.', layout: 'inline' },
-    });
-    expect(rootOf(inline.container)?.getAttribute('data-cinder-layout')).toBe('inline');
-  });
-
-  test('keeps the title and the sentence in one text block that the group is named by', () => {
+  test('names its group by the title', () => {
     const { container } = render(EmptyState, {
-      props: {
-        title: 'No runs yet.',
-        description: 'It will start soon.',
-        layout: 'inline',
-        size: 'compact',
-        headingLevel: 3,
-      },
+      props: { title: 'No runs yet.', description: 'It will start soon.', headingLevel: 3 },
     });
-    const text = container.querySelector('.cinder-empty-state-text');
-    expect(text?.querySelector('h3')?.textContent?.trim()).toBe('No runs yet.');
-    expect(text?.querySelector('p')?.textContent).toBe('It will start soon.');
-    const title = text?.querySelector('h3');
+    const title = container.querySelector('h3');
     expect(rootOf(container)?.getAttribute('aria-labelledby')).toBe(title?.id ?? null);
-  });
-
-  test('draws a 32px disc beside inline text, with no region padding', () => {
-    const disc = declarationsFor(
-      emptyStateCss,
-      ".cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-icon",
-    );
-    expect(disc.get('inline-size')).toBe('var(--cinder-space-8)');
-    expect(disc.get('block-size')).toBe('var(--cinder-space-8)');
-    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='inline']");
-    expect(root.get('flex-direction')).toBe('row');
-    expect(root.get('padding-inline')).toBe('0');
-    // It sits among rows, so it never stretches to fill the region around it.
-    expect(root.get('min-block-size')).toBe('0');
-    expect(emptyStateCss).toMatch(
-      /\.cinder-empty-state\[data-cinder-layout='inline'\] \.cinder-empty-state-title,\s*\.cinder-empty-state\[data-cinder-layout='inline'\] \.cinder-empty-state-description\s*\{[^}]*display: inline;/,
-    );
   });
 });
 
@@ -609,17 +564,6 @@ describe('EmptyState illustration slot (COR-2325)', () => {
   test('draws nothing extra without the slot', () => {
     const { container } = render(EmptyState, { props: { title: 'No runs yet' } });
     expect(container.querySelector('.cinder-empty-state-illustration')).toBeNull();
-  });
-
-  test('a row or an inline state keeps its disc and ignores the illustration', () => {
-    for (const layout of ['row', 'inline'] as const) {
-      const { container } = render(EmptyState, {
-        props: { title: 'No runs yet', kind: 'done', layout, illustration: picture },
-      });
-      expect(container.querySelector('.cinder-empty-state-illustration')).toBeNull();
-      expect(container.querySelector('.cinder-empty-state-icon')).not.toBeNull();
-      cleanup();
-    }
   });
 
   test('the stylesheet centres the picture and keeps it inside the region', () => {
@@ -667,28 +611,12 @@ describe('EmptyState details under the action (COR-2415)', () => {
     expect(none.container.querySelector('.cinder-empty-state-details')).toBeNull();
   });
 
-  test('a row or an inline state ignores them', () => {
-    for (const layout of ['row', 'inline'] as const) {
-      const { container } = render(EmptyState, {
-        props: { title: 'No runs yet', layout, children: steps },
-      });
-      expect(container.querySelector('.cinder-empty-state-details')).toBeNull();
-      cleanup();
-    }
-  });
-
-  test('the stylesheet gives them the full width under the action, a step apart, and draws no box', () => {
+  test('the stylesheet puts them under the action at the words’ measure, a step apart, and draws no box', () => {
     const details = declarationsFor(emptyStateCss, '.cinder-empty-state-details');
     expect(details.get('inline-size')).toBe('100%');
+    expect(details.get('max-inline-size')).toBe('60ch');
     expect(details.get('margin-block-start')).toBe('var(--cinder-space-4)');
-    // No measure of the description's, no border and no background of its own.
-    expect(details.has('max-inline-size')).toBe(false);
     expect(details.has('border')).toBe(false);
     expect(details.has('background')).toBe(false);
-    const compact = declarationsFor(
-      emptyStateCss,
-      ".cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-details",
-    );
-    expect(compact.get('margin-block-start')).toBe('var(--cinder-space-3)');
   });
 });

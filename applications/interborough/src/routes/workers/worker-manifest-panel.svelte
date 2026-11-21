@@ -72,20 +72,20 @@
     </div>
 
     <div class="weft-workers-panel">
-      <div class="weft-workers-panel__title">Capabilities</div>
-      <p class="weft-worker-manifest-panel__note">
-        Capability claims are descriptive and do not grant authorization. Routing eligibility
-        follows server manifest acceptance.
-      </p>
       {#if Object.keys(capabilities).length === 0}
+        <!-- The state alone, under no "Capabilities" title (owner report, 2026-11-19). -->
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={4}
           title="No capabilities advertised"
           description="This worker did not advertise any capabilities."
         />
       {:else}
+        <div class="weft-workers-panel__title">Capabilities</div>
+        <p class="weft-worker-manifest-panel__note">
+          Capability claims are descriptive and do not grant authorization. Routing eligibility
+          follows server manifest acceptance.
+        </p>
         <dl class="weft-worker-manifest-panel__capabilities">
           {#each Object.entries(capabilities).toSorted( ([left], [right]) => left.localeCompare(right) ) as [name, value] (name)}
             <div>
@@ -100,7 +100,6 @@
     {#if Object.keys(diagnostics.deploymentVersion.workflows).length === 0}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={3}
         title="No executable workflow contracts"
         description="The accepted manifest advertises no workflows."

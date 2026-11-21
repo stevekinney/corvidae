@@ -3,7 +3,7 @@
    * Home's Agent activity band (COR-2227): the newest three events of the Bureau's own feed (chats,
    * reviews, goals, schedules, hooks and plugins), worded through `bureau.events.format` in batches
    * of at most 200, newest first. An event no formatter claims, and every event of a format call
-   * that failed, reads in plain words with its raw kind on line two, with no banner or error.
+   * that failed, reads in plain words, with no banner or error.
    *
    * The band reads its window from the shell's Bureau source, which keeps the replay it held back
    * (`BureauEventSource.recent`): when the band opens on a source that has caught up, when the
@@ -62,7 +62,7 @@
   }
 </script>
 
-<HomeCard title={copy.title}>
+<HomeCard title={copy.title} bare={!failed && feed.ready && feed.shown.length === 0}>
   {#if failed}
     <HomeCardError title={HOME_COPY.states.cardFailed.bureauActivity} onRetry={tryAgain} />
   {:else if !feed.ready}
@@ -78,8 +78,7 @@
   {:else if feed.shown.length === 0}
     <EmptyState
       kind="first-use"
-      layout="row"
-      headingLevel={3}
+      headingLevel={2}
       title={copy.empty.title}
       description={copy.empty.description}
     >

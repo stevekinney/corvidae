@@ -63,7 +63,7 @@ async function focusPrimaryButton(page: Page): Promise<void> {
       const active = document.activeElement;
       return (
         active instanceof HTMLElement &&
-        active.matches(".cinder-button[data-cinder-variant='primary']") &&
+        active.matches('.cinder-button.button-variant-primary') &&
         active.matches(':focus-visible')
       );
     });
@@ -79,7 +79,7 @@ test.describe('alternate-theme — documented token overrides reach components',
   test('overriding --cinder-accent-solid reaches a primary Button background', async ({ page }) => {
     await page.goto(themeFixtureRoute, { waitUntil: 'load' });
 
-    const primarySelector = ".cinder-button[data-cinder-variant='primary']";
+    const primarySelector = '.cinder-button.button-variant-primary';
     const stock = await computed(page, primarySelector, 'background-color');
 
     await page.addStyleTag({ content: ALTERNATE_THEME });

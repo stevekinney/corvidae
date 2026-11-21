@@ -29,7 +29,7 @@ describe('ListDetail pane header with actions', () => {
     const { getByRole } = render(Harness, { props: { withActions: true } });
     const button = getByRole('button', { name: 'New chat' });
     expect(button.closest('.cinder-list-detail__header')).not.toBeNull();
-    expect(button.getAttribute('data-cinder-size')).toBe('xs');
+    expect(button.classList.contains('button-size-extra-small')).toBe(true);
     expect(button.hasAttribute('data-cinder-compact')).toBe(true);
   });
 
@@ -54,7 +54,7 @@ describe('ListDetail pane header with actions', () => {
     return css.text().then((text) => {
       const rule = declarationsFor(
         text,
-        ".cinder-list-detail__header .cinder-button[data-cinder-compact][data-cinder-variant='ghost']:not([data-cinder-icon-only])",
+        '.cinder-list-detail__header .cinder-button[data-cinder-compact].button-variant-ghost:not([data-cinder-icon-only])',
       );
       expect(rule.get('padding-inline')).toBe('var(--cinder-button-padding-x-sm)');
     });

@@ -1,9 +1,14 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
-  import type { ApprovalResolution, ApprovalState, CitationSource } from '@lostgradient/cinder';
+  import type {
+    ApprovalResolution,
+    ApprovalState,
+    CitationSource,
+    MarkdownNodeOverride,
+  } from '@lostgradient/cinder';
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Message, ToolCallPair } from '../conversation-model.ts';
-  import type { MarkdownNodeOverride, MessagePartOverride } from './chat-message-parts.ts';
+  import type { MessagePartOverride } from './chat-message-parts.ts';
   import type {
     ChatNotSent,
     MessageNoteInfo,

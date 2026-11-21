@@ -719,11 +719,11 @@ export function measureInPage(options: {
       : undefined;
   const wideLayout: NonNullable<InPageMeasurement['wideLayout']>[number][] = [];
   for (const node of shell.querySelectorAll<HTMLElement>(
-    '.message-content-wide, .tool-payload-code',
+    '.message-content-wide, [data-cinder-markdown-node], .tool-payload-code',
   )) {
     if (!isVisible(node)) continue;
     const frame =
-      node.querySelector<HTMLElement>('.message-markdown-table-frame, .cinder-code-block') ?? node;
+      node.querySelector<HTMLElement>('.cinder-markdown-table-frame, .cinder-code-block') ?? node;
     const frameBox = frame.getBoundingClientRect();
     const clippingAncestors: string[] = [];
     let ancestor = node.parentElement;
@@ -742,7 +742,7 @@ export function measureInPage(options: {
       ancestor = ancestor.parentElement;
     }
     const scroller = node.querySelector<HTMLElement>(
-      '.message-markdown-table-scroller, .cinder-code-block__viewport',
+      '.cinder-markdown-table-scroller, .cinder-code-block__viewport',
     );
     const scrollerBox = scroller?.getBoundingClientRect();
     const firstCell = scroller?.querySelector<HTMLElement>('tr > :first-child');
@@ -2558,10 +2558,8 @@ export const ACTION_ROW_SELECTORS: readonly string[] = [
   '.chat-question-stack > button[type="submit"]',
   '.chat-question-row > button[type="submit"]',
   '.chat-question-receipt > .cinder-button',
-  // A centred empty or error state keeps its centred action; the start-aligned, flat and row
-  // layouts end at the trailing edge.
-  '.cinder-empty-state[data-cinder-align="start"] .cinder-empty-state-action',
-  '.cinder-empty-state[data-cinder-layout="row"] .cinder-empty-state-action',
+  // A centred empty or error state keeps its centred action (an empty state has only that one
+  // layout); the flat and row error layouts end at the trailing edge.
   '.cinder-error-state[data-cinder-variant="flat"] .cinder-error-state-action',
   '.cinder-error-state[data-cinder-variant="row"] .cinder-error-state-action',
 ];

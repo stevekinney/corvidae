@@ -56,6 +56,8 @@ export type CliCommand =
       list: boolean;
       describe?: string;
       yes: boolean;
+      /** `--dry-run`: set `dryRun: true` on the operation's input. Absent is the same as `false`. */
+      dryRun?: boolean;
       help: boolean;
       json: boolean;
     }
@@ -129,6 +131,8 @@ export type CliCommand =
       profile?: string;
       type?: string;
       status?: string;
+      failedStep?: string;
+      retrying?: boolean;
       limit?: number;
       help: boolean;
       json: boolean;

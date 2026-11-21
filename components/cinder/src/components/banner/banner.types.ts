@@ -59,12 +59,13 @@ export type BannerProps = Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'cla
    */
   onRetry?: () => void;
   /**
-   * Label of the Retry button. A preset labels it "Retry now" unless this says otherwise.
-   * @default 'Retry'
+   * Label of the Retry button: "Try again", Cinder's one word for asking again (ErrorState's and
+   * LoadMore's too), with or without a preset, unless this says otherwise.
+   * @default 'Try again'
    */
   retryLabel?: string;
   /**
-   * How prominent the Retry button is. A preset makes it `primary` where Retry now is the way back
+   * How prominent the Retry button is. A preset makes it `primary` where Try again is the way back
    * (`stopped`) and `secondary` everywhere else, so one action at a time looks primary.
    */
   retryVariant?: 'primary' | 'secondary';

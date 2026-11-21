@@ -165,7 +165,7 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'the index from a context to its task ids, which every purge pass reads to find a run admitted after the delete began',
   ),
   kept(
-    'bureau-task-listing:v6:',
+    'bureau-task-listing:v7:',
     'a listing’s page snapshot of task views (ids, statuses, origins, and a failed task’s status message), which its page token outlives by fifteen minutes at most (TASK_LISTING_LIFETIME_MILLISECONDS) and the sweep then deletes',
   ),
   kept(
@@ -300,6 +300,10 @@ export const SHARED_KEY_FAMILIES_OF_A_CHAT: readonly ReservedKeyFamily[] = [
   purgedButUnexercised(
     'wf-finalizer-state:',
     'an engine-driven finalizer’s input: no chat of the class test writes it, and the engine’s purge deletes it by run id when one does',
+  ),
+  purgedButUnexercised(
+    'wf-retrying:',
+    'the activity a running workflow is retrying: written only while an activity is on its second attempt or later, and the engine’s purge deletes it by run id',
   ),
   purgedButUnexercised(
     'wf-teardown-needed:',

@@ -34,6 +34,15 @@ export type ListDetailSelectionLocation = {
   write: (parameter: string, key: string | null) => void;
 };
 
+/** How the selection changed, as `onSelectedKeyChange` reports it. */
+export type ListDetailSelectionChange = {
+  /**
+   * True when ListDetail chose the item itself (`openFirst` opening the first item, or the new first
+   * one after the open item left the list), false when the person or the address did.
+   */
+  automatic: boolean;
+};
+
 /** The slice of `Storage` that ListDetail uses to remember the divider width. */
 export type ListDetailStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -110,20 +119,53 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   header?: Snippet;
   /**
-   * Opens the first item when none is open and the panes sit side by side, so the detail beside the
-   * list is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while
-   * the component shows one pane at a time (below `pushBelow`): there the list is where it starts.
+   * Opens the first item drawn when none is open and the panes sit side by side, so the detail beside
+   * the list is never empty: the first row on screen, after the host's filter, search and sort, which
+   * for a table that sorts its own rows is not always `items[0]`. An item named by the URL, or by
+   * `selectedKey`, wins, and one that names nothing in the list shows `notFound` rather than the
+   * first item. When the open item leaves the list (a filter hides it), the new first item opens
+   * (see `reopenFirst`), and when the list empties the selection is cleared. Nothing opens while the
+   * component shows one pane at a time or one above the other (below `pushBelow` or `stackBelow`):
+   * there the list is where it starts. An item it opens is reported to `onSelectedKeyChange` as
+   * `automatic`, and focus stays where it was.
    * @default false
    */
   openFirst?: boolean;
+  /**
+   * With `openFirst`, whether the new first item opens when the open one, which the list showed,
+   * leaves it. Turn it off for a host that says in the open item's place that it left (a review the
+   * agent moved on from) and offers the way on itself; `notFound` is drawn there instead.
+   * @default true
+   */
+  reopenFirst?: boolean;
+  /**
+   * With `openFirst`, drawn in the detail pane when the open key names nothing in the list: a link
+   * to an item that was removed, or one the list never had. It receives the key. A default message
+   * (`notFoundTitle`, `notFoundDescription`) is shown when omitted.
+   */
+  notFound?: Snippet<[key: string]>;
+  /**
+   * Title of the default not-found detail, used when `notFound` is omitted.
+   * @default 'Not found'
+   */
+  notFoundTitle?: string;
+  /**
+   * Description of the default not-found detail, used when `notFound` is omitted.
+   * @default 'This item is not in the list. It may have been removed.'
+   */
+  notFoundDescription?: string;
   /**
    * Key of the open item, or `null` when none is open. Bindable. When it is `null` on mount, the
    * item named by the URL's search parameter opens.
    * @default null
    */
   selectedKey?: string | null;
-  /** Called with the new key when an item opens, and with `null` when the selection is cleared. */
-  onSelectedKeyChange?: (key: string | null) => void;
+  /**
+   * Called with the new key when an item opens, and with `null` when the selection is cleared. The
+   * second argument says whether ListDetail chose it (`openFirst`) rather than the person, so a host
+   * that navigates on a change replaces the history entry for it instead of adding one.
+   */
+  onSelectedKeyChange?: (key: string | null, change: ListDetailSelectionChange) => void;
   /**
    * Name of the search parameter that holds the open item's key. Pass `null` to keep the
    * selection out of the URL.

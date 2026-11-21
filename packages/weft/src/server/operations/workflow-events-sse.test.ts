@@ -250,6 +250,7 @@ describe('weft.workflows.events.sse', () => {
     expect(await response.json()).toEqual({
       error: 'unknown operation: weft.workflows.events.sse',
       data: { method: 'weft.workflows.events.sse' },
+      retryable: false,
     });
     expect(feed.subscribeCalls).toEqual([]);
   });
@@ -283,7 +284,7 @@ describe('weft.workflows.events.sse', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid cursor' });
+    expect(await response.json()).toEqual({ error: 'Invalid cursor', retryable: false });
     expect(feed.subscribeCalls).toEqual([]);
   });
 
@@ -300,6 +301,7 @@ describe('weft.workflows.events.sse', () => {
     expect(response.status).toBe(406);
     expect(await response.json()).toEqual({
       error: 'Accept header must include text/event-stream',
+      retryable: false,
     });
   });
 
@@ -461,6 +463,7 @@ describe('weft.workflows.events.sse', () => {
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({
       error: 'maximum stream connections per workflow exceeded',
+      retryable: false,
     });
     expect(feed.subscribeCalls.length).toBe(0);
   });
@@ -485,7 +488,7 @@ describe('weft.workflows.events.sse', () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
     expect(releaseCount).toBe(1);
   });
 });

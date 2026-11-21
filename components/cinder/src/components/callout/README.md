@@ -58,7 +58,7 @@ Callout is the single notice in Cinder's chat surfaces: one box, one layout, and
   {#snippet icon()}<TriangleAlert size={16} />{/snippet}
   Connection lost. Trying again in 8 s.
   {#snippet progress()}<Progress value={40} max={100} size="sm" ariaLabel="Next try" />{/snippet}
-  {#snippet action()}<Button size="sm" variant="secondary" label="Retry now" />{/snippet}
+  {#snippet action()}<Button size="sm" variant="secondary" label="Try again" />{/snippet}
 </Callout>
 ```
 

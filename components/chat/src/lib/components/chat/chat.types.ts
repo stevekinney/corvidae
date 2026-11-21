@@ -1,4 +1,8 @@
-import type { ApprovalResolution, CitationSource } from '@lostgradient/cinder';
+import type {
+  ApprovalResolution,
+  CitationSource,
+  MarkdownNodeOverride,
+} from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { HTMLAttributes } from 'svelte/elements';
@@ -27,7 +31,7 @@ import type {
 import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
-import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
+import type { MessagePartOverride } from './message/chat-message-parts.ts';
 import type { ChatTurnLabels } from './message/turn-labels.ts';
 import type { ChatTurnState } from './message/turn-state.ts';
 import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';

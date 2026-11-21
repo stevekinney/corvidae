@@ -356,24 +356,29 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('first use is the only primary Connect tools, and it opens Connect tools (32a)', async ({
-      page,
-    }) => {
+    test('first use offers Connect tools in the header and empty state (32a)', async ({ page }) => {
       await sourcesAre(page, () => []);
       await open(page, width, '/capabilities?tab=sources');
       await expect(
         page.getByRole('heading', { level: 2, name: copy.source.empty.title }),
       ).toBeVisible();
-      await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveCount(1);
-      await expect(page.locator('main [data-cinder-variant="primary"]')).toHaveText(
+      const connect = page
+        .getByRole('main')
+        .getByRole('button', { name: copy.source.connect.action });
+      await expect(connect).toHaveCount(2);
+      await expect(page.locator('main .cinder-page-header .button-variant-primary')).toHaveText(
         copy.source.connect.action,
       );
+      const emptyConnect = page
+        .locator('main .cinder-empty-state')
+        .getByRole('button', { name: copy.source.connect.action });
+      await expect(emptyConnect).toContainClass('button-variant-primary');
       await captureForDesignReview(page, {
         route: '/capabilities',
         state: 'sources first use',
         source: SOURCE,
       });
-      await page.locator('main [data-cinder-variant="primary"]').click();
+      await emptyConnect.click();
       await expect(page).toHaveURL(/\/capabilities\/connect$/);
     });
 
@@ -742,7 +747,8 @@ test.describe('/capabilities tool page, on a dark system', () => {
       .getByTestId('tool-input-schema')
       .locator(".cinder-schema-view__source pre.shiki span[style*='--shiki-dark']");
     await expect(tokens.first()).toBeVisible();
-    // Each token is drawn in a colour other than the light one Shiki wrote inline beside its dark one.
+    // Each token is drawn in a colour other than the light one Shiki wrote beside its dark one. Shiki
+    // writes both as variables (`--shiki-light`, `--shiki-dark`), and `light-dark()` picks one.
     const mismatches = await tokens.evaluateAll((spans) => {
       const probe = document.createElement('span');
       document.body.append(probe);
@@ -751,7 +757,7 @@ test.describe('/capabilities tool page, on a dark system', () => {
         return getComputedStyle(probe).color;
       };
       const wrong = spans.flatMap((span) => {
-        const light = span.style.color;
+        const light = span.style.getPropertyValue('--shiki-light').trim();
         const dark = span.style.getPropertyValue('--shiki-dark').trim();
         if (light === '' || dark === '' || resolve(light) === resolve(dark)) return [];
         const drawn = getComputedStyle(span).color;

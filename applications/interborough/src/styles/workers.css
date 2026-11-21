@@ -81,12 +81,11 @@
 /* Worker list / detail (T5.2, design rows 20c and 19a)                   */
 /* ---------------------------------------------------------------------- */
 
-/* The list and the open worker, edge to edge like Chat. */
+/* The list and the open worker, flat on the page like Chat: no box around them, and ListDetail's
+ * divider the one line between them. */
 .weft-workers-frame {
   block-size: max(28rem, calc(100dvh - 18rem));
   min-inline-size: 0;
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
   overflow: hidden;
 }
 

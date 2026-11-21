@@ -162,7 +162,7 @@ describe('a new chat with a model agent and a provider', () => {
     expect(footer(container).querySelector('#weft-chat-effort')).not.toBeNull();
     expect(footer(container).querySelector('#weft-chat-permission')).not.toBeNull();
     const agent = container.querySelector<HTMLElement>('.chat-input-header #weft-chat-agent')!;
-    expect(agent.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(agent.classList.contains('select-variant-ghost')).toBe(true);
     expect(agent.textContent).toContain('Tool runner');
     // The avatar spells the agent's identifier.
     expect(agent.querySelector('.ib-agent-select__avatar')?.textContent?.trim()).toBe('TR');

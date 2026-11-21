@@ -241,7 +241,7 @@ describe('a run of a workflow file the engine does not hold', () => {
     expect(view.queryByText('No workflow found')).toBeNull();
     const lineage = view.getByTestId('run-lineage');
     expect(lineage.textContent).toContain("An agent's tool call");
-    expect(lineage.textContent).toContain('assistant');
+    expect(lineage.textContent).toContain('Assistant');
     expect(lineage.querySelector('a')?.getAttribute('href')).toBe(
       router.href('/runs/calling-run-1'),
     );
@@ -321,7 +321,7 @@ describe('a run the engine holds', () => {
     await waitFor(() => expect(jsonRpcMethodsCalled()).toContain('bureau.workflows.runs.get'));
     const lineage = await view.findByTestId('run-lineage');
     await waitFor(() => expect(lineage.textContent).toContain("An agent's tool call"));
-    expect(lineage.textContent).toContain('assistant');
+    expect(lineage.textContent).toContain('Assistant');
     expect(lineage.querySelector('a')?.getAttribute('href')).toBe(
       router.href('/runs/calling-run-1'),
     );

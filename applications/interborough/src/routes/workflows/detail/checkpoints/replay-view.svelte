@@ -51,7 +51,6 @@
   {#if gate.disabled}
     <EmptyState
       kind="first-use"
-      size="compact"
       title={RUN_CHECKPOINTS_COPY.replayLockedTitle}
       description={gate.title ?? ''}
     />
@@ -66,7 +65,6 @@
     {:else if replayQuery.data === null}
       <EmptyState
         kind="first-use"
-        size="compact"
         title={RUN_CHECKPOINTS_COPY.replayNoneTitle}
         description={RUN_CHECKPOINTS_COPY.replayNoneDescription(step)}
       />

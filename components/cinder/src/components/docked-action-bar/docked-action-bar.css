@@ -101,7 +101,13 @@
    * height without a cross-component custom property, which the variable-ownership contract
    * forbids. */
   @media (pointer: coarse) {
-    .cinder-docked-action-bar .cinder-button[data-cinder-size],
+    .cinder-docked-action-bar
+      .cinder-button:is(
+        .button-size-extra-small,
+        .button-size-small,
+        .button-size-medium,
+        .button-size-large
+      ),
     .cinder-docked-action-bar .cinder-input.cinder-input {
       min-height: var(--cinder-touch-target-min);
     }
@@ -130,7 +136,13 @@
       min-inline-size: 0;
     }
 
-    .cinder-docked-action-bar .cinder-button[data-cinder-size],
+    .cinder-docked-action-bar
+      .cinder-button:is(
+        .button-size-extra-small,
+        .button-size-small,
+        .button-size-medium,
+        .button-size-large
+      ),
     .cinder-docked-action-bar .cinder-input.cinder-input {
       min-height: var(--cinder-touch-target-min);
     }

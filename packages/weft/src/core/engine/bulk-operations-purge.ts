@@ -1,9 +1,9 @@
 import {
-  type BatchOperation,
-  type Storage as WeftStorage,
   encodeStorageKeyComponent,
   storageHas,
   storageKeys,
+  type BatchOperation,
+  type Storage as WeftStorage,
 } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
@@ -53,7 +53,7 @@ export async function purgeInternal(
   parameters: PurgeParameters,
   cleanupWaiters: CleanupWaiters,
 ): Promise<PurgeResult> {
-  const { effectiveLimit, manualOffset } = resolvePurgeWindow(internals, filter, parameters.limit);
+  const { effectiveLimit, manualOffset } = resolvePurgeWindow(filter, parameters.limit);
 
   if (effectiveLimit === 0) return { deleted: 0 };
 
@@ -87,8 +87,7 @@ export async function purgeInternal(
   return { deleted };
 }
 
-function resolvePurgeWindow(
-  _internals: EngineInternals,
+export function resolvePurgeWindow(
   filter: ListFilter | undefined,
   fallbackLimit: number | undefined,
 ): { effectiveLimit: number | undefined; manualOffset: number } {
@@ -121,7 +120,7 @@ function resolvePurgeLimit(
   return Math.min(manualLimit, fallbackLimit);
 }
 
-async function shouldPurgeWorkflowState(
+export async function shouldPurgeWorkflowState(
   internals: EngineInternals,
   state: WorkflowState,
   expiredOnly: boolean,
@@ -374,6 +373,7 @@ function buildBaseWorkflowDeleteKeys(state: WorkflowState): Set<string> {
     // explicitly, else a purge + id reuse leaves a stale marker that would make
     // recovery re-provision services for a run that never had them.
     KEYS.workflowHasServices(state.id),
+    KEYS.activityRetrying(state.id), // `wf-retrying:{id}` (COR-2529) is under no purge prefix below.
     // The finalizer payload (`wf-finalizer-state:`) and the teardown-owed marker
     // (`wf-teardown-needed:`) live under their own prefixes, not `wf:{id}:`, so the
     // prefix sweep below misses them — delete them explicitly. Purge only reaches a

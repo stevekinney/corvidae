@@ -2,7 +2,7 @@
  * The browser-safe client entry: the catalog client factory, its transport seam and error, the
  * JSON-RPC HTTP transport, the subscription client and its Server-Sent Events transport, and the
  * chunk parser. It imports no Bun or Node API
- * and no handler or registry module, so a browser bundle that imports it carries none of them.
+ * and the HTTP and SSE transports can also be bundled independently of the in-process dispatcher.
  *
  * @module client
  */
@@ -18,6 +18,11 @@ export {
   type JsonRpcCallResult,
   type JsonRpcErrorObject,
 } from './catalog-client.ts';
+export {
+  inProcessCatalogTransport,
+  inProcessSubscriptionTransport,
+  type InProcessTransportOptions,
+} from './in-process-transport.ts';
 export {
   callJsonRpc,
   httpJsonRpcTransport,

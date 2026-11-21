@@ -101,3 +101,9 @@ A brief holds five to eight items, each with the file it touches. Seven workers 
 - Run long captures and checks from the coordinator, in the background, where they cost it almost no context.
 
 A worker watches what it starts. A test stuck in a synchronous loop never reaches the hang guard, which runs inside the test's own process: one such test grew to 144 GB, almost all of it compressed, in 13 minutes, and `ps -o rss` showed 3 GB. `top -l 1 -o mem -n 5 -stats pid,mem,cpu,command` lists the largest processes by physical footprint, which counts compressed memory.
+
+## Unused code inventory
+
+`bun run knip` checks both test-inclusive and production reachability. The production scan excludes colocated test, benchmark, and fixture source. The test-inclusive scan includes Bun test files, browser fixture and end-to-end specs, and directly runnable benchmarks. Browser specs are explicit entries because their Playwright configurations require provisioned test infrastructure. Component fixture manifests are test-only entries because the browser fixture server discovers them by filename. Workspace manifests supply package exports, executables, and commands, including root and release scripts. The Interborough release builder compiles the CLI, and the supervisor spawns the development and server entrypoints. Generated component inputs are prepared by the ordinary root workflow before scanning.
+
+Each accepted baseline entry identifies one category, file, and symbol. The report directory under `test-output/knip/` holds the fresh raw findings and the retained rows. A new finding fails the check. `bun run knip --production` writes a production-only report and preserves the scanner exit status. Inspect the owning manifest, runtime registrations, and external export obligations before deleting a candidate. Test-only reachability and the absence of a static consumer are evidence for investigation.

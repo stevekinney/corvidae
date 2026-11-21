@@ -419,11 +419,9 @@ export type { DurationFieldProps, DurationUnit } from './components/duration-fie
 
 export { default as EmptyState } from './components/empty-state/index.ts';
 export type {
-  EmptyStateAlign,
+  EmptyStateAction,
   EmptyStateKind,
-  EmptyStateLayout,
   EmptyStateProps,
-  EmptyStateSize,
 } from './components/empty-state/index.ts';
 
 export { default as ErrorState } from './components/error-state/index.ts';
@@ -623,6 +621,13 @@ export type { WeekScheduleDay, WeekScheduleProps } from './components/week-sched
 export { default as MapMarker } from './components/map-marker/index.ts';
 export type { MapMarkerProps, MapMarkerState } from './components/map-marker/index.ts';
 
+export { default as Markdown, preloadMarkdownPipeline } from './components/markdown/index.ts';
+export type {
+  MarkdownNode,
+  MarkdownNodeOverride,
+  MarkdownProps,
+} from './components/markdown/index.ts';
+
 export { default as MapLegend } from './components/map-legend/index.ts';
 export type { MapLegendItem, MapLegendProps } from './components/map-legend/index.ts';
 
@@ -657,6 +662,7 @@ export type {
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,
+  ListDetailSelectionChange,
   ListDetailSelectionLocation,
   ListDetailShortcut,
   ListDetailStorage,

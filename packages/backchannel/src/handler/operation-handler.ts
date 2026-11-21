@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ScopeVocabulary } from '../authorization-scope.ts';
 
 import type { AuthContext } from '../authentication.ts';
 import type { DiscoveryInfo } from '../discovery-info.ts';
@@ -15,6 +16,8 @@ import {
   executeOperation,
   executeSubscription,
   type FaultPolicy,
+  type OperationHostFactory,
+  type OperationInterceptor,
   type OperationRegistry,
   type RegistrableOperation,
 } from '../operation-catalog.ts';
@@ -71,18 +74,21 @@ export type OperationHandlerOptions<Host> = {
    */
   readonly operations: ReadonlyArray<RegistrableOperation<NoInfer<Host>>>;
   /** Delivered as `host` to every `invoke` and `authorize` call. */
-  readonly host: Host;
+  readonly host: Host | OperationHostFactory<Host>;
+  /** Interceptors that wrap each authorized invocation in registration order. */
+  readonly interceptors?: readonly OperationInterceptor[];
   /**
    * Resolves the caller. Omitted, every request is anonymous and only
    * `public` operations pass. See `createOperationHandlerAuthenticator` for
    * Weft's API-key and JWT schemes, including package `additionalScopes`.
    *
    * A host with exactly one caller, such as an embedded single-user app, can
-   * admit every request as the `unauthenticated-local` principal, which holds
-   * every built-in scope, as `serve()` with no `auth` does:
-   * `authenticate: async () => unauthenticatedLocalAuthContext()`.
+   * admit every request as the `unauthenticated-local` principal using
+   * `authenticate: async () => unauthenticatedLocalAuthContext(vocabulary)`.
    */
   readonly authenticate?: OperationHandlerAuthenticate;
+  /** Vocabulary for fallback principals when an authenticator returns only claims. */
+  readonly scopeVocabulary?: ScopeVocabulary;
   /** Same validation and defaults as `ServeOptions.cors`; omitted means no CORS headers. */
   readonly cors?: CorsOptions;
   /** Adapters that claim a path prefix ahead of catalog routing. */
@@ -244,6 +250,15 @@ function normalizedPathname(request: Request): string {
  * ```
  */
 export function createOperationHandler<Host>(
+  options: Omit<OperationHandlerOptions<Host>, 'host'> & {
+    readonly host: OperationHostFactory<Host>;
+  },
+): OperationHandler;
+/** Build a catalog handler with a host value or a per-dispatch factory. */
+export function createOperationHandler<Host>(
+  options: OperationHandlerOptions<Host>,
+): OperationHandler;
+export function createOperationHandler<Host>(
   options: OperationHandlerOptions<Host>,
 ): OperationHandler {
   assertPositiveInteger(options.maxRequestBodyBytes, 'maxRequestBodyBytes');
@@ -251,6 +266,7 @@ export function createOperationHandler<Host>(
   const authenticate = options.authenticate;
   const registry = createOperationRegistry<Host>(options.operations, {
     faultPolicy: options.faultPolicy,
+    interceptors: options.interceptors,
   });
   assertSubscriptionsAcceptFromCursor(registry);
   const mounts = resolveMounts(options.mounts ?? []);
@@ -280,13 +296,13 @@ export function createOperationHandler<Host>(
       if (outcome instanceof Response) return outcome;
       authContext = outcome;
     }
-    const principal = authContextToPrincipal(authContext);
+    const principal = authContextToPrincipal(authContext, options.scopeVocabulary);
     const revalidate = createWorkspaceRevalidation(authenticate, request, principal);
 
     const mount = mounts.match(pathname);
     if (mount !== undefined) {
       return guardWorkspaceResponse(
-        await mount.fetch(request, mountContext(registry, options.host, principal)),
+        await mount.fetch(request, mountContext(registry, options.host, principal, request.signal)),
         revalidate,
       );
     }
@@ -331,7 +347,7 @@ export function createOperationHandler<Host>(
       if (outcome instanceof Response) return false;
       authContext = outcome;
     }
-    const principal = authContextToPrincipal(authContext);
+    const principal = authContextToPrincipal(authContext, options.scopeVocabulary);
     const revalidateWorkspace = createWorkspaceRevalidation(authenticate, request, principal);
     return server.upgrade(request, {
       data: {
@@ -384,9 +400,10 @@ function mountContext(
   registry: OperationRegistry,
   host: unknown,
   principal: Principal,
+  signal: AbortSignal,
 ): OperationHandlerMountContext {
   const contextFor = (options: OperationHandlerMountDispatchOptions | undefined) =>
-    ({ principal, host, transport: options?.transport ?? 'http-rest', registry }) as const;
+    ({ principal, host, transport: options?.transport ?? 'http-rest', registry, signal }) as const;
   return {
     principal,
     operations: registry.list(),

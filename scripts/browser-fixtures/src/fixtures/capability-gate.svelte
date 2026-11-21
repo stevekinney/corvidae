@@ -15,10 +15,10 @@
   ];
 </script>
 
-<div style="display: flex; flex-direction: column; gap: var(--cinder-space-4); max-width: 28rem;">
+<div class="example-frame gap-4">
   {#if needsAction}
     <CapabilityGate feature="Microphone" state={capabilityState}>
-      <p style="font-size: var(--cinder-text-base); color: var(--cinder-text-muted); margin: 0;">
+      <p class="paragraph text-muted">
         Microphone access is needed for voice input. Your audio is never stored or shared.
       </p>
 
@@ -45,7 +45,7 @@
     <CapabilityGate feature="Microphone" state={capabilityState} />
   {/if}
 
-  <div style="display: flex; gap: var(--cinder-space-2); flex-wrap: wrap;">
+  <div class="example-layout gap-2">
     {#each states as s (s)}
       <Button
         size="sm"
@@ -59,3 +59,21 @@
     {/each}
   </div>
 </div>
+
+<style>
+  .example-frame {
+    display: flex;
+    flex-direction: column;
+    max-width: 28rem;
+  }
+
+  .paragraph {
+    font-size: var(--cinder-text-base);
+    margin: 0;
+  }
+
+  .example-layout {
+    display: flex;
+    flex-wrap: wrap;
+  }
+</style>

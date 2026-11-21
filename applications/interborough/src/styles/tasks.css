@@ -37,12 +37,18 @@
   margin-block-start: var(--cinder-space-6);
 }
 
+/* The rail's blocks are Cinder Sections, spaced as the main column's are: a margin on each block
+ * after the first in place of a gap, which would add to the margin Cinder puts between two
+ * Sections (COR-2489: the rail's Sections sat 44px apart). */
 .ib-run__rail {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-3);
   inline-size: 100%;
   min-width: 0;
+}
+
+.ib-run__rail > * + * {
+  margin-block-start: var(--cinder-space-6);
 }
 
 /* Beside the sections, the rail holds its place while the page scrolls past it. */
@@ -52,17 +58,6 @@
     position: sticky;
     inset-block-start: var(--cinder-space-4);
   }
-}
-
-.ib-run__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
-  min-width: 0;
-}
-
-.ib-run__panels {
-  gap: var(--cinder-space-4);
 }
 
 .ib-run__actions {
@@ -91,10 +86,22 @@
   font-size: var(--cinder-text-sm);
 }
 
-.ib-run__heading-2 {
-  margin: 0;
-  font-size: var(--cinder-text-md);
-  font-weight: 600;
+/* "Delivered to chat." and Show raw payloads share a line when it fits. When the button wraps it
+   starts its own line with its words on the text edge: the row is pulled back by the button's
+   inline padding and 1px border, and the note pushed in by the same amount, so the wrapped button's
+   label lands where the note starts and the button following the note keeps its padding as the gap
+   (COR-2489 design round). */
+.ib-run__delivered {
+  --_ib-run-delivered-pull: calc(var(--cinder-button-padding-x-sm) + 1px);
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-inline-start: calc(-1 * var(--_ib-run-delivered-pull));
+}
+
+.ib-run__delivered > .ib-run__note {
+  padding-inline-start: var(--_ib-run-delivered-pull);
 }
 
 .ib-run__heading-3 {

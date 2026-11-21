@@ -152,7 +152,7 @@
       />
     {/if}
     {#if text === null}
-      <EmptyState kind="first-use" size="compact" headingLevel={3} title={copy.noText} />
+      <EmptyState kind="first-use" headingLevel={3} title={copy.noText} />
     {:else}
       <section class="ib-workflow-source" aria-label={copy.fileHeading}>
         <div class="ib-workflow-source__file">
@@ -198,7 +198,6 @@
       {:else if unavailable}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={3}
           title={copy.unavailableTitle}
           description={copy.unavailableDescription}

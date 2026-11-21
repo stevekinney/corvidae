@@ -21,7 +21,10 @@ describe('the chat page’s layout', () => {
 
   test('the outlet pads neither the list nor the conversation, so the list is flush to the rail and the top bar', async () => {
     const css = await read('./foundation.css');
-    const rule = ruleOf(css, ".weft-shell-outlet[data-width='panes']");
+    const rule = ruleOf(
+      css,
+      ".weft-shell-outlet[data-width='panes']:not(:has([data-chat-first-use]))",
+    );
     expect(rule).toMatch(/padding:\s*0;/);
     // Keyed on the outlet's own attribute, set from the route on the first frame; a descendant that
     // appears once the page's code has loaded changed the padding after the panes first measured,

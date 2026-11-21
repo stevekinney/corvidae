@@ -294,7 +294,7 @@ test('searches every event in the picker by its words, its kind, and its area', 
   }
 });
 
-test('opens from the sidebar and from g then h', async ({ page }) => {
+test('opens from the sidebar and from g then k', async ({ page }) => {
   await page.goto('/chats');
   await page
     .getByRole('navigation', { name: 'Views' })
@@ -303,8 +303,10 @@ test('opens from the sidebar and from g then h', async ({ page }) => {
   await expect(page).toHaveURL(/\/hooks$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
 
-  await page.goto('/chats');
-  await page.getByRole('heading', { level: 1 }).first().waitFor();
+  // Press the shortcut once the departure view is ready. Chat can still be opening a transcript
+  // after its list heading renders, holding browser input longer than the chord window.
+  await page.goto('/agents');
+  await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
   await page.keyboard.press('g');
   await page.keyboard.press('k');
   await expect(page).toHaveURL(/\/hooks$/);
@@ -913,7 +915,7 @@ for (const width of WIDTHS) {
     // R10-04: the switch and a secondary small Duplicate button; no More actions menu, no Delete.
     await expect(head.getByRole('switch')).toBeVisible();
     const duplicate = head.getByRole('button', { name: defaults.duplicate, exact: true });
-    await expect(duplicate).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(duplicate).toContainClass('button-variant-secondary');
     // R10-05: drawn no taller than 36 px, with the 44 pixel hit area Cinder gives a compact button
     // (the page asks for size sm; Cinder draws it as its compact size).
     await expect(duplicate).toHaveAttribute('data-cinder-hit-target', '44');
@@ -1262,7 +1264,7 @@ test('[plugin-hook-secret-missing] /hooks/:hook: a chosen key that is Missing is
     source: SOURCE,
   });
   await warning.getByRole('button', { name: HOOKS_COPY.secrets.addKey, exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Save slack-signing-key' });
+  const dialog = page.getByRole('dialog', { name: 'Save Slack signing key' });
   await dialog.getByLabel('Value').fill('a-secret-the-page-never-shows');
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(dialog).toHaveCount(0);

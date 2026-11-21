@@ -74,6 +74,7 @@ export const CHAT_COPY = {
   },
   /** The chat list beside the open chat. */
   list: {
+    description: 'Your conversations with agents, newest first.',
     /** The accessible name of the pane that holds the open chat. */
     detailLabel: 'Open chat',
     /** The toggle that hides the list beside the open chat, and shows it again (COR-2327). */

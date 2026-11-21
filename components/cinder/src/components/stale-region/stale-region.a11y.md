@@ -8,7 +8,7 @@ Complete this record before merge. Automated checks can detect malformed APIs, m
 - Review outcome: Final review complete—approved.
 - Nearest neighbours: Banner, Button (`loading`), Form field `disabled`.
 - Why this component exists: A page that cannot reach its server keeps the data it has, so the controls that change something have to turn off together, for one reason, without dimming the data. Native `disabled` removes a control from the tab order and says nothing about why; `opacity` on a wrapper drops the data below 4.5:1. The region publishes one fact (the data is old) and one reason, and each opted-in control turns itself `aria-disabled`, keeps focus and points at the reason.
-- Findings and resolutions: Controls opt in with `mutating` rather than the region scanning the DOM, so reads (links, filters, tabs, Retry now) can never be switched off by accident and the inert state reaches each control's own press handling. The wrapper takes no box (`display: contents`) and its stylesheet declares no `opacity`, `filter` or colour, so the old data is drawn exactly as the live data is.
+- Findings and resolutions: Controls opt in with `mutating` rather than the region scanning the DOM, so reads (links, filters, tabs, Try again) can never be switched off by accident and the inert state reaches each control's own press handling. The wrapper takes no box (`display: contents`) and its stylesheet declares no `opacity`, `filter` or colour, so the old data is drawn exactly as the live data is.
 
 ## Novel interaction accessibility review
 

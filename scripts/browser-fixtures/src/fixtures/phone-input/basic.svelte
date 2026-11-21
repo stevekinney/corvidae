@@ -11,5 +11,5 @@
 <PhoneInput id={fieldId} bind:value={phone} label="Phone number" />
 
 {#if phone}
-  <p style="margin-top: var(--cinder-space-3); color: var(--cinder-text-muted);">E.164: {phone}</p>
+  <p class="margin-block-start-3 text-muted">E.164: {phone}</p>
 {/if}

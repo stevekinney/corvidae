@@ -16,7 +16,6 @@
   import { untrack, type Snippet } from 'svelte';
 
   import {
-    Button,
     DataList,
     EmptyState,
     ListDetail,
@@ -78,7 +77,8 @@
   });
 
   let filter = $state('');
-  // The detail finds the open worker among every worker, so a filter that hides its row leaves it open.
+  // The list is handed the filtered workers, so "first" follows the filter: a filter that hides the
+  // open worker opens the new first one, and one that hides every worker closes it (COR-2445).
   const ordered = $derived(orderWorkers(workers));
   const shown = $derived(ordered.filter((worker) => matchesWorkerFilter(worker, filter)));
 
@@ -96,12 +96,11 @@
 
 <div class="weft-workers-frame" data-shortcut-region="list-detail">
   <ListDetail
-    items={ordered}
+    items={shown}
     key={(worker: WorkerSummary) => worker.id}
     label={copy.list.title}
     detailLabel={copy.list.detailLabel}
-    emptyTitle={copy.list.pickTitle}
-    emptyDescription={copy.list.pickDescription}
+    openFirst
     selectionParameter="worker"
     {selectionLocation}
     bind:selectedKey
@@ -123,8 +122,8 @@
     {#snippet listBody({ selectedKey: openKey })}
       {#if shown.length === 0}
         <EmptyState
+          class="ib-workers__empty"
           kind={filter.trim() === '' ? 'first-use' : 'filtered'}
-          size="compact"
           headingLevel={3}
           title={filter.trim() === ''
             ? copy.list.emptyTitle
@@ -165,31 +164,18 @@
         </DataList>
       {/if}
     {/snippet}
+    <!-- A worker the address names that the list does not hold (closed, or never here). -->
+    {#snippet notFound()}
+      <EmptyState
+        kind="first-use"
+        headingLevel={2}
+        title={copy.list.closedTitle}
+        description={copy.list.closedDescription}
+        actions={[{ label: copy.list.backToList, variant: 'secondary', onclick: backToList }]}
+      />
+    {/snippet}
     {#snippet empty()}
-      {#if selectedKey !== null}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={copy.list.closedTitle}
-          description={copy.list.closedDescription(selectedKey)}
-        >
-          {#snippet action()}
-            <Button
-              variant="secondary"
-              size="sm"
-              label={copy.list.backToList}
-              onclick={backToList}
-            />
-          {/snippet}
-        </EmptyState>
-      {:else}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={copy.list.pickTitle}
-          description={copy.list.pickDescription}
-        />
-      {/if}
+      <!-- The list already shows the empty state. -->
     {/snippet}
     {#snippet detail(worker)}
       {#snippet tasksOf()}{@render queueTasks(worker)}{/snippet}
@@ -208,6 +194,11 @@
 </div>
 
 <style>
+  :global(.ib-workers__empty) {
+    /* Leave room for the divider's 44px hit area. */
+    padding-inline: var(--cinder-density-pad-inline) var(--cinder-space-6);
+  }
+
   .ib-workers__head {
     display: flex;
     flex-direction: column;

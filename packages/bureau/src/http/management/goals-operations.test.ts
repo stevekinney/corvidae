@@ -608,6 +608,7 @@ describe('a validator configuration (COR-2117)', () => {
           ],
           weftCode: 'InvalidParams',
           httpStatus: 400,
+          retryable: false,
         },
       },
       id: 1,

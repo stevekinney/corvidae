@@ -64,6 +64,7 @@ test.describe('Settings › General', () => {
       'Models',
       'Allowed models',
       'A2A',
+      'MCP',
       'Plugins',
       'Data and retention',
       'API reference',
@@ -781,9 +782,8 @@ test.describe('Settings › General, the Embedder row', () => {
     await expect(dialog).toContainText(
       'The 3 memories embedded so far are thrown away. Search keeps using Text hashing, and nothing else changes.',
     );
-    await expect(dialog.getByRole('button', { name: 'Cancel switch' })).toHaveAttribute(
-      'data-cinder-variant',
-      'danger',
+    await expect(dialog.getByRole('button', { name: 'Cancel switch' })).toContainClass(
+      'button-variant-danger',
     );
     await captureEmbedder(page, 'embedder-cancel-confirm');
     await dialog.getByRole('button', { name: 'Keep switching' }).click();
@@ -928,7 +928,7 @@ test.describe('Settings › General, the Embedder row', () => {
     );
     await captureEmbedder(page, 'embedder-needs-setup');
     await embedderRow(page).getByRole('button', { name: 'Add the key' }).click();
-    await expect(page.getByRole('dialog', { name: 'Save gemini-api-key' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Save Gemini API key' })).toBeVisible();
   });
 
   test('embedder-dimension-changed: the vectors are another size, and Embed again asks to embed every memory again', async ({

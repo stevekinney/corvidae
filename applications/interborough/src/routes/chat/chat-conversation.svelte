@@ -2169,7 +2169,7 @@
     <div class="weft-chat-head cinder-translucent-surface" bind:this={head}>
       <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
          contrast, and the shared restart preset says what is happening above the heading (row 20e):
-         no action while the restart is asked for, Retry now once the host stopped answering. A
+         no action while the restart is asked for, Try again once the host stopped answering. A
          restart that never came back is the shared failed dialog below (`RestartDialog`). -->
       {#if restart.running}
         <Banner

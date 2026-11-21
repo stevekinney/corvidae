@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Restarting, reconnecting and failed';
   export const description =
-    'The state takes over the page and cannot be dismissed (here Restarting closes itself after three seconds, as the page would when the host answers): the host is not answering, so the page behind it would show nothing true. restarting lists the steps, reconnecting counts the attempts (backing off 1, 2, 4, 8 s) with Retry now, and failed says what to check, how to start the host again with a Copy button, and offers Keep waiting. There is no restart-again action, because the route that restarts lives on the host that is not answering.';
+    'The state takes over the page and cannot be dismissed (here Restarting closes itself after three seconds, as the page would when the host answers): the host is not answering, so the page behind it would show nothing true. restarting lists the steps, reconnecting counts the attempts (backing off 1, 2, 4, 8 s) with Try again, and failed says what to check, how to start the host again with a Copy button, and offers Keep waiting. There is no restart-again action, because the route that restarts lives on the host that is not answering.';
 </script>
 
 <script lang="ts">

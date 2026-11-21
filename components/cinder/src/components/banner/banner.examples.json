@@ -18,7 +18,7 @@
     {
       "id": "unreachable",
       "title": "Unreachable preset",
-      "description": "The server is down: the preset writes the sentence, the absolute as-of time, the countdown and Retry now.",
+      "description": "The server is down: the preset writes the sentence, the absolute as-of time, the countdown and Try again.",
       "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/cinder';\n\n  let loadedAt = new Date(Date.now() - 120_000);\n  let seconds = $state(4);\n</script>\n\n<Banner\n  preset=\"unreachable\"\n  dataUpdatedAt={loadedAt}\n  retryInSeconds={seconds}\n  attempt={3}\n  onRetry={() => (seconds = 4)}\n/>\n"
     },
     {

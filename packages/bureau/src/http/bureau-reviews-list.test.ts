@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-1828 — `bureau.reviews.list` as one inbox: pending or resolved, Bureau and engine items in one
  * ordered list across pages, a page token bound to its filters, engine items only for a caller who
@@ -36,11 +37,11 @@ const authenticate = createOperationHandlerAuthenticator(
       const held = Object.hasOwn(KEYS, key) ? KEYS[key as keyof typeof KEYS] : undefined;
       return held === undefined
         ? null
-        : principalFromApiKey({ subject: held.subject, scopes: held.scopes as never });
+        : principalFromApiKey({ subject: held.subject, scopes: held.scopes });
     },
     auditSink: () => undefined,
   },
-  { additionalScopes: BUREAU_SCOPES },
+  { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
 );
 
 async function call(

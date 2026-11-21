@@ -47,7 +47,6 @@
   {:else if diagnostics.length === 0 && rejections.length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
       headingLevel={3}
       title="No manifest diagnostics"
       description="No accepted worker manifests or recent admission rejections are available."
@@ -58,16 +57,15 @@
       <span><strong>{rejections.length}</strong> recent admission rejections</span>
     </div>
 
-    <h3>Same-build comparison</h3>
     {#if comparisons.length === 0}
       <EmptyState
         kind="done"
-        size="compact"
-        headingLevel={4}
+        headingLevel={3}
         title="Nothing to compare"
         description="No two connected workers claim the same deployment and build identifier."
       />
     {:else}
+      <h3>Same-build comparison</h3>
       <ul class="weft-manifest-comparison-list">
         {#each comparisons as comparison (`${comparison.deploymentName}:${comparison.buildId}`)}
           <li class="weft-manifest-comparison-row">
@@ -89,16 +87,15 @@
       </ul>
     {/if}
 
-    <h3>Recent admission rejections</h3>
     {#if rejections.length === 0}
       <EmptyState
         kind="done"
-        size="compact"
-        headingLevel={4}
+        headingLevel={3}
         title="No rejections"
         description="No recent registration attempt was rejected."
       />
     {:else}
+      <h3>Recent admission rejections</h3>
       <Table caption="Recent worker admission rejections" scrollable>
         <Table.Header>
           <Table.Row>

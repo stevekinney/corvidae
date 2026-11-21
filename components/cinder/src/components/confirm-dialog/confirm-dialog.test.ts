@@ -268,7 +268,7 @@ describe('ConfirmDialog', () => {
       },
     });
     const [, confirmBtn] = footerButtons(container);
-    expect(confirmBtn.getAttribute('data-cinder-variant')).toBe('danger');
+    expect(confirmBtn.classList.contains('button-variant-danger')).toBe(true);
   });
 
   test('destructive=false uses primary variant for the confirm button', () => {
@@ -282,7 +282,7 @@ describe('ConfirmDialog', () => {
       },
     });
     const [, confirmBtn] = footerButtons(container);
-    expect(confirmBtn.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(confirmBtn.classList.contains('button-variant-primary')).toBe(true);
   });
 
   test('onConfirm fires and dialog closes when confirm is clicked', async () => {

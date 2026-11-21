@@ -97,7 +97,7 @@ function bothArms(tokenName: string): { light: Oklch; dark: Oklch } {
  * different mix TARGETS and different percentages:
  *
  *   --cinder-surface-hover: light-dark(
- *     color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%),
+ *     color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 7%),
  *     color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 2.5%)
  *   );
  *
@@ -255,7 +255,7 @@ describe('light mode anchors at white', () => {
   test('the page canvas stays a light page, not a slate plate', () => {
     // The regression this file exists to prevent. `--cinder-surface-canvas` is the single
     // largest painted area in any light-mode screen; at 0.921 it read as a pale
-    // slate plate. Since 2026-11-15 it is a light grey page under white panels (0.976);
+    // slate plate. Since 2026-11-15 it is a light grey page under white panels (0.971);
     // anything below ~0.97 stops reading as a light page.
     expect(tiers.bg.L).toBeGreaterThanOrEqual(0.97);
   });
@@ -290,13 +290,13 @@ describe('light mode anchors at white', () => {
   });
 
   test('the surface separates from the canvas by fill', () => {
-    // 1.000 - 0.976 = 0.024, so a white panel reads off the page without a hairline.
+    // 1.000 - 0.971 = 0.029, so a white panel reads off the page without a hairline.
     expect(tiers.surface.L - tiers.bg.L).toBeGreaterThanOrEqual(0.015);
   });
 
   test('the well separates from the surface and the canvas by fill alone', () => {
     // A sunken region has no shadow to fall back on, so its fill has to do the work unaided:
-    // 1.000 - 0.955 = 0.045 below the surface, 0.976 - 0.955 = 0.021 below the canvas.
+    // 1.000 - 0.955 = 0.045 below the surface, 0.971 - 0.955 = 0.016 below the canvas.
     expect(tiers.surface.L - tiers.inset.L).toBeGreaterThanOrEqual(0.015);
     expect(tiers.bg.L - tiers.inset.L).toBeGreaterThanOrEqual(0.015);
   });
@@ -304,9 +304,10 @@ describe('light mode anchors at white', () => {
 
 describe('the dark arm is the neutral COR-2308 ladder', () => {
   // The dark arm builds UP from near-black, where a fill-carried ramp is the right model.
-  // COR-2308 took the navy out of it (hue 245, chroma about 0.04): every resting tier is now
-  // hue 265 at chroma 0.014 or less. The inset sits between the surface and raised, so a code
-  // header or a table band steps up from the surface it sits on.
+  // COR-2308 took the navy out of it (hue 245, chroma about 0.04), and COR-2489 (owner decision
+  // 2026-11-16, more colour) gave half of it back as an indigo tint: every resting tier is hue 265
+  // at chroma 0.02 to 0.03. The inset sits between the surface and raised, so a code header or a
+  // table band steps up from the surface it sits on.
   const expected = {
     '--cinder-surface-canvas': 0.145,
     '--cinder-surface': 0.185,
@@ -319,9 +320,10 @@ describe('the dark arm is the neutral COR-2308 ladder', () => {
       expect(bothArms(token).dark.L).toBeCloseTo(lightness, 5);
     });
 
-    test(`${token} dark arm is neutral (hue 265, chroma at most 0.014)`, () => {
+    test(`${token} dark arm is indigo-tinted (hue 265, chroma 0.02 to 0.03)`, () => {
       expect(bothArms(token).dark.H).toBe(265);
-      expect(bothArms(token).dark.C).toBeLessThanOrEqual(0.014);
+      expect(bothArms(token).dark.C).toBeGreaterThanOrEqual(0.02);
+      expect(bothArms(token).dark.C).toBeLessThanOrEqual(0.03);
     });
   }
 

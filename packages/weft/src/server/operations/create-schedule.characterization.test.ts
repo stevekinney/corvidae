@@ -58,7 +58,10 @@ describe('create-schedule — validation precedence', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Missing required field: type' });
+    expect(await response.json()).toEqual({
+      error: 'Missing required field: type',
+      retryable: false,
+    });
   });
 
   // --- adjacent pair: cronExpression before id ---
@@ -72,6 +75,7 @@ describe('create-schedule — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Missing required field: cronExpression or every',
+      retryable: false,
     });
   });
 
@@ -89,7 +93,10 @@ describe('create-schedule — validation precedence', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Field "id" must be a non-empty string' });
+    expect(await response.json()).toEqual({
+      error: 'Field "id" must be a non-empty string',
+      retryable: false,
+    });
   });
 
   // --- adjacent pair: overlap before backfill ---
@@ -108,6 +115,7 @@ describe('create-schedule — validation precedence', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "overlap" must be one of skip, queue, cancel-running, allow',
+      retryable: false,
     });
   });
 
@@ -125,7 +133,10 @@ describe('create-schedule — validation precedence', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Field "backfill" must be a boolean' });
+    expect(await response.json()).toEqual({
+      error: 'Field "backfill" must be a boolean',
+      retryable: false,
+    });
   });
 
   // --- engine-level interval validation reaches the REST boundary as 400 ---
@@ -161,6 +172,9 @@ describe('create-schedule — validation precedence', () => {
       { operationRegistry: registry, restBindings: bindings },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Missing required field: type' });
+    expect(await response.json()).toEqual({
+      error: 'Missing required field: type',
+      retryable: false,
+    });
   });
 });

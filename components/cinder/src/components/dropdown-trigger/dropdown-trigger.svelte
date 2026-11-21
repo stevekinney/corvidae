@@ -10,7 +10,13 @@
     isStaleInert,
     mergeDescribedBy,
   } from '../../_internal/stale-region-context.ts';
+  import {
+    getActionEmphasisContext,
+    resolveActionSize,
+    resolveActionVariant,
+  } from '../../_internal/action-emphasis-context.ts';
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
+  import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import type { ButtonSize, ButtonVariant } from '../button/button.types.ts';
   import {
@@ -22,6 +28,7 @@
   let {
     class: customClassName,
     caretVisible = true,
+    iconOnly = false,
     variant,
     size,
     mutating = false,
@@ -60,14 +67,27 @@
   // A split button: inside a ButtonGroup the trigger is drawn as a Button, and takes the variant
   // and size of the Button beside it unless the page sets its own, so the two halves read as one
   // control. Outside a group it keeps its own bordered face unless the page asks for a variant.
+  //
+  // Inside a header's actions (COR-2489) the trigger is drawn as a Button at the row's compact
+  // size, as every Button there is, so a menu beside 24px buttons is not a 32px pill; without a
+  // variant of its own it takes `secondary`, the bordered face it has outside a header.
   const buttonGroup = getButtonGroupContext();
+  const actionEmphasis = getActionEmphasisContext();
+  const compact = $derived(actionEmphasis?.compact === true);
   type SiblingLook = { variant: ButtonVariant | undefined; size: ButtonSize | undefined };
   let siblingLook = $state<SiblingLook>({ variant: undefined, size: undefined });
   const drawsAsButton = $derived(
-    buttonGroup !== undefined || variant !== undefined || size !== undefined,
+    buttonGroup !== undefined || variant !== undefined || size !== undefined || compact,
   );
-  const resolvedVariant = $derived(variant ?? siblingLook.variant ?? 'soft');
-  const resolvedSize = $derived(size ?? siblingLook.size ?? 'md');
+  const resolvedVariant = $derived(
+    resolveActionVariant(
+      actionEmphasis,
+      variant ?? siblingLook.variant ?? (compact ? 'secondary' : 'soft'),
+    ),
+  );
+  const resolvedSize = $derived(
+    resolveActionSize(actionEmphasis, size ?? siblingLook.size ?? 'md'),
+  );
 
   /** The variant and size of the Button next to this trigger's Dropdown in its group. */
   function readSiblingLook(node: HTMLButtonElement): SiblingLook {
@@ -77,9 +97,13 @@
         ? neighbour
         : neighbour?.querySelector('.cinder-button:not(.cinder-dropdown-trigger)');
       if (!(button instanceof HTMLElement)) continue;
+      const variantClass = [...button.classList].find((name) => name.startsWith('button-variant-'));
+      const siblingSize = Object.entries(CONTROL_SIZE_NAMES).find(([, name]) =>
+        button.classList.contains(`button-size-${name}`),
+      )?.[0] as ButtonSize | undefined;
       return {
-        variant: button.dataset['cinderVariant'] as ButtonVariant | undefined,
-        size: button.dataset['cinderSize'] as ButtonSize | undefined,
+        variant: variantClass?.slice('button-variant-'.length) as ButtonVariant | undefined,
+        size: siblingSize,
       };
     }
     return { variant: undefined, size: undefined };
@@ -110,9 +134,16 @@
 <button
   {@attach attachTrigger}
   type="button"
-  class={classNames('cinder-dropdown-trigger', drawsAsButton && 'cinder-button', customClassName)}
-  data-cinder-variant={drawsAsButton ? resolvedVariant : undefined}
-  data-cinder-size={drawsAsButton ? resolvedSize : undefined}
+  class={classNames(
+    'cinder-dropdown-trigger',
+    drawsAsButton && 'cinder-button',
+    drawsAsButton && `button-variant-${resolvedVariant}`,
+    drawsAsButton && `button-size-${CONTROL_SIZE_NAMES[resolvedSize]}`,
+    customClassName,
+  )}
+  data-cinder-compact={compact ? '' : undefined}
+  data-cinder-hit-target={compact ? '44' : undefined}
+  data-cinder-icon-only={iconOnly ? '' : undefined}
   style={mergedStyle}
   aria-haspopup="menu"
   aria-expanded={context.isOpen}

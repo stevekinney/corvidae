@@ -117,12 +117,12 @@ describe('R4: stopped', () => {
     expect(
       getByRole('button', { name: 'Discard' }).getAttribute('aria-describedby'),
     ).not.toBeNull();
-    expect(getByRole('button', { name: 'Continue' }).getAttribute('data-cinder-variant')).toBe(
-      'primary',
-    );
-    expect(getByRole('button', { name: 'Discard' }).getAttribute('data-cinder-variant')).toBe(
-      'secondary',
-    );
+    expect(
+      getByRole('button', { name: 'Continue' }).classList.contains('button-variant-primary'),
+    ).toBe(true);
+    expect(
+      getByRole('button', { name: 'Discard' }).classList.contains('button-variant-secondary'),
+    ).toBe(true);
     expect(card?.querySelector('.cinder-callout__action')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Continue' }));
@@ -187,9 +187,9 @@ describe('R5: failed partway', () => {
     expect(block?.getAttribute('data-kind')).toBe('failed');
     const alert = block?.querySelector('.cinder-callout');
     expect(alert?.getAttribute('data-cinder-variant')).toBe('danger');
-    expect(getByRole('button', { name: 'Retry' }).getAttribute('data-cinder-variant')).toBe(
-      'secondary',
-    );
+    expect(
+      getByRole('button', { name: 'Retry' }).classList.contains('button-variant-secondary'),
+    ).toBe(true);
     expect(alert?.textContent).toContain('This answer is incomplete.');
     expect(
       block?.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),

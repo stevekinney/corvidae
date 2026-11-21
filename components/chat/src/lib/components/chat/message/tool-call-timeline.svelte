@@ -28,13 +28,13 @@
     Spinner,
     Tooltip,
     type ApprovalState,
+    type MarkdownNodeOverride,
   } from '@lostgradient/cinder';
   import { stringify } from '../../../utilities/stringify.ts';
   import { toolResultText } from '../../../utilities/tool-result-text.ts';
   import type { ToolCallPair } from '../conversation-model.ts';
   import type { ToolCallPresentation } from '../utilities/types.ts';
   import { formatToolCallProse } from '../utilities/utilities.ts';
-  import type { MarkdownNodeOverride } from './chat-message-parts.ts';
   import MessageContent from './message-content.svelte';
   import RetryButton from './retry-button.svelte';
   import ToolPayloadCode from './tool-payload-code.svelte';

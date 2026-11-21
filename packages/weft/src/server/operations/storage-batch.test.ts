@@ -60,7 +60,10 @@ describe('storage REST batch operations', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Request body must be valid JSON.' });
+    expect(await response.json()).toEqual({
+      error: 'Request body must be valid JSON.',
+      retryable: false,
+    });
   });
 
   it('rejects raw storage batches above MAX_BATCH_OPERATIONS before applying writes', async () => {
@@ -93,6 +96,7 @@ describe('storage REST batch operations', () => {
           },
         ],
       },
+      retryable: false,
     });
     expect(await rawStorage.get('oversized:0')).toBeNull();
   });
@@ -199,6 +203,7 @@ describe('storage REST batch operations', () => {
           },
         ],
       },
+      retryable: false,
     });
     expect(await rawStorage.get('should-not-write')).toBeNull();
   });
@@ -244,6 +249,7 @@ describe('storage REST batch operations', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Storage batch operation value must be base64.',
+      retryable: false,
     });
   });
 
@@ -266,6 +272,7 @@ describe('storage REST batch operations', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Storage conditional batch expectedValue must be base64.',
+      retryable: false,
     });
   });
 });

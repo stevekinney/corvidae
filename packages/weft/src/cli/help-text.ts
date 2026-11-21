@@ -54,7 +54,7 @@ weft api - Inspect and invoke catalog operations on a running server
 Usage:
   weft api --list [options]
   weft api --describe <operation-name> [options]
-  weft api <operation-name> [--input <json> | --input-file <path|->] [options]
+  weft api <operation-name> [--input <json> | --input-file <path|->] [--dry-run] [options]
 
 Options:
       --server <url>       Server URL (default: WEFT_ADDR, profile, run lockfile, or localhost)
@@ -65,6 +65,8 @@ Options:
       --list               List catalog operations
       --describe <name>    Print one operation's schema and metadata
       --yes                Confirm destructive operations without prompting
+      --dry-run            Set dryRun: true on the input, to preview an operation whose input has
+                           that field (it needs no --yes); a usage error for one that does not
   -j, --json               Emit machine-readable JSON output
   -h, --help               Show this help message
 
@@ -212,7 +214,7 @@ export const WORKFLOW_HELP_TEXT = `
 weft workflow - List, inspect, start, signal, and cancel workflows on a server
 
 Usage:
-  weft workflow ls [--type <type>] [--status <status>] [--limit <n>] [options]
+  weft workflow ls [--type <type>] [--status <status>] [--failed-step <step>] [--retrying] [--limit <n>] [options]
   weft workflow get <workflow-id> [options]
   weft workflow events <workflow-id> [options]
   weft workflow start <workflow-type> [--input <json> | --input-file <path|->] [--id <id>] [options]
@@ -225,12 +227,14 @@ Options:
       --profile <name>     Profile from ~/.weft/config
       --type <type>        (ls) Filter by workflow type
       --status <status>    (ls) Filter by workflow status
+      --failed-step <step> (ls) Only failed workflows that stopped at the step with this label
+      --retrying           (ls) Only running workflows that are retrying an activity
       --limit <n>          (ls) Maximum number of rows
       --input <json>       (start/signal) JSON input payload
       --input-file <path>  (start/signal) Read JSON input from a file, or '-' for stdin
       --id <id>            (start) Explicit workflow id
   -y, --yes                (cancel) Confirm without prompting
-      --dry-run            (cancel) Print affected count without cancelling
+      --dry-run            (cancel) Ask the server whether the workflow can be cancelled, without cancelling
   -j, --json               Emit machine-readable output (NDJSON for lists)
   -q, --quiet              Print ids only / suppress success text
   -h, --help               Show this help message
@@ -241,6 +245,7 @@ Exit codes:
   2   Connection error
   3   Usage or input error
   4   Operation unavailable on this server (version skew)
+  5   (cancel --dry-run) The workflow was not found
 `;
 
 export const TAIL_HELP_TEXT = `

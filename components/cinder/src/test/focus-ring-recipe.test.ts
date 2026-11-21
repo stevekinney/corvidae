@@ -917,14 +917,14 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
       name: 'Button primary',
       source: css('../components/button/button.css'),
       selector:
-        ".cinder-button[data-cinder-variant='primary']:focus-visible:not(:disabled):not( [aria-disabled='true']:not([data-cinder-loading]) )",
+        ".cinder-button.button-variant-primary:focus-visible:not(:disabled):not( [aria-disabled='true']:not([data-cinder-loading]) )",
       expected: FILLED_BOX_SHADOW,
     },
     {
       name: 'Button danger',
       source: css('../components/button/button.css'),
       selector:
-        ".cinder-button[data-cinder-variant='danger']:focus-visible:not(:disabled):not( [aria-disabled='true']:not([data-cinder-loading]) )",
+        ".cinder-button.button-variant-danger:focus-visible:not(:disabled):not( [aria-disabled='true']:not([data-cinder-loading]) )",
       expected: FILLED_BOX_SHADOW,
     },
     {

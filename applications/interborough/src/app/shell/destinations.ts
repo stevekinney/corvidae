@@ -81,6 +81,15 @@ export const DESTINATIONS: readonly Destination[] = [
 ];
 
 /**
+ * The icon the sidebar shows for `view`, which a list page's empty state shows too, so a page and
+ * its navigation item are one picture (owner report, 2026-11-19). A view with no sidebar entry has
+ * none.
+ */
+export function destinationIcon(view: ViewName): typeof Workflow | undefined {
+  return DESTINATIONS.find((destination) => destination.view === view)?.icon;
+}
+
+/**
  * One page a plugin adds to the sidebar (COR-2213): a `page` placement that names a `sidebar` entry.
  * It sits in its declared group after that group's built-in destinations, in the order the host
  * lists panels, with its allowlisted icon (`plugin-icons.ts`), and it has no `letter`: a plugin

@@ -7,11 +7,11 @@
  * place: its first use is the list's own empty state (`chat-list.spec.ts`).
  *
  * Home (COR-2016, rows 01y to 02b, 13c to 13j, 14c to 14j) is the first-run checklist on this host
- * too: three steps under a welcome line with Recent chats empty, then, as the third case connects
- * the provider, makes the agent and says hello, two steps left, one step left, and the overview
- * once a chat has happened. This host lists no Assistant (the demo plugin, which contributes it, is
- * off by default), so it offers none: no "Use Assistant", and "Start a chat" opens New chat to pick
- * an agent. The captioned states that name Assistant are on the sample world (`home.spec.ts`).
+ * too: three steps alone under one heading, then, as the third case connects the provider, makes
+ * the agent and says hello, the steps done one by one, and the overview once a chat has happened.
+ * This host lists no Assistant (the demo plugin, which contributes it, is off by default), so it
+ * offers none: no "Use Assistant", and "Start a chat" waits on the earlier steps until an agent can
+ * answer, then opens New chat to pick an agent. The captioned states that name Assistant are on the sample world (`home.spec.ts`).
  *
  * The cases run in file order and each builds on the host the one before left: the first two leave
  * it as they found it, the third connects the provider, creates the agent and says hello. Nothing
@@ -20,7 +20,6 @@
 import type { Page } from '@playwright/test';
 
 import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
-import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
@@ -63,17 +62,15 @@ for (const width of [375, 1280] as const) {
         'An agent is a model with instructions and tools. Create one, or add a plugin that provides some.',
       ),
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(page.getByRole('link', { name: 'New agent' })).toContainClass(
+      'button-variant-primary',
     );
     await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
       'href',
       '/agents/new',
     );
-    await expect(page.getByRole('link', { name: 'Browse agents' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    await expect(page.getByRole('link', { name: 'Browse agents' })).toContainClass(
+      'button-variant-secondary',
     );
     // There is nothing to send to, so no composer, and the checklist belongs to Home.
     await expect(page.getByRole('textbox')).toHaveCount(0);
@@ -122,21 +119,20 @@ const homeChecklist = (page: Page) => page.getByTestId('home-first-run');
 const homeSteps = (page: Page) => homeChecklist(page).locator('.cinder-steps__item');
 
 for (const width of [375, 1280] as const) {
-  test(`Home on a fresh installation is the Get started checklist under a welcome line at ${width} pixels (01y, 01z, 13c, 13d, 13f, 13h, 14c, 14d)`, async ({
+  // Owner, 2026-11-19: the steps alone, under one heading and one sentence.
+  test(`Home on a fresh installation is the checklist alone under one heading at ${width} pixels (01y, 01z, 13c, 13d, 13f, 13h, 14c, 14d)`, async ({
     page,
     checkA11y,
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
     await expect(homeChecklist(page)).toBeVisible();
-    await expect(page.getByTestId('home-date')).toHaveText(
-      'Welcome. Three steps to your first chat.',
-    );
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toHaveClass(
-      /cinder-sr-only/,
-    );
-    await expect(page.getByRole('heading', { level: 2, name: 'Get started' })).toBeVisible();
-    await expect(homeChecklist(page)).toContainText('0 of 3 done');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Set up Interborough' }),
+    ).toBeVisible();
+    await expect(page.getByTestId('home-date')).toHaveCount(0);
+    await expect(page.getByText('Get started', { exact: true })).toHaveCount(0);
+    await expect(homeChecklist(page)).not.toContainText('of 3 done');
     const steps = homeSteps(page);
     await expect(steps).toHaveCount(3);
     await expect(steps.nth(0)).toContainText('Connect a provider');
@@ -148,37 +144,25 @@ for (const width of [375, 1280] as const) {
     await expect(steps.nth(1)).not.toContainText('Assistant');
     await expect(steps.nth(1)).toContainText('An agent is a model with instructions and tools.');
     await expect(steps.nth(2)).toContainText('Say hello');
-    await expect(steps.nth(2)).toContainText('Send a first message to see a chat run end to end.');
-    // Step 1's button is the only primary one; Use Assistant is the quiet link.
-    await expect(
-      homeChecklist(page).locator('.cinder-button[data-cinder-variant="primary"]'),
-    ).toHaveText(['Connect a provider']);
-    await expect(steps.nth(1).getByRole('link', { name: 'Create an agent' })).toHaveAttribute(
-      'data-cinder-variant',
-      'secondary',
+    // No agent can answer yet, so step 3 waits on step 1, held, by the readiness rule every New
+    // chat entry point reads (owner, 2026-11-19).
+    await expect(steps.nth(2)).toContainText('Waits for step 1: connect a provider first.');
+    // Step 1's button is the only primary one.
+    await expect(homeChecklist(page).locator('.cinder-button.button-variant-primary')).toHaveText([
+      'Connect a provider',
+    ]);
+    await expect(steps.nth(1).getByRole('link', { name: 'Create an agent' })).toContainClass(
+      'button-variant-secondary',
     );
-    // No Assistant is listed here, so none is offered; step 3 is live all the same.
+    // No Assistant is listed here, so none is offered.
     await expect(steps.nth(1).getByRole('button', { name: 'Use Assistant' })).toHaveCount(0);
-    const start = steps.nth(2).getByRole('link', { name: 'Start a chat' });
-    await expect(start).toHaveAttribute('data-cinder-variant', 'secondary');
-    await expect(start).not.toHaveAttribute('aria-disabled', 'true');
-    await expect(start).toHaveAttribute('href', '/chats/new');
-    // The counts, Needs you, the composer and the provider row are not drawn, and no banner says it.
+    await expect(steps.nth(2).getByRole('link', { name: 'Start a chat' })).toHaveCount(0);
+    await expect(steps.nth(2).getByRole('button', { name: 'Start a chat' })).toBeDisabled();
+    // Only the steps: no counts, Needs you, composer, Needs attention or Recent chats, no banner.
     await expect(page.getByTestId('home-counts')).toHaveCount(0);
-    await expect(page.locator('[data-home-card="Needs you"]')).toHaveCount(0);
+    await expect(page.locator('[data-home-card]')).toHaveCount(0);
     await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
-    await expect(page.locator('[data-home-card="Needs attention"]')).toHaveCount(0);
     await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
-    // Below the checklist, Recent chats is a compact empty state with a chat disc.
-    const recent = page.locator('[data-home-card="Recent chats"]');
-    await expect(recent.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
-    await expect(recent).toContainText('Your chats appear here once you send a first message.');
-    await expect(recent.locator('.cinder-empty-state-icon svg')).toBeVisible();
-    await expect(recent.getByRole('link', { name: 'All chats' })).toHaveCount(0);
-    const checklistBox = await homeChecklist(page).boundingBox();
-    const recentBox = await recent.boundingBox();
-    expect(checklistBox!.y + checklistBox!.height).toBeLessThan(recentBox!.y);
-    if (width >= 1024) expect(checklistBox!.width).toBeLessThan(recentBox!.width);
     await captureForDesignReview(page, {
       route: '/',
       state: 'first run, host without Assistant',
@@ -188,11 +172,15 @@ for (const width of [375, 1280] as const) {
   });
 }
 
-test('Home’s step 3 is live while steps 1 and 2 are open (02a, 13g, 14c)', async ({ page }) => {
+// Owner, 2026-11-19: a step that cannot be done yet is shown as waiting on the earlier step, not as
+// an active button. This host lists no agent that can answer without a provider.
+test('Home’s step 3 waits on step 1 while no agent can answer (02a, 13g, 14c)', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
-  await homeSteps(page).nth(2).getByRole('link', { name: 'Start a chat' }).click();
-  await expect(page).toHaveURL(/\/chats\/new$/);
+  await expect(homeChecklist(page)).toHaveAttribute('data-chat-waits-on', 'needs-provider');
+  await expect(homeSteps(page).nth(2).getByRole('button', { name: 'Start a chat' })).toBeDisabled();
 });
 
 for (const width of [1280, 375] as const) {
@@ -303,27 +291,17 @@ test('each step completes from its own signal, from connecting a provider to say
   await expect(page).toHaveURL(/\/agents\/new$/);
   await expect(page.getByRole('textbox', { name: /^Name/ })).toBeVisible();
 
-  // Home skips to step 2 once a provider holds a key, and the composer comes back (14e, 14j).
+  // Home skips to step 2 once a provider holds a key (14e, 14j); with no agent yet, step 3 waits on
+  // step 2.
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
-  await expect(page.getByTestId('home-date')).toHaveText('Welcome. Two steps left.');
-  await expect(homeChecklist(page)).toContainText('1 of 3 done');
   await expect(homeSteps(page).nth(0)).toContainText('Anthropic is connected.');
   await expect(
     homeSteps(page).nth(1).getByRole('link', { name: 'Create an agent' }),
-  ).toHaveAttribute('data-cinder-variant', 'primary');
-  // With a provider but no agent there is nobody to send to, so Start a chat offers no composer
-  // that cannot work: it says why and leads to the missing step (COR-2438, criterion 21c).
-  const notReady = page.getByTestId('home-start-chat');
-  await expect(
-    notReady.getByRole('heading', { level: 3, name: CHAT_COPY.readiness['needs-agent'].title }),
-  ).toBeVisible();
-  await expect(
-    notReady.getByRole('link', { name: CHAT_COPY.readiness['needs-agent'].action }),
-  ).toHaveAttribute('href', /\/agents\/new$/);
-  await expect(
-    page.getByTestId('home-start-chat').getByPlaceholder('Ask an agent to do something'),
-  ).toHaveCount(0);
+  ).toContainClass('button-variant-primary');
+  await expect(homeChecklist(page)).toHaveAttribute('data-chat-waits-on', 'needs-agent');
+  await expect(homeSteps(page).nth(2)).toContainText('Waits for step 2: create an agent first.');
+  await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
   await expect(page.getByTestId('home-counts')).toHaveCount(0);
 
   // New chat has no agent to start with yet, and leads to the agent form.
@@ -338,19 +316,14 @@ test('each step completes from its own signal, from connecting a provider to say
   await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_IDENTIFIER}$`));
 
-  // Home says one step left, Start a chat is its primary button, and the composer is there (14j).
+  // Step 3 comes alive and is the primary button (14j); the steps stay the whole page.
   await page.goto('/');
-  await expect(page.getByTestId('home-date')).toHaveText('Welcome. One step left.');
-  await expect(homeChecklist(page)).toContainText('2 of 3 done');
   await expect(homeSteps(page).nth(1)).toContainText(`${AGENT_NAME} is ready to use.`);
-  await expect(homeSteps(page).nth(2).getByRole('link', { name: 'Start a chat' })).toHaveAttribute(
-    'data-cinder-variant',
-    'primary',
+  await expect(homeChecklist(page)).not.toHaveAttribute('data-chat-waits-on', /.+/);
+  await expect(homeSteps(page).nth(2).getByRole('link', { name: 'Start a chat' })).toContainClass(
+    'button-variant-primary',
   );
-  const homeComposer = page.getByTestId('home-start-chat');
-  await expect(homeComposer.getByPlaceholder('Ask an agent to do something')).toBeVisible();
-  await expect(homeComposer.getByRole('combobox', { name: 'Agent' })).toContainText(AGENT_NAME);
-  await expect(homeComposer.getByRole('button', { name: 'Send' })).toBeEnabled();
+  await expect(page.getByTestId('home-start-chat')).toHaveCount(0);
   await captureForDesignReview(page, {
     route: '/',
     state: 'first run, steps 1 and 2 done',
@@ -370,7 +343,7 @@ test('each step completes from its own signal, from connecting a provider to say
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   // Home is the overview now, and the checklist does not come back (14c).
   await page.goto('/');
-  await expect(page.getByTestId('home-counts')).toBeVisible();
+  await expect(page.locator('[data-page="home"][data-mode="overview"]')).toBeVisible();
   await expect(homeChecklist(page)).toHaveCount(0);
   expect(await page.content()).not.toContain(KEY);
 });

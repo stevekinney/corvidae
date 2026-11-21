@@ -133,6 +133,21 @@ test('missing completion proof leaves only its member open without blocking inte
   expect(renderMemberCompletion(pending!, 'f'.repeat(40))).toContain('Eligible to close: false');
 });
 
+test('an installed archive receipt cannot close a release-bound issue without publication evidence', () => {
+  const { request, transport } = fixture();
+  const member = request.members[0]!;
+  member.plan.obligations[0] = {
+    ...member.plan.obligations[0]!,
+    commandOrProviderJob: 'verify-publication',
+    risk: 'installed-artifacts',
+    phase: 'completion',
+  };
+  member.providerRuns = [];
+  const [record] = collectCompletionRecords(parse(request), 'completion', transport);
+  expect(record?.eligible).toBe(false);
+  expect(record?.remainingGates).toEqual(['AC1:verify-publication has no evidence records']);
+});
+
 test('same criterion name cannot reuse another member provider run', () => {
   const { request, transport } = fixture();
   const second = structuredClone(request.members[0]!);
