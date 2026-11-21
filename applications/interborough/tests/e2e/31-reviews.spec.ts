@@ -350,7 +350,7 @@ test.describe('a decision made in the inbox', () => {
   });
 });
 
-test.describe('a question a run asks', () => {
+test.describe('/reviews: a question a run asks', () => {
   test('is answered in the inbox in the shape it asks for, and the run goes on', async ({
     page,
     request,
@@ -481,7 +481,7 @@ test.describe('a scheduled run’s human wait', () => {
   });
 });
 
-test.describe('a Bureau that fails', () => {
+test.describe('/reviews: a Bureau that fails', () => {
   for (const delivery of ['immediate', 'held'] as const) {
     test(`renders the Reviews failure with exactly two pending reads (${delivery})`, async ({
       page,
