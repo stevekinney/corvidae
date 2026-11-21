@@ -15,6 +15,7 @@ import {
   type AuthorizationDecision,
   type DispatchContext,
   type DispatchResult,
+  type OperationContext,
   type OperationMetadata,
   type PipelineTrace,
   type PipelineTraceMarker,
@@ -82,20 +83,13 @@ export function checkAccess<Input, SchemaOutput, Host>(
 /** Run the optional parameter-aware authorization hook. */
 export async function checkAuthorization<Input, SchemaOutput, Host>(
   operation: OperationMetadata<Input, SchemaOutput, Host>,
-  input: Input,
-  context: DispatchContext<Host>,
+  context: OperationContext<Input, Host>,
 ): Promise<DispatchResult<never> | null> {
   if (operation.authorize === undefined) return null;
 
   let decision: unknown;
   try {
-    decision = await operation.authorize({
-      input,
-      principal: context.principal,
-      host: context.host,
-      transport: context.transport,
-      ...(context.signal === undefined ? {} : { signal: context.signal }),
-    });
+    decision = await operation.authorize(context);
   } catch {
     return failure({ code: 'EngineFailure', message: 'internal error', data: {} });
   }

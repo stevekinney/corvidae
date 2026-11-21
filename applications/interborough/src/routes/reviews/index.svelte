@@ -96,6 +96,15 @@
     return query.isPending ? 'loading' : 'ready';
   }
 
+  /** Both lists are read and neither holds a review, nor more pages of one. */
+  const nothingAtAll = $derived(
+    waitingQuery.data !== undefined &&
+      doneQuery.data !== undefined &&
+      waiting.length === 0 &&
+      done.length === 0 &&
+      !doneQuery.hasNextPage,
+  );
+
   /** A query that failed shows the fault banner; a list it still holds is shown beneath it. */
   const faults = $derived<readonly { error: unknown; retry: () => void }[]>(
     (activeTab === 'done' ? [doneQuery] : [waitingQuery])
@@ -280,14 +289,18 @@
     <QueryFaultBanner error={fault.error} onRetry={fault.retry} />
   {/each}
 
-  <!-- The segments stay through every state, so the page never loses its place while a list is read. -->
-  <FilterBar
-    aria-label={REVIEWS_COPY.tabsLabel}
-    searchVisible={false}
-    {segments}
-    segmentValue={activeTab}
-    onSegmentChange={writeTab}
-  />
+  <!-- The segments stay through every state, so the page never loses its place while a list is read,
+       except when both lists are read and hold nothing: no control over nothing (owner report,
+       2026-11-19). They come back with the first review. -->
+  {#if !nothingAtAll}
+    <FilterBar
+      aria-label={REVIEWS_COPY.tabsLabel}
+      searchVisible={false}
+      {segments}
+      segmentValue={activeTab}
+      onSegmentChange={writeTab}
+    />
+  {/if}
 
   <!-- One panel per state, remounted when the state changes: the keys that decide and the selection
        belong to the list on screen. -->

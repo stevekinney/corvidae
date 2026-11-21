@@ -9,10 +9,9 @@ export type ViewEmptyCopy = ViewStateCopy & {
   readonly action?: { readonly label: string; readonly href: string };
 };
 
-/** The words for a view's forbidden page: its title, and the scope that opens it when it is known. */
+/** The title of a view that the current sign-in cannot open. */
 export type ViewForbiddenCopy = {
   readonly title: string;
-  readonly requirement?: string;
 };
 
 /** A link to a page of the application, with the words on it. */
@@ -38,11 +37,7 @@ export type ViewCopy = {
   /** Absent for a view that is never empty (`views.ts`, `canBeEmpty`). */
   readonly empty?: ViewEmptyCopy;
   readonly error: ViewStateCopy;
-  /**
-   * The words for a locked view: the title ("Your sign-in can’t open Hooks") and, when the missing
-   * scope is known, the scope that opens it, which the page shows small and monospaced as
-   * "requires bureau.hooks:read".
-   */
+  /** The title of a locked view, such as "Your sign-in can’t open Hooks". */
   readonly forbidden: ViewForbiddenCopy;
   /** Present only for a view that opens one item by its address. */
   readonly notFound?: ViewNotFoundCopy;

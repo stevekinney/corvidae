@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * Pins how the dispatch pipeline classifies the three workflow error classes on Weft's live
  * registry, and the `name`, `code` and message text of the error classes the generic dispatch
@@ -25,7 +26,7 @@ async function faultOf(thrown: Error) {
     'weft.workflows.get',
     { workflowId: 'wf-1' },
     {
-      principal: principalFromStdioLocal(),
+      principal: principalFromStdioLocal(WEFT_SCOPE_VOCABULARY),
       host: {
         get: async () => {
           throw thrown;

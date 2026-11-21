@@ -388,9 +388,7 @@ describe('JsonDiffViewer identical values', () => {
     });
     const empty = requiredInstance(container.querySelector('.cinder-empty-state'), HTMLElement);
     expect(empty.textContent?.trim()).toBe('No differences');
-    expect(empty.getAttribute('data-cinder-layout')).toBe('inline');
-    expect(empty.getAttribute('data-cinder-size')).toBe('compact');
-    // The done kind is what gives the inline layout its disc.
+    // EmptyState has one layout, so none is passed; the done kind is what draws its disc.
     expect(empty.getAttribute('data-cinder-kind')).toBe('done');
     expect(empty.querySelector('.cinder-empty-state-icon')).not.toBeNull();
     expect(container.querySelector(ROW)).toBeNull();

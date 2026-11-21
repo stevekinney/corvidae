@@ -67,7 +67,7 @@ import {
   type ClientOperationTypes,
   type ClientOperations,
 } from './generated/operation-client.generated.ts';
-import { inProcessCatalogTransport } from './in-process-operations.ts';
+import { weftInProcessCatalogTransport } from './in-process-operations.ts';
 import type {
   ClientHandle,
   ClientScheduleHandle,
@@ -148,7 +148,7 @@ export class LocalClient<
     };
     this.operations = createCatalogClient<ClientOperationTypes>(
       CLIENT_OPERATION_NAMES,
-      inProcessCatalogTransport(
+      weftInProcessCatalogTransport(
         this.#rawEngine,
         new Set(Object.keys(CLIENT_REST_OPERATION_BINDINGS)),
       ),

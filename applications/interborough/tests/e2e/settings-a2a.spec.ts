@@ -78,7 +78,8 @@ test.describe('Settings › A2A', () => {
     await expect(banner.getByRole('button', { name: 'Restart now' })).toBeVisible();
 
     await expect(page.getByText(A2A_COPY.intro)).toBeVisible();
-    await expect(page.locator('main h2')).toHaveText(['Agent2Agent', 'Recent calls']);
+    // With no call made, Recent calls is its empty state alone, under no heading of its own.
+    await expect(page.locator('main h2')).toHaveText(['Agent2Agent', A2A_COPY.recent.empty.title]);
 
     const enabled = settingRow(page, 'a2a.enabled');
     await expect(enabled).toContainText('Accept A2A calls');

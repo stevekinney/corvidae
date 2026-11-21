@@ -41,7 +41,10 @@ async function openGoal(page: Page, path: string, width: number): Promise<void> 
   await page.clock.setFixedTime(SAMPLE_NOW);
   await page.setViewportSize({ width, height: 900 });
   await page.goto(path);
-  await expect(page.getByTestId('goal-attempts-heading')).toBeVisible();
+  // A goal with no attempt shows the empty state alone, without the heading (owner report, 2026-11-19).
+  await expect(
+    page.getByTestId('goal-attempts-heading').or(page.getByTestId('goal-attempts-empty')),
+  ).toBeVisible();
 }
 
 /**

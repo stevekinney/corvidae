@@ -21,8 +21,11 @@ import { refuseWrite } from './write-guard.ts';
  * `headers` go on every call; `fetch` stands in for the global one unless a call brings its own.
  */
 export type BureauClientConnection = {
+  /** The origin and base path of the host. */
   readonly baseUrl: string;
+  /** Headers sent on calls to the host. */
   readonly headers?: Readonly<Record<string, string>> | undefined;
+  /** The fetch implementation used by default. */
   readonly fetch?: CatalogFetch | undefined;
 };
 

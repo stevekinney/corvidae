@@ -45,7 +45,7 @@ import {
  *
  * const registration: ApiKeyRegistration = {
  *   subject: 'service-account-7',
- *   scopes: ['workflows:read', 'workflows:write'],
+ *   scopes: ['inventory:read', 'inventory:write'],
  *   expiresAt: Date.now() + 86_400_000,
  * };
  * void registration;
@@ -74,13 +74,13 @@ export type ApiKeyRegistration = {
  * import { createRotatingApiKeyStore, type RotatingApiKeyStore } from '@lostgradient/backchannel';
  *
  * const store: RotatingApiKeyStore = createRotatingApiKeyStore();
- * await store.add('key-old', { subject: 'svc', scopes: ['workflows:read'] });
- * await store.add('key-new', { subject: 'svc', scopes: ['workflows:read'] });
+ * await store.add('key-old', { subject: 'svc', scopes: ['inventory:read'] });
+ * await store.add('key-new', { subject: 'svc', scopes: ['inventory:read'] });
  * // Both authenticate during the overlap window.
  * await store.revoke('key-old');
  * ```
  */
-export type RotatingApiKeyStore = {
+export interface ApiKeyStore {
   /**
    * Register or replace a key. Replacing an existing key updates its
    * registration in place. Rejects an empty key by throwing synchronously,
@@ -92,17 +92,23 @@ export type RotatingApiKeyStore = {
   revoke(key: string): Promise<boolean>;
   /** Whether `key` is currently registered and not expired (evaluated against `now()`). */
   has(key: string): Promise<boolean>;
-  /**
-   * Number of currently-registered keys (including not-yet-expired ones),
-   * counting only the calls that have completed.
-   */
-  readonly size: number;
+  /** Number of registered keys after pending changes settle. */
+  count(): Promise<number>;
   /**
    * Resolve a presented key to a principal, or `null` when the key is unknown,
    * revoked, or expired. Shaped to drop directly into
    * `AuthConfig.resolveApiKeyPrincipal`.
    */
   resolve(presentedKey: string): Promise<AuthenticatedPrincipal | null>;
+}
+
+/** In-memory {@link ApiKeyStore} with synchronous inspection of committed registrations. */
+export type RotatingApiKeyStore = ApiKeyStore & {
+  /**
+   * Number of currently-registered keys (including not-yet-expired ones),
+   * counting only the calls that have completed.
+   */
+  readonly size: number;
 };
 
 type StoredKey = {
@@ -136,7 +142,7 @@ function isExpired(stored: StoredKey, currentTime: number): boolean {
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const store = createRotatingApiKeyStore();
- * await store.add('initial-key', { subject: 'svc', scopes: ['workflows:read'] });
+ * await store.add('initial-key', { subject: 'svc', scopes: ['inventory:read'] });
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * await using server = serve({
@@ -198,6 +204,9 @@ export function createRotatingApiKeyStore(now: () => number = Date.now): Rotatin
         }
         return true;
       });
+    },
+    count() {
+      return enqueue(() => keys.size);
     },
     get size() {
       return keys.size;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
 import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
@@ -122,7 +123,7 @@ describe('weft.reviews.decision.submit', () => {
           sectionDecisions: { intro: 'approved', body: 'rejected' },
         },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcHttp',
           registry,

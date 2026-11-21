@@ -22,7 +22,7 @@
 
 <div class={classNames('cinder-json-diff-viewer', className)} role="group" aria-label={label}>
   {#if level.changes.length === 0}
-    <EmptyState kind="done" layout="inline" size="compact" title="No differences" />
+    <EmptyState kind="done" title="No differences" />
   {:else}
     <JsonDiffViewerLevel {level} />
   {/if}

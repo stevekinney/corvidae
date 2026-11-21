@@ -82,7 +82,7 @@ async function isRunning(bureau: Bureau, contextId: string): Promise<boolean> {
 
 const TERMINAL = new Set(['completed', 'failed', 'canceled']);
 
-/** Longer than the two seconds a host's steering poller waits between reads of its session. */
+/** The real host polls every two seconds. Run this suite in the slow lane to exercise that path. */
 const HOST_POLLS = 2500;
 
 const pause = (id: string) =>

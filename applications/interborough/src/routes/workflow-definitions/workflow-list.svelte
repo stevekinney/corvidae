@@ -3,25 +3,25 @@
    * `/workflows`: the workflows a person can read and act on, as Cinder's status-first two-line rows,
    * one each, by name (`lib/workflow-catalog.ts` says how the engine's types and the Bureau's files
    * are joined; `workflow-row.svelte` says a row). The header is "Workflows", its subtitle, and the
-   * secondary "+" that makes one. Segments (All, Paused, Problems) partition the rows, each with the
+   * labelled primary New workflow. Segments (All, Paused, Problems) partition the rows, each with the
    * number of rows it shows, counted from the same rows (`workflow-presentation.ts`). A workflow that
    * cannot load is listed first with its file and its problem, so a broken workflow is never silently
    * missing, and a source that failed to load shows the category of the failure.
    *
    * The types Interborough registers itself to run agents, goals and its heartbeat are not
-   * workflows a person starts, so one card below the rows leads to a page of their own
-   * (`internal-workflows.svelte`). It counts them from the same catalog, and it is not drawn while
-   * the list loads, while there is nothing to list, or when the engine holds none of them.
+   * workflows a person starts, so a secondary "Internal workflows (N)" in the header, beside New
+   * workflow, leads to a page of their own (`internal-workflows.svelte`). It counts them from the
+   * same catalog, and it is not drawn while the list loads or when the engine holds none of them.
    *
-   * With no workflow besides those the page is its empty state: the header stays, there is no filter
-   * row and no Internal workflows card, two actions (New workflow, and Ask an agent to write one,
-   * which opens a new chat with an agent that can create workflows), and a line saying where a file
-   * can be added. The frame leaves that state to this page (`pageOwnsEmptyOn` in `app/views.ts`).
+   * With no workflow besides those the page is the one list-page empty state (`ListPageEmpty`): the
+   * header stays, there is no filter row, the state has New workflow, Ask an agent (a new chat with
+   * an agent that can create workflows) and, when the engine holds them, a way to the internal
+   * workflows it names; the folder a file can be added to is behind a closed "Where workflow files
+   * live" row with Copy. The frame leaves that state to this page (`pageOwnsEmptyOn` in
+   * `app/views.ts`).
    */
   import {
     Button,
-    Card,
-    CopyableValue,
     DataList,
     EmptyState,
     ErrorState,
@@ -30,10 +30,12 @@
     Skeleton,
     StaleRegion,
   } from '@lostgradient/cinder';
-  import { ChevronRight, MessageSquare, Plus, Search, Workflow } from '@lucide/svelte';
+  import { Search } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
+  import FileLocationDetail from '../../app/file-location-detail.svelte';
+  import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
@@ -166,6 +168,7 @@
       description={copy.subtitle}
       headingLevel={1}
       error={catalog.isError && catalog.data === undefined}
+      {...engineRows.length > 0 ? { actions: headerActions } : {}}
       createAction={{
         label: WORKFLOW_COPY.newAction,
         href: router.href(newPath),
@@ -185,46 +188,42 @@
     {:else if catalog.isPending}
       <Skeleton variant="list" rows={5} label={VIEW_COPY.workflows.loading.title} />
     {:else if workflows.length === 0}
-      <EmptyState
-        bordered
-        kind="first-use"
+      <!-- The internal workflows are the secondary action when this host has them. -->
+      <ListPageEmpty
+        view="workflows"
         title={copy.empty.title}
-        description={copy.empty.description}
-        headingLevel={2}
+        description={engineRows.length > 0
+          ? `${copy.empty.description} ${copy.empty.internal(engineRows.length)}`
+          : copy.empty.description}
+        create={{
+          label: WORKFLOW_COPY.newAction,
+          href: router.href(newPath),
+          onclick: (event) => go(event, newPath),
+        }}
+        secondary={[
+          engineRows.length > 0
+            ? {
+                label: copy.empty.internalAction,
+                href: router.href(internalPath),
+                onclick: (event) => go(event, internalPath),
+              }
+            : {
+                label: copy.empty.askAction,
+                href: router.href(askPath),
+                onclick: (event) => go(event, askPath),
+              },
+        ]}
         data-testid="workflows-empty"
       >
-        {#snippet icon()}<Workflow aria-hidden="true" />{/snippet}
-        {#snippet action()}
-          <div class="ib-workflows__empty-actions">
-            <Button
-              variant="primary"
-              href={router.href(newPath)}
-              onclick={(event) => go(event, newPath)}
-              mutating
-            >
-              {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
-              {WORKFLOW_COPY.newAction}
-            </Button>
-            <Button
-              variant="ghost"
-              href={router.href(askPath)}
-              onclick={(event) => go(event, askPath)}
-            >
-              {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
-              {copy.empty.askAction}
-            </Button>
-          </div>
-        {/snippet}
-      </EmptyState>
-      <p class="ib-workflows__hint" data-testid="workflows-empty-hint">
-        {copy.empty.hintBefore}
-        <!-- A host path is shown only inside a copy control (owner, 2026-11-19). -->
-        <CopyableValue
-          value={directory}
-          label={copy.empty.copyDirectory}
-          data-testid="workflow-directory"
+        <FileLocationDetail
+          label={copy.empty.files.label}
+          lead={copy.empty.files.lead}
+          {directory}
+          copyLabel={copy.empty.files.copyLabel}
+          copiedLabel={copy.empty.files.copiedLabel}
+          data-testid="workflows-file-location"
         />
-      </p>
+      </ListPageEmpty>
     {:else}
       <FilterBar
         aria-label={copy.segmentsLabel}
@@ -236,7 +235,6 @@
 
       {#if visible.length === 0}
         <EmptyState
-          bordered
           kind="filtered"
           title={copy.noMatch.title}
           description={copy.noMatch.description}
@@ -260,31 +258,19 @@
           </DataList>
         </div>
       {/if}
-
-      {#if engineRows.length > 0}
-        <Card
-          edge="border"
-          href={router.href(internalPath)}
-          onclick={(event) => go(event, internalPath)}
-          data-testid="internal-workflows-card"
-          header={cardHeader}
-          children={cardBody}
-        />
-      {/if}
     {/if}
   </StaleRegion>
 </section>
 
-{#snippet cardHeader()}
-  <div class="ib-workflows__card-title">
-    <h2 class="ib-workflows__card-heading">{copy.internalCard.title}</h2>
-    <span class="ib-workflows__card-count" data-testid="internal-workflows-count"
-      >{copy.internalCard.count(engineRows.length)}</span
-    >
-    <ChevronRight class="ib-workflows__card-chevron" aria-hidden="true" />
-  </div>
-{/snippet}
-
-{#snippet cardBody()}
-  <p class="ib-workflows__card-description">{copy.internalCard.description}</p>
+{#snippet headerActions()}
+  <!-- The types Interborough runs itself: a secondary control beside New workflow, in every state
+       that has read them (owner report, 2026-11-19). -->
+  <Button
+    variant="secondary"
+    href={router.href(internalPath)}
+    onclick={(event) => go(event, internalPath)}
+    data-testid="internal-workflows-action"
+  >
+    {copy.internalAction(engineRows.length)}
+  </Button>
 {/snippet}

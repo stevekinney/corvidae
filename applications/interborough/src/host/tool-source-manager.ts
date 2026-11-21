@@ -578,8 +578,11 @@ export type ToolSourcePendingSignInStart =
 
 /** Where a sign-in of a source that is not saved stands, for its owner (COR-2436). */
 export type ToolSourcePendingSignInStanding = {
+  /** The reference for this sign-in attempt. */
   readonly signIn: string;
+  /** The latest outcome of the attempt. */
   readonly outcome: PendingSignInOutcome;
+  /** Why the attempt failed, when available. */
   readonly reason?: PendingSignInReason;
 };
 
@@ -625,7 +628,9 @@ export type ToolSourceProbeTest = {
  * and its instructions, cut. The server's own untrusted text; `null` when it gave none.
  */
 export type ToolSourceProbeServer = {
+  /** The server’s display name, when supplied. */
   readonly name: string | null;
+  /** The instructions returned by the server, when supplied. */
   readonly instructions: string | null;
 };
 

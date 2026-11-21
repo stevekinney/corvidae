@@ -15,6 +15,7 @@
     Alert,
     Button,
     DataList,
+    EmptyState,
     Link,
     LoadMore,
     Segment,
@@ -199,15 +200,16 @@
       <Button variant="ghost-accent" size="sm" label={copy.tryAgain} onclick={onReload} />
     </Alert>
   {:else if rows.length === 0}
-    <p class="ib-worker-tasks__empty" data-testid="worker-tasks-empty">
-      {#if tab === 'failed'}
-        {copy.emptyFailed(waitingCount)}
-      {:else if tab === 'waiting'}
-        {copy.emptyWaiting(failedCount)}
-      {:else}
-        {copy.emptyAll}
-      {/if}
-    </p>
+    <EmptyState
+      kind={tab === 'failed' ? 'done' : 'first-use'}
+      headingLevel={3}
+      title={tab === 'failed'
+        ? copy.emptyFailed(waitingCount)
+        : tab === 'waiting'
+          ? copy.emptyWaiting(failedCount)
+          : copy.emptyAll}
+      data-testid="worker-tasks-empty"
+    />
   {:else}
     <DataList items={rows} key={(row: QueueTaskRow) => row.id} statusColumn>
       {#snippet children(row)}
@@ -305,13 +307,6 @@
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
-  }
-
-  .ib-worker-tasks__empty {
-    margin: 0;
-    padding-block: var(--cinder-space-6);
-    text-align: center;
-    color: var(--cinder-text-muted);
   }
 
   .ib-worker-tasks__footnote {

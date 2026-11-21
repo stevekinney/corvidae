@@ -130,8 +130,10 @@ describe('a new agent', () => {
   test('says so when the installation offers no tools, in an empty state', async () => {
     bureau({ catalog: catalogFixture({ tools: [] }) });
     const { findByRole, container } = mountEditor();
-    await findByRole('heading', { level: 3, name: AGENT_EDITOR_COPY.noTools });
+    const title = await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noTools });
     expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
+    // The state alone, in no fieldset under a "Tools" heading (owner report, 2026-11-19).
+    expect(title.closest('fieldset, .cinder-form-section')).toBeNull();
   });
 
   test('offers exactly the models and tools the catalog lists', async () => {

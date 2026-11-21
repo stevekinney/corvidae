@@ -75,7 +75,6 @@
     {:else if isEmptyDetails(details)}
       <EmptyState
         kind="first-use"
-        size="compact"
         headingLevel={3}
         title={COPY.empty.title}
         description={COPY.empty.description}

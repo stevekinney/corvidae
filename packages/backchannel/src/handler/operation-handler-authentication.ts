@@ -7,6 +7,7 @@ import {
 import {
   createAdditionalScopeSet,
   type PackageAuthorizationScope,
+  type ScopeVocabulary,
 } from '../authorization-scope.ts';
 import { authContextFromAuthResult, unauthorizedResponse } from './authentication-responses.ts';
 
@@ -30,6 +31,8 @@ export type OperationHandlerAuthenticator = OperationHandlerAuthenticate & {
 
 /** Options for {@link createOperationHandlerAuthenticator}. */
 export type OperationHandlerAuthenticatorOptions = {
+  /** Scopes issued by this host. */
+  readonly scopeVocabulary?: ScopeVocabulary;
   /**
    * Package scopes the handler's operations require beyond Weft's built-in
    * vocabulary, such as `bureau.tasks:read`. The authenticator retains them
@@ -65,7 +68,7 @@ export type OperationHandlerAuthenticatorOptions = {
  *   operations: [],
  *   host: {},
  *   authenticate: createOperationHandlerAuthenticator(
- *     { apiKeys: ['s3cr3t'], defaultApiKeyScopes: ['workflows:read'] },
+ *     { apiKeys: ['s3cr3t'], defaultApiKeyScopes: ['inventory:read'] },
  *     { additionalScopes: ['bureau.tasks:read'] },
  *   ),
  * });
@@ -88,10 +91,7 @@ export function createOperationHandlerAuthenticator(
   // The authenticator's built-in public paths (`/v1/metrics`, `/.well-known/*`)
   // would admit those requests unauthenticated at a mount that never declared
   // them, so the inner authenticator is given none.
-  const authenticatorPromise = createAuthenticator(
-    { ...config, publicPaths: [] },
-    options.additionalScopes === undefined ? {} : { additionalScopes: options.additionalScopes },
-  );
+  const authenticatorPromise = createAuthenticator({ ...config, publicPaths: [] }, options);
   // A key that fails to import rejects `ready` and every request. Neither is
   // reported as an unhandled rejection while nothing is awaiting it yet.
   const ready = authenticatorPromise.then(() => undefined);

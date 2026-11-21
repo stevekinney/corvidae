@@ -8,63 +8,6 @@
  */
 
 /**
- * All authorization scopes recognized by the runtime. Full-word, colon-separated,
- * one entry per (domain, action) pair. Add new scopes here when introducing a
- * new domain; never derive scope strings dynamically.
- *
- * Scope semantics are deliberately FLAT for v1 — `workflows:admin` does NOT
- * imply `workflows:read` or `workflows:write`. Operation authors must declare
- * the exact scope they require. Scope-implication semantics (if any) are a
- * future track.
- *
- * Public export so dashboards and API-key provisioning tooling can consume
- * the canonical vocabulary instead of hand-copying it.
- *
- * @example
- * ```ts
- * import { AUTHORIZATION_SCOPES } from '@lostgradient/backchannel';
- *
- * console.log(AUTHORIZATION_SCOPES.includes('workflows:read'));
- * ```
- */
-export const AUTHORIZATION_SCOPES = [
-  'workflows:read',
-  'workflows:write',
-  'workflows:admin',
-  'schedules:read',
-  'schedules:write',
-  'signals:write',
-  'updates:write',
-  'queries:read',
-  'reviews:read',
-  'reviews:write',
-  'attributes:read',
-  'attributes:write',
-  'tags:write',
-  'streams:read',
-  'events:read',
-  'storage:read',
-  'storage:write',
-  'storage:admin',
-  'workers:write',
-  'system:read',
-  'system:admin',
-] as const;
-
-/**
- * String-literal union of every scope Weft itself defines.
- *
- * @example
- * ```ts
- * import { type BuiltInAuthorizationScope } from '@lostgradient/backchannel';
- *
- * const scope: BuiltInAuthorizationScope = 'workflows:read';
- * console.log(scope);
- * ```
- */
-export type BuiltInAuthorizationScope = (typeof AUTHORIZATION_SCOPES)[number];
-
-/**
  * A scope another package defines and registers with one handler through
  * `additionalScopes`: a dotted namespace, a colon, and an action, such as
  * `bureau.tasks:read`. The `weft` namespace is reserved. At run time each
@@ -80,21 +23,32 @@ export type BuiltInAuthorizationScope = (typeof AUTHORIZATION_SCOPES)[number];
  */
 export type PackageAuthorizationScope = `${string}.${string}:${string}`;
 
-/**
- * Every authorization scope an access policy or principal can name: Weft's
- * built-in vocabulary plus package-registered scopes. A package scope is only
- * ever granted by a handler that registered it.
- *
- * @example
- * ```ts
- * import { type AuthorizationScope } from '@lostgradient/backchannel';
- *
- * const builtIn: AuthorizationScope = 'workflows:read';
- * const registered: AuthorizationScope = 'bureau.tasks:read';
- * console.log(builtIn, registered);
- * ```
- */
-export type AuthorizationScope = BuiltInAuthorizationScope | PackageAuthorizationScope;
+/** The scopes one host vocabulary and its registered packages can name. */
+export type AuthorizationScope<HostScope extends string = string> =
+  HostScope | PackageAuthorizationScope;
+
+/** An immutable list of the scopes a host grants to its trusted local principals. */
+export type ScopeVocabulary<HostScope extends string = string> = {
+  /** The scopes the host defines directly. */
+  readonly scopes: readonly HostScope[];
+  /** Returns whether a scope belongs to this host. */
+  has(value: string): value is HostScope;
+};
+
+/** Build a vocabulary from the host's own scope strings. */
+export function createScopeVocabulary<const HostScope extends string>(
+  scopes: readonly HostScope[],
+): ScopeVocabulary<HostScope> {
+  const names = new Set<string>(scopes);
+  return Object.freeze({
+    scopes: Object.freeze([...scopes]),
+    has(value: string): value is HostScope {
+      return names.has(value);
+    },
+  });
+}
+
+export const EMPTY_SCOPE_VOCABULARY: ScopeVocabulary = createScopeVocabulary([]);
 
 /**
  * Run-time shape of a {@link PackageAuthorizationScope}: lowercase segments
@@ -116,23 +70,12 @@ export const PACKAGE_AUTHORIZATION_SCOPE_PATTERN =
 /** The namespace no package may register a scope under. */
 const RESERVED_NAMESPACE = 'weft';
 
-const SCOPE_LOOKUP = new Set<string>(AUTHORIZATION_SCOPES);
-
-/**
- * Runtime type guard for Weft's built-in scope vocabulary. A package scope is
- * not built in, so it returns `false` for `bureau.tasks:read`; whether a
- * package scope is granted depends on the handler that registered it.
- *
- * @example
- * ```ts
- * import { isAuthorizationScope } from '@lostgradient/backchannel';
- *
- * console.log(isAuthorizationScope('workflows:read'));
- * console.log(isAuthorizationScope('not-a-scope'));
- * ```
- */
-export function isAuthorizationScope(value: string): value is BuiltInAuthorizationScope {
-  return SCOPE_LOOKUP.has(value);
+/** Whether the host defines this scope in its own vocabulary. */
+export function isAuthorizationScope<HostScope extends string>(
+  value: string,
+  vocabulary: ScopeVocabulary<HostScope>,
+): value is HostScope {
+  return vocabulary.has(value);
 }
 
 /**
@@ -145,7 +88,7 @@ export function isAuthorizationScope(value: string): value is BuiltInAuthorizati
  * import { isPackageAuthorizationScope } from '@lostgradient/backchannel';
  *
  * console.log(isPackageAuthorizationScope('bureau.tasks:read'));
- * console.log(isPackageAuthorizationScope('workflows:read'));
+ * console.log(isPackageAuthorizationScope('inventory:read'));
  * ```
  */
 export function isPackageAuthorizationScope(value: string): value is PackageAuthorizationScope {
@@ -195,8 +138,9 @@ export function createAdditionalScopeSet(
 export function isRecognizedScope(
   value: string,
   additionalScopes: AdditionalScopeSet = NO_ADDITIONAL_SCOPES,
+  vocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
 ): value is AuthorizationScope {
-  return SCOPE_LOOKUP.has(value) || (additionalScopes as ReadonlySet<string>).has(value);
+  return vocabulary.has(value) || (additionalScopes as ReadonlySet<string>).has(value);
 }
 
 /**
@@ -206,8 +150,9 @@ export function isRecognizedScope(
 export function filterRecognizedScopes(
   scopes: ReadonlyArray<AuthorizationScope>,
   additionalScopes: AdditionalScopeSet = NO_ADDITIONAL_SCOPES,
+  vocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
 ): AuthorizationScope[] {
-  return scopes.filter((scope) => isRecognizedScope(scope, additionalScopes));
+  return scopes.filter((scope) => isRecognizedScope(scope, additionalScopes, vocabulary));
 }
 
 /**
@@ -223,7 +168,7 @@ export function filterRecognizedScopes(
  *
  * Whitespace-only values are treated as absent so they never block fallback to
  * other sources. Unknown scope strings are silently filtered out — the
- * vocabulary in `AUTHORIZATION_SCOPES`, plus the package scopes the handler
+ * host vocabulary, plus the package scopes the handler
  * registered in `additionalScopes`, is the single source of truth and a
  * misspelled or unregistered scope cannot grant unintended privileges.
  *
@@ -233,15 +178,16 @@ export function filterRecognizedScopes(
 export function extractScopesFromClaims(
   claims: Record<string, unknown>,
   additionalScopes: AdditionalScopeSet = NO_ADDITIONAL_SCOPES,
+  vocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
 ): ReadonlySet<AuthorizationScope> {
   const merged = new Set<AuthorizationScope>();
-  addStringClaimScopes(claims['scope'], merged, additionalScopes);
-  addStringClaimScopes(claims['scp'], merged, additionalScopes);
+  addStringClaimScopes(claims['scope'], merged, additionalScopes, vocabulary);
+  addStringClaimScopes(claims['scp'], merged, additionalScopes, vocabulary);
 
   const permissions = claims['permissions'];
   if (Array.isArray(permissions)) {
     for (const entry of permissions) {
-      if (typeof entry === 'string' && isRecognizedScope(entry, additionalScopes)) {
+      if (typeof entry === 'string' && isRecognizedScope(entry, additionalScopes, vocabulary)) {
         merged.add(entry);
       }
     }
@@ -258,12 +204,13 @@ function addStringClaimScopes(
   value: unknown,
   target: Set<AuthorizationScope>,
   additionalScopes: AdditionalScopeSet,
+  vocabulary: ScopeVocabulary,
 ): void {
   if (typeof value !== 'string') return;
   if (value.trim().length === 0) return;
   for (const token of value.split(/\s+/)) {
     if (token.length === 0) continue;
-    if (isRecognizedScope(token, additionalScopes)) {
+    if (isRecognizedScope(token, additionalScopes, vocabulary)) {
       target.add(token);
     }
   }

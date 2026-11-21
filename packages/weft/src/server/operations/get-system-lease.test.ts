@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /** `weft.system.lease` operation, authorization, and REST binding coverage. */
 
 import { describe, expect, it } from 'bun:test';
@@ -64,7 +65,10 @@ describe('weft.system.lease', () => {
       'weft.system.lease',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'operator', scope: 'system:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'operator', scope: 'system:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([getSystemLeaseOperation]),
@@ -91,7 +95,10 @@ describe('weft.system.lease', () => {
       'weft.system.lease',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'operator', scope: 'system:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'operator', scope: 'system:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcHttp',
         registry: createOperationRegistry([getSystemLeaseOperation]),
@@ -127,7 +134,10 @@ describe('weft.system.lease', () => {
       'weft.system.lease',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'viewer', scope: 'workflows:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'viewer', scope: 'workflows:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry,

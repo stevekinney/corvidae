@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import {
   type OperationFault,
@@ -74,7 +75,10 @@ describe('weft.workflows.replay REST shaping', () => {
         restBindings: [replayWorkflowRestBinding],
         authContext: {
           method: 'jwt',
-          principal: principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' }),
+          principal: principalFromJwtClaims(
+            { sub: 'reader', scope: 'workflows:read' },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+          ),
         },
       },
     );
@@ -100,7 +104,10 @@ describe('weft.workflows.replay REST shaping', () => {
         restBindings: [replayWorkflowRestBinding],
         authContext: {
           method: 'jwt',
-          principal: principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' }),
+          principal: principalFromJwtClaims(
+            { sub: 'reader', scope: 'workflows:read' },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+          ),
         },
       },
     );
@@ -123,7 +130,10 @@ describe('weft.workflows.replay REST shaping', () => {
         restBindings: [replayWorkflowRestBinding],
         authContext: {
           method: 'jwt',
-          principal: principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' }),
+          principal: principalFromJwtClaims(
+            { sub: 'reader', scope: 'workflows:read' },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+          ),
         },
       },
     );
@@ -147,7 +157,10 @@ describe('weft.workflows.replay REST shaping', () => {
         restBindings: [replayWorkflowRestBinding],
         authContext: {
           method: 'jwt',
-          principal: principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' }),
+          principal: principalFromJwtClaims(
+            { sub: 'reader', scope: 'workflows:read' },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+          ),
         },
       },
     );
@@ -184,7 +197,10 @@ describe('weft.workflows.replay REST shaping', () => {
         restBindings: [replayWorkflowRestBinding],
         authContext: {
           method: 'jwt',
-          principal: principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' }),
+          principal: principalFromJwtClaims(
+            { sub: 'reader', scope: 'workflows:read' },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+          ),
         },
       },
     );
@@ -217,7 +233,10 @@ describe('weft.workflows.replay REST shaping', () => {
         restBindings: [replayWorkflowRestBinding],
         authContext: {
           method: 'jwt',
-          principal: principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' }),
+          principal: principalFromJwtClaims(
+            { sub: 'reader', scope: 'workflows:read' },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+          ),
         },
       },
     );

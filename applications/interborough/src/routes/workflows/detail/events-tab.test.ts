@@ -155,17 +155,19 @@ describe('EventsTab', () => {
     expect(getByText('Events + timeline, JSON')).not.toBeNull();
   });
 
-  test('renders "No events to display." once loaded with no events', async () => {
+  test('is Cinder’s one empty state, in place of the log, once loaded with no events', async () => {
     const { getByText } = render(EventsTabHarness, {
       props: { client: client([]), workflow: workflow() },
     });
 
+    // Wait for the title alone, then assert where it sits: an absence assertion inside waitFor
+    // would serialize the whole element graph into its failure message.
     await waitFor(() => {
-      const emptyState = getByText('No events to display.');
-      expect(emptyState.getAttribute('role')).toBe('status');
-      expect(emptyState.parentElement?.tagName).toBe('LI');
-      expect(emptyState.parentElement?.parentElement?.tagName).toBe('OL');
+      expect(getByText('No events yet')).not.toBeNull();
     });
+    const title = getByText('No events yet');
+    expect(title.closest('.cinder-empty-state') === null).toBe(false);
+    expect(title.closest('ol') === null).toBe(true);
   });
 
   test('a non-checkpoint event renders its raw type as the summary', async () => {
