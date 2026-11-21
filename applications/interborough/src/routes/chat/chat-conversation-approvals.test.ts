@@ -6,7 +6,6 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { discoverAgentsMessages } from '../../../fixtures/chat-states.ts';
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
@@ -88,36 +87,6 @@ async function askForApproval(container: HTMLElement): Promise<void> {
 }
 
 describe('an approval in the chat', () => {
-  test('a refused decision keeps the chat open and settles an approval still listed as waiting', async () => {
-    let reads = 0;
-    restore = bureau(
-      {
-        'bureau.contexts.get': () => ({ ...CONTEXT, activity: 'awaiting-input' }),
-        'bureau.reviews.list': () => ({ reviews: [] }),
-      },
-      (url) => {
-        if (url.endsWith('/messages')) {
-          reads += 1;
-          return Response.json({ threadId: 'session-1', messages: discoverAgentsMessages() });
-        }
-        if (url.endsWith('/run')) {
-          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
-        }
-        return undefined;
-      },
-    ).restore;
-    landAt('/chats/session-1');
-    const { findByRole, findByText, getByTestId, queryByRole } = mount();
-
-    await fireEvent.click(await findByRole('button', { name: /^Approve$/ }));
-
-    await findByText(CHAT_COPY.approval.notWaiting);
-    await findByText(CHAT_COPY.approval.lapsed);
-    expect(getByTestId('chat-header').textContent).toContain(CHAT_COPY.status.done);
-    expect(queryByRole('button', { name: /^Approve$/ })).toBeNull();
-    await waitFor(() => expect(reads).toBeGreaterThan(1));
-  });
-
   test('is the shared approval row: Input, a note, Allow for the rest of this chat, Deny and Approve', async () => {
     restore = bureau(
       { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },

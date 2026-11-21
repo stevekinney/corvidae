@@ -305,6 +305,9 @@ for (const width of [1280, 1920, 900, 768, 375]) {
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(moreButton(page)).toBeVisible();
+    await expect(
+      page.getByTestId('chat-header').locator('.cinder-page-header__status .cinder-badge'),
+    ).toHaveText('Done');
 
     const measured = await headerCentres(page);
     // 18a: one line, cut with an ellipsis, the full title in its tooltip.

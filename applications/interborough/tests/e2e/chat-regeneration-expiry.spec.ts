@@ -91,11 +91,7 @@ async function assertCanonicalCallPair(page: Page, rawCallId: string, reviewId: 
   return { card, callId, railKey, row };
 }
 
-async function assertToolIdentifierTooltip(
-  page: Page,
-  row: Locator,
-  identifier: string,
-): Promise<void> {
+async function assertToolNameTooltip(page: Page, row: Locator, toolName: string): Promise<void> {
   const describedBy = await row.getAttribute('aria-describedby');
   expect(describedBy).toBeTruthy();
   if (describedBy === null) return;
@@ -133,7 +129,7 @@ async function assertToolIdentifierTooltip(
       { cause: error },
     );
   }
-  await expect(tooltip).toContainText(identifier);
+  await expect(tooltip).toHaveText(toolName);
 }
 
 /** Traverses the live approval card with real Tab events until a decision control is focused. */
@@ -617,7 +613,7 @@ for (const viewport of VIEWPORTS) {
       const expiredToolRow = expiredCall.row;
       // ToolCallRail intentionally shows the friendly tool title in the row. The canonical row key
       // above proves which call rendered; the machine identifier is the documented focus tooltip.
-      await assertToolIdentifierTooltip(page, expiredToolRow, EXPIRING_APPROVAL_TOOL);
+      await assertToolNameTooltip(page, expiredToolRow, 'Expiring approval mutation');
       await expect(expiredToolRow).toContainText('Expired');
       await expect(expiredToolRow).not.toContainText('Waiting on you');
       await expect(expiredToolRow).not.toContainText('Needs you');

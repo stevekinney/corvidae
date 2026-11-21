@@ -1548,14 +1548,15 @@
       context.data?.activity === 'awaiting-input',
   );
   $effect(() => {
-    const id = sessionId;
-    if (!parkedOnLapsed) return undefined;
-    // This effect publishes membership. Tracking the set's version during the add would make the
-    // cleanup delete and re-add the same chat until Svelte stops the effect.
-    untrack(() => lapsedChats.add(id));
-    return () => {
-      untrack(() => lapsedChats.delete(id));
-    };
+    // A fresh turn or a real wait revokes an earlier refusal.
+    const activity = context.data?.activity;
+    if (
+      (activity !== undefined && activity !== 'awaiting-input') ||
+      (session.waitingApprovals?.size ?? 0) > 0 ||
+      session.humanRequests.length > 0
+    ) {
+      untrack(() => lapsedChats.delete(sessionId));
+    }
   });
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
@@ -2057,6 +2058,9 @@
       // waits on it any more and the chat is read again: so is its record, whose activity says
       // whether it still waits on its person (COR-2438).
       decidedHere.delete(toolCallId);
+      if (session.refusedApprovals.has(toolCallId) && context.data?.activity === 'awaiting-input') {
+        lapsedChats.add(sessionId);
+      }
       void queryClient.invalidateQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
     } finally {
       deciding = false;
