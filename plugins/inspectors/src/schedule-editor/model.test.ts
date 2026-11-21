@@ -35,6 +35,11 @@ describe('what the editor reads of the Bureau', () => {
     expect(isScheduleView(null)).toBe(false);
     expect(isScheduleList({ schedules: [view], nextOffset: null })).toBe(true);
     expect(isScheduleList({ schedules: [{ id: 's' }], nextOffset: null })).toBe(false);
+    // The guard vouches for `nextOffset` too: a missing or non-integer one is not a list.
+    expect(isScheduleList({ schedules: [view] })).toBe(false);
+    expect(isScheduleList({ schedules: [view], nextOffset: '100' })).toBe(false);
+    expect(isScheduleList({ schedules: [view], nextOffset: 1.5 })).toBe(false);
+    expect(isScheduleList({ schedules: [view], nextOffset: 100 })).toBe(true);
     expect(isReceipt({ id: 's1', status: 'paused', revision: 3 })).toBe(true);
     expect(isReceipt({ id: 's1', status: 'gone', revision: 3 })).toBe(false);
   });

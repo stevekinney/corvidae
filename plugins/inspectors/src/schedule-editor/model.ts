@@ -65,7 +65,9 @@ export function isScheduleList(
   return (
     isRecord(value) &&
     Array.isArray(value['schedules']) &&
-    (value['schedules'] as unknown[]).every(isScheduleView)
+    (value['schedules'] as unknown[]).every(isScheduleView) &&
+    (value['nextOffset'] === null ||
+      (typeof value['nextOffset'] === 'number' && Number.isInteger(value['nextOffset'])))
   );
 }
 
