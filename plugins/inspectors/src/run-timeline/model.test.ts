@@ -4,12 +4,12 @@ import { describe, expect, it } from 'bun:test';
 import {
   buildTimelineModel,
   describeChange,
-  formatMilliseconds,
   readTimeline,
   runIdOf,
   type Timeline,
-  type TimelineEntry,
 } from './model.ts';
+
+type TimelineEntry = Timeline['entries'][number];
 
 const entry = (overrides: Partial<TimelineEntry> & { step: number }): TimelineEntry => ({
   label: `step-${String(overrides.step)}`,
@@ -207,7 +207,8 @@ describe('formatting a length of time', () => {
     [3_600_000, '1 h'],
     [3_780_000, '1 h 3 min'],
     [-5, '0 ms'],
-  ])('%d ms reads %s', (milliseconds, expected) => {
-    expect(formatMilliseconds(milliseconds)).toBe(expected);
+  ])('a step of %d ms reads %s', (milliseconds, expected) => {
+    const model = buildTimelineModel(timeline([entry({ step: 1, duration: milliseconds })]), 9_000);
+    expect(model.rows[0]?.durationText).toBe(expected);
   });
 });

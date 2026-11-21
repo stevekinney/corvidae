@@ -3,11 +3,11 @@ import { render } from '@testing-library/svelte';
 import { describe, expect, it } from 'bun:test';
 import { tick } from 'svelte';
 
-import { buildTimelineModel, type TimelineEntry } from './model.ts';
+import { buildTimelineModel, type Timeline as TimelineValue } from './model.ts';
 import Timeline from './timeline.svelte';
 import { createTimelineView } from './view.svelte.ts';
 
-const entries: TimelineEntry[] = [
+const entries: TimelineValue['entries'][number][] = [
   {
     step: 1,
     label: 'fetch <b>pages</b>',

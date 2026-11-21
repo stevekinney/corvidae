@@ -15,7 +15,7 @@ import {
 type StepStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
 
 /** One step of a run, as `bureau.runs.timeline` serves it: names and timings, never a payload. */
-export type TimelineEntry = {
+type TimelineEntry = {
   readonly step: number;
   readonly label: string;
   readonly operationType: string;
@@ -139,7 +139,7 @@ export type TimelineModel = {
 };
 
 /** A length of time in the largest two units: `340 ms`, `1.2 s`, `2 min 5 s`, `1 h 3 min`. */
-export function formatMilliseconds(milliseconds: number): string {
+function formatMilliseconds(milliseconds: number): string {
   const value = Math.max(0, milliseconds);
   if (value < 1000) return `${String(Math.round(value))} ms`;
   if (value < 60_000) {
