@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import type { CiEvidenceProvider, CiEvidenceRequest } from './ci-evidence.ts';
+import type { CiEvidenceProvider, CiEvidenceRequest, CiEvidenceRun } from './ci-evidence.ts';
 import { branchRunner } from './deliver.test-support.ts';
 import {
   batchVerificationPlanDigest,
@@ -441,6 +441,70 @@ scenarios.describe('prepare', () => {
       const second = await prepare(setup.options, setup.dependencies);
       expect(setup.dispatched).toHaveLength(1);
       expect(second).toMatchObject({ digest: first.digest, file: first.file, dispatched: false });
+    },
+  );
+
+  scenarios.scenario(
+    'adopts one complete automatic pull-request receipt for a scoped pull-request delivery',
+    async () => {
+      const automatic: CiEvidenceRun = {
+        id: 77,
+        attempt: 1,
+        repository: REPOSITORY,
+        head: HEAD,
+        base: BASE,
+        integrationTree: TREE,
+        event: 'pull_request',
+        workflow: 'Pull request',
+        workflowPath: '.github/workflows/pull-request.yml',
+        workflowRevision: HEAD,
+        verificationPlanDigest: 'd'.repeat(64),
+        requestKey: 'e'.repeat(64),
+        receiptRequestKey: '',
+        checkedRevision: 'f'.repeat(40),
+        checkedTree: TREE,
+        receiptJobs: {
+          static: 'success',
+          workspaces: 'success',
+          tests: 'success',
+          'browser-selection': 'success',
+          browser: 'not-applicable',
+        },
+        jobs: ['Evidence aggregate'],
+      };
+      const setup = await harness(
+        {
+          provider: {
+            findRuns: async () => {
+              throw new Error('automatic evidence must not dispatch or poll a manual run');
+            },
+            findAutomaticPullRequestRuns: async () => [automatic],
+          },
+          readJobs: () => [{ name: 'Evidence aggregate', runner: RUNNER_NAME, startedAt: 't' }],
+        },
+        { route: 'pull-request' },
+      );
+      const result = await setup.prepared();
+      const request = readDeliveryRequest(result.file, result.digest);
+      expect(result.dispatched).toBe(false);
+      expect(setup.dispatched).toEqual([]);
+      expect(request.ciEvidence?.[0]).toMatchObject({
+        event: 'pull_request',
+        workflowPath: '.github/workflows/pull-request.yml',
+        workflowRevision: HEAD,
+      });
+      for (const member of request.members)
+        expect(member.providerRuns).toEqual(
+          member.plan.obligations.map((obligation) =>
+            expect.objectContaining({
+              id: 77,
+              obligation: `${obligation.criterionId}:${obligation.commandOrProviderJob}`,
+              job: 'Evidence aggregate',
+              workflowPath: '.github/workflows/pull-request.yml',
+              event: 'pull_request',
+            }),
+          ),
+        );
     },
   );
 

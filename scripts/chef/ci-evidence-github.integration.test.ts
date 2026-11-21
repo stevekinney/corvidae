@@ -343,6 +343,55 @@ scenarios.scenario(
   },
 );
 
+scenarios.scenario(
+  'discovers one automatic pull-request receipt only after it binds its exact merge identity',
+  async () => {
+    const input = request({
+      event: 'pull_request',
+      verificationPlanDigest: createHash('sha256')
+        .update(
+          JSON.stringify({
+            version: 1,
+            event: 'pull_request',
+            workflowPath: '.github/workflows/main.yml',
+            workflowRevision: 'a'.repeat(40),
+            jobs: ['aggregate', 'browser'],
+          }),
+        )
+        .digest('hex'),
+    });
+    const accepted = fixture(input, { pullRequest: true });
+    const runs = await accepted.provider.findAutomaticPullRequestRuns?.({
+      repository: input.repository,
+      resource: input.resource,
+      base: input.base,
+      candidate: input.candidate,
+      integrationTree: input.integrationTree,
+      workflow: input.workflow,
+      workflowPath: input.workflowPath,
+    });
+    expect(runs).toHaveLength(1);
+    expect(runs?.[0]).toMatchObject({
+      checkedRevision: 'f'.repeat(40),
+      base: input.base,
+      head: input.candidate,
+    });
+
+    const wrong = fixture(input, { pullRequest: true, invalidParents: true });
+    expect(
+      await wrong.provider.findAutomaticPullRequestRuns?.({
+        repository: input.repository,
+        resource: input.resource,
+        base: input.base,
+        candidate: input.candidate,
+        integrationTree: input.integrationTree,
+        workflow: input.workflow,
+        workflowPath: input.workflowPath,
+      }),
+    ).toEqual([]);
+  },
+);
+
 scenarios.scenario('binds retained successful jobs after a partial workflow rerun', async () => {
   const input = request();
   const retained = fixture(input, { inheritedJob: 'success' });

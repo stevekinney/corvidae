@@ -49,11 +49,26 @@ export interface CiEvidenceRun {
   jobs: string[];
 }
 
+/** The stable identity known before inspecting an automatic pull-request receipt. */
+export interface AutomaticPullRequestEvidenceRequest {
+  repository: string;
+  resource: string;
+  base: string;
+  candidate: string;
+  integrationTree: string;
+  workflow: string;
+  workflowPath: string;
+}
+
 export type CiEvidenceObservation =
   CiEvidenceRun | { state: 'pending' | 'failed' | 'canceled'; id: number; attempt: number };
 
 export interface CiEvidenceProvider {
   findRuns(request: CiEvidenceRequest): Promise<CiEvidenceObservation[]>;
+  /** Finds only authenticated, completed automatic pull-request receipts for this exact merge. */
+  findAutomaticPullRequestRuns?(
+    request: AutomaticPullRequestEvidenceRequest,
+  ): Promise<CiEvidenceRun[]>;
   dispatch(request: CiEvidenceRequest): Promise<void>;
 }
 

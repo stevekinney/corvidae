@@ -71,6 +71,7 @@ import {
   CiEvidenceError,
   ciEvidenceRequestKey,
   type CiEvidenceProvider,
+  type CiEvidenceRun,
   type CiEvidenceRequest,
 } from './ci-evidence.ts';
 import {
@@ -132,6 +133,10 @@ export { UsageError };
 export const EVIDENCE_JOB = 'Root checks, scripts tests, audit';
 const EVIDENCE_WORKFLOW = 'Main';
 const EVIDENCE_WORKFLOW_PATH = '.github/workflows/main.yml';
+const PULL_REQUEST_WORKFLOW = 'Pull request';
+const PULL_REQUEST_WORKFLOW_PATH = '.github/workflows/pull-request.yml';
+const PULL_REQUEST_AGGREGATE = 'Evidence aggregate';
+const PULL_REQUEST_RECEIPT_JOBS = ['static', 'workspaces', 'tests', 'browser-selection', 'browser'];
 
 const ISSUE = /^[A-Z][A-Z0-9]*-[1-9]\d*$/;
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -195,7 +200,7 @@ export interface PrepareDependencies {
   /** The execution-state resource of the project lease `run` holds, or a thrown reason. */
   leaseResource: (project: string, run: string) => Promise<string>;
   plan: (changed: string[], worktree: string) => EvidencePlan;
-  provider: Pick<CiEvidenceProvider, 'findRuns'>;
+  provider: Pick<CiEvidenceProvider, 'findRuns' | 'findAutomaticPullRequestRuns'>;
   readJobs: (runId: number) => RunJob[];
   wait: (milliseconds: number) => Promise<void>;
   dispatch: (ref: string, binding: VerificationBinding, cwd: string) => string[];
@@ -300,6 +305,24 @@ function membersOf(
       blockers: [],
     };
   });
+}
+
+/** Automatic PR evidence is useful only for a scoped plan and its complete concrete inventory. */
+function reusablePullRequestRun(plan: EvidencePlan, runs: readonly CiEvidenceRun[]): CiEvidenceRun | undefined {
+  if (plan.requires_full_run || runs.length !== 1) return undefined;
+  const run = runs[0];
+  if (run === undefined || !run.jobs.includes(PULL_REQUEST_AGGREGATE)) return undefined;
+  if (
+    PULL_REQUEST_RECEIPT_JOBS.some((job) =>
+      job === 'browser'
+        ? !['success', 'not-applicable'].includes(run.receiptJobs[job])
+        : run.receiptJobs[job] !== 'success',
+    ) ||
+    Object.keys(run.receiptJobs).length !== PULL_REQUEST_RECEIPT_JOBS.length
+  )
+    return undefined;
+  const browserRequired = plan.fixture_slugs.length > 0 || plan.fixture_specs.length > 0 || plan.e2e_specs.length > 0;
+  return browserRequired && run.receiptJobs.browser !== 'success' ? undefined : run;
 }
 
 function frozenFingerprint(members: readonly DeliveryMember[]): string {
@@ -579,10 +602,12 @@ export async function prepare(
     workflowRevision: options.head,
     event: 'workflow_dispatch',
   } satisfies Omit<CiEvidenceRequest, 'requestKey'>;
-  const identity: CiEvidenceRequest = {
+  const manualIdentity: CiEvidenceRequest = {
     ...identityInput,
     requestKey: ciEvidenceRequestKey(identityInput),
   };
+  let identity = manualIdentity;
+  let automaticRun: CiEvidenceRun | undefined;
   const attempts = Math.ceil((options.waitMinutes * 60_000) / POLL_INTERVAL_MILLISECONDS);
 
   // One dispatch per request key, ever: the attempt is recorded under the key's lock before the
@@ -598,6 +623,49 @@ export async function prepare(
         dependencies.state,
         [deliveryAuthority, ...frozenMembers.flatMap((member) => member.authority ?? [])],
         async () => {
+          if (
+            options.route === 'pull-request' &&
+            !plan.requires_full_run &&
+            dependencies.provider.findAutomaticPullRequestRuns !== undefined
+          ) {
+            // A provider error is not proof and cannot block the frozen manual request path.
+            try {
+              const reusable = reusablePullRequestRun(
+                plan,
+                await dependencies.provider.findAutomaticPullRequestRuns({
+                  repository,
+                  resource: deliveryAuthority.resource,
+                  base: options.base,
+                  candidate: options.head,
+                  integrationTree,
+                  workflow: PULL_REQUEST_WORKFLOW,
+                  workflowPath: PULL_REQUEST_WORKFLOW_PATH,
+                }),
+              );
+              if (reusable !== undefined) {
+                const automaticIdentity = {
+                  repository,
+                  resource: deliveryAuthority.resource,
+                  base: options.base,
+                  candidate: options.head,
+                  integrationTree,
+                  verificationPlanDigest: reusable.verificationPlanDigest,
+                  workflow: PULL_REQUEST_WORKFLOW,
+                  workflowPath: PULL_REQUEST_WORKFLOW_PATH,
+                  workflowRevision: reusable.workflowRevision,
+                  event: 'pull_request' as const,
+                };
+                identity = {
+                  ...automaticIdentity,
+                  requestKey: ciEvidenceRequestKey(automaticIdentity),
+                };
+                automaticRun = reusable;
+                return;
+              }
+            } catch {
+              // The manually bound full run remains the only fallback after an unreadable receipt.
+            }
+          }
           const found = await dependencies.provider.findRuns(identity);
           if (found.length > 1)
             throw new UsageError(
@@ -626,14 +694,16 @@ export async function prepare(
         },
       ),
   );
-  const observed = await poll(attempts, dependencies, async () => {
-    try {
-      const runs = await dependencies.provider.findRuns(identity);
-      return runs.length === 1 ? runs[0] : undefined;
-    } catch {
-      return undefined;
-    }
-  });
+  const observed =
+    automaticRun ??
+    (await poll(attempts, dependencies, async () => {
+      try {
+        const runs = await dependencies.provider.findRuns(identity);
+        return runs.length === 1 ? runs[0] : undefined;
+      } catch {
+        return undefined;
+      }
+    }));
   if (observed === undefined)
     throw new UsageError(
       `no run carries request key ${identity.requestKey} yet; run the same command again (it dispatches nothing twice).`,
@@ -646,11 +716,15 @@ export async function prepare(
   const job = await poll(attempts, dependencies, () =>
     dependencies
       .readJobs(runId)
-      .find((candidate) => candidate.name === EVIDENCE_JOB && candidate.runner !== ''),
+      .find(
+        (candidate) =>
+          candidate.name === (automaticRun === undefined ? EVIDENCE_JOB : PULL_REQUEST_AGGREGATE) &&
+          candidate.runner !== '',
+      ),
   );
   if (job === undefined)
     throw new UsageError(
-      `run ${runId}'s job "${EVIDENCE_JOB}" has no runner yet; run the same command again (it dispatches nothing twice).`,
+      `run ${runId}'s job "${automaticRun === undefined ? EVIDENCE_JOB : PULL_REQUEST_AGGREGATE}" has no runner yet; run the same command again (it dispatches nothing twice).`,
     );
 
   const finished: DeliveryMember[] = members.map((member: DeliveryMember) => ({
@@ -658,10 +732,11 @@ export async function prepare(
     providerRuns: member.plan.obligations.map((obligation) => ({
       id: runId,
       obligation: `${obligation.criterionId}:${obligation.commandOrProviderJob}`,
-      job: EVIDENCE_JOB,
-      workflow: EVIDENCE_WORKFLOW,
-      workflowPath: EVIDENCE_WORKFLOW_PATH,
-      event: 'workflow_dispatch',
+      job: automaticRun === undefined ? EVIDENCE_JOB : PULL_REQUEST_AGGREGATE,
+      workflow: automaticRun === undefined ? EVIDENCE_WORKFLOW : PULL_REQUEST_WORKFLOW,
+      workflowPath:
+        automaticRun === undefined ? EVIDENCE_WORKFLOW_PATH : PULL_REQUEST_WORKFLOW_PATH,
+      event: automaticRun === undefined ? 'workflow_dispatch' : 'pull_request',
     })),
   }));
   const request: DeliveryRequest = {

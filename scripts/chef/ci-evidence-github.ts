@@ -4,6 +4,8 @@ import { unzipSync } from 'fflate';
 
 import {
   CiEvidenceError,
+  ciEvidenceRequestKey,
+  type AutomaticPullRequestEvidenceRequest,
   type CiEvidenceObservation,
   type CiEvidenceProvider,
   type CiEvidenceRequest,
@@ -364,8 +366,7 @@ export function createGitHubCiEvidenceProvider(
   const git = options.git ?? defaultGit(options.cwd ?? process.cwd());
   const transport = createGitHubEvidenceTransport(options.repository, raw, options.cwd);
   const dispatchRef = options.dispatchRef;
-  return {
-    async findRuns(request) {
+  const findRuns = async (request: CiEvidenceRequest): Promise<CiEvidenceObservation[]> => {
       if (request.repository !== options.repository)
         throw new CiEvidenceError('CI evidence request repository differs from provider');
       const candidates = pages(
@@ -387,7 +388,7 @@ export function createGitHubCiEvidenceProvider(
               pullRequestIdentity(run)?.base === request.base
             : true),
       );
-      return candidates.map((run): CiEvidenceObservation => {
+    return candidates.map((run): CiEvidenceObservation => {
         const id = integer(run.id);
         const attempt = integer(run.run_attempt);
         if (id === undefined || id < 1 || attempt === undefined || attempt < 1)
@@ -512,7 +513,95 @@ export function createGitHubCiEvidenceProvider(
             .map((job) => text(job.name)),
         };
         return evidenceRun;
-      });
+    });
+  };
+  return {
+    findRuns,
+    async findAutomaticPullRequestRuns(
+      request: AutomaticPullRequestEvidenceRequest,
+    ): Promise<CiEvidenceRun[]> {
+      if (request.repository !== options.repository)
+        throw new CiEvidenceError('CI evidence request repository differs from provider');
+      const candidates = pages(
+        raw,
+        request.repository,
+        `actions/workflows/${workflowFile(request.workflowPath)}/runs?event=pull_request&head_sha=${request.candidate}`,
+        'workflow_runs',
+      ).filter(
+        (run) =>
+          text(run.event) === 'pull_request' &&
+          text(run.head_sha) === request.candidate &&
+          text(run.path) === request.workflowPath &&
+          text(run.name) === request.workflow &&
+          pullRequestIdentity(run)?.head === request.candidate &&
+          pullRequestIdentity(run)?.base === request.base,
+      );
+      const runs = new Map<number, CiEvidenceRun>();
+      for (const candidate of candidates) {
+        const id = integer(candidate.id);
+        const attempt = integer(candidate.run_attempt);
+        if (id === undefined || id < 1 || attempt === undefined || attempt < 1)
+          throw new CiEvidenceError('authenticated CI run has invalid identity');
+        const detail = transport.run(id);
+        if (
+          detail.repository !== request.repository ||
+          detail.revision !== request.candidate ||
+          detail.workflow !== request.workflow ||
+          detail.workflowPath !== request.workflowPath ||
+          detail.event !== 'pull_request' ||
+          detail.attempt !== attempt ||
+          detail.status !== 'completed' ||
+          detail.conclusion !== 'success'
+        )
+          continue;
+        const metadata = transport.artifact(id, `ci-evidence-receipt-${attempt}`);
+        if (
+          !metadata.present ||
+          metadata.expired ||
+          metadata.id === undefined ||
+          metadata.sizeBytes === undefined ||
+          metadata.sizeBytes < 1 ||
+          metadata.sizeBytes > MAX_RECEIPT_BYTES
+        )
+          continue;
+        const archive = transport.downloadArtifact?.(metadata.id);
+        if (archive === undefined) continue;
+        let receipt: Receipt;
+        try {
+          receipt = readReceipt(archive, metadata.digest);
+        } catch {
+          continue;
+        }
+        const identityInput = {
+          repository: request.repository,
+          resource: request.resource,
+          base: request.base,
+          candidate: request.candidate,
+          integrationTree: request.integrationTree,
+          verificationPlanDigest: receipt.planDigest,
+          workflow: request.workflow,
+          workflowPath: request.workflowPath,
+          workflowRevision: receipt.workflowRevision,
+          event: 'pull_request' as const,
+        };
+        const identity = { ...identityInput, requestKey: ciEvidenceRequestKey(identityInput) };
+        if (
+          receipt.repository !== request.repository ||
+          receipt.event !== 'pull_request' ||
+          receipt.workflowPath !== request.workflowPath ||
+          receipt.requestKey !== '' ||
+          receipt.base !== request.base ||
+          receipt.candidate !== request.candidate ||
+          receipt.runId !== id ||
+          receipt.attempt !== attempt ||
+          !bindsCheckout(identity, receipt, git, raw)
+        )
+          continue;
+        for (const observed of await findRuns(identity)) {
+          if (!('state' in observed)) runs.set(observed.id, observed);
+        }
+      }
+      return [...runs.values()];
     },
     async dispatch(request) {
       if (dispatchRef === undefined || !/^[A-Za-z0-9._/-]+$/.test(dispatchRef))

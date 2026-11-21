@@ -297,6 +297,32 @@ const aggregatedWorkflows = new Set([
   '.github/workflows/main.yml',
   '.github/workflows/pull-request.yml',
 ]);
+const pullRequestReceiptJobs = ['static', 'workspaces', 'tests', 'browser-selection', 'browser'];
+
+function hasCompletePullRequestCoverage(
+  member: DeliveryRequest['members'][number],
+  run: Awaited<ReturnType<CiEvidenceProvider['findRuns']>>[number],
+): boolean {
+  if (run === undefined || 'state' in run || !run.jobs.includes('Evidence aggregate')) return false;
+  if (
+    Object.keys(run.receiptJobs).length !== pullRequestReceiptJobs.length ||
+    pullRequestReceiptJobs.some((job) =>
+      job === 'browser'
+        ? !['success', 'not-applicable'].includes(run.receiptJobs[job])
+        : run.receiptJobs[job] !== 'success',
+    )
+  )
+    return false;
+  const browserRequired =
+    member.plan.obligations.some((item) =>
+      item.relevantInputs.some(
+        (path) =>
+          path.startsWith('scripts/browser-fixtures/') ||
+          path.startsWith('applications/interborough/'),
+      ),
+    );
+  return !browserRequired || run.receiptJobs.browser === 'success';
+}
 
 /** Require a current authenticated aggregate for the CI runs that carry pre-merge obligations. */
 export async function validateDeliveryCiEvidence(
@@ -310,9 +336,9 @@ export async function validateDeliveryCiEvidence(
         .filter((item) => item.phase === 'pre-integration')
         .map((item) => `${item.criterionId}:${item.commandOrProviderJob}`),
     );
-    return member.providerRuns.filter(
-      (run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath),
-    );
+    return member.providerRuns
+      .filter((run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath))
+      .map((run) => ({ member, run }));
   });
   if (mappings.length === 0) return undefined;
   if (!Array.isArray(request.ciEvidence))
@@ -332,11 +358,11 @@ export async function validateDeliveryCiEvidence(
         identity.candidate === request.revision &&
         identity.base === request.base &&
         identity.integrationTree === request.integrationTree &&
-        identity.event === mapping.event &&
-        (mapping.event !== 'workflow_dispatch' ||
+        identity.event === mapping.run.event &&
+        (mapping.run.event !== 'workflow_dispatch' ||
           identity.verificationPlanDigest === manualPlanDigest) &&
-        identity.workflow === mapping.workflow &&
-        identity.workflowPath === mapping.workflowPath &&
+        identity.workflow === mapping.run.workflow &&
+        identity.workflowPath === mapping.run.workflowPath &&
         identity.requestKey === ciEvidenceRequestKey(identity),
     );
     const identity = matches[0];
@@ -356,11 +382,12 @@ export async function validateDeliveryCiEvidence(
       runs.length !== 1 ||
       run === undefined ||
       'state' in run ||
-      run.id !== mapping.id ||
+      run.id !== mapping.run.id ||
       run.requestKey !== identity.requestKey ||
-      !run.jobs.includes(mapping.job)
+      !run.jobs.includes(mapping.run.job) ||
+      (mapping.run.event === 'pull_request' && !hasCompletePullRequestCoverage(mapping.member, run))
     )
-      return `CI evidence for run ${mapping.id} is missing its successful aggregate or required job`;
+      return `CI evidence for run ${mapping.run.id} is missing its successful aggregate or required job`;
   }
   return undefined;
 }
