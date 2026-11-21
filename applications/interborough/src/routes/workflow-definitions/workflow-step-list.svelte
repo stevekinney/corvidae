@@ -8,7 +8,14 @@
    * keeps focus on the pressed button, and every list adds a step through one menu. A row's key is
    * the identity `StepKeys` gives it, so a move carries a step's open form with it.
    */
-  import { Button, FormField, Input, NumberInput, SortableList } from '@lostgradient/cinder';
+  import {
+    Button,
+    FormField,
+    Input,
+    NumberInput,
+    SortableList,
+    SortableListEditorRow,
+  } from '@lostgradient/cinder';
   import { Plus, Trash2 } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
 
@@ -384,41 +391,33 @@
       reorderMode="buttons"
       label={listWhere ?? copy.stepsHeading}
       onReorder={(_next: Row[], change) => reorder(where, change)}
-      class={depth === 0
-        ? 'weft-step-list weft-step-list--cards'
-        : 'weft-step-list weft-step-list--rows'}
     >
       {#snippet children(row: Row, context)}
-        <div
-          class={depth === 0 ? 'weft-step-list__card' : 'weft-step-list__row'}
+        {#snippet rowActions()}
+          {@render context.moveButtons?.()}
+          <Button
+            variant="secondary"
+            size="sm"
+            iconOnly
+            aria-label={copy.remove(row.where)}
+            onclick={() => remove(row)}
+          >
+            <Trash2 aria-hidden="true" />
+          </Button>
+        {/snippet}
+        <SortableListEditorRow
+          layout={depth === 0 ? 'card' : 'row'}
+          position={row.position}
+          label={row.step.kind === 'activity'
+            ? host.activityTitle(row.step.handler)
+            : copy.stepKinds[row.step.kind]}
+          invalid={host.hasProblem(row.address)}
+          actions={host.locked ? undefined : rowActions}
           data-step-kind={row.step.kind}
           data-step-address={row.address}
-          data-problem={host.hasProblem(row.address) ? '' : undefined}
         >
-          <div class="weft-step-list__head">
-            <span class="weft-step-list__position">{row.position}</span>
-            <span class="weft-step-list__kind">
-              {row.step.kind === 'activity'
-                ? host.activityTitle(row.step.handler)
-                : copy.stepKinds[row.step.kind]}
-            </span>
-            {#if !host.locked}
-              <span class="weft-step-list__head-actions">
-                {@render context.moveButtons?.()}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  aria-label={copy.remove(row.where)}
-                  onclick={() => remove(row)}
-                >
-                  <Trash2 aria-hidden="true" />
-                </Button>
-              </span>
-            {/if}
-          </div>
           {@render body(row)}
-        </div>
+        </SortableListEditorRow>
       {/snippet}
     </SortableList>
   {/if}
@@ -436,74 +435,6 @@
 {@render stepList(steps, list, address, undefined, 0)}
 
 <style>
-  /* The list's own class is on a Cinder element, so the page names it globally. */
-  :global(.weft-step-list) {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  :global(.weft-step-list--cards) {
-    gap: var(--cinder-space-2);
-  }
-
-  .weft-step-list__card,
-  .weft-step-list__row {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    min-width: 0;
-  }
-
-  /* The workflow's own steps are the one bordered box on any path down the page. */
-  .weft-step-list__card {
-    padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-  }
-
-  /* A step inside a card is a flat row, told from the next by a hairline. */
-  .weft-step-list__row {
-    padding-block: var(--cinder-space-3);
-    border-block-end: 1px solid var(--cinder-border-muted);
-  }
-
-  /* A step with something to fix is outlined, so it is found without reading its fields. */
-  .weft-step-list__card[data-problem] {
-    border-color: var(--cinder-status-danger-border);
-  }
-
-  /* A flat row has no box to outline, so what is wrong with it reads in the color of its name. */
-  .weft-step-list__row[data-problem] .weft-step-list__kind {
-    color: var(--cinder-status-danger-text);
-  }
-
-  .weft-step-list__head {
-    display: flex;
-    gap: var(--cinder-space-2);
-    align-items: center;
-  }
-
-  .weft-step-list__position {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .weft-step-list__kind {
-    flex: 1 1 auto;
-    font-weight: 600;
-    min-width: 0;
-  }
-
-  .weft-step-list__head-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-1);
-    align-items: center;
-    justify-content: flex-end;
-  }
-
   /* The steps of a case or a list: a heading line, then the steps, behind one leading rule. */
   .weft-step-list__slot {
     display: flex;

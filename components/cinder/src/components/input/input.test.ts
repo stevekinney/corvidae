@@ -88,10 +88,10 @@ describe('Input rendering', () => {
   test('a read-only input is told apart from an editable one', async () => {
     const css = await Bun.file(new URL('./input.css', import.meta.url)).text();
     expect(css).toMatch(
-      /\.cinder-input\[readonly\]:not\(:disabled\)\s*\{[^}]*background:\s*var\(--cinder-surface-inset\);[^}]*border-style:\s*dashed;[^}]*cursor:\s*default;[^}]*caret-color:\s*transparent;/,
+      /\.cinder-input\[readonly\]:not\(:disabled\)\s*\{[^}]*background:\s*var\(--cinder-surface-inset\);[^}]*border-color:\s*transparent;[^}]*cursor:\s*default;[^}]*caret-color:\s*transparent;/,
     );
     expect(css).toMatch(
-      /\.cinder-input-group:has\(> \.cinder-input\[readonly\]:not\(:disabled\)\)\s*\{[^}]*border-style:\s*dashed;/,
+      /\.cinder-input-group:has\(> \.cinder-input\[readonly\]:not\(:disabled\)\)\s*\{[^}]*border-color:\s*transparent;/,
     );
   });
 
@@ -336,6 +336,24 @@ describe('Input rendering', () => {
     const describedBy = input?.getAttribute('aria-describedby') ?? '';
     expect(describedBy).toContain('email-description');
     expect(describedBy).toContain('email-error');
+  });
+
+  test('draws an error directly after its input before its description', () => {
+    const { container } = render(Input, {
+      props: {
+        id: 'email',
+        value: '',
+        description: 'Use your work email.',
+        error: 'Enter a valid email address.',
+      },
+    });
+    const frame = container.querySelector('.cinder-form-field');
+    const error = container.querySelector('#email-error');
+    const description = container.querySelector('#email-description');
+    expect(frame && error && description).toBeTruthy();
+    expect(Array.from(frame!.children).indexOf(error!)).toBeLessThan(
+      Array.from(frame!.children).indexOf(description!),
+    );
   });
 
   test('labelVisible={false} does not change description/error aria-describedby wiring', () => {

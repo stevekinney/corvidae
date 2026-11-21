@@ -873,6 +873,7 @@
         <Input
           {id}
           {...labelledProps}
+          {...hosted ? { size: 'sm' } : {}}
           type={field.schema['writeOnly'] === true ? 'password' : 'text'}
           autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}
           required={field.required}
@@ -908,6 +909,7 @@
       {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
         <DurationField
           {id}
+          {...hosted ? { size: 'sm' } : {}}
           label={textOf(field)}
           description={field.description}
           {error}
@@ -922,6 +924,7 @@
         <NumberInput
           {id}
           {...labelledProps}
+          {...hosted ? { size: 'sm' } : {}}
           required={field.required}
           disabled={frozen}
           step={field.kind === 'integer' ? 1 : undefined}
@@ -933,6 +936,7 @@
         <Select
           {id}
           {...labelledProps}
+          {...hosted ? { size: 'sm' } : {}}
           required={field.required}
           disabled={frozen}
           options={selectOptions(field)}

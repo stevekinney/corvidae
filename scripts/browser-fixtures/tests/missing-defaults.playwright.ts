@@ -89,9 +89,12 @@ const oracles: Record<(typeof missingComponents)[number], Oracle> = {
     await expect(page.locator('.cinder-citation')).toContainText('Source');
   },
   'code-location': async (page) => {
-    await expect(page.locator('.cinder-code-location')).toContainText(
-      'src/routes/+page.svelte:42:7',
+    const location = page.locator('.cinder-code-location code');
+    await expect(location).toContainText('src/routes/+page.svelte:42:7');
+    const fontSize = await location.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize),
     );
+    expect(fontSize).toBeGreaterThanOrEqual(11);
   },
   'donut-chart': async (page) => {
     await expect(page.locator('.cinder-donut-chart figure')).toHaveAttribute(

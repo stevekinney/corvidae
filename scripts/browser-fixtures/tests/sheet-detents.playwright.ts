@@ -14,6 +14,7 @@ import {
   test,
   type ComponentPageFixture,
 } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import type { Locator, Page } from '@playwright/test';
 import { fixtureEntry } from './layout-fixture.ts';
 
@@ -290,5 +291,42 @@ test.describe('Modal as a bottom sheet', () => {
 
     await close.hover();
     await expect(page.getByRole('tooltip')).toHaveText('Close (Esc)');
+  });
+
+  test('a touch just outside the drawn close control still dismisses the sheet', async ({
+    browser,
+    baseURL,
+  }) => {
+    const context = await browser.newContext({
+      baseURL: baseURL!,
+      viewport: { width: phone.width, height: phone.height },
+      isMobile: true,
+      hasTouch: true,
+      reducedMotion: 'reduce',
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(fixtureRoute('modal', { fixtureName: 'sheet' }), { waitUntil: 'load' });
+      expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+      const dialog = page.locator('dialog[data-cinder-sheet="docked"]');
+      const close = dialog.getByRole('button', { name: 'Close', exact: true });
+      await expect(close).toBeVisible();
+      const corners = await close.evaluate((button) => {
+        const { top, bottom, left, right } = button.getBoundingClientRect();
+        // Half a pixel within each corner of the hit square, inset from the panel's curve.
+        return [left - 5.5, right + 1.5].flatMap((x) =>
+          [top - 1.5, bottom + 5.5].map((y) => ({
+            x,
+            y,
+            withinTarget: button.contains(document.elementFromPoint(x, y)),
+          })),
+        );
+      });
+      expect(corners.map(({ withinTarget }) => withinTarget)).toEqual([true, true, true, true]);
+      await page.touchscreen.tap(corners[0]!.x, corners[0]!.y);
+      await expect(dialog).toBeHidden();
+    } finally {
+      await context.close();
+    }
   });
 });

@@ -250,6 +250,20 @@
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  @media (pointer: coarse) {
+    .cinder-modal__close::after {
+      --_cinder-modal-close-outset: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+
+      content: '';
+      position: absolute;
+      /* Shift the enlarged target inward so the panel's rounded corner does not clip it. */
+      inset-block: calc(var(--_cinder-modal-close-outset) + var(--cinder-space-0-5))
+        calc(var(--_cinder-modal-close-outset) - var(--cinder-space-0-5));
+      inset-inline: calc(var(--_cinder-modal-close-outset) - var(--cinder-space-0-5))
+        calc(var(--_cinder-modal-close-outset) + var(--cinder-space-0-5));
+    }
+  }
+
   @media (hover: hover) {
     .cinder-modal__close:hover {
       background: color-mix(in oklch, currentColor, transparent 85%);

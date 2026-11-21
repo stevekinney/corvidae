@@ -1007,8 +1007,15 @@ export {
 } from './components/sidebar/index.ts';
 export type { SidebarProps } from './components/sidebar/index.ts';
 
-export { default as SortableList } from './components/sortable-list/index.ts';
-export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
+export {
+  default as SortableList,
+  SortableListEditorRow,
+} from './components/sortable-list/index.ts';
+export type {
+  SortableListEditorRowProps,
+  SortableListProps,
+  SortableReorderMode,
+} from './components/sortable-list/index.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
 export type {
