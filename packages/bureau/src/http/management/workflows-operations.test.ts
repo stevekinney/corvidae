@@ -390,6 +390,39 @@ describe('results', () => {
     }
   });
 
+  it('lists a start waiting for a workflow slot as submitted until it begins executing', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('slot-test', {
+      trigger: { kind: 'manual' },
+      steps: [{ kind: 'await-signal', signal: 'slot-test-release' }],
+    });
+    const engine = served.bureau.durableEngine()!;
+    const runIds = Array.from({ length: 5 }, (_, index) => `slot-test-${index}`);
+    const started: string[] = [];
+    try {
+      for (const id of runIds) {
+        await engine.start('slot-test', null, { id });
+        started.push(id);
+      }
+      await waitUntil(() => engine.runConcurrency()?.waiting.includes('slot-test-4') === true, {
+        message: 'the fifth start to wait for a run slot',
+      });
+      const listTask = async () => {
+        const listed = await ownerRpc(served.owner, 'bureau.tasks.list', {});
+        expect(listed.error).toBeUndefined();
+        return listOf(listed, 'tasks').find((task) => task.id === 'slot-test-4');
+      };
+      expect(await listTask()).toMatchObject({ status: 'submitted' });
+      await engine.cancel('slot-test-0');
+      await waitUntil(() => engine.runConcurrency()?.running.includes('slot-test-4') === true, {
+        message: 'the fifth start to take the released run slot',
+      });
+      expect(await listTask()).toMatchObject({ status: 'working' });
+    } finally {
+      for (const id of started) await engine.cancel(id);
+    }
+  });
+
   it('replays a manual start under one caller and workflow key without starting a second run', async () => {
     const served = await serve();
     await served.bureau.workflows!.create('manual-once', {

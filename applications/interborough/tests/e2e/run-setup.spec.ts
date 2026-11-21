@@ -11,6 +11,7 @@ import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
+import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
@@ -288,6 +289,7 @@ test.describe('the run setup page', () => {
     created.add(id);
     await createWorkflowFile(request, id, {
       paused: true,
+      trigger: { kind: 'manual' },
       description: 'Sorts new messages into the right folder and flags anything urgent.',
       inputSchema: { type: 'object', properties: { topic: { type: 'string', title: 'Topic' } } },
     });
@@ -336,6 +338,84 @@ test.describe('the run setup page', () => {
     });
   });
 
+  test('59a: an actual start at the execution cap appears on Runs as Scheduled', async ({
+    page,
+    request,
+    pageErrors,
+  }) => {
+    const id = 'e2e-setup-queued-release';
+    const running = new Map<string, string>();
+    const blockingWorkflows = Array.from({ length: 4 }, (_, index) => `e2e-setup-slot-${index}`);
+    try {
+      for (const blocker of blockingWorkflows) {
+        await createWaiting(request, blocker);
+        const answer = await bureau(request, 'bureau.workflows.start', {
+          id: blocker,
+          input: { topic: 'hold an executing slot' },
+        });
+        expect(answer.fault, `start ${blocker}`).toBeUndefined();
+        expect(answer.result).toHaveProperty('runId', expect.any(String));
+        running.set(blocker, (answer.result as { runId: string }).runId);
+      }
+      await expect
+        .poll(async () => {
+          const answer = await bureau(request, 'bureau.workflows.concurrency', {});
+          return answer.result;
+        })
+        .toEqual({ max: 4, running: 4 });
+      await createReleaseSetup(request, id);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto(`/workflows/${id}/run`);
+      await setup(page)
+        .getByLabel(/^Branch/)
+        .fill('main');
+      await setup(page)
+        .getByLabel(/^Since/)
+        .fill('2026-10-23');
+      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+        'Runs once, when one of the 4 finishes, on main since Oct 23.',
+      );
+      const start = footer(page).getByRole('button', { name: COPY.startAction });
+      await expect(start).toBeEnabled();
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow/run',
+        state: '59a-four-executing-start-enabled',
+        source: SOURCE,
+      });
+
+      expectEngineMissesForFileRuns(pageErrors);
+      await start.click();
+      await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
+      const [run] = await listWorkflowRuns(request, id);
+      if (run === undefined) throw new Error('Run Setup did not create a durable workflow run.');
+      running.set(id, run.id);
+      await page.goto(`/runs?workflow=${id}`);
+      const row = page.locator(`li[data-run="${run.id}"]`);
+      await expect(row).toHaveAttribute('data-status', 'Scheduled');
+      await expect(row.getByRole('img', { name: 'Scheduled' })).toHaveAttribute(
+        'data-cinder-status',
+        'pending',
+      );
+      await expect(row).toContainText('waiting for a run slot');
+      await captureForDesignReview(page, {
+        route: '/runs',
+        state: '59a-start-queued-for-a-slot',
+        source: SOURCE,
+      });
+
+      const first = blockingWorkflows[0]!;
+      await finish(request, first, running.get(first)!);
+      running.delete(first);
+      await expect(row).toHaveAttribute('data-status', 'Waiting');
+      await expect(row).toContainText(`waiting for signal ${id}-wait`);
+    } finally {
+      for (const runId of running.values()) {
+        const answer = await bureau(request, 'bureau.workflows.runs.cancel', { runId });
+        expect(answer.fault, `cancel ${runId}`).toBeUndefined();
+      }
+    }
+  });
+
   test('58q: keeps When and the footer while the workflow detail read fails', async ({
     page,
     request,
@@ -356,7 +436,7 @@ test.describe('the run setup page', () => {
     await page.goto('/runs/new');
     await page.getByRole('combobox', { name: WORKFLOW_COPY.runPicker.fieldLabel }).selectOption(id);
     await page.getByRole('button', { name: WORKFLOW_COPY.runPicker.continue }).click();
-    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await expect(area(page)).toHaveAttribute('data-state', 'error');
     await expect(setup(page).getByTestId('run-setup-input-failed')).toBeVisible();
     await expect(
       setup(page).getByRole('heading', { level: 2, name: COPY.whenHeading }),
@@ -370,7 +450,8 @@ test.describe('the run setup page', () => {
       source: SOURCE,
     });
     await jsonFallback.click();
-    await expect(setup(page).getByRole('textbox', { name: COPY.jsonEditorLabel })).toBeVisible();
+    const editor = await jsonEditor(setup(page), COPY.jsonEditorLabel);
+    await expect(editor).toBeVisible();
   });
 
   test('58u: preserves an invalid file trigger beside the disabled run setup', async ({
@@ -417,9 +498,10 @@ test.describe('the run setup page', () => {
       .getByLabel(/^Branch/)
       .fill('main');
     await setup(page).getByRole('button', { name: COPY.editAsJson }).click();
-    await setup(page)
-      .getByRole('textbox', { name: COPY.jsonEditorLabel })
-      .fill('{\n  "branch": "main"\n  "since": "2026-10-23"\n}');
+    await replaceJsonEditorText(
+      await jsonEditor(setup(page), COPY.jsonEditorLabel),
+      '{\n  "branch": "main"\n  "since": "2026-10-23"\n}',
+    );
     await expect(setup(page).getByText('Invalid JSON', { exact: true })).toBeVisible();
     await expect(setup(page).getByRole('button', { name: /^Back to form/ })).toBeDisabled();
     await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeEnabled();
@@ -454,7 +536,9 @@ test.describe('the run setup page', () => {
       await expect(setup(page).getByText('Collects merged changes into a draft.')).toBeVisible();
       await expect(setup(page).getByLabel(/^Branch/)).toHaveCount(0);
       await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeDisabled();
-      await expect(setup(page).locator('.cinder-skeleton-form')).toBeVisible();
+      await expect(
+        setup(page).locator('.cinder-skeleton-group[data-cinder-variant="form"]'),
+      ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/workflows/:workflow/run',
         state: '58w-route-heading-with-loading-input',

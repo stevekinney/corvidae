@@ -848,6 +848,31 @@ describe('the Bureau’s own runs (COR-2423)', () => {
     expect(isRunning({ status: 'working', workflow: workflowOf('agentRun') })).toBe(true);
   });
 
+  test('a submitted workflow instance is Scheduled until it takes a run slot (row 59a)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'release-notes-queued',
+          contextId: 'release-notes-queued',
+          kind: 'catalog',
+          agentName: null,
+          status: 'submitted',
+          origin: { kind: 'api' },
+          workflow: workflowOf('release-notes'),
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+    expect(runStatusWord(row, NOW)).toBe('Scheduled');
+    expect(runLineTwo(row, context)).toBe('API, waiting for a run slot');
+    expect(runSegmentCounts([row])).toMatchObject({ all: 1, running: 0 });
+    expect(filterRunRows([row], { status: 'running' })).toEqual([]);
+    expect(isRunRowRunning(row, NOW)).toBe(false);
+    expect(runStatusWord({ ...row, status: 'working' }, NOW)).toBe('Running');
+    expect(runStatusWord({ ...row, engineRun: false }, NOW)).toBe('Running');
+  });
+
   test('a run that asked to be woken is Scheduled, and says when it is due (row 10h)', () => {
     const row = onlyRow({
       tasks: [
