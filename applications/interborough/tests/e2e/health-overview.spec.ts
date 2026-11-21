@@ -226,39 +226,78 @@ test.describe('the sample world', () => {
   }
 
   for (const width of [1280, 375] as const) {
-    test(`engine runs in Health at ${width} pixels`, async ({ page, checkA11y }) => {
-      await page.setViewportSize({ width, height: 900 });
-      // The showcase host owns Health's board data but has no engine run rows. The seeded engine
-      // host carries the real order-processing run this screen must make usable.
-      await page.goto(`${E2E_BASE_URL}/health/runs?type=order-processing`);
-      const main = page.locator('main');
-      const table = main.locator('table.weft-workflows-table');
-      await expect(table.locator('tbody tr').first()).toBeVisible();
+    test.describe(`engine run link at ${String(width)}px`, () => {
+      test.use({ hasTouch: width === 375, isMobile: width === 375 });
+      test(`engine runs in Health at ${width} pixels`, async ({ page, checkA11y }) => {
+        await page.setViewportSize({ width, height: 900 });
+        // The showcase host owns Health's board data but has no engine run rows. The seeded engine
+        // host carries the real order-processing run this screen must make usable.
+        await page.goto(`${E2E_BASE_URL}/workflows/order-processing?tab=runs`);
+        const allRuns = page.getByRole('link', { name: 'All runs', exact: true });
+        await expect(allRuns).toHaveAttribute('href', '/health/runs?type=order-processing');
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow',
+          tab: 'runs',
+          state: 'All runs links to engine runs in Health',
+          source: SOURCE,
+        });
+        await allRuns.click();
+        await expect(page).toHaveURL(/\/health\/runs\?type=order-processing$/);
+        const main = page.locator('main');
+        const table = main.locator('table.weft-workflows-table');
+        await expect(table.locator('tbody tr').first()).toBeVisible();
 
-      await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-      await expect(main.getByRole('heading', { level: 2, name: 'Workflow runs' })).toBeVisible();
-      if (width === 375) {
-        await expect(main.getByRole('combobox', { name: 'Section' })).toHaveText(/Section:\s*Runs/);
-      } else {
-        await expectTabOpen(main, 'Runs');
-      }
-      await expect(main.getByRole('button', { name: 'Live' })).toBeVisible();
-      await expect(main.getByRole('status', { name: /Connection/ })).toHaveCount(1);
-      await expect(table.locator('tbody tr').first().getByRole('link')).toBeVisible();
+        await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
+        await expect(main.getByRole('heading', { level: 2, name: 'Workflow runs' })).toBeVisible();
+        if (width === 375) {
+          await expect(main.getByRole('combobox', { name: 'Section' })).toHaveText(
+            /Section:\s*Runs/,
+          );
+        } else {
+          await expectTabOpen(main, 'Runs');
+        }
+        await expect(main.getByRole('button', { name: 'Live' })).toBeVisible();
+        await expect(main.getByRole('status', { name: /Connection/ })).toHaveCount(1);
+        const runLink = table
+          .locator('tbody tr')
+          .first()
+          .locator('a.weft-workflows-table__id-link');
+        await expect(runLink).toBeVisible();
 
-      const scroller = main.locator('.cinder-table-scroll');
-      expect(await scroller.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-        true,
-      );
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-        true,
-      );
-      await captureForDesignReview(page, {
-        route: '/health/runs',
-        state: 'engine runs in Health',
-        source: SOURCE,
+        const scroller = main.locator('.cinder-table-scroll');
+        expect(
+          await scroller.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        ).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        await captureForDesignReview(page, {
+          route: '/health/runs',
+          state: 'engine runs in Health',
+          source: SOURCE,
+        });
+        await checkA11y(`health engine runs at ${width}px`);
+        if (width === 375) {
+          await runLink.scrollIntoViewIfNeeded();
+          const hit = await runLink.evaluate((link) => {
+            const box = link.getBoundingClientRect();
+            const x = box.x + box.width / 2;
+            const y = box.y + box.height / 2;
+            const above = y - 21.5;
+            const below = y + 21.5;
+            return {
+              x,
+              above,
+              reachesEdges: [above, below].map((target) =>
+                link.contains(document.elementFromPoint(x, target)),
+              ),
+            };
+          });
+          expect(hit.reachesEdges).toEqual([true, true]);
+          await page.touchscreen.tap(hit.x, hit.above);
+          await expect(page).toHaveURL(/\/workflows\/order-processing\/runs\/[^/?]+$/);
+        }
       });
-      await checkA11y(`health engine runs at ${width}px`);
     });
   }
 

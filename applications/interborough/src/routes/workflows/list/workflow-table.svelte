@@ -177,7 +177,7 @@
         <Table.Cell>
           <StatusLabel word={workflowRunStatusWord(row.status)} />
         </Table.Cell>
-        <Table.Cell as="th" clamp={false}>
+        <Table.Cell as="th" clamp={false} class="weft-workflows-table__run-identity">
           <span class="weft-workflows-table__id-cell">
             <span class="weft-workflows-table__id-line">
               <Tooltip text={row.id} placement="top">

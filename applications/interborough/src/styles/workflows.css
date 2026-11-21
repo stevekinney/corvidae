@@ -140,6 +140,34 @@
   }
 }
 
+/* In the phone Health table, keep the run link's extension inside its inline width. */
+@media (max-width: 639.98px) and (any-pointer: coarse) {
+  .weft-workflows-table:not(.weft-workflows-table--with-floor) .weft-workflows-table__run-identity {
+    overflow: visible;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor) .weft-workflows-table__id-link {
+    position: relative;
+    overflow: visible;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor)
+    .weft-workflows-table__id-link
+    > code {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor)
+    .weft-workflows-table__id-link::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
+  }
+}
+
 .weft-workflows-table__id-link code {
   font-family: var(--cinder-font-mono);
 }
