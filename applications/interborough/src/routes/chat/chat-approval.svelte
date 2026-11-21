@@ -27,6 +27,7 @@
     type DecisionDeckOutcome,
   } from '@lostgradient/cinder';
   import { Layers } from '@lucide/svelte';
+  import type { Snippet } from 'svelte';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { approvalQuestion } from '../../lib/tool-text.ts';
@@ -168,52 +169,59 @@
     </Button>
   </Tooltip>
   {#if deckFor === requestKey && !disabled}
-    <Modal open title={copy.deckTitle} onDismiss={closeDeck}>
-      <DecisionDeck
-        items={[
-          {
-            id: requestKey,
-            title: entry.name,
-            eyebrow: source,
-          },
-        ]}
-        label={copy.deckTitle}
-        acceptLabel="Approve"
-        rejectLabel="Deny"
-        pinActions
-        emptyTitle={copy.selectedDecision}
-        emptyDescription=""
-        onDecision={({ outcome }) => reviewOutcome(outcome)}
-        onUndo={() => (selectedDecision = undefined)}
-        card={reviewCard}
-      />
-      {#if selectedDecision !== undefined}
-        <section aria-label={copy.selectedDecision}>
-          <Text variant="code">{entry.name}</Text>
-          {@render reviewArguments()}
-        </section>
-      {/if}
-      {#snippet footer()}
-        <Button type="button" variant="secondary" onclick={closeDeck}>
-          {copy.returnToApproval}
-        </Button>
-        {#if selectedDecision !== undefined}
-          <Button
-            type="button"
-            variant="primary"
-            mutating
-            onclick={() => {
-              const decision = selectedDecision;
-              if (decision === undefined || deckFor !== requestKey || disabled) return;
-              closeDeck();
-              commit(decision);
-            }}
-          >
-            {selectedDecision === 'approve' ? copy.confirmApproval : copy.confirmDenial}
-          </Button>
-        {/if}
+    <DecisionDeck
+      items={[{ id: requestKey, title: entry.name, eyebrow: source }]}
+      label={copy.deckTitle}
+      acceptLabel="Approve"
+      rejectLabel="Deny"
+      emptyTitle={copy.selectedDecision}
+      emptyDescription=""
+      onDecision={({ outcome }) => reviewOutcome(outcome)}
+      onUndo={() => (selectedDecision = undefined)}
+      card={reviewCard}
+    >
+      {#snippet layout(content: Snippet, actions: Snippet)}
+        <Modal open title={copy.deckTitle} onDismiss={closeDeck}>
+          <div class="weft-chat-approval__deck-content">
+            {@render content()}
+            {#if selectedDecision !== undefined}
+              <section aria-label={copy.selectedDecision}>
+                <Text variant="code">{entry.name}</Text>
+                {@render reviewArguments()}
+              </section>
+            {/if}
+          </div>
+          {#snippet footer()}
+            <div class="weft-chat-approval__deck-footer">
+              {#if irreversible ?? entry.tier === 'dangerous'}
+                <Text variant="caption">{copy.irreversible}</Text>
+              {/if}
+              {@render actions()}
+              <div class="weft-chat-approval__deck-exits">
+                <Button type="button" variant="secondary" onclick={closeDeck}>
+                  {copy.returnToApproval}
+                </Button>
+                {#if selectedDecision !== undefined}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    mutating
+                    onclick={() => {
+                      const decision = selectedDecision;
+                      if (decision === undefined || deckFor !== requestKey || disabled) return;
+                      closeDeck();
+                      commit(decision);
+                    }}
+                  >
+                    {selectedDecision === 'approve' ? copy.confirmApproval : copy.confirmDenial}
+                  </Button>
+                {/if}
+              </div>
+            </div>
+          {/snippet}
+        </Modal>
       {/snippet}
-    </Modal>
+    </DecisionDeck>
   {/if}
 {/snippet}
 
@@ -221,9 +229,6 @@
   <Text variant="caption">{question}</Text>
   <Text variant="h4"><Text variant="code">{entry.name}</Text></Text>
   {@render reviewArguments()}
-  {#if irreversible ?? entry.tier === 'dangerous'}
-    <Text variant="caption">{copy.irreversible}</Text>
-  {/if}
 {/snippet}
 
 {#snippet reviewArguments()}
@@ -301,3 +306,27 @@
 {#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}
   <p class="weft-chat-approval__provider-note">{providerNote}</p>
 {/if}
+
+<style>
+  .weft-chat-approval__deck-content,
+  .weft-chat-approval__deck-footer {
+    display: grid;
+    gap: var(--cinder-space-4);
+    max-inline-size: 26rem;
+    margin-inline: auto;
+  }
+
+  .weft-chat-approval__deck-footer {
+    inline-size: 100%;
+  }
+
+  .weft-chat-approval__deck-exits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .weft-chat-approval__deck-exits > :global(button) {
+    flex: 1 1 auto;
+  }
+</style>

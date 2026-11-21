@@ -229,14 +229,6 @@
     gap: var(--cinder-space-6);
   }
 
-  .cinder-decision-deck__actions[data-cinder-pin-actions] {
-    position: sticky;
-    inset-block-end: 0;
-    z-index: 5;
-    padding-block: var(--cinder-space-2);
-    background: var(--cinder-surface-raised);
-  }
-
   .cinder-decision-deck__action-cell {
     display: grid;
     grid-template-rows: 2.5rem auto;

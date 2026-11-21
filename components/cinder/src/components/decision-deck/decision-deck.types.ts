@@ -41,8 +41,8 @@ export type DecisionDeckProps<TItem extends DecisionDeckItem = DecisionDeckItem>
   rejectLabel?: string;
   /** Text of the later button. Defaults to "Later". */
   laterLabel?: string;
-  /** Keeps the decision row at the bottom of a scrolling container while a long card is read. */
-  pinActions?: boolean;
+  /** Places the deck content and its built-in decision controls in distinct regions of a host layout. */
+  layout?: Snippet<[content: Snippet, actions: Snippet]>;
   /** Text of the undo button. Defaults to "Undo". */
   undoLabel?: string;
   /** Title of the empty state shown when every card is decided. Defaults to "All caught up". */

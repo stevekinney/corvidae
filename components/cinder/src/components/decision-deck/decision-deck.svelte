@@ -78,7 +78,7 @@
     acceptLabel = 'Accept',
     rejectLabel = 'Reject',
     laterLabel = 'Later',
-    pinActions = false,
+    layout,
     undoLabel = 'Undo',
     emptyTitle = 'All caught up',
     emptyDescription,
@@ -333,18 +333,7 @@
   {/if}
 {/snippet}
 
-<svelte:window
-  onpointermove={onWindowPointerMove}
-  onpointerup={onWindowPointerUp}
-  onpointercancel={onWindowPointerCancel}
-/>
-
-<section
-  {...rest}
-  bind:this={rootElement}
-  class={classNames('cinder-decision-deck', className)}
-  aria-label={label}
->
+{#snippet content()}
   {#if total > 0}
     <div class="cinder-decision-deck__progress">
       <p id={progressId} class="cinder-decision-deck__progress-text"><bdi>{progressLabel}</bdi></p>
@@ -384,11 +373,26 @@
       {/each}
       {@render leavingCopy()}
     </div>
+  {:else}
+    <!-- The leaving copy is laid over the empty state (out of flow), so the empty state is in its
+         final place from the first frame and nothing moves when the copy goes away. -->
+    <div class="cinder-decision-deck__finish">
+      {#if leaving !== null}
+        <div class="cinder-decision-deck__leaving">
+          {@render leavingCopy()}
+        </div>
+      {/if}
+      <div class="cinder-decision-deck__empty" tabindex="-1">
+        <p class="cinder-decision-deck__empty-title">{emptyTitle}</p>
+        <p class="cinder-decision-deck__empty-description">{emptyDescriptionText}</p>
+      </div>
+    </div>
+  {/if}
+{/snippet}
 
-    <div
-      class="cinder-decision-deck__actions"
-      data-cinder-pin-actions={pinActions ? '' : undefined}
-    >
+{#snippet actions()}
+  {#if pending.length > 0}
+    <div class="cinder-decision-deck__actions">
       <div class="cinder-decision-deck__action-cell">
         <Button
           iconOnly
@@ -429,20 +433,6 @@
         <span class="cinder-decision-deck__action-caption" aria-hidden="true">{acceptLabel}</span>
       </div>
     </div>
-  {:else}
-    <!-- The leaving copy is laid over the empty state (out of flow), so the empty state is in its
-         final place from the first frame and nothing moves when the copy goes away. -->
-    <div class="cinder-decision-deck__finish">
-      {#if leaving !== null}
-        <div class="cinder-decision-deck__leaving">
-          {@render leavingCopy()}
-        </div>
-      {/if}
-      <div class="cinder-decision-deck__empty" tabindex="-1">
-        <p class="cinder-decision-deck__empty-title">{emptyTitle}</p>
-        <p class="cinder-decision-deck__empty-description">{emptyDescriptionText}</p>
-      </div>
-    </div>
   {/if}
 
   {#if latest !== undefined}
@@ -457,7 +447,26 @@
       />
     </div>
   {/if}
+{/snippet}
 
+<svelte:window
+  onpointermove={onWindowPointerMove}
+  onpointerup={onWindowPointerUp}
+  onpointercancel={onWindowPointerCancel}
+/>
+
+<section
+  {...rest}
+  bind:this={rootElement}
+  class={classNames('cinder-decision-deck', className)}
+  aria-label={label}
+>
+  {#if layout}
+    {@render layout(content, actions)}
+  {:else}
+    {@render content()}
+    {@render actions()}
+  {/if}
   <p id={hintId} class="cinder-decision-deck__sr-only">
     {keyboardHint ?? defaultKeyboardHint(rightToLeft)}
   </p>

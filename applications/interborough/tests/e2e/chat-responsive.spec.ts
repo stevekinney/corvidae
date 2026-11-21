@@ -197,8 +197,9 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
     await approval.getByRole('button', { name: 'Review in deck' }).click();
     const deck = page.getByRole('dialog', { name: 'Review tool approval' });
+    const irreversible = deck.getByText('Approval can’t be undone.', { exact: true });
     await expect(deck).toContainText('Refund order 4471 for $42.00?');
-    await expect(deck).toContainText('Approval can’t be undone.');
+    await expect(irreversible).toBeInViewport({ ratio: 1 });
     await expect(deck).toContainText('4200');
     await expect(deck.getByRole('button', { name: 'Back to approval controls' })).toBeVisible();
     await captureForDesignReview(page, {
@@ -213,6 +214,20 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       expect(bounds?.height).toBeLessThanOrEqual(36);
       await button.click({ trial: true });
     }
+    const reason = deck.getByRole('term').filter({ hasText: /^Reason$/ });
+    const reasonValue = reason.locator('xpath=following-sibling::dd');
+    await expect(reasonValue).not.toBeEmpty();
+    await reasonValue.scrollIntoViewIfNeeded();
+    await expect(reasonValue).toBeInViewport({ ratio: 1 });
+    await expect(irreversible).toBeInViewport({ ratio: 1 });
+    await expect(deck.getByRole('button', { name: 'Deny', exact: true })).toBeInViewport({
+      ratio: 1,
+    });
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'tool approval decision deck payload scrolled',
+      source: SOURCE,
+    });
     await deck.getByRole('button', { name: 'Deny' }).click();
     await expect(deck.getByRole('button', { name: 'Confirm denial' })).toBeVisible();
     await expect(deck).toContainText('4200');

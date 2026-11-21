@@ -61,13 +61,13 @@ A decided card leaves as a copy that plays its exit for about 200 ms, so for tha
 | `keyboardHint` | `string` | no | — | Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming the arrow keys, which follow the reading direction (accept is the arrow toward the inline-end edge). |
 | `label` | `string` | no | — | Accessible name of the deck, such as "Review queue". Left unset, the deck is unnamed. |
 | `laterLabel` | `string` | no | — | Text of the later button. Defaults to "Later". |
-| `pinActions` | `boolean` | no | — | Keeps the decision row at the bottom of a scrolling container while a long card is read. |
 | `rejectLabel` | `string` | no | — | Text of the reject button and the reject stamp. Defaults to "Reject". |
 | `threshold` | `number` | no | — | How far in pixels a card must be dragged sideways before releasing it decides. Defaults to 110. A shorter release springs the card back. |
 | `undoLabel` | `string` | no | — | Text of the undo button. Defaults to "Undo". |
 | `card` | `(opaque)` | no | — | Renders inside each card, replacing the built-in eyebrow, title and description. The card's name, stamps and gestures stay the deck's. Not expressible in JSON Schema; see the component types for the signature. |
 | `describeDecision` | `(opaque)` | no | — | Builds the sentence the undo bar shows and the live region announces for a decision, such as "Accepted: Archive receipts". Not expressible in JSON Schema; see the component types for the signature. |
 | `items` | `(opaque)` | yes | — | The whole queue in reading order, decided cards included: the deck tracks decisions itself and hides a card once it is decided, so keep decided items in this list, because Undo brings the card back from it. Not expressible in JSON Schema; see the component types for the signature. |
+| `layout` | `(opaque)` | no | — | Places the deck content and its built-in decision controls in distinct regions of a host layout. Not expressible in JSON Schema; see the component types for the signature. |
 | `onDecision` | `(opaque)` | no | — | Called once for each decision, from a swipe, a button or the keyboard alike, as soon as it is made. The card stays undoable until the next decision, so treat the decision as provisional and reverse it in `onUndo`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onUndo` | `(opaque)` | no | — | Called when a decision is undone, with the decision that was reversed. Not expressible in JSON Schema; see the component types for the signature. |
 | `progressText` | `(opaque)` | no | — | Builds the progress text from the position of the top card and the total, such as "2 of 5". Not expressible in JSON Schema; see the component types for the signature. |
