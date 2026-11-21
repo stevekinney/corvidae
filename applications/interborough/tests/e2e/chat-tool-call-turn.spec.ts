@@ -207,8 +207,8 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(list.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
     await expect(list.locator('.cinder-data-list-group__header')).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday, Sunday, Nov 1\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday, Sunday, Nov 1',
+      'Thursday, Oct 29',
     ]);
     const parcelly = chatRow(page, TOOL_CALL_TURN_TITLE);
     await expect(parcelly).toContainText('9:52 AM');
@@ -243,19 +243,14 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(list).not.toContainText('Look up order 4468');
   });
 
-  test('shows the heading and its status, the message, the reply, the summary and the rail (21q)', async ({
+  test('shows the heading, the message, the reply, and the approval status on the rail (21q)', async ({
     page,
     request,
   }) => {
     await openLongTurn(page, request);
     const heading = page.getByRole('heading', { level: 1, name: TOOL_CALL_TURN_TITLE });
     await expect(heading).toBeVisible();
-    await expect(heading.locator('..')).toContainText('Waiting on you');
-    // A warning Badge, as on the tool-call row (COR-2438).
-    const status = page.locator(
-      '[data-testid="chat-header"] .cinder-page-header__status .cinder-badge',
-    );
-    await expect(status).toHaveAttribute('data-cinder-variant', 'warning');
+    await expect(page.getByTestId('chat-header')).not.toContainText('Waiting on you');
 
     const conversation = openChat(page);
     const message = conversation.locator('.chat-message--user, [data-role="user"]').first();

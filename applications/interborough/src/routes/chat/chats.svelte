@@ -497,7 +497,8 @@
       items={visible}
       key={(row: SessionRow) => row.id}
       aria-label={CHAT_COPY.sessionsTitle}
-      groupBy={(row: SessionRow) => chatDayGroup(row, clock(), zone, wide, phone.current)}
+      groupBy={(row: SessionRow) =>
+        chatDayGroup(row, clock(), zone, wide, phone.current, row.id === visible[0]?.id)}
     >
       {#snippet children(row: SessionRow)}
         {@const agent = agentName(row)}
@@ -563,9 +564,8 @@
           href={router.href('/chats/new')}
           variant="secondary"
           onclick={openNewChat}
-        >
-          {CHAT_COPY.newChat}
-        </Button>
+          label={CHAT_COPY.newChat}
+        />
       {/snippet}
     </EmptyState>
   {:else if listState === 'no-match'}
@@ -576,9 +576,7 @@
       description={CHAT_COPY.list.noMatchDescription}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.clearSearch}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.clearSearch} />
       {/snippet}
     </EmptyState>
   {:else if showingArchived}
@@ -608,9 +606,7 @@
       description={empty.description}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.showAll}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.showAll} />
       {/snippet}
     </EmptyState>
   {/if}

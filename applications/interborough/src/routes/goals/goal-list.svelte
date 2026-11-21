@@ -284,9 +284,11 @@
           onRetry={retry}
         >
           {#snippet secondaryAction()}
-            <Button variant="secondary" href={router.href(GOALS_COPY.failed.openHealthPath)}
-              >{GOALS_COPY.failed.openHealth}</Button
-            >
+            <Button
+              variant="secondary"
+              href={router.href(GOALS_COPY.failed.openHealthPath)}
+              label={GOALS_COPY.failed.openHealth}
+            />
           {/snippet}
         </ErrorState>
       </div>

@@ -265,11 +265,22 @@ describe('the day band of a row', () => {
   const group = (at: string | null, wide = false) =>
     chatDayGroup({ updatedAt: at === null ? null : Date.parse(at) }, now, ZONE, wide);
 
-  test('names Today alone in a narrow pane and the zone the times are in', () => {
+  test('shows the time zone once across the groups of a chat list', () => {
+    const rows = [
+      { id: 'one', updatedAt: now },
+      { id: 'two', updatedAt: Date.parse('2026-11-01T16:12:00-06:00') },
+      { id: 'three', updatedAt: Date.parse('2026-10-30T11:00:00-05:00') },
+    ];
+    const details = (visible: typeof rows) =>
+      visible.map((row, index) => chatDayGroup(row, now, ZONE, false, false, index === 0).detail);
+    expect(details(rows)).toEqual(['Central time', undefined, undefined]);
+    expect(details(rows.slice(1))).toEqual(['Central time', undefined]);
+  });
+
+  test('names Today alone in a narrow pane', () => {
     expect(group('2026-11-02T10:42:00-06:00')).toEqual({
       key: 'today',
       label: 'Today',
-      detail: 'Central time',
     });
   });
 
@@ -281,7 +292,6 @@ describe('the day band of a row', () => {
     expect(group('2026-11-01T16:12:00-06:00')).toEqual({
       key: 'yesterday',
       label: 'Yesterday, Sunday, Nov 1',
-      detail: 'Central time',
     });
     const older = group('2026-10-29T11:05:00-05:00');
     expect(older.label).toBe('Thursday, Oct 29');
@@ -295,12 +305,10 @@ describe('the day band of a row', () => {
     expect(phone('2026-11-02T10:42:00-06:00')).toEqual({
       key: 'today',
       label: 'Today',
-      detail: 'Central time',
     });
     expect(phone('2026-11-01T16:12:00-06:00')).toEqual({
       key: 'yesterday',
       label: 'Yesterday',
-      detail: 'Central time',
     });
     expect(phone('2026-10-29T11:05:00-05:00').label).toBe('Thursday, Oct 29');
   });
@@ -312,7 +320,7 @@ describe('the day band of a row', () => {
   });
 
   test('puts a chat with no readable time in Earlier', () => {
-    expect(group(null)).toEqual({ key: 'earlier', label: 'Earlier', detail: 'Central time' });
+    expect(group(null)).toEqual({ key: 'earlier', label: 'Earlier' });
   });
 });
 

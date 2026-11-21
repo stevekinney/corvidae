@@ -284,7 +284,8 @@
           key={(row: SessionRow) => row.id}
           statusColumn
           aria-label={CHAT_COPY.agentSessions}
-          groupBy={(row: SessionRow) => chatDayGroup(row, clock(), zone, true)}
+          groupBy={(row: SessionRow) =>
+            chatDayGroup(row, clock(), zone, true, false, row.id === rows[0]?.id)}
         >
           {#snippet children(row: SessionRow)}
             <StackedListItem
@@ -314,8 +315,9 @@
             variant="secondary"
             size="sm"
             disabled={sessions.isFetchingNextPage}
-            onclick={() => void sessions.fetchNextPage()}>{CHAT_COPY.loadMore}</Button
-          >
+            onclick={() => void sessions.fetchNextPage()}
+            label={CHAT_COPY.loadMore}
+          />
         </div>
       {/if}
     {/if}

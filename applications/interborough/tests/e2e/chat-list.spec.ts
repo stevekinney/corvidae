@@ -85,16 +85,16 @@ test.describe('the chat list on the sample world', () => {
     );
   });
 
-  test('lists the chats under their days, each band naming Central time (16f, 16g, 11g)', async ({
+  test('lists chats by day and names the time zone once (16f, 16g, 11g, COR-2451)', async ({
     page,
   }) => {
     await openChats(page);
     const bands = list(page).locator('.cinder-data-list-group__header');
     await expect(bands).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday, Sunday, Nov 1\s*Central time$/,
-      /^Friday, Oct 30\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday, Sunday, Nov 1',
+      'Friday, Oct 30',
+      'Thursday, Oct 29',
     ]);
     const refund = row(page, 'Refund order 4471');
     await expect(refund).toContainText('10:42 AM');
@@ -444,9 +444,9 @@ test.describe('the chat list at other widths', () => {
     await expect(header.getByRole('searchbox')).toHaveCount(0);
     await expect(list(page).locator('.cinder-data-list-group__header')).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday\s*Central time$/,
-      /^Friday, Oct 30\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday',
+      'Friday, Oct 30',
+      'Thursday, Oct 29',
     ]);
     const scrolls = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

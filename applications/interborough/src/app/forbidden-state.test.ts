@@ -19,7 +19,7 @@ function landAt(path: string): void {
 }
 
 describe('the forbidden page', () => {
-  test('uses the shared layout, with a lock and a route to the scopes', () => {
+  test('uses the shared layout and explains local access was refused', () => {
     landAt('/hooks');
     const { container, getByRole } = render(ForbiddenState, {
       props: { title: FORBIDDEN_COPY.title('Hooks') },
@@ -31,42 +31,33 @@ describe('the forbidden page', () => {
     const gate = container.querySelector('.cinder-empty-state');
     expect(gate?.getAttribute('data-cinder-kind')).toBe('disabled');
     expect(gate?.querySelector('.cinder-empty-state-icon svg.lucide-lock')).not.toBeNull();
-    expect(gate?.textContent).toContain(
-      'Settings › API reference › Your scopes shows what it can do.',
-    );
+    expect(gate?.textContent).toContain('Interborough refused access to this page.');
     expect(gate?.querySelector('code')).toBeNull();
   });
 
-  test('has two secondary buttons, See your scopes and Back to Home, and no request-access button', () => {
+  test('offers a single way back to Home', () => {
     landAt('/hooks');
     const { container, getByRole, queryByRole } = render(ForbiddenState, {
       props: { title: FORBIDDEN_COPY.title('Hooks') },
     });
 
     const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'See your scopes',
-      'Back to Home',
-    ]);
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Back to Home']);
     for (const button of buttons) {
       expect(button.classList.contains('button-variant-secondary')).toBe(true);
     }
     expect(container.querySelector('.button-variant-primary')).toBeNull();
     expect(queryByRole('button', { name: /request/i })).toBeNull();
     expect(queryByRole('link', { name: /request/i })).toBeNull();
-    expect(getByRole('link', { name: 'See your scopes' }).getAttribute('href')).toBe(
-      '/settings/api-reference?group=scopes',
-    );
+    expect(queryByRole('link', { name: 'See your scopes' })).toBeNull();
+    expect(getByRole('link', { name: 'Back to Home' }).getAttribute('href')).toBe('/');
   });
 
-  test('See your scopes and Back to Home open their pages in place', async () => {
+  test('Back to Home opens Home in place', async () => {
     landAt('/hooks');
     const { getByRole } = render(ForbiddenState, {
       props: { title: FORBIDDEN_COPY.title('Hooks') },
     });
-
-    await fireEvent.click(getByRole('link', { name: 'See your scopes' }));
-    await waitFor(() => expect(router.pathname).toBe('/settings/api-reference'));
 
     await fireEvent.click(getByRole('link', { name: 'Back to Home' }));
     await waitFor(() => expect(router.pathname).toBe('/'));

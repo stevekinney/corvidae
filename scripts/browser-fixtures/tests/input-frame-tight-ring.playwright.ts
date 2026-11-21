@@ -278,14 +278,16 @@ type FrameReading = {
 /** Resolve the frame geometry and the expected colours as sRGB bytes via a canvas. */
 async function readFrame(frame: Locator, ringToken: string): Promise<FrameReading> {
   return frame.evaluate((element, token) => {
-    const toRgb = (css: string): { r: number; g: number; b: number } => {
+    const toRgb = (fills: readonly string[]): { r: number; g: number; b: number } => {
       const canvas = document.createElement('canvas');
       canvas.width = 1;
       canvas.height = 1;
       const context = canvas.getContext('2d');
       if (!context) throw new Error('2D canvas context unavailable.');
-      context.fillStyle = css;
-      context.fillRect(0, 0, 1, 1);
+      for (const fill of fills) {
+        context.fillStyle = fill;
+        context.fillRect(0, 0, 1, 1);
+      }
       const [r = -1, g = -1, b = -1] = context.getImageData(0, 0, 1, 1).data;
       return { r, g, b };
     };
@@ -301,14 +303,20 @@ async function readFrame(frame: Locator, ringToken: string): Promise<FrameReadin
     const ringColor = getComputedStyle(probe).color;
     probe.remove();
     const rect = element.getBoundingClientRect();
+    // A filled read-only field is transparent. Composite over its ancestors just as the page
+    // does, so the border-band probe compares against the rendered fill in both schemes.
+    const backgrounds: string[] = [];
+    for (let parent: Element | null = element; parent !== null; parent = parent.parentElement) {
+      backgrounds.unshift(getComputedStyle(parent).backgroundColor);
+    }
     return {
       left: rect.left,
       top: rect.top,
       height: rect.height,
       borderWidth: Number.parseFloat(styles.borderLeftWidth),
       ringWidth: Number.parseFloat(styles.getPropertyValue('--cinder-ring-width')),
-      fill: toRgb(styles.backgroundColor),
-      ring: toRgb(ringColor),
+      fill: toRgb(backgrounds),
+      ring: toRgb([ringColor]),
     };
   }, ringToken);
 }

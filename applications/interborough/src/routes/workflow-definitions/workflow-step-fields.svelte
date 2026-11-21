@@ -262,9 +262,12 @@
   {:else if activities.status === 'failed'}
     <div class="weft-step-fields__group" data-testid="step-activity-error">
       <p class="weft-step-fields__note" role="alert">{copy.activity.failed(step.handler)}</p>
-      <Button variant="secondary" size="sm" onclick={activities.retry}>
-        {copy.activity.retry}
-      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        onclick={activities.retry}
+        label={copy.activity.retry}
+      />
     </div>
   {:else}
     {@const entry = activities.entries.find((candidate) => candidate.id === step.handler)}
@@ -310,9 +313,12 @@
   {#if host.workflows.status === 'failed'}
     <div class="weft-step-fields__group" data-testid="step-workflow-error">
       <p class="weft-step-fields__note" role="alert">{copy.workflowCard.failed}</p>
-      <Button variant="secondary" size="sm" onclick={host.workflows.retry}>
-        {copy.workflowCard.retry}
-      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        onclick={host.workflows.retry}
+        label={copy.workflowCard.retry}
+      />
     </div>
   {/if}
   <Select

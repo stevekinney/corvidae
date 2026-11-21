@@ -6,6 +6,7 @@
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
@@ -87,6 +88,12 @@ async function sendMessage(container: HTMLElement, text: string): Promise<void> 
   const box = await loadedComposer(container);
   await fireEvent.input(box, { target: { value: text } });
   await fireEvent.keyDown(box, { key: 'Enter' });
+}
+
+/** The native conversation specimen at each phone width the review capture needs. */
+function phoneCapture(width: number): void {
+  if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  window.happyDOM.setViewport({ width, height: 640 });
 }
 
 describe('a new chat', () => {
@@ -1006,6 +1013,23 @@ describe('a run that waits on a tool approval', () => {
     expect(container.textContent).not.toContain('requires approval');
     expect(container.textContent).not.toMatch(/run-\d/);
 
+    // The approval carries the one waiting state at both review widths; the surrounding chrome
+    // must not repeat it as those widths bring the controls closer together.
+    try {
+      for (const width of [320, 375]) {
+        phoneCapture(width);
+        const approval = container.querySelector('[data-approval-decision]')?.textContent ?? '';
+        const chrome = container.querySelector('[data-testid="chat-header"]')?.textContent ?? '';
+        const tool = container.querySelector('[data-cinder-tool-call-row]')?.textContent ?? '';
+        expect(approval).toContain('Refund order-1001?');
+        expect(chrome).not.toContain('Waiting on you');
+        expect(tool).toContain('Waiting on you');
+        expect(`${approval}\n${chrome}\n${tool}`.match(/Waiting on you/g)).toHaveLength(1);
+      }
+    } finally {
+      phoneCapture(1024);
+    }
+
     const invalidated = spyOn(QueryClient.prototype, 'invalidateQueries');
     try {
       await fireEvent.click(await findByRole('button', { name: 'Approve' }));
@@ -1078,7 +1102,8 @@ describe('a run that waits on a tool approval', () => {
     await sendMessage(container, 'Refund it');
     await until(() => {
       expect(container.querySelector('[data-approval-decision]')).not.toBeNull();
-      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
+      expect(container.textContent?.match(/Waiting on you/g)).toHaveLength(1);
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).not.toContain(
         'Waiting on you',
       );
     });
@@ -1417,7 +1442,8 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
           'Waiting on you',
         ),
       );
-      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
+      expect(container.textContent?.match(/Waiting on you/g)).toHaveLength(1);
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).not.toContain(
         'Waiting on you',
       );
       jest.setSystemTime(new Date('2026-11-11T00:00:03.000Z'));

@@ -2201,7 +2201,7 @@
           narrowActions="beside-status"
           {...context.data?.parentContextId ? { description: details } : {}}
           {...gone ? {} : { actions: headerActions }}
-          {...gone || chatStatus === undefined ? {} : { status: headerStatus }}
+          {...gone || chatStatus === undefined || approvalWaits ? {} : { status: headerStatus }}
           statusPlacement="inline"
         />
       {/if}
@@ -2466,9 +2466,8 @@
                 variant="secondary"
                 disabled={!session.canRetryTurn}
                 onclick={() => void retryTurn()}
-              >
-                {CHAT_COPY.stopLine.retry}
-              </Button>
+                label={CHAT_COPY.stopLine.retry}
+              />
             {/if}
           {/snippet}
           {#snippet row({ message }, renderDefault)}

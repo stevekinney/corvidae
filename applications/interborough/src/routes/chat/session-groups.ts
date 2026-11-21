@@ -188,11 +188,11 @@ export function matchingRows<Row extends Pick<SessionRow, 'title' | 'snippet'>>(
 
 /**
  * The day band a row is listed under, as a `DataList` group. The band names its day by the
- * viewer's calendar ("Today", "Yesterday, Sunday, Nov 1", "Thursday, Oct 29") and the zone its
- * times are in at the right ("Central time"). A wide list (a pane dragged out past what its rows
+ * viewer's calendar ("Today", "Yesterday, Sunday, Nov 1", "Thursday, Oct 29"). The first band
+ * also names the time zone at the right ("Central time"). A wide list (a pane dragged out past what its rows
  * need) names today's date too, as the list pattern does. A chat with no readable time is Earlier,
  * where nothing claims it is recent. On a phone (`phone`) the list is a screen of its own and its
- * bands read "Today" and "Yesterday" alone, with "Central time" at the right (design row 06l).
+ * bands read "Today" and "Yesterday" alone (design row 06l).
  */
 export function chatDayGroup(
   row: Pick<SessionRow, 'updatedAt'>,
@@ -200,17 +200,19 @@ export function chatDayGroup(
   zone: string,
   wide: boolean,
   phone = false,
+  first = false,
 ): DataListGroup {
-  const detail = zoneLabel(now, zone);
-  if (row.updatedAt === null) return { key: 'earlier', label: CHAT_COPY.list.earlier, detail };
+  const zoneDetail = first ? { detail: zoneLabel(now, zone) } : {};
+  if (row.updatedAt === null)
+    return { key: 'earlier', label: CHAT_COPY.list.earlier, ...zoneDetail };
   const days = calendarDay(now, zone) - calendarDay(row.updatedAt, zone);
-  if (days <= 0) return { key: 'today', label: todayLabel(now, zone, wide), detail };
+  if (days <= 0) return { key: 'today', label: todayLabel(now, zone, wide), ...zoneDetail };
   const day = dateLine(row.updatedAt, zone);
   if (days === 1) {
     const label = phone ? CHAT_COPY.list.yesterday : `${CHAT_COPY.list.yesterday}, ${day}`;
-    return { key: 'yesterday', label, detail };
+    return { key: 'yesterday', label, ...zoneDetail };
   }
-  return { key: `day-${String(calendarDay(row.updatedAt, zone))}`, label: day, detail };
+  return { key: `day-${String(calendarDay(row.updatedAt, zone))}`, label: day, ...zoneDetail };
 }
 
 function todayLabel(now: number, zone: string, wide: boolean): string {

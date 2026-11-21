@@ -207,9 +207,12 @@
       {:else if phase === 'canceled'}
         <div data-testid="settings-canceled">
           <p class="weft-settings__alert-body">{SETTINGS_COPY.general.loading.canceled}</p>
-          <Button variant="secondary" size="sm" onclick={tryAgain}
-            >{SETTINGS_COPY.general.loading.tryAgain}</Button
-          >
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={tryAgain}
+            label={SETTINGS_COPY.general.loading.tryAgain}
+          />
         </div>
       {:else if phase === 'loading'}
         <!-- The navigation and heading are real; the rows are placeholders after 300 ms, then say it is slow (row 14l). -->

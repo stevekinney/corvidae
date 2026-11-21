@@ -188,9 +188,39 @@ test.describe('Chat ended by a restart (frame a: 19a, 19b, 19c, 19e)', () => {
     // The refund chat that was only waiting on a review is not ended by the restart: its review
     // stays waiting and answerable (frame i draws it held back by a plugin instead).
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
-    await expect(page.locator('[data-approval-decision]')).toBeVisible();
-    const status = await statusOf(page);
-    expect(status.word).toBe('Waiting on you');
+    const approval = page.locator('[data-approval-decision]');
+    await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+    await expect(header(page)).not.toContainText('Waiting on you');
+    const waiting = page
+      .getByRole('region', { name: 'Conversation', exact: true })
+      .getByText('Waiting on you', { exact: true })
+      .filter({ visible: true });
+    await expect(waiting).toHaveCount(1);
+  });
+});
+
+test('shows one waiting status in the refund conversation on a phone (COR-2451)', async ({
+  page,
+}) => {
+  await connectProvider(page);
+  await page.clock.setFixedTime(SAMPLE_NOW_MILLISECONDS);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+  await expect(page.locator('[data-approval-decision]')).toBeVisible();
+
+  const status = page
+    .getByRole('region', { name: 'Conversation', exact: true })
+    .getByText('Waiting on you', { exact: true })
+    .filter({ visible: true });
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 640 });
+    await expect(status).toHaveCount(1);
+  }
+
+  await captureForDesignReview(page, {
+    route: '/chats/:chat',
+    state: 'waiting once in the refund conversation on a phone',
+    source: SOURCE,
   });
 });
 
@@ -203,7 +233,12 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
 
     await expectTopBar(page);
     await expect(trail(page).getByRole('button', { name: /^Refund order 4471/ })).toBeVisible();
-    expect(await statusOf(page)).toEqual({ word: 'Waiting on you', dot: 'warning' });
+    const waitingStatus = page
+      .getByRole('region', { name: 'Conversation', exact: true })
+      .getByText('Waiting on you', { exact: true })
+      .filter({ visible: true });
+    await expect(waitingStatus).toHaveCount(1);
+    await expect(waitingStatus).toBeVisible();
 
     const conversation = transcript(page);
     const message = conversation.getByText(REFUND_TITLE).last();
@@ -261,7 +296,7 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
 });
 
 test.describe('Agent’s plugin is disabled (frame c: 19k)', () => {
-  test('shows a Release helper chat waiting on you, its message and its List changes row, and draws no banner (19k)', async ({
+  test('shows a Release helper approval held by its plugin, its message and its List changes row, and draws no banner (19k)', async ({
     page,
     request,
   }) => {
@@ -271,7 +306,10 @@ test.describe('Agent’s plugin is disabled (frame c: 19k)', () => {
     await expectTopBar(page);
     await expect(trail(page).getByRole('button', { name: HELD_BY_PLUGIN_TITLE })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name: HELD_BY_PLUGIN_TITLE })).toBeVisible();
-    expect(await statusOf(page)).toEqual({ word: 'Waiting on you', dot: 'warning' });
+    expect(await statusOf(page)).toEqual({ word: '', dot: null });
+    await expect(transcript(page).locator('.cinder-approval-card__state-word')).toHaveText(
+      'Unavailable',
+    );
 
     const user = transcript(page).locator('[data-role="user"], .chat-message--user').first();
     await expect(user).toContainText(HELD_BY_PLUGIN_TITLE);

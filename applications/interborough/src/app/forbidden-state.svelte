@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The forbidden page uses the shared state layout with a lock and a link to the session's scopes.
+   * The forbidden page uses the shared state layout with a lock and a link back to Home.
    */
   import { Button, EmptyState } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
@@ -29,13 +29,6 @@
 <EmptyState kind="disabled" {headingLevel} {title} description={FORBIDDEN_COPY.description}>
   {#snippet icon()}<Lock aria-hidden="true" />{/snippet}
   {#snippet action()}
-    <Button
-      variant="secondary"
-      href={router.href(FORBIDDEN_COPY.scopes.href)}
-      onclick={(event) => open(event, FORBIDDEN_COPY.scopes.href)}
-    >
-      {FORBIDDEN_COPY.scopes.label}
-    </Button>
     <Button variant="secondary" href={router.href('/')} onclick={(event) => open(event, '/')}>
       {FORBIDDEN_COPY.home}
     </Button>
