@@ -102,7 +102,7 @@
     {/if}
   {:else}
     <span class="cinder-diff-statistics__stat cinder-diff-statistics__stat--none">
-      No changes
+      No differences
     </span>
   {/if}
 </div>
