@@ -115,14 +115,15 @@ export function resultSummary(content: unknown, toolName?: string): string {
   if (isRecord(content)) {
     if (parkedHumanWait({ toolName, result: content }) !== undefined) return 'Question asked';
     // The built-in showcase refund tool declares its amount in US cents.
+    const refundedCents = content['refundedCents'];
     if (
       toolName === 'issue-refund' &&
-      typeof content.orderId === 'string' &&
-      typeof content.refundedCents === 'number' &&
-      Number.isSafeInteger(content.refundedCents)
+      typeof content['orderId'] === 'string' &&
+      typeof refundedCents === 'number' &&
+      Number.isSafeInteger(refundedCents)
     ) {
       const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-        content.refundedCents / 100,
+        refundedCents / 100,
       );
       return `${amount} refunded`;
     }
