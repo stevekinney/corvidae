@@ -1,4 +1,4 @@
-import type { ReplayNames } from './host-sessions-history.ts';
+import { reservationReturned, type ReplayNames } from './host-sessions-history.ts';
 import type { Agent, Dispatch, SessionEvent, SessionState } from './host-sessions-model.ts';
 
 /** Applies hook events to an individual possible history. The model projects across histories. */
@@ -36,12 +36,12 @@ function unclaimedPending(state: Draft, agentId: string): Dispatch | undefined {
  * dispatch until that start's `PostToolUse` identifies its real dispatch. A stopped anonymous
  * agent no longer owns the marker, so the next late start may take it instead.
  */
-function unmatchedExpiry(state: Draft, agentId: string): Dispatch | undefined {
+function unmatchedReturnedReservation(state: Draft, agentId: string): Dispatch | undefined {
   const type = state.agents.get(agentId)?.agentType;
   let oldest: Dispatch | undefined;
   let oldestOfType: Dispatch | undefined;
   for (const dispatch of state.dispatches.values()) {
-    if (dispatch.status !== 'expired') continue;
+    if (!reservationReturned(dispatch)) continue;
     // A late start that has already stopped belongs to this expired dispatch. It cannot make a
     // later, different anonymous start ambiguous again.
     if (dispatch.agentId !== undefined) continue;
@@ -65,18 +65,18 @@ function takePending(state: Draft, agentId: string): boolean {
   const linked = pendingForAgent(state, agentId);
   if (linked !== undefined) {
     update(state.dispatches, linked.toolUseId, { status: 'started', linked: true });
-    update(state.agents, agentId, { toolUseId: linked.toolUseId });
+    update(state.agents, agentId, { toolUseId: linked.toolUseId, returnedReservation: false });
     return true;
   }
-  const expired = unmatchedExpiry(state, agentId);
-  if (expired !== undefined) {
-    update(state.dispatches, expired.toolUseId, { agentId, linked: false });
-    update(state.agents, agentId, { toolUseId: undefined });
+  const returned = unmatchedReturnedReservation(state, agentId);
+  if (returned !== undefined) {
+    update(state.dispatches, returned.toolUseId, { status: 'started', agentId, linked: false });
+    update(state.agents, agentId, { toolUseId: returned.toolUseId, returnedReservation: true });
     return false;
   }
   const dispatch = unclaimedPending(state, agentId);
   if (dispatch === undefined) {
-    update(state.agents, agentId, { toolUseId: undefined });
+    update(state.agents, agentId, { toolUseId: undefined, returnedReservation: false });
     return false;
   }
   update(state.dispatches, dispatch.toolUseId, {
@@ -84,7 +84,7 @@ function takePending(state: Draft, agentId: string): boolean {
     agentId,
     linked: dispatch.agentId === agentId,
   });
-  update(state.agents, agentId, { toolUseId: dispatch.toolUseId });
+  update(state.agents, agentId, { toolUseId: dispatch.toolUseId, returnedReservation: false });
   return true;
 }
 
@@ -100,9 +100,16 @@ function guessedAgent(dispatch: Dispatch): string | undefined {
 function link(state: Draft, toolUseId: string, agentId: string): void {
   const dispatch = state.dispatches.get(toolUseId);
   if (dispatch === undefined || agentId === '') return;
+  const agent = state.agents.get(agentId);
+  if (agent === undefined && reservationReturned(dispatch)) {
+    // The first result establishes a launched worker even if its start was missed.
+    // A duplicate result cannot undo a release that followed the first one.
+    if (dispatch.linked && dispatch.agentId === agentId) return;
+    update(state.dispatches, toolUseId, { status: 'pending', agentId, linked: true });
+    return;
+  }
   if (dispatch.agentId === agentId) {
-    const agent = state.agents.get(agentId);
-    if (dispatch.status === 'expired') {
+    if (reservationReturned(dispatch)) {
       update(state.dispatches, toolUseId, {
         status: agent?.running === true ? 'started' : 'finished',
         linked: true,
@@ -111,9 +118,11 @@ function link(state: Draft, toolUseId: string, agentId: string): void {
       return;
     }
     update(state.dispatches, toolUseId, { linked: true });
+    if (agent !== undefined && dispatch.status === 'started') {
+      update(state.agents, agentId, { toolUseId });
+    }
     return;
   }
-  const agent = state.agents.get(agentId);
   if (agent?.toolUseId !== undefined && agent.toolUseId !== toolUseId) {
     update(state.dispatches, agent.toolUseId, {
       status: 'pending',
@@ -123,14 +132,14 @@ function link(state: Draft, toolUseId: string, agentId: string): void {
     update(state.agents, agentId, { toolUseId: undefined });
   }
   const markedExpiry = [...state.dispatches.values()].find(
-    (each) => each.status === 'expired' && each.agentId === agentId,
+    (each) => reservationReturned(each) && each.agentId === agentId,
   );
   if (markedExpiry !== undefined) {
     update(state.dispatches, markedExpiry.toolUseId, { agentId: undefined, linked: false });
   }
   const displaced =
-    guessedAgent(dispatch) ?? (dispatch.status === 'expired' ? dispatch.agentId : undefined);
-  if (dispatch.status === 'pending' || dispatch.status === 'expired' || displaced !== undefined) {
+    guessedAgent(dispatch) ?? (reservationReturned(dispatch) ? dispatch.agentId : undefined);
+  if (dispatch.status === 'pending' || reservationReturned(dispatch) || displaced !== undefined) {
     // The dispatch is claimed for its agent before a displaced agent looks for another.
     const status = agent === undefined ? 'pending' : agent.running ? 'started' : 'finished';
     update(state.dispatches, toolUseId, { status, agentId, linked: true });
@@ -199,7 +208,9 @@ function applyCertainEvent(state: SessionState, event: SessionEvent): SessionSta
       if (!next.agents.has(event.agentId)) {
         // Its start was never recorded: the launched dispatch that named it is over.
         const named = [...next.dispatches.values()].find(
-          (dispatch) => dispatch.status === 'pending' && dispatch.agentId === event.agentId,
+          (dispatch) =>
+            (dispatch.status === 'pending' || reservationReturned(dispatch)) &&
+            dispatch.agentId === event.agentId,
         );
         if (named === undefined) return state;
         update(next.dispatches, named.toolUseId, { status: 'finished' });
@@ -219,14 +230,17 @@ function applyCertainEvent(state: SessionState, event: SessionEvent): SessionSta
       const agent = next.agents.get(event.agentId);
       if (agent !== undefined && agent.runs === 1) stopRun(next, event.agentId);
       const dispatch = next.dispatches.get(event.toolUseId);
-      if (dispatch?.status === 'pending')
+      if (
+        dispatch !== undefined &&
+        (dispatch.status === 'pending' || reservationReturned(dispatch))
+      )
         update(next.dispatches, event.toolUseId, { status: 'finished' });
       return next;
     }
     case 'failed': {
       const dispatch = next.dispatches.get(event.toolUseId);
       if (dispatch === undefined) return state;
-      if (dispatch.status !== 'pending') return state;
+      if (dispatch.status !== 'pending' && !reservationReturned(dispatch)) return state;
       update(next.dispatches, event.toolUseId, { status: 'failed', agentId: undefined });
       return next;
     }
@@ -258,28 +272,27 @@ function startFor(
   if (state.agents.has(event.agentId)) return [applyCertainEvent(state, event)];
   const forced = names.dispatchByAgent.get(event.agentId);
   const named = [...state.dispatches.values()].find(
-    (dispatch) => dispatch.status === 'pending' && dispatch.agentId === event.agentId,
+    (dispatch) =>
+      (dispatch.status === 'pending' || reservationReturned(dispatch)) &&
+      dispatch.agentId === event.agentId,
   );
-  if (named !== undefined) {
-    return forced === undefined || forced === named.toolUseId
-      ? [applyCertainEvent(state, event)]
-      : [];
-  }
+  if (named !== undefined && forced !== undefined && forced !== named.toolUseId) return [];
   const eligible = [...state.dispatches.values()].filter(
     (dispatch) =>
-      (dispatch.status === 'pending' || dispatch.status === 'expired') &&
+      (dispatch.status === 'pending' || reservationReturned(dispatch)) &&
       dispatch.agentId === undefined,
   );
   const sameType = eligible.filter(
     (dispatch) => event.agentType !== undefined && dispatch.agentType === event.agentType,
   );
-  const choices = sameType.length === 0 ? eligible : sameType;
+  const choices = named !== undefined ? [named] : sameType.length === 0 ? eligible : sameType;
   if (choices.length === 0) {
     return forced === undefined ? [applyCertainEvent(state, event)] : [];
   }
   const anonymous = new Set<string>();
   const compatible = choices.filter((dispatch) => {
     if (forced !== undefined) return dispatch.toolUseId === forced;
+    if (named === dispatch) return true;
     if (names.agentByDispatch.has(dispatch.toolUseId)) return false;
     if (names.dispatches.has(dispatch.toolUseId)) return true;
     // An unclaimed dispatch can only be distinguished by the observed suffix naming its ID,
@@ -298,6 +311,7 @@ function startFor(
   });
   return compatible.map((dispatch) => {
     const next = draft(state);
+    const returned = reservationReturned(dispatch);
     next.agents.set(event.agentId, {
       agentId: event.agentId,
       ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
@@ -305,13 +319,14 @@ function startFor(
       startedAt: event.at,
       running: true,
       runs: 1,
-      ...(dispatch.status === 'expired' ? {} : { toolUseId: dispatch.toolUseId }),
-      overCap: dispatch.status === 'expired' && event.overCap === true,
+      toolUseId: dispatch.toolUseId,
+      ...(returned ? { returnedReservation: true } : {}),
+      overCap: returned && event.overCap === true,
     });
     update(next.dispatches, dispatch.toolUseId, {
       status: 'started',
       agentId: event.agentId,
-      linked: false,
+      linked: named === dispatch && dispatch.linked,
     });
     return next;
   });
@@ -325,9 +340,8 @@ function compatibleWithLink(
   const agent = state.agents.get(event.agentId);
   if (dispatch === undefined || agent === undefined) return true;
   if (agent.toolUseId === event.toolUseId || dispatch.agentId === event.agentId) return true;
-  // An agent whose late start took an expired dispatch has no `toolUseId`, but that absence is
-  // not a blank cheque for a newer pending dispatch. Another candidate represents that dispatch
-  // when it was eligible at the recorded start; retain only that candidate when its link arrives.
+  // Another candidate represents each dispatch that could have started here. The link keeps
+  // only a candidate whose assignment agrees with the name it provides.
   return false;
 }
 

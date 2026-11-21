@@ -875,6 +875,19 @@ describe('every session and every agent counts', () => {
 describe('release', () => {
   const releaseOptions = { readProcessTable: () => hostTable(), ...clock(), pid: 411 };
 
+  test('skips an unrelated live ledger and releases the target in the correct session', async () => {
+    const directory = await scratch();
+    const options = { ...releaseOptions, cap: 4 };
+    await admitWorker({ directory, request: request('A', 'tool-a'), ...options });
+    await admitWorker({ directory, request: request('B', 'tool-b'), ...options });
+
+    expect(await releasePlace(directory, 'tool-b', releaseOptions)).toEqual([
+      'released tool-b in session session-B: 2 place(s)',
+    ]);
+    expect(await workersOf(directory, 'session-A')).toBe(1);
+    expect(await workersOf(directory, 'session-B')).toBe(0);
+  });
+
   test('frees a pending dispatch, a running agent, or a whole session', async () => {
     const directory = await scratch();
     await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));

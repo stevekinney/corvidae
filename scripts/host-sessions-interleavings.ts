@@ -82,7 +82,7 @@ function stepsOf(kind: DispatchKind, index: number, repeatStop: boolean): Step[]
 }
 
 type ActualDispatch = {
-  readonly status: 'pending' | 'expired' | 'started' | 'ended';
+  readonly status: 'pending' | 'expired' | 'released' | 'started' | 'ended';
   readonly agentId?: string;
 };
 
@@ -147,7 +147,9 @@ function compatibleAfter(history: CompatibleHistory, event: SessionEvent): Compa
     }
     const choices = [...history.dispatches.entries()].filter(
       ([, dispatch]) =>
-        (dispatch.status === 'pending' || dispatch.status === 'expired') &&
+        (dispatch.status === 'pending' ||
+          dispatch.status === 'expired' ||
+          dispatch.status === 'released') &&
         dispatch.agentId === undefined,
     );
     if (choices.length === 0) {
@@ -192,7 +194,15 @@ function compatibleAfter(history: CompatibleHistory, event: SessionEvent): Compa
   if (event.kind === 'release') {
     const next = copyHistory(history);
     const dispatch = next.dispatches.get(event.target);
-    if (dispatch !== undefined) next.dispatches.set(event.target, { ...dispatch, status: 'ended' });
+    if (dispatch !== undefined) {
+      const status =
+        dispatch.status === 'pending'
+          ? 'released'
+          : dispatch.status === 'started'
+            ? 'ended'
+            : dispatch.status;
+      next.dispatches.set(event.target, { ...dispatch, status });
+    }
     const agent = next.agents.get(event.target);
     if (agent !== undefined) {
       next.agents.set(event.target, { ...agent, running: false });
