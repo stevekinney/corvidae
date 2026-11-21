@@ -34,6 +34,7 @@ import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
+import { readBoxes } from './read-boxes.ts';
 import { E2E_SKILLS } from './skills-support.ts';
 import { bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
@@ -172,9 +173,7 @@ for (const width of WIDTHS) {
         await expect(editDialog).toContainText('Its 1 chat stays, read-only.');
         await expect(editDialog).toContainText(`1 workflow (${workflowTitle})`);
         if (width === 375) {
-          const [danger, safe] = await Promise.all([confirm.boundingBox(), cancel.boundingBox()]);
-          if (danger === null || safe === null)
-            throw new Error('Both phone actions must be visible.');
+          const { danger, safe } = await readBoxes(page, { danger: confirm, safe: cancel });
           expect(danger.y + danger.height).toBeLessThan(safe.y);
           expect(danger.x).toBeCloseTo(safe.x, 0);
           expect(danger.width).toBeCloseTo(safe.width, 0);
