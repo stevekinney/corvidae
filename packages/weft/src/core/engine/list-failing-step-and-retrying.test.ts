@@ -58,6 +58,17 @@ async function retryingRecordKeys(storage: MemoryStorage): Promise<string[]> {
   return keys;
 }
 
+/** Wait until terminal cleanup has removed every retrying record: no entry outlives its run. */
+async function waitForNoRetryingRecords(storage: MemoryStorage): Promise<void> {
+  await waitForCondition(
+    async () => {
+      const keys = await retryingRecordKeys(storage);
+      return keys.length === 0;
+    },
+    { label: 'terminal cleanup to remove every retrying record' },
+  );
+}
+
 /** Wait until the run's retry decision is durable: its `wf-retrying:` record is committed. */
 async function waitForRetryingRecord(storage: MemoryStorage, id: string): Promise<void> {
   await waitForCondition(async () => (await storage.get(KEYS.activityRetrying(id))) !== null, {
@@ -221,9 +232,7 @@ describe('COR-2530 retrying filter', () => {
     await waitForStatus(engine, 'cancelled-1', 'cancelled');
 
     expect(await idsOf(engine, { retrying: true })).toEqual([]);
-    await waitForCondition(async () => (await retryingRecordKeys(storage)).length === 0, {
-      label: 'terminal cleanup to remove every retrying record',
-    });
+    await waitForNoRetryingRecords(storage);
   });
 
   it('ends-while-retrying: a run cancelled after a crash and recovery leaves no index entry', async () => {
@@ -262,9 +271,7 @@ describe('COR-2530 retrying filter', () => {
     await waitForStatus(second, 'recovered-1', 'cancelled');
 
     expect(await idsOf(second, { retrying: true })).toEqual([]);
-    await waitForCondition(async () => (await retryingRecordKeys(storage)).length === 0, {
-      label: 'terminal cleanup to remove the retrying record',
-    });
+    await waitForNoRetryingRecords(storage);
   });
 
   it('stale-entry: an entry for a run that is not retrying never matches', async () => {
