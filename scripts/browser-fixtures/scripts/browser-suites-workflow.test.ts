@@ -13,6 +13,10 @@ const workflow = readFileSync(
   resolve(REPOSITORY_ROOT, '.github/workflows/browser-suites.yml'),
   'utf8',
 );
+const pullRequestWorkflow = readFileSync(
+  resolve(REPOSITORY_ROOT, '.github/workflows/pull-request.yml'),
+  'utf8',
+);
 
 /** The text of one top-level job of the workflow, from its key to the next job's. */
 function jobText(name: string): string {
@@ -42,7 +46,7 @@ describe('the browser suites workflow', () => {
     expect(jobText('interborough')).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
   });
 
-  test('shares only the trusted, bound Interborough shard-one candidate and queues every consumer', () => {
+  test('queues every still-valid trusted consumer of the bound Interborough shard-one candidate', () => {
     const interborough = jobText('interborough');
     expect(interborough).toContain('concurrency:\n');
     expect(interborough).toContain('matrix.shard == 1');
@@ -59,6 +63,9 @@ describe('the browser suites workflow', () => {
     expect(interborough).toContain('github.run_id');
     expect(interborough).toContain('queue: max');
     expect(interborough).toContain('cancel-in-progress: false');
+    // The caller intentionally cancels a superseded pull-request parent. Its canceled child cannot
+    // produce a result; `queue: max` preserves every consumer whose parent remains valid.
+    expect(pullRequestWorkflow).toContain('cancel-in-progress: true');
   });
 
   // COR-2461: the design-review capture runs where the end-to-end layout checks run, so its fonts match.
@@ -94,7 +101,7 @@ describe('the browser suites workflow', () => {
     expect(jobText(job)).not.toMatch(/\n {4}continue-on-error:/u);
   });
 
-  test('keeps the Interborough Turborepo invocation and failed-run artifact for every consumer', () => {
+  test('keeps a real Interborough Turborepo invocation and failed-run artifact for every consumer', () => {
     const interborough = jobText('interborough');
     expect(interborough).toContain('- run: bunx turbo run //#ci:browser-interborough\n');
     expect(interborough).toContain('name: playwright-interborough-${{ matrix.shard }}\n');
