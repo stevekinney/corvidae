@@ -1038,7 +1038,7 @@ test.describe('Settings › General, the Embedder row on a phone', () => {
     const line = switchLine(page);
     const dot = line.getByRole('img', { name: 'Running' });
     const label = embedderRow(page)
-      .locator('label')
+      .locator('label:not(.cinder-sr-only)')
       .filter({ hasText: /^Embedder$/ });
     const bar = line.getByRole('progressbar');
     const cancel = line.getByRole('button', { name: 'Cancel switch' });
