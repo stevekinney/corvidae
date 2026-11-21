@@ -109,7 +109,9 @@ describe('a waiting approval', () => {
       expect(deck.getByRole('region', { name: 'Confirm your decision' }).textContent).toContain(
         'lookup-order',
       );
-      expect(deck.getByRole('region', { name: 'Confirm your decision' }).textContent).toContain('4471');
+      expect(deck.getByRole('region', { name: 'Confirm your decision' }).textContent).toContain(
+        '4471',
+      );
       await fireEvent.click(deck.getByRole('button', { name: 'Undo' }));
       expect(onResolve).toHaveBeenCalledTimes(0);
       await fireEvent.click(deck.getByRole('button', { name: choice }));

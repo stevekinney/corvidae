@@ -430,16 +430,6 @@
     onQuote?.(selectionInside(quoteSources) ?? renderedText(quoteSources));
   }
 
-  // Sources. Only an assistant message shows them, and only when it has at least one; a user
-  // message given the same input never gains the control.
-  const shownSources = $derived(
-    message.role === 'assistant' &&
-      sources !== undefined &&
-      sources.length > 0 &&
-      displayedClaims === undefined
-      ? sources
-      : undefined,
-  );
   let sourcesElement = $state<HTMLElement | null>(null);
   let sourcesWereShown = false;
   let previousKeys: string[] = [];
@@ -750,6 +740,16 @@
     }
     return claimSources;
   });
+  // The standalone source control belongs to an assistant message whose sources aren't already
+  // presented as inline claims.
+  const shownSources = $derived(
+    message.role === 'assistant' &&
+      sources !== undefined &&
+      sources.length > 0 &&
+      displayedClaims === undefined
+      ? sources
+      : undefined,
+  );
   // Read the old triggers before Svelte removes them. Retry after the update because an open
   // mobile sheet makes the underlying message inert until the dialog is removed.
   $effect.pre(() => {
