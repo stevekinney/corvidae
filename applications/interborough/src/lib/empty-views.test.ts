@@ -2,6 +2,7 @@ import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { QueryClient, QueryObserver } from '@tanstack/svelte-query';
 import { describe, expect, test } from 'bun:test';
 
+import { askAgainAfterOutage } from '../app/connection.svelte.ts';
 import { invalidateEmptyViews } from './empty-views.ts';
 import { queryKeys } from './query.ts';
 
@@ -51,6 +52,41 @@ describe('invalidateEmptyViews', () => {
       message: 'the second answer stands',
     });
     stop();
+  });
+
+  test('asks again a no-data probe whose recovery refetch is cancelled', async () => {
+    const queryClient = new QueryClient();
+    const key = queryKeys.view('workflows', null);
+    let reads = 0;
+    const recoveryRead = Promise.withResolvers<{ empty: boolean }>();
+    const observer = new QueryObserver(queryClient, {
+      queryKey: key,
+      queryFn: () => {
+        reads += 1;
+        if (reads === 1) return Promise.reject(new TypeError('Failed to fetch'));
+        if (reads === 2) return recoveryRead.promise;
+        return Promise.resolve({ empty: false });
+      },
+      retry: false,
+    });
+    const stop = observer.subscribe(() => {});
+    try {
+      await waitUntil(() => observer.getCurrentResult().isError, { message: 'the probe failed' });
+
+      const recovering = askAgainAfterOutage(queryClient);
+      await waitUntil(() => reads === 2, { message: 'recovery refetch began' });
+      invalidateEmptyViews(queryClient);
+
+      await recovering;
+      expect(reads).toBe(3);
+      recoveryRead.resolve({ empty: true });
+      await waitUntil(() => observer.getCurrentResult().data?.empty === false, {
+        message: 'the retry answer stands',
+      });
+    } finally {
+      recoveryRead.resolve({ empty: true });
+      stop();
+    }
   });
 
   test('leaves a probe that failed alone', async () => {
