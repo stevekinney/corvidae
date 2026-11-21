@@ -69,3 +69,59 @@ export function projectRunTimeline(entries: readonly WorkflowTimelineEntry[]): R
   });
   return { entries: served, truncated: entries.length > served.length };
 }
+
+/**
+ * Where a run stands, in the engine's own words for a workflow instance. An agent run's task state
+ * is said in the same words ({@link runStatusOfTask}), so a reader draws a run of either kind with
+ * one vocabulary: a run that is `completed`, `failed`, `cancelled` or `timed-out` has finished, so
+ * no step of it is still going whatever its last entry reads.
+ */
+export type RunTimelineRunStatus =
+  'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
+
+/** The values of {@link RunTimelineRunStatus}, for a schema that lists them. */
+export const RUN_TIMELINE_RUN_STATUSES = [
+  'pending',
+  'running',
+  'suspended',
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+] as const satisfies readonly RunTimelineRunStatus[];
+
+/** An agent run's task state, said as a {@link RunTimelineRunStatus}. */
+export function runStatusOfTask(
+  state: 'submitted' | 'working' | 'input-required' | 'completed' | 'failed' | 'canceled',
+): RunTimelineRunStatus {
+  switch (state) {
+    case 'submitted':
+      return 'pending';
+    case 'working':
+      return 'running';
+    case 'input-required':
+      return 'suspended';
+    case 'canceled':
+      return 'cancelled';
+    case 'completed':
+    case 'failed':
+      return state;
+  }
+}
+
+/** A run's timeline as `bureau.runs.timeline` and the `runs-timeline` agent tool serve it. */
+export interface ServedRunTimeline extends RunTimeline {
+  /** Which kind of run the id named. */
+  readonly kind: 'agent' | 'workflow';
+  /** Where the run stands as the timeline is read. */
+  readonly runStatus: RunTimelineRunStatus;
+}
+
+/** The served timeline of the run of `kind` that stands at `runStatus`, from the engine's `entries`. */
+export function serveRunTimeline(
+  kind: 'agent' | 'workflow',
+  runStatus: RunTimelineRunStatus,
+  entries: readonly WorkflowTimelineEntry[],
+): ServedRunTimeline {
+  return { kind, runStatus, ...projectRunTimeline(entries) };
+}

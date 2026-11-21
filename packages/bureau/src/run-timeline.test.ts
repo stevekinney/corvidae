@@ -1,7 +1,12 @@
 import { activity, Engine, workflow, type WorkflowTimelineEntry } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { projectRunTimeline, RUN_TIMELINE_ENTRY_LIMIT } from './run-timeline.ts';
+import {
+  projectRunTimeline,
+  RUN_TIMELINE_ENTRY_LIMIT,
+  runStatusOfTask,
+  serveRunTimeline,
+} from './run-timeline.ts';
 
 const SECRET = 'PRIVATE-STEP-PAYLOAD-5e90';
 
@@ -107,5 +112,26 @@ describe('projectRunTimeline', () => {
     expect(projected.truncated).toBe(true);
     expect(projected.entries[0]?.tries).toBe(2);
     expect(projectRunTimeline(entries.slice(0, 3)).truncated).toBe(false);
+  });
+});
+
+describe('serveRunTimeline', () => {
+  it('serves the run’s kind and status beside its projected steps', () => {
+    const served = serveRunTimeline('agent', 'failed', [entry({ status: 'running' })]);
+    expect(served).toMatchObject({ kind: 'agent', runStatus: 'failed', truncated: false });
+    expect(served.entries).toHaveLength(1);
+  });
+});
+
+describe('runStatusOfTask', () => {
+  it.each([
+    ['submitted', 'pending'],
+    ['working', 'running'],
+    ['input-required', 'suspended'],
+    ['completed', 'completed'],
+    ['failed', 'failed'],
+    ['canceled', 'cancelled'],
+  ] as const)('says a %s task is %s', (state, expected) => {
+    expect(runStatusOfTask(state)).toBe(expected);
   });
 });

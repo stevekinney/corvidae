@@ -35,7 +35,12 @@
   <main aria-labelledby="timeline-title" class="panel-page">
     <div>
       <Text as="h1" variant="h3" id="timeline-title">Timeline of run {model.runId}</Text>
-      <p class="timeline-summary">{model.summary}</p>
+      <p class="timeline-summary">
+        {model.summary}
+        {#if model.runStatusText !== undefined}
+          <span data-run-status>{model.runStatusText}</span>
+        {/if}
+      </p>
     </div>
 
     <Section title="Steps">

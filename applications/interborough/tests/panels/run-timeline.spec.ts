@@ -51,6 +51,7 @@ const step = (overrides: Record<string, unknown> & { step: number }) => ({
 const RUN = {
   runId: 'run-1',
   kind: 'workflow',
+  runStatus: 'running',
   truncated: false,
   entries: [
     step({ step: 1, label: 'fetchPages', duration: 2_400 }),
@@ -138,6 +139,17 @@ test.describe('the run timeline MCP App', () => {
     const calls = await page.evaluate(() => window.referenceHost.calls.map((call) => call.name));
     expect(new Set(calls)).toEqual(new Set(['bureau.runs.timeline']));
     expect(errors).toEqual([]);
+  });
+
+  test('draws a step the engine left running as ended when the run has finished', async ({
+    page,
+  }) => {
+    const { app } = await open(page, { timeline: { ...RUN, runStatus: 'failed' } });
+    const steps = app.getByRole('list', { name: /Steps of the run/ }).getByRole('listitem');
+    await expect(steps).toHaveCount(4);
+    await expect(steps.nth(3)).toContainText('Ended');
+    await expect(steps.nth(3)).not.toContainText('Running');
+    await expect(app.getByText('Run failed.')).toBeVisible();
   });
 
   test('reads the run named by `runId` as well as `taskId`', async ({ page }) => {

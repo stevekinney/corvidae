@@ -12,8 +12,8 @@ import { followHostTheme } from '../host-theme.ts';
 import {
   buildTimelineModel,
   describeChange,
-  readTimeline,
   runIdOf,
+  timelineOfResult,
   type Timeline,
   type TimelineModel,
 } from './model.ts';
@@ -83,7 +83,7 @@ async function start(): Promise<void> {
       });
       if (generationAtStart !== generation || mine < applied) return;
       applied = mine;
-      const timeline = result.isError === true ? undefined : readTimeline(result.structuredContent);
+      const timeline = timelineOfResult(result);
       if (timeline === undefined) return unreadable();
       const wasConnected = connected;
       connected = true;
@@ -110,7 +110,7 @@ async function start(): Promise<void> {
   };
   // The result that opened the page is its first render, whether or not the host lets it call back.
   app.ontoolresult = (result) => {
-    const timeline = result.isError === true ? undefined : readTimeline(result.structuredContent);
+    const timeline = timelineOfResult(result);
     if (timeline === undefined) return;
     if (timeline.runId !== runId) {
       runId = timeline.runId;

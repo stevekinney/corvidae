@@ -58,8 +58,9 @@ export const workflowRevisionReview: PluginPanel = {
 
 /**
  * The run timeline: one run's steps as a waterfall, each with its status, duration and tries. A
- * client opens it from `bureau.runs.timeline`, the tool the page is linked to, and a run's page
- * mounts it beside the run. It reads that one tool and no other, and changes nothing. The bars come
+ * client opens it from `bureau.runs.timeline`, the tool the page is linked to, Chat opens it inline
+ * when an agent calls `bureau:runs-timeline`, and a run's page mounts it beside the run. It reads
+ * `bureau.runs.timeline` and no other tool, and changes nothing. The bars come
  * from `stepWaterfall`, the layout the run page draws its own steps with. `allowedTools` lists
  * every tool the page calls, which a test keeps true.
  */
@@ -71,7 +72,7 @@ export const runTimeline: PluginPanel = {
   entry: new URL('./run-timeline/app.ts', import.meta.url),
   styles: RUN_TIMELINE_STYLES,
   allowedTools: ['bureau.runs.timeline'],
-  placements: [{ kind: 'run' }],
+  placements: [{ kind: 'run' }, { kind: 'chat-tool', agentTool: 'bureau:runs-timeline' }],
   opensFromTool: 'bureau.runs.timeline',
 };
 

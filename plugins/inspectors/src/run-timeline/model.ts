@@ -32,6 +32,11 @@ type TimelineEntry = {
 export type Timeline = {
   readonly runId: string;
   readonly kind: string;
+  /**
+   * Where the run stands: `pending`, `running`, `suspended`, `completed`, `failed`, `cancelled` or
+   * `timed-out`; `undefined` from a host that does not say. A finished run has no step still going.
+   */
+  readonly runStatus: string | undefined;
   readonly entries: readonly TimelineEntry[];
   /** True when the run has more steps than the read returns. */
   readonly truncated: boolean;
@@ -73,7 +78,7 @@ function readEntry(value: unknown): TimelineEntry | undefined {
  */
 export function readTimeline(value: unknown): Timeline | undefined {
   if (!isRecord(value) || !Array.isArray(value['entries'])) return undefined;
-  const { runId, kind, truncated } = value;
+  const { runId, kind, runStatus, truncated } = value;
   if (typeof runId !== 'string') return undefined;
   const entries: TimelineEntry[] = [];
   for (const raw of value['entries'] as unknown[]) {
@@ -84,9 +89,31 @@ export function readTimeline(value: unknown): Timeline | undefined {
   return {
     runId,
     kind: typeof kind === 'string' ? kind : 'workflow',
+    runStatus: typeof runStatus === 'string' ? runStatus : undefined,
     entries,
     truncated: truncated === true,
   };
+}
+
+/**
+ * The timeline a tool result carries: its structured content, which Chat hands a panel as the
+ * agent tool's result in JSON text, or failing that its first text block.
+ */
+export function timelineOfResult(result: {
+  readonly structuredContent?: unknown;
+  readonly content?: unknown;
+  readonly isError?: boolean | undefined;
+}): Timeline | undefined {
+  if (result.isError === true) return undefined;
+  const { structuredContent } = result;
+  if (typeof structuredContent === 'string') {
+    try {
+      return readTimeline(JSON.parse(structuredContent));
+    } catch {
+      return undefined;
+    }
+  }
+  return readTimeline(structuredContent);
 }
 
 /**
@@ -133,6 +160,8 @@ type TimelineRow = {
 export type TimelineModel = {
   readonly runId: string;
   readonly rows: readonly TimelineRow[];
+  /** Where the run stands in words (`Run completed.`), or `undefined` from a host that does not say. */
+  readonly runStatusText: string | undefined;
   readonly truncated: boolean;
   /** One line over the steps: how many, and how many failed or are running. */
   readonly summary: string;
@@ -188,13 +217,14 @@ function summaryOf(rows: readonly TimelineRow[], truncated: boolean): string {
 
 /**
  * The model of `timeline` at time `now`. The layout is `stepWaterfall`, the function the run page
- * lays out the engine's entries with. The timeline carries neither the run's status nor its start,
- * so the layout reads the run as going when its last step is `running`, and its origin is the first
- * step's start.
+ * lays out the engine's entries with, given the run's status: a run that has finished has no step
+ * still going, so a step the engine left `running` is drawn as ended, not running. The timeline
+ * carries no start for the run, so the origin is the first step's start.
  */
 export function buildTimelineModel(timeline: Timeline, now: number): TimelineModel {
-  const bars = stepWaterfall(timeline.entries, { now });
-  const open = openStepNumbers(timeline.entries);
+  const { runStatus } = timeline;
+  const bars = stepWaterfall(timeline.entries, { now, runStatus });
+  const open = openStepNumbers(timeline.entries, runStatus);
   const rows = timeline.entries
     .toSorted((a, b) => a.step - b.step)
     .map((entry): TimelineRow => {
@@ -233,6 +263,7 @@ export function buildTimelineModel(timeline: Timeline, now: number): TimelineMod
   return {
     runId: timeline.runId,
     rows,
+    runStatusText: runStatus === undefined ? undefined : `Run ${runStatus}.`,
     truncated: timeline.truncated,
     summary: summaryOf(rows, timeline.truncated),
   };

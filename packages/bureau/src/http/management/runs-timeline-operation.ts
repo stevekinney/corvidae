@@ -22,7 +22,13 @@ import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { projectRunTimeline, RUN_TIMELINE_ENTRY_LIMIT } from '../../run-timeline.ts';
+import {
+  RUN_TIMELINE_ENTRY_LIMIT,
+  RUN_TIMELINE_RUN_STATUSES,
+  type RunTimelineRunStatus,
+  runStatusOfTask,
+  serveRunTimeline,
+} from '../../run-timeline.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
@@ -71,6 +77,11 @@ const timelineEntrySchema = z.object({
 const timelineOutput = z.object({
   runId: z.string(),
   kind: z.enum(['agent', 'workflow']).describe('Which kind of run the id named.'),
+  runStatus: z
+    .enum(RUN_TIMELINE_RUN_STATUSES)
+    .describe(
+      'Where the run stands as the timeline is read. A run that is `completed`, `failed`, `cancelled` or `timed-out` has finished, so no step of it is still going, whatever its last entry says.',
+    ),
   entries: z.array(timelineEntrySchema),
   truncated: z
     .boolean()
@@ -103,7 +114,7 @@ export const runsTimelineOperation = defineOperation<
   authorize: authorizeWorkspaceOperation('bureau.runs.timeline'),
   mcpExposable: true,
   summary: 'Read the step timeline of a run',
-  description: `Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s \`label\`, \`operationType\`, \`status\`, \`timestamp\` (its start, in epoch milliseconds), \`duration\` (milliseconds, absent while it runs) and \`tries\` (how many attempts the engine made at the step, this one included). \`runId\` is an agent run’s task id or a workflow instance’s id, and \`kind\` says which. No step’s input or output is returned, only names and timings. An agent run is read with the access \`bureau.tasks.get\` asks and a workflow instance with the access \`bureau.workflows.runs.get\` asks; any other run, a run the caller may not read, and a run that does not exist are all \`NotFound\`. A run of more than ${String(RUN_TIMELINE_ENTRY_LIMIT)} entries is cut and \`truncated\` is true.`,
+  description: `Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s \`label\`, \`operationType\`, \`status\`, \`timestamp\` (its start, in epoch milliseconds), \`duration\` (milliseconds, absent while it runs) and \`tries\` (how many attempts the engine made at the step, this one included). \`runId\` is an agent run’s task id or a workflow instance’s id, and \`kind\` says which; \`runStatus\` says where the run stands (\`pending\`, \`running\`, \`suspended\`, \`completed\`, \`failed\`, \`cancelled\` or \`timed-out\`), so a reader can tell a step the run has left from one it is still in. No step’s input or output is returned, only names and timings. An agent run is read with the access \`bureau.tasks.get\` asks and a workflow instance with the access \`bureau.workflows.runs.get\` asks; any other run, a run the caller may not read, and a run that does not exist are all \`NotFound\`. A run of more than ${String(RUN_TIMELINE_ENTRY_LIMIT)} entries is cut and \`truncated\` is true.`,
   destructive: false,
   tags: ['Runs'],
   inputSchema: timelineInput,
@@ -119,11 +130,13 @@ export const runsTimelineOperation = defineOperation<
     // caller who may not read it is not then offered the workflow reading of the same id.
     const task = await host.tasks.get(runId);
     let kind: 'agent' | 'workflow';
+    let runStatus: RunTimelineRunStatus;
     if (task !== undefined) {
       if (!(await mayAccessTask(host, principal, runId, 'bureau.tasks:read'))) {
         throw resourceNotFound('run', runId);
       }
       kind = 'agent';
+      runStatus = runStatusOfTask(task.status);
     } else {
       if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
         throw resourceNotFound('run', runId);
@@ -141,14 +154,20 @@ export const runsTimelineOperation = defineOperation<
       }
       if (host.workflows === undefined) throw noWorkflowDirectory();
       // `getRun` is the one reading of "an instance of a workflow file"; anything else is no run here.
-      if ((await host.workflows.getRun(runId)) === undefined) {
-        throw resourceNotFound('run', runId);
-      }
+      const run = await host.workflows.getRun(runId);
+      if (run === undefined) throw resourceNotFound('run', runId);
       kind = 'workflow';
+      runStatus = run.status;
     }
     const entries = await host.runTimeline(runId);
     if (entries === undefined) throw unsupported();
-    const timeline = projectRunTimeline(entries);
-    return { runId, kind, entries: [...timeline.entries], truncated: timeline.truncated };
+    const timeline = serveRunTimeline(kind, runStatus, entries);
+    return {
+      runId,
+      kind: timeline.kind,
+      runStatus: timeline.runStatus,
+      entries: [...timeline.entries],
+      truncated: timeline.truncated,
+    };
   },
 });

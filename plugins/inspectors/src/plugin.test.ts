@@ -45,7 +45,10 @@ describe('the inspectors plugin', () => {
     expect(workflowRevisionReview.opensFromTool).toBe('bureau.workflows.update');
     expect(workflowRevisionReview.allowedTools).toContain('bureau.workflows.update');
     expect(runTimeline.opensFromTool).toBe('bureau.runs.timeline');
-    expect(runTimeline.placements).toEqual([{ kind: 'run' }]);
+    expect(runTimeline.placements).toEqual([
+      { kind: 'run' },
+      { kind: 'chat-tool', agentTool: 'bureau:runs-timeline' },
+    ]);
   });
 
   it('lets the run timeline call the timeline read and no other tool', () => {

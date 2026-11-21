@@ -48,7 +48,7 @@ async function ready(
   truncated = false,
 ) {
   view.model = buildTimelineModel(
-    { runId: 'run-<i>1</i>', kind: 'workflow', entries: rows, truncated },
+    { runId: 'run-<i>1</i>', kind: 'workflow', runStatus: 'running', entries: rows, truncated },
     9_000,
   );
   view.phase = 'ready';
@@ -99,6 +99,21 @@ describe('the run timeline page, drawn with Cinder (COR-2542)', () => {
       'Step 2, summarize, failed.',
     );
     expect(container.querySelector('form, button, input, a')).toBeNull();
+  });
+
+  it('draws a step the engine left running as ended, and says the run finished', async () => {
+    const { view, container } = open();
+    view.model = buildTimelineModel(
+      { runId: 'run-1', kind: 'workflow', runStatus: 'failed', entries, truncated: false },
+      9_000,
+    );
+    view.phase = 'ready';
+    await tick();
+    const last = container.querySelector('li[data-step="3"]');
+    expect(last?.textContent).toContain('Ended');
+    expect(last?.textContent).not.toContain('Running');
+    expect(last?.querySelector('.timeline-step__bar[data-open]')).toBeNull();
+    expect(container.querySelector('[data-run-status]')?.textContent).toBe('Run failed.');
   });
 
   it('says so when the run has no steps yet', async () => {

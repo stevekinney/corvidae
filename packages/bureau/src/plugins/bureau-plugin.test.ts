@@ -70,6 +70,7 @@ const WORKFLOW_TOOLS = [
   'workflows-runs-list',
   'workflows-runs-get',
   'workflows-runs-history',
+  'runs-timeline',
 ];
 const CHILD_RUN_TOOLS = [
   'child-runs-dispatch',

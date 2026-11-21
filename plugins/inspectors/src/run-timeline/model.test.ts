@@ -6,6 +6,7 @@ import {
   describeChange,
   readTimeline,
   runIdOf,
+  timelineOfResult,
   type Timeline,
 } from './model.ts';
 
@@ -21,9 +22,14 @@ const entry = (overrides: Partial<TimelineEntry> & { step: number }): TimelineEn
   ...overrides,
 });
 
-const timeline = (entries: TimelineEntry[], truncated = false): Timeline => ({
+const timeline = (
+  entries: TimelineEntry[],
+  truncated = false,
+  runStatus: string | undefined = undefined,
+): Timeline => ({
   runId: 'run-1',
   kind: 'workflow',
+  runStatus,
   entries,
   truncated,
 });
@@ -54,6 +60,23 @@ describe('reading what the host answered', () => {
       timestamp: 5,
       tries: 2,
     });
+  });
+
+  it('reads where the run stands, and none from a host that does not say', () => {
+    const answer = { runId: 'r', entries: [] };
+    expect(readTimeline({ ...answer, runStatus: 'failed' })?.runStatus).toBe('failed');
+    expect(readTimeline(answer)?.runStatus).toBeUndefined();
+    expect(readTimeline({ ...answer, runStatus: 3 })?.runStatus).toBeUndefined();
+  });
+
+  it('reads a tool result whether its structured content is an object or Chat’s JSON text', () => {
+    const answer = { status: 'ok', runId: 'r', runStatus: 'completed', entries: [] };
+    expect(timelineOfResult({ structuredContent: answer })?.runId).toBe('r');
+    expect(timelineOfResult({ structuredContent: JSON.stringify(answer) })?.runStatus).toBe(
+      'completed',
+    );
+    expect(timelineOfResult({ structuredContent: '{not json' })).toBeUndefined();
+    expect(timelineOfResult({ structuredContent: answer, isError: true })).toBeUndefined();
   });
 
   it('refuses a value that is not a timeline, and one with a step it cannot read', () => {
@@ -143,7 +166,36 @@ describe('the rows', () => {
     });
     expect(model.rows[1]?.bar?.open).toBe(true);
     expect(model.summary).toBe('2 steps, 1 running.');
+    expect(model.runStatusText).toBeUndefined();
   });
+
+  it.each(['completed', 'failed', 'cancelled', 'timed-out'])(
+    'draws a step the engine left running as ended when the run is %s',
+    (runStatus) => {
+      const entries = [
+        entry({ step: 1, status: 'completed', timestamp: 1_000, duration: 500 }),
+        entry({ step: 2, status: 'running', duration: undefined, timestamp: 2_000 }),
+      ];
+      const going = buildTimelineModel(timeline(entries, false, 'running'), 9_000);
+      expect(going.rows[1]).toMatchObject({ statusLabel: 'Running', open: true });
+
+      const finished = buildTimelineModel(timeline(entries, false, runStatus), 9_000);
+      expect(finished.rows[1]).toMatchObject({
+        statusLabel: 'Ended',
+        statusVariant: 'neutral',
+        open: false,
+      });
+      expect(finished.rows[1]?.durationText).not.toBe('running');
+      expect(finished.rows[1]?.bar?.open).toBe(false);
+      expect(finished.rows[1]?.barLabel).not.toContain('still running');
+      expect(finished.summary).toBe('2 steps.');
+      expect(finished.runStatusText).toBe(`Run ${runStatus}.`);
+      // A finished run's last bar ends where the engine's record does, not at `now`.
+      const goingBar = going.rows[1]?.bar;
+      const finishedBar = finished.rows[1]?.bar;
+      expect(finishedBar?.width).toBeLessThan(goingBar?.width ?? 0);
+    },
+  );
 
   it('orders the rows by step whatever order the host answered in', () => {
     const model = buildTimelineModel(
