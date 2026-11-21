@@ -13,7 +13,9 @@
   import { IDENTIFIER_ACRONYMS } from '../../utilities/humanize-identifier.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
   import {
+    allowBreaksAtPunctuation,
     annotationToneClass,
+    breakPoints,
     decorateHighlightedLines,
     hangWrappedLines,
     keepFlagsWhole,
@@ -177,6 +179,15 @@
   </small>
 {/snippet}
 
+<!-- A wrapping block's text, with a break opportunity after each slash, dot, colon and hyphen that
+     ends a part of it. `<wbr>` is no character, so what is shown and copied is the code as written.
+     No whitespace around the pieces: inside a `pre` it would be text. -->
+{#snippet broken(text: string)}{@const pieces =
+    breakPoints(
+      text,
+    )}{#each pieces as piece, index (index)}{piece}{#if index < pieces.length - 1}<wbr
+      />{/if}{/each}{/snippet}
+
 {#snippet plainCode()}
   {#if hasLineFeatures}
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
@@ -190,7 +201,7 @@
             style:--_cinder-code-block-indent-tabs={wrap ? leadingIndent(text).tabs : undefined}
             >{#if wrap}{#each splitFlags(text) as run, runIndex (runIndex)}{#if run.flag}<span
                     class="cinder-code-block__flag">{run.text}</span
-                  >{:else}{run.text}{/if}{/each}{:else}{text}{/if}</span
+                  >{:else}{@render broken(run.text)}{/if}{/each}{:else}{text}{/if}</span
           >{#each notes as annotation, noteIndex (noteIndex)}{@render note(
               annotation,
             )}{/each}{/each}{#if streaming}{@render caret()}{/if}</code
@@ -199,7 +210,9 @@
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
         >{#if wrap}{#each splitFlags(code) as run, index (index)}{#if run.flag}<span
                 class="cinder-code-block__flag">{run.text}</span
-              >{:else}{run.text}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
+              >{:else}{@render broken(
+                run.text,
+              )}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
       ></pre>
   {/if}
 {/snippet}
@@ -270,6 +283,7 @@
             {@attach markNumericTokens}
             {@attach wrap ? keepFlagsWhole : noopScrollFadeAttachment}
             {@attach wrap ? hangWrappedLines : noopScrollFadeAttachment}
+            {@attach wrap ? allowBreaksAtPunctuation : noopScrollFadeAttachment}
           >
             {@html highlighted}
           </div>
