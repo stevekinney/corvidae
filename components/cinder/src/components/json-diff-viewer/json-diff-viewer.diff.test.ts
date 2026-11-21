@@ -2,12 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { requiredValue } from '@lostgradient/testing';
 
-import {
-  ROOT_KEY,
-  diffJsonValues,
-  previewJsonValue,
-  type JsonDiffEntry,
-} from './json-diff-viewer.diff.ts';
+import { diffJsonValues, type JsonDiffEntry } from './json-diff-viewer.diff.ts';
 
 function kinds(entries: readonly JsonDiffEntry[]): string[] {
   return entries.map((entry) => `${entry.kind}:${entry.key}`);
@@ -60,10 +55,10 @@ describe('diffJsonValues', () => {
   });
 
   test('handles values that are not collections at the root', () => {
-    expect(kinds(diffJsonValues('a', 'b').changes)).toEqual([`changed:${ROOT_KEY}`]);
+    expect(kinds(diffJsonValues('a', 'b').changes)).toEqual(['changed:(root)']);
     expect(kinds(diffJsonValues({ a: 1 }, [1]).changes)).toEqual([
-      `removed:${ROOT_KEY}`,
-      `added:${ROOT_KEY}`,
+      'removed:(root)',
+      'added:(root)',
     ]);
   });
 
@@ -104,17 +99,22 @@ describe('diffJsonValues', () => {
   });
 });
 
-describe('previewJsonValue', () => {
+/** The preview a removed entry shows for `value`: what the viewer prints for a removed row. */
+function previewOf(value: unknown): string | undefined {
+  return diffJsonValues({ key: value }, {}).changes[0]?.before;
+}
+
+describe('value previews', () => {
   test('previews primitives as JSON and collections by size', () => {
-    expect(previewJsonValue('a')).toBe('"a"');
-    expect(previewJsonValue(null)).toBe('null');
-    expect(previewJsonValue([1, 2])).toBe('[2 items]');
-    expect(previewJsonValue([1])).toBe('[1 item]');
-    expect(previewJsonValue({ a: 1, b: undefined })).toBe('{1 key}');
+    expect(previewOf('a')).toBe('"a"');
+    expect(previewOf(null)).toBe('null');
+    expect(previewOf([1, 2])).toBe('[2 items]');
+    expect(previewOf([1])).toBe('[1 item]');
+    expect(previewOf({ a: 1, b: undefined })).toBe('{1 key}');
   });
 
   test('cuts a long string with an ellipsis', () => {
-    expect(previewJsonValue('x'.repeat(500)).length).toBeLessThan(130);
-    expect(previewJsonValue('x'.repeat(500)).endsWith('…')).toBe(true);
+    expect(previewOf('x'.repeat(500))?.length).toBeLessThan(130);
+    expect(previewOf('x'.repeat(500))?.endsWith('…')).toBe(true);
   });
 });

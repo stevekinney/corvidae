@@ -41,7 +41,7 @@ export type JsonDiffEntry = {
 };
 
 /** The key of the compared values themselves, when they are not the entries of a collection. */
-export const ROOT_KEY = '(root)';
+const ROOT_KEY = '(root)';
 
 /** How many entries of a level render before the rest wait behind a control to show more. */
 export const JSON_DIFF_PAGE_SIZE = 200;
@@ -108,7 +108,7 @@ function definedEntries(record: Record<string, unknown>): [string, unknown][] {
  * A one-line preview of a value: a primitive as JSON, a collection as its size. A collection's
  * contents are never walked, so the preview of a very large value costs nothing.
  */
-export function previewJsonValue(value: unknown): string {
+function previewJsonValue(value: unknown): string {
   if (Array.isArray(value)) return `[${pluralize(value.length, 'item', 'items')}]`;
   if (isRecord(value)) return `{${pluralize(definedEntries(value).length, 'key', 'keys')}}`;
   if (typeof value === 'string') return cut(JSON.stringify(value));
