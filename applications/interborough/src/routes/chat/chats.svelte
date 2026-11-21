@@ -385,7 +385,9 @@
     }
     event.preventDefault();
     typed = '';
-    router.navigate(viewPath(archivedView));
+    const destination = viewPath(archivedView);
+    automaticallyOpened = null;
+    router.navigate(destination, { keep: true });
     await tick();
     const target = archivedView
       ? listPane?.querySelector<HTMLElement>('[data-chats-view-back]')
