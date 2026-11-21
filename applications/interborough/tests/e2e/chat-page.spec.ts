@@ -426,8 +426,10 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     // Provider connected, so the composer is live: the person's follow-up, sent while the approval
     // waits, is the message that was not sent (frame g).
     await connectProvider(page);
-    // The page loads at 10:44 AM, two minutes before the sample "now".
-    await page.clock.install({ time: SAMPLE_NOW_MILLISECONDS - 2 * 60_000 });
+    // Pause before navigation at 10:44 AM, two minutes before the sample "now". Reading a running
+    // clock and then pausing at that reading + 500 ms races the next command under load (COR-2553).
+    const loadedAt = SAMPLE_NOW_MILLISECONDS - 2 * 60_000;
+    await page.clock.pauseAt(loadedAt);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     await expect(page.locator('[data-approval-decision]')).toBeVisible();
@@ -449,7 +451,8 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     await upNext.getByRole('button', { name: 'Send now instead' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
 
-    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 500);
+    // Setup and interactions must not advance the clock; only the explicit retry steps below do.
+    expect(await page.evaluate(() => Date.now())).toBe(loadedAt);
     await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
     const banner = page.getByRole('region', { name: 'Connection problem' });
