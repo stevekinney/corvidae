@@ -11,7 +11,7 @@
  * also covers metrics that change while the editor is off-window.
  */
 
-import { THEME_STORAGE_KEY } from '@lostgradient/testing';
+import { resolvedTokenColor, THEME_STORAGE_KEY } from '@lostgradient/testing';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
@@ -172,7 +172,14 @@ for (const theme of ['light', 'dark'] as const) {
         height: 900,
       });
       try {
-        await page.locator('.cinder-json-editor__problem').waitFor();
+        const message = page.locator('.cinder-json-editor__problem');
+        const line = page.locator('.cinder-json-editor__line--problem');
+        await expect(message).toBeVisible();
+        // The widget can be visible before CodeMirror's line resolves the dark surface token.
+        // Require both backgrounds to resolve to the danger fill before measuring the rectangle.
+        const fill = await resolvedTokenColor(message, '--cinder-status-danger-background');
+        await expect(line).toHaveCSS('background-color', fill);
+        await expect(message).toHaveCSS('background-color', fill);
         const mark = await page.evaluate((): MarkGeometry => {
           const read = (selector: string) => {
             const element = document.querySelector(selector);

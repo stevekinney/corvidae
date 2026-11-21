@@ -183,7 +183,7 @@ test.describe('the Skills tab', () => {
     );
     await page.getByRole('tab', { name: copy.tabs.tools }).click();
     await expect(page.getByTestId('tools-panel')).toBeVisible();
-    await expect(page).toHaveURL(/\/capabilities$/);
+    await expect(page).toHaveURL(/\/capabilities(\?tool=[^&]+)?$/);
   });
 });
 
@@ -193,7 +193,7 @@ test('G P opens the page, and the sidebar marks it current', async ({ page }) =>
   await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible();
   await page.keyboard.press('g');
   await page.keyboard.press('p');
-  await expect(page).toHaveURL(/\/capabilities$/);
+  await expect(page).toHaveURL(/\/capabilities(\?tool=[^&]+)?$/);
   await expect(
     page
       .getByRole('navigation', { name: 'Views' })
@@ -356,7 +356,7 @@ test.describe('the Connect tools page', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/capabilities/connect');
     await form(page).getByRole('button', { name: connect.actions.cancel, exact: true }).click();
-    await expect(page).toHaveURL(/\/capabilities\?tab=sources$/);
+    await expect(page).toHaveURL(/\/capabilities\?tab=sources(&source=[^&]+)?$/);
 
     await page.goto('/capabilities/connect');
     await form(page).getByLabel(connect.name.label, { exact: true }).fill('GitHub');

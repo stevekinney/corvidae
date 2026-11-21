@@ -33,40 +33,8 @@ const MAXIMUM_BODY_BYTES = 1024 * 1024;
 const MAXIMUM_BATCH_ITEMS = 100;
 
 const JSON_RPC_VERSION = '2.0';
+const JSON_RPC_INTERNAL_ERROR = -32603;
 const DISCOVER_METHOD = 'rpc.discover';
-
-/**
- * The `fetch` the process had when this module loaded. The host asks its own loopback engine for
- * its catalog while it starts, and a test that replaces `globalThis.fetch` to stand in for a
- * provider's network must not stand in for that private call.
- */
-const startupFetch: typeof fetch = globalThis.fetch.bind(globalThis);
-
-/** The methods Weft's server at `upstream` lists in its `rpc.discover` document, asked with `key`. */
-export async function engineOperationNames(upstream: string, key: string): Promise<string[]> {
-  const response = await startupFetch(new URL(COMPOSED_JSON_RPC_PATH, upstream), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': key },
-    body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id: 1, method: DISCOVER_METHOD }),
-  });
-  const text = await response.text();
-  let document: unknown;
-  try {
-    const parsed: unknown = JSON.parse(text);
-    document = isRecord(parsed) ? parsed['result'] : undefined;
-  } catch {
-    document = undefined;
-  }
-  const methods = isRecord(document) ? document['methods'] : undefined;
-  if (!Array.isArray(methods)) {
-    throw new Error(
-      `Weft’s server did not describe its operations (HTTP ${response.status}): ${text.slice(0, 300)}`,
-    );
-  }
-  return methods.flatMap((method: unknown) =>
-    isRecord(method) && typeof method['name'] === 'string' ? [method['name']] : [],
-  );
-}
 
 /**
  * The operation names Bureau contributes to the composed catalog. An operation name the two
@@ -235,7 +203,8 @@ async function answerOf(
  *
  * A single call is answered exactly as its catalog's own endpoint answers it. A batch runs in
  * order and answers in order, with a response for each call that has an id. A refusal that is not
- * a JSON-RPC response (an identity that changed, a missing credential) answers the whole batch.
+ * a JSON-RPC response answers the whole batch only when the host rejects it before dispatch. Once
+ * a batch starts, a transport refusal answers the individual call and the other answers survive.
  */
 export async function serveComposedJsonRpc(
   request: Request,
@@ -272,8 +241,23 @@ export async function serveComposedJsonRpc(
   const answers: Record<string, unknown>[] = [];
   for (const entry of entries) {
     const answer = await answerOf(request, entry, composed);
-    if (answer instanceof Response) return answer;
-    if (answer !== undefined && !entry.notification) answers.push(answer);
+    if (answer instanceof Response) {
+      if (!batch) return answer;
+      if (!entry.notification) {
+        const id = isRecord(entry.raw) ? entry.raw['id'] : undefined;
+        answers.push({
+          jsonrpc: JSON_RPC_VERSION,
+          id: typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id)) ? id : null,
+          error: {
+            code: JSON_RPC_INTERNAL_ERROR,
+            message: 'Upstream request refused',
+            data: { status: answer.status },
+          },
+        });
+      }
+    } else if (answer !== undefined && !entry.notification) {
+      answers.push(answer);
+    }
   }
   if (!batch) {
     const [only] = answers;

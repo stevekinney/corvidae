@@ -348,14 +348,16 @@
 </section>
 
 <!-- Restore asks first, naming what it removes (row 38z). -->
-<ConfirmDialog
-  bind:open={restoreOpen}
-  title={restoring === null ? '' : copy.restoreDialog.title(restoring)}
-  description={restoreDescription}
-  confirmLabel={restoring === null ? '' : copy.restoreDialog.confirm(restoring)}
-  busy={restore.isPending}
-  closeOnConfirm={false}
-  onConfirm={() => {
-    if (restoring !== null) restore.mutate(restoring);
-  }}
-/>
+{#if restoring !== null}
+  <ConfirmDialog
+    bind:open={restoreOpen}
+    title={copy.restoreDialog.title(restoring)}
+    description={restoreDescription}
+    confirmLabel={copy.restoreDialog.confirm(restoring)}
+    busy={restore.isPending}
+    closeOnConfirm={false}
+    onConfirm={() => {
+      if (restoring !== null) restore.mutate(restoring);
+    }}
+  />
+{/if}

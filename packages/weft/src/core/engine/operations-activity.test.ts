@@ -15,6 +15,7 @@ import { ActivityStartedEvent } from '../events.ts';
 import { getWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { ActivityInterception } from '../interceptor.ts';
 import { getActivityFunctionWithMetadata, resolveActivityFunction } from './activity-resolution.ts';
+import { beginExecutionAttempt } from './execution-attempts.ts';
 import {
   executeActivity,
   executeActivityOperationResult,
@@ -653,6 +654,57 @@ describe('activity operation helpers', () => {
     });
   });
 
+  it('reconciles a keyed activity after the same engine relaunches before committing its receipt', async () => {
+    const workflowId = 'workflow-id';
+    const token = 'one-durable-run';
+    const storage = new MemoryStorage();
+    const internals = createInternals({ storage });
+    const options = { idempotencyKey: 'same-run-new-attempt' };
+    const callbacks = createCallbacks();
+    beginExecutionAttempt(internals as never, workflowId, token);
+    const first = await executeActivityOperationResult(
+      internals as never,
+      workflowId,
+      createActivityOperation({ fn: () => 'external-result', options }),
+      callbacks,
+    );
+    expect(first).toBe('external-result');
+    expect(await readSingleActivityReconciliationRecord(storage, workflowId)).toMatchObject({
+      status: 'started',
+    });
+
+    // The earlier attempt lost ownership before it could commit the staged completion.
+    internals.pendingAtomicWorkflowCommitSideEffects.delete(workflowId);
+    beginExecutionAttempt(internals as never, workflowId, token);
+    const verify = mock(async () => ({
+      status: 'completed-with-result' as const,
+      result: 'external-result',
+    }));
+    const redispatch = mock(() => {
+      throw new Error('The external action already completed');
+    });
+    const replay = await executeActivityOperationResult(
+      internals as never,
+      workflowId,
+      createActivityOperation({
+        operationId: 'replayed-operation',
+        fn: Object.assign(redispatch, { verify }),
+        options,
+      }),
+      callbacks,
+    );
+    expect(replay).toBe('external-result');
+    expect(verify).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ phase: 'pre-dispatch-reconciliation' }),
+    );
+    expect(redispatch).not.toHaveBeenCalled();
+    expect(await readSingleActivityReconciliationRecord(storage, workflowId)).toMatchObject({
+      status: 'completed',
+      result: 'external-result',
+    });
+  });
+
   it('lease-fences immediate keyed activity completion writes', async () => {
     const storage = new RecordingConditionalBatchStorage();
     const epoch = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]);
@@ -861,11 +913,16 @@ describe('activity operation helpers', () => {
     const verify = mock(async (_result: unknown, context?: { phase?: string }) =>
       context?.phase === 'pre-dispatch-reconciliation' ? 'not-completed' : true,
     );
-    const secondExecute = mock(() => 'second-result');
+    let dispatched: unknown;
+    const secondExecute = mock((_input: unknown, context?: unknown) => {
+      dispatched = context;
+      return 'second-result';
+    });
     const replayActivity = Object.assign(secondExecute, { verify });
     const replayOperation = createActivityOperation({
       fn: replayActivity,
       operationId: 'replayed-after-not-completed',
+      workflowExecutionToken: 'owner-token',
       options: { idempotencyKey: 'crash-redo' },
     });
 
@@ -879,6 +936,7 @@ describe('activity operation helpers', () => {
     ).toBe('second-result');
 
     expect(secondExecute).toHaveBeenCalledTimes(1);
+    expect(dispatched).toMatchObject({ activityAttemptToken: expect.stringMatching(/:2$/) });
     expect(verify).toHaveBeenCalledWith(
       undefined,
       expect.objectContaining({ attempt: 1, phase: 'pre-dispatch-reconciliation' }),
