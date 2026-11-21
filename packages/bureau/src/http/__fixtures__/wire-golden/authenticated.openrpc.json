@@ -22410,6 +22410,67 @@
       }
     },
     {
+      "description": "Returns the durable engine’s current workflow-run concurrency cap and how many runs it is executing now. Waiting and suspended runs are not counted. Requires bureau.workflows:read unless the caller owns the deployment’s workflows.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.workflows.concurrency",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "running": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "max",
+            "running"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read workflow run concurrency",
+      "tags": [
+        {
+          "name": "Workflows"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
       "description": "Requests cancellation of a Bureau workflow-file instance. Returns immediately with `cancel-requested`; read `bureau.workflows.runs.get` to observe the terminal status. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `running-instances` effect is 1 while the instance has not finished and 0 once it has, and a run the real call would not find, or may not touch, is `NotFound` as well.",
       "errors": [
         {
