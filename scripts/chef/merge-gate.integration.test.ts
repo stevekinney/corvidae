@@ -34,6 +34,7 @@ import {
 } from './merge-gate.ts';
 import { UsageError, type Runner } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
+import type { EvidencePlan } from './verification-plan.ts';
 
 let HEAD = 'a'.repeat(40);
 const OTHER = 'b'.repeat(40);
@@ -1268,7 +1269,7 @@ scenarios.describe('a base that moved after the evidence', () => {
   const CURRENT_TREE = '8'.repeat(40);
   const C1 = '2'.repeat(40);
   const C2 = '3'.repeat(40);
-  const plan = {
+  const plan: EvidencePlan = {
     changed: ['src/feature.ts'],
     unit_tests: [],
     root_checks: [],
