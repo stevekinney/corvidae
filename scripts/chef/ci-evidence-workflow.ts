@@ -218,7 +218,9 @@ function derivedPlanDigest(input: {
     .digest('hex');
 }
 
-function reportedTestFiles(reports: readonly { path: string; content: Uint8Array }[]): string[] {
+function reportedTestFiles(
+  reports: readonly { path: string; content: Uint8Array }[],
+): string[] | undefined {
   const files = new Set<string>();
   for (const report of reports) {
     let parsed: ReturnType<typeof parseJUnit>;
@@ -249,9 +251,7 @@ function reportedTestFiles(reports: readonly { path: string; content: Uint8Array
       files.add(workspace === '.' ? file : `${workspace}/${file}`);
     }
   }
-  if (files.size === 0)
-    throw new CiEvidenceWorkflowError('pull-request JUnit artifact has no observed test files');
-  return [...files].toSorted();
+  return files.size === 0 ? undefined : [...files].toSorted();
 }
 
 function payloadCommit(payload: unknown, side: 'base' | 'head'): string {

@@ -111,6 +111,29 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     expect(receipt.testFiles).toEqual(['scripts/chef/ci-evidence-workflow.test.ts']);
   });
 
+  test('keeps a passing skipped-only pull-request report non-adoptable', () => {
+    const reports = artifactFixture();
+    mkdirSync(join(reports, 'packages', 'one', 'test-output', 'junit'), { recursive: true });
+    writeFileSync(
+      join(reports, 'packages', 'one', 'test-output', 'junit', 'skipped.xml'),
+      '<testsuite><testcase name="later" file="src/x.test.ts"><skipped /></testcase></testsuite>',
+    );
+    const receipt = createCiEvidenceWorkflowReceipt({
+      environment: environment({
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_WORKFLOW_REF:
+          'stevekinney/corvidae/.github/workflows/pull-request.yml@refs/pull/17/merge',
+        VERIFICATION_REQUEST: undefined,
+        VERIFICATION_PLAN: undefined,
+        VERIFICATION_BASE: undefined,
+        CI_EVIDENCE_TEST_REPORT_DIRECTORY: reports,
+      }),
+      eventPayload: { pull_request: { base: { sha: sha('b') }, head: { sha: sha('d') } } },
+      git,
+    });
+    expect(receipt.testFiles).toBeUndefined();
+  });
+
   test('uses the push payload instead of manual dispatch values', () => {
     const receipt = createCiEvidenceWorkflowReceipt({
       environment: environment({

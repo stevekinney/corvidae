@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ success() }}
         with:
-          name: ci-evidence-tests
+          name: ci-evidence-tests-${{ github.run_attempt }}
           path: |
             test-output/junit/*.xml
             applications/*/test-output/junit/*.xml
@@ -186,6 +186,7 @@ jobs:
         if: ${{ needs.tests.outputs.junit_artifact != '' }}
         with:
           artifact-ids: ${{ needs.tests.outputs.junit_artifact }}
+          merge-multiple: true
           path: ci-evidence-tests
       # A pull-request receipt names the PR head and base from the authenticated event payload;
       # the checked revision remains the merge checkout and is never presented as the PR head.
