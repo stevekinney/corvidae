@@ -12,7 +12,10 @@
 
   .cinder-duration-field {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    /* NumberInput caps its actual control at 10rem. Keep this track bounded to that same size, so
+     * the unit follows the number on a wide settings row while still yielding its space when the
+     * field is squeezed. */
+    grid-template-columns: minmax(0, 10rem) auto;
     align-items: end;
     gap: var(--cinder-space-2);
   }

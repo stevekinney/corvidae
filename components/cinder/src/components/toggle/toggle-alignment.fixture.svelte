@@ -20,6 +20,9 @@
       descriptionPlacement="below"
     />
   </div>
+  <div class="toggle-alignment__column" data-testid="touch">
+    <Toggle id="alignment-touch" label="Archive receipts on touch" />
+  </div>
 </div>
 
 <style>

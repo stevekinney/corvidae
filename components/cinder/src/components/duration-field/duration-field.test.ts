@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -173,6 +174,25 @@ describe('DurationField', () => {
     });
     expect(numberOf(container).disabled).toBe(true);
     expect(unitOf(container).disabled).toBe(true);
+  });
+
+  test('keeps the selectable unit directly after the capped number control on a wide row', () => {
+    const css = readFileSync(new URL('./duration-field.css', import.meta.url), 'utf8');
+    const fixture = readFileSync(
+      new URL('./duration-field-alignment.fixture.svelte', import.meta.url),
+      'utf8',
+    );
+
+    expect(css).toMatch(
+      /\.cinder-duration-field\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*10rem\)\s+auto;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-duration-field\[data-cinder-fixed-unit\]\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+    );
+    expect(fixture).toContain('data-testid="wide"');
+    expect(fixture).toContain('data-testid="squeezed"');
+    expect(fixture).toContain('data-testid="fixed-unit"');
+    expect(fixture).toContain('data-testid="large-number"');
   });
 });
 

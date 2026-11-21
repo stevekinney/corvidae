@@ -127,7 +127,8 @@
      * is the track plus 3px above and below, 32 × 24, which keeps the 24px floor of WCAG 2.5.8 on
      * the element's own box. A coarse pointer pads it out to 44 × 44 (WCAG 2.5.5) below while the
      * drawn track stays 32 × 18. */
-    --_cinder-toggle-pad-inline: 0rem;
+    --_cinder-toggle-pad-inline-start: 0rem;
+    --_cinder-toggle-pad-inline-end: 0rem;
     --_cinder-toggle-pad-block: 0.1875rem;
 
     /* Layout: pill track containing the sliding thumb. */
@@ -139,16 +140,32 @@
      * box is sized as a border box: the track plus its padding. */
     box-sizing: border-box;
 
-    width: calc(var(--cinder-toggle-width, 2rem) + 2 * var(--_cinder-toggle-pad-inline));
+    width: calc(
+      var(--cinder-toggle-width, 2rem) + var(--_cinder-toggle-pad-inline-start) +
+        var(--_cinder-toggle-pad-inline-end)
+    );
     height: calc(var(--cinder-toggle-height, 1.125rem) + 2 * var(--_cinder-toggle-pad-block));
 
     padding-block: var(--_cinder-toggle-pad-block);
-    padding-inline: var(--_cinder-toggle-pad-inline);
+    padding-inline-start: var(--_cinder-toggle-pad-inline-start);
+    padding-inline-end: var(--_cinder-toggle-pad-inline-end);
     border: none;
     /* The padding box's corners are the track's radius plus the padding, so the painted
      * (content-box) track keeps a full pill end on each side. */
-    border-radius: calc(
-        var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline)
+    border-start-start-radius: calc(
+        var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-start)
+      ) /
+      calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
+    border-end-start-radius: calc(
+        var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-start)
+      ) /
+      calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
+    border-start-end-radius: calc(
+        var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-end)
+      ) /
+      calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
+    border-end-end-radius: calc(
+        var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-end)
       ) /
       calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
     cursor: pointer;
@@ -336,7 +353,7 @@
     inset-block-start: 50%;
     /* The padding box starts before the track does, so the 2px gap from the track edge is added
      * to the inline padding. */
-    inset-inline-start: calc(var(--_cinder-toggle-pad-inline) + 0.125rem);
+    inset-inline-start: calc(var(--_cinder-toggle-pad-inline-start) + 0.125rem);
     display: block;
     width: var(
       --cinder-toggle-thumb-size,
@@ -367,7 +384,10 @@
 
   @media (any-pointer: coarse) {
     .cinder-toggle {
-      --_cinder-toggle-pad-inline: calc((2.75rem - var(--cinder-toggle-width, 2rem)) / 2);
+      /* The hit area grows toward the inline end. The visible track stays with its inline-start
+       * label, and logical padding keeps that relationship when the document is RTL. */
+      --_cinder-toggle-pad-inline-start: 0rem;
+      --_cinder-toggle-pad-inline-end: calc(2.75rem - var(--cinder-toggle-width, 2rem));
       --_cinder-toggle-pad-block: calc((2.75rem - var(--cinder-toggle-height, 1.125rem)) / 2);
     }
   }
