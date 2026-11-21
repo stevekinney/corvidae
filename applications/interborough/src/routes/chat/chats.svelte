@@ -305,11 +305,15 @@
   );
   const searching = $derived(search.trim() !== '');
 
-  // The open chat always has a row to open it in, so its pane is shown even when the Bureau has not
-  // (yet) said anything about it, or a search leaves it out of the list: the pane reports a chat
-  // that cannot be read in its own words.
+  // Automatic selection follows the filter. A directly opened chat, or one that just moved
+  // between the regular and archived lists, keeps its pane so the person can finish reading it.
+  const automaticChatInList = $derived(
+    openId !== null &&
+      openId === automaticallyOpened &&
+      (showingArchived ? archivedRows : allRows).some((row) => row.id === openId),
+  );
   const items = $derived<SessionRow[]>(
-    openId === null || visible.some((row) => row.id === openId)
+    openId === null || automaticChatInList || visible.some((row) => row.id === openId)
       ? visible
       : [
           allRows.find((row) => row.id === openId) ??
@@ -645,7 +649,7 @@
       detailLabel={CHAT_COPY.list.detailLabel}
       selectedKey={openId}
       onSelectedKeyChange={openChat}
-      openFirst={onChats && !isNew && !showingArchived}
+      openFirst={onChats && !isNew}
       selectionParameter={null}
       storageKey="interborough-chats"
       listCollapsible

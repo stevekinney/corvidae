@@ -145,9 +145,16 @@ for (const viewport of VIEWPORTS) {
         source: SOURCE,
       });
 
-      // The row opens the archived chats in the same pane, with Chats as the way back.
+      // The row opens the archived list. Beside it, the first archived chat opens without moving focus.
       await archivedEntry(page).click();
-      await expect(page).toHaveURL(/\/chats\?view=archived$/);
+      const archivedAddress = new RegExp(`/chats/${threadId}\\?view=archived$`);
+      if (viewport.width === 375) {
+        await expect(page).toHaveURL(/\/chats\?view=archived$/);
+        await expect(archivedBar(page)).toHaveCount(0);
+      } else {
+        await expect(page).toHaveURL(archivedAddress);
+        await expect(archivedBar(page)).toBeVisible();
+      }
       // Its visible label is its name, and it has no tooltip to open on the focus it is given.
       const back = page.locator('[data-chats-view-back]');
       await expect(back).toBeFocused();
@@ -162,9 +169,9 @@ for (const viewport of VIEWPORTS) {
         source: SOURCE,
       });
 
-      // Its chat opens as any chat does, on its Archived bar.
-      await chatRow(page, threadId).locator('a[href]').first().click();
-      await expect(page).toHaveURL(new RegExp(`/chats/${threadId}\\?view=archived$`));
+      // On a phone, the row opens the chat's own pane.
+      if (viewport.width === 375) await chatRow(page, threadId).locator('a[href]').first().click();
+      await expect(page).toHaveURL(archivedAddress);
       await expect(archivedBar(page)).toBeVisible();
 
       await archivedBar(page)
