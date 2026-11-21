@@ -515,6 +515,6 @@ test('opens the workers screen from Health, which the sidebar opens', async ({ p
   // Health's sections are the tab bar under its heading (COR-2018).
   await page.locator('main').getByRole('tab', { name: 'Workers', exact: true }).click();
 
-  await expect(page).toHaveURL(/\/health\/workers$/);
+  await expect(page).toHaveURL(/\/health\/workers(\?worker=[^&]+)?$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
 });
