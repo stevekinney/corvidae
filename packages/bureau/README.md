@@ -1472,15 +1472,16 @@ Two further options let an application publish MCP Apps beside the tools. `resou
 | --- | --- | --- |
 | `ui://inspectors/run-inspector/v1` | `bureau.tasks.inspect` | One task's liveness, ownership tree, progress, result, and abort. Reads `bureau.tasks.inspect` (`bureau.task-inspection.v1`: no transcript, prompt, tool argument, result, or checkpoint; each step carries its `planReason`, and a read of one step its `effectiveContext`, digests and message ids only) and aborts through `bureau.tasks.cancel`. |
 | `ui://inspectors/pending-review/v1` | `bureau.reviews.list` | The caller's pending reviews. Reads through `bureau.reviews.get`; decides through `bureau.reviews.resolve` (approve, deny, or reject with a `reason`). It sends the `round` it displayed, so a decision on a re-gated review is refused as `Conflict`. |
+| `ui://inspectors/run-timeline/v1` | `bureau.runs.timeline` | One run's steps as a waterfall: each step's status, duration and tries, laid out by `stepWaterfall`. Reads `bureau.runs.timeline` and calls no other tool; it has no control, so it changes nothing. |
 
 The inspector also follows a task through `bureau.tasks.events`. Both declare an empty content-security policy (no network origin, frame, or base URI) and no permissions, which a host reads as denied, and neither asks for a dedicated sandbox origin. The version is part of each URI: a changed contract is a new URI. Closing an app never cancels a run; abort is the explicit `bureau.tasks.cancel`. The MCP Apps contract Bureau uses for tracked surfaces, including the `mcp-app` representation, is [`documentation/interactive-surface.md`](./documentation/interactive-surface.md); the adapter's apps are plain tool-linked pages and do not create surfaces.
 
 #### Panels by host
 
-| Host | run-inspector | pending-review | Call outside the visibility allowlist | Evidence |
-| --- | --- | --- | --- | --- |
-| Claude Code | Page served and linked, rendering not checked | Page served and linked, rendering not checked | Visibility advertised in the tool listing | `smoke:claude-code-mcp` |
-| Claude Desktop | Not yet recorded | Not yet recorded | Not yet recorded | `smoke:claude-desktop-panels`, a by-hand run (COR-2220) |
+| Host | run-inspector | pending-review | run-timeline | Call outside the visibility allowlist | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | Page served and linked, rendering not checked | Page served and linked, rendering not checked | Not yet recorded | Visibility advertised in the tool listing | `smoke:claude-code-mcp` |
+| Claude Desktop | Not yet recorded | Not yet recorded | Not yet recorded | Not yet recorded | `smoke:claude-desktop-panels`, a by-hand run (COR-2220) |
 
 A Claude Desktop cell is filled only from a by-hand run of `smoke:claude-desktop-panels` against a real Claude Desktop, with its version and result recorded on the COR-2220 pull request. The script checks what needs no host (both pages served, each linked to its tool, every tool's visibility) and prints the steps that remain by hand. It is on demand and no part of `bun run validate`.
 

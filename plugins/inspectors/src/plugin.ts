@@ -1,6 +1,11 @@
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
 
-import { BASE_STYLES, PENDING_REVIEW_STYLES, WORKFLOW_REVISION_STYLES } from './styles.ts';
+import {
+  BASE_STYLES,
+  PENDING_REVIEW_STYLES,
+  RUN_TIMELINE_STYLES,
+  WORKFLOW_REVISION_STYLES,
+} from './styles.ts';
 
 /**
  * The run inspector: one Bureau task's liveness, ownership tree, progress, result, and abort. A
@@ -52,14 +57,34 @@ export const workflowRevisionReview: PluginPanel = {
 };
 
 /**
- * Three interface panels, the run inspector, pending-review list, and workflow revision review. Each is a page the host
- * builds from a browser entry at startup and serves as a `ui://` resource.
+ * The run timeline: one run's steps as a waterfall, each with its status, duration and tries. A
+ * client opens it from `bureau.runs.timeline`, the tool the page is linked to, and a run's page
+ * mounts it beside the run. It reads that one tool and no other, and changes nothing. The bars come
+ * from `stepWaterfall`, the layout the run page draws its own steps with. `allowedTools` lists
+ * every tool the page calls, which a test keeps true.
+ */
+export const runTimeline: PluginPanel = {
+  name: 'run-timeline',
+  title: 'Run timeline',
+  description: 'The steps of one run as a waterfall: each step’s status, duration and tries.',
+  uri: 'ui://inspectors/run-timeline/v1',
+  entry: new URL('./run-timeline/app.ts', import.meta.url),
+  styles: RUN_TIMELINE_STYLES,
+  allowedTools: ['bureau.runs.timeline'],
+  placements: [{ kind: 'run' }],
+  opensFromTool: 'bureau.runs.timeline',
+};
+
+/**
+ * Four interface panels, the run inspector, pending-review list, workflow revision review and run
+ * timeline. Each is a page the host builds from a browser entry at startup and serves as a `ui://`
+ * resource.
  */
 export default definePlugin({
   name: 'inspectors',
   title: 'Inspectors',
   version: '1.0.1',
   description:
-    'Adds the run inspector, the pending-review list and the workflow revision review as interface panels over the run, review and workflow tools.',
-  setup: () => ({ panels: [runInspector, pendingReview, workflowRevisionReview] }),
+    'Adds the run inspector, the pending-review list, the workflow revision review and the run timeline as interface panels over the run, review and workflow tools.',
+  setup: () => ({ panels: [runInspector, pendingReview, workflowRevisionReview, runTimeline] }),
 });

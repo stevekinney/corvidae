@@ -4,7 +4,12 @@ import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import inspectors, { pendingReview, runInspector, workflowRevisionReview } from './plugin.ts';
+import inspectors, {
+  pendingReview,
+  runInspector,
+  runTimeline,
+  workflowRevisionReview,
+} from './plugin.ts';
 
 pluginContract(inspectors, { createHost: createPluginTestHost });
 
@@ -16,6 +21,7 @@ describe('the inspectors plugin', () => {
         { plugin: 'inspectors', version: '1.0.1', app: runInspector },
         { plugin: 'inspectors', version: '1.0.1', app: pendingReview },
         { plugin: 'inspectors', version: '1.0.1', app: workflowRevisionReview },
+        { plugin: 'inspectors', version: '1.0.1', app: runTimeline },
       ]);
     } finally {
       await host.dispose();
@@ -23,6 +29,7 @@ describe('the inspectors plugin', () => {
     expect(runInspector.uri).toBe('ui://inspectors/run-inspector/v1');
     expect(pendingReview.uri).toBe('ui://inspectors/pending-review/v1');
     expect(workflowRevisionReview.uri).toBe('ui://inspectors/workflow-revision-review/v1');
+    expect(runTimeline.uri).toBe('ui://inspectors/run-timeline/v1');
   });
 
   it('links each panel to the tool a client runs to open it, one it may call', () => {
@@ -37,6 +44,13 @@ describe('the inspectors plugin', () => {
     ]);
     expect(workflowRevisionReview.opensFromTool).toBe('bureau.workflows.update');
     expect(workflowRevisionReview.allowedTools).toContain('bureau.workflows.update');
+    expect(runTimeline.opensFromTool).toBe('bureau.runs.timeline');
+    expect(runTimeline.placements).toEqual([{ kind: 'run' }]);
+  });
+
+  it('lets the run timeline call the timeline read and no other tool', () => {
+    expect(runTimeline.allowedTools).toEqual(['bureau.runs.timeline']);
+    expect(runTimeline.hostOnlyTools).toBeUndefined();
   });
 
   it('lists every Bureau tool a page names in its source, so the list cannot drift', async () => {
@@ -45,6 +59,7 @@ describe('the inspectors plugin', () => {
       [runInspector, 'run-inspector'],
       [pendingReview, 'pending-review'],
       [workflowRevisionReview, 'workflow-revision'],
+      [runTimeline, 'run-timeline'],
     ] as const) {
       const named = new Set<string>();
       // The page's script and its components (`.svelte`): a tool a component calls is listed too.
@@ -59,7 +74,7 @@ describe('the inspectors plugin', () => {
   });
 
   it('points every panel at an entry module that exists', async () => {
-    for (const app of [runInspector, pendingReview, workflowRevisionReview]) {
+    for (const app of [runInspector, pendingReview, workflowRevisionReview, runTimeline]) {
       expect(await Bun.file(app.entry).exists()).toBe(true);
     }
   });
