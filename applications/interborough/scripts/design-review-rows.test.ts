@@ -16,6 +16,7 @@ import {
   describeMissing,
   MAXIMUM_EVIDENCE_LENGTH,
   missingCaptures,
+  missingViewportWitnesses,
   overallVerdict,
   OWNER_RULE_ROWS,
   parseArguments,
@@ -27,6 +28,29 @@ import {
 
 /** The owner-rule rows every review ends with, each holding, as verdict lines. */
 const CHECKLIST = OWNER_RULE_ROWS.map(({ id }) => `${id} | matches |`);
+
+function state(route: string, name: string, kind: 'ready' | 'empty' | 'first-run') {
+  return {
+    route,
+    state: name,
+    kind,
+    witness: {
+      specification: 'tests/e2e/runs-states.spec.ts',
+      title: `/runs ${name} at 375 pixels`,
+      world: 'sample-world',
+      profiles: [
+        {
+          name: 'phone-light',
+          width: 375,
+          theme: 'light' as const,
+          targets: ['runs-list'],
+          visible: 'The list is visible in the phone viewport.',
+          scrolling: 'none' as const,
+        },
+      ],
+    },
+  };
+}
 
 /** `lines` with the owner-rule rows after them, as a complete review writes its verdicts. */
 const complete = (...lines: string[]): string => [...lines, ...CHECKLIST].join('\n');
@@ -319,23 +343,20 @@ describe('checkRowFiles', () => {
 
 describe('captureManifest', () => {
   const resolved: ResolvedRows = {
-    version: 1,
+    version: 2,
     issue: 'COR-9',
     rows: [
       {
         id: '11a',
         board: 'Runs',
         text: 'Runs list',
-        states: [
-          { route: '/runs', state: 'ready', kind: 'ready' },
-          { route: '/runs', state: 'empty', kind: 'empty' },
-        ],
+        states: [state('/runs', 'ready', 'ready'), state('/runs', 'empty', 'empty')],
       },
       {
         id: '12a',
         board: 'Home',
         text: 'Home on a fresh installation',
-        states: [{ route: '/', state: 'first run fresh installation', kind: 'first-run' }],
+        states: [state('/', 'first run fresh installation', 'first-run')],
         widths: [1920, 1280, 375],
         themes: ['light'],
       },
@@ -370,7 +391,7 @@ describe('captureManifest', () => {
           id: '12a',
           board: 'Home',
           text: 'Home on a fresh installation',
-          states: [{ route: '/', state: 'first run fresh installation', kind: 'first-run' }],
+          states: [state('/', 'first run fresh installation', 'first-run')],
         },
       ],
     };
@@ -427,12 +448,40 @@ describe('captureManifest', () => {
       captureManifest(resolved),
     );
     expect(parseCaptureManifest('{')).toBe('the capture manifest is not JSON');
-    expect(parseCaptureManifest('{"version":2}')).toBe(
-      'the capture manifest needs version 1 and a captures list',
+    expect(parseCaptureManifest('{"version":1}')).toBe(
+      'the capture manifest needs version 2, captures and witnesses lists',
     );
-    expect(parseCaptureManifest('{"version":1,"issue":"COR-9","captures":[]}')).toBe(
+    expect(parseCaptureManifest('{"version":2,"issue":"COR-9","captures":[],"witnesses":[]}')).toBe(
       'the capture manifest expects no captures',
     );
+  });
+});
+
+describe('missingViewportWitnesses', () => {
+  test('requires the row-qualified witness on its declared route and physical viewport', () => {
+    const witness = {
+      ...state('/runs', 'ready', 'ready').witness.profiles[0]!,
+      row: '12a',
+      route: '/runs',
+      state: 'ready',
+      kind: 'ready' as const,
+      specification: 'tests/e2e/runs-states.spec.ts',
+      title:
+        'on a phone is two-line rows under day bands with a Status select, Filter and a labelled Start run (05t, 05v)',
+      world: 'sample-world',
+    };
+    const captured = {
+      route: '/other',
+      state: 'ready',
+      source: 'runs-states.spec.ts',
+      world: 'sample-world',
+      width: 375,
+      colorScheme: 'light',
+      viewport: 'screens/runs.png',
+      witnesses: ['12a:phone-light'],
+    };
+    expect(missingViewportWitnesses([witness], [captured])).toEqual([witness]);
+    expect(missingViewportWitnesses([witness], [{ ...captured, route: '/runs' }])).toEqual([]);
   });
 });
 
@@ -458,7 +507,7 @@ describe('--manifest', () => {
   });
 
   const resolvedFile = (rows: unknown[]) =>
-    JSON.stringify({ version: 1, issue: 'COR-9', rows, checked: [], conflicts: [] });
+    JSON.stringify({ version: 2, issue: 'COR-9', rows, checked: [], conflicts: [] });
 
   test('writes the expected captures, widest first, widths defaulting to include 1920', async () => {
     const path = join(directory, 'rows.resolved.json');
@@ -469,7 +518,7 @@ describe('--manifest', () => {
           id: '11a',
           board: 'Runs',
           text: 'x',
-          states: [{ route: '/runs', state: 'ready', kind: 'ready' }],
+          states: [state('/runs', 'ready', 'ready')],
         },
       ]),
     );
@@ -489,7 +538,7 @@ describe('--manifest', () => {
           id: '11a',
           board: 'Runs',
           text: 'x',
-          states: [{ route: '/runs', state: 'ready', kind: 'ready' }],
+          states: [state('/runs', 'ready', 'ready')],
         },
       ]),
     );

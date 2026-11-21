@@ -37,6 +37,7 @@ import {
   validateResolved,
   type ResolvedRows,
   type StateKind,
+  type ViewportWitnessProfile,
 } from '../../../scripts/chef/design-rows-resolved.ts';
 
 /** Every verdict a row can receive. */
@@ -246,11 +247,30 @@ export interface CaptureExpectation {
   readonly width: number;
 }
 
+/** One physical proof a narrow Playwright run must return for a declared state and profile. */
+export interface ViewportWitnessExpectation extends ViewportWitnessProfile {
+  readonly row: string;
+  readonly route: string;
+  readonly state: string;
+  readonly kind: StateKind;
+  readonly specification: string;
+  readonly title: string;
+  readonly world: string;
+}
+
+/** The durable identifier a capture records for a row's physical proof. */
+export function viewportWitnessKey(
+  entry: Pick<ViewportWitnessExpectation, 'row' | 'name'>,
+): string {
+  return `${entry.row}:${entry.name}`;
+}
+
 /** The expected-captures file `--manifest` writes and `design-review-capture.ts --expect` reads. */
 export interface CaptureManifest {
-  readonly version: 1;
+  readonly version: 2;
   readonly issue: string;
   readonly captures: readonly CaptureExpectation[];
+  readonly witnesses: readonly ViewportWitnessExpectation[];
 }
 
 /**
@@ -261,12 +281,25 @@ export interface CaptureManifest {
  */
 export function captureManifest(resolved: ResolvedRows, only?: readonly string[]): CaptureManifest {
   const entries: CaptureExpectation[] = [];
+  const witnesses: ViewportWitnessExpectation[] = [];
   for (const row of resolved.rows) {
     if (only !== undefined && !only.includes(row.id)) continue;
     for (const width of row.widths ?? DEFAULT_WIDTHS)
       for (const theme of row.themes ?? DEFAULT_THEMES)
         for (const { route, state, kind } of row.states)
           entries.push({ row: row.id, route, state, kind, theme, width });
+    for (const { route, state, kind, witness } of row.states)
+      for (const profile of witness.profiles)
+        witnesses.push({
+          row: row.id,
+          route,
+          state,
+          kind,
+          specification: witness.specification,
+          title: witness.title,
+          world: witness.world,
+          ...profile,
+        });
   }
   const themeOrder = { light: 0, dark: 1 } as const;
   const position = (entry: CaptureExpectation) =>
@@ -277,7 +310,7 @@ export function captureManifest(resolved: ResolvedRows, only?: readonly string[]
       themeOrder[left.theme] - themeOrder[right.theme] ||
       position(left) - position(right),
   );
-  return { version: 1, issue: resolved.issue, captures: sorted };
+  return { version: 2, issue: resolved.issue, captures: sorted, witnesses };
 }
 
 /** One line of the capture's `manifest.jsonl`, as far as coverage reads it. */
@@ -286,6 +319,10 @@ export interface CapturedLine {
   readonly state?: unknown;
   readonly width?: unknown;
   readonly colorScheme?: unknown;
+  readonly source?: unknown;
+  readonly world?: unknown;
+  readonly viewport?: unknown;
+  readonly witnesses?: unknown;
 }
 
 /** The expected captures no line of `captured` shows, each once, in manifest order. */
@@ -303,6 +340,30 @@ export function missingCaptures(
     reported.add(key);
     return true;
   });
+}
+
+/** The narrow physical witnesses no actual viewport capture proves. */
+export function missingViewportWitnesses(
+  expected: readonly ViewportWitnessExpectation[],
+  captured: readonly CapturedLine[],
+): ViewportWitnessExpectation[] {
+  return expected.filter(
+    (entry) =>
+      !captured.some(
+        (line) =>
+          typeof line.source === 'string' &&
+          entry.specification.endsWith(`/${line.source}`) &&
+          line.route === entry.route &&
+          line.world === entry.world &&
+          line.state === entry.state &&
+          line.width === entry.width &&
+          line.colorScheme === entry.theme &&
+          typeof line.viewport === 'string' &&
+          !line.viewport.endsWith('.full.png') &&
+          Array.isArray(line.witnesses) &&
+          line.witnesses.includes(viewportWitnessKey(entry)),
+      ),
+  );
 }
 
 /** One missing capture as a line a reader can act on. */
@@ -332,8 +393,8 @@ export function parseCaptureManifest(text: string): CaptureManifest | string {
     return 'the capture manifest is not JSON';
   }
   const file = parsed as Partial<CaptureManifest> | null;
-  if (file?.version !== 1 || !Array.isArray(file.captures))
-    return 'the capture manifest needs version 1 and a captures list';
+  if (file?.version !== 2 || !Array.isArray(file.captures) || !Array.isArray(file.witnesses))
+    return 'the capture manifest needs version 2, captures and witnesses lists';
   // An empty plan is covered by anything, so it is no plan.
   if (file.captures.length === 0) return 'the capture manifest expects no captures';
   return file as CaptureManifest;

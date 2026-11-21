@@ -736,12 +736,24 @@ describe('nextFrame', () => {
         this.#disconnected = true;
       }
     };
-    const page = { evaluate: async (pageFunction: () => Promise<void>) => pageFunction() };
+    const document = new Window().document;
+    const savedDocument = scope['document'];
+    const page = {
+      evaluate: async (pageFunction: () => Promise<void>) => {
+        scope['document'] = document;
+        try {
+          return await pageFunction();
+        } finally {
+          scope['document'] = savedDocument;
+        }
+      },
+    };
     try {
       await nextFrame(page as never);
     } finally {
       scope['requestAnimationFrame'] = saved.requestAnimationFrame;
       scope['ResizeObserver'] = saved.ResizeObserver;
+      scope['document'] = savedDocument;
     }
     expect(animationFramesAsked).toBe(0);
     expect(observations).toBe(2);
@@ -1090,7 +1102,12 @@ describe('captureDesignReview', () => {
       const path = join(directory, 'expected.json');
       await writeFile(
         path,
-        JSON.stringify({ version: 1, issue: 'COR-9', captures: widths.map(expectation) }),
+        JSON.stringify({
+          version: 2,
+          issue: 'COR-9',
+          captures: widths.map(expectation),
+          witnesses: [],
+        }),
       );
       return path;
     }
@@ -1117,6 +1134,7 @@ describe('captureDesignReview', () => {
       expect(summary.coverage.complete).toBe(false);
       expect(summary.coverage.expected).toBe(3);
       expect(summary.coverage.missing).toEqual([expectation(1920)]);
+      expect(summary.coverage.missingWitnesses).toEqual([]);
     });
 
     test('exits 0 and records complete coverage when every declared state was captured', async () => {
@@ -1134,7 +1152,12 @@ describe('captureDesignReview', () => {
       ).toBe(0);
       expect(calls.err).not.toContain('missing capture');
       const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
-      expect(summary.coverage).toEqual({ expected: 3, missing: [], complete: true });
+      expect(summary.coverage).toEqual({
+        expected: 3,
+        missing: [],
+        missingWitnesses: [],
+        complete: true,
+      });
     });
 
     test('answers 2 for an expected-captures file it cannot read, and runs nothing', async () => {

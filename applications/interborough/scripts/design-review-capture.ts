@@ -67,7 +67,9 @@ import { auditGeometry } from './design-review-geometry.ts';
 import {
   describeMissing,
   missingCaptures,
+  missingViewportWitnesses,
   parseCaptureManifest,
+  viewportWitnessKey,
   wideCaptureHint,
   type CapturedLine,
   type CaptureExpectation,
@@ -207,6 +209,8 @@ interface Options {
   readonly shard: { readonly index: number; readonly count: number } | undefined;
   /** The expected-captures file (`design-review-rows.ts --manifest`) the capture is held to. */
   readonly expect?: string;
+  /** Runs only literal row witnesses, before a broad review accepts their frames. */
+  readonly narrow: boolean;
 }
 
 /** Reads the command line, or answers the usage error to print. */
@@ -224,8 +228,13 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   let grep: string | undefined;
   let shard: Options['shard'];
   let expectFile: string | undefined;
+  let narrow = false;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
+    if (flag === '--narrow') {
+      narrow = true;
+      continue;
+    }
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) return `${flag ?? ''} needs a value`;
     index += 1;
@@ -284,6 +293,7 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
         : (planShards(specifications, shard.count)[shard.index - 1]?.specifications ?? []),
     grep,
     shard,
+    narrow,
     ...(expectFile === undefined ? {} : { expect: expectFile }),
   };
 }
@@ -350,6 +360,10 @@ type ReportSuite = {
   readonly suites?: readonly ReportSuite[];
 };
 
+function escapeTitleForGrep(title: string): string {
+  return title.replaceAll(/[|\\{}()[\]^$+*?.-]/g, '\\$&');
+}
+
 function testsIn(suite: ReportSuite): number {
   return (
     (suite.specs?.length ?? 0) +
@@ -389,6 +403,18 @@ export function specificationsThatRanNothing(
       testsOf(sourceOf(specification)).some((test) => filter.test(test.path));
     return expected && ranIn(specification) === 0;
   });
+}
+
+/** The narrow run's literal title must select exactly one test in its declared specification. */
+function selectedTestCount(
+  report: { readonly suites?: readonly ReportSuite[] } | undefined,
+  specification: string,
+): number {
+  return (report?.suites ?? [])
+    .filter(
+      (suite) => suite.file === specification || specification.endsWith(`/${suite.file ?? ''}`),
+    )
+    .reduce((count, suite) => count + testsIn(suite), 0);
 }
 
 /** The probe accepts connections only to hold the port, so it ignores whatever a client sends. */
@@ -531,7 +557,44 @@ export async function captureDesignReview(
     return 0;
   }
   const runs: { scheme: Scheme; exitCode: number; ranNothing: string[] }[] = [];
-  for (const scheme of options.schemes) {
+  if (expected !== undefined) {
+    const groups = Map.groupBy(
+      expected.witnesses,
+      (witness) => `${witness.specification}\0${witness.title}\0${witness.theme}`,
+    );
+    for (const witnesses of groups.values()) {
+      const witness = witnesses[0]!;
+      const report = join(options.out, `playwright-witness-${witness.row}-${witness.name}.json`);
+      const command = [
+        'bun',
+        '--bun',
+        'playwright',
+        'test',
+        '--config',
+        'playwright.config.ts',
+        '--reporter=list,json',
+        witness.specification,
+        '--grep',
+        `^${escapeTitleForGrep(witness.title)}$`,
+      ];
+      environment.standardOutput(
+        `design review: witnessing row ${witness.row} ${witness.name}: ${command.join(' ')}\n`,
+      );
+      const exitCode = await environment.run(command, {
+        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: options.out,
+        INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: witness.theme,
+        INTERBOROUGH_VIEWPORT_WITNESSES: JSON.stringify(witnesses),
+        PLAYWRIGHT_JSON_OUTPUT_NAME: report,
+      });
+      if (selectedTestCount(await readReport(report), witness.specification) !== 1) {
+        environment.standardError(
+          `design review: viewport witness row ${witness.row} ${witness.name} did not resolve exactly one test for ${witness.specification} title "${witness.title}"\n`,
+        );
+        runs.push({ scheme: witness.theme, exitCode: 1, ranNothing: [] });
+      } else runs.push({ scheme: witness.theme, exitCode, ranNothing: [] });
+    }
+  }
+  for (const scheme of options.narrow ? [] : options.schemes) {
     // The JSON report says how many tests each specification ran, so one that ran none is named.
     const report = join(options.out, `playwright-${scheme}.json`);
     const command = [
@@ -573,7 +636,9 @@ export async function captureDesignReview(
   // Coverage comes before anything else counts: a declared state that no capture shows is named,
   // and the run exits 1 (`design-rounds.ts` counts only a capture whose coverage is complete).
   const coverage =
-    expected === undefined ? undefined : await coverageOf(options.out, expected, environment);
+    expected === undefined
+      ? undefined
+      : await coverageOf(options.out, expected, environment, !options.narrow);
   const summary = {
     out: options.out,
     captures,
@@ -625,6 +690,7 @@ function shardHasTests(options: Options): boolean {
 export interface Coverage {
   readonly expected: number;
   readonly missing: readonly CaptureExpectation[];
+  readonly missingWitnesses: readonly CaptureManifest['witnesses'];
   readonly complete: boolean;
 }
 
@@ -633,6 +699,7 @@ async function coverageOf(
   out: string,
   manifest: CaptureManifest,
   environment: CaptureEnvironment,
+  includeCaptures = true,
 ): Promise<Coverage> {
   const text = await readFile(join(out, 'manifest.jsonl'), 'utf8').catch(() => '');
   const lines: CapturedLine[] = [];
@@ -644,12 +711,54 @@ async function coverageOf(
       // A torn line shows nothing, so what it would have shown is reported missing.
     }
   }
-  const missing = missingCaptures(manifest.captures, lines);
+  const missing = includeCaptures ? missingCaptures(manifest.captures, lines) : [];
+  const physicalLines = (
+    await Promise.all(
+      lines.map(async (line) => {
+        const viewport = line.viewport;
+        if (
+          typeof viewport !== 'string' ||
+          !viewport.startsWith('screens/') ||
+          !viewport.endsWith('.png') ||
+          viewport.includes('..') ||
+          viewport.endsWith('.full.png')
+        )
+          return undefined;
+        return (await Bun.file(join(out, viewport)).exists()) ? line : undefined;
+      }),
+    )
+  ).filter((line): line is CapturedLine => line !== undefined);
+  const missingWitnesses = missingViewportWitnesses(manifest.witnesses, physicalLines);
   for (const entry of missing)
     environment.standardError(`design review: ${describeMissing(entry)}\n`);
   const hint = wideCaptureHint(missing);
   if (hint !== undefined) environment.standardError(`design review: ${hint}\n`);
-  return { expected: manifest.captures.length, missing, complete: missing.length === 0 };
+  for (const witness of missingWitnesses)
+    environment.standardError(
+      `design review: missing viewport witness: row ${witness.row}, ${witness.name}, ${witness.specification}, title "${witness.title}", ${witness.world}, ${witness.width}px ${witness.theme}; expected ${witness.visible}\n`,
+    );
+  const receipt = manifest.witnesses.flatMap((witness) => {
+    const line = physicalLines.find(
+      (candidate) =>
+        candidate.route === witness.route &&
+        candidate.state === witness.state &&
+        candidate.world === witness.world &&
+        candidate.width === witness.width &&
+        candidate.colorScheme === witness.theme &&
+        Array.isArray(candidate.witnesses) &&
+        candidate.witnesses.includes(viewportWitnessKey(witness)),
+    );
+    return line === undefined
+      ? []
+      : [{ row: witness.row, name: witness.name, viewport: line.viewport }];
+  });
+  await writeFile(join(out, 'viewport-witnesses.json'), `${JSON.stringify(receipt, null, 2)}\n`);
+  return {
+    expected: includeCaptures ? manifest.captures.length : 0,
+    missing,
+    missingWitnesses,
+    complete: missing.length === 0 && missingWitnesses.length === 0,
+  };
 }
 
 /** Playwright's JSON report, or `undefined` when the run wrote none. */

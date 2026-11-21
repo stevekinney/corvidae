@@ -1457,7 +1457,7 @@ describe('design rows need rows.resolved.json', () => {
   });
   const resolvedFile = (overrides: Record<string, unknown> = {}) =>
     JSON.stringify({
-      version: 1,
+      version: 2,
       issue: 'COR-7',
       rows: [
         {
@@ -1465,8 +1465,46 @@ describe('design rows need rows.resolved.json', () => {
           board: 'Runs',
           text: 'Runs as cards',
           states: [
-            { route: '/runs', state: 'ready', kind: 'ready' },
-            { route: '/runs', state: 'empty', kind: 'empty' },
+            {
+              route: '/runs',
+              state: 'ready',
+              kind: 'ready',
+              witness: {
+                specification: 'tests/e2e/runs-states.spec.ts',
+                title: '/runs ready at 375 pixels',
+                world: 'sample-world',
+                profiles: [
+                  {
+                    name: 'phone-light',
+                    width: 375,
+                    theme: 'light',
+                    targets: ['runs-list'],
+                    visible: 'Runs are visible.',
+                    scrolling: 'none',
+                  },
+                ],
+              },
+            },
+            {
+              route: '/runs',
+              state: 'empty',
+              kind: 'empty',
+              witness: {
+                specification: 'tests/e2e/runs-states.spec.ts',
+                title: '/runs empty at 375 pixels',
+                world: 'sample-world',
+                profiles: [
+                  {
+                    name: 'phone-light',
+                    width: 375,
+                    theme: 'light',
+                    targets: ['runs-list'],
+                    visible: 'Runs are visible.',
+                    scrolling: 'none',
+                  },
+                ],
+              },
+            },
           ],
         },
       ],

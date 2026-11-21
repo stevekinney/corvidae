@@ -16,7 +16,7 @@
 
 import { join } from 'node:path';
 
-export const RESOLVED_VERSION = 1 as const;
+export const RESOLVED_VERSION = 2 as const;
 
 /**
  * The widths a row is captured at when it names none, each from the specs that capture it:
@@ -47,11 +47,36 @@ export const STATE_KINDS = [
 
 export type StateKind = (typeof STATE_KINDS)[number];
 
+/** One named physical viewport a state must prove before its broad review can begin. */
+export interface ViewportWitnessProfile {
+  readonly name: string;
+  readonly width: number;
+  readonly theme: 'light' | 'dark';
+  /** Stable `data-testid` values or `role:<role>:<exact accessible name>` descriptors. */
+  readonly targets: readonly string[];
+  /** What a reviewer should see in the viewport image. */
+  readonly visible: string;
+  /** Whether the test intentionally scrolls the outlet before proving its targets. */
+  readonly scrolling: 'none' | 'outlet';
+}
+
+/** The exact Playwright state that produces a row's narrow physical witness. */
+export interface ViewportWitness {
+  /** Repository-relative Playwright specification. */
+  readonly specification: string;
+  /** Full, literal Playwright title path. It is passed as text, never evaluated. */
+  readonly title: string;
+  /** Fixture world recorded by the capture manifest. */
+  readonly world: string;
+  readonly profiles: readonly ViewportWitnessProfile[];
+}
+
 /** One capture a row needs: the route pattern and the state name the capture writes. */
 export interface ResolvedState {
   readonly route: string;
   readonly state: string;
   readonly kind: StateKind;
+  readonly witness: ViewportWitness;
 }
 
 export interface ResolvedRow {
@@ -138,7 +163,66 @@ function stateProblems(id: string, states: unknown): string[] {
       if (!nonEmpty(state['state'])) problems.push(`${label} needs a state name`);
       if (!(STATE_KINDS as readonly unknown[]).includes(state['kind']))
         problems.push(`${label} kind must be one of ${STATE_KINDS.join(', ')}`);
+      problems.push(...witnessProblems(label, state['witness']));
     }
+  }
+  return problems;
+}
+
+function witnessProblems(label: string, value: unknown): string[] {
+  const witness = record(value);
+  if (witness === undefined) return [`${label} needs a viewport witness`];
+  const problems: string[] = [];
+  const specification = witness['specification'];
+  if (!nonEmpty(specification) || !/^tests\/e2e\/[a-z0-9][a-z0-9-]*\.spec\.ts$/.test(specification))
+    problems.push(`${label} witness needs a repository-relative Playwright specification`);
+  if (!nonEmpty(witness['title']) || witness['title'].includes('\n'))
+    problems.push(`${label} witness needs one literal full title`);
+  if (!nonEmpty(witness['world'])) problems.push(`${label} witness needs a fixture world`);
+  const profiles = witness['profiles'];
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    problems.push(`${label} witness needs at least one viewport profile`);
+    return problems;
+  }
+  const names = new Set<string>();
+  const viewports = new Set<string>();
+  for (const [index, entry] of profiles.entries()) {
+    const profile = record(entry);
+    const profileLabel = `${label} witness profile ${index + 1}`;
+    if (profile === undefined) {
+      problems.push(`${profileLabel} is not an object`);
+      continue;
+    }
+    const name = profile['name'];
+    if (!nonEmpty(name) || !/^[a-z][a-z0-9-]*$/.test(name))
+      problems.push(`${profileLabel} needs a kebab-case name`);
+    else if (names.has(name)) problems.push(`${label} witness profile ${name} appears twice`);
+    else names.add(name);
+    const width = profile['width'];
+    if (!Number.isInteger(width) || typeof width !== 'number' || width <= 0)
+      problems.push(`${profileLabel} needs a positive whole width`);
+    const theme = profile['theme'];
+    if (theme !== 'light' && theme !== 'dark')
+      problems.push(`${profileLabel} theme must be light or dark`);
+    else if (typeof width === 'number' && Number.isInteger(width)) {
+      const key = `${width}|${theme}`;
+      if (viewports.has(key)) problems.push(`${label} witness repeats viewport ${key}`);
+      else viewports.add(key);
+    }
+    const targets = profile['targets'];
+    if (
+      !Array.isArray(targets) ||
+      targets.length === 0 ||
+      targets.some(
+        (target) =>
+          typeof target !== 'string' ||
+          !(/^[a-z][a-z0-9-]*$/.test(target) || /^role:[a-z-]+:[^:\n]+$/.test(target)),
+      )
+    )
+      problems.push(`${profileLabel} needs named data-testid or role targets`);
+    if (!nonEmpty(profile['visible'])) problems.push(`${profileLabel} needs a visible expectation`);
+    if (profile['scrolling'] !== 'none' && profile['scrolling'] !== 'outlet')
+      problems.push(`${profileLabel} scrolling must be none or outlet`);
   }
   return problems;
 }

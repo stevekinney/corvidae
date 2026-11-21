@@ -34,6 +34,7 @@ import {
   E2E_PORT,
   E2E_SHOWCASE_PORT,
 } from './e2e-constants.ts';
+import { test } from './fixtures.ts';
 
 /** At or below this width a capture is of a phone, and is taken with a coarse pointer. */
 const PHONE_WIDTH_MAXIMUM = GEOMETRY_THRESHOLDS.phoneWidthMaximum;
@@ -156,6 +157,39 @@ export interface DesignReviewManifestEntry extends DesignReviewCapture {
   readonly geometry?: string;
   /** Why the page could not be measured, when the probe threw; the screenshots are still there. */
   readonly geometryError?: string;
+  /** Named narrow-viewport profiles proved in this physical frame. */
+  readonly witnesses?: readonly string[];
+}
+
+interface ViewportWitness {
+  readonly row: string;
+  readonly specification: string;
+  readonly title: string;
+  readonly route: string;
+  readonly state: string;
+  readonly world: string;
+  readonly name: string;
+  readonly width: number;
+  readonly theme: 'light' | 'dark';
+  readonly targets: readonly string[];
+  readonly scrolling: 'none' | 'outlet';
+}
+
+function viewportWitnesses(): readonly ViewportWitness[] {
+  const text = process.env['INTERBOROUGH_VIEWPORT_WITNESSES'];
+  if (text === undefined) return [];
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error('not an array');
+    return parsed as ViewportWitness[];
+  } catch {
+    throw new Error('INTERBOROUGH_VIEWPORT_WITNESSES is not a valid witness manifest.');
+  }
+}
+
+/** The literal Playwright title path a resolved row records, without project or file decoration. */
+function physicalWitnessTitle(): string {
+  return test.info().titlePath.join(' ');
 }
 
 /**
@@ -337,6 +371,43 @@ async function captureViewport(
   await capture.ready?.(page);
   await waitForMarkdownPaint(page);
 
+  const configuredWitnesses = viewportWitnesses();
+  const title = configuredWitnesses.length === 0 ? undefined : physicalWitnessTitle();
+  const file = configuredWitnesses.length === 0 ? undefined : test.info().file;
+  const matchingWitnesses = configuredWitnesses.filter(
+    (witness) =>
+      file?.endsWith(witness.specification) &&
+      witness.specification.endsWith(`/${capture.source}`) &&
+      witness.title === title &&
+      witness.route === capture.route &&
+      witness.state === capture.state &&
+      witness.world === world &&
+      witness.width === viewportSize.width &&
+      witness.theme === colorScheme,
+  );
+  for (const witness of matchingWitnesses) {
+    for (const target of witness.targets) {
+      const role = /^role:([a-z-]+):(.+)$/.exec(target);
+      const locator =
+        role === null
+          ? page.getByTestId(target)
+          : page.getByRole(role[1] as never, { name: role[2], exact: true });
+      if (witness.scrolling === 'outlet') await locator.scrollIntoViewIfNeeded();
+      await expect(locator).toHaveCount(1);
+      const box = await locator.boundingBox();
+      if (
+        box === null ||
+        box.x < 0 ||
+        box.y < 0 ||
+        box.x + box.width > viewportSize.width ||
+        box.y + box.height > viewportSize.height
+      )
+        throw new Error(
+          `Viewport witness ${witness.name} target ${target} is outside the viewport.`,
+        );
+    }
+  }
+
   const viewport = `screens/${slug}.png`;
   await page.screenshot({
     path: join(directory, viewport),
@@ -382,6 +453,9 @@ async function captureViewport(
     height: viewportSize.height,
     colorScheme,
     viewport,
+    ...(matchingWitnesses.length === 0
+      ? {}
+      : { witnesses: matchingWitnesses.map(({ row, name }) => `${row}:${name}`) }),
     ...(full === undefined ? {} : { full }),
     ...(geometry === undefined ? {} : { geometry }),
     ...(geometryError === undefined ? {} : { geometryError }),

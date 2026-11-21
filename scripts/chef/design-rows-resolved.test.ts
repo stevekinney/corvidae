@@ -9,25 +9,45 @@ import {
 
 const expected = { issue: 'COR-2444', rowIds: ['11a', '12a'], literals: ['700px'] };
 
+function state(route: string, name: string, kind: 'ready' | 'empty' | 'first-run') {
+  return {
+    route,
+    state: name,
+    kind,
+    witness: {
+      specification: 'tests/e2e/runs-states.spec.ts',
+      title: `/runs ${name} at 375 pixels`,
+      world: 'sample-world',
+      profiles: [
+        {
+          name: 'phone-light',
+          width: 375,
+          theme: 'light' as const,
+          targets: ['runs-list'],
+          visible: 'The runs list and its actions are visible without scrolling.',
+          scrolling: 'none' as const,
+        },
+      ],
+    },
+  };
+}
+
 function resolved(overrides: Partial<ResolvedRows> = {}): ResolvedRows {
   return {
-    version: 1,
+    version: 2,
     issue: 'COR-2444',
     rows: [
       {
         id: '11a',
         board: 'Runs',
         text: 'The run list reads as cards below 700px',
-        states: [
-          { route: '/runs', state: 'ready', kind: 'ready' },
-          { route: '/runs', state: 'empty', kind: 'empty' },
-        ],
+        states: [state('/runs', 'ready', 'ready'), state('/runs', 'empty', 'empty')],
       },
       {
         id: '12a',
         board: 'Home',
         text: 'Home on a fresh installation',
-        states: [{ route: '/', state: 'first run fresh installation', kind: 'first-run' }],
+        states: [state('/', 'first run fresh installation', 'first-run')],
       },
     ],
     checked: [{ literal: '700px', result: 'consistent' }],
@@ -56,7 +76,7 @@ describe('validateResolved', () => {
     expect(validateResolved(resolved({ issue: 'COR-1' }), expected).join()).toContain(
       'is for COR-1, not COR-2444',
     );
-    expect(validateResolved({ ...resolved(), version: 2 }, expected).join()).toContain('version');
+    expect(validateResolved({ ...resolved(), version: 1 }, expected).join()).toContain('version');
   });
 
   test('refuses a row with no declared states, a row left out and an unknown row', () => {
@@ -83,6 +103,33 @@ describe('validateResolved', () => {
       rows: [{ ...base.rows[0]!, widths: [1920, 1280] }, base.rows[1]!],
     };
     expect(validateResolved(noPhone, expected).join()).toContain('lack a phone width');
+  });
+
+  test('requires a literal Playwright state and safe physical viewport profiles', () => {
+    const base = resolved();
+    const state = base.rows[0]!.states[0]!;
+    const malformed = {
+      ...base,
+      rows: [
+        {
+          ...base.rows[0]!,
+          states: [
+            {
+              ...state,
+              witness: {
+                ...state.witness,
+                specification: 'bun test anything',
+                profiles: [{ ...state.witness.profiles[0]!, targets: ['[data-anything]'] }],
+              },
+            },
+          ],
+        },
+        base.rows[1]!,
+      ],
+    };
+    const problems = validateResolved(malformed, expected).join('\n');
+    expect(problems).toContain('repository-relative Playwright specification');
+    expect(problems).toContain('named data-testid or role targets');
   });
 
   test('requires every literal criterion of the issue to be checked, and a conflict to be settled with a reason', () => {
