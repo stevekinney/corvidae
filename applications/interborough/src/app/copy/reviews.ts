@@ -87,13 +87,6 @@ export const REVIEWS_COPY = {
   noteDescription: 'Saved with your decision. If you deny, the agent reads it as the reason.',
   toolLabel: 'Tool',
   argumentsLabel: 'Arguments',
-  /** The labels on the parts of what an approval would run. */
-  operation: {
-    command: 'Command',
-    diff: 'Changes',
-    filesTouched: 'Files touched',
-    showWholeDiff: 'Show the whole diff',
-  },
   reasonFact: 'Reason',
   messageFact: 'Message',
   riskFact: 'Risk',

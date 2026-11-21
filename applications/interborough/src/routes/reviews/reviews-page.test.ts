@@ -604,6 +604,30 @@ describe('the approval’s details', () => {
     const paths = container.querySelectorAll('.cinder-approval-card__file-path');
     expect([...paths].map((path) => path.textContent)).toEqual(['dist/app.js']);
   });
+
+  test('shows the beginning of a long unified patch and lets the operator open the rest', async () => {
+    const lines = Array.from({ length: 1500 }, (_, index) => `+line-${index + 1}`);
+    const diff = [
+      'diff --git a/dist/app.js b/dist/app.js',
+      '--- a/dist/app.js',
+      '+++ b/dist/app.js',
+      '@@ -0,0 +1,1500 @@',
+      ...lines,
+    ].join('\n');
+    const approval = operation({ kind: 'patch', diff, filesTouched: ['dist/app.js'] });
+    const { container, findByRole, getByRole } = open({ reviews: [approval] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    await findByRole('heading', { name: 'Run it?' });
+    const viewer = getByRole('region', { name: 'Changes' });
+    expect(viewer.textContent).toContain('Showing 1000 of 1500 changed lines');
+    expect(viewer.textContent).toContain('line-1000');
+    expect(viewer.textContent).not.toContain('line-1500');
+
+    await fireEvent.click(getByRole('button', { name: 'Show the whole diff' }));
+    await waitFor(() => expect(viewer.textContent).toContain('line-1500'));
+  });
 });
 
 describe('a decision that took effect', () => {

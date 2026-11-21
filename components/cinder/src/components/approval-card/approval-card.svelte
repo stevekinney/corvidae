@@ -35,6 +35,8 @@
   import CopyButton from '../copy-button/copy-button.svelte';
   import Link from '../link/link.svelte';
   import PayloadInspector from '../payload-inspector/payload-inspector.svelte';
+  import SourceDiffViewer from '../source-diff-viewer/source-diff-viewer.svelte';
+  import { parseUnifiedPatch } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import ApprovalCardActions from './approval-card-actions.svelte';
@@ -326,6 +328,11 @@
   const patchDiff = $derived(
     operation.kind === 'patch' && operation.diff ? operation.diff : undefined,
   );
+  const detailHasUnifiedPatch = $derived(
+    isDetail &&
+      patchDiff !== undefined &&
+      parseUnifiedPatch(patchDiff, { maxLines: 0 }).descriptors.some((file) => file.hunkCount > 0),
+  );
   const hasOpenOperation = $derived(patchDiff !== undefined || filesTouched.length > 0);
   // A command-only preview is already visible in the open command block, so it gets no input of
   // its own; a preview with other values shows them all.
@@ -424,9 +431,17 @@
     <div class="cinder-approval-card__section">
       <CodeBlock code={operation.command} language="shell" languageLabelVisible={false} wrap />
     </div>
-  {:else if operation.kind === 'patch' && operation.diff}
+  {:else if patchDiff !== undefined}
     <div class="cinder-approval-card__section">
-      <CodeBlock code={operation.diff} language="diff" languageLabelVisible={false} />
+      {#if detailHasUnifiedPatch}
+        <SourceDiffViewer
+          patch={patchDiff}
+          ariaLabel="Changes"
+          showAllLabel="Show the whole diff"
+        />
+      {:else}
+        <CodeBlock code={patchDiff} language="diff" languageLabelVisible={false} />
+      {/if}
     </div>
   {/if}
 {/snippet}

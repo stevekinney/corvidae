@@ -62,14 +62,12 @@
   const state = $derived<ApprovalState>(review.status === 'rejected' ? 'denied' : review.status);
   const resolution = $derived(review.resolution);
 
-  function decide(resolution: {
+  function decide(choice: {
     readonly decision: 'approve' | 'deny';
     readonly reason?: string;
     readonly remember: boolean;
   }): void {
-    onDecide(
-      resolution.decision === 'deny' ? 'deny' : resolution.remember ? 'remember' : 'approve',
-    );
+    onDecide(choice.decision === 'deny' ? 'deny' : choice.remember ? 'remember' : 'approve');
   }
 </script>
 
