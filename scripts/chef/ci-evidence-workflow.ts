@@ -40,6 +40,7 @@ export interface CiEvidenceWorkflowEnvironment {
   CI_EVIDENCE_NOT_APPLICABLE?: string | undefined;
   CI_EVIDENCE_EXPECTED_JOBS?: string | undefined;
   CI_EVIDENCE_ARTIFACT_DIRECTORY?: string | undefined;
+  CI_EVIDENCE_SELECTION_DIRECTORY?: string | undefined;
 }
 
 interface GitResult {
@@ -62,6 +63,7 @@ export interface CiEvidenceWorkflowReceipt {
   attempt: number;
   jobs: Record<string, 'success' | 'not-applicable'>;
   reports?: Record<string, { reports: number; testCases: number }>;
+  selectedTests?: string[];
 }
 
 const commit = (value: unknown): value is string =>
@@ -212,6 +214,35 @@ function derivedPlanDigest(input: {
       }),
     )
     .digest('hex');
+}
+
+function selectedTests(directory: string | undefined): string[] | undefined {
+  if (directory === undefined) return undefined;
+  let files: string[];
+  try {
+    files = readdirSync(directory).filter((file) => file.endsWith('.json'));
+  } catch {
+    return undefined;
+  }
+  if (files.length !== 1) return undefined;
+  try {
+    const manifest = JSON.parse(readFileSync(`${directory}/${files[0]}`, 'utf8')) as {
+      version?: unknown;
+      workspaces?: unknown;
+    };
+    if (manifest.version !== 1 || record(manifest.workspaces) === undefined) return undefined;
+    const paths = Object.entries(manifest.workspaces).flatMap(([workspace, entry]) => {
+      const files = record(entry)?.['files'];
+      if (!Array.isArray(files) || !files.every((file) => typeof file === 'string')) return [];
+      return files.map((file) => (workspace === '.' ? file : `${workspace}/${file}`));
+    });
+    return paths.length === 0 ||
+      paths.some((path) => !/^[A-Za-z0-9_./-]+\.(?:test|integration\.test)\.ts$/.test(path))
+      ? undefined
+      : paths.toSorted();
+  } catch {
+    return undefined;
+  }
 }
 
 function payloadCommit(payload: unknown, side: 'base' | 'head'): string {
@@ -386,6 +417,13 @@ export function createCiEvidenceWorkflowReceipt(input: {
             expectedArtifacts,
           ),
         }),
+    ...(event === 'pull_request'
+      ? {
+          ...(selectedTests(environment.CI_EVIDENCE_SELECTION_DIRECTORY) === undefined
+            ? {}
+            : { selectedTests: selectedTests(environment.CI_EVIDENCE_SELECTION_DIRECTORY) }),
+        }
+      : {}),
   };
 }
 
@@ -441,6 +479,7 @@ if (import.meta.main) {
           CI_EVIDENCE_NOT_APPLICABLE: environment['CI_EVIDENCE_NOT_APPLICABLE'],
           CI_EVIDENCE_EXPECTED_JOBS: environment['CI_EVIDENCE_EXPECTED_JOBS'],
           CI_EVIDENCE_ARTIFACT_DIRECTORY: environment['CI_EVIDENCE_ARTIFACT_DIRECTORY'],
+          CI_EVIDENCE_SELECTION_DIRECTORY: environment['CI_EVIDENCE_SELECTION_DIRECTORY'],
         },
         eventPayload: readEventPayload(environment['GITHUB_EVENT_PATH']),
         git,

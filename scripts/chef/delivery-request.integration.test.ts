@@ -470,6 +470,7 @@ scenarios.describe('prepare', () => {
           'browser-selection': 'success',
           browser: 'not-applicable',
         },
+        receiptTests: ['scripts/chef/delivery-request.integration.test.ts'],
         jobs: ['Evidence aggregate'],
       };
       const setup = await harness(
@@ -481,6 +482,21 @@ scenarios.describe('prepare', () => {
             findAutomaticPullRequestRuns: async () => [automatic],
           },
           readJobs: () => [{ name: 'Evidence aggregate', runner: RUNNER_NAME, startedAt: 't' }],
+          plan: (changed) => ({
+            ...computeEvidencePlan(changed, {
+              knownSlugs: new Set(),
+              paths: new Set(changed),
+              read: () => undefined,
+              selectUnitTests: () => [],
+            }),
+            unit_tests: [
+              {
+                workspace: '',
+                paths: ['scripts/chef/delivery-request.integration.test.ts'],
+                full: false,
+              },
+            ],
+          }),
         },
         { route: 'pull-request' },
       );

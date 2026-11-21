@@ -399,14 +399,18 @@ describe('run', () => {
 
   test('a deleted ordinary test stays targeted while a mixed deletion takes the widest tier', () => {
     const deletedTest = 'packages/bureau/src/removed.test.ts';
-    const targeted = JSON.parse(run(['--dry-run', '--json'], fake([], [], [deletedTest]).dependencies).output);
+    const targeted = JSON.parse(
+      run(['--dry-run', '--json'], fake([], [], [deletedTest]).dependencies).output,
+    );
     expect(targeted.requiresFullRun).toBe(false);
     expect(targeted.inputs.unitLanes).toEqual([]);
 
     const protectedGolden = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
     const mixed = JSON.parse(
-      run(['--dry-run', '--json'], fake(['packages/bureau/src/kept.test.ts'], [], [protectedGolden]).dependencies)
-        .output,
+      run(
+        ['--dry-run', '--json'],
+        fake(['packages/bureau/src/kept.test.ts'], [], [protectedGolden]).dependencies,
+      ).output,
     );
     expect(mixed.requiresFullRun).toBe(true);
     expect(mixed.command).toContain('main.yml');

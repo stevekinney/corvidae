@@ -71,8 +71,8 @@ import {
   CiEvidenceError,
   ciEvidenceRequestKey,
   type CiEvidenceProvider,
-  type CiEvidenceRun,
   type CiEvidenceRequest,
+  type CiEvidenceRun,
 } from './ci-evidence.ts';
 import {
   batchVerificationPlanDigest,
@@ -308,21 +308,36 @@ function membersOf(
 }
 
 /** Automatic PR evidence is useful only for a scoped plan and its complete concrete inventory. */
-function reusablePullRequestRun(plan: EvidencePlan, runs: readonly CiEvidenceRun[]): CiEvidenceRun | undefined {
+function reusablePullRequestRun(
+  plan: EvidencePlan,
+  runs: readonly CiEvidenceRun[],
+): CiEvidenceRun | undefined {
   if (plan.requires_full_run || runs.length !== 1) return undefined;
-  const run = runs[0];
-  if (run === undefined || !run.jobs.includes(PULL_REQUEST_AGGREGATE)) return undefined;
+  const candidateRun = runs[0];
+  if (candidateRun === undefined || !candidateRun.jobs.includes(PULL_REQUEST_AGGREGATE))
+    return undefined;
   if (
     PULL_REQUEST_RECEIPT_JOBS.some((job) =>
       job === 'browser'
-        ? !['success', 'not-applicable'].includes(run.receiptJobs[job])
-        : run.receiptJobs[job] !== 'success',
+        ? !['success', 'not-applicable'].includes(candidateRun.receiptJobs[job] ?? '')
+        : candidateRun.receiptJobs[job] !== 'success',
     ) ||
-    Object.keys(run.receiptJobs).length !== PULL_REQUEST_RECEIPT_JOBS.length
+    Object.keys(candidateRun.receiptJobs).length !== PULL_REQUEST_RECEIPT_JOBS.length
   )
     return undefined;
-  const browserRequired = plan.fixture_slugs.length > 0 || plan.fixture_specs.length > 0 || plan.e2e_specs.length > 0;
-  return browserRequired && run.receiptJobs.browser !== 'success' ? undefined : run;
+  const browserRequired =
+    plan.fixture_slugs.length > 0 || plan.fixture_specs.length > 0 || plan.e2e_specs.length > 0;
+  const expectedTests = plan.unit_tests.flatMap(({ workspace, paths }) =>
+    paths.map((path) => (workspace === '' ? path : `${workspace}/${path}`)),
+  );
+  if (
+    browserRequired ||
+    expectedTests.length === 0 ||
+    candidateRun.receiptTests === undefined ||
+    expectedTests.some((path) => !candidateRun.receiptTests?.includes(path))
+  )
+    return undefined;
+  return candidateRun.receiptJobs['browser'] !== 'not-applicable' ? undefined : candidateRun;
 }
 
 function frozenFingerprint(members: readonly DeliveryMember[]): string {
@@ -626,6 +641,7 @@ export async function prepare(
           if (
             options.route === 'pull-request' &&
             !plan.requires_full_run &&
+            !dispatchAttempted(pendingFile, manualIdentity.requestKey) &&
             dependencies.provider.findAutomaticPullRequestRuns !== undefined
           ) {
             // A provider error is not proof and cannot block the frozen manual request path.

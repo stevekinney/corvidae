@@ -308,20 +308,19 @@ function hasCompletePullRequestCoverage(
     Object.keys(run.receiptJobs).length !== pullRequestReceiptJobs.length ||
     pullRequestReceiptJobs.some((job) =>
       job === 'browser'
-        ? !['success', 'not-applicable'].includes(run.receiptJobs[job])
+        ? !['success', 'not-applicable'].includes(run.receiptJobs[job] ?? '')
         : run.receiptJobs[job] !== 'success',
     )
   )
     return false;
-  const browserRequired =
-    member.plan.obligations.some((item) =>
-      item.relevantInputs.some(
-        (path) =>
-          path.startsWith('scripts/browser-fixtures/') ||
-          path.startsWith('applications/interborough/'),
-      ),
-    );
-  return !browserRequired || run.receiptJobs.browser === 'success';
+  const browserRequired = member.plan.obligations.some((item) =>
+    item.relevantInputs.some(
+      (path) =>
+        path.startsWith('scripts/browser-fixtures/') ||
+        path.startsWith('applications/interborough/'),
+    ),
+  );
+  return !browserRequired || run.receiptJobs['browser'] === 'success';
 }
 
 /** Require a current authenticated aggregate for the CI runs that carry pre-merge obligations. */
@@ -373,7 +372,7 @@ export async function validateDeliveryCiEvidence(
       try {
         runs = await source.findRuns(identity);
       } catch {
-        return `CI evidence for run ${mapping.id} is unavailable`;
+        return `CI evidence for run ${mapping.run.id} is unavailable`;
       }
       observed.set(identity.requestKey, runs);
     }

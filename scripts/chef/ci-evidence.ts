@@ -45,6 +45,8 @@ export interface CiEvidenceRun {
   checkedTree: string;
   receiptJobs: Record<string, 'success' | 'not-applicable'>;
   receiptReports?: Record<string, { reports: number; testCases: number }>;
+  /** Exact affected test files selected by the authenticated pull-request tests job. */
+  receiptTests?: string[];
   attempt: number;
   jobs: string[];
 }
