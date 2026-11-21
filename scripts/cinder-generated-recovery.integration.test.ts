@@ -10,7 +10,8 @@ import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 
 // Cinder's generated files are not tracked, so a fresh checkout has none. Paths that skip Turbo
 // (Interborough's build entry, which the end-to-end server, the design-review capture and the
-// release build call, and a `bun test` run inside the Cinder folder) must regenerate them.
+// release build call), the browser fixture build, and a `bun test` run inside Cinder must
+// regenerate them.
 //
 // The scenario runs in an isolated detached worktree of HEAD, never the shared checkout: another
 // test, a parallel Turbo task or another session reads the real files, and deleting them under it
@@ -41,6 +42,7 @@ let setup: { code: number; output: string } | undefined;
 let freshMissing: string[] = [];
 let buildResult: Recorded | undefined;
 let testResult: Recorded | undefined;
+let fixturesResult: Recorded | undefined;
 
 async function verifyRecovery(): Promise<void> {
   const scratch = await mkdtemp(join(tmpdir(), 'corvidae-recovery-'));
@@ -80,6 +82,15 @@ async function verifyRecovery(): Promise<void> {
       cinder,
     );
     testResult = { ...direct, missing: missing() };
+
+    for (const output of CINDER_GENERATED_OUTPUTS) await rm(join(cinder, output), { force: true });
+    const fixtures = join(copy, 'scripts/browser-fixtures');
+    const fixtureBuild = await run(['bun', 'scripts/build.ts'], fixtures);
+    fixturesResult = {
+      ...fixtureBuild,
+      missing: missing(),
+      built: existsSync(join(fixtures, 'build/index.html')),
+    };
   } finally {
     await run(['git', 'worktree', 'remove', '--force', copy], root);
     await rm(scratch, { recursive: true, force: true });
@@ -106,4 +117,11 @@ test('a direct bun test in the Cinder folder regenerates the files and passes', 
   rethrow(scenario);
   expect(testResult?.code, testResult?.output).toBe(0);
   expect(testResult?.missing).toEqual([]);
+});
+
+test('the browser fixture build generates Cinder utilities in a fresh checkout', () => {
+  rethrow(scenario);
+  expect(fixturesResult?.code, fixturesResult?.output).toBe(0);
+  expect(fixturesResult?.built).toBe(true);
+  expect(fixturesResult?.missing).toEqual([]);
 });
