@@ -69,7 +69,6 @@
   {:else if rows.length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
       title={RUN_CHECKPOINTS_COPY.nothingToCompareTitle}
       description={RUN_CHECKPOINTS_COPY.nothingToCompareDescription}
     />

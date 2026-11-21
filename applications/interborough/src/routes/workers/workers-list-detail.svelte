@@ -16,7 +16,6 @@
   import { untrack, type Snippet } from 'svelte';
 
   import {
-    Button,
     DataList,
     EmptyState,
     ListDetail,
@@ -124,7 +123,6 @@
       {#if shown.length === 0}
         <EmptyState
           kind={filter.trim() === '' ? 'first-use' : 'filtered'}
-          size="compact"
           headingLevel={3}
           title={filter.trim() === ''
             ? copy.list.emptyTitle
@@ -172,16 +170,8 @@
           headingLevel={2}
           title={copy.list.closedTitle}
           description={copy.list.closedDescription(selectedKey)}
-        >
-          {#snippet action()}
-            <Button
-              variant="secondary"
-              size="sm"
-              label={copy.list.backToList}
-              onclick={backToList}
-            />
-          {/snippet}
-        </EmptyState>
+          actions={[{ label: copy.list.backToList, variant: 'secondary', onclick: backToList }]}
+        />
       {:else}
         <EmptyState
           kind="first-use"

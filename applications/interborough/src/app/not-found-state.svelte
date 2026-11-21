@@ -63,7 +63,6 @@
 </script>
 
 <EmptyState
-  class="weft-view__empty"
   kind={create === undefined ? 'not-found' : 'first-use'}
   {title}
   {description}

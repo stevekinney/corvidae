@@ -110,7 +110,7 @@
 </script>
 
 {#snippet addInstructions()}
-  <Button href={router.href(editPath)} variant="primary" size="sm" onclick={goToEditor}
+  <Button href={router.href(editPath)} variant="primary" onclick={goToEditor}
     >{copy.emptyAction}</Button
   >
 {/snippet}
@@ -119,7 +119,6 @@
   <Button
     href={router.href(settingsPath)}
     variant="primary"
-    size="sm"
     data-testid="agent-instructions-settings"
     onclick={goToSettings}>{copy.emptyAction}</Button
   >
@@ -161,7 +160,6 @@
       {#if !hasBody && editable}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={3}
           title={copy.emptyTitle}
           description={copy.emptyDescription}
@@ -170,7 +168,6 @@
       {:else if !hasBody && overridable}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={3}
           title={copy.emptyTitle}
           description={copy.emptyDescription}
@@ -179,7 +176,6 @@
       {:else if !hasBody}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={3}
           title={copy.emptyTitle}
           description={copy.emptyDescription}

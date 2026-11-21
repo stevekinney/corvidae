@@ -544,7 +544,6 @@
         {#if logIsEmpty}
           <EmptyState
             kind="first-use"
-            bordered
             headingLevel={2}
             title={VIEW_COPY.audit.empty?.title ?? ''}
             description={VIEW_COPY.audit.empty?.description ?? ''}
@@ -554,7 +553,6 @@
         {:else}
           <EmptyState
             kind="filtered"
-            bordered
             headingLevel={2}
             title={noMatches.title}
             description={noMatches.description}
@@ -617,7 +615,6 @@
             {#snippet empty()}
               <EmptyState
                 kind="first-use"
-                size="compact"
                 headingLevel={2}
                 title={copy.emptyDetailTitle}
                 description={copy.emptyDetailDescription}

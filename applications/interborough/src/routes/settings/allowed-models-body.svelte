@@ -14,13 +14,14 @@
   import {
     Button,
     Checkbox,
+    EmptyState,
     FormActions,
     FormSection,
-    Link,
     Select,
     SettingRow,
     validateSchemaFormValue,
   } from '@lostgradient/cinder';
+  import { Cpu } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, onMount, untrack } from 'svelte';
 
@@ -347,7 +348,10 @@
     </FormSection>
   {:else}
     <div class="weft-allowed__models">
-      <FormSection grouped heading={copy.models.title} description={copy.models.description} />
+      <!-- With no model the empty state stands alone, under no "Models" heading (owner report, 2026-11-19). -->
+      {#if providers.isError || providers.isPending}
+        <FormSection grouped heading={copy.models.title} description={copy.models.description} />
+      {/if}
       {#if providers.isError}
         <p class="weft-allowed__muted" role="alert">
           {copy.models.loadFailed}
@@ -358,12 +362,22 @@
       {:else if providers.isPending}
         <p class="weft-allowed__muted" role="status">{copy.models.loading}</p>
       {:else}
-        <p class="weft-allowed__muted" data-testid="allowed-models-empty">
-          {copy.models.empty}
-          <Link href={router.href(PROVIDERS_PATH)} underline="always" onclick={openProviders}
-            >{copy.models.goToProviders}</Link
-          >
-        </p>
+        <EmptyState
+          kind="first-use"
+          headingLevel={2}
+          title={copy.models.empty.title}
+          description={copy.models.empty.description}
+          actions={[
+            {
+              label: copy.models.goToProviders,
+              href: router.href(PROVIDERS_PATH),
+              onclick: openProviders,
+            },
+          ]}
+          data-testid="allowed-models-empty"
+        >
+          {#snippet icon()}<Cpu aria-hidden="true" />{/snippet}
+        </EmptyState>
       {/if}
     </div>
   {/if}

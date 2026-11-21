@@ -33,14 +33,14 @@ describe('statusOf', () => {
   test('words the loaded status', () => {
     expect(statusOf(standing({ name: 'a' }), true)).toEqual({
       label: PLUGINS_COPY.status.running,
-      dot: 'success',
+      variant: 'success',
     });
     // Neutral: amber is for what waits on the person, and a plugin that needs a key is not that.
-    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).dot).toBe('neutral');
-    expect(statusOf(standing({ name: 'a', enabled: false }), false).dot).toBe('neutral');
+    expect(statusOf(standing({ name: 'a', status: 'needs-setup' }), true).variant).toBe('neutral');
+    expect(statusOf(standing({ name: 'a', enabled: false }), false).variant).toBe('neutral');
     expect(statusOf(standing({ name: 'a', status: 'skipped' }), true)).toEqual({
       label: PLUGINS_COPY.status.notLoaded,
-      dot: 'danger',
+      variant: 'danger',
     });
   });
 

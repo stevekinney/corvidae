@@ -53,7 +53,6 @@
       {:else if retained.error && isForbidden(retained.error)}
         <EmptyState
           kind="first-use"
-          size="compact"
           headingLevel={3}
           title="The payload is locked"
           description={`${scopeReason('system:admin')} to read the payload.`}
@@ -61,7 +60,6 @@
       {:else if retained.error && faultTreatment(retained.error).kind === 'not-found'}
         <EmptyState
           kind="done"
-          size="compact"
           headingLevel={3}
           title="The payload is gone"
           description="The server no longer holds this task. It may have been cleared or retried."

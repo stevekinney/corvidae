@@ -657,11 +657,8 @@ DropdownSeparatorProps
 DropdownTriggerProps
 DurationFieldProps
 DurationUnit
-EmptyStateAlign
 EmptyStateKind
-EmptyStateLayout
 EmptyStateProps
-EmptyStateSize
 ErrorStateProps
 ErrorStateRetryVariant
 ErrorStateSize

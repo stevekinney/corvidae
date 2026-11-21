@@ -125,7 +125,7 @@
   font-family: var(--cinder-font-mono);
 }
 
-/* ── The list's status-first rows, its empty state, and the Internal workflows card ───── */
+/* ── The list's status-first rows and its empty state ───── */
 
 /* The region that holds the page under its header lays out as the page does. */
 .ib-workflows__body {
@@ -133,6 +133,12 @@
   flex-direction: column;
   gap: var(--cinder-space-3);
   min-width: 0;
+}
+
+/* The first-use state sits at the list pages' rhythm under the header, the same offset as on every
+   list page (owner report, 2026-11-19). */
+.ib-workflows__body:has(> [data-list-empty]) {
+  gap: var(--cinder-space-4);
 }
 
 /* A workflow with no title is its identifier alone, bold and monospaced. */
@@ -146,53 +152,6 @@
 .ib-workflow-line__part {
   display: inline-flex;
   align-items: center;
-}
-
-.ib-workflows__empty-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2);
-  align-items: center;
-  justify-content: center;
-}
-
-/* Under the empty state's box: where a file can be added, as plain text. */
-.ib-workflows__hint {
-  margin: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.ib-workflows__card-title {
-  display: flex;
-  gap: var(--cinder-space-2);
-  align-items: baseline;
-  min-width: 0;
-}
-
-.ib-workflows__card-heading {
-  margin: 0;
-  font-size: var(--cinder-text-base);
-  font-weight: var(--cinder-font-semibold);
-}
-
-.ib-workflows__card-count {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-workflows__card-chevron {
-  align-self: center;
-  margin-inline-start: auto;
-  color: var(--cinder-text-muted);
-}
-
-.ib-workflows__card-description {
-  margin: 0;
-  color: var(--cinder-text-secondary);
-  font-size: var(--cinder-text-sm);
 }
 
 /* The code name under an internal workflow's name: small, monospaced, and not a link. */

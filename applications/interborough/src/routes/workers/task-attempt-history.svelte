@@ -123,13 +123,19 @@
   }
 </script>
 
-<section class="weft-workers-panel weft-task-attempts" aria-labelledby="task-attempts-heading">
-  <h3 id="task-attempts-heading" class="weft-workers-panel__title">Attempt history</h3>
+<section
+  class="weft-workers-panel weft-task-attempts"
+  aria-labelledby={history.length === 0 ? undefined : 'task-attempts-heading'}
+  aria-label={history.length === 0 ? 'Attempt history' : undefined}
+>
+  <!-- With none, the empty state stands alone, under no heading saying the same thing (owner report, 2026-11-19). -->
+  {#if history.length > 0}
+    <h3 id="task-attempts-heading" class="weft-workers-panel__title">Attempt history</h3>
+  {/if}
   {#if history.length === 0}
     <EmptyState
       kind="first-use"
-      size="compact"
-      headingLevel={4}
+      headingLevel={3}
       title="No attempts claimed"
       description="No worker has claimed this task yet, so there is no attempt history."
     />

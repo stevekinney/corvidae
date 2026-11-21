@@ -747,7 +747,7 @@ describe('a hook the owner made that runs a plugin’s action (rows R10-10 to R1
       within(warning as HTMLElement).getByRole('button', { name: 'Add the key' }),
     );
 
-    expect(await view.findByRole('dialog', { name: 'Save slack-signing-key' })).toBeTruthy();
+    expect(await view.findByRole('dialog', { name: 'Save Slack signing key' })).toBeTruthy();
   });
 
   test('with no key to choose the Select is disabled and says where one is saved', async () => {
