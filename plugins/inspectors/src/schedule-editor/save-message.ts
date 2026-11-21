@@ -45,6 +45,20 @@ function lowerFirst(text: string): string {
   return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 }
 
+/** The words of a fault that say a step failed without saying why. */
+const BARE_FAILURE_WORDS = new Set(['failed', 'failure', 'error', 'unsuccessful']);
+
+/**
+ * Whether a fault's message says nothing beyond that the step failed: it is empty, a bare "Failed",
+ * or only repeats the verb the sentence already holds ("Pausing it failed"). `doing` is that
+ * sentence's verb phrase, such as "Pausing it".
+ */
+function isEmptyReason(message: string, doing: string): boolean {
+  const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? [];
+  const repeated = new Set(words(doing));
+  return words(message).every((word) => BARE_FAILURE_WORDS.has(word) || repeated.has(word));
+}
+
 /** The sentences that say which calls of a save were written before it stopped, or none. */
 function landed(done: readonly string[]): string {
   return done.map((tool) => LANDED.get(tool) ?? '').join(' ');
@@ -77,7 +91,11 @@ export function saveMessage(
         ? `Not saved. ${FIX_THE_FIELDS}`
         : `${before} ${doing} failed. ${FIX_THE_FIELDS}`;
     }
-    const reason = asSentence(outcome.fault.message);
+    // A fault that says nothing the sentence has not said ("Failed") adds no reason clause.
+    const reason = isEmptyReason(outcome.fault.message, doing)
+      ? ''
+      : asSentence(outcome.fault.message);
+    if (reason === '') return before === '' ? 'Not saved.' : `${before} ${doing} failed.`;
     return before === '' ? `Not saved: ${reason}` : `${before} ${doing} failed: ${reason}`;
   }
   const doing = DOING.get(outcome.tool) ?? 'The last step';

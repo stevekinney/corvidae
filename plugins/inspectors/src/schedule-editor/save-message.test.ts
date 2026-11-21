@@ -34,7 +34,6 @@ describe('the sentence a stopped save says', () => {
   it('ends the Bureau’s wording in a capital and a full stop, and leaves a finished sentence alone', () => {
     const reasonOf = (message: string) =>
       saveMessage(refused(UPDATE, [], { message }), false).replace('Not saved: ', '');
-    expect(reasonOf('failed')).toBe('Failed.');
     expect(reasonOf(' no such agent ')).toBe('No such agent.');
     expect(reasonOf('Already done!')).toBe('Already done!');
   });
@@ -59,9 +58,32 @@ describe('the sentence a stopped save says', () => {
   });
 
   it('says which part landed and which did not, never "not saved" beside "saved"', () => {
-    const message = saveMessage(refused(PAUSE, [UPDATE], { message: 'failed' }), false);
-    expect(message).toBe('Saved the changes. Pausing it failed: Failed.');
+    const message = saveMessage(refused(PAUSE, [UPDATE], { message: 'schedule is gone' }), false);
+    expect(message).toBe('Saved the changes. Pausing it failed: Schedule is gone.');
     expect(message).not.toMatch(/not saved/i);
+  });
+
+  it('drops the reason clause when the fault says only that the step failed', () => {
+    // "Pausing it failed: Failed." said the same thing twice.
+    for (const message of [
+      '',
+      '   ',
+      'failed',
+      'Failed.',
+      'Error',
+      'Pausing it failed',
+      'pausing it',
+    ]) {
+      const half = saveMessage(refused(PAUSE, [UPDATE], { message }), false);
+      expect(half).toBe('Saved the changes. Pausing it failed.');
+    }
+    for (const message of ['', 'Failed', 'Saving the changes failed.']) {
+      expect(saveMessage(refused(UPDATE, [], { message }), false)).toBe('Not saved.');
+    }
+    // A reason that says anything more is kept.
+    expect(saveMessage(refused(PAUSE, [UPDATE], { message: 'Failed: it is gone' }), false)).toBe(
+      'Saved the changes. Pausing it failed: Failed: it is gone.',
+    );
   });
 
   it('says the schedule changed, with what landed first when something did', () => {

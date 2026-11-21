@@ -226,7 +226,9 @@ async function start(): Promise<void> {
     view.busy = true;
     view.errors = {};
     const making = view.source === undefined;
-    say(making ? 'Creating the schedule…' : 'Saving the changes…');
+    // The Save button announces the work (`loadingStatus`), so the page's status is cleared and
+    // says nothing while it runs: two live regions would read the same words twice.
+    say('');
     try {
       const outcome = await runSavePlan(plan, view.source, call);
       if (outcome.kind === 'saved') {

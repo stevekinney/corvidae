@@ -2,7 +2,8 @@
   /**
    * The schedule editor (COR-2545): the schedules a person may change, and one schedule's form,
    * drawn with Cinder through the panel kit. Text goes in as text, never as markup. The status line
-   * is one polite live region, and each field shows the error that belongs to it: the checks the
+   * is a polite live region for how a read or a save ended, and says nothing while a save runs: the
+   * Save button's own `loadingStatus` region announces that, so it is heard once. Each field shows the error that belongs to it: the checks the
    * page makes before a save, and the Bureau's own answer to a save, which names the argument that
    * caused it. The page redraws in place, so focus and a half-typed value survive every read.
    */

@@ -466,7 +466,10 @@ test.describe('schedule-editor-states: a save', () => {
     await app.getByLabel('When it runs').fill('2h');
     await save(app).click();
     const ready = async () => {
-      await expect(status(app)).toHaveText('Saving the changes…');
+      // The Save button announces the work and the page's own status stays empty, so the same
+      // words are not read twice.
+      await expect(app.locator('[data-cinder-button-status]')).toHaveText('Saving the changes…');
+      await expect(status(app)).toHaveText('');
       await expect(save(app)).toHaveAttribute('aria-busy', 'true');
       await expect(save(app)).toBeDisabled();
       await expect(app.getByRole('button', { name: 'Back to schedules' })).toBeDisabled();

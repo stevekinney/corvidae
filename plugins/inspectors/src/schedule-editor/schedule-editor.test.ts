@@ -239,7 +239,12 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     expect(saving.getAttribute('aria-busy')).toBe('true');
     expect(saving.getAttribute('aria-disabled')).toBe('true');
     expect(saving.hasAttribute('data-cinder-loading')).toBe(true);
-    expect(container.textContent).toContain('Saving the changes…');
+    // The Button's own live region says it, and the page's status says nothing, so it is read once.
+    expect(container.querySelector('[data-cinder-button-status]')?.textContent).toBe(
+      'Saving the changes…',
+    );
+    expect(container.querySelector('.editor-status')?.textContent.trim()).toBe('');
+    expect(container.querySelector('.editor-status')?.getAttribute('data-empty')).toBe('true');
     expect((container.querySelector('#schedule-back') as HTMLButtonElement).disabled).toBe(true);
     expect((container.querySelector('#schedule-spec') as HTMLInputElement).disabled).toBe(true);
   });
@@ -248,7 +253,9 @@ describe('the schedule editor, drawn with Cinder (COR-2545)', () => {
     const { view, container } = open((state) => showForm(state, null));
     view.busy = true;
     await tick();
-    expect(container.textContent).toContain('Creating the schedule…');
+    expect(container.querySelector('[data-cinder-button-status]')?.textContent).toBe(
+      'Creating the schedule…',
+    );
   });
 
   it('announces its status in one polite live region', async () => {
