@@ -31,10 +31,10 @@ const LONG_TITLE = 'Please refund order 4471, it arrived damaged.';
 const REASON = 'Connect a model provider';
 const CONNECT = 'Connect provider';
 
-/** Opens `path` at `width` by 812 pixels on the sample clock. */
-async function open(page: Page, width: number, path: string): Promise<void> {
+/** Opens `path` at the requested viewport on the sample clock. */
+async function open(page: Page, width: number, path: string, height = 812): Promise<void> {
   await page.clock.setFixedTime(SAMPLE_NOW);
-  await page.setViewportSize({ width, height: 812 });
+  await page.setViewportSize({ width, height });
   await page.goto(path);
 }
 
@@ -192,7 +192,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   test('opens the decision deck beside the ordinary tool approval controls (COR-2452)', async ({
     page,
   }) => {
-    await open(page, 320, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await open(page, 320, `/chats/${SAMPLE_WORLD_THREADS.refund}`, 640);
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
     await approval.getByRole('button', { name: 'Review in deck' }).click();
