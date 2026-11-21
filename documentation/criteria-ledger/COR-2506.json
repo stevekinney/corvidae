@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2506",
+  "branch": "steve/cor-2506-host-lock-accounting",
+  "checkedAt": "04d618075467d95068853c3aa0bb10c00056c8da",
+  "briefVersion": "9d97c9af4b33",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Independent compatible-history oracle, both COR-2463 traces, named ambiguous prefix and both link resolutions."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Replacement-inode integration probe passed; removing the inode comparison made it fail."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Lost-ledger bypass interleaving fails closed and passed the M7 integration probe."
+    }
+  ]
+}
