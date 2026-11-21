@@ -8,7 +8,7 @@
   /* ========================================
  * TOOL CALL RAIL
  * One turn's tool calls: a rail of one-line rows, the first and last few with the middle folded
- * behind a dashed button, and the calls that failed or need a person always in view. Its rows are
+ * behind a disclosure, and the calls that failed or need a person always in view. Its rows are
  * entries of Timeline's `rows` variant, which draws the marker column and the connector and leaves
  * the content of each row to the rail, because a tool call has no timestamp to lead with.
  * ======================================== */
@@ -423,10 +423,10 @@
   }
 
   /* ----------------------------------------
- * A folded group: one dashed button and what it hides, counted from this turn only
+ * A folded group: one disclosure and what it hides, counted from this turn only
  * ---------------------------------------- */
 
-  /* The dashed button sits level with the marker Timeline draws beside it, 0.8125rem down. */
+  /* The disclosure sits level with the marker Timeline draws beside it, 0.8125rem down. */
   .cinder-tool-call-rail__group {
     min-block-size: 1.875rem;
     padding-block-start: 0.0625rem;
@@ -446,13 +446,20 @@
     gap: var(--cinder-space-1);
     block-size: 1.5rem;
     padding: 0 var(--cinder-space-2-5);
-    border: 1px dashed var(--cinder-border-control);
+    border: 0;
     border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    background: transparent;
     color: var(--cinder-text-muted);
     cursor: pointer;
     font: inherit;
     font-weight: var(--cinder-font-semibold);
+  }
+
+  @media (hover: hover) {
+    .cinder-tool-call-rail__more:hover {
+      background: var(--cinder-surface-hover);
+      color: var(--cinder-text-default);
+    }
   }
 
   .cinder-tool-call-rail__more-chevron {

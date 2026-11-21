@@ -284,6 +284,10 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(railRows(page).nth(1)).toContainText('→ $42.00, delivered Mon');
     await expect(railRows(page).nth(2)).toContainText('4476');
     await expect(rail(page).locator('.cinder-tool-call-rail__more')).toHaveText('Show 24 more');
+    await expect(rail(page).locator('.cinder-tool-call-rail__more')).toHaveCSS(
+      'border-top-style',
+      'none',
+    );
     await expect(railRows(page).nth(3)).toContainText('Send email');
     await expect(railRows(page).nth(3)).toContainText('→ SMTP timeout after 10s');
     await expect(railRows(page).nth(4)).toContainText('Approved by you 9:58 AM');

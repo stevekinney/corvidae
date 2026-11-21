@@ -245,6 +245,21 @@
   }
 }
 
+/* On compact phones the breadcrumb already names the conversation. Keep the heading available
+ * to assistive technology and leave the visible band to the status and actions. */
+@media (max-width: 360px) {
+  .weft-chat-head .cinder-page-header__title {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    clip-path: inset(50%);
+  }
+
+  .weft-chat-head .cinder-page-header[data-cinder-narrow-actions] .cinder-page-header__row {
+    row-gap: 0;
+  }
+}
+
 .weft-chat-approval__title,
 .weft-chat-approval__message {
   margin: 0;
@@ -262,9 +277,6 @@
   gap: var(--cinder-space-2-5);
   min-inline-size: 0;
   padding: var(--cinder-space-3) var(--cinder-space-3-5);
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-raised);
 }
 
 .weft-chat-question__prompt,

@@ -39,7 +39,7 @@ import { pluginIcon } from './plugin-icons.ts';
 export const LIST_DETAIL_REGION = 'list-detail';
 
 /** The focus region of a chat's composer, where Enter sends (listed on the map, handled by Chat). */
-export const CHAT_COMPOSER_REGION = 'chat-composer';
+const CHAT_COMPOSER_REGION = 'chat-composer';
 
 /**
  * The sections the sidebar groups its destinations in: Home on its own at the top, then Work,

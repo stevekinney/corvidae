@@ -289,7 +289,8 @@ export const CHAT_COPY = {
   /** The label of a question that declares no schema, which takes free text. */
   questionAnswerLabel: 'Answer',
   /** Said under a question that is picked from choices: the number keys. */
-  pickHint: 'Press 1 to 9 to pick a choice.',
+  pickHint: (count: number): string =>
+    count === 1 ? 'Press 1 to pick the choice.' : `Press 1 to ${count} to pick a choice.`,
   /** The shortcuts the `?` map lists for this page. */
   shortcutGroup: 'Chat',
   pickShortcut: (position: number): string => `Pick choice ${String(position)}`,

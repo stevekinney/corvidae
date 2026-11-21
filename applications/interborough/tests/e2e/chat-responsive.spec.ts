@@ -338,6 +338,13 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
+    await expect(trail(page).getByRole('button', { name: REFUND })).toBeVisible();
+    const header = page.getByTestId('chat-header');
+    await expect(header.getByRole('heading', { level: 1, name: REFUND })).toHaveCSS(
+      'clip-path',
+      'inset(50%)',
+    );
+    await expect(header.getByText('Waiting on you', { exact: true })).toBeVisible();
     // Nothing was typed: the page focused the card by script as it opened, and a script focus draws
     // no ring unless the keyboard was the last input (the owner's comment on `grid-card-320`).
     await expect(row).toHaveCSS('outline-style', 'none');
@@ -677,13 +684,14 @@ test.describe('The composer at desktop width', () => {
 });
 
 test.describe('Keyboard hints on a phone', () => {
-  test('a phone with a mouse names the number keys under a question and the Enter keys under the composer', async ({
+  test('a phone with a mouse names the two choice keys under the question', async ({
     page,
   }) => {
     await connectProvider(page);
     await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
     await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
-    await expect(page.getByText(CHAT_COPY.pickHint)).toBeVisible();
+    await expect(page.getByText('Press 1 to 2 to pick a choice.')).toBeVisible();
+    await expect(page.locator('.weft-chat-question')).toHaveCSS('border-top-style', 'none');
   });
 
   test.describe('on a touch-only device', () => {
@@ -695,8 +703,8 @@ test.describe('Keyboard hints on a phone', () => {
       await connectProvider(page);
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
       await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
-      await expect(page.getByText(CHAT_COPY.pickHint)).toHaveCount(1);
-      await expect(page.getByText(CHAT_COPY.pickHint)).toBeHidden();
+      await expect(page.getByText(CHAT_COPY.pickHint(2))).toHaveCount(1);
+      await expect(page.getByText(CHAT_COPY.pickHint(2))).toBeHidden();
 
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
       await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();

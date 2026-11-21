@@ -1224,12 +1224,12 @@
   /** What a question that declares no schema takes: free text, answered in the composer. */
   const FREE_TEXT_SCHEMA = { type: 'string', title: CHAT_COPY.questionAnswerLabel } as const;
   let questionElement = $state<HTMLElement | undefined>();
-  // Whether the open question draws choices to pick, which the drawn buttons say. It is read again
+  // How many of the open question's choices have number keys. It is read again
   // for each question, because the page stays mounted while the open question changes.
-  let pickable = $state(false);
+  let numberedChoices = $state(0);
   $effect(() => {
     void session.humanRequests[0]?.interruptId;
-    pickable = choiceButtons(questionElement).length > 0;
+    numberedChoices = Math.min(9, choiceButtons(questionElement).length);
   });
 
   /** Whether an answer is held for its Undo window, which keeps the composer from taking a second. */
@@ -2338,7 +2338,7 @@
           disabled={session.disconnected || gone || answerHeld}
           composerHint={false}
           composerPlaceholder={answering
-            ? pickable
+            ? numberedChoices > 0
               ? CHAT_COPY.composer.answerPlaceholder
               : CHAT_COPY.questionAnswerLabel
             : CHAT_COPY.composer.placeholder(agentShown)}
@@ -2396,8 +2396,8 @@
                     }}
                   />
                 </div>
-                {#if pickable}
-                  <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
+                {#if numberedChoices > 0}
+                  <p class="weft-chat-question__hint">{CHAT_COPY.pickHint(numberedChoices)}</p>
                 {/if}
               </div>
             {/each}
