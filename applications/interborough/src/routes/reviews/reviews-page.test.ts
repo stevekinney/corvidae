@@ -287,7 +287,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: '  Go ahead, but only this once.  ' },
     });
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
@@ -305,7 +305,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: 'Fine for this chat.' },
     });
     await fireEvent.click(
@@ -334,8 +334,8 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    expect(await findByLabelText('Note Optional')).not.toBeNull();
-    expect(container.textContent).toContain('Note Optional');
+    expect(await findByLabelText('Note (optional)')).not.toBeNull();
+    expect(container.textContent).toContain('Note (optional)');
   });
 
   test('says the approval was not remembered when the Bureau could not store the grant', async () => {
@@ -360,7 +360,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: 'Wrong order.' },
     });
     await fireEvent.click(await findByRole('button', { name: 'Deny' }));
@@ -436,7 +436,7 @@ describe('deciding a Bureau tool approval', () => {
       throw new Error('The Bureau broke.');
     });
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
-    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
+    await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
     expect(rows(container).length).toBe(1);
   });
 });
@@ -450,8 +450,8 @@ describe('the keys that act on the open review', () => {
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
 
     await openRow(container, 0);
-    await waitFor(() => expect(getByLabelText('Note Optional')).not.toBeNull());
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await waitFor(() => expect(getByLabelText('Note (optional)')).not.toBeNull());
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: 'Not today.' },
     });
     press('d');
@@ -677,7 +677,7 @@ describe('a decision that took effect', () => {
       await waitFor(() => expect(rows(container).length).toBe(others));
       await findByText(REVIEWS_COPY.outcomeNotWritten.title);
       expect(container.textContent).toContain(REVIEWS_COPY.outcomeNotWritten.message);
-      expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull();
+      expect(queryByText(REVIEWS_COPY.approvalFailed.approve)).toBeNull();
       expect(stub.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads);
     });
   }
@@ -714,7 +714,7 @@ describe('a decision that took effect', () => {
       });
     });
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
-    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
+    await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
   });
 });
 
@@ -739,12 +739,14 @@ describe('what became of a decision', () => {
       throw new Error('The Bureau broke.');
     });
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
-    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
+    await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
 
     // The other review, opened, carries no trace of the first one's failure.
     await openRow(container, 1);
     await waitFor(() =>
-      expect(queryByText(new RegExp(REVIEWS_COPY.decisionFailed))?.outerHTML ?? null).toBeNull(),
+      expect(
+        queryByText(new RegExp(REVIEWS_COPY.approvalFailed.approve))?.outerHTML ?? null,
+      ).toBeNull(),
     );
   });
 });
@@ -797,7 +799,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
 
     await findByText(new RegExp(REVIEWS_COPY.roundChanged.title));
     expect(container.textContent).toContain(REVIEWS_COPY.roundChanged.message);
-    expect(queryByText(new RegExp(REVIEWS_COPY.decisionFailed))).toBeNull();
+    expect(queryByText(new RegExp(REVIEWS_COPY.approvalFailed.approve))).toBeNull();
     expect(container.textContent).not.toContain('REVIEW_ROUND_CHANGED');
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads));
     expect(rows(container).length).toBe(1);

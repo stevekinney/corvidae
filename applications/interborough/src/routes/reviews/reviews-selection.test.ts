@@ -206,7 +206,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText('Note Optional');
+    const note = await findByLabelText('Note (optional)');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -245,7 +245,7 @@ describe('an approval', () => {
         selector: '.cinder-approval-card__detail-eyebrow span',
       }),
     ).not.toBeNull();
-    expect(getByLabelText('Note Optional').getAttribute('placeholder')).toBe(
+    expect(getByLabelText('Note (optional)').getAttribute('placeholder')).toBe(
       REVIEWS_COPY.notePlaceholder,
     );
   });
