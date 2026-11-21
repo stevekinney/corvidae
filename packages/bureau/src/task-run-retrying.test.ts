@@ -24,6 +24,18 @@ afterEach(async () => {
   for (const bureau of opened.splice(0).toReversed()) await bureau.dispose();
 });
 
+/** What `bureau` shows a task is retrying, or `undefined` for a task it does not know. */
+async function retryingOf(bureau: OpenedBureau['bureau'], taskId: string) {
+  const view = await bureau.tasks.get(taskId);
+  return view?.retrying;
+}
+
+/** What `bureau`'s registry stored of a task's retry, or `undefined` for none. */
+async function storedRetryingOf(bureau: OpenedBureau['bureau'], taskId: string) {
+  const record = await bureau.internals.taskRegistry.record(taskId);
+  return record?.retrying;
+}
+
 /** The ids `bureau.tasks.list` answered for `params`. */
 async function listedIds(
   handler: OpenedBureau['handler'],
@@ -90,7 +102,7 @@ describe('a model step on its second try (COR-2531)', () => {
       const quick = await holder.bureau.tasks.start('retrier', 'Go.');
       await world.secondTryEntered;
 
-      await waitUntil(async () => (await peer.bureau.tasks.get(quick.id))?.retrying !== null, {
+      await waitUntil(async () => (await retryingOf(peer.bureau, quick.id)) !== null, {
         message: 'the second try is recorded',
       });
       const during = await peer.bureau.tasks.get(quick.id);
@@ -102,12 +114,12 @@ describe('a model step on its second try (COR-2531)', () => {
       // The step settles (it answered with a tool call): the task is still working, and no longer retrying.
       world.releaseSecondTry();
       await world.toolEntered;
-      await waitUntil(async () => (await peer.bureau.tasks.get(quick.id))?.retrying === null, {
+      await waitUntil(async () => (await retryingOf(peer.bureau, quick.id)) === null, {
         message: 'the retry is cleared when the step settles',
       });
       const after = await peer.bureau.tasks.get(quick.id);
       expect(after?.status).toBe('working');
-      expect((await peer.bureau.internals.taskRegistry.record(quick.id))?.retrying).toBeUndefined();
+      expect(await storedRetryingOf(peer.bureau, quick.id)).toBeUndefined();
       expect(await listedIds(peer.handler, { retrying: true })).toEqual([]);
       expect(await listedIds(peer.handler, { retrying: false })).toEqual([quick.id]);
 
@@ -137,13 +149,16 @@ describe('a model step on its second try (COR-2531)', () => {
     opened.push(holder);
     const task = await holder.bureau.tasks.start('retrier', 'Go.');
     await entered.promise;
-    await waitUntil(async () => (await holder.bureau.tasks.get(task.id))?.retrying !== null);
+    await waitUntil(async () => (await retryingOf(holder.bureau, task.id)) !== null);
 
     await holder.bureau.tasks.cancel(task.id);
     stuck.resolve();
-    await waitUntil(async () => (await holder.bureau.tasks.get(task.id))?.status === 'canceled');
+    await waitUntil(async () => {
+      const view = await holder.bureau.tasks.get(task.id);
+      return view?.status === 'canceled';
+    });
     await holder.bureau.internals.taskRegistry.flush();
-    expect((await holder.bureau.tasks.get(task.id))?.retrying).toBeNull();
-    expect((await holder.bureau.internals.taskRegistry.record(task.id))?.retrying).toBeUndefined();
+    expect(await retryingOf(holder.bureau, task.id)).toBeNull();
+    expect(await storedRetryingOf(holder.bureau, task.id)).toBeUndefined();
   });
 });

@@ -113,10 +113,13 @@ describe('the engine’s runs as tasks (COR-2531)', () => {
     const { engine } = fakeEngine([old, finished], {});
 
     const views = await tasksOf(engine).list();
-    expect(views.map((view) => [view.id, view.failure]).toSorted()).toEqual([
-      ['finished', null],
-      ['old-failure', null],
-    ]);
+    const failures = new Map(views.map((view) => [view.id, view.failure]));
+    expect(failures).toEqual(
+      new Map([
+        ['finished', null],
+        ['old-failure', null],
+      ]),
+    );
   });
 
   it('shows the activity a running run is retrying, and only while it runs', async () => {

@@ -33,6 +33,13 @@ const chargeCard = createTool({
   },
 });
 
+const lookupOrder = createTool({
+  name: 'lookup-order',
+  description: 'Looks an order up',
+  input: z.object({}),
+  execute: async () => 'order found',
+});
+
 /** Calls the failing tool with a marker in its arguments. */
 const callsFailingTool: GenerateFunction = async () => ({
   content: '',
@@ -121,6 +128,43 @@ describe('a failed tool call, in the task record (COR-2531)', () => {
       expect(record?.failure?.toolCall?.name).toBe('charge-card');
       expect(JSON.stringify(record)).not.toContain(ARGUMENT_MARKER);
       expect(JSON.stringify(await bureau.tasks.get(task.id))).not.toContain(ARGUMENT_MARKER);
+    });
+  }
+
+  for (const [order, calls] of [
+    [
+      'after a call that succeeded',
+      [
+        { id: 'call-lookup', name: 'lookup-order', arguments: {} },
+        { id: 'call-charge-2', name: 'charge-card', arguments: { secret: ARGUMENT_MARKER } },
+      ],
+    ],
+    [
+      'before a call that never got to run',
+      [
+        { id: 'call-charge-3', name: 'charge-card', arguments: { secret: ARGUMENT_MARKER } },
+        { id: 'call-lookup', name: 'lookup-order', arguments: {} },
+      ],
+    ],
+  ] as const) {
+    it(`names the call that failed in a step of several calls, the failing call coming ${order}`, async () => {
+      const agent = createAgent({
+        name: 'default',
+        generate: async () => ({ content: '', toolCalls: [...calls] }),
+        stopWhen: stopWhen.noToolCalls(),
+        toolbox: createToolbox([lookupOrder, chargeCard]),
+        executeOptions: { errorMode: 'failFast' },
+      });
+      const bureau = await open(agent);
+      const task = await bureau.tasks.start('default', 'go', { principal: ALICE });
+      await settle(bureau, task.id);
+
+      const view = await bureau.tasks.get(task.id);
+      expect(view?.failure?.toolCall?.name).toBe('charge-card');
+      expect(view?.failure?.toolCall?.callId).toBe(
+        calls.find((call) => call.name === 'charge-card')?.id,
+      );
+      expect(view?.failure?.step?.label).toBe('charge-card');
     });
   }
 

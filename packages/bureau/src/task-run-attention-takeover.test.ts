@@ -211,3 +211,29 @@ describe('a stall written by a process that lost the run (COR-2526)', () => {
     expect(world.holderStalled).toEqual([]);
   });
 });
+
+describe('a retry recorded by a process that lost the run (COR-2531)', () => {
+  it('is cleared when the successor recovers the run, and the old holder’s later retry write is refused', async () => {
+    const world = await openTakeover();
+    const task = await world.holder.bureau.tasks.start('stalling', 'Go.');
+    await world.toolA.entered;
+    const holderRegistry = world.holder.bureau.internals.taskRegistry;
+    // The holder's model step is on its second try when its process is lost.
+    expect(await holderRegistry.recordRetrying(task.id, { label: 'model', attempt: 2 })).toBe(true);
+    expect((await world.storedOf(task.id))?.retrying).toEqual({ label: 'model', attempt: 2 });
+
+    // A renews nothing, so its claim lapses and B adopts the run, driving it from its checkpoint.
+    await world.stepUntil(() => world.holdsClaim(world.successor, task.id));
+    await world.toolB.entered;
+
+    // What the dead holder recorded is stale: the successor does not know a step is retrying.
+    await waitUntil(async () => (await world.storedOf(task.id))?.retrying === undefined);
+    expect((await world.successor.bureau.tasks.get(task.id))?.retrying).toBeNull();
+
+    // The old holder, a moment behind, cannot write a retry onto its successor's record.
+    expect(await holderRegistry.recordRetrying(task.id, { label: 'model', attempt: 3 })).toBe(
+      false,
+    );
+    expect((await world.storedOf(task.id))?.retrying).toBeUndefined();
+  });
+});

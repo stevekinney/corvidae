@@ -36,7 +36,7 @@ import {
 const FALLBACK_ERROR_CODE = 'UNKNOWN';
 
 /** The label of a model step: the step a retry or a failure names when no tool call is involved. */
-export const MODEL_STEP_LABEL = 'model';
+const MODEL_STEP_LABEL = 'model';
 
 /** The error kinds whose failing step is the model's: a provider failure, and a response that is not valid output. */
 const MODEL_STEP_ERROR_KINDS: ReadonlySet<string> = new Set(['generate', 'output']);
@@ -55,7 +55,7 @@ export interface RunErrorObservation {
 }
 
 /** What a failed run's events left: the {@link RunFailureDetail} `run.error` publishes, and the step and call a task records. */
-export interface RunFailureObservation extends RunFailureDetail {
+interface RunFailureObservation extends RunFailureDetail {
   /** The failing step's label: the failed tool's name, or `model`; left out when no step or call is known. */
   readonly stepLabel?: string | undefined;
   /** The tool call that failed. */
@@ -148,7 +148,7 @@ export function createRunOutcomeDetails(options: RunOutcomeDetailsOptions = {}):
  * and label, when both are known), the error's code and kind, and the tool call. Never an
  * argument or any error text.
  */
-export function taskFailureOf(observation: RunFailureObservation): TaskFailure {
+function taskFailureOf(observation: RunFailureObservation): TaskFailure {
   return {
     ...(observation.step === undefined || observation.stepLabel === undefined
       ? {}
@@ -199,7 +199,7 @@ export function observeRunOutcome(
   activeRun: ObservedRun,
   runId: string,
   recorder: RunOutcomeDetailRecorder,
-  onError?: ((error: unknown, kind: string) => void) | undefined,
+  onError?: (error: unknown, kind: string) => void,
 ): () => void {
   const disposers: Array<() => void> = [];
   const listen = (
@@ -222,6 +222,9 @@ export function observeRunOutcome(
   let failedCall: { readonly step: unknown; readonly call: TaskFailureToolCall } | undefined;
   listen('tool.settled', (event) => {
     if (event['status'] !== 'error') return;
+    // Another run's call can reach this run's emitter (a delegation's child announces on it): only
+    // this run's own are its failure's.
+    if (typeof event['runId'] === 'string' && event['runId'] !== runId) return;
     const { toolName, toolCallId, step } = event;
     if (typeof toolName !== 'string' || typeof toolCallId !== 'string') return;
     if (failedCall?.step === step) return;
@@ -238,23 +241,44 @@ export function observeRunOutcome(
     });
   });
 
+  // A model step's tries add up from two sources: the provider retries inside one `generate`
+  // (`generate.retry` names the attempt that failed, so the one now starting is the next), and the
+  // `onError` hook's re-runs of the whole step, each of which is another `generate.started` for the
+  // same step. A step is retrying from its second try until it produces a response or fails for
+  // good (`generate.completed`, `generate.error`), and a different step starting ends it too.
+  let startedStep: unknown;
+  let recoveries = 0;
+  let providerAttempt = 1;
   let retrying = false;
+  const clearRetrying = (): void => {
+    if (!retrying) return;
+    retrying = false;
+    recorder.recordRetrying(runId, null);
+  };
+  const reportTries = (): void => {
+    const attempt = recoveries + providerAttempt;
+    if (attempt < 2) {
+      clearRetrying();
+      return;
+    }
+    retrying = true;
+    recorder.recordRetrying(runId, { label: MODEL_STEP_LABEL, attempt });
+  };
+  listen('generate.started', (event) => {
+    const step = event['step'];
+    recoveries = step === startedStep ? recoveries + 1 : 0;
+    startedStep = step;
+    providerAttempt = 1;
+    reportTries();
+  });
   listen('generate.retry', (event) => {
     const attempt = event['attempt'];
-    // The event names the attempt that failed; the one now starting is the next.
     if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 1) return;
-    retrying = true;
-    recorder.recordRetrying(runId, { label: MODEL_STEP_LABEL, attempt: attempt + 1 });
+    providerAttempt = attempt + 1;
+    reportTries();
   });
-  // A model step ends retrying when it produces a response or fails for good; a new one starting
-  // means the earlier step is over (a retry that changes the request announces no second start).
-  for (const type of ['generate.started', 'generate.completed', 'generate.error'] as const) {
-    listen(type, () => {
-      if (!retrying) return;
-      retrying = false;
-      recorder.recordRetrying(runId, null);
-    });
-  }
+  listen('generate.completed', clearRetrying);
+  listen('generate.error', clearRetrying);
 
   return () => {
     for (const dispose of disposers) dispose();

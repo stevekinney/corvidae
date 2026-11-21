@@ -2,6 +2,7 @@ import {
   type ActiveRun,
   AgentRunError,
   createAgentRunEventRegistry,
+  GenerateCompletedEvent,
   GenerateErrorEvent,
   GenerateRetryEvent,
   GenerateStartedEvent,
@@ -227,6 +228,52 @@ describe('attachRunEventFeed and the outcome details (COR-2095)', () => {
       ['run-1', { label: 'model', attempt: 3 }],
       ['run-1', null],
     ]);
+  });
+
+  it('counts the error hook’s re-runs of a step with the provider’s retries, and clears when another step starts', () => {
+    const changes: unknown[] = [];
+    const details = createRunOutcomeDetails({
+      onRetrying: (_runId, change) => changes.push(change),
+    });
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+
+    dispatch(new GenerateStartedEvent(0));
+    // The step fails, and the error hook asks for it to run again: the same step starts again.
+    dispatch(new GenerateErrorEvent(0, new Error('overloaded'), 5));
+    dispatch(new GenerateStartedEvent(0));
+    // It fails again and is run a third time; the failure between the runs clears the retry.
+    dispatch(new GenerateErrorEvent(0, new Error('overloaded'), 5));
+    dispatch(new GenerateStartedEvent(0));
+    // The third run retries a provider call too: the fourth try overall.
+    dispatch(new GenerateRetryEvent(0, 1, new Error('overloaded')));
+    dispatch(new GenerateCompletedEvent(0, { content: 'done', toolCalls: [] }, 5));
+    // The next step starts: nothing is retrying.
+    dispatch(new GenerateStartedEvent(1));
+
+    expect(changes).toEqual([
+      { label: 'model', attempt: 2 },
+      null,
+      { label: 'model', attempt: 3 },
+      { label: 'model', attempt: 4 },
+      null,
+    ]);
+  });
+
+  it('ignores a tool call that another run settled on this run’s emitter', () => {
+    const details = createRunOutcomeDetails();
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+
+    dispatch(
+      new ToolSettledBubbleEvent(
+        { agentName: 'child', runId: 'child-run', step: 2 },
+        { toolName: 'child-tool', toolCallId: 'x', status: 'error' },
+      ),
+    );
+    dispatch(new RunErrorEvent(2, TOOL_FAILURE));
+
+    expect(details.take('run-1')).not.toHaveProperty('toolCall');
   });
 
   it('does not report a retry for a step that never retried', () => {

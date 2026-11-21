@@ -43,6 +43,15 @@ async function listTasks(
   };
 }
 
+/** The first task a listing answered, or `undefined` for none. */
+async function firstTask(
+  served: Served,
+  params: Record<string, unknown>,
+): Promise<ListedTask | undefined> {
+  const listed = await listTasks(served, params);
+  return listed.tasks[0];
+}
+
 async function idsOf(served: Served, params: Record<string, unknown>): Promise<string[]> {
   const listed = await listTasks(served, params);
   expect(listed.error).toBeUndefined();
@@ -139,16 +148,16 @@ describe('the failure and retrying filters of bureau.tasks.list (COR-2531)', () 
     const served = await serveWorkflows(cleanups);
     await seed(served);
 
-    const [tool] = (await listTasks(served, { failedStep: 'charge-card' })).tasks;
+    const tool = await firstTask(served, { failedStep: 'charge-card' });
     expect(tool?.failure).toEqual({
       step: { index: 2, label: 'charge-card' },
       errorCode: 'UNKNOWN',
       errorKind: 'tool',
       toolCall: { name: 'charge-card', callId: 'call-1' },
     });
-    const [model] = (await listTasks(served, { failedStep: 'model' })).tasks;
+    const model = await firstTask(served, { failedStep: 'model' });
     expect(model?.failure?.toolCall).toBeNull();
-    const [retrying] = (await listTasks(served, { retrying: true })).tasks;
+    const retrying = await firstTask(served, { retrying: true });
     expect(retrying?.status).toBe('working');
     expect(retrying?.retrying).toEqual({ label: 'model', attempt: 2 });
     expect(retrying?.failure).toBeNull();
@@ -167,9 +176,8 @@ describe('the failure and retrying filters of bureau.tasks.list (COR-2531)', () 
       'failed-before-failures-were-kept',
     );
     expect(record?.failure).toBeUndefined();
-    const listed = (await listTasks(served)).tasks.find(
-      (task) => task.id === 'failed-before-failures-were-kept',
-    );
+    const everything = await listTasks(served);
+    const listed = everything.tasks.find((task) => task.id === 'failed-before-failures-were-kept');
     expect(listed?.failure).toBeNull();
   });
 
@@ -218,13 +226,13 @@ describe('the engine’s runs under the failure and retrying filters (COR-2531)'
     });
     await served.bureau.durableEngine()!.start('flaky', null, { id: 'flaky-run' });
     await waitForCondition(async () => {
-      const [parked] = (await listTasks(served, { workflow: 'flaky' })).tasks;
+      const parked = await firstTask(served, { workflow: 'flaky' });
       return parked?.status === 'working';
     }, 'the instance never started');
     await served.bureau.workflows!.signal('go', null);
     let failed: ListedTask | undefined;
     await waitForCondition(async () => {
-      [failed] = (await listTasks(served, { workflow: 'flaky' })).tasks;
+      failed = await firstTask(served, { workflow: 'flaky' });
       return failed?.status === 'failed';
     }, 'the instance never failed');
     // Weft's own failedStep label is the step's label, as the view reports it.

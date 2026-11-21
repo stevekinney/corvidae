@@ -6,6 +6,7 @@ import type { CatalogRunSettlement } from './catalog-run-settlement';
 import { createCatalogTaskSettler } from './catalog-task-settlement';
 import { createTaskRegistry } from './task-registry';
 import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
+import type { TaskFailure } from './task-failure';
 
 const settlement: CatalogRunSettlement = {
   runId: 'agent-run-1',
@@ -17,7 +18,11 @@ const settlement: CatalogRunSettlement = {
   recovered: true,
 };
 
-function build(loaded: CatalogRunRecoveryLoad, childRunIds: readonly string[] = []) {
+function build(
+  loaded: CatalogRunRecoveryLoad,
+  childRunIds: readonly string[] = [],
+  failureOf?: (runId: string) => TaskFailure | undefined,
+) {
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
   const registry = createTaskRegistry({
     kv: textValueStore(new MemoryStorage()),
@@ -43,6 +48,7 @@ function build(loaded: CatalogRunRecoveryLoad, childRunIds: readonly string[] = 
     now: runtime.clock.nowISO,
     ownerOf: (principal) => principal ?? 'anonymous:local',
     originatingMessage: (input) => (typeof input === 'string' ? input : undefined),
+    ...(failureOf === undefined ? {} : { failureOf }),
   });
   return { registry, settler };
 }
@@ -206,6 +212,44 @@ describe('settling a catalog task from the hook', () => {
     expect(once?.settled).toMatchObject({ status: 'completed', answer: { text: 'the answer' } });
     expect(twice?.settled?.status).toBe('completed');
     expect(twice?.history).toEqual(once?.history);
+  });
+
+  it('stores the failure the run’s own events left with a failed settlement, and for no other status (COR-2531)', async () => {
+    const failure: TaskFailure = {
+      step: { index: 1, label: 'charge-card' },
+      errorCode: 'UNKNOWN',
+      errorKind: 'tool',
+      toolCall: { name: 'charge-card', callId: 'call-1' },
+    };
+    const asked: string[] = [];
+    const { registry, settler } = build(found, [], (runId) => {
+      asked.push(runId);
+      return failure;
+    });
+
+    await settler({
+      ...settlement,
+      status: 'failed',
+      finishReason: 'error',
+      message: 'it failed',
+      content: null,
+    });
+    expect((await registry.record('agent-run-1'))?.failure).toEqual(failure);
+    expect((await registry.record('agent-run-1'))?.settled).not.toHaveProperty('failure');
+
+    // A completed run is not asked for a failure, and stores none.
+    const completed = build(found, [], (runId) => {
+      asked.push(runId);
+      return failure;
+    });
+    await completed.settler(settlement);
+    expect((await completed.registry.record('agent-run-1'))?.failure).toBeUndefined();
+    expect(asked).toEqual(['agent-run-1']);
+
+    // A failed run no live event described (another process's) stores no failure.
+    const unseen = build(found, [], () => undefined);
+    await unseen.settler({ ...settlement, status: 'failed', finishReason: 'error', content: null });
+    expect((await unseen.registry.record('agent-run-1'))?.failure).toBeUndefined();
   });
 
   it('writes nothing for a run it has no recovery record for, or for a fresh dispatch with no task record', async () => {

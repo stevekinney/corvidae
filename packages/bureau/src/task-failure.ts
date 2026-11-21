@@ -11,7 +11,7 @@
  */
 
 /** The longest step label, tool name or call identifier a {@link TaskFailure} keeps, in characters. */
-export const TASK_FAILURE_TEXT_LIMIT = 200;
+const TASK_FAILURE_TEXT_LIMIT = 200;
 
 /**
  * Why a run failed: which step, the error's code and kind, and the tool call that failed when one
@@ -35,7 +35,7 @@ export interface TaskFailure {
 }
 
 /** The failing step of a {@link TaskFailure}. */
-export interface TaskFailureStep {
+interface TaskFailureStep {
   /** The step's index in the run, from zero. */
   readonly index: number;
   /** The step's label, at most {@link TASK_FAILURE_TEXT_LIMIT} characters. */
