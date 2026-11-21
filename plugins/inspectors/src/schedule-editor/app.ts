@@ -26,14 +26,13 @@ import { unmount } from 'svelte';
 import { followHostTheme } from '../host-theme.ts';
 import {
   agentOptionsOf,
-  faultOfResult,
-  isReceipt,
   isRecord,
   isScheduleList,
   isScheduleView,
   workflowOptionsOf,
   type ScheduleView,
 } from './model.ts';
+import { runSavePlan } from './save.ts';
 import ScheduleEditor from './schedule-editor.svelte';
 import { createEditorView } from './view.svelte.ts';
 
@@ -52,16 +51,20 @@ const DECLARED_TOOLS: ReadonlySet<string> = new Set([
   'bureau.workflows.list',
 ]);
 
-/** The words a part of a save has in "Saved the schedule's cadence, but …". */
-const SAVED_PART: Readonly<Record<string, string>> = Object.assign(
-  Object.create(null) as Record<string, string>,
-  {
-    'bureau.schedules.create': 'created the schedule',
-    'bureau.schedules.update': 'saved the changes',
-    'bureau.schedules.pause': 'paused it',
-    'bureau.schedules.resume': 'resumed it',
-  },
-);
+/** What a call of a save did once it was written, for "The part that did go through: …". */
+const SAVED_PART: ReadonlyMap<string, string> = new Map([
+  ['bureau.schedules.create', 'created the schedule'],
+  ['bureau.schedules.update', 'saved the changes'],
+  ['bureau.schedules.pause', 'paused it'],
+  ['bureau.schedules.resume', 'resumed it'],
+]);
+
+/** The sentence that says which calls of a save were written before it stopped, or none. */
+function savedParts(done: readonly string[]): string {
+  return done.length === 0
+    ? ''
+    : ` The part that did go through: ${done.map((part) => SAVED_PART.get(part) ?? part).join(', ')}.`;
+}
 
 async function start(): Promise<void> {
   const root = document.getElementById('root');
@@ -223,64 +226,51 @@ async function start(): Promise<void> {
     view.busy = true;
     view.errors = {};
     const making = view.source === undefined;
-    let id = view.source?.id;
-    let revision = view.source?.revision;
-    const done: string[] = [];
     try {
-      for (const step of plan) {
-        const args =
-          step.tool === 'bureau.schedules.create'
-            ? step.arguments
-            : {
-                ...step.arguments,
-                scheduleId: id,
-                ...(revision === undefined ? {} : { expectedRevision: revision }),
-              };
-        const result = await call(step.tool, args);
-        if (result.isError === true) {
-          const fault = faultOfResult(result);
-          view.errors = fault.fields;
-          view.stale = fault.currentRevision !== undefined;
-          const saved =
-            done.length === 0
-              ? ''
-              : ` The part that did go through: ${done.map((part) => SAVED_PART[part]).join(', ')}.`;
-          const reason = view.stale
-            ? 'The schedule changed since it was opened. Read it again, then make the change again.'
-            : fault.message;
-          // What did go through is read back, so the form is built on the schedule as it is, and
-          // what was typed to send is spent; the rest of the draft stays for another try.
-          if (id !== undefined && done.length > 0) {
-            const fresh = await readSchedule(id);
-            if (fresh !== undefined) {
-              view.source = fresh;
-              view.draft.input = '';
-              view.draft.workflowInput = '';
-            }
-          }
-          say(`Not saved: ${reason}${saved}`, 'danger');
-          return;
-        }
-        const value = result.structuredContent;
-        if (step.tool === 'bureau.schedules.create' && isScheduleView(value)) {
-          id = value.id;
-          revision = value.revision;
-        } else if (step.tool !== 'bureau.schedules.create' && isReceipt(value)) {
-          revision = value.revision;
-        } else {
-          say(
-            `Not saved: the Bureau's answer to ${step.tool} was not one this page reads.`,
-            'danger',
-          );
-          return;
-        }
-        done.push(step.tool);
+      const outcome = await runSavePlan(plan, view.source, call);
+      if (outcome.kind === 'saved') {
+        await settle(
+          outcome.id,
+          making ? 'Created the schedule.' : 'Saved the changes.',
+          'success',
+        );
+        return;
       }
-      if (id !== undefined) {
-        await settle(id, making ? 'Created the schedule.' : 'Saved the changes.', 'success');
+      const saved = savedParts(outcome.done);
+      // What may have been written is read back, so the form is built on the schedule as it is,
+      // and what was typed to send is spent; the rest of the draft stays for another try.
+      if (outcome.id !== undefined && (outcome.done.length > 0 || outcome.kind === 'unanswered')) {
+        const fresh = await readSchedule(outcome.id);
+        if (fresh !== undefined) {
+          view.source = fresh;
+          view.draft.input = '';
+          view.draft.workflowInput = '';
+        }
       }
-    } catch {
-      say('Not saved: the host did not answer.', 'danger');
+      if (outcome.kind === 'refused') {
+        view.errors = outcome.fault.fields;
+        view.stale = outcome.fault.currentRevision !== undefined;
+        const reason = view.stale
+          ? 'The schedule changed since it was opened. Read it again, then make the change again.'
+          : outcome.fault.message;
+        say(`Not saved: ${reason}${saved}`, 'danger');
+      } else if (outcome.kind === 'unreadable') {
+        say(
+          `Not saved: the Bureau's answer to ${outcome.tool} was not one this page reads.${saved}`,
+          'danger',
+        );
+      } else if (outcome.id === undefined) {
+        // A create the host never answered may have been written: another one would make a second.
+        say(
+          'The host did not answer, so the schedule may or may not have been made. Look at the list before trying again.',
+          'danger',
+        );
+      } else {
+        say(
+          `The host did not answer ${outcome.tool}, so the form was read again to show what the schedule holds. Check it before saving again.${saved}`,
+          'danger',
+        );
+      }
     } finally {
       view.busy = false;
     }

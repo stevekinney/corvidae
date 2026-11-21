@@ -44,6 +44,15 @@ const hostPanelCalls = new AsyncLocalStorage<string>();
  * context, so it is never part of a request an outside client could write.
  */
 export function runAsHostPanel<Result>(panelUri: string, call: () => Result): Result {
+  // The URI is written to an audit entry and to a record a replay must read back, so one that is
+  // not a `ui://` resource is refused where it enters, not left to fail in a later drain.
+  if (
+    typeof panelUri !== 'string' ||
+    !panelUri.startsWith('ui://') ||
+    panelUri.length === 'ui://'.length
+  ) {
+    throw new TypeError(`"${String(panelUri)}" is not a ui:// panel URI`);
+  }
   return hostPanelCalls.run(panelUri, call);
 }
 

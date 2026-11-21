@@ -131,6 +131,8 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     definition = structuredClone(definition);
+    // The caller's own options are read once, here, before the first await (COR-2545).
+    const actor = scheduleOptions?.actor;
     // A chat Bureau names itself is unguessable and not yet made, so it is not another owner's to
     // refuse: the schedule's first fire makes it, owned by the schedule's owner.
     const allocatedChat = definition.continueChat === true;
@@ -183,7 +185,6 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     // `createAgentSchedule`'s `AgentScheduledEvent` (`schedule.created`, AB-298)
     // straight onto it, exactly once for the fresh registration this call makes —
     // no separate dispatch needed here.
-    const actor = scheduleOptions?.actor;
     const scheduler = createAgentScheduler({
       engine: runtime.durable.engine,
       // COR-1879: the internal variant a plugin's host API uses marks what it forwards. COR-2545: a
@@ -306,6 +307,8 @@ export function createScheduleOperations<D extends AgentDefinitions>(
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     const workflowInput: unknown = structuredClone(definition.workflowInput ?? null);
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
+    // Who asks is read with the definition, before the first await (COR-2545).
+    const actor = options?.actor;
     if (!runtime.durable) return undefined;
     if (workspace !== undefined) {
       // A workspace schedule carries the authority of its owner, which an input the workflow
@@ -335,9 +338,7 @@ export function createScheduleOperations<D extends AgentDefinitions>(
       scheduleId,
       spec,
     });
-    emitter.dispatch(
-      options?.actor === undefined ? created : markEventActor(created, options.actor),
-    );
+    emitter.dispatch(actor === undefined ? created : markEventActor(created, actor));
     // The schedule is registered, so a read that fails or finds nothing loses only its locator.
     let summary;
     try {
@@ -911,6 +912,8 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     // The caller owns `update`, and a `workflowInput` in it is any JSON value: read it as it was
     // given, not as it is after the first await.
     update = structuredClone(update);
+    // Who asks is read with it, before the first await, for the audit entry written after the commit.
+    const actor = guard?.actor;
     if (update.overlap !== undefined && update.overlap !== 'skip' && update.overlap !== 'allow') {
       throw new BureauError(
         `overlap policy '${String(update.overlap)}' is not supported by Bureau; only 'skip' and 'allow' are offered`,
@@ -1080,7 +1083,7 @@ export function createScheduleOperations<D extends AgentDefinitions>(
       ...targetFields,
       ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
-    await recordScheduleUpdated(scheduleId, update, guard?.actor);
+    await recordScheduleUpdated(scheduleId, update, actor);
     return true;
   }
 

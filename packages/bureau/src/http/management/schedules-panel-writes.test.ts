@@ -249,6 +249,13 @@ describe('the audit entry of a schedule write', () => {
     expect(hostPanelUriOfCall()).toBeUndefined();
   });
 
+  it('refuses a panel that is not a ui:// URI where it enters, so no replay can be left unreadable', () => {
+    for (const bad of ['', 'ui://', 'https://example.test/panel', 'inspectors']) {
+      expect(() => runAsHostPanel(bad, () => 'ran'), bad).toThrow(TypeError);
+    }
+    expect(runAsHostPanel(PANEL, () => 'ran')).toBe('ran');
+  });
+
   it('keeps who asked in the pending record, so a replay writes the same entry', () => {
     const operation = scheduleTransitionOperation('bureau-schedule-transition:s:0:0', {
       kind: 'schedule.paused',

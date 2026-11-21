@@ -320,18 +320,15 @@ export function scheduleSavePlan(
 }
 
 /** The Bureau argument each form field is sent as, so a fault names the field that caused it. */
-const FIELD_OF_ARGUMENT: Readonly<Record<string, ScheduleField>> = Object.assign(
-  Object.create(null) as Record<string, ScheduleField>,
-  {
-    spec: 'spec',
-    timeZone: 'timeZone',
-    agentName: 'target',
-    workflowType: 'target',
-    input: 'input',
-    workflowInput: 'workflowInput',
-    description: 'description',
-  },
-);
+const FIELD_OF_ARGUMENT: ReadonlyMap<string, ScheduleField> = new Map<string, ScheduleField>([
+  ['spec', 'spec'],
+  ['timeZone', 'timeZone'],
+  ['agentName', 'target'],
+  ['workflowType', 'target'],
+  ['input', 'input'],
+  ['workflowInput', 'workflowInput'],
+  ['description', 'description'],
+]);
 
 /**
  * The field each issue of a Bureau fault belongs to. A fault carries `{ issues: [{ path, message }] }`
@@ -350,7 +347,7 @@ export function scheduleFaultFieldErrors(data: unknown): ScheduleFieldErrors {
     const message: unknown = Reflect.get(issue, 'message');
     const head: unknown = Array.isArray(path) ? (path as unknown[])[0] : undefined;
     if (typeof head !== 'string' || typeof message !== 'string') continue;
-    const field = FIELD_OF_ARGUMENT[head];
+    const field = FIELD_OF_ARGUMENT.get(head);
     if (field !== undefined && errors[field] === undefined) errors[field] = message;
   }
   return errors;
