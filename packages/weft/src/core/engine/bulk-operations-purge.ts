@@ -373,7 +373,7 @@ function buildBaseWorkflowDeleteKeys(state: WorkflowState): Set<string> {
     // explicitly, else a purge + id reuse leaves a stale marker that would make
     // recovery re-provision services for a run that never had them.
     KEYS.workflowHasServices(state.id),
-    KEYS.activityRetrying(state.id), // `wf:{id}:retrying` (COR-2529) is under no purge prefix below.
+    KEYS.activityRetrying(state.id), // `wf-retrying:{id}` (COR-2529) is under no purge prefix below.
     // The finalizer payload (`wf-finalizer-state:`) and the teardown-owed marker
     // (`wf-teardown-needed:`) live under their own prefixes, not `wf:{id}:`, so the
     // prefix sweep below misses them — delete them explicitly. Purge only reaches a
