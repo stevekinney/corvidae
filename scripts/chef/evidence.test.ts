@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   collectProviderEvidence,
   collectProviderEvidenceFromRequest,
+  compareInstalledReleaseReceipt,
   readVerificationRequest,
   validateEvidence,
   type EvidenceRecord,
@@ -106,6 +107,38 @@ test('only a collector-issued receipt can validate', () => {
     records: collected.records,
   };
   expect(validateEvidence(plan, forged, expected).ok).toBe(false);
+});
+
+test('compares an installed-release receipt with its archive and configuration obligation', () => {
+  const expected = {
+    sourceRevision: 'a'.repeat(40),
+    target: 'darwin-arm64' as const,
+    archiveDigest: 'b'.repeat(64),
+    configuration: [{ path: 'bun.lock', sha256: 'c'.repeat(64) }],
+  };
+  const receipt = {
+    version: 1,
+    outcome: 'pass',
+    archive: {
+      sha256: expected.archiveDigest,
+      target: expected.target,
+      manifest: { sourceSha: expected.sourceRevision },
+    },
+    installedExecutable: 'interborough/bin/interborough',
+    assertions: [{ exit: 0 }],
+    configuration: expected.configuration,
+    producer: { script: 'applications/interborough/scripts/test-installed-release.ts' },
+  };
+  expect(compareInstalledReleaseReceipt(receipt, expected)).toEqual([]);
+  expect(
+    compareInstalledReleaseReceipt(
+      { ...receipt, archive: { ...receipt.archive, target: 'linux-x64' } },
+      expected,
+    ),
+  ).toEqual(expect.arrayContaining([expect.stringContaining('target does not match')]));
+  expect(compareInstalledReleaseReceipt({ ...receipt, configuration: [] }, expected)).toEqual(
+    expect.arrayContaining([expect.stringContaining('configuration identity')]),
+  );
 });
 
 test('provider results remain derived from authenticated transport, not request claims', () => {

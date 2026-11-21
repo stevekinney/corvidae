@@ -245,3 +245,9 @@ export {
 } from './server/rest-bindings.ts';
 
 export * from './document-workflow/index.ts';
+
+export {
+  AUTHORIZATION_SCOPES,
+  WEFT_SCOPE_VOCABULARY,
+  type BuiltInAuthorizationScope,
+} from './authorization-scopes.ts';

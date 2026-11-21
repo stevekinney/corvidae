@@ -8,6 +8,7 @@
 
 /** A count as a summary holds it: a number, `null` when it could not be read, `undefined` while it is read. */
 export interface SummaryCount {
+  /** The count displayed in the summary. */
   readonly value: number | null | undefined;
 }
 

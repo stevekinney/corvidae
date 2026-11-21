@@ -13,8 +13,12 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  CINDER_GENERATED_OUTPUTS,
+  ensureCinderGenerated,
+} from '../../../scripts/ensure-cinder-generated.ts';
 import {
   buildPanelPage,
   HOST_PANEL_PACKAGES,
@@ -51,6 +55,8 @@ export type ReleaseOperations = {
   readonly buildPanelPage?: PanelPageBuilder;
   /** The panels the workspace plugins contribute; defaults to {@link workspacePanels}. */
   readonly workspacePanels?: () => Promise<readonly WorkspacePanel[]>;
+  /** The Cinder checkout holding generated assets, supplied by the isolated release fixtures. */
+  readonly generatedCinder?: string;
   readonly platform?: NodeJS.Platform;
   readonly architecture?: string;
   readonly now?: () => number;
@@ -210,6 +216,17 @@ async function stage(
     await stage(dependency, nodeModules, seen, dependencies, source);
 }
 
+// The frozen source archive excludes generated assets. Stage the ones produced
+// from the same clean checkout as the executable so relocated panels can build.
+async function stageGeneratedCinder(source: string, runtime: string): Promise<void> {
+  const destination = join(runtime, '@lostgradient', 'cinder');
+  for (const file of CINDER_GENERATED_OUTPUTS) {
+    const target = join(destination, file);
+    await mkdir(dirname(target), { recursive: true });
+    await cp(join(source, file), target);
+  }
+}
+
 async function verifyFrozenInstall(
   sourceSha: string,
   command: ReleaseCommand = runCommand,
@@ -220,6 +237,21 @@ async function verifyFrozenInstall(
   const archive = join(root, 'source.tar');
   await command(['git', 'archive', sourceSha, '-o', archive]);
   await command(['tar', '-xf', archive, '-C', source]);
+  // Cinder's generated token files are ignored by Git, and its generator needs the pinned
+  // development toolchain (including Prettier). This source is disposable; runtime staging below
+  // still comes only from the subsequent frozen production install.
+  await command(
+    [
+      process.execPath,
+      'install',
+      '--frozen-lockfile',
+      '--ignore-scripts',
+      '--no-progress',
+      '--no-summary',
+    ],
+    source,
+  );
+  await materializePanelRuntimeAssets(source, command);
   await command(
     [
       process.execPath,
@@ -240,6 +272,21 @@ async function verifyFrozenInstall(
     source,
     dependencies: join(source, 'applications', 'interborough', 'node_modules'),
   };
+}
+
+/** Generate Cinder's ignored token outputs in the pinned release source before staging it. */
+async function materializePanelRuntimeAssets(
+  source: string,
+  command: ReleaseCommand = runCommand,
+): Promise<void> {
+  await command(
+    [process.execPath, 'components/cinder/scripts/tokens/generate-validators.ts'],
+    source,
+  );
+  await command(
+    [process.execPath, 'components/cinder/scripts/tokens/generate-artifacts.ts', '--ignored-only'],
+    source,
+  );
 }
 
 async function bundleSdk(
@@ -398,8 +445,8 @@ mountPanel(Proof, { props: { label: 'external runtime' } });
     const giveUpTimer = setTimeout(() => giveUp.resolve(undefined), 20_000);
     const port = await Promise.race([reported.promise, giveUp.promise]);
     clearTimeout(giveUpTimer);
-    while (now() < deadline) {
-      // Without a reported port there is nothing to ask; `listing` stays undefined below.
+    // A host that reported its bound port gets one request. The startup clock only limits retries.
+    do {
       if (port === undefined) break;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/host/plugins`);
@@ -418,8 +465,9 @@ mountPanel(Proof, { props: { label: 'external runtime' } });
       } catch {
         // The supervisor may not have bound its port yet.
       }
+      if (now() >= deadline) break;
       await sleep(100);
-    }
+    } while (now() < deadline);
     if (listing === undefined || Reflect.get(listing, 'status') !== 'running') {
       const exitBeforeCleanup = childProcess.exitCode;
       await stopChild();
@@ -513,6 +561,9 @@ export async function buildRelease(
   const readState = operations.readRepositoryState ?? (() => readRepositoryState());
   const { status, sourceSha } = await readState();
   if (status.trim() !== '') throw new Error('Release inputs are dirty');
+  const generatedCinder =
+    operations.generatedCinder ?? join(REPOSITORY_ROOT, 'components', 'cinder');
+  if (operations.generatedCinder === undefined) ensureCinderGenerated({ root: REPOSITORY_ROOT });
   await mkdir(options.outdir, { recursive: true });
   const targetRoot = join(options.outdir, 'interborough');
   const archive = join(options.outdir, `interborough-${options.version}-darwin-arm64.tar.gz`);
@@ -543,6 +594,7 @@ export async function buildRelease(
     await stage(SDK, runtime, staged, productionInstall.dependencies);
     for (const name of PANEL_RUNTIME_PACKAGES)
       await stage(name, runtime, staged, productionInstall.dependencies);
+    await stageGeneratedCinder(generatedCinder, runtime);
     await bundleSdk(runtime, productionInstall.source, command);
     await assertContained(join(root, 'share', 'interborough', 'plugin-runtime'));
     await verifyRelocatedHost(root, prebuilt, operations.now, operations.sleep);

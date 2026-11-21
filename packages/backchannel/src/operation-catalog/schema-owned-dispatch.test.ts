@@ -104,7 +104,8 @@ describe('schema-owned operation dispatch', () => {
     ) {
       throw new Error('expected an async iterable result');
     }
-    expect(await result.value[Symbol.asyncIterator]().next()).toEqual({
+    const iterable = result.value as AsyncIterable<unknown>;
+    expect(await iterable[Symbol.asyncIterator]().next()).toEqual({
       done: false,
       value: 'event',
     });

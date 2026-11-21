@@ -1,3 +1,7 @@
+import {
+  TEST_AUTHORIZATION_SCOPES as AUTHORIZATION_SCOPES,
+  TEST_SCOPE_VOCABULARY,
+} from './scope-vocabulary.test-support.ts';
 /**
  * Tests for the authorization scope vocabulary, scope extraction, and the
  * access-check pipeline step used by `executeOperation`. This stable
@@ -8,8 +12,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  AUTHORIZATION_SCOPES,
-  extractScopesFromClaims,
+  extractScopesFromClaims as extractClaims,
   isAuthorizationScope,
   type AuthorizationScope,
 } from './authorization-scope.ts';
@@ -20,6 +23,10 @@ import {
   principalFromJwtClaims,
   type Principal,
 } from './principal.ts';
+
+function extractScopesFromClaims(claims: Record<string, unknown>) {
+  return extractClaims(claims, undefined, TEST_SCOPE_VOCABULARY);
+}
 
 describe('extractScopesFromClaims', () => {
   it('extracts from space-delimited `scope` claim', () => {
@@ -107,7 +114,7 @@ describe('extractScopesFromClaims', () => {
     // dropped, not treated as an authorization failure that locks out the token.
     const scopes = extractScopesFromClaims({ scope: 'workflows:read quota:read' });
     expect(scopes.has('workflows:read')).toBe(true);
-    expect(scopes.has('quota:read' as never)).toBe(false);
+    expect(scopes.has('quota:read')).toBe(false);
     expect(scopes.size).toBe(1);
   });
 
@@ -135,16 +142,16 @@ describe('extractScopesFromClaims', () => {
 describe('isAuthorizationScope', () => {
   it('accepts every listed scope', () => {
     for (const scope of AUTHORIZATION_SCOPES) {
-      expect(isAuthorizationScope(scope)).toBe(true);
+      expect(isAuthorizationScope(scope, TEST_SCOPE_VOCABULARY)).toBe(true);
     }
   });
 
   it('rejects unlisted strings', () => {
-    expect(isAuthorizationScope('nonsense')).toBe(false);
-    expect(isAuthorizationScope('')).toBe(false);
-    expect(isAuthorizationScope('workflows')).toBe(false);
-    expect(isAuthorizationScope('budget:read')).toBe(false);
-    expect(isAuthorizationScope('budget:write')).toBe(false);
+    expect(isAuthorizationScope('nonsense', TEST_SCOPE_VOCABULARY)).toBe(false);
+    expect(isAuthorizationScope('', TEST_SCOPE_VOCABULARY)).toBe(false);
+    expect(isAuthorizationScope('workflows', TEST_SCOPE_VOCABULARY)).toBe(false);
+    expect(isAuthorizationScope('budget:read', TEST_SCOPE_VOCABULARY)).toBe(false);
+    expect(isAuthorizationScope('budget:write', TEST_SCOPE_VOCABULARY)).toBe(false);
   });
 });
 
@@ -373,7 +380,10 @@ describe('evaluateAccess defensive default', () => {
 
 describe('JWT principals integrate with evaluateAccess', () => {
   it('jwt principal with the right scope passes a scoped access check', () => {
-    const principal = principalFromJwtClaims({ scope: 'workflows:write', sub: 's' });
+    const principal = principalFromJwtClaims(
+      { scope: 'workflows:write', sub: 's' },
+      { scopeVocabulary: TEST_SCOPE_VOCABULARY },
+    );
     const policy: AccessPolicy = {
       kind: 'scoped',
       scopes: {

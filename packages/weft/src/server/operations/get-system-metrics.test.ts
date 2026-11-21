@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * `weft.system.metrics` operation + REST binding — unit tests.
  *
@@ -304,7 +305,10 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
       'weft.system.metrics',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'user', scope: 'workflows:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
@@ -329,7 +333,10 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
       'weft.system.metrics',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'user', scope: 'system:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'user', scope: 'system:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry,

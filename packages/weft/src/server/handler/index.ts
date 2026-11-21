@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * Platform-agnostic HTTP request handler for the workflow REST API.
  * Maps Request to Response with no Bun-specific dependencies.
@@ -113,7 +114,7 @@ async function dispatchRestBinding(
   url: URL,
 ): Promise<Response> {
   try {
-    const principal = authContextToPrincipal(options?.authContext);
+    const principal = authContextToPrincipal(options?.authContext, WEFT_SCOPE_VOCABULARY);
     return await dispatchViaExecuteOperation(
       request,
       engine,

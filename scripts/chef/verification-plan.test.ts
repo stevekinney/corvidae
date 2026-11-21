@@ -176,6 +176,30 @@ describe('assignment gate and verification plan', () => {
       }).risks,
     ).toMatchObject({ authorization: 'covered', 'persistence-protocols': 'covered' });
   });
+
+  test('makes playground deployment-reachable changes provider-verified before integration', () => {
+    for (const path of [
+      'applications/playground/vercel.json',
+      'applications/playground/scripts/ignore-build.sh',
+      'components/cinder/src/index.ts',
+    ]) {
+      const plan = createVerificationPlan({
+        assignment: assignment({ ownedPaths: [path] }),
+        commands: ['bun test deployment'],
+        policy: 'p',
+      });
+      expect(plan.risks['automatic-deployment']).toBe('covered');
+      expect(plan.obligations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            risk: 'automatic-deployment',
+            executionBoundary: 'provider',
+            relevantInputs: [path],
+          }),
+        ]),
+      );
+    }
+  });
 });
 
 // The evidence plan replays the changed-file lists of landings that broke `main` (the lists are

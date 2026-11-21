@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * Request admission gate: authentication then per-key rate limiting.
  *
@@ -57,7 +58,7 @@ export async function authenticateRequest(
     // `weft.system.principal` and the audit actor report it, and it holds
     // every built-in scope so every built-in operation stays reachable.
     return {
-      authContext: unauthenticatedLocalAuthContext(),
+      authContext: unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY),
       response: null,
       publicBypass,
     };

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
 import {
@@ -247,7 +248,11 @@ describe('weft.schedules.update', () => {
           },
         }),
       }),
-      { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
+      {
+        registry,
+        host: engine,
+        principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+      },
     );
 
     expect(response.status).toBe(200);
@@ -380,7 +385,11 @@ describe('weft.schedules.update', () => {
           },
         }),
       }),
-      { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
+      {
+        registry,
+        host: engine,
+        principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+      },
     );
 
     expect(response.status).toBe(200);
@@ -416,7 +425,11 @@ describe('weft.schedules.update', () => {
           },
         }),
       }),
-      { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
+      {
+        registry,
+        host: engine,
+        principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+      },
     );
 
     expect(response.status).toBe(200);
@@ -452,7 +465,11 @@ describe('weft.schedules.update', () => {
             },
           }),
         }),
-        { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
+        {
+          registry,
+          host: engine,
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+        },
       );
 
       expect(response.status).toBe(200);
@@ -725,7 +742,11 @@ describe('weft.schedules.update DynamicWorkflowSourceUnavailableError wire mappi
             },
           }),
         }),
-        { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
+        {
+          registry,
+          host: engine,
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+        },
       );
       const text = await response.text();
 

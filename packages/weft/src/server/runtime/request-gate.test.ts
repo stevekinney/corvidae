@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * The request gate on a server with no authentication (COR-1466): every
  * request is the local user, but rate limiting still keys by client address.
@@ -28,7 +29,9 @@ describe('authenticateRequest with no authenticator', () => {
     expect(outcome.response).toBeNull();
     expect(outcome.publicBypass).toBe(false);
     expect(outcome.authContext?.method).toBe('unauthenticated-local');
-    expect(outcome.authContext?.principal).toBe(principalFromUnauthenticatedLocal());
+    expect(outcome.authContext?.principal).toBe(
+      principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+    );
   });
 
   it('still reports a default public path as a bypass', async () => {

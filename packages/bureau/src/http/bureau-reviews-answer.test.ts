@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-1804 — a question carries its own answer schema. A `requestHumanInput` call parks a review
  * whose projection and AG-UI interrupt carry the schema; `bureau.reviews.resolve` takes an
@@ -414,6 +415,7 @@ describe('bureau.reviews.resolve `answer`, against a stubbed host', () => {
       operations: bureauReviewsOperations,
       host,
       authenticate: createOperationHandlerAuthenticator(authentication, {
+        scopeVocabulary: WEFT_SCOPE_VOCABULARY,
         additionalScopes: BUREAU_SCOPES,
       }),
     });

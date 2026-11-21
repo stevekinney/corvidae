@@ -384,5 +384,6 @@ export type BulkTagResult = {
  */
 export type PurgeResult = {
   deleted: number;
+  /** The recorded purge audit when commit metadata was supplied. */
   auditEvent?: BulkOperationAuditEvent;
 };

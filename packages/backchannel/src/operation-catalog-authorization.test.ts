@@ -22,7 +22,7 @@ import { z } from 'zod';
 
 import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
-import { dispatchUnary } from './operation-catalog/operation-dispatch.ts';
+import { dispatchOperation } from './operation-catalog/operation-dispatch.ts';
 import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
 
 const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
@@ -38,7 +38,7 @@ describe('executeOperation — step 6: authorize hook', () => {
     });
     const malformed: Record<string, unknown> = { ...base, authorize: async () => undefined };
     malformed['dispatch'] = (rawInput: unknown, context: unknown) =>
-      Reflect.apply(dispatchUnary, undefined, [malformed, { rawInput, context }]);
+      Reflect.apply(dispatchOperation, undefined, [malformed, { rawInput, context }]);
     const registry = Reflect.apply(createOperationRegistry, undefined, [[malformed]]);
     const result = await executeOperation(
       'weft.test.badhook',

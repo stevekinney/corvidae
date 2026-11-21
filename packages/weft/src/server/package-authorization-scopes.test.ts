@@ -1,3 +1,5 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
+import { getPrincipalOperation } from './operations/get-principal.ts';
 /**
  * Package-registered authorization scopes (COR-1478).
  *
@@ -16,7 +18,6 @@ import {
   createAuthenticator,
   createRotatingApiKeyStore,
   defineOperation,
-  getPrincipalOperation,
   principalFromApiKey,
   principalFromStdioLocal,
   type AuthResult,
@@ -50,7 +51,7 @@ function bearer(token: string): Request {
 
 function principalOf(result: AuthResult): Principal {
   if (!result.authenticated) throw new Error(`expected admission, got: ${result.error}`);
-  return authContextToPrincipal(result);
+  return authContextToPrincipal(result, WEFT_SCOPE_VOCABULARY);
 }
 
 function scopesOf(principal: Principal): string[] {
@@ -62,7 +63,10 @@ async function jwtPrincipal(
   claims: Record<string, unknown>,
   additionalScopes: readonly PackageAuthorizationScope[],
 ): Promise<Principal> {
-  const authenticate = await createAuthenticator({ jwt: { secret: SECRET } }, { additionalScopes });
+  const authenticate = await createAuthenticator(
+    { jwt: { secret: SECRET } },
+    { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes },
+  );
   return principalOf(await authenticate(bearer(await signJWT(claims, SECRET))));
 }
 
@@ -127,7 +131,7 @@ describe('additionalScopes — retention', () => {
   it('retains a registered scope from defaultApiKeyScopes and drops an unlisted one', async () => {
     const authenticate = await createAuthenticator(
       { apiKeys: [API_KEY], defaultApiKeyScopes: ['workflows:read', TASKS_READ, TASKS_WRITE] },
-      { additionalScopes: [TASKS_READ] },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: [TASKS_READ] },
     );
     const principal = principalOf(await authenticate(bearer(API_KEY)));
     expect(scopesOf(principal)).toEqual([TASKS_READ, 'workflows:read']);
@@ -154,7 +158,7 @@ describe('additionalScopes — retention', () => {
             scopes: ['other.pkg:admin', 'weft.secret:write', TASKS_READ, 'workflows:read'],
           }),
       },
-      { additionalScopes: [TASKS_READ] },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: [TASKS_READ] },
     );
     const principal = principalOf(await authenticate(bearer(API_KEY)));
     expect(scopesOf(principal)).toEqual([TASKS_READ, 'workflows:read']);
@@ -171,7 +175,7 @@ describe('additionalScopes — retention', () => {
     });
     const authenticate = await createAuthenticator(
       { resolveApiKeyPrincipal: store.resolve },
-      { additionalScopes: [TASKS_READ] },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: [TASKS_READ] },
     );
     const principal = principalOf(await authenticate(bearer(API_KEY)));
     expect(scopesOf(principal)).toEqual([TASKS_READ, 'system:read']);
@@ -191,7 +195,10 @@ describe('additionalScopes — validation at construction', () => {
       const additionalScopes = [scope] as unknown as PackageAuthorizationScope[];
       expect(
         await throwingRejectionOf(
-          createAuthenticator({ jwt: { secret: SECRET } }, { additionalScopes }),
+          createAuthenticator(
+            { jwt: { secret: SECRET } },
+            { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes },
+          ),
         ),
       ).toThrow(/additionalScopes/);
     }
@@ -200,7 +207,10 @@ describe('additionalScopes — validation at construction', () => {
   it('rejects a scope in the reserved `weft` namespace', async () => {
     expect(
       await throwingRejectionOf(
-        createAuthenticator({ jwt: { secret: SECRET } }, { additionalScopes: ['weft.tasks:read'] }),
+        createAuthenticator(
+          { jwt: { secret: SECRET } },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: ['weft.tasks:read'] },
+        ),
       ),
     ).toThrow(/reserved/);
   });
@@ -304,15 +314,18 @@ describe('additionalScopes — weft.system.principal', () => {
 
 describe('additionalScopes — principals built without an authenticator', () => {
   it('rebuilds a jwt context without a forwarded principal with built-in scopes only', () => {
-    const principal = authContextToPrincipal({
-      method: 'jwt',
-      claims: { sub: 'u', scope: `${TASKS_READ} workflows:read` },
-    });
+    const principal = authContextToPrincipal(
+      {
+        method: 'jwt',
+        claims: { sub: 'u', scope: `${TASKS_READ} workflows:read` },
+      },
+      WEFT_SCOPE_VOCABULARY,
+    );
     expect(scopesOf(principal)).toEqual(['workflows:read']);
   });
 
   it('gives the trusted-local principal every built-in scope and no package scope', () => {
-    const principal = principalFromStdioLocal();
+    const principal = principalFromStdioLocal(WEFT_SCOPE_VOCABULARY);
     expect(principal.hasScope('system:admin')).toBe(true);
     expect(principal.hasScope(TASKS_READ)).toBe(false);
   });

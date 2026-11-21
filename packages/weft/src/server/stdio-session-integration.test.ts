@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * End-to-end integration tests for `runStdioSession` wired to a real
  * `Engine` instance and the production `createEngineEventFeedBackend`.
@@ -198,6 +199,7 @@ describe('runStdioSession — engine-backed integration', () => {
     );
 
     const sessionPromise = runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input: input.stream,
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },
@@ -232,6 +234,7 @@ describe('runStdioSession — engine-backed integration', () => {
     const output = collectingWritable();
 
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },
@@ -263,6 +266,7 @@ describe('runStdioSession — engine-backed integration', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },
