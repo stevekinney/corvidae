@@ -1148,6 +1148,28 @@ describe('the Done tab', () => {
     ).toBe(true);
   });
 
+  for (const [status, cardState, notice] of [
+    ['canceled', 'cancelled', undefined],
+    ['revoked', 'unavailable', REVIEWS_COPY.approvalClosed.revoked],
+    ['superseded', 'unavailable', REVIEWS_COPY.approvalClosed.superseded],
+  ] as const) {
+    test(`opens a ${status} approval as a truthful read-only record`, async () => {
+      const approval = toolApprovalFixture({ status });
+      const { container, queryByRole } = open(
+        { reviews: [approval] },
+        AUTHORIZATION_SCOPES,
+        '/reviews?tab=done',
+      );
+      await waitFor(() => expect(rows(container).length).toBe(1));
+      await openRow(container, 0);
+      const card = container.querySelector('[data-cinder-layout="detail"]');
+      expect(card?.getAttribute('data-cinder-state')).toBe(cardState);
+      if (notice !== undefined) expect(card?.textContent).toContain(notice);
+      expect(queryByRole('button', { name: 'Approve', exact: true })).toBeNull();
+      expect(queryByRole('button', { name: 'Deny', exact: true })).toBeNull();
+    });
+  }
+
   test('counts every decided review in its segment, beyond the page it has read (COR-2426)', async () => {
     // Thirty decided reviews: the tab reads 25 at a time, and the Bureau says how many there are.
     const decided = Array.from({ length: 30 }, (_, index) =>

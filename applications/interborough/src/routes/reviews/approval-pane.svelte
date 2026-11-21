@@ -9,17 +9,21 @@
     Alert,
     ApprovalCard,
     humanizeIdentifier,
+    type ApprovalOperation,
+    type ApprovalResolution,
     type ApprovalState,
   } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import {
     approvalQuestion,
     argumentEntries,
     declaredSummary,
     reasonSaysAlways,
   } from '../../lib/tool-text.ts';
+  import { decidedByName } from './review-items.ts';
   import ReviewSource from './review-source.svelte';
   import type { ReviewOutcome } from './review-outcome.ts';
 
@@ -36,6 +40,17 @@
 
   let { review, note = $bindable(''), deciding, outcome, onDecide }: ApprovalPaneProps = $props();
 
+  const states = {
+    pending: 'pending',
+    approved: 'approved',
+    denied: 'denied',
+    rejected: 'denied',
+    expired: 'expired',
+    canceled: 'cancelled',
+    revoked: 'unavailable',
+    superseded: 'unavailable',
+  } satisfies Record<BureauToolApproval['status'], ApprovalState>;
+  const principalStore = getPrincipalStore();
   const waiting = $derived(review.status === 'pending');
   const question = $derived(
     approvalQuestion({
@@ -55,19 +70,36 @@
     review.approval.action.type === 'approval' ? review.approval.action : undefined,
   );
   const hasInput = $derived(argumentEntries(review.approval.arguments).length > 0);
-  const operation = $derived({
-    ...(action?.operation ?? { kind: 'other' as const }),
-    argsPreview: hasInput ? review.approval.arguments : undefined,
+  const operation = $derived.by((): ApprovalOperation => {
+    const declared = action?.operation;
+    const argsPreview = hasInput ? review.approval.arguments : undefined;
+    if (declared === undefined) return { kind: 'other', argsPreview };
+    if (declared.kind === 'file-write') {
+      return { ...declared, filesTouched: [...declared.filesTouched], argsPreview };
+    }
+    const { filesTouched, ...operationFields } = declared;
+    return {
+      ...operationFields,
+      ...(filesTouched === undefined ? {} : { filesTouched: [...filesTouched] }),
+      argsPreview,
+    };
   });
-  const state = $derived<ApprovalState>(review.status === 'rejected' ? 'denied' : review.status);
+  const state = $derived(states[review.status]);
+  const closedNotice = $derived(
+    review.status === 'revoked' || review.status === 'superseded'
+      ? REVIEWS_COPY.approvalClosed[review.status]
+      : undefined,
+  );
   const resolution = $derived(review.resolution);
+  const decidedBy = $derived(
+    resolution === undefined
+      ? undefined
+      : decidedByName(resolution.decidedBy, principalStore.principal?.subject ?? undefined),
+  );
 
-  function decide(choice: {
-    readonly decision: 'approve' | 'deny';
-    readonly reason?: string;
-    readonly remember: boolean;
-  }): void {
-    onDecide(choice.decision === 'deny' ? 'deny' : choice.remember ? 'remember' : 'approve');
+  function decide(choice: ApprovalResolution): void {
+    if (choice.decision === 'deny') onDecide('deny');
+    if (choice.decision === 'approve') onDecide(choice.remember ? 'remember' : 'approve');
   }
 </script>
 
@@ -101,9 +133,11 @@
     failure={outcome?.tone === 'danger'
       ? { summary: outcome.title, detail: outcome.message }
       : undefined}
-    decidedBy={resolution?.decidedBy}
+    {decidedBy}
     decidedAt={resolution?.decidedAt}
     decisionNote={resolution?.reason}
+    outcomeLabel={review.status === 'rejected' ? REVIEWS_COPY.decided.rejected : undefined}
+    notice={closedNotice}
     onResolve={decide}
   />
   {#if outcome !== undefined && outcome.tone !== 'danger'}

@@ -122,6 +122,10 @@ export const REVIEWS_COPY = {
     answered: 'Answered',
     closed: 'Closed',
   },
+  approvalClosed: {
+    revoked: 'This approval was revoked.',
+    superseded: 'A newer request replaced this approval.',
+  },
   /** Between what became of a review and who did it. */
   by: 'by',
   /** After a review's kind in its list row: "Tool approval from Tool runner". */
