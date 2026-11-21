@@ -22,7 +22,10 @@ const workflow = Bun.YAML.parse(
     'utf8',
   ),
 ) as {
-  jobs: Record<'package' | 'publish' | 'verify', { steps: WorkflowStep[]; 'runs-on': string }>;
+  jobs: Record<
+    'package' | 'publish' | 'verify',
+    { steps: WorkflowStep[]; 'runs-on': string; if?: string }
+  >;
 };
 
 const packaging = await (async () => {
@@ -167,6 +170,45 @@ test('requires a native offline install and smoke before uploading the package',
   expect(upload).toBeGreaterThan(step);
   expect(job.steps[step]?.run).toContain('npm install --global --offline --ignore-scripts');
   expect(job.steps[step]?.run).toContain('test-installed-release.ts');
+});
+
+const publishInputResults = await (async () => {
+  const validate = workflow.jobs.package.steps.find(
+    (step) => step.name === 'Validate immutable inputs',
+  )?.run;
+  if (validate === undefined) throw new Error('The release workflow has no validation command');
+  const directory = await mkdtemp(join(tmpdir(), 'interborough-package-inputs-'));
+  try {
+    const source = 'a'.repeat(40);
+    const validateInputs = (publish: boolean, protectedRef: boolean) =>
+      runWithHangGuard(['bash', '-e', '-o', 'pipefail', '-c', validate], {
+        env: {
+          ...rootScriptEnvironment(),
+          SOURCE_SHA: source,
+          VERSION: '1.0.0',
+          PUBLISH: String(publish),
+          GITHUB_REF: 'refs/heads/main',
+          GITHUB_REF_PROTECTED: String(protectedRef),
+          GITHUB_SHA: source,
+          GITHUB_OUTPUT: join(directory, 'outputs'),
+        },
+      });
+    const unprotected = await validateInputs(true, false);
+    const protectedMain = await validateInputs(true, true);
+    const rehearsal = await validateInputs(false, false);
+    return { unprotected, protectedMain, rehearsal };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
+test('only protected main can validate a pinned source for npm publishing', () => {
+  expect(publishInputResults.unprotected.success).toBe(false);
+  expect(publishInputResults.protectedMain.success).toBe(true);
+  expect(publishInputResults.rehearsal.success).toBe(true);
+  expect(workflow.jobs.publish.if).toBe(
+    "${{ inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
+  );
 });
 
 test('the package, publish and verify jobs use the same versioned artifact name', () => {

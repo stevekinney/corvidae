@@ -41,6 +41,7 @@ jobs:
           source_sha="$(printf '%s' "$SOURCE_SHA" | tr '[:upper:]' '[:lower:]')"
           if [ "$PUBLISH" = true ]; then
             test "$GITHUB_REF" = refs/heads/main
+            test "$GITHUB_REF_PROTECTED" = true
             test "$source_sha" = "$GITHUB_SHA"
           fi
           printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
@@ -112,7 +113,7 @@ jobs:
 
   publish:
     name: Publish the tested npm tarball
-    if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+    if: ${{ inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 15
