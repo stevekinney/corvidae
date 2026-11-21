@@ -1,5 +1,5 @@
 /**
- * COR-2327 B2: the current page's popover trigger (a chat's title switcher) paints 30px and, on a
+ * COR-2327 B2: the current page's popover trigger (a chat's title switcher) paints 32px and, on a
  * coarse pointer, answers a press 44px tall through a positioned pseudo-element that takes no
  * layout space. The trail's list clips its overflow, so the list gains that room inside its clip
  * with padding a matching negative margin gives back. A fine pointer changes nothing. The coarse
@@ -14,9 +14,10 @@ const coarse = css.slice(coarseStart, css.indexOf('\n  }\n', coarseStart));
 const fine = css.slice(0, coarseStart) + css.slice(css.indexOf('\n  }\n', coarseStart));
 
 describe('Breadcrumbs title switcher hit area', () => {
-  test('a fine pointer keeps the trigger 30px with its own clip, and no hit-area pseudo-element', () => {
+  test('a fine pointer keeps the trigger a medium Button tall with its own clip, and no hit-area pseudo-element', () => {
     const trigger = /\.cinder-breadcrumbs__trigger \{([^}]*)\}/su.exec(fine)?.[1] ?? '';
-    expect(trigger).toContain('min-block-size: 1.875rem;');
+    // COR-2438: as tall as the search field and icon buttons beside it in a bar (32px), not 30px.
+    expect(trigger).toContain('min-block-size: var(--_cinder-painted-height-md, 2rem);');
     const current = /\.cinder-breadcrumbs__current \{([^}]*)\}/su.exec(fine)?.[1] ?? '';
     expect(current).toContain('overflow: hidden;');
     expect(fine).not.toContain('.cinder-breadcrumbs__trigger::before');
@@ -40,6 +41,8 @@ describe('Breadcrumbs title switcher hit area', () => {
     const list = /\.cinder-breadcrumbs__list:has\([^)]*\) \{([^}]*)\}/su.exec(coarse)?.[1] ?? '';
     expect(list).toContain('padding-block: var(--_cinder-breadcrumbs-hit-overhang);');
     expect(list).toContain('margin-block: calc(var(--_cinder-breadcrumbs-hit-overhang) * -1);');
-    expect(list).toMatch(/--cinder-touch-target-min\) - 1\.875rem\) \/ 2/u);
+    expect(list).toMatch(
+      /--cinder-touch-target-min\) - var\(--_cinder-painted-height-md, 2rem\)\) \/ 2/u,
+    );
   });
 });

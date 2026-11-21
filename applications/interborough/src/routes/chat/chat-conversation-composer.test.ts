@@ -129,14 +129,13 @@ const composer = (container: HTMLElement) =>
   container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor');
 
 describe('the live composer', () => {
-  test('is addressed to the agent by its name, with the hint under it and a quiet disabled Send', async () => {
+  test('is addressed to the agent by its name, with nothing under it and a quiet disabled Send', async () => {
     serve();
     const { container } = mount();
 
     await waitFor(() => expect(composer(container)?.placeholder).toBe('Message Tool runner…'));
-    expect(container.querySelector('.chat-input-hint')?.textContent).toBe(
-      'Enter to send. Shift and Enter for a new line.',
-    );
+    // COR-2438: no line of help under the composer; Send's tooltip names the key.
+    expect(container.querySelector('.chat-input-hint')).toBeNull();
     const send = container.querySelector<HTMLButtonElement>('[data-chat-send]')!;
     expect(send.classList.contains('button-variant-secondary')).toBe(true);
     expect(send.disabled).toBe(true);

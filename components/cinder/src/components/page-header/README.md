@@ -30,7 +30,7 @@ A list page's create action is a `createAction`: a labelled primary button with 
 
 While a full-page `ErrorState` shows under the header, pass `error` so the header's primary buttons draw as secondary and Try again is the only primary.
 
-`status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`.
+`status` takes the page's status as a snippet and `statusPlacement` puts it beside the title (`inline`, on its first line) or under it (`below`, the default). An inline status and the actions are each one line box of the title's own size with their content centred in it, so they share the centre of the title's first line however the title wraps and whatever a control's height. The title wraps to two lines and then ends in an ellipsis; its tooltip carries the full text, from `title` or, when `title` is a snippet, from `titleText`. In a narrow pane, such as a chat's conversation, pass `titleLines={1}`: the title keeps one line and takes the free space first, and an inline status that no longer fits beside it moves under it.
 
 Default and large headers compact their actions to the extra-small control size. Set `compactActions={false}` when the header has room for each action’s own control size.
 
@@ -207,6 +207,7 @@ Below 720px of the hero's own width the focal value comes first and the copy fol
 | `overflowLabel` | `string` | no | `"More actions"` | The accessible name of the overflow menu button. |
 | `statusPlacement` | `"inline"` \| `"below"` | no | `"below"` | Where `status` sits: `inline` beside the title on its first line, or `below` the title. |
 | `title` | `string` | yes | — | Page-level heading text rendered inside the `headingLevel` heading; the runtime API also accepts a template-only snippet. |
+| `titleLines` | `1` \| `2` | no | `2` | How many lines the title may take before it ends in an ellipsis; with `1` an inline status that no longer fits beside the title moves under it. |
 | `titleSoft` | `string` | no | — | A lighter phrase drawn straight after the title, in the same heading at the same size, such as ", made easier" after a brand name. Include any leading space or punctuation. |
 | `titleText` | `string` | no | — | The title's plain text, for the full-title tooltip when `title` is a snippet. |
 | `tone` | `"plain"` \| `"tint"` \| `"accent"` \| `"night"` | no | `"plain"` | The band a `hero` header draws: `plain`, `tint`, `accent` or `night`. The other variants ignore it. |

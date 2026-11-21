@@ -19,7 +19,12 @@ import { CONNECTION_COPY } from '../../src/app/copy/views.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test, type PageErrorLog } from './fixtures.ts';
-import { expectEngineMissesForRuns, taskOfSession, waitingReviewOf } from './task-support.ts';
+import {
+  approveReview,
+  expectEngineMissesForRuns,
+  taskOfSession,
+  waitingReviewOf,
+} from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 /** Counts the console errors and failed requests an outage makes the page report. */
@@ -194,7 +199,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await expect(banner(page)).toHaveCount(0);
     await expect(approve).not.toHaveAttribute('aria-disabled', 'true');
-    await approve.click();
+    await approveReview(pane);
     await expect(row).toHaveCount(0);
     expect(operations).toContain('bureau.reviews.resolve');
 

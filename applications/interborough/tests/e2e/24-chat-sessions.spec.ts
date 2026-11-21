@@ -24,16 +24,6 @@ import { expectEngineMissesForRuns } from './task-support.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
-/**
- * The chat list's New chat: the labelled primary button in the list's header, which the first-use
- * state repeats (owner report, 2026-11-19).
- */
-const newChatAction = (page: Page) =>
-  page
-    .getByRole('region', { name: 'Chats' })
-    .locator('.cinder-page-header')
-    .getByRole('link', { name: 'New chat' });
-
 // A new chat with no `?agent=` starts with the host's default agent, the barrier agent
 // (`E2E_DEFAULT_AGENT`), which holds its run until the barrier is released. A spec that sends to it
 // leaves that run held, and a later spec that counts the runs held would read it.
@@ -113,10 +103,12 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       await expect(page).toHaveURL(/\/chats$/);
       // The page shows first use once the list has loaded.
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-      const list = page.getByRole('region', { name: 'Chats' });
-      await expect(list.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
-      await expect(list).toContainText('Start one with an agent.');
-      await expect(newChatAction(page)).toBeVisible();
+      // No chat at all: one empty state for the page, with no list pane beside it (COR-2438).
+      const state = page.getByTestId('chats-first-use');
+      await expect(state.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
+      await expect(state).toContainText('Start one with an agent.');
+      await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
+      await expect(state.getByRole('link', { name: 'New chat' })).toBeVisible();
       await checkA11y(`chat — the first use at ${width}px`);
     });
   }
@@ -125,7 +117,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     page,
   }) => {
     await page.goto('/chats');
-    await newChatAction(page).click();
+    await page.getByTestId('chats-first-use').getByRole('link', { name: 'New chat' }).click();
     await expect(page).toHaveURL(/\/chats\/new$/);
     // The host's default agent is the first it lists, which here is the chat proof's parent
     // (`e2e-server.ts`); this case needs the assistant's scripted reply.

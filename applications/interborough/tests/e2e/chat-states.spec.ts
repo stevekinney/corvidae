@@ -63,10 +63,16 @@ const rail = (page: Page) => page.locator('.cinder-tool-call-rail');
 const railRow = (page: Page, tool: string): Locator =>
   rail(page).locator('[data-cinder-tool-call-row]').filter({ hasText: tool });
 
-/** The status word beside a chat's title, and the dot that comes with it. */
+/**
+ * The status word beside a chat's title, and the tone of the Badge it is drawn as (COR-2438: a
+ * Badge, as on the tool-call row; `dot` keeps its name for the tone).
+ */
 async function statusOf(page: Page): Promise<{ word: string; dot: string | null }> {
   const heading = header(page);
-  const dot = heading.locator('.cinder-status-dot').first();
+  const dot = heading
+    .locator('.cinder-page-header__status .cinder-badge')
+    .filter({ visible: true })
+    .first();
   const shown = await heading.innerText();
   const text = shown.replace(/\s+/g, ' ');
   return {
@@ -74,7 +80,7 @@ async function statusOf(page: Page): Promise<{ word: string; dot: string | null 
       ['Waiting on you', 'Running', 'Failed', 'Ended', 'Done'].find((word) =>
         text.includes(word),
       ) ?? '',
-    dot: (await dot.count()) === 0 ? null : await dot.getAttribute('data-cinder-status'),
+    dot: (await dot.count()) === 0 ? null : await dot.getAttribute('data-cinder-variant'),
   };
 }
 
@@ -188,8 +194,7 @@ test.describe('Chat ended by a restart (frame a: 19a, 19b, 19c, 19e)', () => {
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
     await expect(header(page)).not.toContainText('Waiting on you');
-    const waiting = page
-      .getByRole('region', { name: 'Conversation', exact: true })
+    const waiting = transcript(page)
       .getByText('Waiting on you', { exact: true })
       .filter({ visible: true });
     await expect(waiting).toHaveCount(1);
@@ -205,8 +210,7 @@ test('shows one waiting status in the refund conversation on a phone (COR-2451)'
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
   await expect(page.locator('[data-approval-decision]')).toBeVisible();
 
-  const status = page
-    .getByRole('region', { name: 'Conversation', exact: true })
+  const status = transcript(page)
     .getByText('Waiting on you', { exact: true })
     .filter({ visible: true });
   for (const width of [320, 375]) {
@@ -230,8 +234,7 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
 
     await expectTopBar(page);
     await expect(trail(page).getByRole('button', { name: /^Refund order 4471/ })).toBeVisible();
-    const waitingStatus = page
-      .getByRole('region', { name: 'Conversation', exact: true })
+    const waitingStatus = transcript(page)
       .getByText('Waiting on you', { exact: true })
       .filter({ visible: true });
     await expect(waitingStatus).toHaveCount(1);
@@ -466,6 +469,8 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       'The reply stopped partway: the model provider dropped the connection.',
     );
     await expect(line.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.locator('.weft-chat-strip')).toHaveCount(0);
+    await expect(page.getByText('The agent did not answer', { exact: true })).toHaveCount(0);
     // The conversation stays live: a provider is connected, so the composer takes a message.
     await expect(page.getByRole('textbox', { name: /^Message/ })).toBeVisible();
     await expect(blockedRow(page)).toHaveCount(0);
