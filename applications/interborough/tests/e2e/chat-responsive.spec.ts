@@ -218,17 +218,28 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       .locator('.cinder-payload-inspector__field')
       .filter({ has: page.getByText('Reason', { exact: true }) });
     const reasonValue = reasonField.locator('dd');
-    await expect(reasonValue).toHaveText(/\S/);
-    await reasonValue.scrollIntoViewIfNeeded();
-    await expect(reasonValue).toBeInViewport({ ratio: 1 });
-    await expect(irreversible).toBeInViewport({ ratio: 1 });
-    await expect(deck.getByRole('button', { name: 'Deny', exact: true })).toBeInViewport({
-      ratio: 1,
-    });
+    await expect(reasonValue).toHaveText('Arrived damaged');
+    // Scroll just the modal body. Scrolling the target through Playwright also moves its ancestor
+    // scrollports and the mobile viewport can capture the footer before its new paint.
+    const showLowerPayload = async () => {
+      await deck.locator('.cinder-modal__body').evaluate(async (body) => {
+        body.scrollTop = body.scrollHeight;
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+      });
+      await expect(reasonValue).toBeInViewport({ ratio: 1 });
+      await expect(irreversible).toBeInViewport({ ratio: 1 });
+      for (const name of ['Deny', 'Later', 'Approve']) {
+        await expect(deck.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+      }
+    };
+    await showLowerPayload();
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'tool approval decision deck payload scrolled',
       source: SOURCE,
+      ready: showLowerPayload,
     });
     await deck.getByRole('button', { name: 'Deny' }).click();
     await expect(deck.getByRole('button', { name: 'Confirm denial' })).toBeVisible();
