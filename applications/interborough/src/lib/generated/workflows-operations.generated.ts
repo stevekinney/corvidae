@@ -231,8 +231,26 @@ export type WorkflowsOperationTypes = {
             readonly problem: SharedCodeIssuesMessage_037571b6 | null;
             readonly runs: {
               readonly active: number;
+              readonly current: {
+                readonly status: 'pending' | 'running' | 'suspended';
+                readonly step: number | null;
+                readonly totalSteps: number | null;
+                readonly waitingForSignal: string | null;
+              } | null;
+              readonly last: {
+                readonly failedStep: number | null;
+                readonly status:
+                  | 'pending'
+                  | 'running'
+                  | 'completed'
+                  | 'failed'
+                  | 'cancelled'
+                  | 'timed-out'
+                  | 'suspended';
+              } | null;
               readonly last24Hours: number;
               readonly lastRunAt: string | null;
+              readonly total: number;
             } | null;
             readonly state: 'ready' | 'invalid';
             readonly steps: ReadonlyArray<Record<string, unknown>> | null;

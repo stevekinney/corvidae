@@ -172,9 +172,34 @@ const scheduleSchema = z.object({
 
 /** How busy a workflow is: see `WorkflowRunCounts`. */
 const runCountsSchema = z.object({
+  total: z.number().int().nonnegative(),
   active: z.number().int(),
   last24Hours: z.number().int(),
   lastRunAt: z.string().nullable(),
+  last: z
+    .object({
+      status: z.enum([
+        'pending',
+        'running',
+        'completed',
+        'failed',
+        'cancelled',
+        'timed-out',
+        'suspended',
+      ]),
+      /** The failed document step, counted from one, or `null` when the run did not fail in one. */
+      failedStep: z.number().int().positive().nullable(),
+    })
+    .nullable(),
+  current: z
+    .object({
+      status: z.enum(['pending', 'running', 'suspended']),
+      /** The most recently started document step, counted from one, or `null` before one starts. */
+      step: z.number().int().positive().nullable(),
+      totalSteps: z.number().int().nonnegative().nullable(),
+      waitingForSignal: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 const workflowDetailSchema = workflowListingSchema.extend({
@@ -902,10 +927,19 @@ export const workflowsListOperation = defineOperation<
                 ...listingView(listing),
                 // A file the Bureau cannot use is never registered, so it has had no instance to count.
                 runs:
-                  authorizeWorkspaceClass('deployment-operator', principal).allowed &&
-                  input.includeRuns === true &&
-                  listing.state === 'ready'
-                    ? await workflows.runCounts(listing.id)
+                  input.includeRuns === true && listing.state === 'ready'
+                    ? await workflows.runCounts(
+                        listing.id,
+                        authorizeWorkspaceClass('deployment-operator', principal).allowed
+                          ? undefined
+                          : async (runId) => {
+                              const owner = ownerOfPrincipal(principal);
+                              return (
+                                owner !== undefined &&
+                                (await host.ownership.runOwner(runId)) === owner
+                              );
+                            },
+                      )
                     : null,
               },
         ),

@@ -427,12 +427,23 @@ export interface WorkflowImpact extends WorkflowRevisionPlan {
 
 /** How busy one workflow is: what the workflow list shows beside each row. */
 export interface WorkflowRunCounts {
+  /** Every retained instance of this workflow that the reader may see. */
+  readonly total: number;
   /** Instances that have not finished: pending, running, or suspended. */
   readonly active: number;
   /** Instances created in the last 24 hours. */
   readonly last24Hours: number;
   /** When the newest instance was created, or `null` when the workflow has had none. */
   readonly lastRunAt: string | null;
+  /** The newest instance's durable state and failed document step, or `null` when there is none. */
+  readonly last: { readonly status: WorkflowStatus; readonly failedStep: number | null } | null;
+  /** The newest unfinished instance's progress and signal wait, or `null` when none is active. */
+  readonly current: {
+    readonly status: Extract<WorkflowStatus, 'pending' | 'running' | 'suspended'>;
+    readonly step: number | null;
+    readonly totalSteps: number | null;
+    readonly waitingForSignal: string | null;
+  } | null;
 }
 
 export interface WorkflowRunFilter {
@@ -648,7 +659,10 @@ export interface BureauWorkflows {
    * The counts of `id`'s instances, read from the engine's own totals, or `null` when the engine
    * could not be read (the failure is reported through the Bureau's diagnostics).
    */
-  readonly runCounts: (id: string) => Promise<WorkflowRunCounts | null>;
+  readonly runCounts: (
+    id: string,
+    mayReadRun?: (runId: string) => Promise<boolean>,
+  ) => Promise<WorkflowRunCounts | null>;
   /**
    * Start an instance of the ready, unpaused workflow `id` (COR-1812): the one start that names a
    * workflow. `input` is checked against the file's `inputSchema` first, and an input that fails
@@ -3085,38 +3099,109 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
     },
 
-    async runCounts(id) {
+    async runCounts(id, mayReadRun) {
       try {
         // The Bureau's clock, which the engine stamps each run's `createdAt` by (COR-2009).
         const now = options.runtime.clock.now();
+        const type = weftNameOf(id);
+        const visible = [] as Array<{
+          id: string;
+          status: WorkflowStatus;
+          createdAt: number;
+          version: string;
+          failedStep?: { readonly index: number } | undefined;
+        }>;
+        if (mayReadRun !== undefined) {
+          // An owner-scoped list cannot trust the engine's unscoped totals. Read this type once,
+          // then filter its retained rows before deriving every count and status from the same set.
+          for (let offset = 0; ;) {
+            const page = await engine.list({ type, limit: 100, offset });
+            for (const run of page.items) {
+              if (await mayReadRun(run.id)) visible.push(run);
+            }
+            offset += page.items.length;
+            if (page.items.length === 0 || offset >= page.total) break;
+          }
+        }
         // Two index-narrowed reads answer the counts. The engine intersects the type index with the
         // status or created-at index before it loads any state, so each read loads only the
         // instances it counts, and `limit: 1` bounds the reply.
-        const [active, recent] = await Promise.all([
-          engine.list({ type: weftNameOf(id), status: [...IN_FLIGHT_STATUSES], limit: 1 }),
-          engine.list({
-            type: weftNameOf(id),
-            createdAt: { gte: now - RECENT_RUN_WINDOW_MS },
-            limit: 1,
-          }),
-        ]);
+        const [all, active, recent] =
+          mayReadRun === undefined
+            ? await Promise.all([
+                engine.list({ type, limit: 1 }),
+                engine.list({ type, status: [...IN_FLIGHT_STATUSES], limit: 1 }),
+                engine.list({ type, createdAt: { gte: now - RECENT_RUN_WINDOW_MS }, limit: 1 }),
+              ])
+            : [undefined, undefined, undefined];
         // The engine lists newest first, so the first item of a page is the newest in its window.
         // A workflow that ran today already has its newest instance; only a quiet one widens the
         // window, and an unfiltered read of its whole history is the last resort.
-        let newest = recent.items[0];
-        for (const windowMs of [QUIET_RUN_WINDOW_MS, undefined]) {
-          if (newest !== undefined) break;
-          const page = await engine.list({
-            type: weftNameOf(id),
-            ...(windowMs === undefined ? {} : { createdAt: { gte: now - windowMs } }),
-            limit: 1,
-          });
-          newest = page.items[0];
+        let newest = mayReadRun === undefined ? all?.items[0] : visible[0];
+        if (mayReadRun === undefined && newest === undefined) {
+          for (const windowMs of [QUIET_RUN_WINDOW_MS, undefined]) {
+            const page = await engine.list({
+              type,
+              ...(windowMs === undefined ? {} : { createdAt: { gte: now - windowMs } }),
+              limit: 1,
+            });
+            newest = page.items[0];
+            if (newest !== undefined) break;
+          }
         }
+        const newestActive =
+          mayReadRun === undefined
+            ? active?.items[0]
+            : visible.find((run) => IN_FLIGHT_STATUSES.includes(run.status));
+        const current =
+          newestActive === undefined
+            ? null
+            : await (async () => {
+                const state = await engine.get(newestActive.id);
+                if (state === null || state === undefined) return null;
+                if (!IN_FLIGHT_STATUSES.includes(state.status)) return null;
+                const revision = await revisionOf(id, newestActive.version);
+                const totalSteps =
+                  revision === undefined
+                    ? null
+                    : workflowFileStepsInCanonicalOrder(revision.steps).length;
+                const events = await engine.getEvents(newestActive.id);
+                const startedStep = events.findLast(
+                  (event) => event.type === 'file-workflow:step-started',
+                );
+                const index = startedStep?.data['step'];
+                return {
+                  status: state.status as Extract<
+                    WorkflowStatus,
+                    'pending' | 'running' | 'suspended'
+                  >,
+                  step:
+                    typeof index === 'number' && Number.isSafeInteger(index) && index >= 0
+                      ? index + 1
+                      : null,
+                  totalSteps,
+                  waitingForSignal: state.waitingForSignals?.[0] ?? null,
+                };
+              })();
         return {
-          active: active.total,
-          last24Hours: recent.total,
+          total: mayReadRun === undefined ? all!.total : visible.length,
+          active:
+            mayReadRun === undefined
+              ? active!.total
+              : visible.filter((run) => IN_FLIGHT_STATUSES.includes(run.status)).length,
+          last24Hours:
+            mayReadRun === undefined
+              ? recent!.total
+              : visible.filter((run) => run.createdAt >= now - RECENT_RUN_WINDOW_MS).length,
           lastRunAt: newest === undefined ? null : new Date(newest.createdAt).toISOString(),
+          last:
+            newest === undefined
+              ? null
+              : {
+                  status: newest.status,
+                  failedStep: newest.failedStep === undefined ? null : newest.failedStep.index + 1,
+                },
+          current,
         };
       } catch (error) {
         // A count the engine would not give is left out, never shown as zero, and never withholds

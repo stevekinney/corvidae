@@ -371,7 +371,9 @@ describe('results', () => {
       { includeRuns: true },
       'operator-key',
     );
-    expect(listOf(listed, 'workflows')).toMatchObject([{ id: 'digest', runs: null }]);
+    expect(listOf(listed, 'workflows')).toMatchObject([
+      { id: 'digest', runs: { total: 0, active: 0, last: null, current: null } },
+    ]);
     const readByMember = await rpc(
       workspace,
       'bureau.workflows.get',
@@ -419,6 +421,13 @@ describe('results', () => {
     expect(listOf(ownRuns, 'runs').map((run) => run.id)).toEqual([operatorRunAgainId]);
     expect(listOf(ownRunsNext, 'runs').map((run) => run.id)).toEqual([operatorRunId]);
     expect(ownRuns.result?.['nextOffset']).toBe(1);
+    const ownActivity = await rpc(
+      workspace,
+      'bureau.workflows.list',
+      { includeRuns: true },
+      'operator-key',
+    );
+    expect(listOf(ownActivity, 'workflows')).toMatchObject([{ id: 'digest', runs: { total: 2 } }]);
     const ownGet = await rpc(
       workspace,
       'bureau.workflows.runs.get',
@@ -686,7 +695,14 @@ describe('results', () => {
     expect(byId(before, 'digest')).toMatchObject({
       description: 'Writes the daily digest.',
       trigger: FAST_SCHEDULE,
-      runs: { active: 0, last24Hours: 0, lastRunAt: null },
+      runs: {
+        total: 0,
+        active: 0,
+        last24Hours: 0,
+        lastRunAt: null,
+        last: null,
+        current: null,
+      },
     });
     expect(byId(before, 'bare')).toMatchObject({ description: null });
 
@@ -699,6 +715,7 @@ describe('results', () => {
       lastRunAt: string | null;
     };
     expect(counted.active).toBe(0);
+    expect(counted.total).toBe(1);
     expect(counted.last24Hours).toBe(1);
     expect(Number.isNaN(Date.parse(counted.lastRunAt ?? ''))).toBe(false);
     expect(byId(after, 'bare')?.['runs']).toMatchObject({ last24Hours: 0, lastRunAt: null });
@@ -711,9 +728,27 @@ describe('results', () => {
       steps: [{ kind: 'await-signal', signal: 'never-sent' }],
     });
     await served.bureau.durableEngine()!.start('waiting', null, { id: 'waiting-run' });
+    await waitForCondition(async () => {
+      const state = await served.bureau.durableEngine()!.get('waiting-run');
+      return state?.waitingForSignals?.includes('never-sent') === true;
+    }, 'the workflow run reaches its signal wait');
     const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     expect(listed.result?.['workflows']).toMatchObject([
-      { id: 'waiting', runs: { active: 1, last24Hours: 1 } },
+      {
+        id: 'waiting',
+        runs: {
+          total: 1,
+          active: 1,
+          last24Hours: 1,
+          last: { status: 'running', failedStep: null },
+          current: {
+            status: 'running',
+            step: 1,
+            totalSteps: 1,
+            waitingForSignal: 'never-sent',
+          },
+        },
+      },
     ]);
   });
 
@@ -746,21 +781,23 @@ describe('results', () => {
     ).toBe(true);
   });
 
-  it('widens the window for a quiet workflow, and reads its whole history only as a last resort', async () => {
+  it('reads a quiet workflow’s total and newest run together, without widening time windows', async () => {
     const served = await serve();
     await served.bureau.workflows!.create('digest', DEFINITION);
     const engine = served.bureau.durableEngine()!;
     const DAY = 24 * 60 * 60 * 1000;
     const longAgo = Date.now() - 400 * DAY;
     const reads: Array<{ ageInDays: number | null }> = [];
-    // The engine's clock is its own, so answer the windowed reads here: nothing in the last day or
-    // the last 30 days, and one instance, 400 days old, in the history.
+    // The engine's clock is its own, so answer the indexed reads here: nothing in the last day and
+    // one instance, 400 days old, in the complete type index.
     const stub = spyOn(engine, 'list').mockImplementation(async (filter) => {
       const gte = filter?.createdAt?.gte;
       reads.push({ ageInDays: gte === undefined ? null : Math.round((Date.now() - gte) / DAY) });
       const found = gte === undefined && filter?.status === undefined;
       return {
-        items: found ? [{ createdAt: longAgo }] : [],
+        items: found
+          ? [{ id: 'quiet-run', status: 'completed', createdAt: longAgo, version: 'version-1' }]
+          : [],
         total: found ? 1 : 0,
       } as never;
     });
@@ -769,18 +806,18 @@ describe('results', () => {
       const files = (listed.result?.['workflows'] ?? []) as Array<{ runs: unknown }>;
       const file = files[0];
       expect(file?.runs).toEqual({
+        total: 1,
         active: 0,
         last24Hours: 0,
         lastRunAt: new Date(longAgo).toISOString(),
+        last: { status: 'completed', failedStep: null },
+        current: null,
       });
     } finally {
       stub.mockRestore();
     }
-    // The count of the day, then 30 days, then the whole history; the active read has no window.
-    expect(reads.filter((read) => read.ageInDays !== null)).toEqual([
-      { ageInDays: 1 },
-      { ageInDays: 30 },
-    ]);
+    // The count of the day and the unfiltered type reads for total/newest and active only.
+    expect(reads.filter((read) => read.ageInDays !== null)).toEqual([{ ageInDays: 1 }]);
     expect(reads.filter((read) => read.ageInDays === null).length).toBe(2);
   });
 
