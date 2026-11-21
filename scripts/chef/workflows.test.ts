@@ -323,6 +323,15 @@ describe('workflow scripts', () => {
     }
   });
 
+  test('refuses dispatch when the fetch succeeds without a full commit SHA', async () => {
+    for (const fetch of [{ exitCode: 0 }, { exitCode: 0, base: 'main' }]) {
+      const delivery = await runDelivery({}, { 'fetch base': fetch });
+      expect(delivery.calls.map((call) => call.label)).toEqual(['fetch base COR-7']);
+      expect(delivery.result[0]?.reason).toContain('did not return a commit SHA');
+      expect(delivery.result[0]?.evidenceRequest).toBeNull();
+    }
+  });
+
   test('refuses evidence when the native worktree starts from a different SHA', async () => {
     const delivery = await runDelivery(
       {},
@@ -331,6 +340,11 @@ describe('workflow scripts', () => {
       },
     );
     expect(delivery.labels).toEqual(['fetch', 'implement']);
+    const mismatchInstruction = delivery.calls[1]?.prompt.split('\n')[0];
+    expect(mismatchInstruction).toContain('status blocked');
+    for (const field of ['startingBase', 'head', 'branch', 'worktree', 'report']) {
+      expect(mismatchInstruction).toContain(field);
+    }
     expect(delivery.result[0]?.reason).toContain('worktree started');
     expect(delivery.result[0]?.evidenceRequest).toBeNull();
   });

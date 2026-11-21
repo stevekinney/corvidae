@@ -24,6 +24,10 @@ export const meta = {
 const REPOSITORY = 'stevekinney/corvidae';
 const MAXIMUM_ROUNDS = 2;
 
+function isCommitSha(value) {
+  return typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
+}
+
 // What the pre-build design critique returns; scripts/chef/design-rows-resolved.ts defines the
 // file and design-critique.ts validates it before writing, so the schema only shapes the answer.
 const CRITIQUE_SCHEMA = {
@@ -732,7 +736,7 @@ async function deliverOne(issue) {
     return judgment(issue, 'brief exited 0 without an absolute brief path', steps);
   }
 
-  if (typeof briefBase !== 'string' || !/^[0-9a-f]{40}$/.test(briefBase))
+  if (!isCommitSha(briefBase))
     return judgment(issue, 'validated brief has no pinned base SHA', steps);
   const fetched = await fetchDispatchBase(issue);
   steps.fetchBase = fetched;
@@ -742,6 +746,8 @@ async function deliverOne(issue) {
       `could not fetch the default branch: ${fetched?.error || 'base fetch failed'}`,
       steps,
     );
+  if (!isCommitSha(fetched.base))
+    return judgment(issue, 'fetch of the default branch did not return a commit SHA', steps);
   if (fetched.base !== briefBase)
     return judgment(
       issue,
@@ -759,7 +765,7 @@ async function deliverOne(issue) {
   log(`${issue}: dispatching chef-worker (${chosen.model}: ${chosen.rule}) from ${briefPath}`);
   const built = await agent(
     [
-      `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it differs from ${briefBase}, return blocked with the observed startingBase and make no changes.`,
+      `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it differs from ${briefBase}, make no changes and return status blocked, the observed SHA as both startingBase and head, the assigned branch and worktree path, and a report explaining the mismatch.`,
       `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return startingBase, the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
     ].join('\n'),
     {
