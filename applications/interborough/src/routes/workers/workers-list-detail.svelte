@@ -195,7 +195,8 @@
 
 <style>
   :global(.ib-workers__empty) {
-    padding-inline: var(--cinder-density-pad-inline);
+    /* Leave room for the divider's 44px hit area. */
+    padding-inline: var(--cinder-density-pad-inline) var(--cinder-space-6);
   }
 
   .ib-workers__head {

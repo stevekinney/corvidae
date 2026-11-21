@@ -553,7 +553,14 @@ test('a filter that matches nothing keeps the text and closes the worker it hide
   });
   await checkA11y('workers—a filter that matches nothing');
 
-  await page.getByRole('button', { name: 'Clear filter' }).click();
+  const clear = page.getByRole('button', { name: 'Clear filter' });
+  await expect(clear).toBeVisible();
+  const clearReceivesPointer = await clear.evaluate((button) => {
+    const { right, top, height } = button.getBoundingClientRect();
+    return button.contains(document.elementFromPoint(right - 1, top + height / 2));
+  });
+  expect(clearReceivesPointer).toBe(true);
+  await clear.click();
   await expect(rows(page)).toHaveCount(4);
 });
 
