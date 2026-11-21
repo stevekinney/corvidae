@@ -129,6 +129,7 @@ Row — a small warning glyph, the title and description read as one sentence, a
 | `detail` | `string` | no | — | Optional technical detail, such as a fault code. It sits behind a disclosure labelled `detailsLabel`, so the plain-words description stays the first thing a person reads. |
 | `detailsLabel` | `string` | no | `"Show the error details"` | Label of the disclosure that holds `detail`. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `2` | Heading level for the title element. |
+| `remediation` | `string` | no | — | What to do next, such as "Check that the server is running, then try again." It renders as its own line right after the description, in the same type, inside the labelled region, so assistive technology reads it in order. Leave it off when the fault names no next step. Pair it with `onRetry` when asking again can help, and omit `onRetry` when it cannot. |
 | `retryLabel` | `string` | no | `"Try again"` | Label of the retry button. |
 | `retryStatus` | `string` | no | — | A line of progress under the description, such as "Retrying in 8 s (attempt 3 of 8)". It renders in tabular figures and is not a live region, so a countdown never announces itself every second. |
 | `retryVariant` | `"primary"` \| `"secondary"` | no | `"primary"` | How prominent the retry button is. `'primary'` suits a full-page failure, where retrying is the one thing to do. `'secondary'` suits a section of a page that has other controls, such as a tab's body under a tab bar, so the retry does not outrank them. |

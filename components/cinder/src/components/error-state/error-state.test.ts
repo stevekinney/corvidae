@@ -358,6 +358,28 @@ describe('ErrorState remediation', () => {
     expect(empty.container.querySelector('.cinder-error-state-remediation')).toBeNull();
   });
 
+  test('a row draws it on its own line under the sentence, not run on inside it', async () => {
+    const { container } = render(ErrorState, {
+      props: {
+        title: 'Couldn’t load system problems.',
+        description: 'The rest of Home is live.',
+        remediation: 'Check the connection.',
+        variant: 'row',
+      },
+    });
+    const text = container.querySelector('.cinder-error-state-text');
+    expect(text?.querySelector('.cinder-error-state-remediation')).not.toBeNull();
+
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const rule = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-remediation",
+    );
+    expect(rule.get('display')).toBe('block');
+    expect(rule.get('margin-block-start')).toBe('var(--cinder-space-1)');
+    expect(rule.get('font-size')).toBe('inherit');
+  });
+
   test('takes the description’s type and its colour token', async () => {
     const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
     const rule = declarationsFor(css, '.cinder-error-state-remediation');
@@ -490,9 +512,9 @@ describe('ErrorState row variant', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
 
     const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
-    // The title, the description and the remediation run on as one sentence.
+    // The title and the description run on as one sentence.
     expect(css).toMatch(
-      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-description,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-remediation \{\s*display: inline;/,
+      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-description \{\s*display: inline;/,
     );
     // A grouped list row's insets, so the retry ends on the same edge as a list row's button
     // (COR-2329: it ended 8px short).

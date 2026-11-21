@@ -294,13 +294,23 @@
   }
 
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title,
-  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-description,
-  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-remediation {
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-description {
     display: inline;
     margin: 0;
     max-inline-size: none;
     font-size: inherit;
     font-weight: var(--cinder-font-normal);
+    line-height: inherit;
+    color: inherit;
+  }
+
+  /* The next step is not part of the sentence: it takes its own line under it, in the same type. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-remediation {
+    display: block;
+    margin: 0;
+    margin-block-start: var(--cinder-space-1);
+    max-inline-size: none;
+    font-size: inherit;
     line-height: inherit;
     color: inherit;
   }
