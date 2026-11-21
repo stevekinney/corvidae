@@ -117,6 +117,7 @@ The `footer` snippet draws content under the options, outside the `role="listbox
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | `filled` draws the control on the inset surface with a 12px radius. Under comfortable density, an unset appearance uses the same filled treatment and a 48px medium control; `outlined` opts out of that density default. |
 | `aria-describedby` | `string` | no | — | External element id(s) to compose into `aria-describedby`. Composed after the component-generated description and error ids, matching the field-control contract in Select. Useful for tooltip ids, counter ids, or any external hint. |
 | `aria-label` | `string` | no | — | Accessible name for the input when no visible label is rendered. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-combobox`. |

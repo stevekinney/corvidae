@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Checkbox } from './index.ts';
+  import { CheckboxGroup } from '../checkbox-group/index.ts';
 
   const longLabel =
     'Archive every receipt that arrives from the shop and file it under the quarter it was issued, so the accountant can find it without asking anyone';
@@ -21,6 +22,11 @@
   <div class="checkbox-alignment__column" data-testid="bare">
     <Checkbox id="alignment-bare" aria-label="Select this row" />
   </div>
+
+  <CheckboxGroup label="Task rows" data-testid="coarse-group">
+    <Checkbox id="coarse-first" label="Archive completed tasks" />
+    <Checkbox id="coarse-second" label="Show tasks due this week" />
+  </CheckboxGroup>
 </div>
 
 <style>

@@ -253,8 +253,9 @@
           size="sm"
           disabled={locked}
           loading={signIn.isPending}
-          onclick={() => signIn.mutate()}>{copy.signIn.action}</Button
-        >
+          onclick={() => signIn.mutate()}
+          label={copy.signIn.action}
+        />
       {/if}
       {#if source.state !== 'failed'}
         <Button
@@ -262,8 +263,9 @@
           variant="secondary"
           size="sm"
           loading={testConnection.isPending}
-          onclick={() => testConnection.mutate()}>{copy.test.action}</Button
-        >
+          onclick={() => testConnection.mutate()}
+          label={copy.test.action}
+        />
       {/if}
       <Dropdown id="ib-source-actions" placement="bottom-end">
         <Dropdown.Trigger caretVisible={false}>
@@ -323,8 +325,9 @@
           variant="secondary"
           size="sm"
           loading={testConnection.isPending}
-          onclick={() => testConnection.mutate()}>{copy.test.action}</Button
-        >
+          onclick={() => testConnection.mutate()}
+          label={copy.test.action}
+        />
       </div>
     </Alert>
   {:else if !(source.state === 'needs-authorization' && table.remembered && stateWords === sourceStateDescription(source.state))}
@@ -363,8 +366,9 @@
           variant="ghost"
           size="sm"
           loading={testConnection.isPending}
-          onclick={() => testConnection.mutate()}>{copy.test.again}</Button
-        >
+          onclick={() => testConnection.mutate()}
+          label={copy.test.again}
+        />
       </div>
     </Alert>
   {/if}

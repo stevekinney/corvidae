@@ -113,7 +113,7 @@
 }
 
 .weft-context-ring[data-tone='warning'] .weft-context-ring__fill {
-  stroke: var(--cinder-status-warning-solid);
+  stroke: var(--cinder-status-warning-indicator);
 }
 
 .weft-context-ring[data-tone='danger'] .weft-context-ring__fill {
