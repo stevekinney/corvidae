@@ -558,7 +558,7 @@
         selectionParameter="review"
         selectionLocation={selection}
         storageKey="interborough-reviews"
-        notFound={gone ? goneDetail : undefined}
+        {...gone ? { notFound: goneDetail } : {}}
         {...mode === 'done' ? { groupBy: dayGroup } : {}}
       >
         {#snippet header()}
