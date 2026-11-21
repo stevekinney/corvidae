@@ -50,6 +50,7 @@ import { AgUiHttpError } from './ag-ui-events.ts';
 import { questionKeyOf } from './answer-rows.ts';
 import {
   carryLiveNotes,
+  FOLLOW_UP_METADATA_KEY,
   holdStopLines,
   withHeldStopLines,
   type HeldStopLine,
@@ -280,6 +281,11 @@ export class ChatSessionState {
   #retryGeneration = 0;
   #retryFailures = 0;
   #attachedRun = false;
+  /** Every transcript replacement, so a delayed read cannot overwrite a newer live snapshot. */
+  #historyGeneration = 0;
+  /** A stale history read waits for the session to become idle, then gets one replacement read. */
+  #historyRepairPending = false;
+  #historyRepairQueued = false;
   /** The schema of each question the page has been shown, by the key its answer's row shares. */
   readonly #questionSchemas = new Map<string, Readonly<Record<string, unknown>>>();
   /**
@@ -341,7 +347,7 @@ export class ChatSessionState {
         this.usage = new Map(this.usage).set(runId, usage);
       },
       onSnapshot: (history) => {
-        if (!this.#abort.signal.aborted) this.restore(history);
+        if (!this.#abort.signal.aborted) this.#restoreStreamHistory(history);
       },
       onApprovalDeadlines: (deadlines) => {
         this.#approvalDeadlines = deadlines;
@@ -399,7 +405,6 @@ export class ChatSessionState {
           // turn that reads a run the page joins is nobody's attempt: it is how the page finds out
           // what to say next, and must not wipe what the refusal before it said.
           if (streaming) {
-            this.#turnsBegun += 1;
             if (!this.attaching) this.failure = undefined;
           }
           // A turn that ended in an error or a stop has no history to carry the assets it
@@ -413,6 +418,7 @@ export class ChatSessionState {
             this.#stampAnnouncedAssets();
             this.#dropSettledAnswerRows();
             this.#readAgainAfterRefusal();
+            if (this.#historyRepairPending) this.#requestHistoryRepair();
           }
         },
         onError: (error) => {
@@ -639,14 +645,21 @@ export class ChatSessionState {
     // A new chat's thread is not kept until its first run begins: there is nothing to read yet.
     if (!this.#opened) return false;
     if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
-    // A turn that began during the read, even one that has ended since (a follow-up promoted from
-    // Up next that stopped on an approval), wrote rows the read cannot hold: restoring it would
-    // drop the person's message from the transcript.
-    const turnsBegun = this.#turnsBegun;
+    const readerGeneration = this.#retryGeneration;
+    const historyToken = this.controller.captureHistoryToken();
+    const historyGeneration = this.#historyGeneration;
     const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
-    if (history === undefined || this.streaming || this.attaching) return false;
-    if (this.#turnsBegun !== turnsBegun) return false;
-    this.restore(history);
+    if (
+      history === undefined ||
+      readerGeneration !== this.#retryGeneration ||
+      this.#abort.signal.aborted
+    )
+      return false;
+    if (this.streaming || this.attaching) {
+      this.#requestHistoryRepair();
+      return false;
+    }
+    if (!this.#restoreHistory(history, historyToken, historyGeneration)) return false;
     await this.attach({ rereading: true });
     // A read that failed has not said what the run waits on, so the caller reads again.
     return !this.#attachFailed;
@@ -936,6 +949,8 @@ export class ChatSessionState {
     const readerAbort = new AbortController();
     this.#readerAbort = readerAbort;
     const signal = AbortSignal.any([this.#abort.signal, readerAbort.signal]);
+    const historyToken = this.controller.captureHistoryToken();
+    const historyGeneration = this.#historyGeneration;
     this.attaching = true;
     this.#attachFailed = false;
     try {
@@ -949,10 +964,12 @@ export class ChatSessionState {
           return false;
         }
         // Nothing is going, so the transcript is what the Bureau holds of the thread.
+        const historyReadToken = this.controller.captureHistoryToken();
+        const historyReadGeneration = this.#historyGeneration;
         const history = await this.#wiring.history(this.sessionId, signal);
         if (generation !== this.#retryGeneration || signal.aborted) return false;
         if (history !== undefined) {
-          this.restore(history);
+          if (!this.#restoreHistory(history, historyReadToken, historyReadGeneration)) return false;
           this.disconnected = false;
         }
         // The Bureau answered: with the thread's rows, or with none for a thread it has no record of.
@@ -961,7 +978,7 @@ export class ChatSessionState {
         this.#attachedRun = false;
         return false;
       }
-      this.restore(restored);
+      if (!this.#restoreHistory(restored, historyToken, historyGeneration)) return false;
       this.historySettled = true;
       this.readFailed = false;
       // A run was restored, so the Bureau holds the thread.
@@ -984,7 +1001,10 @@ export class ChatSessionState {
       this.#scheduleReconnect(error);
       return false;
     } finally {
-      if (this.#readerAbort === readerAbort) this.attaching = false;
+      if (this.#readerAbort === readerAbort) {
+        this.attaching = false;
+        if (this.#historyRepairPending) this.#requestHistoryRepair();
+      }
     }
   }
 
@@ -1017,7 +1037,71 @@ export class ChatSessionState {
     // What the stream told this page about the run (a wakeup, a child run), and why an earlier
     // attempt stopped, are not in the Bureau's thread, so the rows that are still there keep them.
     this.#setKeepingStopLines(carryLiveNotes(this.conversation, restored));
+    this.#historyGeneration += 1;
     this.#reconcileApprovalDeadlines();
+  }
+
+  /** The stream's snapshot owns its durable rows. The controller still owns queued input. */
+  #restoreStreamHistory(restored: ConversationHistory): void {
+    const followUps = this.conversation.ids.flatMap((id) => {
+      const row = this.conversation.messages[id];
+      return row?.metadata[FOLLOW_UP_METADATA_KEY] === true ? [[id, row] as const] : [];
+    });
+    if (followUps.length === 0) {
+      this.restore(restored);
+      return;
+    }
+    const missing = followUps
+      .map(([id]) => id)
+      .filter((id) => !Object.hasOwn(restored.messages, id));
+    this.restore({
+      ...restored,
+      ids: [...restored.ids, ...missing],
+      messages: { ...restored.messages, ...Object.fromEntries(followUps) },
+    });
+  }
+
+  /** Restores only a history read that still owns the transcript it began from. */
+  #restoreHistory(
+    restored: ConversationHistory,
+    historyToken: ReturnType<ChatSessionController['captureHistoryToken']>,
+    historyGeneration: number,
+  ): boolean {
+    if (
+      !this.controller.isHistoryTokenCurrent(historyToken) ||
+      this.#historyGeneration !== historyGeneration
+    ) {
+      this.#requestHistoryRepair();
+      return false;
+    }
+    this.restore(restored);
+    return true;
+  }
+
+  /** Coalesces a repair for a history read that lost its write or live-snapshot fence. */
+  #requestHistoryRepair(): void {
+    if (this.#abort.signal.aborted || !this.#opened) return;
+    this.#historyRepairPending = true;
+    if (this.streaming || this.attaching || this.#historyRepairQueued) return;
+    this.#historyRepairQueued = true;
+    queueMicrotask(() => {
+      if (
+        !this.#historyRepairPending ||
+        this.streaming ||
+        this.attaching ||
+        this.#abort.signal.aborted
+      ) {
+        this.#historyRepairQueued = false;
+        return;
+      }
+      this.#historyRepairPending = false;
+      void this.refresh()
+        .catch(() => undefined)
+        .finally(() => {
+          this.#historyRepairQueued = false;
+          if (this.#historyRepairPending) this.#requestHistoryRepair();
+        });
+    });
   }
 
   /**
@@ -1037,9 +1121,6 @@ export class ChatSessionState {
 
   /** Every line this page was shown of why a run stopped, by its identity, at its row. */
   #stopLines: ReadonlyMap<string, HeldStopLine> = new Map();
-
-  /** How many turns of the controller have begun, so a read can tell that one began while it ran. */
-  #turnsBegun = 0;
 
   /**
    * Shows `next`, with the lines of why an earlier run stopped that it does not give, so the
@@ -1091,7 +1172,7 @@ export class ChatSessionState {
    * because it never read one, the failure says so, and Reconnect shows what is going.
    */
   async #stopWhileReconnecting(): Promise<void> {
-    this.#retryGeneration += 1;
+    const generation = ++this.#retryGeneration;
     this.#readerAbort?.abort();
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;
@@ -1099,7 +1180,7 @@ export class ChatSessionState {
     this.stopping = true;
     try {
       const cancelled = await this.#wiring.cancelDroppedRun();
-      if (this.#abort.signal.aborted) return;
+      if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
       // No run known to cancel (the page never read one before the reads failed) is no stop either.
       if (cancelled !== true) {
         this.failure = CHAT_COPY.stopLine.stopFailed;
@@ -1108,10 +1189,17 @@ export class ChatSessionState {
       }
       this.#attachedRun = false;
       this.failure = undefined;
+      const historyToken = this.controller.captureHistoryToken();
+      const historyGeneration = this.#historyGeneration;
       const history = await this.#wiring
         .history(this.sessionId, this.#abort.signal)
         .catch(() => undefined);
-      if (history !== undefined && !this.#abort.signal.aborted) this.restore(history);
+      if (
+        history !== undefined &&
+        generation === this.#retryGeneration &&
+        !this.#abort.signal.aborted
+      )
+        this.#restoreHistory(history, historyToken, historyGeneration);
     } finally {
       this.stopping = false;
     }
