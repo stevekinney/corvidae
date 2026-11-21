@@ -428,6 +428,7 @@ export const WORKFLOW_COPY = {
     whenLabel: 'When to run',
     now: 'Now',
     /** The line under Now. */
+    optionsRegion: 'Run options',
     nowDescription: 'Starts as soon as you press Start run.',
     nowOnlyDescription: 'Starts as soon as you confirm.',
     schedule: 'On a schedule',

@@ -465,7 +465,7 @@
   }
 </script>
 
-<div class="ib-run-setup__body">
+<div class="ib-run-setup__body" role="region" aria-label={copy.optionsRegion}>
   {@render notice?.()}
 
   <!-- While a start is in flight nothing in the form can be changed: what was sent is what shows. -->
@@ -632,27 +632,27 @@
       {/if}
     </Alert>
   {/if}
+</div>
 
-  <div class="ib-run-setup__footer" data-testid="run-setup-footer">
-    <p class="ib-run-setup__summary" data-testid="run-setup-summary">{summary}</p>
-    <div class="ib-run-setup__actions">
-      {#if offReason !== null}
-        <span
-          id="run-setup-action-off"
-          class="ib-run-setup__reason"
-          data-testid="run-setup-action-off">{offReason}</span
-        >
-      {/if}
-      <Button variant="secondary" disabled={starting} onclick={cancel} label={copy.cancel} />
-      <Button
-        data-changes
-        variant="primary"
-        disabled={gate.disabled || block !== undefined || starting}
-        title={gate.title}
-        aria-describedby={offReason === null ? undefined : 'run-setup-action-off'}
-        onclick={request}>{actionLabel}</Button
+<div class="ib-run-setup__footer" data-testid="run-setup-footer">
+  <p class="ib-run-setup__summary" data-testid="run-setup-summary">{summary}</p>
+  <div class="ib-run-setup__actions">
+    {#if offReason !== null}
+      <span
+        id="run-setup-action-off"
+        class="ib-run-setup__reason"
+        data-testid="run-setup-action-off">{offReason}</span
       >
-    </div>
+    {/if}
+    <Button variant="secondary" disabled={starting} onclick={cancel} label={copy.cancel} />
+    <Button
+      data-changes
+      variant="primary"
+      disabled={gate.disabled || block !== undefined || starting}
+      title={gate.title}
+      aria-describedby={offReason === null ? undefined : 'run-setup-action-off'}
+      onclick={request}>{actionLabel}</Button
+    >
   </div>
 </div>
 
@@ -663,6 +663,13 @@
     flex-direction: column;
     gap: var(--cinder-space-6);
     min-width: 0;
+  }
+
+  .ib-run-setup__body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow-y: auto;
+    padding-block-end: var(--cinder-space-2);
   }
 
   .ib-run-setup__lead {
@@ -701,17 +708,9 @@
     margin-block-start: var(--cinder-space-1);
   }
 
-  /*
-   * What the page will do, and the way to do it. It stays at the foot of the outlet while the form
-   * scrolls under it, so the action is always in reach.
-   */
+  /* The options scroll above the bar, so actions stay in reach without covering a field. */
   .ib-run-setup__footer {
-    position: sticky;
-    /* The outlet has no bottom padding, so the bar sticks to the bottom of what it shows; its
-       negative margin overlaps the spacer that ends the outlet (`foundation.css`). */
-    bottom: 0;
-    z-index: 1;
-    margin-block-end: calc(-1 * var(--cinder-space-6));
+    flex: none;
     padding-block: var(--cinder-space-3);
     background: var(--cinder-surface-canvas);
     border-block-start: 1px solid var(--cinder-border);

@@ -333,6 +333,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-6);
+    block-size: 100%;
     min-width: 0;
   }
 </style>
