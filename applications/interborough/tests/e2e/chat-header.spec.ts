@@ -9,7 +9,6 @@
  */
 import type { Page } from '@playwright/test';
 
-import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
 import { hideModelPicker, newThreadId, revealSettings, runToEnd } from './chat-support.ts';
@@ -24,7 +23,8 @@ const VIEWPORTS = [
   { width: 1280, height: 800 },
 ] as const;
 
-const [SONNET, HAIKU] = MODEL_SWITCHER_MODELS;
+const SONNET_LABEL = 'Claude Sonnet 5';
+const HAIKU_LABEL = 'Claude Haiku 4.5';
 
 const model = (page: Page) => page.getByRole('combobox', { name: 'Model' });
 const effort = (page: Page) => page.getByRole('combobox', { name: 'Effort' });
@@ -54,13 +54,13 @@ for (const viewport of VIEWPORTS) {
     await open(page, request, 'demo:model-switcher');
     // A composer too narrow for the three values in full folds them into one Settings control; open it.
     await revealSettings(page, [
-      { name: 'Model', text: SONNET.model },
+      { name: 'Model', text: SONNET_LABEL },
       { name: 'Effort', text: 'Agent default' },
       { name: /Permissions/, text: 'On changes asks' },
     ]);
 
     // The composer says what the chat runs with before anything was changed.
-    await expect(model(page)).toContainText(SONNET.model);
+    await expect(model(page)).toContainText(SONNET_LABEL);
     await expect(effort(page)).toContainText('Agent default');
     await expect(permission(page)).toContainText('On changes asks');
     await checkA11y(`the chat composer, at ${viewport.width} pixels`);
@@ -72,8 +72,8 @@ for (const viewport of VIEWPORTS) {
     await expect(note(page)).toHaveText('Permissions Read-only applies to the next run.');
 
     // So does the model.
-    await choose(page, model(page), HAIKU.model);
-    await expect(model(page)).toContainText(HAIKU.model);
+    await choose(page, model(page), HAIKU_LABEL);
+    await expect(model(page)).toContainText(HAIKU_LABEL);
     await expect(model(page)).toBeEnabled();
 
     // A reload shows the chat kept both.
@@ -81,10 +81,10 @@ for (const viewport of VIEWPORTS) {
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await revealSettings(page, [
       { name: /Permissions/, text: 'Read-only' },
-      { name: 'Model', text: HAIKU.model },
+      { name: 'Model', text: HAIKU_LABEL },
     ]);
     await expect(permission(page)).toContainText('Read-only');
-    await expect(model(page)).toContainText(HAIKU.model);
+    await expect(model(page)).toContainText(HAIKU_LABEL);
     await checkA11y(`the chat composer after changes, at ${viewport.width} pixels`);
   });
 
@@ -118,7 +118,7 @@ test('changes the effort, says when it applies, and keeps it across a reload', a
 }) => {
   await open(page, request, 'demo:model-switcher');
   await revealSettings(page, [
-    { name: 'Model', text: SONNET.model },
+    { name: 'Model', text: SONNET_LABEL },
     { name: 'Effort', text: 'Agent default' },
   ]);
 
@@ -130,7 +130,7 @@ test('changes the effort, says when it applies, and keeps it across a reload', a
   await page.reload();
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await revealSettings(page, [
-    { name: 'Model', text: SONNET.model },
+    { name: 'Model', text: SONNET_LABEL },
     { name: 'Effort', text: 'Low' },
   ]);
   await expect(effort(page)).toContainText('Low');
@@ -141,8 +141,8 @@ test('shows the model of an agent that allows one, or none, though it offers no 
   request,
 }) => {
   await open(page, request, SINGLE_MODEL_AGENT_NAME);
-  await revealSettings(page, [{ name: 'Model', text: SONNET.model }]);
-  await expect(model(page)).toContainText(SONNET.model);
+  await revealSettings(page, [{ name: 'Model', text: SONNET_LABEL }]);
+  await expect(model(page)).toContainText(SONNET_LABEL);
   await expect(model(page)).toBeDisabled();
 
   // A scripted agent runs on no model, so its composer has Permissions only.
