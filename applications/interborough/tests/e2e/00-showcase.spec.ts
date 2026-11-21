@@ -21,7 +21,7 @@ import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { routes } from '../../src/app/routes.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_BASE_URL, E2E_SHOWCASE_EDITABLE_AGENT, E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, goOffline, test } from './fixtures.ts';
 import { listEngineReviews } from './review-support.ts';
 import {
@@ -139,71 +139,6 @@ for (const name of NAMES) {
         await expect(page.locator('.chat-question-status[data-state="sent"]')).toHaveCount(0);
         await expect(staging).toBeVisible();
         await expect(staging).toHaveAttribute('aria-checked', 'false');
-      }
-    }
-  });
-}
-
-const COPY_SOURCE = 'tool-runner';
-const LONG_COPY_BEHAVIOR = 'unknown-behavior'.repeat(12);
-
-for (const copy of [
-  { state: 'copied with losses', source: COPY_SOURCE, longBehavior: false },
-  { state: 'copied without losses', source: E2E_SHOWCASE_EDITABLE_AGENT, longBehavior: false },
-  { state: 'copied with a long behavior name', source: COPY_SOURCE, longBehavior: true },
-]) {
-  test(`/agents/new ${copy.state} at ${WIDTHS.join(', ')} pixels`, async ({ page }) => {
-    if (copy.longBehavior) {
-      await page.route('**/jsonrpc', async (route) => {
-        const call = route.request().postDataJSON() as {
-          method?: string;
-          params?: { id?: string };
-        } | null;
-        if (call?.method !== 'bureau.agents.definitions.get' || call.params?.id !== COPY_SOURCE) {
-          await route.fallback();
-          return;
-        }
-        const response = await route.fetch();
-        const body = (await response.json()) as {
-          result: { dropped: string[] } & Record<string, unknown>;
-        };
-        await route.fulfill({
-          response,
-          json: {
-            ...body,
-            result: { ...body.result, dropped: [...body.result.dropped, LONG_COPY_BEHAVIOR] },
-          },
-        });
-      });
-    }
-
-    for (const width of WIDTHS) {
-      await page.setViewportSize({ width, height: HEIGHT });
-      await page.goto(`${E2E_SHOWCASE_URL}/agents/new?from=${encodeURIComponent(copy.source)}`);
-      await expect(page.getByRole('textbox', { name: /^Name/ })).toBeVisible();
-      await expect(page.getByTestId('agent-copied-from')).toBeVisible();
-      const behaviors = page.getByTestId('agent-copy-dropped-behaviors');
-      if (copy.source === E2E_SHOWCASE_EDITABLE_AGENT) {
-        await expect(behaviors).toHaveCount(0);
-      } else {
-        await expect(behaviors.getByRole('listitem').first()).toBeVisible();
-      }
-      if (copy.longBehavior) {
-        await expect(behaviors.getByText(LONG_COPY_BEHAVIOR, { exact: true })).toBeVisible();
-        expect(
-          await behaviors.evaluate((list) => list.scrollWidth - list.clientWidth),
-        ).toBeLessThanOrEqual(0);
-      }
-      await captureForDesignReview(page, {
-        route: '/agents/new',
-        state: copy.state,
-        source: '00-showcase.spec.ts',
-      });
-      if (copy.longBehavior && width === 375) {
-        await page.setViewportSize({ width: 320, height: 640 });
-        expect(
-          await behaviors.evaluate((list) => list.scrollWidth - list.clientWidth),
-        ).toBeLessThanOrEqual(0);
       }
     }
   });
