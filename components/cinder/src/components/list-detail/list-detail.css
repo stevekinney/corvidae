@@ -71,10 +71,8 @@
     position: relative;
   }
 
-  /* The toggle is one button with one rule for both states: the start corner of the list's header
-   * while the list shows, and the same place, at the top of the rail, once it is hidden, so it
-   * does not move when it is pressed. Its inset is the header's (the heading starts after it,
-   * below) rather than a rail's width in. */
+  /* The toggle is one button, mounted in both states so focus stays on it as it is pressed. Once the
+   * list is hidden it sits at the top of the rail that holds its place. */
   .cinder-list-detail__toggle {
     position: absolute;
     z-index: 1;
@@ -82,21 +80,54 @@
     inset-inline-start: var(--cinder-space-2);
   }
 
-  /* The header's first row, whatever it holds (a title, a heading, a way back), starts after the
-   * toggle: the toggle's width, which with its own inset and the gap after it is the header's inset
-   * again. The rows under it (the search, the filter) keep the header's full width. The slot is
-   * kept whenever the panes sit side by side and the list can be hidden, so choosing a row, which
-   * brings the toggle, does not move the header. */
-  .cinder-list-detail[data-cinder-toggle-slot] .cinder-list-detail__header > :first-child {
-    box-sizing: border-box;
-    padding-inline-start: var(--cinder-button-height-sm);
+  /* While the list shows the toggle is a handle on the divider (COR-2438): inside the list pane,
+   * against the divider, centred on its length, so it never crowds the header's title or its "+",
+   * and the header keeps its whole width, the title starting on the search field's edge. The list
+   * pane's size, measured as it is dragged, places it. It draws on the raised surface so it reads
+   * over the rows it floats above. */
+  .cinder-list-detail:not([data-cinder-list-collapsed]) .cinder-list-detail__toggle {
+    inset-block-start: calc(50% - var(--cinder-button-height-sm) / 2);
+    inset-inline-start: calc(
+      var(--_cinder-list-detail-list-width, 0px) - var(--cinder-button-height-sm) -
+        var(--cinder-space-1)
+    );
   }
 
-  /* A list with no header of its own holds the toggle's place with an empty one. */
-  .cinder-list-detail__header[data-cinder-toggle-space] {
-    box-sizing: border-box;
-    block-size: calc(var(--cinder-button-height-sm) + 2 * var(--cinder-space-3-5));
-    padding: 0;
+  /* One above the other the divider is the list's bottom edge: the handle sits above it, centred. */
+  .cinder-list-detail:not([data-cinder-list-collapsed])
+    .cinder-list-detail__below
+    > .cinder-list-detail__toggle {
+    inset-block-start: calc(
+      var(--_cinder-list-detail-list-height, 0px) - var(--cinder-button-height-sm) -
+        var(--cinder-space-1)
+    );
+    inset-inline-start: calc(50% - var(--cinder-button-height-sm) / 2);
+  }
+
+  .cinder-list-detail:not([data-cinder-list-collapsed]) .cinder-list-detail__toggle .cinder-button {
+    background: var(--cinder-surface-raised);
+    box-shadow: var(--cinder-shadow-sm);
+  }
+
+  /* With a pointer that hovers, the handle shows while the list, the divider or the handle itself
+   * is hovered, and whenever it has focus, so it is always reachable by keyboard. A touch screen,
+   * which cannot hover, always shows it. */
+  @media (hover: hover) {
+    .cinder-list-detail:not([data-cinder-list-collapsed]) .cinder-list-detail__toggle {
+      opacity: 0;
+      transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+    }
+
+    .cinder-list-detail:not([data-cinder-list-collapsed])
+      :is(.cinder-list-detail__split, .cinder-list-detail__below):has(
+        .cinder-list-detail__list:hover,
+        .cinder-resizable-panels__handle:hover,
+        .cinder-list-detail__toggle:hover,
+        .cinder-list-detail__toggle:focus-within
+      )
+      > .cinder-list-detail__toggle {
+      opacity: 1;
+    }
   }
 
   .cinder-list-detail__split > .cinder-list-detail__panels {

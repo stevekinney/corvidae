@@ -166,6 +166,21 @@ export type ApprovalDeadline = {
   readonly expiresAt: string;
 };
 
+/**
+ * A decision refused because no approval is waiting for the call: it was decided on another page,
+ * it expired, or its run stopped. Nothing was sent; the page reads the chat again to learn which
+ * (COR-2438).
+ */
+export class ApprovalNotWaitingError extends Error {
+  readonly toolCallId: string;
+
+  constructor(toolCallId: string) {
+    super('No approval is waiting for this tool call.');
+    this.name = 'ApprovalNotWaitingError';
+    this.toolCallId = toolCallId;
+  }
+}
+
 export type ChatRunWiringOptions = {
   /**
    * Told the deadlines of the tool approvals a run ended on, each time what the run waits on is
@@ -174,6 +189,12 @@ export type ChatRunWiringOptions = {
    * the page imports into it.
    */
   readonly onApprovalDeadlines?: (deadlines: readonly ApprovalDeadline[]) => void;
+  /**
+   * Told the calls whose tool approval the run waits on, each time what the run waits on is read:
+   * when a run ends, and when the page attaches to a thread with nothing waiting. A call parked on
+   * an approval that is not among them is not waiting on anyone (COR-2438).
+   */
+  readonly onWaitingApprovals?: (toolCallIds: ReadonlySet<string>) => void;
   readonly onFrame?: () => void;
   readonly onTerminal?: () => void;
   /**
@@ -1087,6 +1108,15 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     if (decisions.size === 0 && answers.size === 0) refusedResume = false;
     options.onHumanRequests?.(unansweredRequests());
     options.onApprovalDeadlines?.(approvalDeadlinesOf(next));
+    options.onWaitingApprovals?.(
+      new Set(
+        next.flatMap((interrupt) =>
+          interrupt.reason === 'tool-approval' && interrupt.toolCallId !== undefined
+            ? [interrupt.toolCallId]
+            : [],
+        ),
+      ),
+    );
   }
 
   /** Notes that the row an answer was typed in is settled, when the answer was typed in one. */
@@ -1571,9 +1601,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     transport,
     async resolveToolApproval(toolCallId, resolution) {
       const interrupt = interrupts.find((entry) => entry.toolCallId === toolCallId);
-      if (interrupt === undefined) {
-        throw new Error('No approval is waiting for this tool call.');
-      }
+      if (interrupt === undefined) throw new ApprovalNotWaitingError(toolCallId);
       decisions.set(interrupt.id, resumeEntryFor(interrupt, resolution));
       return resultFor(toolCallId, resolution);
     },

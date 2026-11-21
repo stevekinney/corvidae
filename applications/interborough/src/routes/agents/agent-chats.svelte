@@ -44,6 +44,7 @@
     chatDayGroup,
     pendingQuestions,
     sessionRow,
+    waitingChatIds,
     type SessionRow,
   } from '../chat/session-groups.ts';
   import { useMinuteClock } from '../home/home-clock.svelte.ts';
@@ -75,6 +76,8 @@
     counts: ChatCounts | undefined;
     /** Whether the tab is its empty state: the agent has no chat and no filter is on. */
     empty?: boolean;
+    /** Whether the agent needs a model provider before it can start a chat. */
+    needsProvider?: boolean;
     /** The agent's plugin is disabled: the empty state offers no New chat and says what to enable. */
     unavailable?: boolean;
     /** The disabled plugin's title, which the empty state names. */
@@ -86,6 +89,7 @@
     name,
     counts,
     empty = $bindable(false),
+    needsProvider = false,
     unavailable = false,
     pluginTitle = '',
   }: Props = $props();
@@ -141,6 +145,8 @@
     ),
   );
   const questions = $derived(pendingQuestions(reviews.data ?? []));
+  // Waiting on you as the chat list and the chat itself say it (COR-2438).
+  const waitingChats = $derived(new Set(waitingChatIds(reviews.data ?? [])));
   const failedChats = $derived(chatsWithFailedRun(tasks.data?.tasks ?? []));
   /**
    * The rows in the order the Bureau cut them, which is the order the person picked. A row's time
@@ -151,7 +157,7 @@
     contexts.map((context): SessionRow => {
       const stamp = Date.parse(filters.sort === 'updated' ? context.updatedAt : context.createdAt);
       return {
-        ...sessionRow(context, questions, failedChats),
+        ...sessionRow(context, questions, failedChats, waitingChats),
         updatedAt: Number.isNaN(stamp) ? null : stamp,
       };
     }),
@@ -255,7 +261,7 @@
           description={unavailable
             ? copy.unavailableDescription(pluginTitle)
             : copy.emptyDescription(name)}
-          actions={unavailable
+          actions={unavailable || needsProvider
             ? []
             : [
                 {
