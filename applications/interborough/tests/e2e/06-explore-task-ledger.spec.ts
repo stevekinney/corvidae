@@ -149,7 +149,7 @@ test('an acknowledged cancellation is attributed to the owning attempt', async (
   await expect(cancellation.getByText(/^Acknowledged by attempt 1 at \d{4}-/)).toBeVisible();
   await expect(cancellation.getByText(E2E_CANCELLATION_REASON)).toBeVisible();
   await expect(
-    page.getByRole('list', { name: 'Attempt history' }).getByText('Cancelled', { exact: true }),
+    page.getByRole('list', { name: 'Attempt history' }).getByText('Canceled', { exact: true }),
   ).toBeVisible();
 
   await checkA11y('workers—task with acknowledged cancellation');

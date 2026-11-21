@@ -23,6 +23,10 @@ describe('approval card vocabulary', () => {
     expect(STATE_LABELS.unavailable).toBe('Unavailable');
     expect(STATE_DOT_STATUS.unavailable).toBe('neutral');
   });
+
+  test('keeps cancelled approval copy in American spelling', () => {
+    expect(STATE_LABELS.cancelled).toBe('Canceled');
+  });
 });
 
 describe('summarizeInput', () => {

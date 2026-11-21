@@ -1,5 +1,9 @@
 <script lang="ts">
   import { ApprovalCard } from '@lostgradient/cinder';
+
+  // Keep the default assertion fixture stable; the canceled state is selected only for COR-2554's
+  // design capture.
+  const showCanceled = new URLSearchParams(globalThis.location.search).get('canceled') === '1';
 </script>
 
 <ApprovalCard
@@ -26,6 +30,17 @@
   editableArgs={true}
   onResolve={() => undefined}
 />
+
+{#if showCanceled}
+  <ApprovalCard
+    id="approval-card-canceled"
+    layout="decision"
+    headingLevel={4}
+    question="Deploy the approved release?"
+    tool={{ name: 'deploy-cloud', label: 'Deploy release', risk: 'medium' }}
+    state="cancelled"
+  />
+{/if}
 
 <!-- The chat's waiting approval (COR-2327): the row layout with three pairs of input, which show
      in the open at the content edge with no Show all. -->

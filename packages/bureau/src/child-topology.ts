@@ -1664,7 +1664,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     const record = await authorized(request);
     if (!record) return { outcome: 'not-found' };
     if (record.status !== 'running') return { outcome: 'already-terminal', child: record };
-    const reason = request.reason ?? 'Cancelled via Bureau';
+    const reason = request.reason ?? 'Canceled via Bureau';
     const outcome = await cancelChild(record, reason);
     // Only a cancellation actually requested cancels the child's own
     // children. One that failed leaves the child — and so its subtree —
