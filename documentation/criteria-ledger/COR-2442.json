@@ -1,0 +1,59 @@
+{
+  "issue": "COR-2442",
+  "branch": "steve/cor-2442-filled-controls",
+  "checkedAt": "f019c5517b52bbbb242eb0c33d83f728a6807152",
+  "briefVersion": "9e977f8ec935",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Cinder's direct filled-appearance regression and focused Cinder tests pass; Combobox and MultiSelect now own the shared filled frame, while Autocomplete and NumberInput forward Input appearance."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Filled examples and browser fixtures are implemented, but the required browser fixture run is coordinator-owned and has not completed."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "The coarse-pointer CheckboxGroup geometry regression is implemented but awaits the coordinator-owned Playwright run."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Checkbox task-row and long-label examples are present and Cinder's generated component checks pass in focused checks."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "The shared coarse-pointer CheckboxGroup regression is implemented but awaits the coordinator-owned Playwright run."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Checkbox task-row examples cover the task variant and focused checks pass."
+    },
+    {
+      "id": "AC7",
+      "status": "not-met",
+      "evidence": "Inventory found 24 Interborough route files with secondary Button child labels; conversion is an explicitly deferred per-page redesign."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Secondary button token descriptions were regenerated; bun run tokens:check passed and focused checks pass."
+    },
+    {
+      "id": "AC9",
+      "status": "not-met",
+      "evidence": "Design capture and reviewer verdict are coordinator-owned and have not yet been supplied."
+    },
+    {
+      "id": "AC10",
+      "status": "not-met",
+      "evidence": "Inventory found 58 Interborough route files with Button child labels; converting callers needs page-specific redesign work."
+    }
+  ]
+}
