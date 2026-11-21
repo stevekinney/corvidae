@@ -46,6 +46,8 @@ export type FormFieldProps = {
   managed?: FormFieldManaged | undefined;
   /** Renders a visual required marker and exposes `required: true` on the context. */
   required?: boolean | undefined;
+  /** Appends "Optional" to the visible label. Do not combine with `required`; required wins. */
+  optional?: boolean | undefined;
   /** Propagated to opted-in controls via context. Does not style FormField itself. */
   disabled?: boolean | undefined;
   /** Additional class merged with `.cinder-form-field`. */

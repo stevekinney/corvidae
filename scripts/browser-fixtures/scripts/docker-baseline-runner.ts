@@ -135,7 +135,7 @@ export const PLAYWRIGHT_REPORTERS = '--reporter=line,json';
 
 /**
  * The command the container runs. It unpacks the archived commit from stdin,
- * installs from the lockfile, runs the suite, and copies results into `/out`
+ * installs from the lockfile, generates the fixture inputs, runs the suite, and copies results into `/out`
  * owned by the host user. The suite's exit status is captured before the copy
  * and returned verbatim, so a red suite never exits 0.
  */
@@ -149,8 +149,10 @@ export function containerCommand(mode: ContainerMode, extraArguments: readonly s
   // then written fresh, and a committed baseline nothing writes is a true orphan.
   const wipe =
     mode === 'update' ? ` && find ${LINUX_BASELINE_DIRECTORY} -name '*.png' -delete` : '';
+  const prepareFixtures =
+    'bun run --filter @lostgradient/cinder metadata && bun scripts/browser-fixtures/scripts/prepare-manifest.ts';
   return [
-    `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile${wipe} && touch /tmp/baseline-marker && bun run ${script}${forwarded}`,
+    `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && ${prepareFixtures}${wipe} && touch /tmp/baseline-marker && bun run ${script}${forwarded}`,
     'status=$?',
     `find ${LINUX_BASELINE_DIRECTORY} -name '*.png' -newer /tmp/baseline-marker > /out/regenerated.txt 2>/dev/null`,
     `mkdir -p /out/linux && cp -R ${LINUX_BASELINE_DIRECTORY}/. /out/linux/ 2>/dev/null`,

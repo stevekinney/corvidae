@@ -78,6 +78,18 @@ describe('FormField rendering', () => {
     expect(label?.textContent?.trim()).toBe('Username');
   });
 
+  test('forwards Optional into the native accessible name of the control', () => {
+    const { getByRole } = render(FormField, {
+      props: {
+        id: 'time',
+        label: 'Time',
+        optional: true,
+        children: createRawSnippet(() => ({ render: () => '<input id="time" />' })),
+      },
+    });
+    expect(getByRole('textbox', { name: 'Time Optional' }).id).toBe('time');
+  });
+
   test('renders description <p> with correct id when description is provided', () => {
     const { container } = render(FormField, {
       props: {

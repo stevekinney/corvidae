@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2041",
+  "branch": "steve/cor-2041-interborough-homebrew",
+  "checkedAt": "1fd7e17ac29a1a7e5ef1b1a51c927c7c82fd07f4",
+  "briefVersion": "81bef0b900ba",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "No public stevekinney/homebrew-tap formula was created; an offline placeholder-only prototype is in the assigned scratch directory."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "A public version, public archive URL, and verified digest are intentionally pending."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "No public Homebrew formula has been installed or tested."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "No Homebrew installation exists to run the installed-release smoke against."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "The coordinator must publish the selected version, commit the public formula, and record live evidence."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "interborough-homebrew-release.yml builds a clean pinned macOS arm64 archive, verifies it with test-installed-release.ts, passes only the archive and SHA-256 artifact to a protected-main contents:write release job, rejects an existing tag, verifies the downloaded digest, and publishes both assets; scripts/interborough-homebrew-release-workflow.test.ts covers those boundaries."
+    }
+  ]
+}
