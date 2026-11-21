@@ -117,4 +117,16 @@ describe('the lines about a call', () => {
     expect(resultSummary('x'.repeat(200)).length).toBe(80);
     expect(shorten('a\n  b')).toBe('a b');
   });
+
+  test('summarizes a question and a refund without repeating their payload fields', () => {
+    expect(
+      resultSummary(
+        { parked: true, signalName: 'environment', prompt: 'Where should it go?' },
+        'requestHumanInput',
+      ),
+    ).toBe('Question asked');
+    expect(resultSummary({ orderId: '4472', refundedCents: 1850 }, 'issue-refund')).toBe(
+      '$18.50 refunded',
+    );
+  });
 });

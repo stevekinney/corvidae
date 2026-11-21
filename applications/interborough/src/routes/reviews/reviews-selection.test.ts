@@ -250,7 +250,7 @@ describe('an approval', () => {
     expect(card.textContent).not.toContain('issue-refund');
     const note = getByLabelText('Note Optional');
     expect(note.tagName).toBe('TEXTAREA');
-    expect(note.getAttribute('placeholder')).toBe(REVIEWS_COPY.notePlaceholder);
+    expect(note.getAttribute('placeholder')).toBe('Add a note for the agent or the record');
   });
 
   test('offers Allow for the rest of the chat', async () => {

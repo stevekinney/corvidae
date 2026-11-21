@@ -2221,7 +2221,12 @@
          one thing, and a refused decision replaces the failure that was showing. -->
     <div class="weft-chat-alerts" data-testid="chat-alerts">
       {#if session.approvalNotice !== undefined && !choosing}
-        <Alert variant="warning" dismissible onDismiss={() => session.dismissFailure()}>
+        <Alert
+          class="weft-chat-alerts__decision"
+          variant="warning"
+          dismissible
+          onDismiss={() => session.dismissFailure()}
+        >
           <p class="weft-chat-approval__message">{session.approvalNotice}</p>
         </Alert>
       {:else if session.failure !== undefined && !failureShownInTranscript && !choosing}

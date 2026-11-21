@@ -15,6 +15,7 @@ import {
   DISCOVER_AGENTS_REASON,
   DISCOVER_AGENTS_THREAD,
 } from '../../fixtures/chat-states.ts';
+import { designReviewColorScheme } from '../../scripts/environment-configuration.ts';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { openStatesChat } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -147,7 +148,7 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     page,
     request,
   }) => {
-    await openAt(page, request, 1280, 'dark');
+    await openAt(page, request, 1280, designReviewColorScheme() ?? 'dark');
     const lastMessage = page.locator('[data-message-role="user"]').last();
     const composer = page.locator('.chat-input-area').first();
     await expect(lastMessage).toContainText(DISCOVER_AGENTS_ASK);
@@ -178,12 +179,18 @@ test.describe('the approval on a chat (/chats/:chat)', () => {
     await expect(listed).toContainText(CHAT_COPY.status.done);
 
     // 12. The error moved nothing: the last message and the composer are where they were.
-    const after = await readBoxes(page, { message: lastMessage, composer });
+    const after = await readBoxes(page, {
+      message: lastMessage,
+      composer,
+      notice: alerts.getByRole('alert'),
+      date: page.locator('.chat-date-separator-text').first(),
+    });
     for (const key of ['message', 'composer'] as const) {
       expect(Math.abs(after[key].x - before[key].x), key).toBeLessThanOrEqual(0.5);
       expect(Math.abs(after[key].y - before[key].y), key).toBeLessThanOrEqual(0.5);
       expect(Math.abs(after[key].height - before[key].height), key).toBeLessThanOrEqual(0.5);
     }
+    expect(after.notice.x + after.notice.width).toBeLessThanOrEqual(after.date.x);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'a decision on an approval no longer waiting',

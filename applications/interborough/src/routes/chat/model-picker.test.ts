@@ -77,7 +77,7 @@ function mount(
     reload?: () => Promise<boolean>;
     locked?: boolean;
     onBusyChange?: (busy: boolean) => void;
-    onApplied?: () => void;
+    onApplied?: (label: string) => void;
   } = {},
 ) {
   const reloads: number[] = [];

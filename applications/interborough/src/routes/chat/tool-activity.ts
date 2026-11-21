@@ -511,7 +511,7 @@ function entryOf(
     name: pair.call.name,
     title: toolDisplayName(pair.call.name, info?.title),
     tier: info?.tier,
-    input: keyInput(pair.call.arguments),
+    input: pair.call.name === 'requestHumanInput' ? '' : keyInput(pair.call.arguments),
     arguments: pair.call.arguments,
     state,
     ...(created === undefined ? {} : { resultHref: created.href }),
@@ -526,8 +526,8 @@ function entryOf(
           : state === 'denied'
             ? (refusalReason(pair) ?? '')
             : state === 'failed'
-              ? (failure ?? resultSummary(pair.result?.content))
-              : resultSummary(pair.result?.content),
+              ? (failure ?? resultSummary(pair.result?.content, pair.call.name))
+              : resultSummary(pair.result?.content, pair.call.name),
     result: pair.result?.content,
     ...(state === 'failed' && error !== undefined
       ? {

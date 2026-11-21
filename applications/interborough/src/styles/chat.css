@@ -222,6 +222,13 @@
   box-shadow: var(--cinder-shadow-md);
 }
 
+/* Leave the centered transcript date and the latest message readable beneath the header. */
+.weft-chat-alerts > .weft-chat-alerts__decision {
+  align-self: start;
+  max-inline-size: min(100%, 21rem);
+  padding-block: var(--cinder-space-1);
+}
+
 @container weft-chat-route (max-width: 480px) {
   .weft-chat-alerts {
     --_ib-chat-inset: var(--cinder-space-3);

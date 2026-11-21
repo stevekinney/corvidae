@@ -7,6 +7,7 @@
  */
 
 import { humanizeIdentifier } from '@lostgradient/cinder';
+import { parkedHumanWait } from '@lostgradient/operative';
 
 const LONGEST_SUMMARY = 80;
 
@@ -108,10 +109,23 @@ export function approvalQuestion(input: {
   return line === '' ? `Run ${input.toolName}?` : `Run ${input.toolName} with ${line}?`;
 }
 
-/** One line for what a tool answered: its text, or its fields, cut short. */
-export function resultSummary(content: unknown): string {
+/** One line for what a tool answered, with its full payload left to the details. */
+export function resultSummary(content: unknown, toolName?: string): string {
   if (typeof content === 'string') return shorten(content);
   if (isRecord(content)) {
+    if (parkedHumanWait({ toolName, result: content }) !== undefined) return 'Question asked';
+    // The built-in showcase refund tool declares its amount in US cents.
+    if (
+      toolName === 'issue-refund' &&
+      typeof content.orderId === 'string' &&
+      typeof content.refundedCents === 'number' &&
+      Number.isSafeInteger(content.refundedCents)
+    ) {
+      const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+        content.refundedCents / 100,
+      );
+      return `${amount} refunded`;
+    }
     // The expanded result can show structured data. The rail only needs short, readable fields.
     const fields = Object.entries(content).flatMap(([key, value]) =>
       typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
