@@ -67,6 +67,10 @@ describe('parseBulkListFilterFromBody — validation precedence', () => {
     expect(() => parseBulkListFilterFromBody(wrap({ retrying: 'yes' }))).toThrow(
       'Field "filter.retrying" must be a boolean',
     );
+    // An empty step is refused here as the list schema refuses it, never read as a filter.
+    expect(() => parseBulkListFilterFromBody(wrap({ failedStep: '' }))).toThrow(
+      'Field "filter.failedStep" must be a non-empty string',
+    );
   });
 
   // --- adjacent pair: status before type ---

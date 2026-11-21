@@ -180,6 +180,8 @@ const BULK_FILTER_DIMENSION_PARSERS: ReadonlyArray<
   },
   (filter, record) => {
     const failedStep = parseOptionalFilterString(Reflect.get(record, 'failedStep'), 'failedStep');
+    // An empty label names no step: refused, as the list schema refuses it, never read as "any".
+    if (failedStep === '') throw new Error('Field "filter.failedStep" must be a non-empty string');
     if (failedStep !== undefined) filter.failedStep = failedStep;
   },
   (filter, record) => {
