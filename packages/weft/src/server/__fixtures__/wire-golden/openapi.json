@@ -12740,11 +12740,17 @@
                                   },
                                   "type": "array"
                                 },
+                                "failedStep": {
+                                  "type": "string"
+                                },
                                 "limit": {
                                   "type": "number"
                                 },
                                 "offset": {
                                   "type": "number"
+                                },
+                                "retrying": {
+                                  "type": "boolean"
                                 },
                                 "scheduleId": {
                                   "type": "string"
@@ -12928,11 +12934,17 @@
                                       },
                                       "type": "array"
                                     },
+                                    "failedStep": {
+                                      "type": "string"
+                                    },
                                     "limit": {
                                       "type": "number"
                                     },
                                     "offset": {
                                       "type": "number"
+                                    },
+                                    "retrying": {
+                                      "type": "boolean"
                                     },
                                     "scheduleId": {
                                       "type": "string"
@@ -13205,11 +13217,17 @@
                                   },
                                   "type": "array"
                                 },
+                                "failedStep": {
+                                  "type": "string"
+                                },
                                 "limit": {
                                   "type": "number"
                                 },
                                 "offset": {
                                   "type": "number"
+                                },
+                                "retrying": {
+                                  "type": "boolean"
                                 },
                                 "scheduleId": {
                                   "type": "string"

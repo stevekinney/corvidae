@@ -211,6 +211,14 @@ function summarizeBulkFilter(filter: ListFilter): BulkOperationFilterSummary {
         computeSemanticHash(left).localeCompare(computeSemanticHash(right)),
       );
   }
+  // Every condition that chose the runs is kept, so the preview and the audit record say what
+  // the operation acted on, never a wider filter than it matched.
+  if (filter.failedStep !== undefined) {
+    summary.failedStep = filter.failedStep;
+  }
+  if (filter.retrying !== undefined) {
+    summary.retrying = filter.retrying;
+  }
   if (filter.limit !== undefined) {
     summary.limit = filter.limit;
   }
