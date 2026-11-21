@@ -163,7 +163,7 @@ export type ApprovalResolving = 'approve' | 'deny';
 export type ApprovalFailure = {
   /** What failed, in a few words, such as `Couldn't approve.`. */
   summary: string;
-  /** The reason and what is still true, such as `Interborough couldn't reach the agent. Nothing was refunded.`. */
+  /** The failure reason. Include a durable outcome only when the host can confirm it. */
   detail?: string;
 };
 

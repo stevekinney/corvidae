@@ -428,7 +428,7 @@ describe('deciding a Bureau tool approval', () => {
     );
   });
 
-  test('says the decision was not recorded when the Bureau refuses it, and keeps the review', async () => {
+  test('names an approval failure and keeps the pending review when the durable outcome is unknown', async () => {
     const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
@@ -438,6 +438,7 @@ describe('deciding a Bureau tool approval', () => {
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
     expect(rows(container).length).toBe(1);
+    expect(container.textContent).not.toMatch(/Nothing (?:was refunded|changed)/);
   });
 });
 

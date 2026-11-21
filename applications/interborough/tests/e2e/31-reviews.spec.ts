@@ -386,6 +386,8 @@ test.describe('a tool approval', () => {
         let failedOnce = false;
         const failureTitle =
           REVIEWS_COPY.approvalFailed[decision === 'Approve' ? 'approve' : 'deny'];
+        // The first decision is rejected here before reaching the Bureau. This fixture can say
+        // what did not happen. The page relies on the actual failure message for live responses.
         const reason =
           decision === 'Approve'
             ? 'Interborough couldn’t reach the agent. Nothing was refunded.'
@@ -427,9 +429,10 @@ test.describe('a tool approval', () => {
         await expect(page.locator('.cinder-toast-region').getByText(reason)).toHaveCount(0);
         await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
         await expect(pane.getByRole('checkbox')).toHaveCount(0);
-        await captureApprovalAtWidths(page, `${decision} failing`);
+        await expect(rowOf(page, review)).toBeVisible();
         expect(refundRan(await threadMessages(request, threadId))).toBe(false);
         expect(requests).toHaveLength(1);
+        await captureApprovalAtWidths(page, `${decision} failing`);
         await pane.getByRole('button', { name: decision, exact: true }).click();
         await expect(rowOf(page, review)).toHaveCount(0);
         expect(requests).toHaveLength(2);
