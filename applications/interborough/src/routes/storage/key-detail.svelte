@@ -464,7 +464,9 @@
       />
       {#if newer !== undefined}
         <!-- The three ways on sit in one row under the editor, as the rewritten frame draws them, not inside the alert. Small buttons keep the row on one line in the detail pane at 1280 pixels. -->
-        <div class="ib-storage-key__actions ib-storage-key__actions--end">
+        <div
+          class="ib-storage-key__actions ib-storage-key__actions--end ib-storage-key__actions--conflict"
+        >
           <Button
             size="sm"
             variant="secondary"
@@ -595,6 +597,10 @@
 
   .ib-storage-key__actions--end {
     justify-content: flex-end;
+  }
+
+  .ib-storage-key__actions--conflict {
+    column-gap: var(--cinder-space-1);
   }
 
   .ib-storage-key__lock {

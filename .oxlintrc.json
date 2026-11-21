@@ -66,6 +66,7 @@
   },
   "ignorePatterns": [
     "**/build/**",
+    "!packages/velveteen/src/build/**",
     "**/.svelte-kit/**",
     "**/coverage/**",
     "**/.turbo/**",

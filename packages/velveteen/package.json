@@ -1,0 +1,97 @@
+{
+  "name": "@lostgradient/velveteen",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./compiler": "./src/compiler/index.ts",
+    "./build": "./src/build/index.ts",
+    "./build/publication": "./src/build/publication.ts",
+    "./build/serving": "./src/build/serving.ts",
+    "./routing": "./src/routing/index.ts",
+    "./remote/client": "./src/remote/client.ts",
+    "./remote/server": "./src/remote/server.ts",
+    "./remote/forms": "./src/remote/forms.ts",
+    "./server": "./src/server/index.ts",
+    "./types": "./src/types/index.ts",
+    "./create": "./src/create.ts"
+  },
+  "scripts": {
+    "create": "bun src/create.ts",
+    "test:native": "bun ../../scripts/bun-test.ts ./bun-primitives.test.ts",
+    "test:inventory": "bun tests/inventory/check-inventory.ts",
+    "test:harness": "bun tests/reference/check-identity.ts && bun tests/conformance/run-controls.ts",
+    "test:types": "bun tests/types/check-types.ts && bun ../../scripts/bun-test.ts src/types && bun tests/types/generated/check-generated-types.ts && bun tests/remote/check-types.ts",
+    "audit:dependencies": "bun ../../scripts/bun-test.ts tests/audit/audit.test.ts && bun tests/audit/dependencies.ts",
+    "test:compiler": "bun ../../scripts/bun-test.ts src/compiler/compiler.test.ts",
+    "test:production": "bun ../../scripts/bun-test.ts src/compiler/production.test.ts tests/build/production.test.ts",
+    "test:development": "bun ../../scripts/bun-test.ts tests/fixtures/candidate/development.integration.test.ts tests/lifecycle/entry-discovery.test.ts tests/lifecycle/module-graph-publication.test.ts",
+    "format:check": "prettier --check .",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
+    "typecheck": "tsc --noEmit --project tsconfig.json && svelte-check --workspace tests/fixtures/candidate --tsconfig ../../../tsconfig.json --config ../../../svelte-check.config.ts --fail-on-warnings && svelte-check --workspace src --tsconfig ../tsconfig.json --config ../svelte-check.config.ts --fail-on-warnings",
+    "prepare:reference": "bun tests/reference/prepare-upstream.ts && bun tests/reference/install.ts && bun tests/reference/check-identity.ts",
+    "probe:native-hot": "bun tests/lifecycle/native-lifecycle.probe.ts",
+    "test:first-batch": "bun run test:native && bun run test:inventory && bun run test:harness && bun run test:types && bun run audit:dependencies && bun run test:compiler && bun run test:development && bun run test:production && bun run format:check && bun run lint && bun run typecheck && bun run typecheck:reference",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts' bun-primitives.test.ts src/compiler/compiler.test.ts src/data src/types src/routing/route-order.test.ts src/routing/synchronize.test.ts",
+    "test:slow": "bun run prepare:reference && bun ../../scripts/bun-test-selected.ts .integration.test.ts",
+    "test:routing": "bun ../../scripts/bun-test.ts src/routing",
+    "test:batch-c": "bun run test:routing && bun run test:first-batch",
+    "test:build": "bun ../../scripts/bun-test.ts tests/build/native-bundler.test.ts tests/build/native-serving.test.ts tests/build/browser-boundary.test.ts tests/build/graph.test.ts tests/build/server-assets.test.ts tests/build/build.test.ts tests/build/publication.test.ts tests/build/serving.test.ts",
+    "test:package": "bun ../../scripts/bun-test.ts tests/build/package.test.ts",
+    "audit:production": "bun ../../scripts/bun-test.ts tests/audit/production-artifact.test.ts",
+    "test:batch-d": "bun run test:build && bun run test:package && bun run test:batch-c && bun run audit:production",
+    "test:server": "bun ../../scripts/bun-test.ts src/server tests/server",
+    "test:security": "bun ../../scripts/bun-test.ts tests/server/security.test.ts tests/server/internal-fetch.test.ts src/data/codec.test.ts src/data/fetch.test.ts src/data/transport.test.ts src/server/responses.test.ts tests/server/mutations.test.ts tests/remote/remote.test.ts tests/build/build-errors.test.ts",
+    "test:browser": "bun ../../scripts/bun-test.ts tests/client",
+    "test:conformance": "bun tests/conformance/runtime-harness.ts",
+    "test:runtime-lifecycle": "bun ../../scripts/bun-test.ts tests/lifecycle/application-publication.test.ts",
+    "test:batch-ef": "bun ../../scripts/bun-test.ts src/data && bun run test:server && bun run test:browser && bun run test:runtime-lifecycle && bun run test:runtime-controls && bun run test:conformance -- --mode=development && bun run test:conformance -- --mode=production && bun run test:batch-d",
+    "test:runtime-controls": "bun tests/conformance/runtime-controls.ts",
+    "test:actions": "bun ../../scripts/bun-test.ts tests/actions",
+    "test:remote": "bun ../../scripts/bun-test.ts tests/remote",
+    "test:prerender": "bun ../../scripts/bun-test.ts tests/prerender",
+    "test:build-errors": "bun ../../scripts/bun-test.ts tests/build/build-errors.test.ts",
+    "test:package-consumer": "bun ../../scripts/bun-test.ts tests/build/clean-consumer.test.ts && bun tests/build/starter-probe.ts",
+    "test:batch-gh": "bun run test:actions && bun run test:remote && bun run test:prerender && bun run test:build-errors && bun run test:security && bun run test:batch-ef",
+    "test:batch-i": "bun run test:package-consumer && bun run test:batch-gh",
+    "test:navigation-addresses": "bun ../../scripts/bun-test.ts tests/client/navigation-addresses.test.ts",
+    "test:navigation-lifecycle": "bun ../../scripts/bun-test.ts tests/client/navigation-lifecycle.test.ts",
+    "test:navigation": "bun run test:navigation-addresses && bun run test:navigation-lifecycle && bun run test:navigation-recovery",
+    "test:batch-j": "bun run test:navigation && bun run test:batch-i",
+    "test:navigation-recovery": "bun ../../scripts/bun-test.ts tests/client/navigation-recovery.test.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src",
+    "typecheck:reference": "tsc --noEmit --project tests/reference/tsconfig.json && svelte-check --workspace tests/reference/src --tsconfig ../tsconfig.json --config ../vite-reference.config.ts --fail-on-warnings"
+  },
+  "dependencies": {
+    "@jridgewell/remapping": "2.3.5",
+    "devalue": "5.9.4",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "svelte": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "svelte": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@jridgewell/trace-mapping": "0.3.31",
+    "@lostgradient/testing": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:velveteen",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "playwright": "catalog:",
+    "prettier": "catalog:velveteen",
+    "prettier-plugin-svelte": "catalog:",
+    "svelte": "catalog:",
+    "svelte-check": "catalog:velveteen"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "description": "Bun-native Svelte compiler and application framework."
+}

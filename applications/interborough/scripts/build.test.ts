@@ -24,17 +24,20 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { compareCodepoint } from '../src/lib/compare-codepoint.ts';
 import {
   assertCleanBuild,
-  assertSafeOutputDirectory,
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
-  buildApplication,
-  buildInputPaths,
   CURATED_SHIKI_REGISTRIES,
   curatedShikiPlugin,
+  linkedStylesheets,
+  wasmPlugin,
+} from './browser-build.ts';
+import {
+  assertSafeOutputDirectory,
+  buildApplication,
+  buildInputPaths,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
   exitWhenStandardInputCloses,
-  linkedStylesheets,
   PACKAGE_DIRECTORY,
   parseBuildArguments,
   replaceDirectory,
@@ -43,7 +46,6 @@ import {
   retainPreviousAssets,
   runBuildCommand,
   runBuildMain,
-  wasmPlugin,
 } from './build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-'));
@@ -260,6 +262,7 @@ describe('browserBuildOptions', () => {
       expect(options.plugins?.[0]).toBe(wasmPlugin);
       expect(options.plugins?.[1]).toBe(curatedShikiPlugin);
       expect(options.plugins).toHaveLength(3);
+      expect(options.plugins?.[2]?.name).toBe('velveteen-svelte');
       expect(options.naming).toEqual({
         entry: '[name].[ext]',
         chunk: `${BUILD_ASSET_DIRECTORY}/[name]-[hash].[ext]`,
