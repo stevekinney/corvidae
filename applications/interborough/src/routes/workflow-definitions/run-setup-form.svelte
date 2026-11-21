@@ -229,7 +229,12 @@
         const started = await startWorkflowFile(type, variables.input, variables.idempotencyKey);
         return { kind: 'run', runId: started.runId };
       }
-      const handle = await client.start(type, variables.input);
+      const handle =
+        variables.idempotencyKey === undefined
+          ? await client.start(type, variables.input)
+          : await client.start(type, variables.input, {
+              idempotencyKey: variables.idempotencyKey,
+            });
       return { kind: 'run', runId: handle.id };
     },
     onMutate: () => {
@@ -434,7 +439,9 @@
       overlap,
       catchUp,
       idempotencyKey:
-        when === 'now' && kind === 'file' ? (manualStartKey ??= crypto.randomUUID()) : undefined,
+        when === 'now' && (kind === 'file' || kind === 'code')
+          ? (manualStartKey ??= crypto.randomUUID())
+          : undefined,
     };
     if (noInput) {
       begin(undefined, choice);

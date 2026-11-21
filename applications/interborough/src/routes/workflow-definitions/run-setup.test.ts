@@ -568,6 +568,28 @@ describe('a start whose answer is lost', () => {
     expect(requests[1]?.['idempotencyKey']).toBe(requests[0]?.['idempotencyKey']);
   });
 
+  test('reuses one idempotency key when Start run retries a code workflow after a lost answer', async () => {
+    const { container, findByText } = open('/workflows/order-processing/run');
+    const requests: Array<Record<string, unknown>> = [];
+    stub?.on('POST /workflows', (params) => {
+      requests.push({ ...params });
+      if (requests.length === 1) throw new TypeError('Failed to fetch');
+      return { id: 'engine-run-replayed' };
+    });
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'refund');
+    await fireEvent.click(primary(root));
+    expect(await findByText(COPY.startMaybe)).not.toBeNull();
+    await fireEvent.click(primary(root));
+    await waitFor(() =>
+      expect(router.pathname).toBe('/workflows/order-processing/runs/engine-run-replayed'),
+    );
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.['idempotencyKey']).toEqual(expect.any(String));
+    expect(requests[1]?.['idempotencyKey']).toBe(requests[0]?.['idempotencyKey']);
+  });
+
   test('says the run may have started, links to the runs, and keeps the input', async () => {
     const { container, findByText, findByRole } = open('/workflows/order-processing/run');
     stub?.on('POST /workflows', () => {
