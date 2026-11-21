@@ -90,7 +90,7 @@ type ActivityRetryingRecord = WorkflowRetrying & { workflowExecutionToken?: stri
  * The decoded record when it belongs to the run with `workflowExecutionToken`, and `undefined` when
  * it is absent, not the shape the engine writes, or left by another run under the same id.
  */
-function decodeActivityRetrying(
+export function decodeActivityRetrying(
   bytes: Uint8Array | null,
   workflowExecutionToken: string | undefined,
 ): WorkflowRetrying | undefined {
@@ -107,24 +107,10 @@ function decodeActivityRetrying(
 }
 
 /**
- * The activity a run is retrying, read only for a run that is running: the record is deleted when
- * the run leaves `running`, but never trusted after it. One small read per running run.
- */
-export async function readRetryingRecord(
-  internals: EngineInternals,
-  state: WorkflowState,
-): Promise<WorkflowRetrying | undefined> {
-  if (state.status !== 'running') return undefined;
-  return decodeActivityRetrying(
-    await internals.storage.get(KEYS.activityRetrying(state.id)),
-    state.workflowExecutionToken,
-  );
-}
-
-/**
  * The ids of every run that holds a retrying record: the candidate source for
  * `ListFilter.retrying: true`. A superset of the runs retrying now, since a run that ends while
- * retrying keeps its record until terminal cleanup; {@link matchesRetryingFilter} verifies each.
+ * retrying keeps its record until terminal cleanup; the list verifies each candidate against its
+ * loaded state and the record's run token (`matchesListFilterAndRecords`).
  */
 export async function queryRetryingIndex(internals: EngineInternals): Promise<Set<string>> {
   const prefix = KEYS.activityRetryingPrefix();
@@ -134,20 +120,6 @@ export async function queryRetryingIndex(internals: EngineInternals): Promise<Se
     if (workflowId !== null) ids.add(workflowId);
   }
   return ids;
-}
-
-/**
- * Whether `state` satisfies `ListFilter.retrying`: authoritative, read from the record behind
- * `WorkflowSummary.retrying`, so an index entry never decides it. `undefined` matches every run,
- * and a run that is not running is never retrying, with no read.
- */
-export async function matchesRetryingFilter(
-  internals: EngineInternals,
-  state: WorkflowState,
-  retrying: boolean | undefined,
-): Promise<boolean> {
-  if (retrying === undefined) return true;
-  return ((await readRetryingRecord(internals, state)) !== undefined) === retrying;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -14,7 +14,6 @@ import type {
   WorkflowSummary,
 } from '../types.ts';
 import { normalizeWorkflowTags } from '../workflow-tags.ts';
-import { readRetryingRecord } from './activity-retrying-record.ts';
 import { mutateWorkflowTags, validateAttributeValueSizes } from './attributes-tags.ts';
 import { CONSTRAINED_ID_CHUNK_SIZE } from './candidate-read-batching.ts';
 import {
@@ -24,7 +23,7 @@ import {
 import type { Engine } from './index.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveListCandidateIds } from './list-candidate-resolution.ts';
-import { matchesListFilterAndRecords } from './list-filter-match.ts';
+import { matchesListFilterAndRecords, readRetryingRecord } from './list-filter-match.ts';
 import {
   readSearchAttributesForFilter,
   readSearchAttributesForStates,
