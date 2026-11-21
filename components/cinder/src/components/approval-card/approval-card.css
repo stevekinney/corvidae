@@ -1709,7 +1709,13 @@
     }
 
     /* Compact intrinsic widths, never equal or full width; the 44px height is the target. */
-    .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
+    .cinder-approval-card__action-buttons
+      .cinder-button:is(
+        .button-size-extra-small,
+        .button-size-small,
+        .button-size-medium,
+        .button-size-large
+      ) {
       flex: 0 1 auto;
       min-height: var(--cinder-touch-target-min);
     }
@@ -1718,7 +1724,13 @@
       flex-wrap: wrap;
     }
 
-    .cinder-approval-card__row-actions .cinder-button[data-cinder-size] {
+    .cinder-approval-card__row-actions
+      .cinder-button:is(
+        .button-size-extra-small,
+        .button-size-small,
+        .button-size-medium,
+        .button-size-large
+      ) {
       min-inline-size: var(--cinder-touch-target-min);
       max-inline-size: none;
       white-space: nowrap;
@@ -1741,8 +1753,20 @@
       block-size: auto;
     }
 
-    .cinder-approval-card__row-actions .cinder-button[data-cinder-size],
-    .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
+    .cinder-approval-card__row-actions
+      .cinder-button:is(
+        .button-size-extra-small,
+        .button-size-small,
+        .button-size-medium,
+        .button-size-large
+      ),
+    .cinder-approval-card__action-buttons
+      .cinder-button:is(
+        .button-size-extra-small,
+        .button-size-small,
+        .button-size-medium,
+        .button-size-large
+      ) {
       min-inline-size: var(--cinder-touch-target-min);
     }
 

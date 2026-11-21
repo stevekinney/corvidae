@@ -764,7 +764,7 @@ describe('Skeleton list variant timing', () => {
     expect(container.querySelector('[role="alert"], .cinder-banner')).toBeNull();
     const cancel = getByRole('button', { name: 'Cancel' });
     expect(cancel.classList.contains('cinder-button')).toBe(true);
-    expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(cancel.classList.contains('button-variant-ghost')).toBe(true);
     fireEvent.click(cancel);
     expect(onCancel).toHaveBeenCalledTimes(1);
   });

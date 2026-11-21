@@ -194,9 +194,9 @@ describe('the question card on a run waiting for you', () => {
     expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
       'Answer sent: Production. Undo for 5 s. Request human input continues once a provider is connected. Undo',
     );
-    expect(view.getByRole('button', { name: 'Undo' }).getAttribute('data-cinder-variant')).toBe(
-      'ghost-accent',
-    );
+    expect(
+      view.getByRole('button', { name: 'Undo' }).classList.contains('button-variant-ghost-accent'),
+    ).toBe(true);
     expect(view.container.querySelector('[data-run-header]')?.textContent).toContain(
       'answer sent, undo for 5 s',
     );

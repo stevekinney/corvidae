@@ -147,7 +147,7 @@ test.describe('Health › Audit log on the sample world', () => {
 
     // 82e: Export is a secondary button with a download icon, at the end of the same row.
     const exportButton = main.getByRole('button', { name: 'Export', exact: true });
-    await expect(exportButton).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(exportButton).toContainClass('button-variant-secondary');
     await expect(exportButton.locator('svg')).toHaveCount(1);
     const exportBox = await exportButton.boundingBox();
     const countBox = boxes[4];
@@ -292,7 +292,7 @@ test.describe('Health › Audit log on the sample world', () => {
     );
     const copyJson = pane.getByRole('button', { name: 'Copy as JSON' });
     await expect(copyJson).toBeVisible();
-    await expect(copyJson).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(copyJson).toContainClass('button-variant-secondary');
     await expect(pane).toContainText(
       'Audit records are kept 90 days (Settings › Data and retention). Export downloads the filtered list as JSON Lines.',
     );

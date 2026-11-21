@@ -10,6 +10,7 @@
 
 <script lang="ts" generics="T extends string = string">
   import type { SelectProps } from './select.types.ts';
+  import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
   import { resolveFieldControl } from '../../_internal/field-control.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
   import {
@@ -174,9 +175,9 @@
       {#if options.length === 0}
         <select
           {id}
-          class="cinder-_input-frame cinder-select"
-          data-cinder-size={size}
-          data-cinder-variant={variant}
+          class="cinder-_input-frame cinder-select select-size-{CONTROL_SIZE_NAMES[
+            size
+          ]} select-variant-{variant}"
           data-cinder-appearance={resolvedAppearance}
           disabled={field.disabled}
           required={field.required}
@@ -193,9 +194,9 @@
       {:else}
         <select
           {id}
-          class="cinder-_input-frame cinder-select"
-          data-cinder-size={size}
-          data-cinder-variant={variant}
+          class="cinder-_input-frame cinder-select select-size-{CONTROL_SIZE_NAMES[
+            size
+          ]} select-variant-{variant}"
           data-cinder-appearance={resolvedAppearance}
           disabled={field.disabled}
           required={field.required}
@@ -231,8 +232,7 @@
   {error}
   required={field.required}
   disabled={field.disabled}
-  class={classNames('cinder-select-field', className)}
-  data-cinder-variant={variant}
+  class={classNames('cinder-select-field', `select-variant-${variant}`, className)}
   data-cinder-tone={tone === 'default' ? undefined : tone}
   data-cinder-flush={flush && variant === 'ghost' ? '' : undefined}
   labelClass="cinder-select-field__label"

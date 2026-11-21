@@ -54,7 +54,7 @@
    * the `sm` step it is asked for, so its icon and label stay on the column's text inset rather
    * than stepping left by the difference between the two paddings (COR-2388). */
   .cinder-list-detail__header
-    .cinder-button[data-cinder-compact][data-cinder-variant='ghost']:not([data-cinder-icon-only]) {
+    .cinder-button[data-cinder-compact].button-variant-ghost:not([data-cinder-icon-only]) {
     padding-inline: var(--cinder-button-padding-x-sm);
   }
 

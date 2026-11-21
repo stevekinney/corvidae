@@ -109,10 +109,23 @@ export function collectGeometryFacts(): GeometryFacts {
     return element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
   }
 
+  function controlModifier(element: Element, kind: 'size' | 'variant'): string | null {
+    const component = element.classList.contains('cinder-button')
+      ? 'button'
+      : element.classList.contains('cinder-select')
+        ? 'select'
+        : null;
+    if (component === null) return element.getAttribute(`data-cinder-${kind}`);
+    const prefix = `${component}-${kind}-`;
+    return (
+      [...element.classList].find((name) => name.startsWith(prefix))?.slice(prefix.length) ?? null
+    );
+  }
+
   function nameOf(element: Element): string {
     const classes = [...element.classList].filter((name) => !name.startsWith('svelte-'));
     const chosen = classes.find((name) => name.startsWith('cinder-')) ?? classes[0];
-    const size = element.getAttribute('data-cinder-size');
+    const size = controlModifier(element, 'size');
     return `${element.tagName.toLowerCase()}${chosen === undefined ? '' : `.${chosen}`}${size === null ? '' : `[size=${size}]`}`;
   }
 
@@ -507,7 +520,7 @@ export function collectGeometryFacts(): GeometryFacts {
         hasIcon: element.querySelector('svg, img') !== null,
         inline: style.display === 'inline',
         lineAction: element.matches('.chat-message-line .chat-message-action-button'),
-        variant: element.getAttribute('data-cinder-variant') ?? '',
+        variant: controlModifier(element, 'variant') ?? '',
         layout: boxOf(union(null, layout)),
         rect: {
           x: half(rect.left),

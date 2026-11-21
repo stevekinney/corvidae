@@ -57,8 +57,8 @@ describe('an archived composer', () => {
 
     const buttons = [...container.querySelectorAll<HTMLButtonElement>('.chat-input-notice button')];
     expect(buttons.map((button) => button.textContent?.trim())).toEqual(['New chat', 'Unarchive']);
-    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(buttons[0]!.classList.contains('button-variant-secondary')).toBe(true);
+    expect(buttons[1]!.classList.contains('button-variant-primary')).toBe(true);
 
     await fireEvent.click(buttons[0]!);
     await fireEvent.click(buttons[1]!);
@@ -109,7 +109,7 @@ describe('a read-only composer', () => {
 
     const button = bar.querySelector<HTMLButtonElement>('button')!;
     expect(button.textContent?.trim()).toBe('Request access');
-    expect(button.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(button.classList.contains('button-variant-primary')).toBe(true);
     await fireEvent.click(button);
     expect(calls).toEqual(['request']);
   });
@@ -157,7 +157,7 @@ describe('the blocked row', () => {
     });
 
     const button = container.querySelector<HTMLButtonElement>('.chat-input-blocked button')!;
-    expect(button.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(button.classList.contains('button-variant-primary')).toBe(true);
   });
 });
 

@@ -572,11 +572,11 @@ describe('Rewritten while editing', () => {
       'Save over it…',
       'Show new value',
     ]);
-    expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
-      'secondary',
-      'secondary',
-      'primary',
-    ]);
+    expect(
+      buttons.map((button) =>
+        [...button.classList].find((name) => name.startsWith('button-variant-')),
+      ),
+    ).toEqual(['button-variant-secondary', 'button-variant-secondary', 'button-variant-primary']);
     // The draft is still there, the editor's own buttons give way to these, and the line above folds the key in.
     expect(
       (pane.getByRole('textbox', { name: STORAGE_COPY.detail.editLabel }) as HTMLTextAreaElement)
