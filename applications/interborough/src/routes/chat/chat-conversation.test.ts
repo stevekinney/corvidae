@@ -1078,7 +1078,8 @@ describe('a run that waits on a tool approval', () => {
     await sendMessage(container, 'Refund it');
     await until(() => {
       expect(container.querySelector('[data-approval-decision]')).not.toBeNull();
-      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
+      expect(container.textContent?.match(/Waiting on you/g)).toHaveLength(1);
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).not.toContain(
         'Waiting on you',
       );
     });
@@ -1417,7 +1418,8 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
           'Waiting on you',
         ),
       );
-      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
+      expect(container.textContent?.match(/Waiting on you/g)).toHaveLength(1);
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).not.toContain(
         'Waiting on you',
       );
       jest.setSystemTime(new Date('2026-11-11T00:00:03.000Z'));
