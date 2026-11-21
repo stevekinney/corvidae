@@ -72,7 +72,8 @@ export const listWorkflowsOperation = defineOperation({
   summary: 'List workflows',
   description:
     'List workflows visible to the caller, optionally filtered by status, type, originating ' +
-    'schedule, direct parent run, tags, id prefix, failure category, and time range, with pagination via ' +
+    'schedule, direct parent run, tags, id prefix, failure category, failing step, whether an ' +
+    'activity is being retried, and time range, with pagination via ' +
     '`limit`/`offset`. ' +
     'Read-only. Returns the matching workflow summaries in the engine default ordering.',
   destructive: false,
@@ -185,6 +186,9 @@ export const listWorkflowsRestBinding: UnknownRestBinding = {
       queryParam: 'parent_workflow_execution_token',
     },
     tags: { kind: 'query', queryParam: 'tag', repeating: true },
+    failureCategory: { kind: 'query', queryParam: 'failure_category', repeating: true },
+    failedStep: { kind: 'query', queryParam: 'failed_step' },
+    retrying: { kind: 'query', queryParam: 'retrying' },
     limit: { kind: 'query', queryParam: 'limit' },
     offset: { kind: 'query', queryParam: 'offset' },
     include: { kind: 'query', queryParam: 'include', repeating: true },
