@@ -515,7 +515,7 @@ test.describe('schedule-editor-states: a save', () => {
     await save(app).click();
     const ready = async () => {
       // What landed and what did not, in the words of what was asked: never "not saved" beside "saved".
-      await expect(status(app)).toHaveText('Saved the changes. Pausing it failed: Failed.');
+      await expect(status(app)).toHaveText('Saved the changes. Pausing it failed.');
     };
     await ready();
     await captureState(page, app, 'half-saved', ready);

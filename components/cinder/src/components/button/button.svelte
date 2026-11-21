@@ -122,16 +122,19 @@
   // the old width ("Create" becomes "Creating…"), the pin is let go so the label never spills
   // over the border.
   /**
-   * The button's border-box width, fractional. `offsetWidth` rounds: the words of "Save changes"
-   * are 82.4px wide, `offsetWidth` says 82, and a pin 0.4px short of its words makes the label
-   * box overflow, so `text-overflow: ellipsis` cuts the label to "Save chang…". A transformed
-   * ancestor (a scaling dialog) skews `getBoundingClientRect` by more than a pixel; then the
-   * layout width `offsetWidth` is the better measure.
+   * The button's border-box width, fractional and in layout pixels. `offsetWidth` rounds: the
+   * words of "Save changes" are 82.4px wide, `offsetWidth` says 82, and a pin 0.4px short of its
+   * words makes the label box overflow, so `text-overflow: ellipsis` cuts the label to "Save
+   * chang…". `getBoundingClientRect` is fractional but scaled by a transform or `zoom`, which
+   * pins a box that is too small. The computed width is neither, though it is printed with three
+   * decimals, so it is rounded up to the 1/64px a layout works in: the pin is never short of the
+   * words. A browser without layout (no computed width) falls back to `offsetWidth`.
    */
   function layoutWidth(target: HTMLElement): number {
-    const fractional = target.getBoundingClientRect().width;
-    const rounded = target.offsetWidth;
-    return Math.abs(fractional - rounded) <= 1 ? fractional : rounded;
+    const computed = Number.parseFloat(getComputedStyle(target).width);
+    return Number.isFinite(computed) && computed > 0
+      ? Math.ceil(computed * 64) / 64
+      : target.offsetWidth;
   }
   let element = $state<HTMLElement | null>(null);
   let restingWidth = $state<number | undefined>(undefined);
