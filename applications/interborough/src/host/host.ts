@@ -173,7 +173,6 @@ import { apiRoutes, localApiPrincipal, type ApiPrincipal } from './api-routes.ts
 import {
   COMPOSED_JSON_RPC_PATH,
   composeOperationNames,
-  engineOperationNames,
   serveComposedJsonRpc,
 } from './composed-json-rpc.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -1911,7 +1910,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // Both catalogs are known here. A name they both define stops the host from starting.
     bureauMethods?.(
       composeOperationNames(
-        await engineOperationNames(server.url, key),
+        server.operationNames,
         bureauHandler.resourceInventory
           .filter((entry) => entry.kind === 'operation' && entry.transports.includes('jsonRpcHttp'))
           .map((entry) => entry.key),
