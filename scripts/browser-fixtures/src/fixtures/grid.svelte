@@ -4,7 +4,7 @@
   const items = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'];
 </script>
 
-<div class="grid-fixture">
+<div class="grid-fixture gap-8">
   <div id="example-mount-narrow-collapse">
     <Grid columns={3} gap="1rem" narrowCollapseEnabled>
       {#each items as item}<div class="grid-cell">{item}</div>{/each}
@@ -24,7 +24,6 @@
 <style>
   .grid-fixture {
     display: grid;
-    gap: var(--cinder-space-8);
     min-inline-size: 48rem;
   }
   .grid-cell {

@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
@@ -96,6 +97,39 @@ describe('TimelineTab', () => {
     });
 
     await waitFor(() => expect(getByText('No steps yet')).not.toBeNull());
+  });
+
+  // COR-2489: with no step chosen the detail pane was the frame's whole height (about 1,300px at
+  // 1280) with "Choose a step" centred in it. With no step chosen the frame is as tall as what it
+  // holds, up to the same height.
+  test('with no step chosen, the frame is only as tall as what it holds', async () => {
+    const entries = [
+      entry({ step: 1, operationLabel: 'reserveFlight' }),
+      entry({ step: 2, operationLabel: 'reserveHotel' }),
+    ];
+    const { container, getAllByText } = render(TimelineTabHarness, {
+      props: {
+        client: baseClient(entries),
+        workflow: workflow(),
+        liveObservations: liveObservations(),
+        finalizerStatus: null,
+      },
+    });
+    await waitFor(() => expect(getAllByText('Choose a step').length).toBeGreaterThan(0));
+    const frame = container.querySelector('[data-testid="run-steps"]');
+    expect(frame?.hasAttribute('data-step-chosen')).toBe(false);
+
+    const source = readFileSync(new URL('./timeline-tab.svelte', import.meta.url), 'utf8');
+    const rule = /\.ib-steps-frame:not\(\[data-step-chosen\]\) \{([^}]*)\}/.exec(source)?.[1];
+    expect(rule).toContain('block-size: auto;');
+    expect(rule).toContain('max-block-size: max(24rem, 60dvh);');
+    expect(rule).toContain('overflow-y: auto;');
+    // A chosen step keeps the frame's height: the frame's own rule is unchanged.
+    expect(source).toMatch(/\.ib-steps-frame \{\s*block-size: max\(24rem, 60dvh\);/);
+
+    // Choosing a step marks the frame, so it takes that height again.
+    await fireEvent.click(getAllByText('Reserve flight')[0] as HTMLElement);
+    await waitFor(() => expect(frame?.hasAttribute('data-step-chosen')).toBe(true));
   });
 
   test('lists the steps in order, each in words and in code, with the count in the list header', async () => {

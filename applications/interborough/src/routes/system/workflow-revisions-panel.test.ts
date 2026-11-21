@@ -10,6 +10,7 @@
 import { fireEvent, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { ScriptedFetch } from './system-test-support.test-support.ts';
 import {
@@ -115,7 +116,7 @@ describe('WorkflowRevisionsPanel', () => {
     expect(await findByText('Not found')).not.toBeNull();
 
     const callsBeforeRetry = scripted.calls.length;
-    const retryButton = await findByRole('button', { name: /retry/i });
+    const retryButton = await findByRole('button', { name: RETRY_LABEL });
     await fireEvent.click(retryButton);
     await waitFor(() => {
       expect(scripted?.calls.length).toBeGreaterThan(callsBeforeRetry);
@@ -145,7 +146,7 @@ describe('WorkflowRevisionsPanel', () => {
     expect(queryByText('Installed')).toBeNull();
 
     const callsBeforeRetry = scripted.calls.length;
-    const retryButton = await findByRole('button', { name: /retry/i });
+    const retryButton = await findByRole('button', { name: RETRY_LABEL });
     await fireEvent.click(retryButton);
     await waitFor(() => {
       expect(scripted?.calls.length).toBeGreaterThan(callsBeforeRetry);

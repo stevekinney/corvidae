@@ -13,11 +13,7 @@ import type { BureauDiagnostic } from '../bureau-types/options.ts';
 import { isTaskOrigin, type StoredTaskOrigin, taskOriginParentOf } from '../task-origin.ts';
 import { createHookOriginLookup } from './hook-origin.ts';
 import type { HookRunSubjects } from './hook-scope.ts';
-import {
-  createScheduleHookOrigins,
-  type ScheduleHookOrigins,
-  scheduleOfInstanceInput,
-} from './schedule-hook-origins.ts';
+import { createScheduleHookOrigins, type ScheduleHookOrigins } from './schedule-hook-origins.ts';
 
 /** What the lookup reads from the Bureau it belongs to. */
 export interface RunHookOriginSources {
@@ -33,6 +29,11 @@ export interface RunHookOriginSources {
     | null
     | undefined
   >;
+  /**
+   * The schedule that fired the run `runId`, from Weft's record of the fire, or `undefined` when no
+   * schedule did (COR-2546). Never read from the run's input, which a schedule's caller can write.
+   */
+  readonly scheduleOfFire: (runId: string) => Promise<string | undefined>;
   /** The origin the task `runId` names recorded, or `undefined` when it has none. */
   readonly taskOriginOf: (runId: string) => Promise<StoredTaskOrigin | undefined>;
   /** The agent the task `runId` names ran, or `undefined` when it names none. */
@@ -81,8 +82,7 @@ export function createRunHookOrigins(sources: RunHookOriginSources): RunHookOrig
       if (origin !== undefined && isTaskOrigin(origin) && origin.kind === 'schedule') {
         return origin.scheduleId;
       }
-      const workflow = await sources.workflowOf(runId);
-      return scheduleOfInstanceInput(workflow?.input);
+      return sources.scheduleOfFire(runId);
     },
     hookOfSchedule: async (scheduleId) => scheduleHookOrigins?.hookOfSchedule(scheduleId),
   });
@@ -113,7 +113,7 @@ export function createRunHookOrigins(sources: RunHookOriginSources): RunHookOrig
         const fired =
           origin !== undefined && isTaskOrigin(origin) && origin.kind === 'schedule'
             ? origin.scheduleId
-            : scheduleOfInstanceInput(workflow?.input);
+            : await sources.scheduleOfFire(current);
         if (fired !== undefined) schedules.add(fired);
         current = taskOriginParentOf(origin);
       }

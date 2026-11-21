@@ -17,7 +17,6 @@ import {
   homeChecklistShows,
   readAssistantChosen,
   readSaidHello,
-  stepsLeft,
   writeAssistantChosen,
   writeSaidHello,
   type FirstRunProgress,
@@ -37,10 +36,6 @@ export interface HomeFirstRun {
   mode(): HomeMode;
   /** The three steps with their words, once the checklist shows. */
   steps(): readonly ChecklistStep[];
-  /** How many steps are still open, which the line that leads the page says. */
-  left(): number;
-  /** Whether a provider holds a key: the box that starts a chat comes back with it. */
-  providerConnected(): boolean;
   /**
    * The Assistant the host lists, which the second step can take and the last step starts a chat
    * with. `undefined` on a host that lists none: Assistant is only there where a plugin or the host
@@ -109,8 +104,6 @@ export function useHomeFirstRun(): HomeFirstRun {
   return {
     mode: () => mode,
     steps: () => steps,
-    left: () => stepsLeft(progress),
-    providerConnected: () => progress.provider,
     assistant: () => findAssistant(agents.data ?? []),
     useAssistant: () => {
       writeAssistantChosen(storage);

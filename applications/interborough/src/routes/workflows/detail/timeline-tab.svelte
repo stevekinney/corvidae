@@ -72,7 +72,7 @@
   import RemoteTaskStep from './remote-task-step.svelte';
   import StepDetail from './steps/step-detail.svelte';
   import StepRow from './steps/step-row.svelte';
-  import { openStepNumbers, stepWaterfall } from './steps/step-waterfall.ts';
+  import { openStepNumbers, stepWaterfall } from '@lostgradient/interborough-plugin/step-waterfall';
   import StreamChunksView from './streams/stream-chunks-view.svelte';
   import type { StreamChunksClient } from './streams/stream-chunks-data.ts';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
@@ -371,7 +371,11 @@
         </Collapsible>
       </section>
     {/if}
-    <div class="ib-steps-frame" data-testid="run-steps">
+    <div
+      class="ib-steps-frame"
+      data-testid="run-steps"
+      data-step-chosen={selectedKey === null ? undefined : ''}
+    >
       <ListDetail
         items={pageEntries}
         key={(entry: WorkflowTimelineEntry) => String(entry.step)}
@@ -446,7 +450,6 @@
         {#snippet listEmpty()}
           <EmptyState
             kind="filtered"
-            size="compact"
             headingLevel={4}
             title={RUN_STEPS_COPY.filteredTitle}
             description={RUN_STEPS_COPY.filteredDescription}
@@ -572,6 +575,15 @@
     block-size: max(24rem, 60dvh);
     min-inline-size: 0;
     overflow: hidden;
+  }
+
+  /* With no step chosen the frame is as tall as what it holds, the list and "Choose a step", up to
+   * the same height, and scrolls past it: never a frame of that whole height with the words centred
+   * in an empty pane (COR-2489: about 1,300px at 1280). A chosen step keeps the frame's height. */
+  .ib-steps-frame:not([data-step-chosen]) {
+    block-size: auto;
+    max-block-size: max(24rem, 60dvh);
+    overflow-y: auto;
   }
 
   .ib-steps-summary {

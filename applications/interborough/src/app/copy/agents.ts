@@ -252,8 +252,7 @@ export const AGENT_EDITOR_COPY = {
         'An agent needs a model to answer. This installation keeps its provider keys in its deployment, so connect one there, then check again.',
       configurationStep:
         'Put this in configuration.json in the bucket. If it exists, add the provider’s plugin to its plugins.',
-      secretStep:
-        'Set the provider’s API key in the environment variable shown, then restart the host.',
+      secretStep: 'Set the provider’s API key in the deployment, then restart the host.',
     },
   },
   /** The directory under the state directory that holds agent files, when the host does not say where. */
@@ -386,7 +385,10 @@ export const AGENT_EDITOR_COPY = {
     blocked: 'Nothing else on this form works until then.',
     configurationStep:
       'Put this in the configuration file. If the file exists, add the provider’s plugin to its plugins.',
-    secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
+    /** Where or how a key is stored is never said (owner, 2026-11-19): no secret reference renders. */
+    secretStep: 'Save the provider’s API key in Settings › Models.',
+    /** The Copy button beside the configuration file's location. */
+    copyConfigurationFile: 'Copy configuration file location',
     restartStep: 'Restart the host, then check again.',
     reload: 'Check again',
     snippetLabel: 'Provider configuration',
@@ -520,6 +522,13 @@ export const AGENTS_COPY = {
     title: 'No agents yet',
     description: 'An agent is a model with instructions and tools. Create one to chat with it.',
     addPlugin: 'Add a plugin',
+    /** The closed row under the state that opens to the folder agent files are read from. */
+    files: {
+      label: 'Where agent files live',
+      lead: 'Interborough reads agents from',
+      copyLabel: 'Copy the folder',
+      copiedLabel: 'Folder copied',
+    },
   },
   /** Every agent is held back by a disabled plugin (row 36o). */
   onlyUnavailable: {

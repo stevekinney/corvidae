@@ -265,9 +265,9 @@ describe('the Archived bar', () => {
     expect(bar.textContent?.replace(/ /g, ' ')).toContain('Archived Nov 3');
     const newChat = within(bar).getByRole('link', { name: CHAT_COPY.composer.newChat });
     expect(newChat.getAttribute('href')).toBe('/chats/new');
-    expect(newChat.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(newChat.classList.contains('button-variant-secondary')).toBe(true);
     const unarchive = within(bar).getByRole('button', { name: CHAT_COPY.composer.unarchive });
-    expect(unarchive.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(unarchive.classList.contains('button-variant-primary')).toBe(true);
     expect(composer(view)).toBeNull();
     expect(await view.findByText('Second answer')).not.toBeNull();
   });

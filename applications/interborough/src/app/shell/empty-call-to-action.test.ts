@@ -153,7 +153,7 @@ describe('an empty view’s call to action', () => {
 
     await findByRole('heading', { level: 2, name: VIEW_COPY.schedules.empty?.title ?? '' });
     const action = container.querySelector<HTMLElement>(
-      '.cinder-empty-state button[data-cinder-variant="primary"]',
+      '.cinder-empty-state button.button-variant-primary',
     );
     expect(action?.textContent?.trim()).toBe(VIEW_COPY.schedules.empty?.action?.label);
     await fireEvent.click(action as HTMLElement);
@@ -189,7 +189,7 @@ describe('an empty view’s call to action', () => {
 
     await findByRole('heading', { level: 2, name: TASK_COPY.empty.title });
     const action = container.querySelector<HTMLElement>(
-      '.cinder-empty-state [data-cinder-variant="primary"]',
+      '.cinder-empty-state .button-variant-primary',
     );
     expect(action?.textContent?.trim()).toBe(TASK_COPY.startRun);
     await fireEvent.click(action as HTMLElement);

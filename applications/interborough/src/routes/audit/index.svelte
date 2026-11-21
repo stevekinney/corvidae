@@ -192,7 +192,7 @@
   // While Who or the search is set, read on until the log is read or a bound is reached, so what
   // they narrow to is not only what the first page held.
   $effect(() => {
-    // A read that failed is not asked again on its own: the banner's Retry now does that.
+    // A read that failed is not asked again on its own: the banner's Try again does that.
     if (!narrowing || !trail.hasNextPage || trail.isFetchingNextPage || trail.isError) return;
     if (searchedPages >= NARROWING_PAGES) return;
     void trail.fetchNextPage();
@@ -530,7 +530,6 @@
         {#if logIsEmpty}
           <EmptyState
             kind="first-use"
-            bordered
             headingLevel={2}
             title={VIEW_COPY.audit.empty?.title ?? ''}
             description={VIEW_COPY.audit.empty?.description ?? ''}
@@ -540,7 +539,6 @@
         {:else}
           <EmptyState
             kind="filtered"
-            bordered
             headingLevel={2}
             title={noMatches.title}
             description={noMatches.description}
@@ -551,6 +549,11 @@
           </EmptyState>
         {/if}
       {:else}
+        <!-- The count is metadata, said once outside the table, never as a row of it (owner,
+             2026-11-19: Storage's count was a row its own scroll box cut in half). -->
+        <p class="ib-audit__footer" data-testid="audit-footer">
+          {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
+        </p>
         <div class="ib-audit__frame" data-shortcut-region="list-detail">
           <ListDetail
             items={events}
@@ -589,11 +592,6 @@
                     {value}
                   {/if}
                 {/snippet}
-                {#snippet footer()}
-                  <span class="ib-audit__footer" data-testid="audit-footer">
-                    {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
-                  </span>
-                {/snippet}
               </DataTable>
             {/snippet}
             {#snippet detail(event)}
@@ -604,7 +602,6 @@
             {#snippet empty()}
               <EmptyState
                 kind="first-use"
-                size="compact"
                 headingLevel={2}
                 title={copy.emptyDetailTitle}
                 description={copy.emptyDetailDescription}
@@ -722,6 +719,7 @@
   }
 
   .ib-audit__footer {
+    margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
   }

@@ -13,6 +13,7 @@
   import { untrack, type Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
 
+  import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { PHONE_VIEWPORT_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -503,12 +504,15 @@
     {id}
     type="button"
     role="combobox"
-    class={classNames('cinder-_input-frame', 'cinder-select', className)}
-    data-cinder-size={size}
-    data-cinder-variant={variant}
+    class={classNames(
+      'cinder-_input-frame',
+      'cinder-select',
+      `select-size-${CONTROL_SIZE_NAMES[size]}`,
+      `select-variant-${variant}`,
+      className,
+    )}
     data-cinder-appearance={appearance}
     data-cinder-presentation="listbox"
-    data-cinder-open={open || undefined}
     data-cinder-empty={selectedOption === undefined && placeholder === undefined
       ? 'true'
       : undefined}
@@ -586,8 +590,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       bind:this={contentElement}
-      class="cinder-select__content"
-      data-cinder-variant={variant}
+      class="cinder-select__content select-variant-{variant}"
       onkeydown={handlePanelKeydown}
     >
       <!-- The listbox owns its options by id (aria-owns) while they are drawn beside it, because

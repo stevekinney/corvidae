@@ -50,9 +50,9 @@ describe('the not-found page', () => {
       'Search everything',
     ]);
     for (const button of buttons) {
-      expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(button.classList.contains('button-variant-secondary')).toBe(true);
     }
-    expect(container.querySelector('[data-cinder-variant="primary"]')).toBeNull();
+    expect(container.querySelector('.button-variant-primary')).toBeNull();
     expect(getByRole('link', { name: 'Back to Runs' }).getAttribute('href')).toBe('/runs');
   });
 
@@ -128,10 +128,11 @@ describe('the not-found page', () => {
         'New chat',
         'Back to chats',
       ]);
-      expect(buttons.map((button) => button.getAttribute('data-cinder-variant'))).toEqual([
-        'primary',
-        'secondary',
-      ]);
+      expect(
+        buttons.map((button) =>
+          [...button.classList].find((name) => name.startsWith('button-variant-')),
+        ),
+      ).toEqual(['button-variant-primary', 'button-variant-secondary']);
       expect(getByRole('link', { name: 'New chat' }).getAttribute('href')).toBe('/chats/new');
       expect(getByRole('link', { name: 'Back to chats' }).getAttribute('href')).toBe('/chats');
       expect(queryByRole('button', { name: NOT_FOUND_COPY.search })).toBeNull();

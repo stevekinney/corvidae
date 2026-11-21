@@ -19,7 +19,7 @@ These are the owner's words (2026-11-11), and they are the lens for every review
 Three things that review got wrong, which bind every review since:
 
 - **A minimum is not a goal**: that review counted "three 44 x 44 px controls with equal gaps" as an improvement, and the owner's complaint was that those controls were giant and gappy. Meeting a floor (a 44 pixel target, a 3:1 border) is never a reason to praise a screen. The drawn size of a control and the area that takes a tap are two numbers, and only the second has a floor.
-- **Start at the smallest phone**: read the 320 by 640 captures first, then 375, then the wider ones. Fixed chrome crowding the content and overlays covering it show there first, and the light captures show some that the dark ones hide.
+- **Start wide, then go small**: open the 1920 and 1280 captures first, in both themes, then 768, then 375 and 320 by 640 (2026-11-19: every review that began on a phone missed defects the owner then found on the wide screen: a stretched measure, an action stranded at the far edge, a bright shadow in dark). Fixed chrome crowding the content and overlays covering it still show first on the smallest phone, and the light captures show some that the dark ones hide, so every width and both themes are read; the order is what changed.
 - **Pieces can pass while the whole fails**: every element can meet its own rule on a screen that is still wrong. After the element checks, judge the state as one thing: what it says, how many times, and in how many shapes.
 
 ## The task and the information

@@ -70,7 +70,13 @@ test.describe('Settings › Models, no provider connected', () => {
   }) => {
     await open(page, E2E_SHOWCASE_URL);
     await expect(page.getByText(MODELS_COPY.intro)).toBeVisible();
-    await expect(page.locator('main h2')).toHaveText(['Providers', 'Models', 'Decisions']);
+    // The empty Models section is its empty state alone, the state's title its heading (owner
+    // report, 2026-11-19).
+    await expect(page.locator('main h2')).toHaveText([
+      'Providers',
+      MODELS_COPY.models.empty.title,
+      'Decisions',
+    ]);
     await expect(page.getByRole('tab')).toHaveCount(0);
 
     // The shell: breadcrumb, Models active in the section navigation, a 170px column.
@@ -101,13 +107,14 @@ test.describe('Settings › Models, no provider connected', () => {
     await expect(page.locator('[data-provider] .cinder-avatar')).toHaveCount(0);
     await expect(page.getByText(/no model provider connected/i)).toHaveCount(0);
 
-    // The empty catalog, with a quiet link up to Providers.
-    await expect(page.getByText(MODELS_COPY.models.emptyDescription)).toBeVisible();
+    // The empty catalog: the one empty state alone, under no heading, with a button up to Providers.
+    await expect(page.getByText(MODELS_COPY.models.emptyDescription)).toHaveCount(0);
     const empty = page.getByTestId('models-empty');
     await expect(empty).toContainText(MODELS_COPY.models.empty.title);
     await expect(empty).toContainText(MODELS_COPY.models.empty.description);
-    await expect(empty.getByRole('button')).toHaveCount(0);
-    await expect(empty.getByRole('link', { name: MODELS_COPY.models.empty.action })).toBeVisible();
+    await expect(empty.getByRole('link', { name: MODELS_COPY.models.empty.action })).toHaveClass(
+      /cinder-button/,
+    );
 
     // Decisions: with no provider connected nothing can answer until TypeSafe is, yet every row stays editable.
     await expect(page.getByText(MODELS_COPY.decisions.description)).toBeVisible();
@@ -860,9 +867,8 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     const dialog = page.getByRole('dialog', { name: copy.title('Anthropic') });
     await expect(dialog).toBeVisible();
 
-    await expect(dialog.getByRole('button', { name: copy.confirm })).toHaveAttribute(
-      'data-cinder-variant',
-      'danger',
+    await expect(dialog.getByRole('button', { name: copy.confirm })).toContainClass(
+      'button-variant-danger',
     );
     // The agents are named in the order the sample world lists them (SHOWCASE_AGENT_IDENTIFIERS).
     await expect(dialog).toContainText(

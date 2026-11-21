@@ -129,12 +129,17 @@
 
   /* github-light's orange (parameters, attributes and other variables) is under AA on any ground
    * this field has had: 3.49:1 on white and 3.06:1 on the inset. It takes Cinder's warning text, the same hue at
-   * a contrast-safe lightness. Shiki writes the colour inline, so the override needs `!important`;
-   * the dark-theme swap below is more specific and still wins in a dark theme. A dual-theme span
-   * carries the colour before its `--shiki-dark` (`E36209;`); a single-theme span ends with it. */
-  .cinder-code-block :where(pre.shiki) span[style*='E36209;' i],
-  .cinder-code-block :where(pre.shiki) span[style$='E36209' i] {
+   * a contrast-safe lightness. A single-theme span writes the colour inline as `color:`, so its
+   * override needs `!important`. A dual-theme span writes it as `--shiki-light`, which the lift
+   * reassigns, so the dark value is untouched. */
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='color:#E36209' i] {
     color: var(--cinder-status-warning-text) !important;
+  }
+
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#E36209' i] {
+    --shiki-light: var(--cinder-status-warning-text) !important;
   }
 
   /* On the light inset field (`--cinder-surface-inset`, oklch(95.5% 0.002 265)) three more
@@ -142,11 +147,15 @@
    * inserted-line green #22863a (4.06:1) and the comment grey #6a737d (4.22:1). Each takes the
    * Cinder text role of its hue, which clears AA on the inset; `check-token-contrast-code-block.test.ts`
    * measures every github-light colour against the resolved inset, so a ground change that breaks
-   * AA fails there. The selector anchors on the inline `color:` so it never matches a `--shiki-dark`
-   * value, and the dark-theme swap below is more specific, so a dark theme is unchanged. */
+   * AA fails there. A single-theme span is matched on its inline `color:`; a dual-theme span on its
+   * `--shiki-light` value, so a dark value is never touched. */
   /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#d73a49' i] {
     color: var(--cinder-status-danger-text) !important;
+  }
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#d73a49' i] {
+    --shiki-light: var(--cinder-status-danger-text) !important;
   }
 
   /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
@@ -155,110 +164,32 @@
   }
 
   /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#22863a' i] {
+    --shiki-light: var(--cinder-status-success-text) !important;
+  }
+
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#6a737d' i] {
     color: var(--cinder-text-subtle) !important;
   }
 
-  /* ── Dark-theme Shiki dual-theme fix ─────────────────────────────────────
-   * Shiki's dual-theme output emits inline styles on every token span with
-   * BOTH the light value (`color: #24292E`) and the dark value
-   * (`--shiki-dark: #E1E4E8`). Without a CSS rule that swaps `color` to
-   * `var(--shiki-dark)` in dark mode, token spans show their light color
-   * (#24292e near-black, #d73a49 keyword red) against a dark surface — ratios
-   * as low as 1.38 — failing axe color-contrast.
-   *
-   * Cover the two cases in which a cinder dark theme is active. Both anchor on
-   * `[data-cinder-theme=…]` — the authoritative signal cinder sets on the
-   * document element (render-shell.ts) and the only theme anchor the
-   * component-CSS-sidecar lint accepts (`:root`/`[data-theme]` are
-   * foundation-layer selectors it rejects):
-   *   1. An explicit dark choice: `[data-cinder-theme="dark"]`.
-   *   2. The system choice resolving to dark: `[data-cinder-theme="system"]`
-   *      under `@media (prefers-color-scheme: dark)`.
-   * ──────────────────────────────────────────────────────────────────────── */
-
-  /* `!important` is required: Shiki writes the light color as an INLINE style
-   * (`style="color:#24292E"`) on every span, and an inline declaration beats a
-   * stylesheet rule on specificity. Without `!important` the light color wins in
-   * dark mode and the override is silently a no-op (contrast as low as 1.38).
-   * We override ONLY the foreground — the span background stays transparent so
-   * the dark `--cinder-surface-inset` forced on the <pre> shows through. (An
-   * earlier attempt set `background-color: var(--shiki-dark-bg)` here, which
-   * repainted each span with Shiki's own dark bg `#24292e` and re-broke contrast
-   * against the github-dark red — dropped.)
-   *
-   * The selectors anchor on `[data-cinder-theme=...]` — the authoritative theme
-   * signal cinder sets on the document element (see render-shell.ts). That
-   * `data-cinder-` namespace is also what the component-CSS-sidecar lint accepts
-   * as a scope anchor; a `:root`/`[data-theme]` prefix is a foundation-layer
-   * selector and is (correctly) rejected here. */
-
-  /* Explicit dark choice. */
-  [data-cinder-theme='dark']
-    .cinder-code-block
-    :where(pre.shiki)
-    span:not(
-      [data-cinder-theme='dark'] [data-theme='light'] .cinder-code-block :where(pre.shiki) span
-    ),
-  [data-cinder-theme='dark']
-    [data-theme='light']
-    [data-theme='dark']
-    .cinder-code-block
-    :where(pre.shiki)
-    span:not(
-      [data-cinder-theme='dark']
-        [data-theme='light']
-        [data-theme='dark']
-        [data-theme='light']
-        .cinder-code-block
-        :where(pre.shiki)
-        span
-    ),
-  [data-cinder-theme='dark']
-    [data-theme='light']
-    [data-theme='dark']
-    [data-theme='light']
-    [data-theme='dark']
-    .cinder-code-block
-    :where(pre.shiki)
-    span {
-    color: var(--shiki-dark, inherit) !important;
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light:#6a737d' i] {
+    --shiki-light: var(--cinder-text-subtle) !important;
   }
 
-  /* System choice that resolves to dark via the OS preference. cinder sets
-   * `data-cinder-theme="system"` and leaves `color-scheme: light dark` to follow
-   * `prefers-color-scheme`, so we mirror that here for the inline-style swap. */
-  @media (prefers-color-scheme: dark) {
-    [data-cinder-theme='system']
-      .cinder-code-block
-      :where(pre.shiki)
-      span:not(
-        [data-cinder-theme='system'] [data-theme='light'] .cinder-code-block :where(pre.shiki) span
-      ),
-    [data-cinder-theme='system']
-      [data-theme='light']
-      [data-theme='dark']
-      .cinder-code-block
-      :where(pre.shiki)
-      span:not(
-        [data-cinder-theme='system']
-          [data-theme='light']
-          [data-theme='dark']
-          [data-theme='light']
-          .cinder-code-block
-          :where(pre.shiki)
-          span
-      ),
-    [data-cinder-theme='system']
-      [data-theme='light']
-      [data-theme='dark']
-      [data-theme='light']
-      [data-theme='dark']
-      .cinder-code-block
-      :where(pre.shiki)
-      span {
-      color: var(--shiki-dark, inherit) !important;
-    }
+  /* ── Dual-theme token colors ─────────────────────────────────────────────
+   * The Shiki adapter writes a dual-theme block with `defaultColor: false`, so every token span
+   * carries both values as custom properties (`--shiki-light`, `--shiki-dark`) and no inline
+   * `color`. The span paints whichever the color scheme in effect selects. `light-dark()` reads
+   * the element's own `color-scheme`, so it follows every way a scheme is set: `color-scheme` on
+   * the root, `[data-theme]` on the root or on a nested island, `[data-cinder-theme]`, and the
+   * operating system's preference. No attribute selector or `!important` is needed, because
+   * nothing inline competes with the rule. We set ONLY the foreground: the span background stays
+   * transparent so the inset surface forced on the <pre> shows through. */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-light'][style*='--shiki-dark'] {
+    /* cinder-allow-raw-color: domain-rendering — paints the two theme colours Shiki writes as variables */
+    color: light-dark(var(--shiki-light), var(--shiki-dark));
   }
 
   /* Shiki's `github-dark` comment color (#6A737D) reads 4.24:1 on the old 11% dark inset and 3.90:1
@@ -427,12 +358,30 @@
   .cinder-code-block--wrap .cinder-code-block__flag {
     display: inline-block;
     max-inline-size: 100%;
+    /* The flag is a box of its own, so it does not inherit its line's hanging indent. */
+    text-indent: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     vertical-align: top;
   }
 
+  /* A wrapped line hangs: the first row starts at the block's padding and every further row of the
+   * same line is indented two characters past the line's own text, so the eye finds where one line
+   * ends and the next begins. The line records how far its own text is indented (`code-block.svelte`
+   * and `code-block-lines.ts`), in spaces and tabs, and the hang is measured from there. The line's
+   * padding takes the hang and the negative text indent gives it back to the first row, which stays
+   * where an unwrapped line starts. The text is the same text; only the layout hangs. */
   .cinder-code-block--wrap .cinder-code-block__line {
+    --_cinder-code-block-hang: calc(
+      (
+          2 + var(--_cinder-code-block-indent-spaces, 0) +
+            var(--_cinder-code-block-indent-tabs, 0) * var(--cinder-type-tab-size)
+        ) *
+        1ch
+    );
+
+    padding-inline-start: calc(var(--cinder-code-block-padding) + var(--_cinder-code-block-hang));
+    text-indent: calc(-1 * var(--_cinder-code-block-hang));
     white-space: pre-wrap;
     overflow-wrap: break-word;
   }
@@ -441,6 +390,14 @@
     padding-inline-start: calc(
       var(--cinder-code-block-padding) + var(--_cinder-code-block-gutter) +
         var(--_cinder-code-block-gutter-gap)
+    );
+  }
+
+  /* Numbered and wrapped: the gutter keeps its place and the hang is added after it. */
+  .cinder-code-block--wrap.cinder-code-block--numbered .cinder-code-block__line {
+    padding-inline-start: calc(
+      var(--cinder-code-block-padding) + var(--_cinder-code-block-gutter) +
+        var(--_cinder-code-block-gutter-gap) + var(--_cinder-code-block-hang)
     );
   }
 
@@ -453,6 +410,8 @@
     position: absolute;
     inset-inline-start: var(--cinder-code-block-padding);
     inline-size: var(--_cinder-code-block-gutter);
+    /* A wrapped line's hanging indent is not the number's. */
+    text-indent: 0;
     text-align: end;
     color: var(--cinder-text-muted);
     font-variant-numeric: tabular-nums;
@@ -581,10 +540,25 @@
   .cinder-code-block--floating-meta {
     /* The width of the floating button and the inset around it. The block reserves it at its
      * inline end, so the viewport, its code and its overflow fade all stop before the button
-     * instead of running under it (C#5: on a one-line block the icon sat on the characters). */
-    --_cinder-code-block-float-size: 1.75rem;
+     * instead of running under it (C#5: on a one-line block the icon sat on the characters). The
+     * button is the same 24px box as the meta row's, so Copy looks the same size in either stack. */
+    --_cinder-code-block-float-size: 1.5rem;
+    /* The coarse-pointer hit area is `touch-target-min` square and centred on the face, so it
+     * overhangs the face by half the difference. The root clips its overflow, so the inset is at
+     * least that overhang and the whole target stays inside the block. */
+    --_cinder-code-block-float-inset: max(
+      var(--cinder-space-2),
+      calc((var(--cinder-touch-target-min) - var(--_cinder-code-block-float-size)) / 2)
+    );
     --_cinder-code-block-float-reserve: calc(
-      var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-2)
+      var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset)
+    );
+    /* The distance from the block's top to the middle of the first line: the block's padding plus
+     * half a line box. The button is centred on it and, in a wrapping block, so is the end of the
+     * rail's reservation. */
+    --_cinder-code-block-first-line-centre: calc(
+      var(--cinder-code-block-padding) + var(--cinder-code-block-font-size) *
+        var(--cinder-code-block-line-height) / 2
     );
 
     position: relative;
@@ -599,12 +573,28 @@
     min-block-size: var(--_cinder-code-block-float-reserve);
   }
 
-  /* Keep the scrollport's actual inline size independent from the copy rail. Padding expands the
-   * scrollable content area; an end margin shrinks the scrollport itself, so long lines and their
-   * scroll cue can never run underneath the opaque copy surface. */
-  .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) .cinder-code-block__viewport {
+  /* A scrolling block keeps the scrollport's actual inline size independent from the copy rail.
+   * Padding expands the scrollable content area; an end margin shrinks the scrollport itself, so
+   * long lines and their scroll cue can never run underneath the opaque copy surface. Every row
+   * scrolls, so every row gives up the rail. */
+  .cinder-code-block--floating-meta:not(.cinder-code-block--wrap):has(> .cinder-code-block__meta)
+    .cinder-code-block__viewport {
     scroll-padding-inline-end: var(--_cinder-code-block-float-reserve);
     margin-inline-end: var(--_cinder-code-block-float-reserve);
+  }
+
+  /* A wrapping block keeps the whole width for every row but the first. The button sits beside the
+   * first line only, so the rail is a float at the viewport's inline end that reaches the middle of
+   * the first line and no lower: it shortens the first row, and the second row, which starts below
+   * the middle of the first, runs the full width. It holds no text, so the copied text is
+   * unchanged, and it serves highlighted code as well as plain, because the viewport owns it and
+   * not the code. */
+  .cinder-code-block--floating-meta.cinder-code-block--wrap:has(> .cinder-code-block__meta)
+    .cinder-code-block__viewport::before {
+    content: '';
+    float: inline-end;
+    inline-size: var(--_cinder-code-block-float-reserve);
+    block-size: var(--_cinder-code-block-first-line-centre);
   }
 
   /* The shared fade normally hugs the scrollport edge. Stop it before the reserved copy rail so
@@ -619,15 +609,12 @@
    * half a line box, and the translation puts the control's own middle there. */
   .cinder-code-block--floating-meta .cinder-code-block__meta {
     position: absolute;
-    inset-block-start: calc(
-      var(--cinder-code-block-padding) + var(--cinder-code-block-font-size) *
-        var(--cinder-code-block-line-height) / 2
-    );
+    inset-block-start: var(--_cinder-code-block-first-line-centre);
     inset-inline-end: 0;
     z-index: 1;
-    /* The inset keeps the button's 44px hit area, 8px past its painted edge, inside the block's
-     * clipped box. */
-    padding: 0 var(--cinder-space-2);
+    /* The inset keeps the button's whole coarse hit area, which reaches past its painted edge,
+     * inside the block's clipped box. */
+    padding: 0 var(--_cinder-code-block-float-inset);
     transform: translateY(-50%);
   }
 

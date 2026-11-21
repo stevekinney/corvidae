@@ -77,12 +77,12 @@
 
   /* Size: the shared control height for the step, with block padding that
      keeps the 14px line box inside it. */
-  .cinder-select[data-cinder-size='sm'] {
+  .cinder-select.select-size-small {
     min-height: var(--cinder-control-height-sm);
     padding-block: var(--cinder-space-0-5);
   }
 
-  .cinder-select[data-cinder-size='lg'] {
+  .cinder-select.select-size-large {
     min-height: var(--cinder-control-height-lg);
     padding-block: var(--cinder-space-2);
   }
@@ -109,7 +109,7 @@
   /* The comfortable density's filled select is 48px, the `lg` step, at the default `md` size. */
   .cinder-select:where([data-density='comfortable'] *):not(
       [data-cinder-appearance='outlined']
-    )[data-cinder-size='md'] {
+    ).select-size-medium {
     min-height: var(--cinder-control-height-lg);
   }
 
@@ -161,7 +161,7 @@
     cursor: not-allowed;
   }
 
-  .cinder-select[data-cinder-variant='ghost'][aria-disabled='true'] {
+  .cinder-select.select-variant-ghost[aria-disabled='true'] {
     background-color: transparent;
     border-color: transparent;
   }
@@ -230,7 +230,7 @@
  * for hover, so a ghost select and a ghost button feel alike.
  * ---------------------------------------- */
 
-  .cinder-select[data-cinder-variant='ghost'] {
+  .cinder-select.select-variant-ghost {
     background-color: transparent;
     border-color: transparent;
     padding-inline: var(--cinder-pad-control) calc(var(--cinder-pad-control) + 1.25rem);
@@ -246,25 +246,35 @@
   /* min-inline-size: 0 lets a ghost select in a flex row give up width before it overflows the
    * container (a composer at phone width): its value ellipsizes instead of running past the
    * border. A row that would rather wrap sets flex-wrap on itself. */
-  .cinder-select-field[data-cinder-variant='ghost'] {
+  .cinder-select-field.select-variant-ghost {
     inline-size: fit-content;
     min-inline-size: 0;
     max-inline-size: 100%;
   }
 
-  .cinder-select-field[data-cinder-variant='ghost'] .cinder-select-field__control {
+  /* A ghost select draws no face at rest, so its words are what the eye lines up. A `flush` one,
+   * which leads its row under text, is pulled back by its inline padding and its 1px transparent
+   * border, so its text starts at the field edge, on the text above it, rather than 11px inside it;
+   * only its hover tint and ring reach past the edge (COR-2489). The control moves, not the field,
+   * so a visible label or a message under it keeps the edge. It is opt-in: a ghost select after
+   * another control keeps its place, so a row never overlaps. */
+  .cinder-select-field.select-variant-ghost[data-cinder-flush] .cinder-select-field__control {
+    margin-inline-start: calc(-1 * (var(--cinder-pad-control) + 1px));
+  }
+
+  .cinder-select-field.select-variant-ghost .cinder-select-field__control {
     inline-size: auto;
     min-inline-size: 0;
   }
 
   /* A native ghost select takes the width of its widest option instead of filling the field. */
-  .cinder-select-field[data-cinder-variant='ghost'] .cinder-select {
+  .cinder-select-field.select-variant-ghost .cinder-select {
     inline-size: auto;
     min-inline-size: 0;
     max-inline-size: 100%;
   }
 
-  .cinder-select[data-cinder-variant='ghost'] + .cinder-select-field__chevron {
+  .cinder-select.select-variant-ghost + .cinder-select-field__chevron {
     inset-inline-end: var(--cinder-pad-control);
     inline-size: 0.875rem;
     block-size: 0.875rem;
@@ -273,7 +283,7 @@
   }
 
   @media (hover: hover) {
-    .cinder-select[data-cinder-variant='ghost']:hover:not(:disabled):not(:focus-visible) {
+    .cinder-select.select-variant-ghost:hover:not(:disabled):not(:focus-visible) {
       background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 94%);
       border-color: transparent;
     }
@@ -281,16 +291,16 @@
 
   /* The ring wraps the whole control (the tight ring is the shared one); the border stays
      transparent so it never stacks on the ring. */
-  .cinder-select[data-cinder-variant='ghost'][data-cinder-open]:not(:disabled) {
+  .cinder-select.select-variant-ghost[aria-expanded='true']:not(:disabled) {
     background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 94%);
   }
 
-  .cinder-select[data-cinder-variant='ghost']:disabled {
+  .cinder-select.select-variant-ghost:disabled {
     background-color: transparent;
     border-color: transparent;
   }
 
-  .cinder-select[data-cinder-variant='ghost'][aria-invalid='true'] {
+  .cinder-select.select-variant-ghost[aria-invalid='true'] {
     border-color: var(--cinder-control-border-invalid);
   }
 
@@ -302,7 +312,7 @@
  * are the shared ones, so the caret never overlaps the text.
  * ---------------------------------------- */
 
-  .cinder-select-field[data-cinder-variant='inline'] {
+  .cinder-select-field.select-variant-inline {
     display: inline-flex;
     inline-size: auto;
     min-inline-size: 0;
@@ -310,12 +320,12 @@
     vertical-align: middle;
   }
 
-  .cinder-select-field[data-cinder-variant='inline'] .cinder-select-field__control {
+  .cinder-select-field.select-variant-inline .cinder-select-field__control {
     inline-size: auto;
     min-inline-size: 0;
   }
 
-  .cinder-select[data-cinder-variant='inline'] {
+  .cinder-select.select-variant-inline {
     inline-size: auto;
     min-inline-size: 0;
     max-inline-size: 100%;
@@ -361,7 +371,7 @@
       border-color: transparent;
     }
 
-    .cinder-select[data-cinder-variant='ghost'][aria-readonly='true']:hover:not(:disabled):not(
+    .cinder-select.select-variant-ghost[aria-readonly='true']:hover:not(:disabled):not(
         :focus-visible
       ) {
       background-color: transparent;
@@ -452,10 +462,8 @@
   }
 
   /* A ghost or inline trigger hugs its content, so the list is not held to that narrow width. */
-  .cinder-select__panel.cinder-popover:has(> .cinder-select__content[data-cinder-variant='ghost']),
-  .cinder-select__panel.cinder-popover:has(
-      > .cinder-select__content[data-cinder-variant='inline']
-    ) {
+  .cinder-select__panel.cinder-popover:has(> .cinder-select__content.select-variant-ghost),
+  .cinder-select__panel.cinder-popover:has(> .cinder-select__content.select-variant-inline) {
     min-inline-size: min(16rem, calc(100vw - var(--cinder-space-4)));
   }
 

@@ -20,7 +20,8 @@ import type {
   SharedBreakingKindStep_f7c54476,
   SharedCodeIssuesMessage_037571b6,
   SharedCodeLastFiredAtRetryAt_58907586,
-  SharedExpectedHashId_6df57fe0,
+  SharedDryRunEffectsTarget_b07628bd,
+  SharedDryRunExpectedHashId_50848f66,
   SharedFireIdKindManual_6d6cbe8c,
   SharedHashId_cce87f20,
   SharedKindParentRunId_e530a998,
@@ -72,8 +73,8 @@ export type WorkflowsOperationTypes = {
       | 'UnsupportedCapability';
   };
   'bureau.workflows.delete': {
-    readonly input: SharedExpectedHashId_6df57fe0;
-    readonly output: SharedHashId_cce87f20;
+    readonly input: SharedDryRunExpectedHashId_50848f66;
+    readonly output: SharedDryRunEffectsTarget_b07628bd | SharedHashId_cce87f20;
     readonly faults:
       | 'InvalidParams'
       | 'NotFound'
@@ -244,7 +245,7 @@ export type WorkflowsOperationTypes = {
     readonly faults: 'InvalidParams' | 'UnsupportedCapability';
   };
   'bureau.workflows.pause': {
-    readonly input: SharedExpectedHashId_6df57fe0;
+    readonly input: { readonly expectedHash: string; readonly id: string };
     readonly output: SharedHashId_cce87f20;
     readonly faults:
       | 'InvalidParams'
@@ -255,7 +256,7 @@ export type WorkflowsOperationTypes = {
       | 'UnsupportedCapability';
   };
   'bureau.workflows.resume': {
-    readonly input: SharedExpectedHashId_6df57fe0;
+    readonly input: { readonly expectedHash: string; readonly id: string };
     readonly output: SharedHashId_cce87f20;
     readonly faults:
       | 'InvalidParams'
@@ -297,8 +298,10 @@ export type WorkflowsOperationTypes = {
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.workflows.runs.cancel': {
-    readonly input: { readonly runId: string };
-    readonly output: { readonly runId: string; readonly status: 'cancel-requested' };
+    readonly input: { readonly dryRun?: boolean; readonly runId: string };
+    readonly output:
+      | SharedDryRunEffectsTarget_b07628bd
+      | { readonly runId: string; readonly status: 'cancel-requested' };
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.workflows.runs.get': {

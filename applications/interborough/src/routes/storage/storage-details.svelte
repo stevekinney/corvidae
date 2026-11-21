@@ -9,7 +9,7 @@
    * It mounts when the popover opens, so Health's other tabs do not read the key count or poll for
    * the alert until a person asks.
    */
-  import { DescriptionList, Link, Skeleton } from '@lostgradient/cinder';
+  import { CopyableValue, DescriptionList, Link, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { readAttention } from '../../lib/bureau-attention.ts';
@@ -65,7 +65,12 @@
 
   const items = $derived([
     { term: copy.backend, definition: facts.backend },
-    { term: copy.location, definition: facts.location ?? copy.unknown },
+    {
+      term: copy.location,
+      // The full location, selectable, with a Copy button: the one place Health shows a path.
+      definition: facts.location === undefined ? copy.unknown : location,
+      wide: true,
+    },
     { term: copy.size, definition: bytes === undefined ? copy.unknown : formatBytes(bytes) },
     {
       term: copy.keys,
@@ -83,6 +88,15 @@
     router.navigate(copy.settingsPath);
   }
 </script>
+
+{#snippet location()}
+  <CopyableValue
+    value={facts.location ?? ''}
+    label={copy.copyLocation}
+    copiedLabel={copy.locationCopied}
+    data-testid="storage-location"
+  />
+{/snippet}
 
 <div class="ib-storage-details" data-testid="storage-details">
   {#if loading}

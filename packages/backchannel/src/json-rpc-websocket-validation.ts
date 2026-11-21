@@ -1,4 +1,5 @@
 import type { EventSelector } from './event-selector.ts';
+import { faultErrorData } from './fault-to-json-rpc.ts';
 import {
   JSON_RPC_ERROR_CODES,
   JSON_RPC_VERSION,
@@ -183,7 +184,7 @@ export function validateSessionPrimitiveFrame(
       error: {
         code: JSON_RPC_ERROR_CODES.INVALID_PARAMS,
         message: 'params must be an object when present',
-        data: { weftCode: 'InvalidParams', httpStatus: 400 },
+        data: faultErrorData('InvalidParams'),
       },
       id: frame.id ?? null,
     };
@@ -197,7 +198,7 @@ function invalidParams(message: string): SubscribeParamsValidation {
     error: {
       code: JSON_RPC_ERROR_CODES.INVALID_PARAMS,
       message,
-      data: { weftCode: 'InvalidParams', httpStatus: 400 },
+      data: faultErrorData('InvalidParams'),
     },
   };
 }

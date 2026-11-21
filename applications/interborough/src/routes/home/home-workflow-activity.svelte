@@ -2,7 +2,7 @@
   /**
    * Home's Workflow activity band (COR-2227): the newest three events of the engine's fleet feed
    * (runs, steps and workers), each worded by `FLEET_EVENT_RULES`; a kind with no rule reads in
-   * plain words with its raw kind on line two, and the feed's telemetry is left out.
+   * plain words, and the feed's telemetry is left out.
    *
    * The band reads its window from the shell's fleet source (`FleetEventSource.recent`) when it
    * opens on a source that has caught up and each time the source catches up again, and follows the
@@ -62,7 +62,7 @@
   }
 </script>
 
-<HomeCard title={copy.title}>
+<HomeCard title={copy.title} bare={!failed && feed.ready && feed.shown.length === 0}>
   {#if failed}
     <HomeCardError title={HOME_COPY.states.cardFailed.fleetActivity} onRetry={tryAgain} />
   {:else if !feed.ready}
@@ -78,8 +78,7 @@
   {:else if feed.shown.length === 0}
     <EmptyState
       kind="first-use"
-      layout="row"
-      headingLevel={3}
+      headingLevel={2}
       title={copy.empty.title}
       description={copy.empty.description}
     >

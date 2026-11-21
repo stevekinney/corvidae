@@ -14,6 +14,8 @@ export type SchedulesDependencies = {
   readonly reassign: BureauSchedules['reassign'];
   /** {@link BureauSchedules.create}. */
   readonly create: BureauSchedules['create'];
+  /** {@link BureauSchedules.createWorkflow}. */
+  readonly createWorkflow: BureauSchedules['createWorkflow'];
   /** {@link BureauSchedules.get}. */
   readonly get: BureauSchedules['get'];
   /** {@link BureauSchedules.list}. */
@@ -55,6 +57,7 @@ export type SchedulesDependencies = {
 export function createSchedules(dependencies: SchedulesDependencies): BureauSchedules {
   return {
     create: dependencies.create,
+    createWorkflow: dependencies.createWorkflow,
     reassign: dependencies.reassign,
     get: dependencies.get,
     list: dependencies.list,

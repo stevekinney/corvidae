@@ -47,3 +47,12 @@ describe('ListDetail footer', () => {
     expect(declarationsOf(underFooter[0]!).get('padding-block-end')).toBe('var(--cinder-space-2)');
   });
 });
+
+// Owner, 2026-11-19: on a light page the list, the detail and the page read as one pale grey.
+describe('ListDetail panes', () => {
+  test('are the content surface, white in light mode, against the canvas around them', () => {
+    const panels = rulesFor(/^\.cinder-list-detail__panels$/);
+    expect(panels).toHaveLength(1);
+    expect(declarationsOf(panels[0]!).get('background')).toBe('var(--cinder-surface)');
+  });
+});

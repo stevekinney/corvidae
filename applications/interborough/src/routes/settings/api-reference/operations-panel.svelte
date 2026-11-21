@@ -9,8 +9,15 @@
    * as at 1280. The operations are Interborough's own OpenAPI description (`/api/openapi.json`,
    * `api-operations.ts`), in the order it lists them.
    */
-  import { Button, CodeBlock, Select, Table, VisuallyHidden } from '@lostgradient/cinder';
-  import { ChevronDown, ChevronRight } from '@lucide/svelte';
+  import {
+    Button,
+    CodeBlock,
+    EmptyState,
+    Select,
+    Table,
+    VisuallyHidden,
+  } from '@lostgradient/cinder';
+  import { ChevronDown, ChevronRight, Workflow } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { SvelteSet } from 'svelte/reactivity';
 
@@ -96,7 +103,14 @@
     </div>
 
     {#if shown.length === 0}
-      <p class="ib-api-operations__empty">{copy.empty}</p>
+      <EmptyState
+        kind="first-use"
+        headingLevel={3}
+        title={copy.empty.title}
+        description={copy.empty.description}
+      >
+        {#snippet icon()}<Workflow aria-hidden="true" />{/snippet}
+      </EmptyState>
     {:else}
       <Table caption={copy.caption} scrollable={false}>
         <Table.Header>
@@ -261,12 +275,6 @@
 
   .ib-api-operations__count,
   .ib-api-operations__muted,
-  .ib-api-operations__empty {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
   /* A path breaks at its slashes, and a scope is one word: neither is cut inside a segment. */
   .ib-api-operations__path,
   .ib-api-operations__scope {

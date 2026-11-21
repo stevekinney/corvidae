@@ -1,5 +1,6 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { hasExposedAccessors, hasUpdateHandlers } from '../context/context-presence.ts';
+import { attachErrorCode } from '../error-code-of.ts';
 import type { WorkerOutboundMessage, WorkflowState } from '../types.ts';
 import { beginInFlightOperation, endInFlightOperation } from './in-flight-operation.ts';
 import type { EngineInternals } from './internals.ts';
@@ -219,6 +220,8 @@ async function dispatchStrategyMessage(
       if (message.errorStack) {
         failedError.stack = message.errorStack;
       }
+      // The message alone lost the original error's code; the strategy carried it beside it.
+      attachErrorCode(failedError, message.errorCode);
       await failWorkflowFromTermination(
         internals,
         message.workflowId,

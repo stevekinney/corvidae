@@ -28,6 +28,10 @@ import type { MetricsCollector } from '../observability/metrics.ts';
 import type { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../worker/registry.ts';
 import {
+  createCompareWorkflowOperation,
+  type WorkflowReadAuthorizer,
+} from './operations/compare-workflow.ts';
+import {
   createListConformanceTargetsOperation,
   createRunConformanceReportOperation,
   listConformanceTargetsOperation,
@@ -176,6 +180,8 @@ export type LiveOperationRegistryOptions = {
   /** Where `weft.workers.diagnostics` reads each worker's reconnect-grace and session-lease instants. */
   workerSessionTiming?: WorkerSessionTiming;
   workerStartOverrideSigningSecret?: string;
+  /** Per-run read gate `weft.workflows.compare` asks for a fork and its source; `serve()` passes `authorizeWorkflowRead`. */
+  authorizeWorkflowRead?: WorkflowReadAuthorizer;
   /**
    * Runs the operator-registered targets behind `weft.conformance.targets` and
    * `weft.conformance.report`. `serve()` always supplies one (empty when no
@@ -351,6 +357,10 @@ function buildStartOrSignalWorkflowOperationForRegistry(options: LiveOperationRe
   return createStartOrSignalWorkflowOperation(signing);
 }
 
+function buildCompareWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
+  return createCompareWorkflowOperation({ authorizeWorkflowRead: options.authorizeWorkflowRead });
+}
+
 function buildStartWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
   return createStartWorkflowOperation(
     options.workerStartOverrideSigningSecret === undefined
@@ -394,7 +404,9 @@ export function createLiveOperationRegistry(
               ? buildWorkerStartOverridePreviewOperation(resolved)
               : operation.name === 'weft.tasks.deadletters.retry'
                 ? buildRetryTaskDeadLetterOperationForRegistry(resolved)
-                : operation,
+                : operation.name === 'weft.workflows.compare'
+                  ? buildCompareWorkflowOperationForRegistry(resolved)
+                  : operation,
       ),
       buildTaskDiagnosticsOperationForRegistry(resolved),
       buildSystemMetricsOperation(resolved),

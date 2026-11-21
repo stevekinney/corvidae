@@ -160,6 +160,25 @@ describe('a key press', () => {
     expect(ran).toEqual(['chat']);
   });
 
+  test('measures the chord window on when the browser received each press, not when the listener ran', () => {
+    const ran: string[] = [];
+    const registry = new ShortcutRegistry();
+    registry.register({ ...entry(['g', 'd'], 'global'), handler: () => ran.push('audit') });
+
+    // The page stalled after G: the listener ran for D a second and a half later, but the person
+    // pressed D 300 milliseconds after G, so the sequence holds.
+    registry.handleKey(key('g', { timeStamp: 100 }), NOWHERE, 100);
+    expect(registry.handleKey(key('d', { timeStamp: 400 }), NOWHERE, 1_600)).toBe(true);
+    expect(ran).toEqual(['audit']);
+
+    // The reverse holds too: a late press is late whatever time the listener ran.
+    registry.handleKey(key('g', { timeStamp: 2_000 }), NOWHERE, 2_000);
+    expect(
+      registry.handleKey(key('d', { timeStamp: 2_000 + CHORD_WINDOW_MS + 1 }), NOWHERE, 2_001),
+    ).toBe(false);
+    expect(ran).toEqual(['audit']);
+  });
+
   test('a key that breaks a sequence may start its own', () => {
     const ran: string[] = [];
     const registry = new ShortcutRegistry();

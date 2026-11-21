@@ -1,5 +1,6 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 import { createWeftDiscoverDocument } from './weft-documents.ts';
 
 import { runStdioSession } from '@lostgradient/backchannel/internals';
@@ -244,6 +245,7 @@ async function invokeStdioJsonRpcEnvelope(
   const output = collectingWritable();
   try {
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input: readableFromLines([
         JSON.stringify({
           jsonrpc: '2.0',
@@ -338,6 +340,7 @@ function assertBulkOperationInvariants(
 
 function bulkRestFaultCodeFromStatus(status: number): string {
   if (status === 400) return 'InvalidParams';
+  if (status === 409) return 'Conflict';
   if (status === 401) return 'Unauthorized';
   if (status === 403) return 'Forbidden';
   if (status === 422) return 'Unprocessable';
@@ -885,10 +888,10 @@ async function invokeBulkRestPreviewStaleCommit(
     headers: bulkJsonHeaders(),
     body: JSON.stringify(staleBody(confirmationToken)),
   });
-  expect(staleResponse.status).toBe(400);
+  expect(staleResponse.status).toBe(409);
   await staleResponse.json();
   const staleFaultCode = bulkRestFaultCodeFromStatus(staleResponse.status);
-  expect(staleFaultCode).toBe('InvalidParams');
+  expect(staleFaultCode).toBe('Conflict');
 
   const response = await fetch(`${server.url}${route.path}`, {
     method: route.method,
@@ -924,7 +927,7 @@ async function invokeBulkJsonRpcPreviewStaleCommit(
     bulkJsonHeaders(),
   );
   const staleFaultCode = String(staleError.data?.['weftCode']);
-  expect(staleFaultCode).toBe('InvalidParams');
+  expect(staleFaultCode).toBe('Conflict');
 
   return {
     result: await postJsonRpc(
@@ -993,7 +996,7 @@ async function invokeBulkWebSocketPreviewStaleCommit(
       staleParameters(confirmationToken),
     );
     const staleFaultCode = String(staleResponse.error?.data?.['weftCode']);
-    expect(staleFaultCode).toBe('InvalidParams');
+    expect(staleFaultCode).toBe('Conflict');
 
     const response = await sendWebSocketJsonRpc(
       webSocket,
@@ -1031,7 +1034,7 @@ async function invokeBulkStdioPreviewStaleCommit(
     staleParameters(confirmationToken),
   );
   const staleFaultCode = String(staleError.data?.['weftCode']);
-  expect(staleFaultCode).toBe('InvalidParams');
+  expect(staleFaultCode).toBe('Conflict');
 
   return {
     result: await invokeStdioJsonRpc(engine, operationName, commitParameters(confirmationToken)),

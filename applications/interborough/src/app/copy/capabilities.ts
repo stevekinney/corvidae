@@ -166,6 +166,8 @@ export const CAPABILITIES_COPY = {
   },
   skill: {
     loading: 'Loading skills',
+    /** The Copy button beside a skill's source location, the one place its path shows. */
+    copyLocation: 'Copy location',
     /** First use (row 31y): no skill source is configured, and a plugin is how a skill arrives. */
     empty: {
       title: 'No skills yet',

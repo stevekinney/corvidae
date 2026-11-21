@@ -1,10 +1,6 @@
 import type { z } from 'zod';
 
-import {
-  dispatchStream,
-  dispatchSubscription,
-  dispatchUnary,
-} from './operation-catalog/operation-dispatch.ts';
+import { dispatchOperation } from './operation-catalog/operation-dispatch.ts';
 import { snapshotOperationMetadata } from './operation-catalog/operation-metadata.ts';
 import {
   validateOperationName,
@@ -93,12 +89,12 @@ export type OperationDefinitionInput<
   | StreamOperationInput<InputSchema, OutputSchema, EventSchema, Host>
   | SubscriptionOperationInput<InputSchema, OutputSchema, EventSchema, Host>;
 
-type DispatchEntry<Result, Host> = {
+type DispatchEntry<Host> = {
   readonly tags: ReadonlyArray<string>;
   readonly dispatch: (
     rawInput: unknown,
     context: DispatchContext<Host>,
-  ) => Promise<DispatchResult<Result>>;
+  ) => Promise<DispatchResult<unknown>>;
 };
 
 /** The result of {@link defineOperation} for a `kind: 'unary'` operation. */
@@ -106,8 +102,7 @@ export type UnarySchemaOperationDefinition<
   InputSchema extends z.ZodObject,
   OutputSchema extends z.ZodType,
   Host = unknown,
-> = UnaryOperationInput<InputSchema, OutputSchema, Host> &
-  DispatchEntry<z.input<OutputSchema>, Host>;
+> = UnaryOperationInput<InputSchema, OutputSchema, Host> & DispatchEntry<Host>;
 
 /** The result of {@link defineOperation} for a `kind: 'stream'` operation. */
 export type StreamSchemaOperationDefinition<
@@ -115,8 +110,7 @@ export type StreamSchemaOperationDefinition<
   OutputSchema extends z.ZodType,
   EventSchema extends z.ZodType,
   Host = unknown,
-> = StreamOperationInput<InputSchema, OutputSchema, EventSchema, Host> &
-  DispatchEntry<z.input<OutputSchema> | StreamOperationInvocation<z.input<EventSchema>>, Host>;
+> = StreamOperationInput<InputSchema, OutputSchema, EventSchema, Host> & DispatchEntry<Host>;
 
 /** The result of {@link defineOperation} for a `kind: 'subscription'` operation. */
 export type SubscriptionSchemaOperationDefinition<
@@ -124,8 +118,7 @@ export type SubscriptionSchemaOperationDefinition<
   OutputSchema extends z.ZodType,
   EventSchema extends z.ZodType,
   Host = unknown,
-> = SubscriptionOperationInput<InputSchema, OutputSchema, EventSchema, Host> &
-  DispatchEntry<SubscriptionOperationInvocation<z.input<EventSchema>, z.input<OutputSchema>>, Host>;
+> = SubscriptionOperationInput<InputSchema, OutputSchema, EventSchema, Host> & DispatchEntry<Host>;
 
 /** The result of {@link defineOperation}: an operation of any kind, carrying its frozen metadata and its dispatch entry. */
 export type SchemaOperationDefinition<
@@ -185,7 +178,7 @@ export function defineOperation(
     return Object.freeze({
       ...operation,
       dispatch: (rawInput: unknown, context: DispatchContext) =>
-        dispatchStream(operation, { rawInput, context }),
+        dispatchOperation(operation, { rawInput, context }),
     });
   }
   if (input.kind === 'subscription') {
@@ -198,13 +191,13 @@ export function defineOperation(
     return Object.freeze({
       ...operation,
       dispatch: (rawInput: unknown, context: DispatchContext) =>
-        dispatchSubscription(operation, { rawInput, context }),
+        dispatchOperation(operation, { rawInput, context }),
     });
   }
   const operation = Object.freeze({ ...fields, kind: 'unary' as const, invoke: input.invoke });
   return Object.freeze({
     ...operation,
     dispatch: (rawInput: unknown, context: DispatchContext) =>
-      dispatchUnary(operation, { rawInput, context }),
+      dispatchOperation(operation, { rawInput, context }),
   });
 }

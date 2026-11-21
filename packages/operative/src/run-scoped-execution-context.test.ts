@@ -18,6 +18,7 @@ import type { ChildSignalPort } from './child-signals';
 import { noToolCalls } from './conditions/predicates';
 import { createActiveRun } from './create-run';
 import {
+  CHILD_EVENT_EMITTER_EXECUTION_KEY,
   runScopedExecutionContext,
   runScopedExecutionContextOf,
 } from './run-scoped-execution-context';
@@ -84,8 +85,11 @@ describe('runScopedExecutionContextOf (COR-2106)', () => {
     expect(resumed?.['delegatedToolCapabilities']).toBe(callSeen['delegatedToolCapabilities']);
     expect(resumed?.['parentRunId']).toBe(callSeen['parentRunId']);
     expect(resumed?.['fromCaller']).toBe(true);
-    // The whole context, not a listed subset: a field the run adds later is compared too.
-    expect(resumed).toEqual(callSeen);
+    // The whole context, not a listed subset: a field the run adds later is compared too. Only the
+    // step's own part is left out, the run's emitter a delegation announces its child on (COR-2526).
+    const { [CHILD_EVENT_EMITTER_EXECUTION_KEY]: stepEmitter, ...runScoped } = callSeen;
+    expect(stepEmitter).toBeInstanceOf(EventTarget);
+    expect(resumed).toEqual(runScoped);
   });
 
   it('carries Bureau’s invariant factory, so a resumed child is not standalone', async () => {

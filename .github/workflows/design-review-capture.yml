@@ -1,21 +1,32 @@
 # Runs the Interborough design-review capture (`applications/interborough/scripts/design-review-capture.ts`,
-# `.agents/skills/design-review/references/capture.md`) on a GitHub runner and uploads its screens, for
+# `.agents/skills/design-review/references/capture.md`) on GitHub runners and uploads its screens, for
 # when the shared development host is too loaded to start it (COR-2461):
 #
 #   gh workflow run design-review-capture.yml --ref <branch> -f grep='/agents' -f scheme=dark -f data=showcase
-#   gh run download <run id> --name <artifact name> --dir tmp/design-review/<run id>
+#   gh run download <run id> --name design-review-capture-<run id> --dir tmp/design-review/<run id>
+#
+# An unfiltered capture is about a thousand tests per color scheme, which on one runner outran the
+# job's limit on every branch and left the dark half out (COR-2445). So each scheme runs as
+# `SHARD_COUNT` shards (`applications/interborough/scripts/design-review-shards.ts`, whole
+# specification files, planned by weight), in parallel, each uploading its own short-lived artifact;
+# the last job downloads them all, merges them into one directory (`design-review-merge.ts`: one
+# manifest, one summary, one geometry report) and uploads that as the artifact the review opens,
+# `design-review-capture-<run id>`. The merge fails when a planned shard is missing, when nothing was
+# captured, when two captures share a file and when a screen exists in one scheme only.
 #
 # It runs in the image and with the setup of the Interborough end-to-end job in `browser-suites.yml`, so
 # the fonts, and with them the layout, are the ones its end-to-end layout checks measure: Linux, not
 # macOS. The ref checked out is the one the run was dispatched on. `workflow_call` takes the same inputs
 # so another workflow can run it; `scripts/browser-fixtures/scripts/browser-suites-workflow.test.ts`
-# keeps the image tag equal to the Playwright that `bun.lock` resolves.
+# keeps the image tag equal to the Playwright that `bun.lock` resolves, and
+# `applications/interborough/scripts/design-review-shards.test.ts` keeps the matrix equal to the plan.
 #
-# The script exits 0 when it wrote at least one capture, 1 when it wrote none and 2 on bad usage or a
-# taken end-to-end port, and the job's conclusion follows it. The upload runs either way, because the
-# captures are taken before a specification's assertions, so a failing specification keeps them and
-# `summary.json` records its exit code. On CI the script's host admission reports memory and never waits
-# (`scripts/run-exclusively.ts`), and Playwright starts its own server rather than reusing one.
+# A shard exits 0 when it wrote at least one capture or when the filter reaches none of its files, 1 when
+# it wrote none, and 2 on bad usage or a taken end-to-end port, and its conclusion follows it. The upload
+# runs either way, because the captures are taken before a specification's assertions, so a failing
+# specification keeps them and the shard's `summary.json` records its exit code. On CI the script's host
+# admission reports memory and never waits (`scripts/run-exclusively.ts`), and Playwright starts its own
+# server rather than reusing one.
 name: Design review capture
 
 on:
@@ -60,13 +71,45 @@ env:
   DO_NOT_TRACK: '1'
 
 jobs:
-  capture:
-    name: Capture
+  plan:
+    name: Plan
     runs-on: ubuntu-latest
-    # The four end-to-end shards take 12 to 23 minutes each (about 65 in all, on `main.yml` runs of
-    # 2026-11-14) for one pass of the whole suite; a default capture runs most of it twice on one
-    # worker. The capture step stops earlier than the job so the upload still runs after an overrun.
-    timeout-minutes: 120
+    timeout-minutes: 5
+    outputs:
+      schemes: ${{ steps.schemes.outputs.schemes }}
+    steps:
+      # The inputs reach the shell through the environment, never by interpolation into the script, and
+      # only these values reach a matrix or a command.
+      - name: Schemes
+        id: schemes
+        shell: bash
+        env:
+          CAPTURE_SCHEME: ${{ inputs.scheme }}
+          CAPTURE_DATA: ${{ inputs.data }}
+        run: |
+          case "$CAPTURE_SCHEME" in
+            both) echo 'schemes=["light","dark"]' >> "$GITHUB_OUTPUT" ;;
+            light) echo 'schemes=["light"]' >> "$GITHUB_OUTPUT" ;;
+            dark) echo 'schemes=["dark"]' >> "$GITHUB_OUTPUT" ;;
+            *) echo "scheme must be both, light or dark, not '$CAPTURE_SCHEME'" >&2; exit 1 ;;
+          esac
+          case "$CAPTURE_DATA" in
+            both|showcase|stress) ;;
+            *) echo "data must be both, showcase or stress, not '$CAPTURE_DATA'" >&2; exit 1 ;;
+          esac
+
+  capture:
+    name: Capture ${{ matrix.scheme }} ${{ matrix.shard }}
+    needs: plan
+    runs-on: ubuntu-latest
+    # One shard is a sixth of one scheme: 12 to 20 minutes of capture on the sweep of 2026-11-19. The
+    # capture step stops earlier than the job so the upload still runs after an overrun.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: ${{ fromJSON(needs.plan.outputs.schemes) }}
+        shard: [1, 2, 3, 4, 5, 6]
     # The image ships the Chromium the lockfile's Playwright launches, so there is no browser install.
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-jammy
@@ -88,13 +131,14 @@ jobs:
       - name: Capture
         working-directory: applications/interborough
         shell: bash
-        timeout-minutes: 105
+        timeout-minutes: 50
         env:
           CAPTURE_GREP: ${{ inputs.grep }}
-          CAPTURE_SCHEME: ${{ inputs.scheme }}
+          CAPTURE_SCHEME: ${{ matrix.scheme }}
           CAPTURE_DATA: ${{ inputs.data }}
+          CAPTURE_SHARD: ${{ matrix.shard }}
         run: |
-          arguments=(--out "$GITHUB_WORKSPACE/design-review-capture" --scheme "$CAPTURE_SCHEME" --data "$CAPTURE_DATA")
+          arguments=(--out "$GITHUB_WORKSPACE/design-review-capture" --scheme "$CAPTURE_SCHEME" --data "$CAPTURE_DATA" --shard "$CAPTURE_SHARD/6")
           if [ -n "$CAPTURE_GREP" ]; then arguments+=(--grep "$CAPTURE_GREP"); fi
           bun scripts/design-review-capture.ts "${arguments[@]}"
       # A failed upload must not hide the capture's own conclusion, so it does not fail the job.
@@ -102,7 +146,49 @@ jobs:
         if: ${{ always() }}
         continue-on-error: true
         with:
-          name: design-review-capture-${{ github.run_id }}-${{ inputs.scheme }}-${{ inputs.data }}
+          name: design-review-capture-${{ github.run_id }}-${{ matrix.scheme }}-${{ matrix.shard }}
           path: design-review-capture/
+          retention-days: 1
+          if-no-files-found: warn
+
+  merge:
+    name: Merge
+    needs: [plan, capture]
+    # The verdict is the merge's, so it runs when a shard failed too: a shard's own failure is a
+    # specification that broke, and its captures are still there to merge.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # Each shard's artifact lands in its own directory, because every shard writes a
+      # `manifest.jsonl` and a `summary.json`.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: design-review-capture-${{ github.run_id }}-*
+          path: shards
+      - name: Merge
+        working-directory: applications/interborough
+        shell: bash
+        env:
+          CAPTURE_SCHEME: ${{ inputs.scheme }}
+        run: |
+          case "$CAPTURE_SCHEME" in
+            light) schemes=light ;;
+            dark) schemes=dark ;;
+            *) schemes=light,dark ;;
+          esac
+          bun scripts/design-review-merge.ts --out "$GITHUB_WORKSPACE/design-review-merged" --schemes "$schemes" --shards 6 "$GITHUB_WORKSPACE/shards"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: design-review-capture-${{ github.run_id }}
+          path: design-review-merged/
           retention-days: 3
           if-no-files-found: warn

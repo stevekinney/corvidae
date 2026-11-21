@@ -1,5 +1,13 @@
 import { nameList } from './shared.ts';
 
+function secretName(key: string): string {
+  const words = key
+    .replaceAll(/[-_]+/g, ' ')
+    .trim()
+    .replaceAll(/\bapi\b/gi, 'API');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /**
  * The words of Settings › Plugins: what Interborough loaded at startup, what each plugin adds and
  * what names it, the choices an owner makes (enabled, configuration, secrets), and the restart that
@@ -8,6 +16,8 @@ import { nameList } from './shared.ts';
 export const PLUGINS_COPY = {
   title: 'Plugins',
   intro: 'Code that adds tools, agents and workflows. Plugins load at startup.',
+  /** The copy action for a plugin or folder location. */
+  copyLocation: 'Copy location',
   /** The loading rule every page shares: skeleton rows after 300 ms, then a status line with a Cancel (board PageSettingsSections, "Plugins loading"). */
   loading: {
     label: 'Loading plugins',
@@ -117,30 +127,30 @@ export const PLUGINS_COPY = {
     missing: 'Missing',
     add: 'Add the key',
     replace: 'Replace',
-    addLabel: (key: string): string => `Add the key for ${key}`,
-    replaceLabel: (key: string): string => `Replace ${key}`,
+    label: secretName,
+    addLabel: (key: string): string => `Add the key for ${secretName(key)}`,
+    replaceLabel: (key: string): string => `Replace ${secretName(key)}`,
     /** Under a missing key: where it is saved, and what happens once it is. */
-    note: (directory: string, title: string, provider: boolean): string =>
+    /** Where or how a key is stored is never said (owner, 2026-11-19): no secret reference renders. */
+    note: (title: string, provider: boolean): string =>
       provider
-        ? `Saved to ${directory}, readable only by you. The models appear as soon as the key passes a test.`
-        : `Saved to ${directory}, readable only by you. ${title} works as soon as the key is saved; no restart.`,
+        ? 'The models appear as soon as the key passes a test.'
+        : `${title} works as soon as the key is saved; no restart.`,
     dialog: {
-      title: (key: string): string => `Save ${key}`,
-      description: (plugin: string): string =>
-        `The value is stored on this machine, where only you can read it, and ${plugin} uses it at once. No restart is needed.`,
+      title: (key: string): string => `Save ${secretName(key)}`,
+      description: (plugin: string): string => `${plugin} uses it at once. No restart is needed.`,
       valueLabel: 'Value',
       valueDescription: 'It is sent once and is never shown again.',
       valueRequired: 'Enter a value to save.',
       cancel: 'Cancel',
       save: 'Save',
-      saved: (key: string): string => `${key} saved`,
+      saved: (key: string): string => `${secretName(key)} saved`,
       locked: 'This host keeps its secrets in its deployment, so one cannot be saved here.',
       failed: 'The secret could not be saved.',
     },
   },
   /** The line at the foot of a running plugin: what uses it. */
   inUse: {
-    lead: 'In use.',
     nothing: (title: string): string => `Nothing uses ${title} yet.`,
     some: (title: string, parts: readonly string[], singular: boolean): string =>
       `${nameList(parts)} ${singular ? 'uses' : 'use'} ${title}.`,

@@ -26,7 +26,8 @@ import {
 } from '@lostgradient/operative';
 
 import type { TaskState, TaskView } from './task-registry';
-import { isTaskOrigin, type TaskOrigin } from './task-origin';
+import type { TaskOrigin } from './task-origin';
+import { startOfRun } from './workflow-run-start';
 import type { TaskWorkflow } from './task-workflow';
 import { bureauNameOf, weftNameOf } from './namespaced-identifier';
 import { workflowFileStepsInCanonicalOrder, type WorkflowFileStep } from './workflow-file';
@@ -41,7 +42,10 @@ export const ENGINE_RUN_TASK_STEP_READS = 40;
 const STATUS_MESSAGE_LIMIT = 1000;
 
 /** The engine, as far as this module reads it. */
-export type EngineRunTaskEngine = Pick<RegistryAgnosticEngine, 'list' | 'get' | 'getEvents'>;
+export type EngineRunTaskEngine = Pick<
+  RegistryAgnosticEngine,
+  'list' | 'get' | 'getEvents' | 'getScheduleProvenance'
+>;
 
 /** What {@link createEngineRunTasks} reads from the Bureau around it. */
 export interface EngineRunTasksDependencies {
@@ -116,36 +120,31 @@ const STATE_OF_STATUS = {
   cancelled: 'canceled',
 } as const satisfies Record<WorkflowSummary['status'], TaskState>;
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function truncated(text: string): string {
   return text.length <= STATUS_MESSAGE_LIMIT ? text : text.slice(0, STATUS_MESSAGE_LIMIT);
 }
 
 /**
- * The schedule an instance was started by and the origin it records, read from its input. An
- * instance a person or a plugin started carries an `origin`; one a schedule fired carries the
- * schedule's trigger (`{ kind: 'schedule', scheduleId }`) and no origin.
+ * The schedule an instance was started by and the origin it records (COR-2546), from
+ * {@link startOfRun}, never from the instance's input, which a schedule's caller can write. An
+ * instance a person or a plugin started carries the `origin` Bureau declared; one a schedule fired
+ * has the schedule Weft recorded, and the origin that names it.
  */
-export function instanceStartOf(
-  input: unknown,
-  runId: string,
-): {
+export async function instanceStartOf(
+  engine: Pick<EngineRunTaskEngine, 'getScheduleProvenance'>,
+  run: {
+    readonly id: string;
+    readonly tags?: readonly string[] | undefined;
+    readonly input: unknown;
+  },
+): Promise<{
   readonly origin: TaskOrigin | null;
   readonly scheduleId: string | null;
-} {
-  if (!isRecord(input)) return { origin: null, scheduleId: null };
-  const recorded: unknown = input['origin'];
-  const origin = isTaskOrigin(recorded) ? recorded : null;
-  if (origin?.kind === 'schedule') return { origin, scheduleId: origin.scheduleId };
-  const scheduleId = input['kind'] === 'schedule' ? input['scheduleId'] : undefined;
-  if (typeof scheduleId === 'string' && scheduleId !== '') {
-    // The fire is the run the schedule started: this instance.
-    return { origin: origin ?? { kind: 'schedule', scheduleId, fireId: runId }, scheduleId };
-  }
-  return { origin, scheduleId: null };
+}> {
+  const { origin, scheduleId } = await startOfRun(engine, run);
+  if (scheduleId === null) return { origin, scheduleId: null };
+  // The fire is the run the schedule started: this instance.
+  return { origin: { kind: 'schedule', scheduleId, fireId: run.id }, scheduleId };
 }
 
 /** How far an instance got, from the step its history last started. */
@@ -224,6 +223,9 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       openWaits: [],
       wakeAt: null,
       workflow,
+      usage: null,
+      attention: [],
+      stalledSince: null,
     };
   }
 
@@ -233,7 +235,11 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
     engine: EngineRunTaskEngine,
     readSteps: boolean,
   ): Promise<TaskView> {
-    const { origin, scheduleId } = instanceStartOf(state.input, run.id);
+    const { origin, scheduleId } = await instanceStartOf(engine, {
+      id: run.id,
+      tags: state.tags ?? run.tags,
+      input: state.input,
+    });
     const revision = await dependencies.revisionSteps(run.type, state.versionTuple.workflowVersion);
     const total =
       revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;

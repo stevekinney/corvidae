@@ -79,7 +79,6 @@
   {#if workerScoped}
     <EmptyState
       kind="done"
-      size="compact"
       headingLevel={3}
       title="No diagnostics for this worker"
       description="Nothing delayed, stuck, stale, retrying, at capacity, unadopted, or failed for good on this worker right now."

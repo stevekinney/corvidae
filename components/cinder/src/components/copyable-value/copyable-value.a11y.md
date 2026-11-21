@@ -8,7 +8,7 @@ Complete this record before merge. Automated checks can detect malformed APIs, m
 - Review outcome: Pending. The design-reviewer verdict has not been recorded yet.
 - Nearest neighbours: CopyButton, CodeBlock, Kbd.
 - Why this component exists: A value and its copy button drawn as two parts wrap apart on a narrow screen, so the button sits alone on a row while the value breaks above it. The value and its control wrap together, with the control on the value's last line.
-- Findings and resolutions: The value breaks anywhere, including mid-word, because an address has no word breaks. The control is the existing CopyButton, so its size, tooltip and confirmation are unchanged.
+- Findings and resolutions: The value breaks after its slashes, colons, question marks, ampersands and equals signs, after a dot only when a part is longer than the place, and anywhere, including mid-word, only when a piece is; each part is a box with no text added, so the value reads and copies whole. The control is the existing CopyButton drawn quiet and bare, as CodeBlock draws its copy button, so its tooltip, confirmation and 44px hit region on a coarse pointer are unchanged.
 
 ## Novel interaction accessibility review
 

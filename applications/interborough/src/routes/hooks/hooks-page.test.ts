@@ -576,11 +576,15 @@ describe('the hooks list', () => {
       ),
     );
 
-    // The header's secondary "+" and the state's primary button are both named New hook.
+    // The header's and the state's New hook, both labelled primaries (owner report, 2026-11-19).
     const buttons = view.getAllByRole('button', { name: HOOKS_COPY.newAction });
     expect(buttons.length).toBe(2);
+    for (const button of buttons) {
+      expect(button.classList.contains('button-variant-primary')).toBe(true);
+      expect(button.textContent?.trim()).toBe(HOOKS_COPY.newAction);
+    }
     const primary = buttons.filter(
-      (button) => button.getAttribute('data-cinder-variant') === 'primary',
+      (button) => !button.classList.contains('cinder-page-header__create'),
     );
     expect(primary.length).toBe(1);
     await fireEvent.click(primary[0]!);
@@ -2075,19 +2079,17 @@ describe('a hook’s delivery log', () => {
     expect(within(deliveries).queryByRole('radio', { name: copy.failed })).toBeNull();
   });
 
-  test('is empty for a new hook, reads nothing, and a test event sent before the first save adds nothing', async () => {
+  test('the delivery log stays hidden while testing an unsaved hook', async () => {
     const { view, served } = open([], { path: '/hooks/new', draftTest: 'delivered' });
-    const deliveries = await view.findByTestId('hook-deliveries');
-    await within(deliveries).findByText(copy.none.title);
-
-    await fireEvent.input(await view.findByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+    const url = await view.findByLabelText(HOOKS_COPY.editor.webhook.urlLabel);
+    expect(view.queryByTestId('hook-deliveries')).toBeNull();
+    await fireEvent.input(url, {
       target: { value: 'https://hooks.example.com/receive' },
     });
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
     await view.findByTestId('hook-test-result');
 
-    expect(within(deliveries).queryByTestId('hook-delivery-list')).toBeNull();
-    expect(deliveries.textContent).toContain(copy.none.title);
+    expect(view.queryByTestId('hook-deliveries')).toBeNull();
     expect(served.deliveryReads).toEqual([]);
   });
 

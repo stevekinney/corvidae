@@ -16,7 +16,7 @@ A novel interaction model includes a new disclosure or keyboard pattern, enterin
 
 - Applies: Yes—the state enters the top layer through Modal and has no way to dismiss it.
 - Reviewer: Cinder maintainers
-- Review outcome: Approved. Nothing dismisses it by design, and every phase either has an action that leaves it (Retry now, Keep waiting) or ends when the page closes it.
+- Review outcome: Approved. Nothing dismisses it by design, and every phase either has an action that leaves it (Try again, Keep waiting) or ends when the page closes it.
 
 ### Focus management
 
@@ -27,7 +27,7 @@ Modal traps focus inside the card and focuses the dialog body when it opens, bec
 | Key or gesture | Context | Expected behavior |
 | --- | --- | --- |
 | Tab, Shift+Tab | Any phase | Moves between the card's buttons and the error-details disclosure, and stays inside the card. |
-| Enter, Space | Retry now, Keep waiting, Copy, the disclosure | Activates the control. |
+| Enter, Space | Try again, Keep waiting, Copy, the disclosure | Activates the control. |
 | Escape | Any phase | Does nothing: the state is not dismissible. |
 | Click or tap | The scrim | Does nothing. |
 

@@ -12,15 +12,18 @@ import {
   BureauError,
   ScheduleLocatorUnavailableError,
   UnknownScheduleAgentError,
+  UnknownScheduleWorkflowError,
   toBadRequest,
 } from '../bureau-errors';
 import type {
   CreateScheduleOptions,
   DurableScheduleDefinition,
   DurableScheduleUpdate,
+  DurableWorkflowScheduleDefinition,
   ScheduleRevisionGuard,
 } from '../bureau-types/schedules';
 import {
+  AgentScheduledEvent,
   InvalidScheduleError,
   ScheduleCancelledEvent,
   SchedulePausedEvent,
@@ -30,7 +33,7 @@ import {
   createAgentScheduler,
   isScheduledAgentRunInput,
 } from '@lostgradient/operative';
-import { KEYS, decode } from '@lostgradient/weft';
+import { KEYS, ScheduleStaleRevisionError, decode } from '@lostgradient/weft';
 import {
   type PendingScheduleTransition,
   SCHEDULE_TRANSITION_KEY_PREFIX,
@@ -48,11 +51,19 @@ import {
 } from '../run-authority.ts';
 import { markEventSource } from '../event-source';
 import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record';
+import { bureauNameOf, weftNameOf } from '../namespaced-identifier';
 import {
+  AGENT_SCHEDULE_WORKFLOW_TYPE,
   parseWorkflowScheduleId,
+  scheduleTrigger,
+  storedAgentInputOf,
   storedScheduleInput,
   workflowScheduleBinding,
+  workflowScheduleMetadata,
+  workflowScheduleOwnerOf,
 } from '../workflow-schedule';
+import { WorkflowInputInvalidError } from '../workflow-schema';
+import { z } from 'zod';
 import {
   rejectReservedIdentifier,
   rejectUnopenableNewSessionIdentifier,
@@ -223,6 +234,103 @@ export function createScheduleOperations<D extends AgentDefinitions>(
   }
 
   /**
+   * COR-2546 — the kind of workflow `identifier` names when a schedule may run it: the targets
+   * `bureau.workflows.start` accepts, a code workflow a plugin contributed or a ready, unpaused
+   * workflow file. `undefined` for anything else, which includes the Bureau's own `agentRun`, goal
+   * and tick workflows, and every Bureau that has no workflow directory.
+   */
+  function startableWorkflowKind(identifier: string): 'code' | 'file' | undefined {
+    const workflows = core.workflowRuntime?.workflows;
+    if (workflows === undefined) return undefined;
+    try {
+      workflows.assertStartable(identifier);
+    } catch (error) {
+      if (error instanceof BureauError && error.code === 'NOT_FOUND') return undefined;
+      throw error;
+    }
+    return workflows.codeList().some((code) => code.id === identifier) ? 'code' : 'file';
+  }
+
+  /**
+   * COR-2546 — what Weft stores as the input of a schedule of a workflow of `kind`: a code workflow
+   * receives `workflowInput` as it is, and a workflow file the trigger envelope its own schedule's
+   * fires start it with, carrying `workflowInput` as its `input`.
+   */
+  function scheduledWorkflowInput(
+    kind: 'code' | 'file',
+    scheduleId: string,
+    workflowInput: unknown,
+  ): unknown {
+    return kind === 'file' ? scheduleTrigger(scheduleId, workflowInput) : workflowInput;
+  }
+
+  /**
+   * COR-2546 — the kind of `identifier`, refused as {@link UnknownScheduleWorkflowError} when a
+   * schedule may not run it, and `input` refused as `bureau.workflows.start` would refuse it, both
+   * before anything is stored. An `input` of `undefined` is one the schedule keeps, and is not judged.
+   */
+  function assertWorkflowTarget(identifier: string, input: unknown): 'code' | 'file' {
+    if (input !== undefined && !z.json().safeParse(input).success) {
+      throw new BureauError('"workflowInput" must be a JSON value', 'BAD_REQUEST');
+    }
+    const kind = startableWorkflowKind(identifier);
+    if (kind === undefined) throw new UnknownScheduleWorkflowError(identifier);
+    const issues =
+      input === undefined ? [] : core.workflowRuntime!.workflows.inputIssues(identifier, input);
+    if (issues.length > 0) throw new WorkflowInputInvalidError(identifier, issues);
+    return kind;
+  }
+
+  /**
+   * COR-2546 — registers a schedule that starts a workflow: the owner goes in the schedule's Weft
+   * `metadata`, so the workflow's input is the caller's own and carries no `principal`. The id is
+   * minted here, without the prefix of a workflow file's own schedule, so Bureau never reads the
+   * schedule as the file's, and a workflow file's trigger envelope can name it.
+   */
+  async function createWorkflowSchedule(
+    definition: DurableWorkflowScheduleDefinition,
+  ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
+    const workflowInput: unknown = structuredClone(definition.workflowInput ?? null);
+    const owner = ownerFromPrincipal(definition.principal, toBadRequest);
+    if (!runtime.durable) return undefined;
+    if (workspace !== undefined) {
+      // A workspace schedule carries the authority of its owner, which an input the workflow
+      // receives as written has no place for.
+      throw new BureauError('A workspace Bureau does not schedule workflows', 'CONFLICT');
+    }
+    const kind = assertWorkflowTarget(definition.workflowType, workflowInput);
+    const scheduleId = runtimeServices.identifiers.next('schedule');
+    const engine = runtime.durable.engine;
+    const spec = toScheduleSpec(definition.spec);
+    await engine.schedule(
+      weftNameOf(definition.workflowType),
+      scheduledWorkflowInput(kind, scheduleId, workflowInput),
+      spec,
+      {
+        id: scheduleId,
+        ...(definition.description === undefined ? {} : { description: definition.description }),
+        ...(definition.overlap === undefined ? {} : { overlap: definition.overlap }),
+        ...(definition.timeZone === undefined ? {} : { timeZone: definition.timeZone }),
+        metadata: workflowScheduleMetadata(owner),
+      },
+    );
+    // The schedule exists from here, so its creation is announced before the locator read below
+    // can fail: its audit trail then has a creation beside its pause, resume and cancel.
+    emitter.dispatch(
+      new AgentScheduledEvent({ workflowType: definition.workflowType, scheduleId, spec }),
+    );
+    // The schedule is registered, so a read that fails or finds nothing loses only its locator.
+    let summary;
+    try {
+      summary = await engine.getSchedule(scheduleId);
+    } catch (cause) {
+      throw new ScheduleLocatorUnavailableError(scheduleId, { cause });
+    }
+    if (summary === null) throw new ScheduleLocatorUnavailableError(scheduleId);
+    return summary;
+  }
+
+  /**
    * COR-2009 — starts the schedule tick that records what the scheduler did, naming the schedule by
    * its description as it is now. Best effort: a tick that cannot be recorded is diagnosed and never
    * holds up the fire or the notice it records.
@@ -290,6 +398,9 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     const snapshot = await durable.engine.getSchedule(scheduleId);
     if (snapshot?.revision !== expectedRevision)
       throw new BureauError('Schedule revision changed.', 'CONFLICT');
+    // COR-2546: a schedule of a workflow carries no workspace authority to move.
+    if (workflowScheduleOwnerOf(snapshot) !== undefined)
+      throw new BureauError('Schedule not found.', 'NOT_FOUND');
     const input = await storedScheduleInput(durable.engine, scheduleId);
     if (
       typeof input !== 'object' ||
@@ -360,6 +471,8 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     if (workspace === undefined || runtime.durable === undefined) return;
     const snapshot = await runtime.durable.engine.getSchedule(scheduleId);
     if (snapshot?.status !== 'active') return;
+    // COR-2546: a schedule of a workflow has no authority to check, and its input is the caller's.
+    if (workflowScheduleOwnerOf(snapshot) !== undefined) return;
     const input = await storedScheduleInput(runtime.durable.engine, scheduleId);
     if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
     if (!isScheduledAgentRunInput(input) && parseWorkflowScheduleId(scheduleId) === undefined) {
@@ -418,7 +531,39 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     }
   }
 
+  /**
+   * A pause its owner asked for. A schedule a caller made for a workflow is paused as one step of the
+   * workflow runtime's apply, which drops the hold that may have paused it already (COR-2546): the
+   * engine's pause of a paused schedule writes nothing, so the revision the hold recorded would
+   * stay, and the release would resume a schedule whose owner was told it is paused.
+   */
   async function pauseSchedule(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    const durable = runtime.durable;
+    if (!durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    const snapshot = await durable.engine.getSchedule(scheduleId);
+    const workflowRuntime = core.workflowRuntime;
+    if (
+      snapshot !== null &&
+      workflowRuntime !== undefined &&
+      workflowScheduleOwnerOf(snapshot) !== undefined
+    ) {
+      return workflowRuntime.pauseCallerSchedule(scheduleId, () =>
+        pauseScheduleOfHold(scheduleId, guard),
+      );
+    }
+    return pauseScheduleOfHold(scheduleId, guard);
+  }
+
+  /**
+   * The engine's pause with its history and audit record, outside the workflow runtime's apply. The
+   * runtime holds a schedule through this, from inside the apply: {@link pauseSchedule} would wait
+   * for the apply it runs in.
+   */
+  async function pauseScheduleOfHold(
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined> {
@@ -438,6 +583,8 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     const durable = runtime.durable;
     if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
+    // A schedule held for a workflow that cannot be started stays held until it can.
+    await refuseUnstartableWorkflowSchedule(scheduleId);
     if (workspace === undefined) {
       await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
         durable.engine.resumeSchedule(scheduleId, transition),
@@ -472,11 +619,23 @@ export function createScheduleOperations<D extends AgentDefinitions>(
 
   async function cancelSchedule(
     scheduleId: string,
-    guard?: ScheduleRevisionGuard,
+    guard?: ScheduleRevisionGuard & { readonly dryRun?: boolean | undefined },
   ): Promise<true | undefined> {
     const durable = runtime.durable;
     if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
+    if (guard?.dryRun === true) {
+      // What Weft's serialized write checks before it changes anything, read without a write: the
+      // schedule is there and is at the revision the caller expected.
+      const state = await durable.engine.getSchedule(scheduleId);
+      if (state === null || state === undefined) {
+        throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+      }
+      if (guard.expectedRevision !== undefined && guard.expectedRevision !== state.revision) {
+        throw new ScheduleStaleRevisionError(scheduleId, guard.expectedRevision, state.revision);
+      }
+      return true;
+    }
     await transitionSchedule('schedule.cancelled', scheduleId, guard, (transition) =>
       durable.engine.cancelSchedule(scheduleId, transition),
     );
@@ -677,7 +836,26 @@ export function createScheduleOperations<D extends AgentDefinitions>(
   ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
     if (!runtime.durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
+    await refuseUnstartableWorkflowSchedule(scheduleId);
     return runtime.durable.engine.triggerSchedule(scheduleId);
+  }
+
+  /**
+   * COR-2546: a schedule a caller made for a workflow that can no longer be started (its file was
+   * deleted or paused, its code type is unregistered) is answered as a schedule that does not
+   * exist, and starts nothing: the answer `bureau.workflows.start` gives for that workflow. A
+   * cadence fire is held off by the workflow runtime, which holds such a schedule paused.
+   */
+  async function refuseUnstartableWorkflowSchedule(scheduleId: string): Promise<void> {
+    const snapshot = await runtime.durable?.engine.getSchedule(scheduleId);
+    if (
+      snapshot !== null &&
+      snapshot !== undefined &&
+      workflowScheduleOwnerOf(snapshot) !== undefined &&
+      startableWorkflowKind(bureauNameOf(snapshot.workflowType)) === undefined
+    ) {
+      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+    }
   }
 
   async function listScheduleMissed(
@@ -698,6 +876,9 @@ export function createScheduleOperations<D extends AgentDefinitions>(
   ): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
+    // The caller owns `update`, and a `workflowInput` in it is any JSON value: read it as it was
+    // given, not as it is after the first await.
+    update = structuredClone(update);
     if (update.overlap !== undefined && update.overlap !== 'skip' && update.overlap !== 'allow') {
       throw new BureauError(
         `overlap policy '${String(update.overlap)}' is not supported by Bureau; only 'skip' and 'allow' are offered`,
@@ -713,21 +894,65 @@ export function createScheduleOperations<D extends AgentDefinitions>(
       update.input !== undefined ||
       update.sessionId !== undefined ||
       update.continueChat === true;
+    // COR-2546: the workflow a schedule starts is its own target, apart from the agent it runs.
+    if (update.workflowType !== undefined && update.agentName !== undefined) {
+      throw new BureauError('"agentName" and "workflowType" cannot both be given', 'BAD_REQUEST');
+    }
+    const changesTarget = update.workflowType !== undefined || update.workflowInput !== undefined;
+    if (changesTarget && changesRun) {
+      throw new BureauError(
+        '"workflowType" and "workflowInput" cannot be given with "agentName", "input", "sessionId" or "continueChat"',
+        'BAD_REQUEST',
+      );
+    }
     // The stored state is read for what an edit of the run needs (its input, the overlap and the
     // revision it was written at), and for the check that a recurring session is never combined
     // with overlapping fires.
     const bytes =
-      changesRun || update.overlap === 'allow'
+      changesRun || changesTarget || update.overlap === 'allow'
         ? await engine.storage.get(KEYS.schedule(scheduleId))
         : null;
     const stored: unknown = bytes ? decode(bytes) : undefined;
     const storedRecord =
       typeof stored === 'object' && stored !== null
-        ? (stored as { input?: unknown; overlap?: unknown; revision?: unknown })
+        ? (stored as {
+            input?: unknown;
+            overlap?: unknown;
+            revision?: unknown;
+            workflowType?: unknown;
+            metadata?: unknown;
+          })
         : undefined;
-    const storedInput = isScheduledAgentRunInput(storedRecord?.input)
-      ? storedRecord.input
-      : undefined;
+    // The kind comes from the type the schedule runs and its metadata, never from the shape of its
+    // input, which a code workflow's caller controls.
+    const storedWorkflowOwner =
+      storedRecord === undefined ? undefined : workflowScheduleOwnerOf(storedRecord);
+    const storedAgentInput =
+      storedRecord === undefined || storedWorkflowOwner !== undefined
+        ? undefined
+        : storedAgentInputOf(storedRecord);
+    // A schedule that runs a workflow is changed to run an agent by naming the agent and its text.
+    const switchesToAgent = storedWorkflowOwner !== undefined && update.agentName !== undefined;
+    if (storedWorkflowOwner !== undefined && changesRun && !switchesToAgent) {
+      throw new BureauError(
+        `Schedule "${scheduleId}" runs a workflow: name "agentName" with "input" to change it to run an agent`,
+        'BAD_REQUEST',
+      );
+    }
+    if (switchesToAgent && update.input === undefined) {
+      throw new BureauError(
+        '"input" is required when a schedule that runs a workflow is changed to run an agent',
+        'BAD_REQUEST',
+      );
+    }
+    const storedInput: ScheduledAgentRunInput | undefined = switchesToAgent
+      ? {
+          agentName: update.agentName!,
+          input: update.input!,
+          scheduleId,
+          principal: storedWorkflowOwner,
+        }
+      : storedAgentInput;
     if (changesRun && storedInput === undefined) {
       throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
     }
@@ -735,9 +960,14 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     // A chat Bureau names itself is unguessable and not yet made (see `createSchedule`).
     const allocatedChat =
       update.continueChat === true ? runtimeServices.identifiers.next('session') : undefined;
-    const nextSession =
-      allocatedChat ??
-      (update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined));
+    // An update that moves the schedule onto a workflow leaves the agent's chat behind: the chat
+    // checks below judge only a schedule that runs an agent when the update is done.
+    const nextSession = changesTarget
+      ? undefined
+      : (allocatedChat ??
+        (update.sessionId === undefined
+          ? storedInput?.sessionId
+          : (update.sessionId ?? undefined)));
     if (update.sessionId !== undefined && update.sessionId !== null) {
       const sessionId = update.sessionId.trim();
       rejectReservedIdentifier('"sessionId"', sessionId);
@@ -797,18 +1027,80 @@ export function createScheduleOperations<D extends AgentDefinitions>(
       (bytes !== null && typeof storedRecord?.revision === 'number'
         ? storedRecord.revision
         : undefined);
+    // One write carries the cadence and the whole change of target (its type, its input and its
+    // metadata), fenced by the revision, so a schedule is never left half-way between two targets.
+    const targetFields = changesTarget
+      ? workflowTargetFields(
+          scheduleId,
+          update,
+          storedRecord,
+          storedWorkflowOwner,
+          storedAgentInput,
+        )
+      : switchesToAgent
+        ? { workflowType: AGENT_SCHEDULE_WORKFLOW_TYPE, metadata: {} }
+        : {};
     await engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
       ...(update.description === undefined ? {} : { description: update.description }),
       ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
       ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
       ...(nextInput === undefined ? {} : { input: nextInput }),
+      ...targetFields,
       ...(expectedRevision === undefined ? {} : { expectedRevision }),
     });
     return true;
   }
 
+  /**
+   * COR-2546 — the Weft options that move a schedule to the workflow `update` names, or that change
+   * the input of the workflow it already runs. The owner is the schedule's own: the one in its
+   * metadata, or the principal of the agent input it replaces. Without `workflowInput`, a different
+   * workflow starts with a `null` input, and the same one keeps the input it has.
+   */
+  function workflowTargetFields(
+    scheduleId: string,
+    update: DurableScheduleUpdate,
+    storedRecord: { workflowType?: unknown } | undefined,
+    storedWorkflowOwner: string | undefined,
+    storedAgentInput: ScheduledAgentRunInput | undefined,
+  ): { workflowType?: string; input?: unknown; metadata?: Record<string, unknown> } {
+    if (workspace !== undefined) {
+      throw new BureauError('A workspace Bureau does not schedule workflows', 'CONFLICT');
+    }
+    const owner =
+      storedWorkflowOwner ??
+      (storedAgentInput === undefined ? undefined : ownerOrLocal(storedAgentInput.principal));
+    if (owner === undefined || typeof storedRecord?.workflowType !== 'string') {
+      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+    }
+    if (update.workflowType === undefined && storedWorkflowOwner === undefined) {
+      throw new BureauError(
+        `Schedule "${scheduleId}" runs an agent: name "workflowType" to change it to run a workflow`,
+        'BAD_REQUEST',
+      );
+    }
+    const identifier = update.workflowType ?? bureauNameOf(storedRecord.workflowType);
+    const changesWorkflow =
+      storedWorkflowOwner === undefined || identifier !== bureauNameOf(storedRecord.workflowType);
+    const workflowInput: unknown =
+      update.workflowInput === undefined
+        ? changesWorkflow
+          ? null
+          : undefined
+        : update.workflowInput;
+    const kind = assertWorkflowTarget(identifier, workflowInput);
+    return {
+      ...(changesWorkflow ? { workflowType: weftNameOf(identifier) } : {}),
+      ...(workflowInput === undefined
+        ? {}
+        : { input: scheduledWorkflowInput(kind, scheduleId, workflowInput) }),
+      ...(storedWorkflowOwner === undefined ? { metadata: workflowScheduleMetadata(owner) } : {}),
+    };
+  }
+
   return {
     createSchedule,
+    createWorkflowSchedule,
     recordScheduleTick,
     getSchedule,
     listSchedules,
@@ -816,6 +1108,7 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     pauseInvalidSchedule,
     pauseInvalidSchedules,
     pauseSchedule,
+    pauseScheduleOfHold,
     resumeSchedule,
     cancelSchedule,
     recordPendingScheduleTransitions,

@@ -97,7 +97,7 @@ test.describe('COR-2310: density reaches Button, Card and PageHeader', () => {
     }) => {
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
       await applyDensity(page, density);
-      const style = await computedStyle(page, ".cinder-button[data-cinder-variant='primary']", [
+      const style = await computedStyle(page, '.cinder-button.button-variant-primary', [
         'min-height',
         'border-top-left-radius',
       ]);
@@ -168,8 +168,8 @@ test.describe('COR-2310: comfortable switches the light canvas only', () => {
   }
 
   const LIGHT_CANVAS: Record<Density, string> = {
-    default: 'oklch(97.6% 0.004 265)',
-    compact: 'oklch(97.6% 0.004 265)',
+    default: 'oklch(97.1% 0.006 265)',
+    compact: 'oklch(97.1% 0.006 265)',
     comfortable: 'oklch(95.5% 0.004 265)',
   };
 
@@ -184,12 +184,12 @@ test.describe('COR-2310: comfortable switches the light canvas only', () => {
       expect(canvas).toBe(reference);
     });
 
-    test(`dark ${density}: the canvas is the shipped oklch(14.5% 0.012 265)`, async ({ page }) => {
+    test(`dark ${density}: the canvas is the shipped oklch(14.5% 0.022 265)`, async ({ page }) => {
       const { canvas, reference } = await canvasUnder(
         page,
         'dark',
         density,
-        'oklch(14.5% 0.012 265)',
+        'oklch(14.5% 0.022 265)',
       );
       expect(canvas).toBe(reference);
     });

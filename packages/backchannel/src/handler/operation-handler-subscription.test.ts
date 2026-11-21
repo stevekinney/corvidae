@@ -304,7 +304,7 @@ describe('GET /v1/subscriptions/:operationName', () => {
       const body = await response.text();
 
       expect(body).toBe(
-        'event: error\ndata: {"code":"EngineFailure","message":"Internal server error"}\n\n',
+        'event: error\ndata: {"code":"EngineFailure","message":"Internal server error","retryable":false}\n\n',
       );
     }
     expect(host.closed.count).toBe(2);

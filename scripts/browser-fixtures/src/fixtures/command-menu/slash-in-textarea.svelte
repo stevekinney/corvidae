@@ -97,7 +97,7 @@
   }
 </script>
 
-<div style="display: grid; gap: var(--cinder-space-3); max-inline-size: 42rem;">
+<div class="example-frame gap-3">
   <Textarea
     id={fieldId}
     label="Notes"
@@ -112,7 +112,7 @@
     onkeyup={(event) => syncTrigger(event.currentTarget as HTMLTextAreaElement)}
   />
 
-  <p style="margin: 0; color: var(--cinder-text-muted); font-size: var(--cinder-text-sm);">
+  <p class="paragraph text-muted">
     Last query: {query || 'none'}
   </p>
 </div>
@@ -147,3 +147,15 @@
     No commands match "{query}".
   {/snippet}
 </CommandMenu>
+
+<style>
+  .example-frame {
+    display: grid;
+    max-inline-size: 42rem;
+  }
+
+  .paragraph {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+  }
+</style>

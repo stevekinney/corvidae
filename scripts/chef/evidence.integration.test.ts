@@ -353,6 +353,150 @@ const values = await (async () => {
   writeFileSync(join(fixture, 'input'), 'changed\n');
   const invalidReuse = reuseLocalEvidence(initial, await request(), fixture);
   await git('checkout', '--', 'input');
+  const releaseArchive = join(fixture, 'release.tar.gz');
+  const releaseReceipt = join(fixture, 'installed-release.json');
+  writeFileSync(releaseArchive, 'archive');
+  const releaseBaseRequest = await request();
+  const releaseRequest = {
+    ...releaseBaseRequest,
+    plan: {
+      ...releaseBaseRequest.plan,
+      obligations: [
+        {
+          ...releaseBaseRequest.plan.obligations[0]!,
+          risk: 'installed-artifacts' as const,
+          commandOrProviderJob: 'verify-installed-release',
+          evidenceKind: 'process-exit' as const,
+          expectedInventory: [],
+        },
+      ],
+    },
+    localRuns: [
+      {
+        obligation: 'AC1:verify-installed-release',
+        argv: ['verify-installed-release'],
+        reportPaths: [],
+        installedRelease: {
+          receiptPath: 'installed-release.json',
+          archivePath: 'release.tar.gz',
+          archiveDigest: createHash('sha256').update(readFileSync(releaseArchive)).digest('hex'),
+          sourceRevision: releaseBaseRequest.revision,
+          target: 'darwin-arm64' as const,
+          configuration: [
+            {
+              path: 'input',
+              sha256: createHash('sha256')
+                .update(readFileSync(join(fixture, 'input')))
+                .digest('hex'),
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const [releaseRun] = releaseRequest.localRuns;
+  let mismatchedReleaseInvocations = 0;
+  let mismatchedReleaseError = '';
+  try {
+    collectLocalEvidence(
+      {
+        ...releaseRequest,
+        localRuns: [
+          {
+            ...releaseRun!,
+            installedRelease: { ...releaseRun!.installedRelease, sourceRevision: 'f'.repeat(40) },
+          },
+        ],
+      },
+      {
+        run: () => {
+          mismatchedReleaseInvocations += 1;
+          return { exitCode: 0 };
+        },
+      },
+      fixture,
+    );
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    mismatchedReleaseError = error.message;
+  }
+  const releaseEvidence = collectLocalEvidence(
+    releaseRequest,
+    {
+      run: () => {
+        writeFileSync(
+          releaseReceipt,
+          JSON.stringify({
+            version: 1,
+            outcome: 'pass',
+            archive: {
+              sha256: releaseRequest.localRuns[0]!.installedRelease.archiveDigest,
+              target: 'darwin-arm64',
+              manifest: { sourceSha: releaseBaseRequest.revision },
+            },
+            installedExecutable: 'interborough/bin/interborough',
+            assertions: [{ exit: 0 }],
+            configuration: releaseRequest.localRuns[0]!.installedRelease.configuration,
+            producer: { script: 'applications/interborough/scripts/test-installed-release.ts' },
+          }),
+        );
+        return { exitCode: 0 };
+      },
+    },
+    fixture,
+  );
+  const releaseValidation = validateEvidence(releaseRequest.plan, releaseEvidence, {
+    revision: releaseRequest.revision,
+    integrationTree: releaseRequest.integrationTree,
+    environment: Bun.version,
+  }).ok;
+  const sameArchive = reuseLocalEvidence(releaseEvidence, releaseRequest, fixture);
+  const replacementArchive = 'replacement.tar.gz';
+  const replacementBytes = 'different archive for the same source revision';
+  writeFileSync(join(fixture, replacementArchive), replacementBytes);
+  const replacementArchiveEvidence = reuseLocalEvidence(
+    releaseEvidence,
+    {
+      ...releaseRequest,
+      localRuns: [
+        {
+          ...releaseRun!,
+          installedRelease: {
+            ...releaseRun!.installedRelease,
+            archivePath: replacementArchive,
+            archiveDigest: createHash('sha256').update(replacementBytes).digest('hex'),
+          },
+        },
+      ],
+    },
+    fixture,
+  );
+  unlinkSync(releaseReceipt);
+  const wrongReleaseEvidence = collectLocalEvidence(
+    releaseRequest,
+    {
+      run: () => {
+        writeFileSync(
+          releaseReceipt,
+          JSON.stringify({
+            version: 1,
+            outcome: 'pass',
+            archive: {
+              sha256: releaseRequest.localRuns[0]!.installedRelease.archiveDigest,
+              target: 'darwin-arm64',
+              manifest: { sourceSha: 'f'.repeat(40) },
+            },
+            installedExecutable: 'interborough/bin/interborough',
+            assertions: [{ exit: 0 }],
+            configuration: releaseRequest.localRuns[0]!.installedRelease.configuration,
+            producer: { script: 'applications/interborough/scripts/test-installed-release.ts' },
+          }),
+        );
+        return { exitCode: 0 };
+      },
+    },
+    fixture,
+  );
   return {
     cleanRequest,
     clean,
@@ -383,6 +527,14 @@ const values = await (async () => {
     escapeCalls,
     inputEscapeCalls,
     invalidReuse,
+    releaseRequest,
+    releaseEvidence,
+    releaseValidation,
+    wrongReleaseEvidence,
+    sameArchive,
+    replacementArchiveEvidence,
+    mismatchedReleaseInvocations,
+    mismatchedReleaseError,
     reportDigest: createHash('sha256').update(readFileSync(report)).digest('hex'),
   };
 })();
@@ -455,6 +607,18 @@ test('request-file provider collection rejects unsafe paths before transport rea
 
 test('collects an actual clean checkout receipt', () =>
   expect(values.clean.records[0]?.status).toBe('pass'));
+test('collects a fresh installed-release receipt only when its declared archive identity matches', () =>
+  expect(values.releaseValidation).toBe(true));
+test('rejects an altered installed-release receipt through local collection', () =>
+  expect(values.wrongReleaseEvidence.records[0]?.status).toBe('fail'));
+test('reuses installed release evidence only for the original archive obligation', () => {
+  expect(values.sameArchive.records[0]?.status).toBe('reused-pass');
+  expect(values.replacementArchiveEvidence.records[0]?.status).toBe('pending');
+});
+test('rejects release source not equal to the candidate before launch', () => {
+  expect(values.mismatchedReleaseError).toContain('invalid or stale receipt');
+  expect(values.mismatchedReleaseInvocations).toBe(0);
+});
 test('validates an actual clean checkout receipt', () =>
   expect(
     validateEvidence(values.cleanRequest.plan, values.clean, {

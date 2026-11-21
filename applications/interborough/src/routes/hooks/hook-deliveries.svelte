@@ -93,6 +93,13 @@
   let loadStopped = $state(false);
   const stopped = $derived(deliveries.isPending && loadStopped);
   const loading = $derived(deliveries.isPending && !loadStopped);
+  /** The log holds nothing: the empty state alone stands for the section. */
+  const noDeliveries = $derived(
+    hookId === undefined ||
+      (!deliveries.isPending &&
+        !deliveries.isError &&
+        (deliveries.data === undefined || deliveries.data.length === 0)),
+  );
   function stopLoading(): void {
     loadStopped = true;
     void queryClient.cancelQueries({ queryKey: queryKeys.hooks.deliveries(hookId ?? '') });
@@ -140,33 +147,37 @@
 
 <section
   class="ib-hook-deliveries"
-  aria-labelledby="ib-hook-deliveries-heading"
+  aria-labelledby={noDeliveries ? undefined : 'ib-hook-deliveries-heading'}
+  aria-label={noDeliveries ? copy.heading : undefined}
   data-testid="hook-deliveries"
 >
-  <div class="ib-hook-deliveries__top">
-    <h2 id="ib-hook-deliveries-heading" class="ib-hook-deliveries__heading">{copy.heading}</h2>
-    {#if deliveries.isSuccess && deliveries.data.length > 0}
-      <SegmentedControl
-        id="ib-hook-deliveries-filter"
-        label={copy.filterLabel}
-        {...hiddenLabel}
-        size="sm"
-        value={filter}
-        onValueChange={(next: Filter) => (filter = next)}
-      >
-        <Segment value="all">{copy.all}</Segment>
-        <Segment value="failed">{copy.failed}</Segment>
-      </SegmentedControl>
-    {/if}
-  </div>
+  <!-- With no delivery the empty state stands alone: no "Deliveries" heading above it saying the
+  same thing (owner report, 2026-11-19). -->
+  {#if !noDeliveries}
+    <div class="ib-hook-deliveries__top">
+      <h2 id="ib-hook-deliveries-heading" class="ib-hook-deliveries__heading">{copy.heading}</h2>
+      {#if deliveries.isSuccess && deliveries.data.length > 0}
+        <SegmentedControl
+          id="ib-hook-deliveries-filter"
+          label={copy.filterLabel}
+          {...hiddenLabel}
+          size="sm"
+          value={filter}
+          onValueChange={(next: Filter) => (filter = next)}
+        >
+          <Segment value="all">{copy.all}</Segment>
+          <Segment value="failed">{copy.failed}</Segment>
+        </SegmentedControl>
+      {/if}
+    </div>
+  {/if}
 
   {#if hookId === undefined}
     <EmptyState
-      size="compact"
       kind="first-use"
       title={copy.none.title}
       description={copy.none.description}
-      headingLevel={3}
+      headingLevel={2}
     >
       {#snippet icon()}<Webhook aria-hidden="true" />{/snippet}
     </EmptyState>
@@ -201,17 +212,15 @@
     />
   {:else if deliveries.data === undefined || deliveries.data.length === 0}
     <EmptyState
-      size="compact"
       kind="first-use"
       title={copy.none.title}
       description={copy.none.description}
-      headingLevel={3}
+      headingLevel={2}
     >
       {#snippet icon()}<Webhook aria-hidden="true" />{/snippet}
     </EmptyState>
   {:else if shown.length === 0}
     <EmptyState
-      size="compact"
       kind="done"
       title={copy.noneFailed.title}
       description={copy.noneFailed.description}

@@ -2,7 +2,7 @@
  * Home's Agent activity band (COR-2227, AC1 to AC5): the Bureau's events worded through
  * `bureau.events.format` in batches of at most 200 and listed newest first, three rows, each with
  * its glyph, title, tier word, body, time and link; an unclaimed kind and every event of a failed
- * format call in plain words with the raw kind on line two and no error anywhere; a link that opens
+ * format call in plain words with no error; a link that opens
  * in the router; and a window read when the replay ends and on every resync, never the replayed
  * envelopes one by one, held while a person is on the list.
  */
@@ -144,10 +144,10 @@ describe('Agent activity (AC1, AC5)', () => {
     expect(warningLine?.textContent?.replace(/\s+/g, ' ').replace(/ ,/g, ',').trim()).toBe(
       'Warning, Tool runner asks to refund $42.00',
     );
-    expect(
-      warningLine?.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status'),
-    ).toBe('warning');
-    expect(critical?.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+    expect(warningLine?.querySelector('.cinder-badge')?.getAttribute('data-cinder-variant')).toBe(
+      'warning',
+    );
+    expect(critical?.querySelector('.cinder-badge')?.getAttribute('data-cinder-variant')).toBe(
       'danger',
     );
     // The glyph sits in the leading icon slot and says nothing.
@@ -189,7 +189,7 @@ describe('Agent activity (AC1, AC5)', () => {
     ]);
     await waitUntil(() => rowsOf(container).length === 2);
     const [info] = rowsOf(container);
-    expect(info?.querySelector('.cinder-status-dot')).toBeNull();
+    expect(info?.querySelector('.cinder-badge')).toBeNull();
     expect(info?.querySelector('.cinder-grouped-list-item__subtitle')).toBeNull();
     // A row with no link keeps the chevron's column and is not focusable.
     expect(info?.classList.contains('cinder-grouped-list-item--chevron-column')).toBe(true);
@@ -288,20 +288,16 @@ describe('Agent activity (AC1, AC5)', () => {
 });
 
 describe('Agent activity words what it cannot word (AC2, AC3)', () => {
-  test('an unclaimed kind is titled in plain words with its raw kind as code on line two', async () => {
+  test('an unclaimed kind is titled in plain words without exposing the kind code', async () => {
     const { container } = await ready([
       bureauEnvelope('b:1', 'goal.attempt.started', TODAY, { goalRunId: 'run-goal' }),
     ]);
     await waitUntil(() => rowsOf(container).length === 1);
     const [row] = rowsOf(container);
     expect(titlesOf(container)).toEqual(['Goal attempt started']);
-    const code = row?.querySelector('.cinder-grouped-list-item__subtitle code');
-    expect(code?.textContent).toBe('goal.attempt.started');
-    // Never cut: the raw kind's line takes no clamp.
-    expect(
-      row?.querySelector('.cinder-grouped-list-item__subtitle')?.hasAttribute('data-cinder-lines'),
-    ).toBe(false);
-    expect(row?.querySelector('.cinder-status-dot')).toBeNull();
+    expect(row?.textContent).not.toContain('goal.attempt.started');
+    expect(row?.querySelector('.cinder-grouped-list-item__subtitle')).toBeNull();
+    expect(row?.querySelector('.cinder-badge')).toBeNull();
     expect(row?.querySelector('a')?.getAttribute('href')).toBe('/runs/run-goal');
   });
 
@@ -317,15 +313,11 @@ describe('Agent activity words what it cannot word (AC2, AC3)', () => {
       'Goal attempt started',
     ]);
     const card = band(opened.container);
-    expect([...card.querySelectorAll('code')].map((code) => code.textContent)).toEqual([
-      'review.requested',
-      'run.failed',
-      'goal.attempt.started',
-    ]);
+    expect(card.querySelector('code')).toBeNull();
     expect(rowsOf(opened.container)[1]?.querySelector('a')?.getAttribute('href')).toBe(
       '/runs/run-7',
     );
-    expect(card.querySelector('.cinder-status-dot')).toBeNull();
+    expect(card.querySelector('.cinder-badge')).toBeNull();
     expect(
       card.querySelector('[role="alert"], [data-testid="home-card-error"], button'),
     ).toBeNull();

@@ -16,7 +16,6 @@
   import { untrack, type Snippet } from 'svelte';
 
   import {
-    Button,
     DataList,
     EmptyState,
     ListDetail,
@@ -126,7 +125,6 @@
       {#if shown.length === 0}
         <EmptyState
           kind={filter.trim() === '' ? 'first-use' : 'filtered'}
-          size="compact"
           headingLevel={3}
           title={filter.trim() === ''
             ? copy.list.emptyTitle
@@ -168,17 +166,14 @@
       {/if}
     {/snippet}
     <!-- A worker the address names that the list does not hold (closed, or never here). -->
-    {#snippet notFound(workerId)}
+    {#snippet notFound()}
       <EmptyState
         kind="first-use"
         headingLevel={2}
         title={copy.list.closedTitle}
-        description={copy.list.closedDescription(workerId)}
-      >
-        {#snippet action()}
-          <Button variant="secondary" size="sm" label={copy.list.backToList} onclick={backToList} />
-        {/snippet}
-      </EmptyState>
+        description={copy.list.closedDescription}
+        actions={[{ label: copy.list.backToList, variant: 'secondary', onclick: backToList }]}
+      />
     {/snippet}
     {#snippet empty()}
       <EmptyState

@@ -28,7 +28,6 @@
   import { onMount, untrack } from 'svelte';
 
   import { ErrorState, Section, Skeleton } from '@lostgradient/cinder';
-  import { renderMarkdown } from '@lostgradient/markdown';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../../app/breadcrumbs.svelte.ts';
@@ -294,7 +293,6 @@
   );
 
   const answer = $derived(follower.artifact?.text);
-  const answerHtml = $derived(answer === undefined ? '' : renderMarkdown(answer).html);
 
   // What the page knows of the run, from the first source that has it: the task, a goal's attempt,
   // the workflow engine, or the Bureau's record of a workflow file's run.
@@ -791,6 +789,28 @@
   }
 </script>
 
+<!-- What happened in an instance of a workflow file: its steps, and the failure on the step that
+     failed. A failed instance draws it above Input and output, any other after it. -->
+{#snippet instanceHappened(entries: NonNullable<typeof instanceEntryList>, startedAt: number)}
+  <RunInstanceHappened
+    {entries}
+    {startedAt}
+    progress={failureProgress}
+    failed={instanceFailed}
+    category={workflow?.failureCategory}
+    errorStack={workflow?.errorStack}
+    failure={instanceFailed ? (workflow?.error ?? record?.error ?? undefined) : undefined}
+    triesTook={stepTries?.took}
+    retryVersion={retryAction === undefined ? undefined : instance.version?.ran}
+    retry={retryAction}
+    runAgain={runAgainAction}
+    onOpenStep={() => {
+      howOverride = true;
+      howTab = 'steps';
+    }}
+  />
+{/snippet}
+
 <!-- The header the route can draw at once: the run's identifier names it until the run is known. -->
 {#snippet unknownHeader()}
   <RunHeader
@@ -907,11 +927,17 @@
           <RunMessageBlocked task={task.data} />
         {/if}
         {#if summary !== undefined}
+          <!-- A failed instance says why it failed on the step that failed, so What happened leads,
+               above Input and output, and on a phone the failure is the first thing under the
+               header (COR-2489). -->
+          {#if task.data === undefined && instanceEntryList !== undefined && instanceFailed}
+            {@render instanceHappened(instanceEntryList, summary.startedAt)}
+          {/if}
           <RunInputOutput
             task={task.data}
             threadId={goalTask ? attemptThreadId : undefined}
             startedAt={summary.startedAt}
-            answerHtml={answer === undefined ? undefined : answerHtml}
+            {answer}
             answerTruncated={follower.artifact?.truncated === true}
             followState={follower.state}
             {workflow}
@@ -926,24 +952,8 @@
                 }
               : undefined}
           />
-          {#if task.data === undefined && instanceEntryList !== undefined}
-            <RunInstanceHappened
-              entries={instanceEntryList}
-              startedAt={summary.startedAt}
-              progress={failureProgress}
-              failed={instanceFailed}
-              category={workflow?.failureCategory}
-              errorStack={workflow?.errorStack}
-              failure={instanceFailed ? (workflow?.error ?? record?.error ?? undefined) : undefined}
-              triesTook={stepTries?.took}
-              retryVersion={retryAction === undefined ? undefined : instance.version?.ran}
-              retry={retryAction}
-              runAgain={runAgainAction}
-              onOpenStep={() => {
-                howOverride = true;
-                howTab = 'steps';
-              }}
-            />
+          {#if task.data === undefined && instanceEntryList !== undefined && !instanceFailed}
+            {@render instanceHappened(instanceEntryList, summary.startedAt)}
           {/if}
           {#if task.data !== undefined}
             <RunHappened

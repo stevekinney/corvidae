@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Old data with inert writes';
   export const description =
-    'The server is unreachable, so the page keeps its data at full contrast under a warning banner. Only the button that changes something is inert (aria-disabled, still focusable, described by "Off until it’s back"); the link and Retry now stay live.';
+    'The server is unreachable, so the page keeps its data at full contrast under a warning banner. Only the button that changes something is inert (aria-disabled, still focusable, described by "Off until it’s back"); the link and Try again stay live.';
 </script>
 
 <script lang="ts">

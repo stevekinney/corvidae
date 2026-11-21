@@ -136,7 +136,7 @@ export type RestBinding<Input, Output> = {
   /**
    * Optional override for fault → HTTP response mapping. When absent,
    * the transport adapter falls back to `faultToHttpResponse`, which emits
-   * the same flat audited `{ error, weftCode?, data? }` body as
+   * the same flat audited `{ error, weftCode?, data?, retryable, remediation? }` body as
    * `shapeRestFault`. This is distinct from the JSON-RPC fault object
    * (`faultToJsonRpcError`), which uses `{ code, message, data }` with a numeric
    * `code` and a broader data projection. REST and JSON-RPC deliberately differ

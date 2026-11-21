@@ -100,6 +100,14 @@ export interface ShortcutKey {
    * not in the registry.
    */
   readonly repeat?: boolean;
+  /**
+   * When the browser received the key press (`KeyboardEvent.timeStamp`, milliseconds on one
+   * monotonic clock). The chord window is measured on it in place of `nowMs`, which is when the
+   * listener ran: a page whose main thread stalls between two presses runs the listener for the
+   * second one late, and a person who typed the sequence quickly must not lose it for that. Left
+   * out, the window is measured on `nowMs`.
+   */
+  readonly timeStamp?: number;
 }
 
 /** One group of the `?` map, in the shape Cinder's `KeyboardShortcuts` reads. */
@@ -307,9 +315,11 @@ export class ShortcutRegistry {
    * Reads one key press. A sequence's first keys wait for the rest; the last key of a handled
    * shortcut active in `context` runs it. A modifier, or a key that
    * went to a field the person is typing into, drops the wait. Returns whether a shortcut ran, so
-   * the caller can keep the browser from acting on the key as well.
+   * the caller can keep the browser from acting on the key as well. `nowMs` is the time of the
+   * press, unless the event carries its own `timeStamp`.
    */
   handleKey(event: ShortcutKey, context: ShortcutContext, nowMs: number): boolean {
+    const pressedAtMs = event.timeStamp ?? nowMs;
     if (event.repeat === true || context.dialogOpen === true) {
       this.#pending = null;
       return false;
@@ -333,14 +343,14 @@ export class ShortcutRegistry {
       return false;
     }
     const pending =
-      this.#pending !== null && nowMs - this.#pending.atMs <= CHORD_WINDOW_MS
+      this.#pending !== null && pressedAtMs - this.#pending.atMs <= CHORD_WINDOW_MS
         ? this.#pending.keys
         : [];
     this.#pending = null;
-    if (this.#step([...pending, event.key], context, nowMs)) return true;
+    if (this.#step([...pending, event.key], context, pressedAtMs)) return true;
     if (pending.length === 0 || this.#pending !== null) return false;
     // A key that does not continue the waiting sequence may start one of its own.
-    return this.#step([event.key], context, nowMs);
+    return this.#step([event.key], context, pressedAtMs);
   }
 
   #step(sequence: readonly string[], context: ShortcutContext, nowMs: number): boolean {

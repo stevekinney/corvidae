@@ -20,7 +20,7 @@ type Member = {
   /** Top, right, bottom, left border colour. */
   borders: string[];
   background: string;
-  variant: string | null;
+  variant: string | undefined;
   box: { left: number; top: number; right: number; bottom: number };
 };
 
@@ -48,7 +48,7 @@ async function members(page: Page, testId: string): Promise<Member[]> {
           style.borderLeftColor,
         ],
         background: style.backgroundColor,
-        variant: control.getAttribute('data-cinder-variant'),
+        variant: [...control.classList].find((name) => name.startsWith('button-variant-')),
         box: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
       };
     }),
@@ -140,7 +140,7 @@ for (const theme of ['light', 'dark'] as const) {
       expectHorizontal([action!, trigger!], id);
     }
     const split = await members(page, 'split-vertical');
-    expect(split[1]!.variant).toBe('secondary');
+    expect(split[1]!.variant).toBe('button-variant-secondary');
     expectVertical(split, 'split-vertical');
   });
 }

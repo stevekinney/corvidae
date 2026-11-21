@@ -46,8 +46,8 @@ export const WORKER_COPY = {
     pickTitle: 'Choose a worker',
     pickDescription: 'Choose a worker from the list to see its queue, tasks, and what it serves.',
     closedTitle: 'Worker closed',
-    closedDescription: (id: string): string =>
-      `No worker with the ID ${id} is listed by the server. It was forgotten, or it never connected here.`,
+    closedDescription:
+      'The server does not list this worker. It may have been removed or never connected here.',
     backToList: 'Back to all workers',
   },
   /**
@@ -63,8 +63,6 @@ export const WORKER_COPY = {
     /** How long a read runs before the placeholders say it is taking longer than usual. */
     stillLoadingMilliseconds: 10_000,
     empty: {
-      /** The one line under the heading when nothing is connected: nothing runs elsewhere, so nothing is counted. */
-      summary: 'Work runs inside Interborough, 0 running, 0 waiting',
       title: 'No workers connected',
       description: 'Work runs inside Interborough. Connect a worker to run it elsewhere.',
       howToConnect: 'How to connect a worker',

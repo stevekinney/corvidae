@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { OperationHostFactory, OperationInterceptor } from './operation-interceptors.ts';
 
 import type { AccessPolicy } from '../authorization.ts';
 import type { FaultCode } from '../fault-code.ts';
@@ -257,6 +258,13 @@ export type OperationDefinitionBase<
   readonly producibleFaults?: ReadonlyArray<FaultCode>;
   /** Whether non-public operations should appear in generated discovery documents. */
   readonly discoverable?: boolean;
+  /**
+   * Whether the operation takes a boolean `dryRun` input: with it `true`, the operation performs
+   * its authorization and validation, writes nothing, and answers what the call would do instead
+   * of doing it. Absent or `false` means the input has no such field. A destructive operation a
+   * caller may want to preview declares this, and its input schema carries the `dryRun` field.
+   */
+  readonly supportsDryRun?: boolean;
   readonly transports: TransportAvailability;
   readonly unknownKeyPolicy: UnknownKeyPolicy;
   readonly authorize?: (context: OperationContext<Input, Host>) => Promise<AuthorizationDecision>;
@@ -276,7 +284,7 @@ export type OperationMetadata<
  * enforces this at the type level: passing `eventSchema` to a unary
  * operation is a TypeScript error, not a silent runtime mismatch.
  */
-export type UnaryOperationDefinition<
+type UnaryOperationDefinition<
   Input,
   InvokeOutput,
   SchemaOutput = InvokeOutput,
@@ -294,7 +302,7 @@ export type UnaryOperationDefinition<
  * have no contract to validate per-element output against, which would
  * silently leak un-validated data to consumers.
  */
-export type StreamOperationDefinition<
+type StreamOperationDefinition<
   Input,
   InvokeOutput,
   SchemaOutput,
@@ -315,7 +323,7 @@ export type StreamOperationDefinition<
  * rationale as `StreamOperationDefinition` — the type forbids declaring a
  * subscription without its element schema.
  */
-export type SubscriptionOperationDefinition<
+type SubscriptionOperationDefinition<
   Input,
   InvokeOutput,
   SchemaOutput,
@@ -401,6 +409,8 @@ type RegistrableOperationBase<Host> = {
   readonly producibleFaults?: ReadonlyArray<FaultCode>;
   /** Whether non-public operations should appear in generated discovery documents. */
   readonly discoverable?: boolean;
+  /** See {@link OperationDefinitionBase.supportsDryRun}. */
+  readonly supportsDryRun?: boolean;
   readonly transports: TransportAvailability;
   readonly unknownKeyPolicy: UnknownKeyPolicy;
   readonly dispatch: (
@@ -461,7 +471,8 @@ export type DispatchContext<Host = unknown> = {
   /** The registry's {@link FaultPolicy}, which `createOperationRegistry` puts on every dispatch. */
   readonly faultPolicy?: FaultPolicy;
   /** See {@link OperationContext.host}. */
-  readonly host: Host;
+  readonly host: Host | OperationHostFactory<Host>;
+  readonly interceptors?: readonly OperationInterceptor[];
   readonly transport: TransportKind;
   readonly registry: OperationRegistry;
   readonly pipelineTrace?: PipelineTrace;

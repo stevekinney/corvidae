@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
 import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
@@ -101,7 +102,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', fromStep: 2, revision: 'a-specific-revision' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -163,7 +164,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', revision: 'unresolvable-revision' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -219,7 +220,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', revision: 'incompatible-revision' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -270,7 +271,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -296,7 +297,7 @@ describe('weft.workflows.fork', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Invalid JSON body' });
+    expect(await response.json()).toEqual({ error: 'Invalid JSON body', retryable: false });
   });
 
   it('returns 400 when the request body is not a JSON object', async () => {
@@ -309,7 +310,10 @@ describe('weft.workflows.fork', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Request body must be a JSON object' });
+    expect(await response.json()).toEqual({
+      error: 'Request body must be a JSON object',
+      retryable: false,
+    });
   });
 
   it('returns 400 when fromStep is not a non-negative safe integer', async () => {
@@ -324,6 +328,7 @@ describe('weft.workflows.fork', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Field "fromStep" must be a non-negative safe integer',
+      retryable: false,
     });
   });
 
@@ -343,7 +348,10 @@ describe('weft.workflows.fork', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: 'Checkpoint not found at step 7' });
+      expect(await response.json()).toEqual({
+        error: 'Checkpoint not found at step 7',
+        retryable: false,
+      });
     } finally {
       engine.fork = originalFork;
     }
@@ -368,6 +376,7 @@ describe('weft.workflows.fork', () => {
       expect(await response.json()).toEqual({
         error: 'Checkpoint not found for workflow "workflow-123"',
         data: { resource: 'checkpoint' },
+        retryable: false,
       });
     } finally {
       engine.fork = originalFork;
@@ -387,6 +396,7 @@ describe('weft.workflows.fork', () => {
     expect(await response.json()).toEqual({
       error: 'Workflow "missing-workflow" not found',
       data: { resource: 'workflow' },
+      retryable: false,
     });
   });
 
@@ -406,7 +416,7 @@ describe('weft.workflows.fork', () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: 'Internal server error' });
+      expect(await response.json()).toEqual({ error: 'Internal server error', retryable: false });
       expect(response.headers.get('Content-Type')).toContain('application/json');
     } finally {
       engine.fork = originalFork;

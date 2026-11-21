@@ -773,21 +773,26 @@ for (const width of STATE_WIDTHS) {
     // 78a, 78b: Health's header with Workers active; the shell's own rows are `shell-chrome.spec.ts`.
     await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
     await expectTabOpen(page.locator('main'), 'Workers');
-    // 78c: one line under the section heading.
+    // 78c: the empty state alone, with no "Workers" heading or summary line above it saying the
+    // same thing (owner report, 2026-11-19).
     await expect(region).toHaveAttribute('data-state', 'empty');
-    await expect(region.getByRole('heading', { level: 2, name: 'Workers' })).toBeVisible();
-    await expect(page.getByTestId('workers-summary')).toHaveText(
-      'Work runs inside Interborough, 0 running, 0 waiting',
-    );
-    // 78d: an empty state in a bordered card, with one secondary button that opens the guide.
+    await expect(region.getByRole('heading', { name: 'Workers', exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('workers-summary')).toHaveCount(0);
+    // 78d: Cinder's one empty state, never in a box, with one button that opens the guide.
     const card = region.locator('.cinder-empty-state');
-    await expect(card).toHaveAttribute('data-cinder-bordered', '');
-    await expect(card.getByRole('heading', { name: 'No workers connected' })).toBeVisible();
+    expect(
+      await card.evaluate(
+        (element) => element.closest('[data-cinder-bordered], .cinder-card') === null,
+      ),
+    ).toBe(true);
+    await expect(
+      card.getByRole('heading', { level: 2, name: 'No workers connected' }),
+    ).toBeVisible();
     await expect(
       card.getByText('Work runs inside Interborough. Connect a worker to run it elsewhere.'),
     ).toBeVisible();
     const guide = card.getByRole('link', { name: 'How to connect a worker' });
-    await expect(guide).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(guide).toHaveClass(/cinder-button/);
     await expect(guide).toHaveAttribute('target', '_blank');
     await expect(card.getByRole('button')).toHaveCount(0);
     // 78e: no worker row, no status word, no amber or red tone.
@@ -842,9 +847,8 @@ for (const width of STATE_WIDTHS) {
     await expect(
       region.getByText('Still loading. This is taking longer than usual.'),
     ).toBeVisible();
-    await expect(region.getByRole('button', { name: 'Cancel' })).toHaveAttribute(
-      'data-cinder-variant',
-      'ghost',
+    await expect(region.getByRole('button', { name: 'Cancel' })).toContainClass(
+      'button-variant-ghost',
     );
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     await captureForDesignReview(page, {
@@ -913,9 +917,8 @@ for (const width of STATE_WIDTHS) {
       'data-cinder-bordered',
       '',
     );
-    await expect(region.getByRole('button', { name: 'Try again' })).toHaveAttribute(
-      'data-cinder-variant',
-      'primary',
+    await expect(region.getByRole('button', { name: 'Try again' })).toContainClass(
+      'button-variant-primary',
     );
     // This page is a Health tab, so the error offers no way back to Health.
     await expect(region.getByRole('link', { name: 'Open Health' })).toHaveCount(0);

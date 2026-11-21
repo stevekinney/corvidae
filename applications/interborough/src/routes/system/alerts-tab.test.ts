@@ -7,6 +7,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import AlertsTab from './alerts-tab.svelte';
@@ -133,7 +134,7 @@ describe('AlertsTab — active alerts (weft.alerts.list)', () => {
 
     const { findByText, findByRole } = await renderAlertsTab();
     expect(await findByText('Not authorized')).not.toBeNull();
-    expect(await findByRole('button', { name: 'Retry' })).not.toBeNull();
+    expect(await findByRole('button', { name: RETRY_LABEL })).not.toBeNull();
   });
 });
 

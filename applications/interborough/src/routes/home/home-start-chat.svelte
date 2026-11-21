@@ -112,6 +112,7 @@
               labelVisible={false}
               valuePrefix={copy.agentLabel}
               variant="ghost"
+              flush
               presentation="listbox"
               size="sm"
               {options}

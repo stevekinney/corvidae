@@ -559,13 +559,13 @@ await using server = serve({
 
 `serve()` throws before it binds a port when `auth.apiKeys` is non-empty and neither a `defaultApiKeyScopes` holding at least one recognized scope nor a `resolveApiKeyPrincipal` resolver is configured; the error names both options. Only `serve()` refuses an unscoped key, because Weft's own catalog is what makes it useless: `validateAuthConfig()`, `createAuthenticator()`, and `createOperationHandlerAuthenticator()` accept it, since the catalog they serve may hold operations that need only an authenticated caller. A client reads its own method, subject, and scopes from `weft.system.principal` (`GET /v1/principal`), the one operation that is public, so it needs no scope. On a server configured with `auth` the transport still authenticates first: a request with no valid credential gets a `401` before it reaches any operation, `weft.system.principal` included. The operation is public in the scope sense (any admitted credential may call it), not in the unauthenticated sense.
 
-A `serve()` with no `auth` identifies nobody. With `unauthenticatedAccess` set to `'warn'` (the default) or `'allow'`, every request runs as one local principal, `method: 'unauthenticated-local'` and `subject: 'unauthenticated-local'`, which holds every scope in `AUTHORIZATION_SCOPES`, so every built-in operation is reachable by anyone who can reach the port. An operation registered through `serve({ operations, additionalScopes })` that needs a package scope is not: the local principal holds no package scope, so such an operation needs a credential that holds it. Set `unauthenticatedAccess: 'reject'`, or `WEFT_SERVER_AUTHENTICATION_REQUIRED=1`, and the server refuses to start without `auth`. A bare `handleRequest()` call made without an `authContext` is anonymous and reaches only `weft.system.principal`; that is the rule for an embedded host, which attaches its own context. A Service Worker is different: `setupServiceWorker()` and `createFetchHandler()` both run requests as the same local principal when `handlerOptions.authContext` is `undefined`, because a same-origin Service Worker has one caller. Pass an `authContext` to replace that default, or opt out of local trust with `handlerOptions: { authContext: { method: 'public' } }`, which makes the caller anonymous. Both listeners also decline every navigation request, so a page on another origin cannot navigate to, or submit a form at, the worker's path prefix and have it answered with local trust. A host with one caller of its own can attach the same context with `unauthenticatedLocalAuthContext()`.
+A `serve()` with no `auth` identifies nobody. With `unauthenticatedAccess` set to `'warn'` (the default) or `'allow'`, every request runs as one local principal, `method: 'unauthenticated-local'` and `subject: 'unauthenticated-local'`, which holds every scope in `AUTHORIZATION_SCOPES`, so every built-in operation is reachable by anyone who can reach the port. An operation registered through `serve({ operations, additionalScopes })` that needs a package scope is not: the local principal holds no package scope, so such an operation needs a credential that holds it. Set `unauthenticatedAccess: 'reject'`, or `WEFT_SERVER_AUTHENTICATION_REQUIRED=1`, and the server refuses to start without `auth`. A bare `handleRequest()` call made without an `authContext` is anonymous and reaches only `weft.system.principal`; that is the rule for an embedded host, which attaches its own context. A Service Worker is different: `setupServiceWorker()` and `createFetchHandler()` both run requests as the same local principal when `handlerOptions.authContext` is `undefined`, because a same-origin Service Worker has one caller. Pass an `authContext` to replace that default, or opt out of local trust with `handlerOptions: { authContext: { method: 'public' } }`, which makes the caller anonymous. Both listeners also decline every navigation request, so a page on another origin cannot navigate to, or submit a form at, the worker's path prefix and have it answered with local trust. A host with one caller of its own can attach the same context with `unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY)`. Backchannel provides the context factory and Weft exports the vocabulary.
 
 The scope each operation requires:
 
 | Operations | Required scope |
 | --- | --- |
-| `weft.workflows.get`, `weft.workflows.list`, `weft.workflows.aggregate`, `weft.workflows.timeline.get`, `weft.workflows.result.get`, `weft.workflows.checkpoints.get`, `weft.workflows.checkpoints.list`, `weft.workflows.scheduleprovenance.get`, `weft.workflows.finalizer.get`, `weft.updates.result.get`, `weft.workflows.updates.list`, `weft.workflows.logs.list` | `workflows:read` |
+| `weft.workflows.get`, `weft.workflows.list`, `weft.workflows.aggregate`, `weft.workflows.timeline.get`, `weft.workflows.compare`, `weft.workflows.result.get`, `weft.workflows.checkpoints.get`, `weft.workflows.checkpoints.list`, `weft.workflows.scheduleprovenance.get`, `weft.workflows.finalizer.get`, `weft.updates.result.get`, `weft.workflows.updates.list`, `weft.workflows.logs.list` | `workflows:read` |
 | `weft.workflows.start`, `weft.workflows.fork`, `weft.workflows.cancel`, `weft.workflows.suspend`, `weft.workflows.resume`, `weft.workflows.timeout` | `workflows:write` |
 | `weft.workflows.signal` | `signals:write` |
 | `weft.workflows.startorsignal` | `workflows:write` and `signals:write` (both) |
@@ -586,6 +586,8 @@ The scope each operation requires:
 
 Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller reaches only `weft.system.principal`: every other operation in this table requires a scope, and the two workflow event feeds refuse a caller that holds neither `events:read` nor `streams:read`. Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
 
+`serve({ authorizeWorkflowRead })` narrows `weft.workflows.compare` beyond its scope. The hook receives `{ principal, workflowId }` and returns `true` to allow or `false` to deny; `compare` asks it for the fork and then for the fork's source, after the `workflows:read` check, and answers `NotFound` when either is denied. The fault names only the fork and reads exactly like a missing fork, so a caller cleared for a fork learns nothing about its source, and a denied caller is not told a run is not a fork. With no hook configured the scope alone decides. A hook that throws is an internal error, never a denial.
+
 ### MCP Over HTTP
 
 `/mcp` serves the Model Context Protocol through the official MCP SDK (`@modelcontextprotocol/server`), and it authenticates exactly as the rest of the server does. A client that negotiates protocol 2026-07-28 is served on the SDK's modern lane, where every request carries its own protocol envelope. A 2025-era client that opens with `initialize` is served on the SDK's stateless legacy lane, in `2025-11-25` or the older revision it asked for when the SDK still supports it. Both lanes answer one POST at a time from the same server factory, so they list the same tools and resources.
@@ -594,50 +596,7 @@ Neither lane keeps a session. There is no `Mcp-Session-Id`, and `GET` and `DELET
 
 #### MCP for an operation catalog
 
-An application that serves its own operation catalog through `createOperationHandler` can mount its `mcpExposable` operations as MCP tools with `createOperationMcpMount(options?)`, on the same two protocol lanes. Each such operation becomes a tool of its own name whose input schema is the operation's, and each call runs through the full catalog pipeline (transport `mcp`, access policy, parsing, `authorize`, output validation) as the principal the handler authenticated. A unary operation answers with its validated output as `structuredContent`; a `subscription` operation answers with the elements recorded after its `fromCursor`, up to `maxEvents` (default 100), and the cursor to resume from, so a client polls it instead of holding a stream; a catalog fault, a refused caller included, is a tool error result. The mount is stateless like `/mcp` and starts nothing the catalog does not.
-
-The options are `pathPrefix` (default `/mcp`), `maxBodyBytes`, `serverInfo`, `maxEvents`, `idleMs` (how long a `subscription` tool waits for the next element, default 250 ms), and two for MCP Apps. `resources` injects `OperationMcpResource` entries (a `ui://` page, say) that the server lists and reads, each optionally narrowed per caller by `authorize`, so a caller it refuses finds the resource neither listed nor readable; the `resources` capability is advertised only when there is at least one. `toolMeta` attaches `_meta` to a tool's listing by operation name, such as the `ui.resourceUri` that links a tool to a page. The mount knows nothing of what a resource holds: the application builds the page and hands it in.
-
-```ts
-import { createOperationHandler, defineOperation } from '@lostgradient/backchannel';
-import { createOperationMcpMount } from '@lostgradient/weft';
-import { z } from 'zod';
-
-const echo = defineOperation({
-  name: 'probe.echo',
-  mcpExposable: true,
-  summary: 'Echo a message',
-  destructive: false,
-  inputSchema: z.object({ message: z.string() }),
-  outputSchema: z.object({ message: z.string() }),
-  access: { kind: 'public' },
-  transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
-  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
-  invoke: async ({ input }) => ({ message: input.message }),
-});
-
-export const handler = createOperationHandler({
-  operations: [echo],
-  host: {},
-  mounts: [
-    createOperationMcpMount({
-      serverInfo: { name: 'probe', title: 'Probe' },
-      resources: [
-        {
-          uri: 'ui://probe/page',
-          name: 'probe-page',
-          mimeType: 'text/html;profile=mcp-app',
-          text: '<!doctype html><title>probe</title>',
-          _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } },
-        },
-      ],
-      toolMeta: { 'probe.echo': { ui: { resourceUri: 'ui://probe/page' } } },
-    }),
-  ],
-});
-```
-
-Not supported: sessions (the mount is stateless, as above), MCP tasks, and prompts; the mount serves tools and the injected resources only, and nothing in it starts work the catalog does not. [`@lostgradient/bureau`](../bureau/README.md#mcp-adapter-cor-839-cor-910) is the consumer in this repository.
+Catalog hosts can serve their own operations and resources over HTTP with the [Backchannel MCP adapter](../backchannel-mcp/README.md).
 
 ### Extra Routes
 

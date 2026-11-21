@@ -2,7 +2,7 @@
   /**
    * One plugin (board PageSettingsSections, "Plugins, /settings/plugins", "Demo detail" and
    * "Anthropic detail"): its name and version, what it is, whether it is enabled, where it came from,
-   * what it adds under the names a person reads with the identifier beside each, its configuration
+   * what it adds under the names a person reads, its configuration
    * as a form with an explicit Save, its secrets, and what uses it. A plugin that is switched off
    * says what it holds back; one that needs a key says where the key goes and offers the one action.
    *
@@ -11,7 +11,7 @@
    * page's draft (`plugin-drafts.svelte.ts`). A secret is saved at once, because it needs no restart. A plugin
    * the host requires has no switch.
    */
-  import { Button, SectionHeading, StatusDot, Toggle } from '@lostgradient/cinder';
+  import { Badge, Button, CopyButton, SectionHeading, Toggle } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
@@ -28,7 +28,6 @@
     heldBackAgents,
     inUseSentence,
     providerOf,
-    secretsDirectory,
     sourceKind,
     statusOf,
   } from './plugin-presentation.ts';
@@ -124,7 +123,6 @@
    */
   const secrets = $derived(plugin.secrets.filter((secret) => secret.set || !secret.generated));
   const missingSecret = $derived(secrets.some((secret) => !secret.set));
-  const secretDirectory = $derived(secretsDirectory(secrets[0]?.location ?? ''));
   // The status line shows beside the title when it says more than the switch does.
   const showStatus = $derived(
     status.label !== copy.status.running && status.label !== copy.status.disabled,
@@ -162,7 +160,7 @@
     </div>
     <div class="ib-plugin__controls">
       {#if showStatus}
-        <StatusDot status={status.dot} label={status.label} labelVisible />
+        <Badge variant={status.variant} size="sm">{status.label}</Badge>
       {/if}
       {#if plugin.descriptor.required}
         <span class="ib-plugin__always-on">{copy.alwaysOn}</span>
@@ -201,9 +199,11 @@
   {/each}
 
   <p class="ib-plugin__source">
-    <span class="ib-plugin__source-term">{copy.sections.source}</span>
-    <code class="ib-plugin__source-location">{plugin.location}</code>,
-    {sourceKind(plugin.source)}
+    <span
+      ><span class="ib-plugin__source-term">{copy.sections.source}</span>
+      {sourceKind(plugin.source)}</span
+    >
+    <CopyButton value={plugin.location} label={copy.copyLocation} />
   </p>
 
   {#if groups.length > 0}
@@ -216,7 +216,6 @@
               <dt>{index === 0 ? group.label : ''}</dt>
               <dd>
                 <strong class="ib-plugin__add-title">{item.title}</strong>
-                <code class="ib-plugin__add-id">{item.id}</code>
               </dd>
             </div>
           {/each}
@@ -235,13 +234,10 @@
       <ul class="ib-plugin__secrets">
         {#each secrets as secret (secret.key)}
           <li class="ib-plugin__secret" data-secret={secret.key}>
-            <code class="ib-plugin__secret-key">{secret.key}</code>
-            <StatusDot
-              status={secret.set ? 'success' : 'neutral'}
-              label={secret.set ? copy.secrets.set : copy.secrets.missing}
-              labelVisible
-              size="sm"
-            />
+            <span class="ib-plugin__secret-name">{copy.secrets.label(secret.key)}</span>
+            <Badge variant={secret.set ? 'success' : 'neutral'} size="sm">
+              {secret.set ? copy.secrets.set : copy.secrets.missing}
+            </Badge>
             <Button
               variant={secret.set ? 'secondary' : 'primary'}
               size="sm"
@@ -257,7 +253,7 @@
       </ul>
       {#if missingSecret}
         <p class="ib-plugin__note" data-testid="plugin-secret-note">
-          {copy.secrets.note(secretDirectory, title, provider !== undefined)}
+          {copy.secrets.note(title, provider !== undefined)}
         </p>
       {/if}
     </section>
@@ -265,7 +261,6 @@
 
   {#if inUse !== undefined}
     <p class="ib-plugin__in-use" data-testid="plugin-in-use">
-      <strong>{copy.inUse.lead}</strong>
       {inUse}
     </p>
   {/if}
@@ -350,21 +345,15 @@
   }
 
   .ib-plugin__holding,
-  .ib-plugin__in-use {
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface-inset);
-  }
-
   .ib-plugin__source-term {
     color: var(--cinder-text-muted);
   }
 
-  .ib-plugin__source-location,
-  .ib-plugin__add-id,
-  .ib-plugin__secret-key {
-    font-family: var(--cinder-font-mono);
-    overflow-wrap: anywhere;
+  .ib-plugin__source {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    justify-content: space-between;
   }
 
   .ib-plugin__section {
@@ -400,11 +389,6 @@
     margin: 0;
   }
 
-  .ib-plugin__add-id {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-  }
-
   .ib-plugin__secrets {
     display: flex;
     flex-direction: column;
@@ -421,9 +405,10 @@
     padding: var(--cinder-space-2) 0;
   }
 
-  .ib-plugin__secret-key {
+  .ib-plugin__secret-name {
     flex: 0 1 auto;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   /* The row's one action sits at its inline end. */

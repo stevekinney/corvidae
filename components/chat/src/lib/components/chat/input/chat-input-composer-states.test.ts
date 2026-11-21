@@ -34,7 +34,7 @@ describe('empty and ready (C1, C2)', () => {
     const send = sendOf(container);
 
     expect(send.disabled).toBe(true);
-    expect(send.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(send.classList.contains('button-variant-secondary')).toBe(true);
     expect(container.querySelector('form.chat-input')?.hasAttribute('data-ready')).toBe(false);
   });
 
@@ -45,7 +45,7 @@ describe('empty and ready (C1, C2)', () => {
     await tick();
 
     expect(container.querySelector('form.chat-input')?.hasAttribute('data-ready')).toBe(true);
-    expect(sendOf(container).getAttribute('data-cinder-variant')).toBe('primary');
+    expect(sendOf(container).classList.contains('button-variant-primary')).toBe(true);
     expect(sendOf(container).disabled).toBe(false);
   });
 
@@ -114,7 +114,7 @@ describe('the run toolbar (C4)', () => {
       'button[aria-label="Stop generating"]',
     )!;
     expect(stop.textContent?.trim()).toBe('');
-    expect(stop.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(stop.classList.contains('button-variant-secondary')).toBe(true);
     expect(stop.getAttribute('data-cinder-variant')).not.toBe('danger');
     expect(stop.querySelector('svg')).not.toBeNull();
 

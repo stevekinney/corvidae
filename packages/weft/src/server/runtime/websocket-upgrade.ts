@@ -6,6 +6,7 @@ import {
   JSON_RPC_PATH,
   parseOptionalSequenceCursor,
 } from '@lostgradient/backchannel/internals';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 import type { ServeOptions } from '../index.ts';
 import { finalizeWebSocketUpgrade } from '../json-rpc-transport-helpers.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
@@ -117,7 +118,7 @@ function resolvePrincipalForUpgrade(
   }
   let principal: WebSocketData['principal'];
   try {
-    principal = authContextToPrincipal(authContext);
+    principal = authContextToPrincipal(authContext, WEFT_SCOPE_VOCABULARY);
   } catch (error) {
     console.error('[weft] WebSocket upgrade principal resolution failed', error);
     return { ok: false, response: new Response('Authentication context invalid', { status: 401 }) };

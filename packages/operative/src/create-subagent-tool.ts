@@ -8,7 +8,7 @@ import type { ZodType } from 'zod';
 import type { SuccessfulRunResult } from './agent-run';
 import { isSuccessfulRunResult } from './agent-run';
 import { readBureauInvariants, withBureauInvariants } from './bureau-invariants';
-import type { MutableChildRunRegistry } from './child-run';
+import type { ChildEventEmitter, MutableChildRunRegistry } from './child-run';
 import {
   attenuateDelegatedAuthority,
   dispatchChildRun,
@@ -18,6 +18,7 @@ import {
 import { SubagentRunError } from './errors';
 import type { OperativeEventMap } from './events';
 import type { DelegatedAuthority } from './providers/policy.ts';
+import { CHILD_EVENT_EMITTER_EXECUTION_KEY } from './run-scoped-execution-context';
 import type { AgentInput, RunnableAgent } from './runnable-agent';
 
 /**
@@ -410,6 +411,12 @@ export function createSubagentTool<
       const registry = isMutableChildRunRegistry(executionChildRegistry)
         ? executionChildRegistry
         : parentContext?.registry;
+      const executionEmitter = context.executionContext?.[CHILD_EVENT_EMITTER_EXECUTION_KEY];
+      const runEmitter =
+        typeof (executionEmitter as { dispatchEvent?: unknown } | undefined)?.dispatchEvent ===
+        'function'
+          ? (executionEmitter as ChildEventEmitter)
+          : undefined;
       const executionParentRunId = context.executionContext?.['parentRunId'];
       const parentRunId =
         typeof executionParentRunId === 'string'
@@ -454,7 +461,9 @@ export function createSubagentTool<
             signal: context.signal,
             traceContext: context.traceContext,
             withTraceContext,
-            emitter: parentContext?.emitter,
+            // COR-2526 — a tool built with no `parentContext` announces its child on the emitter of
+            // the run that called it, which the run's liveness listens to for the wait on it.
+            emitter: parentContext?.emitter ?? runEmitter,
             durable: parentContext?.durable,
             registry,
             ...(delegatedAuthority === undefined ? {} : { delegatedAuthority }),

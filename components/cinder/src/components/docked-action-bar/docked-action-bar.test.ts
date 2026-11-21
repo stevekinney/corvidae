@@ -251,14 +251,16 @@ describe('docked-action-bar.css', () => {
 
   test('makes every button and field 44px on touch without a cross-component custom property', () => {
     const touch = cssText.slice(cssText.indexOf('@media (pointer: coarse)'));
-    expect(touch).toMatch(/\.cinder-button\[data-cinder-size\]/);
+    expect(touch).toMatch(
+      /\.cinder-button:is\(\s*\.button-size-extra-small,\s*\.button-size-small,\s*\.button-size-medium,\s*\.button-size-large\s*\)/,
+    );
     expect(touch).toMatch(/\.cinder-input\.cinder-input/);
     expect(touch).toContain('min-height: var(--cinder-touch-target-min);');
     expect(cssText).not.toMatch(/--cinder-(?:button|control)-height/);
     // A narrow bar is 44px whatever the pointer, so a 375px bar under a mouse is too (row 26p).
     const narrow = cssText.slice(cssText.indexOf('@container (inline-size < 32rem)'));
     expect(narrow).toMatch(
-      /\.cinder-button\[data-cinder-size\][^}]*min-height: var\(--cinder-touch-target-min\)/s,
+      /\.cinder-button:is\(\s*\.button-size-extra-small,\s*\.button-size-small,\s*\.button-size-medium,\s*\.button-size-large\s*\)[^}]*min-height: var\(--cinder-touch-target-min\)/s,
     );
   });
 

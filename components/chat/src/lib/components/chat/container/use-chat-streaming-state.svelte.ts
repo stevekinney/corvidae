@@ -1,5 +1,5 @@
+import { preloadMarkdownPipeline } from '@lostgradient/cinder';
 import { tick } from 'svelte';
-import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
 import type { UseChatScrollStateReturn } from './use-chat-scroll-state.svelte.ts';
 
 type StreamingScrollState = Pick<UseChatScrollStateReturn, 'atBottom' | 'recomputeFromViewport'>;

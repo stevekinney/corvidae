@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'First-run checklist';
   export const description =
-    'variant="checklist" is a card of rows with a heading, a "N of M done" counter and an action per step. Steps complete in any order: done marks a step, and the first step that is not done is current.';
+    'variant="checklist" is a grouped list of rows under a heading, a "N of M done" counter and an action per step. Steps complete in any order: done marks a step, and the first step that is not done is current.';
 </script>
 
 <script lang="ts">

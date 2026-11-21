@@ -8,10 +8,7 @@
 
 <!-- A Collapsible nested in another's panel (COR-2449), both open so the inner surface shows: flat
      by default (a box inside a box reads as clutter), and beside it the `framed` opt-in. -->
-<div
-  data-testid="collapsible-nested"
-  style="display: grid; gap: var(--cinder-space-6); margin-block-start: var(--cinder-space-6);"
->
+<div data-testid="collapsible-nested" class="collapsible-nested-layout gap-6 margin-block-start-6">
   <div data-testid="collapsible-nested-flat">
     <Collapsible trigger="Order 1042" open>
       <p>Two items, shipped on Monday.</p>
@@ -29,3 +26,9 @@
     </Collapsible>
   </div>
 </div>
+
+<style>
+  .collapsible-nested-layout {
+    display: grid;
+  }
+</style>

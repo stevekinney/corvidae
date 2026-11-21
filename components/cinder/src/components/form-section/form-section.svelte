@@ -20,6 +20,7 @@
     heading,
     headingLevel = 2,
     description,
+    descriptionContent,
     meta,
     columns = 2,
     grouped = false,
@@ -53,7 +54,9 @@
         >{heading}{#if meta}<span class="cinder-form-section__meta">{meta}</span>{/if}</legend
       >
     {/if}
-    {#if description}
+    {#if descriptionContent}
+      <p class="cinder-form-section__description">{@render descriptionContent()}</p>
+    {:else if description}
       <p class="cinder-form-section__description">{description}</p>
     {/if}
     {#if children}
@@ -80,7 +83,9 @@
         {heading}
       </svelte:element>
     {/if}
-    {#if description}
+    {#if descriptionContent}
+      <p class="cinder-form-section__description">{@render descriptionContent()}</p>
+    {:else if description}
       <p class="cinder-form-section__description">{description}</p>
     {/if}
     {#if children}

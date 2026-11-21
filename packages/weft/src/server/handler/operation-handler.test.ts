@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import {
   createAuthenticator,
@@ -637,16 +638,19 @@ describe('createOperationHandlerAuthenticator', () => {
       host: {},
       authenticate: createOperationHandlerAuthenticator(
         { jwt: { secret: SECRET }, auditSink: quietAudit },
-        { additionalScopes: ['bureau.tasks:read'] },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: ['bureau.tasks:read'] },
       ),
     });
     const withoutScope = createOperationHandler({
       operations: [packageScoped],
       host: {},
-      authenticate: createOperationHandlerAuthenticator({
-        jwt: { secret: SECRET },
-        auditSink: quietAudit,
-      }),
+      authenticate: createOperationHandlerAuthenticator(
+        {
+          jwt: { secret: SECRET },
+          auditSink: quietAudit,
+        },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+      ),
     });
 
     const admitted = await call(withScope);
@@ -665,9 +669,15 @@ describe('createOperationHandlerAuthenticator', () => {
     const request = new Request('http://localhost/jsonrpc', {
       headers: { Authorization: 'Bearer the-wrong-key' },
     });
-    const authenticate: OperationHandlerAuthenticate = createOperationHandlerAuthenticator(config);
+    const authenticate: OperationHandlerAuthenticate = createOperationHandlerAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
     const serveOutcome = await authenticateRequest(
-      { authenticatorPromise: createAuthenticator(config) } as unknown as ServerContext,
+      {
+        authenticatorPromise: createAuthenticator(config, {
+          scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+        }),
+      } as unknown as ServerContext,
       request,
     );
 
@@ -693,7 +703,9 @@ describe('createOperationHandlerAuthenticator', () => {
       defaultApiKeyScopes: ['events:read' as const],
       auditSink: quietAudit,
     };
-    const authenticate = createOperationHandlerAuthenticator(config);
+    const authenticate = createOperationHandlerAuthenticator(config, {
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+    });
 
     const admitted = await authenticate(
       new Request('http://localhost/jsonrpc', {
@@ -708,11 +720,14 @@ describe('createOperationHandlerAuthenticator', () => {
   it('admits a static API key on a request made before it has awaited ready', async () => {
     // The static keys are digested asynchronously inside the readiness the
     // request path awaits, so the first request needs no wait of its own.
-    const authenticate = createOperationHandlerAuthenticator({
-      apiKeys: ['the-right-key'],
-      defaultApiKeyScopes: ['events:read' as const],
-      auditSink: quietAudit,
-    });
+    const authenticate = createOperationHandlerAuthenticator(
+      {
+        apiKeys: ['the-right-key'],
+        defaultApiKeyScopes: ['events:read' as const],
+        auditSink: quietAudit,
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const admitted = await authenticate(
       new Request('http://localhost/jsonrpc', {
@@ -730,11 +745,14 @@ describe('createOperationHandlerAuthenticator', () => {
     const handler = createOperationHandler({
       operations: [],
       host: {},
-      authenticate: createOperationHandlerAuthenticator({
-        apiKeys: ['right-key'],
-        defaultApiKeyScopes: ['workflows:read'],
-        auditSink: quietAudit,
-      }),
+      authenticate: createOperationHandlerAuthenticator(
+        {
+          apiKeys: ['right-key'],
+          defaultApiKeyScopes: ['workflows:read'],
+          auditSink: quietAudit,
+        },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+      ),
       mounts: [
         {
           pathPrefix: '/.well-known',
@@ -758,11 +776,14 @@ describe('createOperationHandlerAuthenticator', () => {
     const handler = createOperationHandler({
       operations: [],
       host: {},
-      authenticate: createOperationHandlerAuthenticator({
-        apiKeys: ['right-key'],
-        defaultApiKeyScopes: ['workflows:read'],
-        auditSink: quietAudit,
-      }),
+      authenticate: createOperationHandlerAuthenticator(
+        {
+          apiKeys: ['right-key'],
+          defaultApiKeyScopes: ['workflows:read'],
+          auditSink: quietAudit,
+        },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+      ),
       mounts: [{ pathPrefix: '/v1/metrics', fetch: async () => new Response('mounted') }],
     });
 
@@ -771,37 +792,49 @@ describe('createOperationHandlerAuthenticator', () => {
 
   it('refuses config.publicPaths, which would be a second place to decide them', () => {
     expect(() =>
-      createOperationHandlerAuthenticator({
-        apiKeys: ['k'],
-        defaultApiKeyScopes: ['workflows:read'],
-        publicPaths: ['/v1/health'],
-      }),
+      createOperationHandlerAuthenticator(
+        {
+          apiKeys: ['k'],
+          defaultApiKeyScopes: ['workflows:read'],
+          publicPaths: ['/v1/health'],
+        },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+      ),
     ).toThrow(/publicPaths is not accepted/);
   });
 
   it('exposes a readiness promise that settles for a usable key', async () => {
-    const authenticate = createOperationHandlerAuthenticator({
-      jwt: { secret: SECRET },
-      auditSink: quietAudit,
-    });
+    const authenticate = createOperationHandlerAuthenticator(
+      {
+        jwt: { secret: SECRET },
+        auditSink: quietAudit,
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     expect(await authenticate.ready).toBeUndefined();
   });
 
   it('rejects the readiness promise when a key cannot be imported', async () => {
-    const authenticate = createOperationHandlerAuthenticator({
-      jwt: { algorithm: 'RS256', publicKey: 'not a public key' },
-      auditSink: quietAudit,
-    });
+    const authenticate = createOperationHandlerAuthenticator(
+      {
+        jwt: { algorithm: 'RS256', publicKey: 'not a public key' },
+        auditSink: quietAudit,
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     expect(await throwingRejectionOf(authenticate.ready)).toThrow();
   });
 
   it('surfaces a key that cannot be imported on the first request, not at construction', async () => {
-    const authenticate = createOperationHandlerAuthenticator({
-      jwt: { algorithm: 'RS256', publicKey: 'not a public key' },
-      auditSink: quietAudit,
-    });
+    const authenticate = createOperationHandlerAuthenticator(
+      {
+        jwt: { algorithm: 'RS256', publicKey: 'not a public key' },
+        auditSink: quietAudit,
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
 
     const attempt = authenticate(
       new Request('http://localhost/jsonrpc', { headers: { Authorization: 'Bearer x.y.z' } }),
@@ -811,11 +844,13 @@ describe('createOperationHandlerAuthenticator', () => {
   });
 
   it('refuses an invalid configuration or scope at construction', () => {
-    expect(() => createOperationHandlerAuthenticator({})).toThrow(/at least one authentication/);
+    expect(() =>
+      createOperationHandlerAuthenticator({}, { scopeVocabulary: WEFT_SCOPE_VOCABULARY }),
+    ).toThrow(/at least one authentication/);
     expect(() =>
       createOperationHandlerAuthenticator(
         { apiKeys: ['k'], defaultApiKeyScopes: ['workflows:read'] },
-        { additionalScopes: ['weft.system:read'] },
+        { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: ['weft.system:read'] },
       ),
     ).toThrow(/additionalScopes/);
   });
@@ -823,10 +858,13 @@ describe('createOperationHandlerAuthenticator', () => {
   it('accepts static apiKeys that hold no scope, which an authenticated-only catalog admits', async () => {
     // Only `serve()` refuses an unscoped key; this handler's catalog is the
     // caller's own and may hold operations that need no scope.
-    const authenticate = createOperationHandlerAuthenticator({
-      apiKeys: ['k'],
-      auditSink: quietAudit,
-    });
+    const authenticate = createOperationHandlerAuthenticator(
+      {
+        apiKeys: ['k'],
+        auditSink: quietAudit,
+      },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+    );
     await authenticate.ready;
 
     const outcome = await authenticate(

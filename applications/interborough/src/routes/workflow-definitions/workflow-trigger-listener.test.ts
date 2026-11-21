@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { STUB_TRIGGERS_URL, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -236,8 +237,10 @@ describe('the trigger status on a workflow’s page', () => {
     const found = await section(container);
     const status = line(found);
     expect(words(status)).toMatch(
-      /^Failed, the trigger could not start\. Next try in \d+ minutes\. Retry now \(code start-failed\)$/,
+      /^Failed, the trigger could not start\. Next try in \d+ minutes\. Try again \(code start-failed\)$/,
     );
+    // COR-2489 design round: one label for a retry on every page.
+    expect(copy.retry).toBe(RETRY_LABEL);
     expect(found.querySelector('[data-testid="workflow-trigger-code"]')?.textContent).toBe(
       'start-failed',
     );
@@ -252,7 +255,9 @@ describe('the trigger status on a workflow’s page', () => {
       retryAt: new Date(Date.now() + 60_000).toISOString(),
     });
     await section(container);
-    expect(getByRole('button', { name: copy.retry }).getAttribute('data-cinder-size')).toBe('xs');
+    expect(
+      getByRole('button', { name: copy.retry }).classList.contains('button-size-extra-small'),
+    ).toBe(true);
   });
 
   test('counts the next try down while the page is open', async () => {
@@ -392,8 +397,10 @@ describe('the trigger status on a workflow’s page', () => {
     );
     const value = found.querySelector<HTMLElement>('[data-testid="workflow-trigger-address"]');
     expect(value?.classList.contains('cinder-copyable-value')).toBe(true);
-    // The value as drawn: the text before its last character, then the last character.
-    const drawn = `${value?.firstChild?.textContent ?? ''}${value?.querySelector('.cinder-copyable-value__end')?.firstChild?.textContent ?? ''}`;
+    // The value as drawn: every part's text, without the copy control's label.
+    const shown = value?.cloneNode(true) as HTMLElement | undefined;
+    shown?.querySelector('.cinder-copyable-value__control')?.remove();
+    const drawn = shown?.textContent ?? '';
     expect(drawn).toBe(`${STUB_TRIGGERS_URL}digest`);
     // The control sits in the value's last stretch, so it wraps with the address.
     expect(

@@ -19,7 +19,11 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 import { CINDER_GENERATED_OUTPUTS } from '../../../../scripts/ensure-cinder-generated.ts';
-import { isVersionControlledOutput, packageRoot } from './generator-configuration.ts';
+import {
+  isVersionControlledOutput,
+  packageRoot,
+  tokenUtilitiesCssPath,
+} from './generator-configuration.ts';
 
 async function command(args: string[]): Promise<{ stdout: string; code: number }> {
   const child = spawnWithHangGuard(args, { cwd: packageRoot, stdout: 'pipe', stderr: 'pipe' });
@@ -64,4 +68,13 @@ test('ensureCinderGenerated watches every output the generator writes', () => {
 
 test('every such output is ignored by git', () => {
   expect(ignored.stdout.split('\n').filter(Boolean).toSorted()).toEqual(ignoredOutputs.toSorted());
+});
+
+test('the opt-in CSS exposes full utility names as token aliases', async () => {
+  const css = await Bun.file(tokenUtilitiesCssPath).text();
+  expect(css).toContain('.gap-1 {\n    gap: var(--cinder-space-1);');
+  expect(css).toContain('.gap-3 {\n    gap: var(--cinder-space-3);');
+  expect(css).toContain('.padding-inline-3 {\n    padding-inline: var(--cinder-space-3);');
+  expect(css).toContain('.text-muted {\n    color: var(--cinder-text-muted);');
+  expect(css).toContain('.rounded-medium {\n    border-radius: var(--cinder-radius-md);');
 });

@@ -28,13 +28,21 @@
   aria-label="Workflow events"
 >
   {#snippet row(event, context)}
-    <div
-      style="display: grid; grid-template-columns: 11rem 7rem minmax(0, 1fr); gap: var(--cinder-space-3); align-items: center; min-block-size: 36px; padding-inline: var(--cinder-space-3); border-block-end: 1px solid var(--cinder-border); font-size: var(--cinder-text-sm);"
-      data-index={context.index}
-    >
+    <div class="virtual-row gap-3 padding-inline-3" data-index={context.index}>
       <span>{event.timestamp}</span>
       <strong>{event.source}</strong>
       <span>{event.message}</span>
     </div>
   {/snippet}
 </VirtualList>
+
+<style>
+  .virtual-row {
+    display: grid;
+    grid-template-columns: 11rem 7rem minmax(0, 1fr);
+    align-items: center;
+    min-block-size: 36px;
+    border-block-end: 1px solid var(--cinder-border);
+    font-size: var(--cinder-text-sm);
+  }
+</style>

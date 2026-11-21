@@ -284,7 +284,7 @@ export const ALLOWED_INSTANCES: Record<string, { count: number; reason: string }
       {
         '14-shell-and-principal.spec.ts': 2,
         'chat-states.spec.ts': 1,
-        'first-run.spec.ts': 3,
+        'first-run.spec.ts': 1,
         'health-audit-states.spec.ts': 2,
         'health-audit.spec.ts': 6,
         'health-overview.spec.ts': 2,
@@ -299,12 +299,11 @@ export const ALLOWED_INSTANCES: Record<string, { count: number; reason: string }
         'settings-allowed-models.spec.ts': 1,
         'settings-general.spec.ts': 1,
         'settings-models.spec.ts': 3,
-        'shell-states.spec.ts': 1,
         'workflow-page.spec.ts': 1,
       },
       NOT_YET_CONVERTED,
     ),
-    ...entries({ 'chat-list.spec.ts': 2, 'home.spec.ts': 28 }, WITH_BEFORE_AND_AFTER),
+    ...entries({ 'chat-list.spec.ts': 2, 'home.spec.ts': 24 }, WITH_BEFORE_AND_AFTER),
   ]);
 
 export function collectSpecFiles(directory: string, paths: string[]): void {

@@ -42,6 +42,13 @@ export function startChatAgents<T extends Pick<AgentSummary, 'name' | 'visibilit
   return agents.filter((agent) => isOfferedInChat(agent, selected));
 }
 
+/**
+ * How tall the card's message box is: Cinder's Textarea is at least 6rem, and the box's three-line
+ * placeholder sits inside that. The loading placeholder that stands for the box takes this height,
+ * so nothing below the box moves when it arrives (COR-2489).
+ */
+export const START_CHAT_MESSAGE_HEIGHT = '6rem';
+
 /** The address Send opens: New chat with `agent`. The message is handed over apart from the address (`new-chat-handoff.ts`). */
 export function newChatAddress(agent: string): string {
   return `/chats/new?${new URLSearchParams({ agent }).toString()}`;

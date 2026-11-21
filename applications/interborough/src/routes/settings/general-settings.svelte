@@ -13,6 +13,7 @@
    * the agent a new chat starts with and the keyboard.
    */
   import {
+    CopyableValue,
     FormSection,
     Segment,
     SegmentedControl,
@@ -44,6 +45,7 @@
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { readPreferredAgent, writePreferredAgent } from '../../lib/preferred-agent.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { storageFacts } from '../storage/storage-location.ts';
   import EmbedderRow from './embedder-row.svelte';
   import { generalSections } from './general-sections.ts';
   import SettingField from './setting-field.svelte';
@@ -75,11 +77,8 @@
     undefined,
   );
   const remote = $derived(hostPaths.data?.mode === 'remote');
-  const words = $derived(
-    remote
-      ? { ...SETTINGS_COPY.hostPaths, ...SETTINGS_COPY.remote.hostPaths }
-      : SETTINGS_COPY.hostPaths,
-  );
+  // The one host path Settings shows: the folder the installation keeps its data in.
+  const dataFolder = $derived(storageFacts(hostPaths.data).location);
 
   const controls = new Map<string, Control>(
     untrack(() => Object.entries(schema).map(([key, node]) => [key, controlFor(key, node)])),
@@ -379,30 +378,29 @@
     {/if}
   </FormSection>
 
-  <section class="weft-general__paths" aria-labelledby="weft-settings-paths-title">
-    <h2 id="weft-settings-paths-title" class="weft-general__paths-title">{words.title}</h2>
-    <p class="weft-general__muted">{SETTINGS_COPY.hostPaths.description}</p>
-    {#if hostPaths.data !== undefined}
-      <dl class="weft-general__path-list">
-        <dt>{words.agents}</dt>
-        <dd><code>{hostPaths.data.agentDirectory}</code></dd>
-        <dt>{words.workflows}</dt>
-        <dd><code>{hostPaths.data.workflowDirectory}</code></dd>
-        <dt>{words.configuration}</dt>
-        <dd><code>{hostPaths.data.configurationFile}</code></dd>
-        <dt>{words.providers}</dt>
-        <dd>
-          <ul class="weft-general__path-providers">
-            {#each hostPaths.data.providers as provider (provider.name)}
-              <li><code>{provider.secretFile}</code></li>
-            {/each}
-          </ul>
-        </dd>
-      </dl>
-    {:else if hostPaths.isError}
-      <p class="weft-general__muted">{SETTINGS_COPY.hostPaths.unavailable}</p>
-    {/if}
-  </section>
+  <!-- Owner, 2026-11-19: a block of derived host paths and provider secret references was no
+       setting. One row, the data folder, for troubleshooting, with its Copy button; secret
+       references never render. -->
+  {#if dataFolder !== undefined}
+    <FormSection grouped heading={SETTINGS_COPY.about.title}>
+      <div class="weft-general__row" data-setting="data-folder">
+        <SettingRow
+          id="weft-settings-data-folder"
+          label={SETTINGS_COPY.about.dataFolder}
+          description={SETTINGS_COPY.about.dataFolderDescription}
+        >
+          {#snippet control()}
+            <CopyableValue
+              value={dataFolder}
+              label={SETTINGS_COPY.about.copyDataFolder}
+              copiedLabel={SETTINGS_COPY.about.dataFolderCopied}
+              data-testid="settings-data-folder"
+            />
+          {/snippet}
+        </SettingRow>
+      </div>
+    </FormSection>
+  {/if}
 </div>
 
 <style>
@@ -418,56 +416,5 @@
   .weft-general__value {
     font-weight: var(--cinder-font-semibold);
     white-space: nowrap;
-  }
-
-  .weft-general__paths {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-  }
-
-  .weft-general__paths-title {
-    margin: 0;
-    font-size: var(--cinder-text-base);
-    font-weight: 600;
-  }
-
-  .weft-general__muted {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .weft-general__path-list {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: var(--cinder-space-1) var(--cinder-space-4);
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-  }
-
-  .weft-general__path-list dt {
-    color: var(--cinder-text-muted);
-  }
-
-  .weft-general__path-list dd {
-    margin: 0;
-    overflow-wrap: anywhere;
-  }
-
-  .weft-general__path-providers {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  code {
-    font-family: var(--cinder-font-mono);
-  }
-
-  @media (max-width: 39.99rem) {
-    .weft-general__path-list {
-      grid-template-columns: minmax(0, 1fr);
-    }
   }
 </style>

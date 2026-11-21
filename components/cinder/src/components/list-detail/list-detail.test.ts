@@ -563,12 +563,12 @@ describe('ListDetail', () => {
     expect(detailText(container)).toBe('Alpha chat detail');
   });
 
-  test('openFirst never overrides a link to an item the list does not have: its not-found detail shows', async () => {
+  test.each([599, 1000])('openFirst shows a missing linked item at %d pixels', async (width) => {
     const location = memoryLocation('missing');
     const { container } = render(ListDetailFixture, {
       props: { selectionLocation: location, openFirst: true },
     });
-    await measure(container, 1000);
+    await measure(container, width);
     await tick();
 
     expect(detailText(container)).toBe(

@@ -13,9 +13,12 @@
   padding-block-start: var(--cinder-space-3);
 }
 
-/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. It
- * draws no box: the list and the open item sit on the page under the tabs, and ListDetail's divider
- * is the one line between them. */
+.ib-capabilities__tab:has([data-list-empty]),
+.ib-capabilities__panel:has(> [data-list-empty]) {
+  padding-block-start: 0;
+}
+
+/* ListDetail scrolls each pane inside this height. Its divider separates the panes. */
 .ib-capabilities__frame {
   block-size: max(28rem, calc(100dvh - 18rem));
   min-inline-size: 0;
@@ -189,7 +192,6 @@
  * name read as words can still hold one long word, since a skill's identifier is up to 64 characters. */
 .ib-capability__name,
 .ib-capability__identifier,
-.ib-capability__location,
 .ib-capability__prose {
   overflow-wrap: anywhere;
 }

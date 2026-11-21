@@ -1,5 +1,5 @@
 import type { ContextOperationRequest } from '../context/operation-request.ts';
-import { WeftError } from '../weft-error.ts';
+import { WeftError, type WeftErrorCode } from '../weft-error.ts';
 import type { FailureCategory, OperationId, WorkflowId } from './identity.ts';
 import type { Duration, RetryPolicy } from './retry-retention.ts';
 import type { SearchAttributeValue } from './search-attributes.ts';
@@ -399,6 +399,11 @@ export type WorkerOutboundMessage =
       workflowId: WorkflowId;
       error: string;
       errorStack?: string;
+      /**
+       * The code of the Weft error that failed the run, carried beside the message because the
+       * message alone loses it (COR-2529). Absent when the error is not a Weft error.
+       */
+      errorCode?: WeftErrorCode;
       /** Populated when the execution strategy can classify the failure cause. */
       failureCategory?: FailureCategory;
       /** Echo of the captured `run.workflowRevision` (WFT-20) — see that field's doc. */

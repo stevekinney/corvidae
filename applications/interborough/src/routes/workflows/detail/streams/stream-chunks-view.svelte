@@ -198,7 +198,6 @@
   {:else if loaded}
     <EmptyState
       kind={swept ? 'done' : 'first-use'}
-      size="compact"
       headingLevel={4}
       title={swept ? copy.sweptTitle : copy.noChunksTitle}
       description={swept ? copy.swept : copy.noChunks}

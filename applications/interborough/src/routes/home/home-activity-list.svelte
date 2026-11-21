@@ -3,9 +3,9 @@
    * The rows of one of Home's activity bands (COR-2227): one Cinder `GroupedList` of Cinder
    * `GroupedListItem` rows, the row Home's other lists use, with no row markup or styling of its
    * own. Each row is the kind's glyph on the title's first line, the title in at most two lines, a
-   * StatusDot word for a warning or critical event leading line two with the body after a comma
+   * status badge for a warning or critical event leading line two with the body after a comma
    * (at most two lines), and the time at the end ("10:42 AM", "Yesterday, 4:12 PM", "Thu, Oct 29,
-   * 4:12 PM"). An event the application could not word has its raw kind on line two, unclamped.
+   * 4:12 PM"). An event the application could not word keeps its plain title.
    * A row with a link is one link, opened inside the application; one without keeps the chevron's
    * column, so every time ends on one edge. Clamped text reads in one tooltip on the row.
    *
@@ -13,7 +13,7 @@
    * scrolls the page, and while focus, a hovering pointer or a press is in the list the rows hold
    * still (`ActivityFeed.hold`); while the bands are stacked, the other band's rows hold too.
    */
-  import { GroupedList, GroupedListItem, StatusDot, Text } from '@lostgradient/cinder';
+  import { Badge, GroupedList, GroupedListItem } from '@lostgradient/cinder';
 
   import { followLinks } from '../../lib/follow-links.ts';
   import { rowTime } from '../../lib/format/clock.ts';
@@ -41,19 +41,17 @@
       {@const word = tierWord(entry.tier)}
       {@const lineTwo = lineTwoText(entry)}
       {#snippet lineTwoLine()}
-        {#if entry.rawKind !== undefined}
-          <Text variant="code">{entry.rawKind}</Text>
-        {:else if word !== undefined}
-          <StatusDot {word} />{#if entry.body !== undefined}, {entry.body}{/if}
+        {#if word !== undefined}
+          <Badge variant={entry.tier === 'critical' ? 'danger' : 'warning'} size="xs">{word}</Badge
+          >{#if entry.body !== undefined}, {entry.body}{/if}
         {:else}
           {entry.body}
         {/if}
       {/snippet}
-      <!-- A raw kind is never cut, so its line takes no clamp; a row with no line two draws none. -->
       <GroupedListItem
         data-activity={entry.key}
         {...entry.href === undefined ? {} : { href: router.href(entry.href) }}
-        {...entry.rawKind === undefined ? { subtitleLines: 2 as const } : {}}
+        subtitleLines={2}
         {...lineTwo === undefined ? {} : { subtitle: lineTwoLine, subtitleTooltip: lineTwo }}
         chevronColumn
         titleLines={2}

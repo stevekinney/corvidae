@@ -121,6 +121,7 @@
     const index = selectedKey === null ? -1 : keys.indexOf(selectedKey);
     return index === -1 ? undefined : { item: items[index] as T };
   });
+  const showsDetail = $derived(selectedEntry !== undefined || (openFirst && selectedKey !== null));
   // An unmeasured root (the server, the first paint) is treated as wide, so the stacked layout
   // never flashes before the width is known.
   const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
@@ -512,12 +513,12 @@
   class={classNames('cinder-list-detail', className)}
   data-cinder-layout={narrow ? 'stacked' : below ? 'below' : 'split'}
   data-cinder-flush-detail={flushDetail ? '' : undefined}
-  data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
+  data-cinder-showing={narrow ? (showsDetail ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
   data-cinder-toggle-slot={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
-    {#if selectedEntry}
+    {#if showsDetail}
       {@render detailPane()}
     {:else}
       {@render listPane()}

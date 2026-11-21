@@ -440,7 +440,9 @@ export function shikiHighlighter(
  */
 function buildThemeOption(
   theme: string | { light: string; dark: string },
-): { theme: string } | { themes: { light: string; dark: string } } {
+): { theme: string } | { themes: { light: string; dark: string }; defaultColor: false } {
   if (typeof theme === 'string') return { theme };
-  return { themes: theme };
+  // `defaultColor: false` writes both themes as `--shiki-light` and `--shiki-dark` and no inline
+  // `color`, so `code-block.css` picks the one for the color scheme in effect with `light-dark()`.
+  return { themes: theme, defaultColor: false };
 }

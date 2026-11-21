@@ -74,12 +74,19 @@ export type ToolListingRecord = z.infer<typeof recordSchema>;
 
 /** What a tool offers to be remembered: any string is cut to its limit, an unknown tier is `null`. */
 export type RememberedToolInput = {
+  /** The qualified name agents use. */
   readonly name: string;
+  /** The tool name at its source. */
   readonly tool: string;
+  /** The display name supplied by the source. */
   readonly title: string | null | undefined;
+  /** The full description supplied by the source. */
   readonly description: string | null | undefined;
+  /** The summary shown in a compact listing. */
   readonly shortDescription: string | null | undefined;
+  /** The capability tier reported by the source. */
   readonly tier: string | null | undefined;
+  /** The schema describing the inputs this tool accepts. */
   readonly inputSchema: Readonly<Record<string, unknown>> | null | undefined;
 };
 

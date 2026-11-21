@@ -4,6 +4,7 @@
     "data": {
       "httpStatus": 404,
       "method": "bureau.does.not.exist",
+      "retryable": false,
       "weftCode": "MethodNotFound"
     },
     "message": "unknown operation: bureau.does.not.exist"

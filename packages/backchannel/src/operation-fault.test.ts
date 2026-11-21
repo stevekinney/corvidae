@@ -10,6 +10,13 @@ import { describe, expect, it } from 'bun:test';
 
 import type { FaultCode } from './fault-code.ts';
 import {
+  MAX_REMEDIATION_LENGTH,
+  assertValidRemediation,
+  faultWireAdvice,
+  remediationProblem,
+  withRemediation,
+} from './fault-remediation.ts';
+import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
   type OperationFault,
@@ -199,5 +206,73 @@ describe('OperationFault discriminated union', () => {
     };
     expect(fault.code).toBe('EngineFailure');
     expect(fault.data).toEqual({});
+  });
+});
+
+function notFound(): Extract<OperationFault, { code: 'NotFound' }> {
+  return { code: 'NotFound', message: 'missing', data: { resource: 'workflow' } };
+}
+
+describe('fault remediation', () => {
+  it('accepts one line of plain text up to 500 characters, counted as characters', () => {
+    expect(remediationProblem('Re-read the workflow, then send its new revision.')).toBeUndefined();
+    expect(remediationProblem('x'.repeat(MAX_REMEDIATION_LENGTH))).toBeUndefined();
+    // An emoji is one character, though two UTF-16 code units.
+    expect(remediationProblem('😀'.repeat(MAX_REMEDIATION_LENGTH))).toBeUndefined();
+    expect(() => assertValidRemediation('Check the id.')).not.toThrow();
+  });
+
+  it('rejects a value longer than 500 characters', () => {
+    const tooLong = 'x'.repeat(MAX_REMEDIATION_LENGTH + 1);
+    expect(remediationProblem(tooLong)).toContain('at most 500 characters');
+    expect(() => assertValidRemediation(tooLong)).toThrow(TypeError);
+    expect(() => withRemediation(notFound(), tooLong)).toThrow(TypeError);
+  });
+
+  it('rejects a value holding any character in the Unicode control category', () => {
+    const controlCharacters = ['\n', '\r', '\t', '\u0000', '\u001b', '\u007f', '\u0085', '\u009f'];
+    for (const character of controlCharacters) {
+      const value = `before${character}after`;
+      expect(remediationProblem(value)).toContain('control characters');
+      expect(() => assertValidRemediation(value)).toThrow(TypeError);
+    }
+  });
+
+  it('rejects an empty value and a value that is not text', () => {
+    expect(remediationProblem('')).toContain('empty');
+    expect(remediationProblem(42)).toContain('string');
+    expect(remediationProblem(undefined)).toContain('string');
+  });
+
+  it('sets a valid remediation on a copy of the fault', () => {
+    const fault = notFound();
+    const advised = withRemediation(fault, 'Create it first.');
+    expect(advised.remediation).toBe('Create it first.');
+    expect(fault.remediation).toBeUndefined();
+  });
+
+  it('wire advice is retryable from the code table and remediation only when valid', () => {
+    expect(faultWireAdvice(notFound())).toEqual({ retryable: false });
+    expect(faultWireAdvice({ ...notFound(), remediation: 'Create it first.' })).toEqual({
+      retryable: false,
+      remediation: 'Create it first.',
+    });
+    expect(faultWireAdvice({ ...notFound(), remediation: 'two\nlines' })).toEqual({
+      retryable: false,
+    });
+    expect(
+      faultWireAdvice({ code: 'Unavailable', message: 'down', data: {}, remediation: 'Wait.' }),
+    ).toEqual({ retryable: true, remediation: 'Wait.' });
+  });
+
+  it('wire advice for EngineFailure is never retryable and never carries a remediation', () => {
+    expect(
+      faultWireAdvice({
+        code: 'EngineFailure',
+        message: 'internal error',
+        data: {},
+        remediation: 'Restart the server.',
+      }),
+    ).toEqual({ retryable: false });
   });
 });

@@ -352,9 +352,6 @@
 {:else if runsEmpty}
   <EmptyState
     kind="first-use"
-    size="compact"
-    layout="inline"
-    align="start"
     title={copy.empty.title}
     description={emptyDescription}
     headingLevel={3}

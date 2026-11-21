@@ -15,6 +15,7 @@ export type SchedulesOperationTypes = {
       readonly id?: unknown;
       readonly input?: unknown;
       readonly jitter?: unknown;
+      readonly metadata?: unknown;
       readonly overlap?: unknown;
       readonly revisionPolicy?: unknown;
       readonly timeZone?: unknown;
@@ -95,6 +96,7 @@ export type SchedulesOperationTypes = {
       readonly every?: unknown;
       readonly input?: unknown;
       readonly jitter?: unknown;
+      readonly metadata?: unknown;
       readonly overlap?: unknown;
       readonly revisionPolicy?: unknown;
       readonly scheduleId: string;

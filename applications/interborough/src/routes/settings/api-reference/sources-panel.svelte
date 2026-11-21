@@ -6,7 +6,8 @@
    * file, and "Open file" belongs on each workflow, so there is none here. The tab draws nothing
    * under the list.
    */
-  import { humanizeIdentifier } from '@lostgradient/cinder';
+  import { EmptyState, humanizeIdentifier } from '@lostgradient/cinder';
+  import { Workflow } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
@@ -61,10 +62,19 @@
 
 <div class="ib-sources" data-testid="api-sources">
   {#if files.data !== undefined}
-    <p class="ib-sources__intro">{copy.intro}</p>
     {#if files.data.length === 0}
-      <p class="ib-sources__muted">{copy.empty}</p>
+      <!-- The state alone, with no intro above it (owner report, 2026-11-19). -->
+      <EmptyState
+        kind="first-use"
+        headingLevel={3}
+        title={copy.empty.title}
+        description={copy.empty.description}
+        data-testid="api-sources-empty"
+      >
+        {#snippet icon()}<Workflow aria-hidden="true" />{/snippet}
+      </EmptyState>
     {:else}
+      <p class="ib-sources__intro">{copy.intro}</p>
       <ul class="ib-sources__list" aria-label={copy.listLabel}>
         {#each files.data as file (file.id)}
           <li data-workflow-file={file.id}>
@@ -98,14 +108,9 @@
     min-inline-size: 0;
   }
 
-  .ib-sources__intro,
-  .ib-sources__muted {
+  .ib-sources__intro {
     margin: 0;
     font-size: var(--cinder-text-sm);
-  }
-
-  .ib-sources__muted {
-    color: var(--cinder-text-muted);
   }
 
   .ib-sources__list {

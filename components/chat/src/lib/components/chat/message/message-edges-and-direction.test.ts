@@ -93,8 +93,8 @@ describe('glyphs meet their edges, spacing and direction', () => {
     });
     const button = container.querySelector('button')!;
     expect(button.getAttribute('aria-label')).toBe('Retry loading chart');
-    expect(button.getAttribute('data-cinder-variant')).toBe('ghost');
-    expect(button.getAttribute('data-cinder-size')).toBe('sm');
+    expect(button.classList.contains('button-variant-ghost')).toBe(true);
+    expect(button.classList.contains('button-size-small')).toBe(true);
     expect(button.hasAttribute('data-cinder-icon-only')).toBe(true);
     expect(button.hasAttribute('data-cinder-quiet')).toBe(true);
   });

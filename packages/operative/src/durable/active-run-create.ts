@@ -12,7 +12,7 @@ import type { DurableActiveRunContext, DurableActiveRunOptions } from './active-
 import { isTerminalWorkflowStatus } from './active-run-constants';
 import { createDurableToolboxForwarder } from './active-run-create-event-surface';
 import { driveDurableRun } from './active-run-driver';
-import { wireHumanWaitLiveness } from './active-run-event-surface';
+import { wireChildWaitLiveness, wireHumanWaitLiveness } from './active-run-event-surface';
 
 export function createDurableActiveRun(
   context: DurableActiveRunContext,
@@ -67,6 +67,7 @@ export function createDurableActiveRun(
   // therefore not exposed by this adapter.
   const cleanups: (() => void)[] = [];
   cleanups.push(wireHumanWaitLiveness(emitter, liveness));
+  cleanups.push(wireChildWaitLiveness(emitter, liveness));
   // closed()'s not-required fast path (coordinator ruling, AB-204) — see the
   // identical counter in `create-run.ts`.
   let inFlightTools = 0;

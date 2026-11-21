@@ -32,7 +32,7 @@
 {#if runId}
   {#key runId}<RunDetail {runId} />{/key}
 {:else if (starting || view === 'aggregate') && !engineAllowed}
-  <ForbiddenState title={VIEW_COPY.runs.forbidden.title} requirement="workflows:read" />
+  <ForbiddenState title={VIEW_COPY.runs.forbidden.title} />
 {:else if starting}
   <StartPicker />
 {:else if view === 'aggregate'}

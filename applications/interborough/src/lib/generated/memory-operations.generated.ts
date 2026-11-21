@@ -6,6 +6,7 @@ import type {
   SharedChangedIdLegalHold_d1fe44b0,
   SharedContentCorrectedAtId_46b11abf,
   SharedContentCreatedAtId_21bc25fe,
+  SharedDryRunEffectsTarget_b07628bd,
 } from './shared-operation-types.generated.ts';
 export type MemoryOperationTypes = {
   'bureau.memory.correct': {
@@ -45,8 +46,8 @@ export type MemoryOperationTypes = {
     readonly faults: 'Forbidden' | 'UnsupportedCapability';
   };
   'bureau.memory.embedding.cancel': {
-    readonly input: {};
-    readonly output: { readonly cancelled: boolean };
+    readonly input: { readonly dryRun?: boolean };
+    readonly output: SharedDryRunEffectsTarget_b07628bd | { readonly cancelled: boolean };
     readonly faults: 'Forbidden' | 'UnsupportedCapability';
   };
   'bureau.memory.export': {
@@ -78,46 +79,48 @@ export type MemoryOperationTypes = {
     readonly faults: 'Forbidden' | 'InvalidParams' | 'UnsupportedCapability';
   };
   'bureau.memory.forget': {
-    readonly input: SharedAgentIdId_339e36ba;
-    readonly output: {
-      readonly deletion: 'completed' | 'pending' | 'exempt' | 'failed' | 'unknown';
-      readonly id: string;
-      readonly receipt: {
-        readonly awaitingHoldRelease: boolean;
-        readonly boundMilliseconds: number;
-        readonly deletionId: string;
-        readonly open: boolean;
-        readonly record: {
-          readonly collection: string;
+    readonly input: { readonly agentId: string; readonly dryRun?: boolean; readonly id: string };
+    readonly output:
+      | SharedDryRunEffectsTarget_b07628bd
+      | {
+          readonly deletion: 'completed' | 'pending' | 'exempt' | 'failed' | 'unknown';
           readonly id: string;
-          readonly memoryClass:
-            'working' | 'episodic' | 'semantic' | 'procedural' | 'identity' | 'resource';
+          readonly receipt: {
+            readonly awaitingHoldRelease: boolean;
+            readonly boundMilliseconds: number;
+            readonly deletionId: string;
+            readonly open: boolean;
+            readonly record: {
+              readonly collection: string;
+              readonly id: string;
+              readonly memoryClass:
+                'working' | 'episodic' | 'semantic' | 'procedural' | 'identity' | 'resource';
+            };
+            readonly requestedAt: string;
+            readonly scope: 'source' | 'projection';
+            readonly targets: ReadonlyArray<{
+              readonly deadline?: string;
+              readonly detail?: string;
+              readonly lane: 'synchronous' | 'bounded-async';
+              readonly settledAt?: string;
+              readonly status: 'completed' | 'pending' | 'exempt' | 'failed' | 'unknown';
+              readonly target:
+                | 'source-evidence'
+                | 'canonical-projections'
+                | 'identity-views'
+                | 'managed-asset-record'
+                | 'indexes'
+                | 'caches'
+                | 'summaries'
+                | 'managed-asset-bytes'
+                | 'durable-snapshots'
+                | 'exports'
+                | 'external-processors';
+            }>;
+            readonly trigger: 'request' | 'retention-expiry' | 'hold-release';
+            readonly updatedAt: string;
+          };
         };
-        readonly requestedAt: string;
-        readonly scope: 'source' | 'projection';
-        readonly targets: ReadonlyArray<{
-          readonly deadline?: string;
-          readonly detail?: string;
-          readonly lane: 'synchronous' | 'bounded-async';
-          readonly settledAt?: string;
-          readonly status: 'completed' | 'pending' | 'exempt' | 'failed' | 'unknown';
-          readonly target:
-            | 'source-evidence'
-            | 'canonical-projections'
-            | 'identity-views'
-            | 'managed-asset-record'
-            | 'indexes'
-            | 'caches'
-            | 'summaries'
-            | 'managed-asset-bytes'
-            | 'durable-snapshots'
-            | 'exports'
-            | 'external-processors';
-        }>;
-        readonly trigger: 'request' | 'retention-expiry' | 'hold-release';
-        readonly updatedAt: string;
-      };
-    };
     readonly faults:
       'Forbidden' | 'InvalidParams' | 'NotFound' | 'Unprocessable' | 'UnsupportedCapability';
   };

@@ -122,7 +122,7 @@ describe('the route outlet', () => {
       'Back to Home',
       'Search everything',
     ]);
-    expect(container.querySelector('[data-cinder-variant="primary"]')).toBeNull();
+    expect(container.querySelector('.button-variant-primary')).toBeNull();
     link.click();
     await waitFor(() => expect(router.pathname).toBe('/'));
   });

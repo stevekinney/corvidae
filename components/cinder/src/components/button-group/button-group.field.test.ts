@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'postcss';
+import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -51,7 +52,7 @@ describe('ButtonGroup with an Input and a Button', () => {
       // Both controls take their height from the same step of the shared scale,
       // so naming the same size is what makes them match.
       expect(field?.querySelector('input')?.getAttribute('data-cinder-size')).toBe(size);
-      expect(button?.getAttribute('data-cinder-size')).toBe(size);
+      expect(button?.classList.contains(`button-size-${CONTROL_SIZE_NAMES[size]}`)).toBe(true);
 
       // The group's label comes from the enclosing FormField, so the field
       // inside it adds no label that would make it taller than the Button.
@@ -68,7 +69,7 @@ describe('ButtonGroup with an Input and a Button', () => {
       expect(
         declarationValue(
           'components/button/button.css',
-          `.cinder-button[data-cinder-size='${size}']`,
+          `.cinder-button.button-size-${CONTROL_SIZE_NAMES[size]}`,
           'min-height',
         ),
       ).toBe(`var(--cinder-button-height-${size})`);

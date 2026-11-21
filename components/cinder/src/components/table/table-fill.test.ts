@@ -74,8 +74,9 @@ describe('table fill', () => {
 
   test('a hovered row is a faint accent tint of the fill', async () => {
     const table = await declarations(files.table);
+    expect(valueOf(table, '.cinder-table', '--_cinder-table-hover-accent-share')).toBe('3%');
     expect(valueOf(table, '.cinder-table', '--_cinder-table-row-hover')).toBe(
-      'color-mix( in oklch, var(--_cinder-table-fill), var(--cinder-accent-solid) 3% )',
+      'color-mix( in oklch, var(--_cinder-table-fill), var(--cinder-accent-solid) var(--_cinder-table-hover-accent-share) )',
     );
     expect(valueOf(table, '.cinder-table__body .cinder-table__row:hover', 'background')).toBe(
       'var(--_cinder-table-row-hover)',

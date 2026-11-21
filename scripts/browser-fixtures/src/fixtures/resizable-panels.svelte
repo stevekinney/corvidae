@@ -12,8 +12,15 @@
   ] satisfies ResizablePanelDefinition[];
 </script>
 
-<ResizablePanels {panes} style="min-block-size: 18rem; border: 1px solid var(--cinder-border);">
+<ResizablePanels {panes} class="resizable-panels-fixture-frame">
   {#snippet children(pane)}
-    <div style="padding: var(--cinder-space-4);">{pane.label}</div>
+    <div class="padding-block-4 padding-inline-4">{pane.label}</div>
   {/snippet}
 </ResizablePanels>
+
+<style>
+  :global(.resizable-panels-fixture-frame) {
+    min-block-size: 18rem;
+    border: 1px solid var(--cinder-border);
+  }
+</style>

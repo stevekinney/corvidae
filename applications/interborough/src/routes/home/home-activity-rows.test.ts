@@ -101,7 +101,6 @@ describe('a Bureau event', () => {
       body: 'Tool runner asks',
       href: '/reviews/7',
     });
-    expect(entry.rawKind).toBeUndefined();
   });
 
   test('a claimed kind with no link opens the run its payload names', () => {
@@ -109,7 +108,7 @@ describe('a Bureau event', () => {
     expect(entry.href).toBe('/runs/run-9');
   });
 
-  test('an unclaimed kind is titled in plain words with the raw kind on line two, and links its run', () => {
+  test('an unclaimed kind is titled in plain words and links its run', () => {
     // No `formattedBy`: no formatter claimed the kind, so the Bureau's title is the raw kind.
     const unclaimed: FormattedBureauEvent = {
       kind: 'goal.attempt.started',
@@ -119,18 +118,16 @@ describe('a Bureau event', () => {
     };
     const entry = bureauEntry(envelope(), unclaimed);
     expect(entry.title).toBe('Goal attempt started');
-    expect(entry.rawKind).toBe('goal.attempt.started');
     expect(entry.icon).toBe(Activity);
     expect(entry.tier).toBe('info');
     expect(entry.href).toBe('/runs/run-goal');
-    expect(lineTwoText(entry)).toBe('goal.attempt.started');
+    expect(lineTwoText(entry)).toBeUndefined();
   });
 
   test('an event of a format call that failed takes the same form, its run read from the payload', () => {
     const entry = bureauEntry(envelope(), null);
     expect(entry).toMatchObject({
       title: 'Goal attempt started',
-      rawKind: 'goal.attempt.started',
       tier: 'info',
       href: '/runs/run-goal',
     });
@@ -176,11 +173,10 @@ describe('a fleet event', () => {
     expect(entry.tier).toBe('warning');
   });
 
-  test('a kind with no rule reads as an unclaimed kind does, in plain words, with its raw kind', () => {
+  test('a kind with no rule reads as an unclaimed kind does, in plain words', () => {
     const entry = fleetEntry(frame({ kind: 'realm:state-changed', payload: {} }));
     expect(entry).toMatchObject({
       title: 'Realm state changed',
-      rawKind: 'realm:state-changed',
       tier: 'info',
     });
     expect(entry.icon).toBe(Activity);

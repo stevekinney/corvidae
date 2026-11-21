@@ -57,16 +57,17 @@ test('Overview shows its four counts, Needs attention, Recent activity and the m
   await page.goto('/health');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
+  // A count shows only when it is not zero (owner, 2026-11-19), and no label holds parentheses.
   const counts = page.getByRole('group', { name: 'Health counts' });
-  for (const label of [
-    'Running now',
-    'Needs you',
-    'Failed in 24 hours',
-    'Missed schedule runs (7 days)',
-  ]) {
-    await expect(counts.locator('.cinder-statistic__label', { hasText: label })).toBeVisible();
+  for (const label of await counts.locator('.cinder-statistic__label').allTextContents()) {
+    expect(label).not.toMatch(/[()]/);
   }
-  await expect(page.getByTestId('needs-attention')).toBeVisible();
+  for (const value of await counts.locator('.cinder-statistic__value').allTextContents()) {
+    expect(value.trim()).not.toBe('0');
+  }
+  await expect(
+    page.getByTestId('needs-attention').or(page.getByTestId('needs-attention-clear')),
+  ).toBeVisible();
   const activity = page.getByRole('region', { name: /Recent activity/ });
   await expect(activity).toBeVisible();
   expect(await activity.locator('[data-activity]').count()).toBeLessThanOrEqual(9);
@@ -75,7 +76,7 @@ test('Overview shows its four counts, Needs attention, Recent activity and the m
     page.getByTestId('advanced-diagnostics').locator('button[aria-expanded]'),
   ).toHaveAttribute('aria-expanded', 'false');
 
-  await activity.getByRole('link', { name: /^Open audit log/ }).click();
+  await activity.getByRole('link', { name: /audit log/ }).click();
   await expectAuditSettled(page);
   await checkA11y('engine overview');
 });

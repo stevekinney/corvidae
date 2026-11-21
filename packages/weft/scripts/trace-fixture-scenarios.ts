@@ -193,6 +193,17 @@ async function runRecoveryAfterCrash(): Promise<ScenarioRun> {
   return { engine: recovered, workflowId: 'wf-recovery-after-crash' };
 }
 
+async function runFailedRun(): Promise<ScenarioRun> {
+  const engine = new TestEngine({ startTime: 0 });
+  registerScenarioHandlers(engine, 'failed-run');
+
+  const handle = await engine.start('failed-run', null, { id: 'wf-failed-run' });
+  // The run fails by design; the fixture records the failure it stored.
+  await handle.result().catch(() => undefined);
+
+  return { engine, workflowId: handle.id };
+}
+
 export const scenarios: ScenarioDefinition[] = [
   {
     name: 'simple-sequential',
@@ -243,6 +254,12 @@ export const scenarios: ScenarioDefinition[] = [
     name: 'recovery-after-crash',
     description: 'A copied storage snapshot is recovered and the workflow reaches completion.',
     run: runRecoveryAfterCrash,
+  },
+  {
+    name: 'failed-run',
+    description:
+      'A workflow fails after one named step with a Weft error, and the failure write stores the error code and the failing step.',
+    run: runFailedRun,
   },
 ];
 

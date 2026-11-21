@@ -7,7 +7,7 @@
  * The phases are the ones the design draws. While the host still answers the person sees the steps
  * (`requesting`, `stopping`). Once a read gets no answer the host is down: `starting` counts the
  * reconnect attempts, backing off 1, 2, 4 and 8 seconds like the app-wide banner
- * (`connectionProbeDelayMs`), and Retry now probes at once and counts from 1 again. After
+ * (`connectionProbeDelayMs`), and Try again probes at once and counts from 1 again. After
  * {@link CONNECTION_MAX_ATTEMPTS} attempts the flow is `failed`, which names the exact command the
  * host was launched with, read before the request while the host still answered. Keep waiting
  * watches again from the first attempt. There is no restart-again action, because the route that
@@ -227,7 +227,7 @@ export class HostRestartFlow<Snapshot> {
     }
   }
 
-  /** Waits `milliseconds`, or less when Retry now cuts it short. */
+  /** Waits `milliseconds`, or less when Try again cuts it short. */
   #wait(milliseconds: number, countdown: boolean): Promise<void> {
     return new Promise<void>((resolve) => {
       const retryAt = Date.now() + milliseconds;

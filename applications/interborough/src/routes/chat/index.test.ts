@@ -135,8 +135,9 @@ describe('a chat that cannot be loaded (design rows 17c, 17d, 17e)', () => {
     expect(container.querySelector('[data-chat-availability="error"]')).not.toBeNull();
     expect(container.querySelector('h1')?.textContent).toBe(CHAT_COPY.load.crumb);
     expect(queryComposer(container)).toBeNull();
-    // The list beside it stays live.
-    expect(container.querySelector('input[type="search"], [role="searchbox"]')).not.toBeNull();
+    // The list beside it stays live: it lists no chat here, so it offers New chat and no search
+    // over nothing (owner report, 2026-11-19).
+    expect(container.querySelector('a[href="/chats/new"]')).not.toBeNull();
     expect(breadcrumbTrail('/chats/session-1').map((item) => item.label)).toEqual([
       'Chat',
       CHAT_COPY.load.crumb,
@@ -150,8 +151,8 @@ describe('a chat that cannot be loaded (design rows 17c, 17d, 17e)', () => {
 
     const retry = await findByRole('button', { name: CHAT_COPY.load.tryAgain });
     const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
-    expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.classList.contains('button-variant-primary')).toBe(true);
+    expect(back.classList.contains('button-variant-secondary')).toBe(true);
     await fireEvent.click(back);
 
     expect(router.current.route?.pattern).toBe('/chats');
@@ -277,7 +278,7 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(router.current.route?.pattern).toBe('/chats/:chat');
     expect(container.textContent).toContain(CHAT_COPY.load.canceledTitle);
     const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
-    expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(back.classList.contains('button-variant-secondary')).toBe(true);
     // Said once (COR-2327 B6): no notice over the composer, and the reason Send is off beside it.
     expect(container.querySelector('[data-chat-composer-drawer]')).toBeNull();
     const send = container.querySelector<HTMLButtonElement>('button[data-chat-send]')!;

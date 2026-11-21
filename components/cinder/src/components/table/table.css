@@ -667,7 +667,12 @@
     padding-block: var(--cinder-space-1);
   }
 
-  .cinder-table__stack-sort-hit .cinder-select[data-cinder-variant='ghost'][data-cinder-size] {
+  .cinder-table__stack-sort-hit
+    .cinder-select.select-variant-ghost:is(
+      .select-size-small,
+      .select-size-medium,
+      .select-size-large
+    ) {
     min-block-size: 2.25rem;
     max-block-size: 2.25rem;
   }

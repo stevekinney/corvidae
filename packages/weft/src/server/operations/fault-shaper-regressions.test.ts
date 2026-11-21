@@ -11,13 +11,14 @@ async function expectJsonErrorResponse(
   expectedStatus: number,
   expectedMessage: string,
   expectedData?: Readonly<Record<string, unknown>>,
+  expectedRetryable = false,
 ): Promise<void> {
   expect(response.status).toBe(expectedStatus);
   expect(response.headers.get('Content-Type')).toBe('application/json');
   expect(await response.json()).toEqual(
     expectedData === undefined
-      ? { error: expectedMessage }
-      : { error: expectedMessage, data: expectedData },
+      ? { error: expectedMessage, retryable: expectedRetryable }
+      : { error: expectedMessage, data: expectedData, retryable: expectedRetryable },
   );
 }
 
@@ -80,6 +81,7 @@ describe('REST fault shaper regressions', () => {
       error: 'Workflow "wf-1" not found',
       weftCode: 'WorkflowNotFoundError',
       data: { resource: 'workflow', identifier: 'wf-1' },
+      retryable: false,
     });
 
     const invalidParamsResponse = shapeRestFault(invalidParamsWithCode);
@@ -87,6 +89,7 @@ describe('REST fault shaper regressions', () => {
     expect(await invalidParamsResponse.json()).toEqual({
       error: 'No workflow registered with name "x"',
       weftCode: 'WorkflowNotRegisteredError',
+      retryable: false,
     });
   });
 
@@ -103,7 +106,7 @@ describe('REST fault shaper regressions', () => {
       status: 418,
     });
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe('{"error":"Internal server error"}');
+    expect(await response.text()).toBe('{"error":"Internal server error","retryable":false}');
   });
 
   it('projects only the audited per-code data allowlist over REST (#720)', async () => {
@@ -163,12 +166,13 @@ describe('REST fault shaper regressions', () => {
 
     const bodies = await Promise.all(faults.map(async (fault) => shapeRestFault(fault).json()));
     expect(bodies).toEqual([
-      { error: 'Unauthorized' },
-      { error: 'Forbidden' },
+      { error: 'Unauthorized', retryable: false },
+      { error: 'Forbidden', retryable: false },
       {
         error: 'Workflow not found',
         weftCode: 'WorkflowNotFoundError',
         data: { resource: 'workflow', identifier: 'workflow-1' },
+        retryable: false,
       },
       {
         error: 'Recovery conflict',
@@ -177,26 +181,30 @@ describe('REST fault shaper regressions', () => {
           missingWorkflowCount: 2,
           samplesTruncated: true,
         },
+        retryable: false,
       },
-      { error: 'Unprocessable' },
-      { error: 'Too large', data: { maxBytes: 1024 } },
+      { error: 'Unprocessable', retryable: false },
+      { error: 'Too large', data: { maxBytes: 1024 }, retryable: false },
       {
         error: 'Timed out',
         data: { operationName: 'weft.workflows.update', updateId: 'update-1' },
+        retryable: true,
       },
-      { error: 'Not implemented' },
+      { error: 'Not implemented', retryable: false },
       {
         error: 'Unsupported transport',
         data: { transport: 'http-rest', supported: ['jsonRpcHttp'] },
+        retryable: false,
       },
-      { error: 'Subscription overflow', data: { droppedCount: 3 } },
+      { error: 'Subscription overflow', data: { droppedCount: 3 }, retryable: false },
       {
         error: 'Invalid parameters',
         data: {
           issues: [{ path: ['operation'], message: 'Invalid option', code: 'invalid_value' }],
         },
+        retryable: false,
       },
-      { error: 'Unknown method', data: { method: 'weft.unknown' } },
+      { error: 'Unknown method', data: { method: 'weft.unknown' }, retryable: false },
     ]);
   });
 
@@ -219,6 +227,7 @@ describe('REST fault shaper regressions', () => {
         compatibilityReasons: ['contract-hash-mismatch', 'workflow-version-incompatible'],
         currentGeneration: 3,
       },
+      retryable: false,
     });
     // `reason` itself stays withheld from REST, matching every other
     // Conflict-producing operation in this codebase — see this file's own

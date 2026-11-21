@@ -29,7 +29,11 @@ describe('the REST projections bound to Weft error codes', () => {
     it(`${name} drops a weftCode that is not one of Weft's error codes`, async () => {
       const response = project(notFound('NotAWeftErrorCode'));
       expect(response.status).toBe(404);
-      expect(await response.json()).toEqual({ error: 'gone', data: { resource: 'workflow' } });
+      expect(await response.json()).toEqual({
+        error: 'gone',
+        data: { resource: 'workflow' },
+        retryable: false,
+      });
     });
 
     it(`${name} keeps a weftCode that is one of Weft's error codes`, async () => {
@@ -38,6 +42,7 @@ describe('the REST projections bound to Weft error codes', () => {
         error: 'gone',
         weftCode: 'WorkflowNotFoundError',
         data: { resource: 'workflow' },
+        retryable: false,
       });
     });
   }
@@ -50,6 +55,7 @@ describe('the projections that name no host', () => {
         error: 'gone',
         weftCode: 'AnyHostCode',
         data: { resource: 'workflow' },
+        retryable: false,
       });
       const numeric = {
         code: 'NotFound',
@@ -59,6 +65,7 @@ describe('the projections that name no host', () => {
       expect(await project(numeric).json()).toEqual({
         error: 'gone',
         data: { resource: 'workflow' },
+        retryable: false,
       });
     }
   });
@@ -67,7 +74,11 @@ describe('the projections that name no host', () => {
     const response = shapeRestFaultAsJson(notFound('Other'), {
       isKnownErrorCode: (value) => value === 'Mine',
     });
-    expect(await response.json()).toEqual({ error: 'gone', data: { resource: 'workflow' } });
+    expect(await response.json()).toEqual({
+      error: 'gone',
+      data: { resource: 'workflow' },
+      retryable: false,
+    });
   });
 });
 

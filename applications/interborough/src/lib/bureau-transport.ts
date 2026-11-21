@@ -12,6 +12,7 @@ import type {
 import { jsonRpcHttpEndpoint } from '@lostgradient/backchannel/client';
 import { HttpClientError } from '@lostgradient/weft';
 
+import { faultAdviceOf } from './faults.ts';
 import { refuseWrite } from './write-guard.ts';
 
 /**
@@ -20,8 +21,11 @@ import { refuseWrite } from './write-guard.ts';
  * `headers` go on every call; `fetch` stands in for the global one unless a call brings its own.
  */
 export type BureauClientConnection = {
+  /** The origin and base path of the host. */
   readonly baseUrl: string;
+  /** Headers sent on calls to the host. */
   readonly headers?: Readonly<Record<string, string>> | undefined;
+  /** The fetch implementation used by default. */
   readonly fetch?: CatalogFetch | undefined;
 };
 
@@ -31,7 +35,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Posts one JSON-RPC call to `endpoint` and returns its result, or throws the fault it answered as
- * an `HttpClientError` with the fault's `httpStatus`, message and data. A write is refused first,
+ * an `HttpClientError` with the fault's `httpStatus`, message, data, and the `retryable` and
+ * `remediation` its `data` carries. A write is refused first,
  * by operation, before any `fetch` is chosen: see `./write-guard.ts`.
  */
 export async function postBureauCall(
@@ -63,7 +68,7 @@ export async function postBureauCall(
     throw new HttpClientError(
       status,
       typeof fault['message'] === 'string' ? fault['message'] : `HTTP ${status}`,
-      { data },
+      { data, ...faultAdviceOf(data) },
     );
   }
   if (!isRecord(body) || !('result' in body)) {

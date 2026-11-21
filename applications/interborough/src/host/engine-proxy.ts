@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
 /**
  * The relay between the host's public listener and Weft's own server.
  *
@@ -18,7 +19,6 @@
 import { timingSafeEqual } from 'node:crypto';
 
 import {
-  AUTHORIZATION_SCOPES,
   defaultAuthAuditSink,
   principalFromApiKey,
   type AuthConfig,

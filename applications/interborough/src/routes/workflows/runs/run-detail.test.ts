@@ -7,6 +7,7 @@
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
@@ -30,6 +31,7 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import RunDetailEngineHarness from './run-detail-engine.test-harness.svelte';
+import RunInputOutputHarness from './run-input-output.test-harness.svelte';
 import { durationWords } from './run-rows.ts';
 
 let stub: BureauWorldStub | undefined;
@@ -679,6 +681,7 @@ describe('a run a schedule started (COR-2424, rows 55i, 55j, 55m)', () => {
     id: 'daily-summary',
     owner: 'anonymous:local',
     agentName: 'assistant',
+    target: { kind: 'agent', agentName: 'assistant' },
     inputPreview: 'Summarize what happened yesterday.',
     continuesChat: false,
     workflowType: 'agentRun',
@@ -765,5 +768,156 @@ describe('a run a schedule started (COR-2424, rows 55i, 55j, 55m)', () => {
     expect(stub?.callsTo('bureau.schedules.runnow')[0]?.params).toEqual({
       scheduleId: 'daily-summary',
     });
+  });
+});
+
+// COR-2489 (COR-2329 AC1's unmet part): the run page's sections drew their own headings with the
+// page's `ib-run__*` classes. They are Cinder Sections; the payload and wait cards stay the
+// recorded exception.
+describe('the run page’s sections are Cinder Sections', () => {
+  const files = [
+    './run-details.svelte',
+    './run-related.svelte',
+    './run-chat-related.svelte',
+    './run-change.svelte',
+    './run-panels.svelte',
+    './run-engine-panels.svelte',
+    '../detail/lineage-panel.svelte',
+    // Not named by the criterion, but its block sits in the same rail.
+    './run-related-runs.svelte',
+    // The engine panels' own blocks (design round): Search attributes and Worker versioning.
+    '../detail/attributes/attributes-panel.svelte',
+    '../detail/worker-binding-panel.svelte',
+  ];
+
+  test.each(files)('%s draws no ib-run heading or section class', (file) => {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    expect(source).not.toMatch(/ib-run__(heading|section|panels)/);
+    expect(source).not.toMatch(/<h[1-6][^>]*class="ib-run__/);
+  });
+
+  test.each(files.filter((file) => file !== './run-engine-panels.svelte'))(
+    '%s titles its block with Cinder’s Section',
+    (file) => {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      expect(source).toMatch(/import \{[^}]*\bSection\b[^}]*\} from '@lostgradient\/cinder'/);
+      expect(source).toMatch(/<Section\s/);
+    },
+  );
+
+  test('the rail spaces its Sections with one margin, never a gap added to Cinder’s own', () => {
+    const css = readFileSync(new URL('../../../styles/tasks.css', import.meta.url), 'utf8');
+    const rail = /\n\.ib-run__rail \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(rail).not.toContain('gap');
+    expect(css).toMatch(
+      /\.ib-run__rail > \* \+ \* \{\s*margin-block-start: var\(--cinder-space-6\);/,
+    );
+    expect(css).not.toMatch(/\.ib-run__(section|panels|heading-2) \{/);
+  });
+
+  test('the engine panels are Sections titled by their own headings, with no hand-built heading', () => {
+    const source = readFileSync(new URL('./run-engine-panels.svelte', import.meta.url), 'utf8');
+    expect(source).toContain('<LineagePanel');
+    expect(source).toContain('<AttributesPanel');
+    expect(source).toContain('<WorkerBindingPanel');
+    expect(source).not.toMatch(/<section\b/);
+    for (const panel of [
+      '../detail/attributes/attributes-panel.svelte',
+      '../detail/worker-binding-panel.svelte',
+    ]) {
+      const panelSource = readFileSync(new URL(panel, import.meta.url), 'utf8');
+      expect(panelSource, panel).not.toMatch(/<h[1-6]\b/);
+      expect(panelSource, panel).toMatch(/<Section level=\{3\}/);
+    }
+  });
+
+  test('the rail is named Run details and holds the details as a level-two Section', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', status: 'completed', agentName: 'echo' })],
+      scopes: BUREAU_ONLY,
+    });
+    const rail = await view.findByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
+    const heading = rail.querySelector('.cinder-section__title');
+    expect(heading?.tagName).toBe('H2');
+    expect(heading?.textContent?.trim()).toBe(RUN_PAGE_COPY.detailsHeading);
+    expect(rail.querySelector('.ib-run__heading-2')).toBeNull();
+  });
+});
+
+// COR-2489: on a failed run at 375 why it failed was under the fold, after the payload cards in
+// Input and output. It leads, above Input and output.
+describe('a failed run', () => {
+  test('says why it failed before Input and output', () => {
+    stub = installBureauWorld(emptyBureauWorld({}));
+    const view = render(RunInputOutputHarness, {
+      props: {
+        workflow: {
+          id: 'wf_1',
+          type: 'order-fulfillment',
+          status: 'failed',
+          input: { orderId: 'ord-1' },
+          error: 'The warehouse did not answer.',
+          versionTuple: { workflowVersion: '1' },
+          createdAt: 1_000,
+          updatedAt: 1_000,
+        },
+      },
+    } as never);
+    const failure = view.container.querySelector('[data-run-failure]');
+    const inputOutput = view.container.querySelector('[data-section="input-output"]');
+    expect(failure?.textContent).toContain('The warehouse did not answer.');
+    expect(inputOutput).not.toBeNull();
+    expect(inputOutput?.contains(failure as Node)).toBe(false);
+    expect(
+      (failure as Node).compareDocumentPosition(inputOutput as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      'the failure comes first',
+    ).toBeTruthy();
+  });
+
+  test('a failed run only the Bureau holds says why before Input and output, not only in the rail', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          status: 'failed',
+          finishReason: 'error',
+          statusMessage:
+            'Agent "assistant" failed: {"cause":{"message":"GitHub didn’t answer (HTTP 503)"}}',
+        }),
+      ],
+      scopes: BUREAU_ONLY,
+    });
+    const failure = await waitFor(() => {
+      const element = view.container.querySelector('[data-run-failure]');
+      if (element === null) throw new Error('no failure drawn');
+      return element;
+    });
+    expect(failure.textContent).toContain(RUN_DETAIL_COPY.instance.whyItFailed);
+    expect(failure.textContent).toContain('GitHub didn’t answer');
+    expect(failure.textContent).not.toContain('{');
+    expect(failure.closest('aside')).toBeNull();
+    const inputOutput = view.container.querySelector('[data-section="input-output"]');
+    expect(inputOutput).not.toBeNull();
+    expect(
+      failure.compareDocumentPosition(inputOutput as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test('a failed instance draws its step failure, in What happened, before Input and output', () => {
+    // A failed instance says why on the step that failed, so What happened leads; any other
+    // instance keeps Input and output first. (run-detail-engine-runs.test.ts renders the page.)
+    const source = readFileSync(new URL('./run-detail.svelte', import.meta.url), 'utf8');
+    const main = source.slice(source.indexOf('<div class="ib-run__main">'));
+    const failedFirst = main.indexOf(
+      '{#if task.data === undefined && instanceEntryList !== undefined && instanceFailed}',
+    );
+    const inputOutput = main.indexOf('<RunInputOutput');
+    const otherAfter = main.indexOf(
+      '{#if task.data === undefined && instanceEntryList !== undefined && !instanceFailed}',
+    );
+    expect(failedFirst).toBeGreaterThan(-1);
+    expect(failedFirst).toBeLessThan(inputOutput);
+    expect(otherAfter).toBeGreaterThan(inputOutput);
   });
 });

@@ -75,7 +75,7 @@ const AUDIT_CASES: ReadonlyArray<AuditCase> = [
     name: 'POST /v1/workflows/purge (purgeWorkflows)',
     method: 'POST',
     path: '/v1/workflows/purge',
-    baselineBody: {},
+    baselineBody: { dryRun: true },
     expectedBaselineStatuses: [200],
   },
   {

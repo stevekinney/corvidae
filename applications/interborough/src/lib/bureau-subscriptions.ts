@@ -12,6 +12,7 @@ import {
 import { HttpClientError } from '@lostgradient/weft';
 
 import type { Fetcher } from './bureau-client.ts';
+import { faultAdviceOf } from './faults.ts';
 
 /** The code the transport gives a stream that reports an error (an `event: error` frame). */
 const STREAM_ERROR_CODE = -32000;
@@ -40,7 +41,12 @@ export function acceptedFetch(options: {
 }
 
 /** One event of a feed with the id to resume after it. */
-export type FeedEvent<Data> = { readonly id: string; readonly data: Data };
+export type FeedEvent<Data> = {
+  /** Cursor to send when resuming the feed. */
+  readonly id: string;
+  /** The typed payload of this event. */
+  readonly data: Data;
+};
 
 /**
  * The events of a feed, without the replay marker. A refusal throws the `HttpClientError` the
@@ -60,10 +66,12 @@ export async function* eventsOf<Data>(
       if (error.code === STREAM_ERROR_CODE) return;
       if (error.code >= 400 && error.code <= 599) {
         // A refusal on the REST surface is a flat `{ error: <message> }`, and its status is what
-        // says what kind of fault it is; a body with no words is told in the stream's own.
+        // says what kind of fault it is; a body with no words is told in the stream's own. The
+        // body also holds the fault's `retryable` and `remediation`, which the error keeps.
         throw new HttpClientError(
           error.code,
           saysWhy(error.data) ? error.message : `The ${noun} answered ${error.code}.`,
+          faultAdviceOf(error.data),
         );
       }
     }

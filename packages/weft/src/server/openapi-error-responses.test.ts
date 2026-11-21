@@ -56,6 +56,17 @@ describe('OpenAPI error responses', () => {
           type: 'string',
           description: 'Fine-grained public Weft error code when one is available',
         },
+        retryable: {
+          type: 'boolean',
+          description:
+            'Whether repeating the identical call later can succeed; present on every operation fault',
+        },
+        remediation: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 500,
+          description: 'One line of plain text saying what to do next; omitted when none is known',
+        },
         data: {
           type: 'object',
           description: 'Audited fault-specific context; omitted when no fields are safe to expose',

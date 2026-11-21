@@ -2,31 +2,33 @@
 
 Weft reports failures at two granularities. A **`WeftErrorCode`** names the exact public error class that was thrown, such as `WorkflowNotFoundError`. A **`FaultCode`** is the coarse discriminant the server's operation pipeline attaches to every fault, such as `NotFound`, and it decides the HTTP status and the JSON-RPC error code. Many error classes collapse onto one fault code, and a fault raised by request validation has no error class behind it at all.
 
-This page covers both vocabularies, how each transport puts them on the wire, and which guard to reach for when you catch one. The sources of truth are `src/core/fault-code.ts`, `src/core/weft-error.ts`, `src/server/operation-fault.ts`, and `src/server/fault-to-json-rpc.ts`; `src/core/api-errors-documentation.test.ts` fails when the tables below drift from them.
+This page covers both vocabularies, how each transport puts them on the wire, and which guard to reach for when you catch one. The sources of truth are `src/core/fault-code.ts` and `src/core/weft-error.ts` in Weft, and in Backchannel `packages/backchannel/src/fault-code.ts`, `packages/backchannel/src/operation-fault.ts`, and `packages/backchannel/src/fault-to-json-rpc.ts`; Weft's own wrapper over the REST projections is `src/server/weft-operation-fault.ts`. `src/core/api-errors-documentation.test.ts` fails when the tables below drift from them.
 
 ## FaultCode
 
-`FAULT_CODE_TO_HTTP_STATUS`, `FAULT_CODE_TO_JSON_RPC_CODE`, and `FAULT_CODE_TO_FAILURE_CATEGORY` map every fault code. The JSON-RPC codes follow the specification for its reserved errors (`InvalidParams` and `MethodNotFound`) and use the Weft domain band `-32010` through `-32099` for everything else. The failure category is derived, not carried on the wire: compute it with `failureCategoryForFaultCode()`.
+`FAULT_CODE_TO_HTTP_STATUS`, `FAULT_CODE_TO_JSON_RPC_CODE`, `FAULT_CODE_RETRYABLE`, and `FAULT_CODE_TO_FAILURE_CATEGORY` map every fault code. The JSON-RPC codes follow the specification for its reserved errors (`InvalidParams` and `MethodNotFound`) and use the Weft domain band `-32010` through `-32099` for everything else. The failure category is derived, not carried on the wire: compute it with `failureCategoryForFaultCode()`.
 
-| `FaultCode`             | HTTP status | JSON-RPC code | Failure category |
-| ----------------------- | ----------- | ------------- | ---------------- |
-| `Unauthorized`          | 401         | -32010        | `application`    |
-| `Forbidden`             | 403         | -32011        | `application`    |
-| `NotFound`              | 404         | -32020        | `application`    |
-| `Conflict`              | 409         | -32021        | `application`    |
-| `Unprocessable`         | 422         | -32022        | `application`    |
-| `Timeout`               | 504         | -32023        | `timeout`        |
-| `PayloadTooLarge`       | 413         | -32024        | `resource`       |
-| `NotImplemented`        | 501         | -32025        | `system`         |
-| `UnsupportedTransport`  | 501         | -32030        | `system`         |
-| `SubscriptionOverflow`  | 500         | -32031        | `resource`       |
-| `InvalidParams`         | 400         | -32602        | `application`    |
-| `MethodNotFound`        | 404         | -32601        | `application`    |
-| `StaleRevision`         | 409         | -32026        | `application`    |
-| `RateLimited`           | 429         | -32027        | `resource`       |
-| `Unavailable`           | 503         | -32028        | `system`         |
-| `UnsupportedCapability` | 501         | -32029        | `system`         |
-| `EngineFailure`         | 500         | -32099        | `system`         |
+`Retryable` says whether the caller can expect the identical call to succeed if it simply tries again later, with no change by the caller. It is `true` only for `Timeout`, `RateLimited`, and `Unavailable`. A fault that needs fresh state (`StaleRevision`: re-read, then send the new revision) or different input, credentials, or capabilities is `false`, and so is a code that covers both a transient and a permanent case. It is a property of the code, not of the call site, so one table owns it.
+
+| `FaultCode`             | HTTP status | JSON-RPC code | Failure category | Retryable |
+| ----------------------- | ----------- | ------------- | ---------------- | --------- |
+| `Unauthorized`          | 401         | -32010        | `application`    | `false`   |
+| `Forbidden`             | 403         | -32011        | `application`    | `false`   |
+| `NotFound`              | 404         | -32020        | `application`    | `false`   |
+| `Conflict`              | 409         | -32021        | `application`    | `false`   |
+| `Unprocessable`         | 422         | -32022        | `application`    | `false`   |
+| `Timeout`               | 504         | -32023        | `timeout`        | `true`    |
+| `PayloadTooLarge`       | 413         | -32024        | `resource`       | `false`   |
+| `NotImplemented`        | 501         | -32025        | `system`         | `false`   |
+| `UnsupportedTransport`  | 501         | -32030        | `system`         | `false`   |
+| `SubscriptionOverflow`  | 500         | -32031        | `resource`       | `false`   |
+| `InvalidParams`         | 400         | -32602        | `application`    | `false`   |
+| `MethodNotFound`        | 404         | -32601        | `application`    | `false`   |
+| `StaleRevision`         | 409         | -32026        | `application`    | `false`   |
+| `RateLimited`           | 429         | -32027        | `resource`       | `true`    |
+| `Unavailable`           | 503         | -32028        | `system`         | `true`    |
+| `UnsupportedCapability` | 501         | -32029        | `system`         | `false`   |
+| `EngineFailure`         | 500         | -32099        | `system`         | `false`   |
 
 No fault code maps to the `cancellation` category: an aborted request never crosses the fault wire.
 
@@ -38,11 +40,13 @@ The two transports use the same key, `weftCode`, for different vocabularies. Rea
 
 ### REST
 
-A REST fault response carries the status from the table above and a JSON body shaped `{ error, weftCode?, data? }`:
+A REST fault response carries the status from the table above and a JSON body shaped `{ error, weftCode?, data?, retryable, remediation? }`:
 
 - `error`: the human-readable message.
 - `weftCode`: the fine-grained `WeftErrorCode` of the error class behind the fault, present only when the fault carried one. It is never a `FaultCode`, and the body carries no coarse code at all. The HTTP status is derived from the `FaultCode` but does not identify it: several codes share a status (`NotFound` and `MethodNotFound` are both 404, `NotImplemented`, `UnsupportedTransport`, and `UnsupportedCapability` all 501, `Conflict` and `StaleRevision` both 409, `SubscriptionOverflow` and `EngineFailure` both 500).
-- `data`: an audited, deny-by-default subset of the fault's payload, omitted when no field is safe to expose. `REST_FAULT_DATA_EXTRACTORS` in `operation-fault.ts` lists the exposed fields per fault code.
+- `data`: an audited, deny-by-default subset of the fault's payload, omitted when no field is safe to expose. `REST_FAULT_DATA_EXTRACTORS` in Backchannel's `operation-fault.ts` lists the exposed fields per fault code.
+- `retryable`: always present. `true` when repeating the identical call later can succeed with no change by the caller, from the `Retryable` column above; `false` otherwise.
+- `remediation`: present only when the fault carries one. A single line of plain text, at most 500 characters and with no control character (newline and tab included), saying what the caller can do next. A value that breaks those limits is dropped from the wire rather than sent.
 
 `StaleRevision`, `RateLimited`, `Unavailable`, and `UnsupportedCapability` carry typed `data` over REST:
 
@@ -57,29 +61,47 @@ A REST fault response carries the status from the table above and a JSON body sh
 
 A timed-out `weft.workflows.update` answers `Timeout` with `data.updateId` over both transports, on REST as the body's `data` and on JSON-RPC in the error's `data` (beside `operationName` when the fault carries one). The update stays queued after the caller gave up waiting, and the id is how the caller finds its answer later: read it with `weft.updates.result.get` while the answer is kept, or find the update among the entries `weft.workflows.updates.list` returns, which outlive the answer and are removed when the workflow is purged. Every other `Timeout` carries no `updateId`.
 
-`Timeout` answers `504 Gateway Timeout`, not `408 Request Timeout`. A user agent may repeat a request that was answered `408` (RFC 9110 §15.5.9), and browsers do, so a timed-out `POST` such as `weft.workflows.update` would run again, each time as a new update. No user agent replays a `504`. The fault is otherwise the same on both transports: JSON-RPC code `-32023`, `weftCode` `Timeout`, and `httpStatus` 504 in the error's `data`.
+A bulk commit whose `confirmationToken` no longer matches the workflows the filter selects answers `Conflict` (`409` over REST, `-32021` over JSON-RPC) and changes nothing: the token is checked before any workflow is touched. That covers `weft.workflows.purge`, `weft.workflows.bulk.cancel`, `weft.workflows.bulk.delete`, `weft.workflows.bulk.tags`, `weft.workflows.bulk.retryfailed`, and `weft.workflows.bulk.signal`, and each declares `Conflict` in its producible faults. The fault's `data.reason` is `confirmation-token-stale`. The message ends with what to do: run the preview again with `dryRun: true`, then commit with the new token. A commit that carries no token, or input that does not parse, stays `InvalidParams`, so a client tells a stale preview from a malformed request by the code. The stale-token `Conflict` is `retryable: false`, like every `Conflict`: repeating the same commit cannot succeed, and its `remediation` names the preview to run again.
 
-The in-process rate limiter (`serve({ rateLimit })`) answers in the same shape. When a key is over budget, the middleware responds `429` with the `RateLimited` body `{ "error": "Too Many Requests", "data": { "retryAfterSeconds": <n> } }`, the matching `Retry-After` header, and `X-RateLimit-Limit` and `X-RateLimit-Remaining`. It does so because the limiter knows when the window resets. The generated OpenAPI document lists `429` only on operations that declare `RateLimited`; it does not add the middleware's `429` to every route, so a client of a server configured with `rateLimit` should expect it on any authenticated route.
+A `weft.workflows.purge` commit that deletes some workflows and fails for others answers `EngineFailure` with the message `Purge deleted N workflow(s) and failed for M.`, so a JSON-RPC caller learns whether anything was deleted; the deletes that committed are not undone, and the audit event is written with `failedCount` before the fault is returned. REST masks every `EngineFailure` to `Internal server error`, so a REST caller reads the audit event, or runs the preview again to see what is left. The fault is `retryable: false` and never carries a `remediation`, on any transport.
 
-`EngineFailure` is masked: its body is exactly `{ "error": "Internal server error" }` with status 500, regardless of any route override.
+`Timeout` answers `504 Gateway Timeout`, not `408 Request Timeout`. A user agent may repeat a request that was answered `408` (RFC 9110 §15.5.9), and browsers do, so a timed-out `POST` such as `weft.workflows.update` would run again, each time as a new update. No user agent replays a `504`. `Timeout` is `retryable` in the sense that the same call can succeed later; that does not make it safe to repeat. A timed-out `weft.workflows.update` stays queued, so repeating it queues a second update, and the `data.updateId` it already returned is the way to read the first answer. The fault is otherwise the same on both transports: JSON-RPC code `-32023`, `weftCode` `Timeout`, and `httpStatus` 504 in the error's `data`.
+
+The in-process rate limiter (`serve({ rateLimit })`) answers in the same shape. When a key is over budget, the middleware responds `429` with the `RateLimited` body `{ "error": "Too Many Requests", "data": { "retryAfterSeconds": <n> }, "retryable": true }`, the matching `Retry-After` header, and `X-RateLimit-Limit` and `X-RateLimit-Remaining`. It does so because the limiter knows when the window resets. The generated OpenAPI document lists `429` only on operations that declare `RateLimited`; it does not add the middleware's `429` to every route, so a client of a server configured with `rateLimit` should expect it on any authenticated route.
+
+`EngineFailure` is masked: its body is exactly `{ "error": "Internal server error", "retryable": false }` with status 500, regardless of any route override. It never carries a `remediation`, even when the fault object holds one, on any transport.
+
+An error that never passes through the fault model carries `error` alone, with no `retryable`: an unmatched route, a malformed route parameter, an authentication challenge, and the handler's last-resort internal error. Read a missing `retryable` as "no advice", not as `false`.
 
 ### JSON-RPC
 
-A JSON-RPC fault is a standard error object, `{ code, message, data }`, where `code` comes from the table above. `data` carries the fault's full payload plus two envelope keys, written last so a payload field can never overwrite them:
+A JSON-RPC fault is a standard error object, `{ code, message, data }`, where `code` comes from the table above. `data` carries the fault's full payload plus the envelope keys, written last so a payload field can never overwrite them:
 
 - `data.weftCode`: the coarse `FaultCode`, such as `NotFound`. It is never a `WeftErrorCode`.
 - `data.httpStatus`: the HTTP-equivalent status from the table above. Over the `/jsonrpc` HTTP endpoint the response status itself is always 200, so this is where the real status lives.
+- `data.retryable`: always present, the same value the REST body carries.
+- `data.remediation`: present only when the fault carries one, the same text the REST body carries.
 
 Because the envelope's `weftCode` is written last, a fine-grained `WeftErrorCode` the fault carried does not survive onto the JSON-RPC wire.
+
+### MCP
+
+A catalog operation served as an MCP tool answers a fault as an error result (`isError: true`) whose `structuredContent` is `{ code, message, data?, retryable, remediation? }`, with the same `retryable` and `remediation` as the other two transports. Here `code` is the coarse `FaultCode`, and `data` is the fault's payload.
+
+### Server-Sent Events
+
+A stream that fails after it started ends with one `event: error` frame whose `data:` line is `{ code, message, data?, retryable, remediation? }`: the same `retryable` and `remediation` as the other transports, with `code` the coarse `FaultCode`. `data` holds only the fields the JSON-RPC envelope's `data` holds for that code, so no transport sends a field another withholds. A failure that is not a fault, or an `EngineFailure`, is `{ code: "EngineFailure", message: "Internal server error", retryable: false }`, never with a `remediation`. A request refused before the stream starts is an ordinary REST fault with the REST body above.
 
 ### What the client sees
 
 `HttpClient` normalizes both envelopes onto `HttpClientError`, with one exception: a REST `GET` that answers 404 resolves to `null` before its body is read, so no `HttpClientError` is thrown and none of these fields exist. A missing resource on a read surfaces as a `null` result, not a catchable fault.
 
-| Transport | `status` | `faultCode` | `category` | `weftCode` | `data` |
-| --- | --- | --- | --- | --- | --- |
-| REST | Response status | `undefined` | `undefined` | Body `weftCode`, if any | Body `data`, if any |
-| JSON-RPC over HTTP | `data.httpStatus` | `data.weftCode` | Derived from `faultCode` | `undefined` | The whole envelope `data`, verbatim |
+| Transport | `status` | `faultCode` | `category` | `weftCode` | `data` | `retryable`, `remediation` |
+| --- | --- | --- | --- | --- | --- | --- |
+| REST | Response status | `undefined` | `undefined` | Body `weftCode`, if any | Body `data`, if any | Body `retryable` and `remediation`, if any |
+| JSON-RPC over HTTP | `data.httpStatus` | `data.weftCode` | Derived from `faultCode` | `undefined` | The whole envelope `data`, verbatim | `data.retryable` and `data.remediation`, if any |
+
+`retryable` and `remediation` are `undefined` when the response carried none, as a response from a server that predates them does.
 
 So `isWeftFault(error, 'WorkflowNotFoundError')` matches an `HttpClientError` from a REST response that carried that code, but not one from a JSON-RPC response. `faultCode` and `category` have the opposite gap: they are populated only for JSON-RPC. The one field both transports normalize is `status`, so branch on it for coarse handling that must work whichever transport an operation uses.
 
