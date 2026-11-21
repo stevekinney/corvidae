@@ -74,6 +74,13 @@
     readonly onDone: () => void;
   }
 
+  /** The approval action currently sent from this panel, held only for its review round. */
+  interface InFlightApproval {
+    readonly reviewId: string;
+    readonly round: number;
+    readonly decision: 'approve' | 'deny';
+  }
+
   interface ReviewsPanelProps {
     readonly mode: 'waiting' | 'done';
     readonly items: InboxItem[];
@@ -139,6 +146,12 @@
   let selectedKey = $state<string | null>(null);
   let frameElement = $state<HTMLElement | undefined>();
   let detailElement = $state<HTMLElement | undefined>();
+  let inFlightApproval = $state<InFlightApproval | undefined>();
+  let wasResolving = false;
+  $effect(() => {
+    if ((wasResolving && !resolving) || outcome !== undefined) inFlightApproval = undefined;
+    wasResolving = resolving;
+  });
   /** The note typed with a denial, by review, so it stays with its review while another is open. */
   const notes = new SvelteMap<string, string>();
 
@@ -365,6 +378,11 @@
   ): void {
     if (mode !== 'waiting' || resolving || decisionSent || review.status !== 'pending') return;
     decisionSent = true;
+    inFlightApproval = {
+      reviewId: review.id,
+      round: review.round,
+      decision: action === 'deny' ? 'deny' : 'approve',
+    };
     const note = (notes.get(review.id) ?? '').trim();
     const word =
       action === 'deny' ? REVIEWS_COPY.announced.denied : REVIEWS_COPY.announced.approved;
@@ -644,7 +662,10 @@
                   bind:note={
                     () => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)
                   }
-                  deciding={resolving}
+                  deciding={inFlightApproval?.reviewId === review.id &&
+                  inFlightApproval.round === review.round
+                    ? inFlightApproval.decision
+                    : undefined}
                   outcome={outcome?.reviewId === review.id ? outcome : undefined}
                   onDecide={(action) => decide(review, action)}
                 />

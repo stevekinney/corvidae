@@ -374,6 +374,29 @@ describe('deciding a Bureau tool approval', () => {
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).not.toHaveProperty('reason');
   });
 
+  test('shows Denying while the matching denial is held in flight', async () => {
+    const { container, findByRole, getByRole, queryByRole } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    let release: () => void = () => {};
+    stub?.on(
+      'bureau.reviews.resolve',
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    await fireEvent.click(await findByRole('button', { name: 'Deny' }));
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve')).toHaveLength(1));
+    try {
+      await waitFor(() => expect(getByRole('button', { name: 'Denying…' })).not.toBeNull());
+      expect(queryByRole('button', { name: 'Approving…' })).toBeNull();
+    } finally {
+      release();
+    }
+  });
+
   test('opens the review after the one decided', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL, QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(2));

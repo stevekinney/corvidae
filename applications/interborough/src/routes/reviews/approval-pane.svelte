@@ -21,8 +21,8 @@
     readonly review: BureauToolApproval;
     /** The note sent with a denial. The page owns it, so the D key sends what is typed. */
     note: string;
-    /** Whether a decision is being sent, which holds the buttons. */
-    readonly deciding: boolean;
+    /** The decision being sent, which names and holds its matching button. */
+    readonly deciding: 'approve' | 'deny' | undefined;
     /** What became of the last decision, when it was not simply recorded. */
     readonly outcome: ReviewOutcome | undefined;
     readonly onDecide: (decision: 'approve' | 'deny' | 'remember') => void;
@@ -92,7 +92,7 @@
     rememberScope={alwaysAsks ? undefined : 'the rest of this chat'}
     bind:reason={note}
     noteInitiallyOpen
-    resolving={deciding ? 'approve' : undefined}
+    resolving={deciding}
     failure={outcome?.tone === 'danger'
       ? { summary: outcome.title, detail: outcome.message }
       : undefined}

@@ -94,6 +94,36 @@ async function waitingRefund(
   return { threadId, review };
 }
 
+/** Captures an approval in the two board widths, restoring the suite's desktop viewport afterwards. */
+async function captureApprovalAtWidths(page: Page, state: string): Promise<void> {
+  const originalViewport = page.viewportSize();
+  if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    const denial = paneOf(page).getByRole('button', { name: 'Deny' });
+    const approval = paneOf(page).getByRole('button', { name: 'Approve' });
+    await expect(denial).toBeVisible();
+    await expect(approval).toBeVisible();
+    if (width === 375) {
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      expect(
+        await denial.evaluate((element) => element.getBoundingClientRect().height),
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        await approval.evaluate((element) => element.getBoundingClientRect().height),
+      ).toBeGreaterThanOrEqual(44);
+    }
+    await captureForDesignReview(page, {
+      route: '/reviews',
+      state,
+      source: '31-reviews.spec.ts',
+    });
+  }
+  await page.setViewportSize(originalViewport);
+}
+
 test.describe('a tool approval', () => {
   test('approved from the inbox runs the tool, and its row goes', async ({
     page,
@@ -203,6 +233,56 @@ test.describe('a tool approval', () => {
     await expect(rowOf(page, review)).toHaveCount(0);
     expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
     await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+  });
+
+  test('shared Reviews approval detail captures a pending On changes approval', async ({
+    page,
+    request,
+  }) => {
+    await waitingRefund(page, request, 'reviews-capture-on-changes');
+    await captureApprovalAtWidths(page, 'pending On changes approval');
+  });
+
+  test('shared Reviews approval detail captures a pending Always approval', async ({
+    page,
+    request,
+  }) => {
+    const threadId = newThreadId('reviews-capture-always');
+    await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
+    const review = await waitingReviewOf(request, threadId);
+    await page.route('**/jsonrpc', async (route) => {
+      const requestBody = route.request().postDataJSON() as { method?: string };
+      if (requestBody.method !== 'bureau.reviews.list') return route.fallback();
+      const response = await route.fetch();
+      const body = (await response.json()) as {
+        result?: { reviews?: Array<Record<string, unknown>> };
+      };
+      const reviews = body.result?.reviews;
+      if (reviews === undefined) return route.fulfill({ response });
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          result: {
+            ...body.result,
+            reviews: reviews.map((candidate) =>
+              candidate['id'] === review.id
+                ? {
+                    ...candidate,
+                    approval: {
+                      ...(candidate['approval'] as Record<string, unknown>),
+                      reason: 'Tool "issue-refund" requires approval (mode: always).',
+                    },
+                  }
+                : candidate,
+            ),
+          },
+        },
+      });
+    });
+    await page.goto(inboxAt(review));
+    await expect(paneOf(page).getByRole('checkbox')).toHaveCount(0);
+    await captureApprovalAtWidths(page, 'pending Always approval');
   });
 
   test('decided in the chat is gone from the inbox once the run goes on', async ({
