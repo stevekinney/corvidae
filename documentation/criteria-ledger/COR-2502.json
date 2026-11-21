@@ -1,13 +1,13 @@
 {
   "issue": "COR-2502",
   "branch": "steve/cor-2502-optional-field-labels",
-  "checkedAt": "3268d044830c572a96f195a482d774129fa0d4f2",
+  "checkedAt": "713e5bb2f6f1ab922c4ad4dcf0cb97b6defed0a0",
   "briefVersion": "f423f9857389",
   "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
-      "status": "met-on-branch",
+      "status": "not-met",
       "evidence": "Label optional marker implementation and DOM regressions; remote Chromium computed-style assertion is queued in run 44871838103."
     },
     {
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "Generated Label/FormField/Input/Textarea README metadata and FormField example updated; both-props rule documented."
+      "evidence": "Generated Label/FormField/Input/Textarea README metadata and FormField example updated; both-props rule documented. Frozen public API entries and complete contract suite verified."
     },
     {
       "id": "AC5",
@@ -33,7 +33,7 @@
     {
       "id": "delivery-boundary",
       "status": "not-met",
-      "evidence": "Provider run 44871838103 and coordinator design capture/reviewer verdict remain pending."
+      "evidence": "Exact-rendered-content provider baseline 44872299533 and candidate 44872298664; Chromium computed styles and design review pending."
     }
   ]
 }
