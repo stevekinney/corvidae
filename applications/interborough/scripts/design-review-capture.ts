@@ -161,6 +161,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
+  'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
   // An archived chat, the Archived chats row and view, and a refused archive.

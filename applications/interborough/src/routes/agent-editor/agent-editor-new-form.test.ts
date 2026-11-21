@@ -279,7 +279,7 @@ describe('a catalog that does not load (row 42v)', () => {
 
     await waitFor(() => expect(queryByTestId('agent-models-failed')?.outerHTML ?? null).toBeNull());
     expect(getByRole('textbox', { name: /^Name/ })).toHaveValue('Order helper');
-    expect(getByRole('combobox', { name: 'Model' })).toHaveValue('anthropic/claude-sonnet-5');
+    expect(getByRole('combobox', { name: 'Model' })).toHaveValue('Claude Sonnet 5');
   });
 });
 
