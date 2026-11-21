@@ -983,7 +983,9 @@ scenarios.describe('check', () => {
           }),
         ),
       );
-      expect(moved).toContain('verification request has a stale base');
+      // The request's base is not an ancestor of this main, so the moved base is refused.
+      expect(moved.join('\n')).toContain('verification request has a stale base');
+      expect(moved.join('\n')).toContain('is not an ancestor of main');
 
       const elsewhere = await check(
         { ...base, digest: result.digest, head: 'b'.repeat(40) },
