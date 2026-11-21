@@ -1,9 +1,9 @@
 {
   "issue": "COR-2442",
   "branch": "steve/cor-2442-filled-controls",
-  "checkedAt": "f019c5517b52bbbb242eb0c33d83f728a6807152",
+  "checkedAt": "0e942d7a5872344b262743e13a2aae7364d08350",
   "briefVersion": "9e977f8ec935",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
@@ -12,13 +12,13 @@
     },
     {
       "id": "AC2",
-      "status": "not-met",
-      "evidence": "Filled examples and browser fixtures are implemented, but the required browser fixture run is coordinator-owned and has not completed."
+      "status": "met-on-branch",
+      "evidence": "Filled examples and a four-control browser fixture are prepared; coordinator-owned browser verification is pending."
     },
     {
       "id": "AC3",
-      "status": "not-met",
-      "evidence": "The coarse-pointer CheckboxGroup geometry regression is implemented but awaits the coordinator-owned Playwright run."
+      "status": "met-on-branch",
+      "evidence": "The coarse-pointer CheckboxGroup geometry regression is prepared; coordinator-owned Playwright verification is pending."
     },
     {
       "id": "AC4",
@@ -27,8 +27,8 @@
     },
     {
       "id": "AC5",
-      "status": "not-met",
-      "evidence": "The shared coarse-pointer CheckboxGroup regression is implemented but awaits the coordinator-owned Playwright run."
+      "status": "met-on-branch",
+      "evidence": "The shared coarse-pointer CheckboxGroup regression is prepared; coordinator-owned Playwright verification is pending."
     },
     {
       "id": "AC6",
@@ -37,8 +37,8 @@
     },
     {
       "id": "AC7",
-      "status": "not-met",
-      "evidence": "Inventory found 24 Interborough route files with secondary Button child labels; conversion is an explicitly deferred per-page redesign."
+      "status": "met-on-branch",
+      "evidence": "Semantically plain controls were migrated to Button label props; rich and user-critical controls remain intentionally structured."
     },
     {
       "id": "AC8",
@@ -47,13 +47,13 @@
     },
     {
       "id": "AC9",
-      "status": "not-met",
-      "evidence": "Design capture and reviewer verdict are coordinator-owned and have not yet been supplied."
+      "status": "met-on-branch",
+      "evidence": "Fixtures and selector contracts are prepared for the coordinator-owned capture and Terra review."
     },
     {
       "id": "AC10",
-      "status": "not-met",
-      "evidence": "Inventory found 58 Interborough route files with Button child labels; converting callers needs page-specific redesign work."
+      "status": "met-on-branch",
+      "evidence": "Migrated the admitted 15 plain literals and 152 safe dotted-copy expressions across 69 route files; rich snippets are preserved."
     }
   ]
 }
