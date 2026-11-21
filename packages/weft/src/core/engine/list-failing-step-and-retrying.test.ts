@@ -11,6 +11,7 @@
  * | backoff-listed | an activity failed once and its backoff is pending | `retrying: true` lists it, from the index alone |
  * | settled-unlisted | the retried attempt succeeds | the run leaves `retrying: true` and its index entry is gone |
  * | recovery-settles | the process stops in a backoff, a new one recovers and the activity settles | no run is left indexed as retrying |
+ * | ends-while-retrying | a run exhausts its retries, is cancelled in a backoff, or is cancelled after a crash and recovery | terminal cleanup deletes the record, so no entry outlives the run |
  * | stale-entry | an index entry names a run that is not retrying (finished, or another run's token) | the entry never matches |
  * | negation | `retrying: false` | every run that is not retrying, including a running one with no record |
  * | failed-step | runs failed at different steps | `failedStep` lists the matching ones only |
@@ -26,7 +27,7 @@ import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
 import { isParkedOn, statusOf } from '../../testing/run-observation.test-support.ts';
-import { encode } from '../codec.ts';
+import { decode, encode } from '../codec.ts';
 import type { WorkflowContext, WorkflowState } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 import { Engine } from './index.ts';
@@ -203,6 +204,67 @@ describe('COR-2530 retrying filter', () => {
 
     expect(await idsOf(second, { retrying: true })).toEqual([]);
     expect(await retryingRecordKeys(storage)).toEqual([]);
+  });
+
+  it('ends-while-retrying: a run that fails or is cancelled in its retries leaves no index entry', async () => {
+    const storage = new MemoryStorage();
+    await using engine = new Engine({ storage });
+    // Retries exhaust on attempt 3 and the error ends the run, with the record committed at attempt 2.
+    const flaky = alwaysFails('flaky', NO_BACKOFF);
+    engine.register(failingWorkflow('exhausts', flaky, 'flaky'));
+    await failRun(engine, 'exhausts', 'exhausts-1');
+
+    // A run cancelled in the backoff before attempt 2.
+    await startBackoffRun(engine, storage, 'cancelled-1');
+    expect(await idsOf(engine, { retrying: true })).toEqual(['cancelled-1']);
+    await engine.cancel('cancelled-1');
+    await waitForStatus(engine, 'cancelled-1', 'cancelled');
+
+    expect(await idsOf(engine, { retrying: true })).toEqual([]);
+    await waitForCondition(async () => (await retryingRecordKeys(storage)).length === 0, {
+      label: 'terminal cleanup to remove every retrying record',
+    });
+  });
+
+  it('ends-while-retrying: a run cancelled after a crash and recovery leaves no index entry', async () => {
+    const storage = new MemoryStorage();
+    const flaky = alwaysFails('flaky', {
+      maxAttempts: 3,
+      initialBackoff: '1h',
+      backoffMultiplier: 1,
+      maxBackoff: '1h',
+    });
+    const build = (getNow?: () => number) => {
+      const engine = new Engine({ storage, ...(getNow === undefined ? {} : { getNow }) });
+      engine.register(failingWorkflow('recovers-then-ends', flaky, 'flaky'));
+      return engine;
+    };
+    // The first process stops in its backoff before attempt 2.
+    const first = build(() => START);
+    await first.start('recovers-then-ends', null, { id: 'recovered-1' });
+    await waitForRetryingRecord(storage, 'recovered-1');
+    first[Symbol.dispose]();
+
+    // The second recovers the run (attempt 2 is overdue on its clock), attempt 2 fails, and the
+    // run waits in the backoff before attempt 3: the record now names attempt 3.
+    await using second = build(() => START + 2 * 60 * 60 * 1000);
+    await second.recoverAll();
+    await waitForCondition(
+      async () => {
+        const bytes = await storage.get(KEYS.activityRetrying('recovered-1'));
+        return bytes !== null && (decode(bytes) as { attempt?: number }).attempt === 3;
+      },
+      { label: 'the recovered run to wait before attempt 3' },
+    );
+    expect(await idsOf(second, { retrying: true })).toEqual(['recovered-1']);
+
+    await second.cancel('recovered-1');
+    await waitForStatus(second, 'recovered-1', 'cancelled');
+
+    expect(await idsOf(second, { retrying: true })).toEqual([]);
+    await waitForCondition(async () => (await retryingRecordKeys(storage)).length === 0, {
+      label: 'terminal cleanup to remove the retrying record',
+    });
   });
 
   it('stale-entry: an entry for a run that is not retrying never matches', async () => {
