@@ -156,7 +156,7 @@
       variant="danger"
       class="weft-overview-tab__failure"
       data-testid="run-step-failure"
-      heading={heading}
+      {heading}
     >
       {#if said !== undefined}
         <p class="weft-overview-tab__failure-explanation">

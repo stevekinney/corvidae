@@ -119,14 +119,16 @@ describe('a workflow’s input and output', () => {
       },
     });
 
-    const alert = container.querySelector<HTMLElement>('[data-run-failure][data-cinder-variant="danger"]');
+    const alert = container.querySelector<HTMLElement>(
+      '[data-run-failure][data-cinder-variant="danger"]',
+    );
     const input = getByRole('group', { name: copy.input });
-    expect(alert).not.toBeNull();
-    expect(alert?.textContent).toContain('timeout');
-    expect(alert?.textContent).toMatch(/exceeded its configured deadline/);
-    expect(alert?.textContent).toContain('the activity took too long');
-    expect(alert?.textContent).not.toContain('{');
-    expect(alert?.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    if (alert === null) throw new Error('Expected the run failure alert');
+    expect(alert.textContent).toContain('timeout');
+    expect(alert.textContent).toMatch(/exceeded its configured deadline/);
+    expect(alert.textContent).toContain('the activity took too long');
+    expect(alert.textContent).not.toContain('{');
+    expect(alert.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(getByText(copy.noOutputFailed)).not.toBeNull();
   });
 
@@ -151,7 +153,9 @@ describe('a workflow’s input and output', () => {
       props: { workflow: workflow({ status: 'failed', error: 'boom' }) },
     });
 
-    expect(container.querySelector('[data-run-failure][data-cinder-variant="danger"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-run-failure][data-cinder-variant="danger"]'),
+    ).not.toBeNull();
     expect(getByText('boom')).not.toBeNull();
     expect(queryByText(/could not be classified/)).toBeNull();
   });

@@ -104,6 +104,31 @@ test.describe('Settings › General', () => {
     await checkA11y('settings general at 375px');
   });
 
+  test('/settings shows labels without raw configuration keys at 375px', async ({ page }) => {
+    await openGeneral(page);
+    const identifiers = page.locator('[data-view="settings"] .cinder-setting-row__identifier');
+    await expect(identifiers.first()).toBeVisible();
+    await page.setViewportSize({ width: 375, height: 900 });
+    for (const label of [
+      'Wakeup',
+      'Max concurrent runs',
+      'Embedder',
+      'Storage backend',
+      'Theme',
+      'Sidebar',
+      'Default agent for new chats',
+      'Use single-key shortcuts',
+    ]) {
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    }
+    await expect(identifiers).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: ROUTE,
+      state: 'setting labels without raw keys',
+      source: SOURCE,
+    });
+  });
+
   test('reverted: Revert puts the waiting change back to the running value, with an Undo toast', async ({
     page,
   }) => {

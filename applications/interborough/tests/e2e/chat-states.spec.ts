@@ -191,6 +191,31 @@ test.describe('Chat ended by a restart (frame a: 19a, 19b, 19c, 19e)', () => {
   });
 });
 
+test('shows one waiting status in the refund conversation on a phone (COR-2451)', async ({
+  page,
+}) => {
+  await connectProvider(page);
+  await page.clock.setFixedTime(SAMPLE_NOW_MILLISECONDS);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+  await expect(page.locator('[data-approval-decision]')).toBeVisible();
+
+  const status = page
+    .getByRole('region', { name: 'Conversation', exact: true })
+    .getByText('Waiting on you', { exact: true })
+    .filter({ visible: true });
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 640 });
+    await expect(status).toHaveCount(1);
+  }
+
+  await captureForDesignReview(page, {
+    route: '/chats/:chat',
+    state: 'waiting once in the refund conversation on a phone',
+    source: SOURCE,
+  });
+});
+
 test.describe('No model provider connected (frame b: 19f, 19h)', () => {
   test('shows the refund chat waiting on you, with its message, its Lookup order row and its reply (19f)', async ({
     page,
@@ -200,7 +225,12 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
 
     await expectTopBar(page);
     await expect(trail(page).getByRole('button', { name: /^Refund order 4471/ })).toBeVisible();
-    expect(await statusOf(page)).toEqual({ word: 'Waiting on you', dot: 'warning' });
+    const waitingStatus = page
+      .getByRole('region', { name: 'Conversation', exact: true })
+      .getByText('Waiting on you', { exact: true })
+      .filter({ visible: true });
+    await expect(waitingStatus).toHaveCount(1);
+    await expect(waitingStatus).toBeVisible();
 
     const conversation = transcript(page);
     const message = conversation.getByText(REFUND_TITLE).last();

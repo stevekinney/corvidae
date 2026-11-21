@@ -39,7 +39,7 @@ describe('the start picker for a caller who may not read the engine', () => {
     const view = open('/runs/new');
 
     await view.findByRole('heading', { level: 1, name: VIEW_COPY.runs.forbidden.title });
-    expect(view.getByRole('link', { name: 'See your scopes' })).not.toBeNull();
+    expect(view.getByRole('link', { name: 'Back to Home' })).not.toBeNull();
     expect(view.queryByText(/workflows:read/)).toBeNull();
   });
 });
