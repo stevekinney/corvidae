@@ -1,7 +1,7 @@
 {
   "issue": "COR-2545",
   "branch": "chef/cor-2545-schedule-editor",
-  "checkedAt": "c4785182820e13e98c19c3d3447c5914fc514b62",
+  "checkedAt": "534b5bb2c325a28ae49ece29b440e00981b097bf",
   "briefVersion": "87dd9b5509a0",
   "status": "READY",
   "criteria": [
