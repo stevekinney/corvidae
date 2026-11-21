@@ -42,6 +42,8 @@ const view: TaskView = {
   usage: null,
   attention: [],
   stalledSince: null,
+  failure: null,
+  retrying: null,
 };
 
 /** A repair over one settled record whose history holds `kinds`; resolves what it appended. */

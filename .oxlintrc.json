@@ -298,6 +298,7 @@
     },
     {
       "files": [
+        "**/components/cinder/src/components/json-diff-viewer/_json-diff-viewer-level.svelte",
         "**/components/cinder/src/components/json-viewer/_json-viewer-node.svelte",
         "**/components/cinder/src/components/payload-inspector/_payload-fields.svelte",
         "**/components/cinder/src/components/json-schema-editor/property-editor.svelte",

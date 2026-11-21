@@ -13,11 +13,18 @@
  * Inside the frame, dialogs, popovers and toasts render in the frame and never above the host's
  * own interface, keyboard focus does not flow between the host and the panel, and navigation,
  * links, resizing and notifications go through the host's bridge, not the page.
+ *
+ * The components a panel is built to show are re-exported from here, so a panel imports them and
+ * its mount from one place. `JsonDiffViewer` is the first: a run comparison panel shows what
+ * differs between two JSON values with the component the page uses.
  */
 import { mount, type Component, type MountOptions } from 'svelte';
 
 import '../styles/index.css';
 import './panel.css';
+
+export { default as JsonDiffViewer } from '../components/json-diff-viewer/index.ts';
+export type { JsonDiffViewerProps } from '../components/json-diff-viewer/index.ts';
 
 /**
  * Each pair is an MCP Apps style variable the host sends and the Cinder token the panel's

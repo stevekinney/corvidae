@@ -38,7 +38,8 @@ import { sessionOwnerOf } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, BureauShuttingDownError, ContextArchivedError } from '../../bureau-errors.ts';
+import { BureauShuttingDownError, ContextArchivedError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { contextArchivedFault } from './contexts-archive-operation.ts';
 import { SessionRegenerateRefusedError } from '../../session-regenerate.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
@@ -178,10 +179,7 @@ export const contextsRegenerateOperation = defineOperation<
           data: { reason: 'shutting-down' },
         } satisfies OperationFault;
       }
-      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
-        throw resourceNotFound('context', contextId);
-      }
-      throw error;
+      throw bureauFaultOf(error, { notFound: { resource: 'context', identifier: contextId } });
     }
   },
 });
