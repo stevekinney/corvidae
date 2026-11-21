@@ -9,6 +9,10 @@
  * refused instead of overwritten.
  */
 import type { ScheduleValue } from '@lostgradient/cinder';
+import {
+  SCHEDULE_DESCRIPTION_LIMIT,
+  scheduleUpdateFields,
+} from '@lostgradient/interborough-plugin/schedule-form';
 
 import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { bureauSpecOf, type AgentScheduleUpdate } from '../../lib/bureau-schedules.ts';
@@ -23,8 +27,11 @@ import {
   type ScheduleCadence,
 } from './cadence.ts';
 
-/** The longest description the Bureau accepts. */
-const MAX_DESCRIPTION_LENGTH = 2_000;
+/**
+ * The longest description the Bureau accepts, which the schedule editor panel holds its form to
+ * as well: both import it, with what an update sends, from one module.
+ */
+const MAX_DESCRIPTION_LENGTH = SCHEDULE_DESCRIPTION_LIMIT;
 
 export type AgentOverlap = 'skip' | 'allow';
 
@@ -139,13 +146,19 @@ export class AgentScheduleFormState {
    * the person did not touch. The Bureau keeps a zone an update leaves out.
    */
   toUpdate(): AgentScheduleUpdate {
-    const description = this.description.trim();
-    const timeZone = this.timeZone;
-    return {
-      spec: this.spec,
-      ...(timeZone !== undefined && timeZone !== this.initialTimeZone ? { timeZone } : {}),
-      ...(description !== this.initialDescription.trim() ? { description } : {}),
-      ...(this.overlap !== this.initialOverlap ? { overlap: this.overlap } : {}),
-    };
+    return scheduleUpdateFields(
+      {
+        spec: this.initialSpec,
+        timeZone: this.initialTimeZone,
+        description: this.initialDescription,
+        overlap: this.initialOverlap,
+      },
+      {
+        spec: this.spec,
+        timeZone: this.timeZone,
+        description: this.description,
+        overlap: this.overlap,
+      },
+    );
   }
 }

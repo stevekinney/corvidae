@@ -1,0 +1,49 @@
+{
+  "issue": "COR-2545",
+  "branch": "chef/cor-2545-schedule-editor",
+  "checkedAt": "c4785182820e13e98c19c3d3447c5914fc514b62",
+  "briefVersion": "87dd9b5509a0",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/bureau/src/http/management/schedules-panel-writes.test.ts: HOST_PANEL_OPERATIONS holds exactly the four schedule writes, each operation is mcpExposable false, an MCP client lists none of them and a call of each by name is refused with the schedule unchanged (bun test exit 0)."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Panel ui://inspectors/schedule-editor/v1 (plugins/inspectors/src/schedule-editor, registered in plugin.ts) and its tests/panels/schedule-editor.spec.ts, which forwards the panel's calls to the end-to-end host and reads the when, agent, paused and create results back with bureau.schedules.get and list. The spec is written, lints and type-checks, and was NOT run locally (browser suites are not run on this host); its run is the targeted-run dispatch. The same flows (create, update when it runs, move to another agent, pause, resume, read back from a real Bureau) pass in applications/interborough/src/host/panel-routes-schedule-writes.test.ts."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "panel-routes-schedule-writes.test.ts saves through the panel route into a real Bureau and reads schedule.created, schedule.updated, schedule.paused and schedule.resumed from the audit trail: principal anonymous:local (the owner), detail.panelUri the panel's URI. schedules-panel-writes.test.ts shows a header, a parameter or a body naming a panel records none, and schedule-transition-outbox.test.ts drains a committed pause at boot and reads the same principal and panelUri."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "panel-routes.test.ts and panel-routes-schedule-writes.test.ts: each of the four writes from a panel that does not declare it answers 403 before the Bureau is called, and from a panel that lists it without hostOnlyTools goes to /mcp, which serves no such tool (status not 200, schedule unchanged)."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "A Bureau fault carries issues with path spec for an invalid schedule expression (panel-routes-schedule-writes.test.ts, real Bureau); the shared scheduleFaultFieldErrors maps it to the spec field (packages/interborough-plugin/src/schedule-form.test.ts) and schedule-editor.test.ts shows the error on that field only. The tests/panels spec asserts aria-invalid and the Bureau's message on the When it runs field; that spec was not run locally."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "plugins/inspectors/src/plugin.test.ts: the panel's app.ts and the application's agent-schedule-form-state.svelte.ts both import @lostgradient/interborough-plugin/schedule-form, and no file under plugins/inspectors defines a schedule form state; agent-schedule-form-state.svelte.test.ts asserts the app side. The application's toUpdate and description limit come from the shared module."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements equal [{ kind: 'page', path: 'schedules' }, { kind: 'run' }] and no opensFromTool."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "bun scripts/check-plugin-identities.ts exit 0 with inspectors:schedule-editor in plugin-identities.json; plugin.test.ts asserts exactly one row for the panel's URI in plugins/inspectors/README.md and packages/bureau/README.md."
+    }
+  ]
+}

@@ -274,6 +274,9 @@ describe('the run inspector on a run’s page', () => {
     expect(
       sections.map((section) => section.querySelector('h2')?.firstChild?.textContent?.trim()),
     ).toEqual(['Run inspector', 'Run notes', 'Zebra summary']);
+    // Each section names its own app, so two panels of one plugin can be told apart.
+    expect(new Set(sections.map((section) => section.dataset['app'])).size).toBe(3);
+    expect(sections[0]?.dataset['app']).toBe('run-inspector');
     // A panel with no run placement stays off the page, whatever tool it opens from.
     expect(view.container.textContent).not.toContain('Pending reviews');
     expect(view.container.textContent).not.toContain('Legacy inspector');
