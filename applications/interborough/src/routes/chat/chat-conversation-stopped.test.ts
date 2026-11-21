@@ -217,6 +217,15 @@ describe('a chat whose run failed on a call', () => {
     const { findByText } = open('dangerous').view;
     const status = await findByText('Failed');
     expect(status.closest('[data-testid="chat-header"]')).not.toBeNull();
+    // A Badge, as on the tool-call row, never a dot and coloured words (COR-2438).
+    expect(status.closest('.cinder-badge')?.getAttribute('data-cinder-variant')).toBe('danger');
+    expect(
+      status.closest('[data-testid="chat-header"]')?.querySelector('.cinder-status-dot'),
+    ).toBeNull();
+    // The title keeps one line, its full words in a tooltip.
+    expect(
+      status.closest('[data-testid="chat-header"]')?.getAttribute('data-cinder-title-lines'),
+    ).toBe('1');
   });
 
   test('says the call may have run, and that Retry goes back through the approval, for a tool that changes things', async () => {

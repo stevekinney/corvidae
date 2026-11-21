@@ -101,12 +101,13 @@ test.describe('the first-use chat screen on a fresh host', () => {
   test('adds no padding of its own inside the outlet, which pads the page', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/chats');
-    // The frame is ready: the list pane words its own first use ("No chats yet") inside itself,
-    // so the screen is no longer an empty state that fills the outlet.
+    // The frame is ready: with no chats there is no list pane, and one empty state ("No chats
+    // yet") is the page (COR-2438, criterion 21a), never two side by side.
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-    await expect(
-      page.getByRole('region', { name: 'Chats' }).getByRole('heading', { name: 'No chats yet' }),
-    ).toBeVisible();
+    const outlet = page.locator('main.weft-shell-outlet');
+    await expect(outlet.getByRole('heading', { name: 'No chats yet' })).toHaveCount(1);
+    await expect(outlet.getByRole('heading', { name: 'No chats yet' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
 
     // The outlet's padding is the only one: the chat screen's roots add none of their own.
     const roots = await pageRootPaddings(page);

@@ -19,11 +19,12 @@ export function agentModel(
 }
 
 /**
- * A model's name as a person reads it. The Bureau's catalog holds no label of its own, so its
- * `displayName` is the provider-native model name; an Anthropic name of the form
+ * A model's name as a person reads it. Prefer a distinct catalog label. When the display name
+ * is the provider-native model name, an Anthropic name of the form
  * `claude-<family>-<major>-<minor>` reads as "Claude Sonnet 5.5", and any other name is its own.
  */
-export function modelDisplayName(model: string): string {
+export function modelDisplayName(model: string, displayName = model): string {
+  if (displayName !== model) return displayName;
   const match = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(model);
   if (match === null) return model;
   const [, family = '', major = '', minor] = match;
@@ -49,7 +50,5 @@ export function modelInUse(
     (choice) =>
       choice.model === name.model && (name.provider === null || choice.provider === name.provider),
   );
-  const labelled =
-    listed !== undefined && listed.displayName !== listed.model ? listed.displayName : undefined;
-  return { displayName: labelled ?? modelDisplayName(name.model), model: name.model };
+  return { displayName: modelDisplayName(name.model, listed?.displayName), model: name.model };
 }

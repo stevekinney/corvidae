@@ -11,7 +11,7 @@ import {
 } from '@lostgradient/chat';
 import { parseStepRowIdentifier } from '@lostgradient/operative';
 
-import type { ToolCallRailCall } from '@lostgradient/cinder';
+import { humanizeIdentifier, type ToolCallRailCall } from '@lostgradient/cinder';
 
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
@@ -89,7 +89,53 @@ export type ToolCallEntry = {
    * before the Bureau recorded decisions.
    */
   readonly decision?: ApprovalDecision | undefined;
+  /**
+   * Whether the call is parked on an approval that nothing waits on any more and that nobody
+   * decided: what the run waits on was read and this call was not among it (its run stopped). It
+   * offers no decision and its row no longer says Waiting on you (COR-2438).
+   */
+  readonly lapsed?: boolean | undefined;
 };
+
+/** What the page knows of what a chat's run waits on, for {@link approvalLapsed}. */
+export type WaitingKnowledge = {
+  /** The calls the run waits on, as the last read said, or `undefined` before any read. */
+  readonly waiting: ReadonlySet<string> | undefined;
+  /** The calls a decision was refused for because nothing waits on them, since the last read. */
+  readonly refused?: ReadonlySet<string> | undefined;
+  /** Whether the Bureau says the chat's run is parked on input (`awaiting-input`). */
+  readonly parked?: boolean | undefined;
+  /**
+   * The calls the Bureau's pending reviews of the chat hold, once they have been read: the same
+   * reviews the chat list reads for Waiting on you. `undefined` while they have not been read.
+   */
+  readonly reviewed?: ReadonlySet<string> | undefined;
+  /** Whether nothing is reading or deciding the approvals now. */
+  readonly settled: boolean;
+};
+
+/**
+ * Whether `entry` is parked on an approval that no run waits on any more (COR-2438): a decision on
+ * it was refused because nothing waits on it, or every Bureau fact the page has read agrees that
+ * nothing does: what the run waits on was read and the call is not among it, the pending reviews
+ * were read and hold none for it, and the Bureau does not say the run is parked on input. Never
+ * while anything is reading or deciding, so a call about to be waited on is not taken for one that
+ * lapsed.
+ */
+export function approvalLapsed(
+  entry: Pick<ToolCallEntry, 'state' | 'decision' | 'callId'>,
+  known: WaitingKnowledge,
+): boolean {
+  if (!known.settled || entry.state !== 'needs-you' || entry.decision !== undefined) return false;
+  if (known.refused?.has(entry.callId) === true) return true;
+  return (
+    known.waiting !== undefined &&
+    !known.waiting.has(entry.callId) &&
+    known.reviewed !== undefined &&
+    !known.reviewed.has(entry.callId) &&
+    known.parked !== true
+  );
+}
 
 /** Why a call failed: the tool's own error. */
 export type ToolFailure = {
@@ -375,8 +421,8 @@ export function toolInfoByName(
 /** A tool's identifier as a person reads it when the catalog gives no title: "lookup-order" is "Lookup order". */
 export function toolDisplayName(identifier: string, title?: string | null): string {
   if (title !== undefined && title !== null && title.trim() !== '') return title;
-  const words = identifier.replaceAll(/[-_]+/g, ' ').trim();
-  return words === '' ? identifier : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+  const name = identifier.split(/:|__/).filter(Boolean).at(-1) ?? identifier;
+  return humanizeIdentifier(name, { casing: 'sentence' });
 }
 
 /** The Bureau's tool that creates a workflow, as a call names it (`bureau:workflows-create` in the catalog). */
@@ -465,7 +511,7 @@ function entryOf(
     name: pair.call.name,
     title: toolDisplayName(pair.call.name, info?.title),
     tier: info?.tier,
-    input: keyInput(pair.call.arguments),
+    input: pair.call.name === 'requestHumanInput' ? '' : keyInput(pair.call.arguments),
     arguments: pair.call.arguments,
     state,
     ...(created === undefined ? {} : { resultHref: created.href }),
@@ -480,8 +526,8 @@ function entryOf(
           : state === 'denied'
             ? (refusalReason(pair) ?? '')
             : state === 'failed'
-              ? (failure ?? resultSummary(pair.result?.content))
-              : resultSummary(pair.result?.content),
+              ? (failure ?? resultSummary(pair.result?.content, pair.call.name))
+              : resultSummary(pair.result?.content, pair.call.name),
     result: pair.result?.content,
     ...(state === 'failed' && error !== undefined
       ? {
@@ -521,7 +567,6 @@ export function railCall(
   const named = {
     id: entry.railId ?? entry.callId,
     name: entry.title ?? entry.name,
-    identifier: entry.name,
     ...(entry.input === undefined || entry.input === '' ? {} : { input: entry.input }),
     nested,
     ...(entry.durationMilliseconds === undefined
@@ -532,7 +577,10 @@ export function railCall(
     case 'running':
       return { ...named, status: 'running' };
     case 'needs-you':
-      return { ...named, status: 'waiting' };
+      // An approval nothing waits on any more keeps its row in view, without the Waiting badge.
+      return entry.lapsed === true
+        ? { ...named, status: 'expired', result: CHAT_COPY.tools.noLongerWaiting, pinned: true }
+        : { ...named, status: 'waiting' };
     case 'expired':
       return {
         ...named,

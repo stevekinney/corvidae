@@ -173,6 +173,13 @@ describe('describeInputRows', () => {
     expect(describeInputRows([])).toEqual([]);
   });
 
+  // COR-2438: a call with no arguments read "Input  Text Empty".
+  test('a call with no arguments has no rows, so no Input is drawn', () => {
+    for (const none of [undefined, null, '', '   ', '{}', '[]', {}, []]) {
+      expect(describeInputRows(none)).toEqual([]);
+    }
+  });
+
   test('cuts a value longer than the preview budget, so a huge value never floods the card', () => {
     const [row] = describeInputRows({ body: 'x'.repeat(10_000) });
 

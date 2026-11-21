@@ -153,7 +153,6 @@ export const REVIEWS_COPY = {
   pickHint: 'Press 1 to 9 to pick a choice.',
   /** What the open approval would run, and what it was given. */
   inputLabel: 'Input',
-  noInput: 'This call was given no input.',
   /** The shortcuts the `?` map lists for this page. */
   shortcutGroup: 'Reviews',
   approveShortcut: 'Approve the open review',

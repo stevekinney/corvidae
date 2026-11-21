@@ -1,9 +1,11 @@
 /// <reference lib="dom" />
 /**
- * ListDetail's list toggle stands in the start corner of the list header, and the header's first
- * row begins after it whatever that row holds. On the `list-collapsible` fixture the first row is a
- * plain `<h2>`, not a SectionHeading, so the toggle's box and the title's text box must not meet.
- * Read in a browser; the spec takes no screenshots.
+ * ListDetail's list toggle is a handle on the divider, inside the list pane, never in the list
+ * header beside its title (COR-2438, criterion 20): the header's first row starts on the header's
+ * own edge whatever that row holds. On the `list-collapsible` fixture the first row is a plain
+ * `<h2>`, not a SectionHeading, so the toggle's box and the title's text box must not meet, the
+ * title's words start on the header's content edge, and the toggle sits inside the list pane at its
+ * divider. Read in a browser; the spec takes no screenshots.
  */
 
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
@@ -25,21 +27,36 @@ for (const viewport of [
     test('the toggle does not meet the first text of a plain heading', async ({ page }) => {
       const read = await page.locator('.cinder-list-detail').evaluate((root) => {
         const toggle = root.querySelector('.cinder-list-detail__toggle button');
-        const heading = root.querySelector('.cinder-list-detail__header h2');
-        if (toggle === null || heading === null) throw new Error('Missing toggle or heading');
+        const header = root.querySelector('.cinder-list-detail__header');
+        const heading = header?.querySelector('h2') ?? null;
+        const list = root.querySelector('.cinder-list-detail__list');
+        if (toggle === null || header === null || heading === null || list === null) {
+          throw new Error('Missing toggle, header, heading or list');
+        }
         const range = document.createRange();
         range.selectNodeContents(heading);
         const text = range.getBoundingClientRect();
         const box = toggle.getBoundingClientRect();
+        const headerBox = header.getBoundingClientRect();
+        const listBox = list.getBoundingClientRect();
+        const headerStart =
+          headerBox.left + Number.parseFloat(getComputedStyle(header).paddingLeft);
         return {
-          toggleEnd: box.right,
           textStart: text.left,
+          headerStart,
+          toggle: { left: box.left, right: box.right },
+          list: { left: listBox.left, right: listBox.right },
           overlapsAcross: box.left < text.right && text.left < box.right,
           overlapsDown: box.top < text.bottom && text.top < box.bottom,
         };
       });
       expect(read.overlapsAcross && read.overlapsDown).toBe(false);
-      expect(read.textStart).toBeGreaterThanOrEqual(read.toggleEnd);
+      // Nothing stands before the title: its words start on the header's own content edge.
+      expect(Math.abs(read.textStart - read.headerStart)).toBeLessThanOrEqual(1);
+      // The handle is inside the list pane, past the title's start, at the divider's side.
+      expect(read.toggle.left).toBeGreaterThanOrEqual(read.list.left - 0.5);
+      expect(read.toggle.right).toBeLessThanOrEqual(read.list.right + 0.5);
+      expect(read.toggle.left).toBeGreaterThan(read.textStart);
     });
   });
 }
