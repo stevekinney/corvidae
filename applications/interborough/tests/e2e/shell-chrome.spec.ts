@@ -14,10 +14,9 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
-import { createAgentFile, removeAgent } from './agent-support.ts';
 import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_SHOWCASE_EDITABLE_AGENT, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL });
@@ -228,57 +227,47 @@ test.describe('on a desktop', () => {
 test.describe('on a tablet', () => {
   test('tablet navigation opens from the top bar and closes on navigation (04a)', async ({
     page,
-    request,
   }) => {
-    const id = 'e2e-tablet-navigation';
-    const path = `/agents/${id}/edit`;
-    await createAgentFile(request, id, {
-      name: 'Shared actions agent',
-      instructions: 'Answer the question.',
+    const path = `/agents/${E2E_SHOWCASE_EDITABLE_AGENT}/edit`;
+    await open(page, path, 768);
+    await expect(page.getByRole('heading', { name: 'Edit Showcase editable agent' })).toBeVisible();
+    const menu = page.getByRole('button', { name: 'Open navigation' });
+    await expect(menu).toBeVisible();
+    await expect(menu).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebar(page)).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Main tabs' })).toHaveCount(0);
+    await expect(
+      page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
+    ).toContainText('⌘K');
+    const outlet = page.locator('main.weft-shell-outlet');
+    const outletBefore = await boxOf(outlet);
+    expect(outletBefore.x).toBe(0);
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/edit',
+      state: 'tablet navigation closed',
+      source: SOURCE,
     });
-    try {
-      await open(page, path, 768);
-      await expect(page.getByRole('heading', { name: 'Edit Shared actions agent' })).toBeVisible();
-      const menu = page.getByRole('button', { name: 'Open navigation' });
-      await expect(menu).toBeVisible();
-      await expect(menu).toHaveAttribute('aria-expanded', 'false');
-      await expect(sidebar(page)).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: 'Main tabs' })).toHaveCount(0);
-      await expect(
-        page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
-      ).toContainText('⌘K');
-      const outlet = page.locator('main.weft-shell-outlet');
-      const outletBefore = await boxOf(outlet);
-      expect(outletBefore.x).toBe(0);
-      await captureForDesignReview(page, {
-        route: '/agents/:agent/edit',
-        state: 'tablet navigation closed',
-        source: SOURCE,
-      });
 
-      await menu.click();
-      await expect(drawer(page)).toBeVisible();
-      await expectWidth(drawer(page), 280);
-      expect(await boxOf(outlet)).toEqual(outletBefore);
-      const views = drawer(page).getByRole('navigation', { name: 'Views' });
-      await expect(views.getByRole('link', { name: 'Agents' })).toHaveAttribute(
-        'aria-current',
-        'page',
-      );
-      await expect(views.getByRole('link', { name: REVIEWS })).toBeVisible();
-      await expect(views.getByRole('link', { name: HEALTH })).toBeVisible();
-      await captureForDesignReview(page, {
-        route: '/agents/:agent/edit',
-        state: 'tablet navigation open',
-        source: SOURCE,
-      });
+    await menu.click();
+    await expect(drawer(page)).toBeVisible();
+    await expectWidth(drawer(page).locator('.cinder-drawer__panel'), 280);
+    expect(await boxOf(outlet)).toEqual(outletBefore);
+    const views = drawer(page).getByRole('navigation', { name: 'Views' });
+    await expect(views.getByRole('link', { name: 'Agents' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(views.getByRole('link', { name: REVIEWS })).toBeVisible();
+    await expect(views.getByRole('link', { name: HEALTH })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/edit',
+      state: 'tablet navigation open',
+      source: SOURCE,
+    });
 
-      await views.getByRole('link', { name: 'Runs' }).click();
-      await expect(page).toHaveURL(/\/runs$/);
-      await expect(drawer(page)).toHaveCount(0);
-    } finally {
-      await removeAgent(request, id);
-    }
+    await views.getByRole('link', { name: 'Runs' }).click();
+    await expect(page).toHaveURL(/\/runs$/);
+    await expect(drawer(page)).toHaveCount(0);
   });
 
   test('Escape closes the tablet drawer without changing the desktop preference (04b)', async ({
@@ -509,7 +498,7 @@ test.describe('on a touch tablet', () => {
     await expect(sidebar(page)).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: 'Main tabs' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Open navigation' }).tap();
-    await expectWidth(drawer(page), 280);
+    await expectWidth(drawer(page).locator('.cinder-drawer__panel'), 280);
     const runs = drawer(page).getByRole('link', { name: 'Runs' });
     await expect(runs.locator('.cinder-side-navigation-item__label')).toBeVisible();
     await captureForDesignReview(page, {
