@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * The `unauthenticated-local` principal and the scope requirement on static
  * API keys (COR-1466).
@@ -11,7 +12,6 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import {
-  AUTHORIZATION_SCOPES,
   authContextToPrincipal,
   principalFromUnauthenticatedLocal,
   type AuthConfig,
@@ -42,7 +42,7 @@ async function readPrincipal(server: WeftServer, headers?: HeadersInit): Promise
 
 describe('the unauthenticated-local principal', () => {
   it('holds every built-in scope and names itself', () => {
-    const principal = principalFromUnauthenticatedLocal();
+    const principal = principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY);
 
     expect(principal.method).toBe('unauthenticated-local');
     expect(principal.subject).toBe('unauthenticated-local');
@@ -51,23 +51,27 @@ describe('the unauthenticated-local principal', () => {
   });
 
   it('has scopes that cannot be widened, narrowed, or cleared by a caller', () => {
-    const { scopes } = principalFromUnauthenticatedLocal();
+    const { scopes } = principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY);
     const mutable = scopes as Set<string>;
 
     expect(() => mutable.add('bureau.tasks:read')).toThrow(TypeError);
     expect(() => mutable.delete('workflows:read')).toThrow(TypeError);
     expect(() => mutable.clear()).toThrow(TypeError);
     expect([...scopes].toSorted()).toEqual(ALL_SCOPES_SORTED);
-    expect(principalFromUnauthenticatedLocal().hasScope('bureau.tasks:read')).toBe(false);
+    expect(
+      principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY).hasScope('bureau.tasks:read'),
+    ).toBe(false);
   });
 
   it('is one shared instance, so two requests compare as the same owner', () => {
-    expect(principalFromUnauthenticatedLocal()).toBe(principalFromUnauthenticatedLocal());
+    expect(principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY)).toBe(
+      principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+    );
   });
 
   it('is what an unauthenticated-local auth context resolves to', () => {
-    expect(authContextToPrincipal({ method: 'unauthenticated-local' })).toBe(
-      principalFromUnauthenticatedLocal(),
+    expect(authContextToPrincipal({ method: 'unauthenticated-local' }, WEFT_SCOPE_VOCABULARY)).toBe(
+      principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
     );
   });
 });

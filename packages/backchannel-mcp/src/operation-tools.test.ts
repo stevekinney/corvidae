@@ -2,7 +2,11 @@
  * COR-839 — a catalog's `mcpExposable` operations served as MCP tools through
  * `createOperationMcpMount`, driven by the official SDK client in both eras.
  */
-import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+  type ClientOptions,
+} from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -15,9 +19,11 @@ import {
   testEventSchema,
   type TestHost,
 } from '@lostgradient/backchannel/testing';
-import type { NegotiationMode } from './mcp-client.test-support.ts';
-import { createOperationMcpMount, type OperationMcpMountOptions } from './operation-tools.ts';
-import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';
+import { createOperationMcpMount, type OperationMcpMountOptions } from './index.ts';
+type NegotiationMode = NonNullable<NonNullable<ClientOptions['versionNegotiation']>['mode']>;
+const MCP_PROTOCOL_VERSION = '2026-07-28';
+const MCP_LEGACY_PROTOCOL_VERSION = '2025-11-25';
+const serverInfo = { name: 'probe', version: '1.0.0' };
 
 const transports = { http: true, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false };
 
@@ -182,14 +188,14 @@ afterEach(async () => {
 async function connect(
   mode: NegotiationMode,
   caller: () => AuthContext = readerContext,
-  mountOptions: OperationMcpMountOptions = {},
+  mountOptions: Omit<OperationMcpMountOptions, 'serverInfo'> = {},
 ) {
   const host = createTestHost();
   const handler = createOperationHandler({
     operations: [echo, hidden, missing, advised, events, finite],
     host,
     authenticate: async () => caller(),
-    mounts: [createOperationMcpMount({ idleMs: 20, ...mountOptions })],
+    mounts: [createOperationMcpMount({ serverInfo, idleMs: 20, ...mountOptions })],
   });
   const transport = new StreamableHTTPClientTransport(new URL('http://catalog.test/mcp'), {
     fetch: (url, init) => handler(new Request(url, init)),
@@ -337,8 +343,8 @@ describe('a subscription tool whose stream ends', () => {
 
 describe('createOperationMcpMount options', () => {
   it('refuses a non-positive event bound and a negative idle wait', () => {
-    expect(() => createOperationMcpMount({ maxEvents: 0 })).toThrow(RangeError);
-    expect(() => createOperationMcpMount({ idleMs: -1 })).toThrow(RangeError);
+    expect(() => createOperationMcpMount({ serverInfo, maxEvents: 0 })).toThrow(RangeError);
+    expect(() => createOperationMcpMount({ serverInfo, idleMs: -1 })).toThrow(RangeError);
   });
 });
 
@@ -414,9 +420,11 @@ describe('resources in createOperationMcpMount options', () => {
     const { client } = await connect({ pin: MCP_PROTOCOL_VERSION });
     expect(client.getServerCapabilities()?.resources).toBeUndefined();
     const resource = { uri: 'ui://a', name: 'a', mimeType: 'text/plain', text: '' };
-    expect(() => createOperationMcpMount({ resources: [resource, resource] })).toThrow(RangeError);
-    expect(() => createOperationMcpMount({ resources: [{ ...resource, uri: '' }] })).toThrow(
+    expect(() => createOperationMcpMount({ serverInfo, resources: [resource, resource] })).toThrow(
       RangeError,
     );
+    expect(() =>
+      createOperationMcpMount({ serverInfo, resources: [{ ...resource, uri: '' }] }),
+    ).toThrow(RangeError);
   });
 });

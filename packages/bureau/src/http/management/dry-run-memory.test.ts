@@ -45,7 +45,7 @@ const authentication: AuthConfig = {
     const credential = credentials[key];
     return credential === undefined
       ? null
-      : principalFromApiKey({ subject: credential.subject, scopes: credential.scopes as never });
+      : principalFromApiKey({ subject: credential.subject, scopes: credential.scopes });
   },
 };
 

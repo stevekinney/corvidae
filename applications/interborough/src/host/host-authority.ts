@@ -13,6 +13,7 @@ import {
   type WorkspaceMembershipOptions,
   type WorkspaceOperationClass,
 } from '@lostgradient/bureau';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import {
   createHostMutationContext,
   HostMutationError,
@@ -59,10 +60,13 @@ export async function createHostAuthority(
   const credentials =
     authentication === undefined
       ? undefined
-      : createOperationHandlerAuthenticator(authentication, { additionalScopes: BUREAU_SCOPES });
+      : createOperationHandlerAuthenticator(authentication, {
+          scopeVocabulary: WEFT_SCOPE_VOCABULARY,
+          additionalScopes: BUREAU_SCOPES,
+        });
   await credentials?.ready;
   const local: OperationHandlerAuthenticate = async () => {
-    const context = unauthenticatedLocalAuthContext();
+    const context = unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY);
     return {
       ...context,
       ...(context.principal === undefined
@@ -143,7 +147,7 @@ export async function combineHostAuthentication(
   const authenticators = [a2a, authentication].map((configuration) =>
     createOperationHandlerAuthenticator(
       { ...configuration, auditSink: () => {} },
-      { additionalScopes: BUREAU_SCOPES },
+      { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
     ),
   );
   await Promise.all(authenticators.map((authenticate) => authenticate.ready));

@@ -1,3 +1,4 @@
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
 /**
  * COR-1894: a plugin's panel against the real host. The inspectors plugin's run inspector
  * is served, and its tool calls reach the real Bureau handler in process as the local owner, over
@@ -5,7 +6,7 @@
  * the host's own wiring matters: the guard in front of the real listener and the Bureau's handler
  * behind it.
  */
-import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES } from '@lostgradient/bureau';
 import { afterEach, describe, expect, test } from 'bun:test';

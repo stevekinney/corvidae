@@ -91,12 +91,18 @@ export type RateLimitDecision = {
  * limiter.dispose();
  * ```
  */
-export type RateLimiter = {
+export interface RateLimitStore {
+  /** Counts one attempt atomically and reports the decision. */
+  check(key: string): RateLimitDecision | Promise<RateLimitDecision>;
+}
+
+/** The in-memory store and its timer lifecycle. */
+export interface RateLimiter extends RateLimitStore {
   /** Counts one attempt for the key and says whether it is allowed. */
   check(key: string): RateLimitDecision;
   /** Stops the limiter's timers and forgets its counts. */
   dispose(): void;
-};
+}
 
 type WindowEntry = {
   count: number;

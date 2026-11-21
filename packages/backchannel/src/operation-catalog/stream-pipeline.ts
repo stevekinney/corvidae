@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  closeAbandonedSubscription,
+  isAsyncIterable,
+  isSubscriptionInvocation,
+} from './subscription-lifecycle.ts';
 
 import type { OperationFault } from '../operation-fault.ts';
 import {
@@ -7,12 +12,7 @@ import {
   validateOutputAgainstSchema,
 } from './dispatch-preparation.ts';
 import { tracePipeline } from './pipeline-stages.ts';
-import {
-  type DispatchContext,
-  type DispatchResult,
-  type ErasedOperation,
-  type SubscriptionOperationInvocation,
-} from './types.ts';
+import { type DispatchContext, type DispatchResult, type ErasedOperation } from './types.ts';
 
 /**
  * Error thrown when an element emitted by a subscription or stream fails
@@ -98,7 +98,10 @@ export async function executeSubscription(
   }
 
   const envelope = validateOutputAgainstSchema(operation.outputSchema, invocation.envelope);
-  if (!envelope.ok) return envelope;
+  if (!envelope.ok) {
+    await closeAbandonedSubscription(invocation);
+    return envelope;
+  }
   tracePipeline(context.pipelineTrace, 'output-validated');
 
   return {
@@ -186,30 +189,6 @@ function replayCompleteOf(iterable: AsyncIterable<unknown>): { replayComplete?: 
     return { replayComplete: iterable.replayComplete };
   }
   return {};
-}
-
-function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    Symbol.asyncIterator in value &&
-    typeof value[Symbol.asyncIterator] === 'function'
-  );
-}
-
-function isSubscriptionInvocation(
-  value: unknown,
-): value is SubscriptionOperationInvocation<unknown, unknown> {
-  if (value === null || typeof value !== 'object') return false;
-  return (
-    'subscriptionId' in value &&
-    'envelope' in value &&
-    'iterable' in value &&
-    'close' in value &&
-    isAsyncIterable(value.iterable) &&
-    typeof value.close === 'function' &&
-    typeof value.subscriptionId === 'string'
-  );
 }
 
 function elementValidationFault(): OperationFault {

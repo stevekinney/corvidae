@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
 import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
@@ -101,7 +102,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', fromStep: 2, revision: 'a-specific-revision' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -163,7 +164,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', revision: 'unresolvable-revision' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -219,7 +220,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', revision: 'incompatible-revision' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -270,7 +271,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123' },
         {
-          principal: principalFromUnauthenticatedLocal(),
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,

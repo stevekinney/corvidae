@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 /**
  * COR-2009 — a chat the host stops records why it ended. A run that a Bureau's shutdown aborts
  * leaves `lastRunEndReason: 'host-stopped'` on its session, and `bureau.contexts.get` and
@@ -75,7 +76,7 @@ async function contextView(bureau: Bureau<AgentDefinitions>, contextId: string) 
   const handler = createOperationHandler({
     operations: [contextsGetOperation, contextsListOperation],
     host: buildBureauHandlerHost(bureau, []),
-    authenticate: async () => unauthenticatedLocalAuthContext(),
+    authenticate: async () => unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY),
     publicPaths: [],
   });
   const call = async (method: string, params: unknown) => {

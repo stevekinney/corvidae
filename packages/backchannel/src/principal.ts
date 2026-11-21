@@ -18,10 +18,11 @@
  */
 
 import {
-  AUTHORIZATION_SCOPES,
+  EMPTY_SCOPE_VOCABULARY,
   extractScopesFromClaims,
   type AdditionalScopeSet,
   type AuthorizationScope,
+  type ScopeVocabulary,
 } from './authorization-scope.ts';
 
 /**
@@ -37,7 +38,7 @@ import {
  *
  * const claims: JwtClaims = {
  *   sub: 'user-123',
- *   scope: 'workflows:read',
+ *   scope: 'inventory:read',
  * };
  * const principal = principalFromJwtClaims(claims);
  * console.log(principal.subject);
@@ -83,7 +84,7 @@ export type WorkspaceIdentity = {
  *
  * const principal: AuthenticatedPrincipal = principalFromApiKey({
  *   subject: 'local-tool',
- *   scopes: ['workflows:read'],
+ *   scopes: ['inventory:read'],
  * });
  * console.log(principal.method);
  * ```
@@ -136,26 +137,30 @@ export type Principal = AuthenticatedPrincipal | UnauthenticatedPrincipal;
 
 /**
  * Build an `AuthenticatedPrincipal` from a JWT claims payload. Scopes come
- * from the `scope`, `scp`, and `permissions` claims; only built-in scopes and
+ * from the `scope`, `scp`, and `permissions` claims; only scopes in the host vocabulary and
  * those in `options.additionalScopes` (the package scopes the admitting
  * handler registered) are kept.
  *
  * @example
  * ```ts
- * import { principalFromJwtClaims } from '@lostgradient/backchannel';
+ * import { createScopeVocabulary, principalFromJwtClaims } from '@lostgradient/backchannel';
  *
- * const principal = principalFromJwtClaims({
- *   sub: 'user-123',
- *   scope: 'workflows:read workflows:write',
- * });
- * console.log(principal.hasScope('workflows:read'));
+ * const scopeVocabulary = createScopeVocabulary(['inventory:read', 'inventory:write']);
+ * const principal = principalFromJwtClaims(
+ *   { sub: 'user-123', scope: 'inventory:read inventory:write' },
+ *   { scopeVocabulary },
+ * );
+ * console.log(principal.hasScope('inventory:read'));
  * ```
  */
 export function principalFromJwtClaims(
   claims: JwtClaims,
-  options: { readonly additionalScopes?: AdditionalScopeSet } = {},
+  options: {
+    readonly additionalScopes?: AdditionalScopeSet;
+    readonly scopeVocabulary?: ScopeVocabulary;
+  } = {},
 ): AuthenticatedPrincipal {
-  const scopes = extractScopesFromClaims(claims, options.additionalScopes);
+  const scopes = extractScopesFromClaims(claims, options.additionalScopes, options.scopeVocabulary);
   const subject = typeof claims['sub'] === 'string' ? claims['sub'] : undefined;
 
   return {
@@ -178,7 +183,7 @@ export function principalFromJwtClaims(
  *
  * const principal = principalFromApiKey({
  *   subject: 'automation',
- *   scopes: ['workflows:read'],
+ *   scopes: ['inventory:read'],
  * });
  * console.log(principal.subject);
  * ```
@@ -208,7 +213,7 @@ export function principalFromApiKey(options: {
  *
  * const principal = principalFromMutualTls({
  *   subject: 'client-cert-subject',
- *   scopes: ['system:read'],
+ *   scopes: ['settings:read'],
  * });
  * console.log(principal.method);
  * ```
@@ -248,21 +253,24 @@ export function anonymousPrincipal(): UnauthenticatedPrincipal {
  * Build the privileged `stdio-local` principal for the Phase 13
  * runtime stdio subcommand. Admission is gated at the CLI boundary
  * (`--startup-token <hex>` or `--allow-unauthenticated-local-admin`);
- * once admitted, the session has every built-in scope because it's
+ * once admitted, the session has every scope in the host’s vocabulary because it's
  * running as a local process that can already invoke the binary directly.
  * It holds no package scope: no handler's `additionalScopes` reach it, so
  * an operation that requires a package scope is `Forbidden` to it.
  *
  * @example
  * ```ts
- * import { principalFromStdioLocal } from '@lostgradient/backchannel';
+ * import { createScopeVocabulary, principalFromStdioLocal } from '@lostgradient/backchannel';
  *
- * const principal = principalFromStdioLocal();
- * console.log(principal.hasScope('workflows:write'));
+ * const vocabulary = createScopeVocabulary(['inventory:write']);
+ * const principal = principalFromStdioLocal(vocabulary);
+ * console.log(principal.hasScope('inventory:write'));
  * ```
  */
-export function principalFromStdioLocal(): AuthenticatedPrincipal {
-  const scopes = new Set<AuthorizationScope>(AUTHORIZATION_SCOPES);
+export function principalFromStdioLocal(
+  vocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
+): AuthenticatedPrincipal {
+  const scopes = new Set<AuthorizationScope>(vocabulary.scopes);
   return {
     method: 'stdio-local',
     scopes,
@@ -277,7 +285,7 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
 /**
  * Build the principal a `serve()` with no authentication gives every request.
  * The server identifies no caller, so every caller is the one local user and
- * holds every built-in scope (`AUTHORIZATION_SCOPES`), so every built-in
+ * holds every scope supplied by the host, so every built-in
  * operation is reachable. It holds no package scope, as with `stdio-local`, so
  * an operation that needs a scope registered through `additionalScopes` still
  * needs a credential holding it. The same instance is returned every time, so
@@ -285,15 +293,23 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
  *
  * @example
  * ```ts
- * import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
+ * import { createScopeVocabulary, principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
  *
- * const principal = principalFromUnauthenticatedLocal();
+ * const vocabulary = createScopeVocabulary(['inventory:write']);
+ * const principal = principalFromUnauthenticatedLocal(vocabulary);
  * console.log(principal.method); // 'unauthenticated-local'
- * console.log(principal.hasScope('workflows:write')); // true
+ * console.log(principal.hasScope('inventory:write')); // true
  * ```
  */
-export function principalFromUnauthenticatedLocal(): AuthenticatedPrincipal {
-  return UNAUTHENTICATED_LOCAL;
+export function principalFromUnauthenticatedLocal(
+  vocabulary: ScopeVocabulary = EMPTY_SCOPE_VOCABULARY,
+): AuthenticatedPrincipal {
+  let principal = localPrincipals.get(vocabulary);
+  if (principal === undefined) {
+    principal = createUnauthenticatedLocalPrincipal(vocabulary);
+    localPrincipals.set(vocabulary, principal);
+  }
+  return principal;
 }
 
 const ANONYMOUS: UnauthenticatedPrincipal = { method: 'unauthenticated' };
@@ -372,8 +388,10 @@ class ImmutableScopeSet extends Set<AuthorizationScope> {
   }
 }
 
-const UNAUTHENTICATED_LOCAL: AuthenticatedPrincipal = (() => {
-  const scopes = new ImmutableScopeSet(AUTHORIZATION_SCOPES);
+const localPrincipals = new WeakMap<ScopeVocabulary, AuthenticatedPrincipal>();
+
+function createUnauthenticatedLocalPrincipal(vocabulary: ScopeVocabulary): AuthenticatedPrincipal {
+  const scopes = new ImmutableScopeSet(vocabulary.scopes);
   return Object.freeze({
     method: 'unauthenticated-local' as const,
     scopes,
@@ -383,4 +401,4 @@ const UNAUTHENTICATED_LOCAL: AuthenticatedPrincipal = (() => {
       return scopes.has(scope);
     },
   });
-})();
+}

@@ -32,3 +32,8 @@ void createOperationHandler({ operations: [needsFeeds], host: {} });
 
 // @ts-expect-error — `feeds` has the wrong type for this operation.
 void createOperationHandler({ operations: [needsFeeds], host: { feeds: 'not a map' } });
+
+void createOperationHandler({ operations: [needsFeeds], host: async () => hostWithFeeds });
+
+// @ts-expect-error — the factory must return a host with feeds.
+void createOperationHandler({ operations: [needsFeeds], host: async () => ({}) });

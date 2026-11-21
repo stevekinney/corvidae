@@ -1,3 +1,4 @@
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * Tests for the runtime stdio JSON-RPC session.
  *
@@ -78,6 +79,7 @@ function runStdioTestSession({
   maxFrameBytes?: number;
 }): Promise<StdioSessionResult> {
   return runStdioSession({
+    scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     input,
     output: output.stream,
     admission,
@@ -95,6 +97,7 @@ describe('runStdioSession — admission', () => {
     const output = collectingWritable();
     const admission: StdioAdmission = { kind: 'require-one' };
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission,
@@ -122,6 +125,7 @@ describe('runStdioSession — admission', () => {
       }),
     ]);
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },
@@ -157,6 +161,7 @@ describe('runStdioSession — admission', () => {
       }),
     ]);
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token },
@@ -189,6 +194,7 @@ describe('runStdioSession — admission', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -207,6 +213,7 @@ describe('runStdioSession — admission', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -226,6 +233,7 @@ describe('runStdioSession — admission', () => {
     const input = readableFromLines(['not json at all\n']);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -244,6 +252,7 @@ describe('runStdioSession — admission', () => {
     const input = readableFromLines([]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -267,6 +276,7 @@ describe('runStdioSession — admission', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -290,6 +300,7 @@ describe('runStdioSession — admission', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -316,6 +327,7 @@ describe('runStdioSession — admission', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token },
@@ -343,6 +355,7 @@ describe('runStdioSession — admission', () => {
     });
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -367,6 +380,7 @@ describe('runStdioSession — admission', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -393,6 +407,7 @@ describe('runStdioSession — admission', () => {
     ]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'startup-token', token: 'correct' },
@@ -596,6 +611,7 @@ describe('runStdioSession — dispatch', () => {
     const input = readableFromLines([partial]);
     const output = collectingWritable();
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },
@@ -642,6 +658,7 @@ describe('runStdioSession — dispatch', () => {
       }),
     ]);
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },
@@ -678,6 +695,7 @@ describe('runStdioSession — dispatch', () => {
       }),
     ]);
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input,
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },
@@ -732,6 +750,7 @@ describe('runStdioSession — dispatch', () => {
     });
 
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input: readableFromLines([]),
       output,
       admission: { kind: 'allow-unauthenticated-local-admin' },
@@ -776,6 +795,7 @@ describe('runStdioSession — subscription limit', () => {
     const output = collectingWritable();
 
     const result = await runStdioSession({
+      scopeVocabulary: WEFT_SCOPE_VOCABULARY,
       input: readableFromLines([subscribe('first'), subscribe('second')]),
       output: output.stream,
       admission: { kind: 'allow-unauthenticated-local-admin' },

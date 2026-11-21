@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
 import {
@@ -323,7 +324,11 @@ describe('weft.schedules.create', () => {
           },
         }),
       }),
-      { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
+      {
+        registry,
+        host: engine,
+        principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+      },
     );
 
     expect(response.status).toBe(200);
@@ -567,7 +572,11 @@ describe('weft.schedules.create DynamicWorkflowSourceUnavailableError wire mappi
             params: { type: 'echo', cronExpression: '0 * * * *', revisionPolicy: 'pinned' },
           }),
         }),
-        { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
+        {
+          registry,
+          host: engine,
+          principal: principalFromUnauthenticatedLocal(WEFT_SCOPE_VOCABULARY),
+        },
       );
       const text = await response.text();
 
