@@ -1,14 +1,14 @@
 {
   "issue": "COR-2488",
   "branch": "steve/cor-2488-concurrent-dispatch-receipts",
-  "checkedAt": "2e36e3288f404f52e0fbcd0b1a50574e5c52e078",
+  "checkedAt": "0f2f6f6066faad732582a6c3ca762e1908250294",
   "briefVersion": "b00084f78407",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "packages/weft/src/core/engine/mid-operation-side-effects.test.ts proves two nested ctx.all calls with one key execute once and persist one completed receipt."
+      "evidence": "packages/weft/src/core/engine/mid-operation-side-effects.test.ts proves two nested ctx.all calls with one key execute once and persist one completed receipt. packages/weft/src/core/engine/operations-activity.test.ts proves a relaunch with the same run token re-verifies an unfinished durable receipt and commits completion without dispatching again."
     },
     {
       "id": "AC2",
