@@ -311,6 +311,14 @@ describe('workflow scripts', () => {
     expect(delivery.result[0]?.evidenceRequest?.['startingBase']).toBe(dispatchBase);
   });
 
+  test('accepts a validated brief when its commit SHA is uppercase', async () => {
+    const delivery = await runDelivery({
+      preparedBriefs: { 'COR-7': briefRecord('COR-7', { base: dispatchBase.toUpperCase() }) },
+    });
+    expect(delivery.calls[1]?.label).toBe('implement COR-7');
+    expect(delivery.result[0]?.evidenceRequest?.['startingBase']).toBe(dispatchBase);
+  });
+
   test('refuses dispatch when the fetched SHA differs from the validated brief or fetch failed', async () => {
     for (const fetch of [
       { exitCode: 0, base: 'b'.repeat(40) },

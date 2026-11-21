@@ -24,8 +24,10 @@ export const meta = {
 const REPOSITORY = 'stevekinney/corvidae';
 const MAXIMUM_ROUNDS = 2;
 
-function isCommitSha(value) {
-  return typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
+function normalizeCommitSha(value) {
+  return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value)
+    ? value.toLowerCase()
+    : undefined;
 }
 
 // What the pre-build design critique returns; scripts/chef/design-rows-resolved.ts defines the
@@ -617,7 +619,7 @@ function evidenceRequest(issue, run, built, head, evidence, verdict, override, c
     issue,
     run: run === undefined ? null : run,
     repository: REPOSITORY,
-    startingBase: built.startingBase,
+    startingBase: normalizeCommitSha(built.startingBase),
     revision: head,
     branch: built.branch,
     ref: evidence.dispatch.ref,
@@ -702,7 +704,7 @@ async function deliverOne(issue) {
     steps.rebrief = prepared;
   }
   let briefPath = prepared.briefPath.trim();
-  let briefBase = prepared.base;
+  let briefBase = normalizeCommitSha(prepared.base);
   let overridden = null;
   if (prepared.exitCode !== 0) {
     if (override === null) {
@@ -730,13 +732,13 @@ async function deliverOne(issue) {
       return judgment(issue, 'override produced no brief; no worker', steps);
     steps.overrideBrief = written;
     briefPath = written.briefPath;
-    briefBase = written.base;
+    briefBase = normalizeCommitSha(written.base);
     log(`${issue}: brief override recorded: ${override.reason}`);
   } else if (!briefPath.startsWith('/')) {
     return judgment(issue, 'brief exited 0 without an absolute brief path', steps);
   }
 
-  if (!isCommitSha(briefBase))
+  if (briefBase === undefined)
     return judgment(issue, 'validated brief has no pinned base SHA', steps);
   const fetched = await fetchDispatchBase(issue);
   steps.fetchBase = fetched;
@@ -746,9 +748,10 @@ async function deliverOne(issue) {
       `could not fetch the default branch: ${fetched?.error || 'base fetch failed'}`,
       steps,
     );
-  if (!isCommitSha(fetched.base))
+  const fetchedBase = normalizeCommitSha(fetched.base);
+  if (fetchedBase === undefined)
     return judgment(issue, 'fetch of the default branch did not return a commit SHA', steps);
-  if (fetched.base !== briefBase)
+  if (fetchedBase !== briefBase)
     return judgment(
       issue,
       `validated brief pins ${briefBase}; fetched default branch is ${fetched.base}. Prepare a fresh brief.`,
@@ -779,7 +782,7 @@ async function deliverOne(issue) {
   );
   if (built === null) return judgment(issue, 'implementation failed', steps);
   steps.implement = built;
-  if (built.startingBase !== briefBase)
+  if (normalizeCommitSha(built.startingBase) !== briefBase)
     return judgment(
       issue,
       `worktree started at ${built.startingBase}; expected fetched base ${briefBase}`,
