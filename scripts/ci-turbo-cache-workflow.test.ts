@@ -320,8 +320,9 @@ describe('Turborepo cache in the workflows', () => {
       ]);
       for (const path of dynamicRootHelpers) {
         const classification = dynamicDomains.get(path);
-        expect(classification, `${path} has no proven dynamic input domain`).toBeDefined();
-        if (classification?.fingerprint !== null) {
+        if (classification === undefined)
+          throw new Error(`${path} has no proven dynamic input domain`);
+        if (classification.fingerprint !== null) {
           const fingerprint = new Bun.CryptoHasher('sha256')
             .update(readFileSync(resolve(root, path), 'utf8'))
             .digest('hex');
@@ -329,7 +330,7 @@ describe('Turborepo cache in the workflows', () => {
             classification.fingerprint,
           );
         }
-        for (const input of classification?.inputs ?? []) expect(inputs).toContain(input);
+        for (const input of classification.inputs) expect(inputs).toContain(input);
       }
       if (job === 'interborough')
         expect(reachableRootHelpers).toContain('scripts/ensure-cinder-generated.ts');
