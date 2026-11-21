@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
+import * as fileSystem from 'node:fs';
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -69,4 +70,21 @@ test('an input newer than the oldest output is stale, and a test file is not an 
   utimesSync(input, 1_000, 1_000);
   utimesSync(test, 3_000, 3_000);
   expect(cinderGeneratedStaleness(cinder)).toBeUndefined();
+});
+
+test('a temporary input removed after listing does not abort the freshness check', () => {
+  const { cinder } = fixture();
+  const temporary = join(cinder, 'src/.forbidden-style-fixture.svelte');
+  writeFileSync(temporary, '<style>p { color: red; }</style>');
+  const stat = fileSystem.statSync;
+  const read = spyOn(fileSystem, 'statSync').mockImplementation(((...args) => {
+    if (args[0] === temporary) rmSync(temporary);
+    return stat(...args);
+  }) as typeof stat);
+  try {
+    expect(cinderGeneratedStaleness(cinder)).toBeUndefined();
+    expect(read.mock.calls.some(([path]) => path === temporary)).toBe(true);
+  } finally {
+    read.mockRestore();
+  }
 });
