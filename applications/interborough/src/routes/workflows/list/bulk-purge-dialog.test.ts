@@ -66,7 +66,7 @@ describe('BulkPurgeDialog', () => {
   });
 
   test('the preview is static text: nothing in it is a live alert', async () => {
-    const { getByLabelText, queryByRole } = render(BulkPurgeDialog, {
+    const { getByLabelText, queryAllByRole } = render(BulkPurgeDialog, {
       props: {
         runDryRun: async () => preview(),
         runPurge: async () => ({ headline: 'unused', errors: [] }),
@@ -77,7 +77,9 @@ describe('BulkPurgeDialog', () => {
     await waitFor(() => {
       expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
     });
-    expect(queryByRole('alert')).toBeNull();
+    // ConfirmDialog keeps its failure region mounted (empty) so a failure is announced when it
+    // arrives; "static" means that region says nothing, not that it is absent.
+    expect(queryAllByRole('alert').map((region) => region.textContent?.trim())).toEqual(['']);
   });
 
   test('the count in the lead sentence is singular for one workflow', async () => {
@@ -114,15 +116,33 @@ describe('BulkPurgeDialog', () => {
     });
   });
 
-  test('the dialog styles let a long id wrap and use spacing tokens, not raw pixel margins', () => {
-    const source = readFileSync(new URL('./bulk-purge-dialog.svelte', import.meta.url), 'utf8');
-    const styles = source.slice(source.indexOf('<style>'));
+  test('the dialog carries no styles of its own: the sample, the chip and the notes are ConfirmDialog options', async () => {
+    for (const file of ['./bulk-purge-dialog.svelte', './bulk-action-dialog.svelte']) {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      expect(source).not.toContain('<style');
+      expect(source).not.toContain('weft-bulk-dialog');
+    }
 
-    expect(styles).toMatch(/overflow-wrap:\s*anywhere/);
-    // The filter chip is one code block of unbroken text, so its own rule wraps too.
-    const chipRule = /\.weft-bulk-dialog__chip\s*\{([^}]*)\}/.exec(styles);
-    expect(chipRule?.[1]).toMatch(/overflow-wrap:\s*anywhere/);
-    expect(styles).not.toMatch(/margin[^;{}]*\d+px/);
+    const { getByLabelText, getByRole, getByText } = render(BulkPurgeDialog, {
+      props: {
+        runDryRun: async () => preview(),
+        runPurge: async () => ({ headline: 'unused', errors: [] }),
+        onClose: () => {},
+      },
+    });
+    await waitFor(() => {
+      expect(getByLabelText(PHRASE_LABEL)).not.toBeNull();
+    });
+    // Cinder's options region wraps a long id and a long filter summary, so the page adds no CSS.
+    const options = requireElement(
+      document.querySelector('.cinder-confirm-dialog__options'),
+      HTMLElement,
+    );
+    expect(options.contains(getByRole('list', { name: 'These workflows will be deleted:' }))).toBe(
+      true,
+    );
+    expect(options.contains(getByText('status:completed, type:payment-capture'))).toBe(true);
+    expect(options.querySelector('li code')?.textContent).toBe('wf-1');
   });
 
   test('the matched count is the dry run, not a count the caller already held', async () => {
@@ -212,15 +232,18 @@ describe('BulkPurgeDialog', () => {
 
   test('a preview that matches nothing says so, warns of nothing, and offers no purge button', async () => {
     let closed = 0;
-    const { getAllByRole, getByText, queryByText, queryByRole } = render(BulkPurgeDialog, {
-      props: {
-        runDryRun: async () => preview({ matched: 0, sampleWorkflowIds: [] }),
-        runPurge: async () => ({ headline: 'unused', errors: [] }),
-        onClose: () => {
-          closed += 1;
+    const { getAllByRole, getByText, queryAllByRole, queryByText, queryByRole } = render(
+      BulkPurgeDialog,
+      {
+        props: {
+          runDryRun: async () => preview({ matched: 0, sampleWorkflowIds: [] }),
+          runPurge: async () => ({ headline: 'unused', errors: [] }),
+          onClose: () => {
+            closed += 1;
+          },
         },
       },
-    });
+    );
 
     await waitFor(() => {
       expect(
@@ -239,7 +262,7 @@ describe('BulkPurgeDialog', () => {
     // Nothing will be deleted, so there is no irreversibility to warn about and nothing to confirm.
     expect(queryByText(/can't be undone/)).toBeNull();
     expect(queryByText(/Permanently deletes/)).toBeNull();
-    expect(queryByRole('alert')).toBeNull();
+    expect(queryAllByRole('alert').map((region) => region.textContent?.trim())).toEqual(['']);
     expect(queryByRole('textbox')).toBeNull();
     expect(queryByRole('button', { name: /^Purge / })).toBeNull();
   });
@@ -334,6 +357,7 @@ describe('BulkPurgeDialog', () => {
   });
 
   test('while the preview loads or refreshes the footer keeps a live Cancel and a disabled Purge, and focus stays inside the dialog', async () => {
+    // The disabled button reads "Purge workflows" while there is no count to name yet.
     let dryRunCalls = 0;
     let closed = 0;
     let release: (value: BulkOperationDryRunResult) => void = () => {};
@@ -380,7 +404,10 @@ describe('BulkPurgeDialog', () => {
       expect(queryByRole('button', { name: 'Refresh preview' }) === null).toBe(true);
     });
     // Loading again: the footer is still there, Cancel works and Purge cannot be pressed.
-    const purge = requireElement(getByRole('button', { name: 'Purge' }), HTMLButtonElement);
+    const purge = requireElement(
+      getByRole('button', { name: 'Purge workflows' }),
+      HTMLButtonElement,
+    );
     expect(purge.disabled).toBe(true);
     const cancel = requireElement(getByRole('button', { name: 'Cancel' }), HTMLButtonElement);
     expect(cancel.disabled).toBe(false);

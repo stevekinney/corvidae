@@ -567,21 +567,6 @@
 }
 
 /* ---------------------------------------------------------------------- */
-/* Drain dialog                                                           */
-/* ---------------------------------------------------------------------- */
-
-.weft-drain-dialog__description {
-  margin: 0 0 16px;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-muted);
-}
-
-.weft-drain-dialog__target {
-  font-family: var(--cinder-font-mono);
-  color: var(--cinder-text-default);
-}
-
-/* ---------------------------------------------------------------------- */
 /* Responsive — PROJECT-BRIEF binding rules: no page-level horizontal      */
 /* scroll ever (wide tables scroll inside their own container via         */
 /* Cinder Table's `scrollable`); stat/grid layouts collapse; density       */

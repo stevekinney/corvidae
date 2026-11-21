@@ -27,8 +27,6 @@ export const BULK_PURGE_COPY = {
     sampleIntro: 'These workflows will be deleted:',
     /** A preview that matched none: nothing to confirm, so no warning either. */
     nothing: 'No finished workflows match this filter now, so there is nothing to purge.',
-    /** The one dismiss action when there is nothing to purge: it closes, it does not abandon a purge. */
-    closeAction: 'Close',
     /** The ids the list does not show. */
     notShown: (count: number): string => `…and ${String(count)} more.`,
   },
@@ -39,8 +37,6 @@ export const BULK_PURGE_COPY = {
    */
   failed: {
     refreshNote: 'Refresh the preview to see what is left.',
-    /** A dry run that failed deleted nothing, so the same request is safe to send again. */
-    retryAction: 'Retry',
   },
   /**
    * The purge was refused because the matching workflows changed after the preview. Nothing was
@@ -49,6 +45,5 @@ export const BULK_PURGE_COPY = {
   stale: {
     title: 'The matching workflows changed',
     body: 'Nothing was purged. Check the new count before you purge.',
-    refreshAction: 'Refresh preview',
   },
 } as const;

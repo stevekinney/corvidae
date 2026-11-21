@@ -239,6 +239,19 @@ describe('ConfirmDialog', () => {
     expect(note).toContain('var(--cinder-text-sm)');
   });
 
+  test('an identifier in the description or in options is monospace and wraps at any character', async () => {
+    const css = await Bun.file(new URL('./confirm-dialog.css', import.meta.url)).text();
+    // A workflow id or a filter summary is one long unbroken token; it must not widen the dialog.
+    for (const region of ['description', 'options']) {
+      const rule =
+        css.match(
+          new RegExp(`\\.cinder-confirm-dialog__${region} :where\\(code\\) \\{[^}]*\\}`, 'u'),
+        )?.[0] ?? '';
+      expect(rule).toContain('var(--cinder-font-mono)');
+      expect(rule).toContain('overflow-wrap: anywhere');
+    }
+  });
+
   test('cancel button carries autofocus; confirm button does not', () => {
     const { container } = render(ConfirmDialog, {
       props: {
