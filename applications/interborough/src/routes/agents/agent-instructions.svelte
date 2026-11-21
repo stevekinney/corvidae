@@ -110,9 +110,12 @@
 </script>
 
 {#snippet addInstructions()}
-  <Button href={router.href(editPath)} variant="primary" onclick={goToEditor}
-    >{copy.emptyAction}</Button
-  >
+  <Button
+    href={router.href(editPath)}
+    variant="primary"
+    onclick={goToEditor}
+    label={copy.emptyAction}
+  />
 {/snippet}
 
 {#snippet addOnSettings()}
@@ -120,8 +123,9 @@
     href={router.href(settingsPath)}
     variant="primary"
     data-testid="agent-instructions-settings"
-    onclick={goToSettings}>{copy.emptyAction}</Button
-  >
+    onclick={goToSettings}
+    label={copy.emptyAction}
+  />
 {/snippet}
 
 {#snippet editorLink(label: string)}

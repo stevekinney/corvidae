@@ -62,6 +62,28 @@ const chatList = (page: Page) => page.getByRole('region', { name: 'Chats' });
 const openChat = (page: Page) => page.getByRole('region', { name: 'Open chat' });
 const blockedRow = (page: Page) => page.locator('[data-chat-composer-status="blocked"]');
 
+test('Warning indicator in Chat', async ({ page }) => {
+  await rewriteBureauAnswer(page, 'bureau.contexts.window', (answer) => ({
+    ...answer,
+    maxTokens: 100_000,
+    usedEstimated: 80_000,
+    usedReported: null,
+    categories: [{ name: 'messages', tokens: 80_000 }],
+  }));
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+
+  const ring = page.locator('.weft-context-ring');
+  await expect(ring).toHaveAttribute('data-tone', 'warning');
+  await expect(ring).toHaveAccessibleName(/80%/);
+  await captureForDesignReview(page, {
+    route: '/chats/:chat',
+    state: 'context window 80% warning',
+    source: SOURCE,
+  });
+});
+
 /**
  * The waiting approval's placement, read in one layout pass: the transcript's box, the card's box,
  * Deny's and Approve's boxes with whether a tap at each centre reaches the button (a composer, the

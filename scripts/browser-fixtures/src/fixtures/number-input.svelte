@@ -2,7 +2,9 @@
   import { NumberInput } from '@lostgradient/cinder';
 </script>
 
-<NumberInput id="number-input" label="Quantity" value={12} />
+<section data-density="comfortable">
+  <NumberInput id="number-input" label="Quantity" value={12} appearance="filled" />
+</section>
 
 <!-- COR-2449 (AC8): a unit follows its number, at the field's own width and in a fixed-width box
      (the retention fields of Interborough sit in a 12rem box), and both numbers start on the edge

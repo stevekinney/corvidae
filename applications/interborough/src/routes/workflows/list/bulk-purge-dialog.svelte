@@ -219,9 +219,12 @@
         <div role="alert">
           <Callout variant="warning" semantic="note" title={BULK_PURGE_COPY.stale.title}>
             {#snippet action()}
-              <Button variant="secondary" size="sm" onclick={refreshPreview}>
-                {BULK_PURGE_COPY.stale.refreshAction}
-              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onclick={refreshPreview}
+                label={BULK_PURGE_COPY.stale.refreshAction}
+              />
             {/snippet}
             {BULK_PURGE_COPY.stale.body}
           </Callout>
@@ -248,16 +251,16 @@
         {phase === 'preview' && matched === 0 ? BULK_PURGE_COPY.preview.closeAction : 'Cancel'}
       </Button>
       {#if phase === 'loading'}
-        <Button variant="danger" size="sm" disabled>Purge</Button>
+        <Button variant="danger" size="sm" disabled label="Purge" />
       {:else if matched > 0}
         <Button variant="danger" size="sm" disabled={!confirmMatches} onclick={commit}>
           Purge {matched} workflow{matched === 1 ? '' : 's'}
         </Button>
       {/if}
     {:else if phase === 'result'}
-      <Button variant="primary" size="sm" onclick={onClose}>Close</Button>
+      <Button variant="primary" size="sm" onclick={onClose} label="Close" />
     {:else if phase === 'fault'}
-      <Button variant="ghost" size="sm" onclick={onClose}>Close</Button>
+      <Button variant="ghost" size="sm" onclick={onClose} label="Close" />
       <!-- A stale preview carries its own Refresh action in the callout. -->
       {#if !faultMeansStalePreview}
         <Button variant="secondary" size="sm" onclick={refreshPreview}>

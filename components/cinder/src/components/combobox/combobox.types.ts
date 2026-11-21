@@ -161,6 +161,12 @@ export type ComboboxProps<T extends string = string, AllowCustom extends boolean
    */
   size?: 'sm' | 'md' | 'lg';
   /**
+   * `filled` draws the control on the inset surface with a 12px radius. Under comfortable density,
+   * an unset appearance uses the same filled treatment and a 48px medium control; `outlined`
+   * opts out of that density default.
+   */
+  appearance?: 'outlined' | 'filled';
+  /**
    * Viewport width below which the options panel docks to the bottom edge as
    * a sheet (Popover's `sheetBelow`, with focus kept in the input), instead of
    * anchoring to the input. A simple CSS length such as `'640px'`, or `false`

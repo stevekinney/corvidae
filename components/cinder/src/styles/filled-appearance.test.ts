@@ -41,6 +41,8 @@ function flatten(path: string): string {
 const inputCss = flatten('../components/input/input.css');
 const textareaCss = flatten('../components/textarea/textarea.css');
 const selectCss = flatten('../components/select/select.css');
+const comboboxCss = flatten('../components/combobox/combobox.css');
+const multiSelectCss = flatten('../components/multi-select/multi-select.css');
 const fieldChevronCss = flatten('./components/_field-chevron.css');
 
 /** The density default selector: a field with no explicit outlined appearance in a comfortable subtree. */
@@ -178,6 +180,26 @@ describe('Input appearance', () => {
     expect(ruleBody(inputCss, ".cinder-input[data-cinder-variant='bare']")).toContain(
       'border-radius: var(--cinder-control-radius);',
     );
+  });
+});
+
+describe('Composed field appearance', () => {
+  test('Combobox and MultiSelect share Input’s filled frame and comfortable 48px medium treatment', () => {
+    for (const [component, css] of [
+      ['cinder-combobox__input', comboboxCss],
+      ['cinder-multi-select__trigger', multiSelectCss],
+    ] as const) {
+      expect(css).toContain(`.${component}[data-cinder-appearance='filled'],`);
+      expect(ruleBody(css, densityDefault(component))).toContain(
+        'background: var(--cinder-surface-inset);',
+      );
+      expect(ruleBody(css, `${densityDefault(component)}[data-cinder-size='md']`)).toContain(
+        'min-height: var(--cinder-control-height-lg);',
+      );
+      expect(
+        ruleBody(css, `.${component}[data-cinder-appearance='filled']:focus-visible`),
+      ).toContain('background: var(--cinder-control-background);');
+    }
   });
 });
 

@@ -32,6 +32,12 @@
       "title": "Checkbox with error",
       "description": "Validation error message surfaces via aria-invalid and aria-describedby.",
       "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n  import { Checkbox } from '@lostgradient/cinder';\n  let accepted = $state(false);\n  let submitted = $state(false);\n  const showError = $derived(submitted && !accepted);\n</script>\n\n<div style=\"display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start;\">\n  {#if showError}\n    <Checkbox\n      id=\"checkbox-error-terms\"\n      label=\"I accept the terms\"\n      description=\"Required to create your account.\"\n      bind:checked={accepted}\n      error=\"You must accept the terms to continue.\"\n    />\n  {:else}\n    <Checkbox\n      id=\"checkbox-error-terms\"\n      label=\"I accept the terms\"\n      description=\"Required to create your account.\"\n      bind:checked={accepted}\n    />\n  {/if}\n  <Button variant=\"secondary\" onclick={() => (submitted = true)}>Try to submit</Button>\n</div>\n"
+    },
+    {
+      "id": "task-rows",
+      "title": "Task rows with wrapping labels",
+      "description": "Use the round task variant for a task list. Its control stays beside the first line when a label wraps, and adjacent rows retain separate touch targets.",
+      "code": "<script lang=\"ts\">\n  import { Checkbox, CheckboxGroup } from '@lostgradient/cinder';\n\n  let archive = $state(false);\n  let review = $state(true);\n</script>\n\n<CheckboxGroup label=\"Release checklist\">\n  <Checkbox\n    id=\"archive-release\"\n    variant=\"task\"\n    label=\"Archive the release evidence after the deployment and support handoff are complete.\"\n    bind:checked={archive}\n  />\n  <Checkbox\n    id=\"review-release\"\n    variant=\"task\"\n    label=\"Review the customer-facing release notes before publishing.\"\n    bind:checked={review}\n  />\n</CheckboxGroup>\n"
     }
   ]
 }
