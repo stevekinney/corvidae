@@ -211,6 +211,16 @@ test.describe('Health › Storage on the sample world', () => {
       /^(?:\d+ keys?|Showing \d+ of \d+ keys\. Scroll to load more\.)$/,
     );
 
+    await search.fill('audit:v1:');
+    const nextKey = main.getByTestId('storage-key-name');
+    await expect(nextKey).toHaveText(/^audit:v1:/);
+    await expect(page).toHaveURL(/\/health\/storage$/);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'first key after a prefix filter',
+      source: SOURCE,
+    });
+
     // A chosen group and typed text that part ways match nothing.
     await main.getByLabel('Group', { exact: true }).selectOption({ label: 'Chat sessions' });
     await expect(main.getByRole('heading', { name: 'No keys match' })).toBeVisible();
@@ -786,29 +796,36 @@ test.describe('Health › Storage writes and states', () => {
     }
   });
 
-  test('nothing selected: the pane says what to do, the table keeps no row highlighted', async ({
+  test('on arrival the pane beside the table opens the first key, and one above the other nothing opens', async ({
     page,
     checkA11y,
   }) => {
-    await openStorage(page);
+    // COR-2445: beside the table the first key opens, so the pane never says "Select a key".
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await page.goto('/health/storage');
     const main = page.locator('main');
+    const first = main.locator('tbody tr[data-cinder-row-id]').first();
+    await expect(first).toBeVisible();
+    await expect(main.locator('.cinder-list-detail')).toHaveAttribute(
+      'data-cinder-layout',
+      'split',
+    );
+    await expect(first).toHaveAttribute('aria-current', 'true');
     const detail = main.locator('.cinder-list-detail__detail');
     await expect(
       detail.getByRole('heading', { name: 'Select a key to see its value' }),
-    ).toBeVisible();
-    await expect(
-      detail.getByText(
-        'Pick a row to read what is stored. Keys Interborough doesn’t manage can also be edited and deleted.',
-      ),
-    ).toBeVisible();
-    await expect(detail.locator('.cinder-empty-state svg')).toBeVisible();
+    ).toHaveCount(0);
+    await checkA11y('health storage, the first key open');
+
+    // With the pane under the table the table is where it starts: nothing opens.
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.goto('/health/storage');
+    await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
+    await expect(main.locator('.cinder-list-detail')).not.toHaveAttribute(
+      'data-cinder-layout',
+      'split',
+    );
     await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(0);
-    await captureForDesignReview(page, {
-      route: '/health/storage',
-      state: 'nothing-selected',
-      source: SOURCE,
-    });
-    await checkA11y('health storage, nothing selected');
   });
 
   test('while the keys are read the filters stay, rows appear after 300 ms, Still loading with Cancel after 10 s, and Cancel stops the read', async ({
