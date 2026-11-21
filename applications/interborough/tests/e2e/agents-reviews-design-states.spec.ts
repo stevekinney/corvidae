@@ -549,6 +549,101 @@ test.describe('Agent shared FormActions', () => {
     });
   }
 
+  for (const width of WIDTHS) {
+    test(`keeps the shared FormActions beside a duplicate refusal at ${width} pixels`, async ({
+      page,
+      pageErrors,
+    }) => {
+      pageErrors.expectEvery({
+        pattern: loggedFailedResponse(409, /\/jsonrpc/),
+        reason: 'the Bureau refuses the identifier that the new agent name generated',
+      });
+      await page.setViewportSize({ width, height: 900 });
+      let attempts = 0;
+      await standIn(page, 'bureau.agents.definitions.create', async (route, call) => {
+        attempts += 1;
+        await route.fulfill({
+          status: 409,
+          json: {
+            jsonrpc: '2.0',
+            id: call.id,
+            error: {
+              code: -32000,
+              message: 'That identifier is taken.',
+              data: {
+                weftCode: 'Conflict',
+                httpStatus: 409,
+                reason: 'agent-file-exists',
+              },
+            },
+          },
+        });
+      });
+      await page.goto('/agents/new');
+      const name = page.getByRole('textbox', { name: editorCopy.nameLabel });
+      await name.fill('Shared refusal');
+      await page
+        .getByRole('textbox', { name: editorCopy.instructionsLabel })
+        .fill('Keep the refused draft visible.');
+      const create = page.getByRole('button', { name: editorCopy.createAction });
+      await create.click();
+      await expect(name).toBeInvalid();
+      await expect(name).toHaveAccessibleDescription(
+        editorCopy.newAgent.nameTaken('Shared refusal'),
+      );
+      expect(attempts).toBe(1);
+      await expect(create).toBeEnabled();
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'shared FormActions, duplicate refusal',
+        source: SOURCE,
+      });
+    });
+  }
+
+  for (const width of WIDTHS) {
+    test(`keeps the shared FormActions visible while saving at ${width} pixels`, async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const id = `e2e-design-shared-actions-held-${String(width)}`;
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let attempts = 0;
+      try {
+        await createAgentFile(request, id, {
+          name: 'Held shared actions',
+          instructions: 'Answer the question.',
+        });
+        await standIn(page, 'bureau.agents.definitions.update', async (route) => {
+          attempts += 1;
+          await held;
+          await changedAnswer(route, () => undefined);
+        });
+        await page.goto(`/agents/${id}/edit`);
+        const description = page.getByRole('textbox', { name: editorCopy.descriptionLabel });
+        await description.fill('Keep this saving state visible.');
+        const save = page.getByRole('button', { name: editorCopy.saveAction });
+        await save.click();
+        await expect(save).toHaveAttribute('data-cinder-loading', '');
+        expect(attempts).toBe(1);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared FormActions, held save',
+          source: SOURCE,
+        });
+        release();
+        await expect(save).not.toHaveAttribute('data-cinder-loading', '');
+      } finally {
+        release();
+        await removeAgent(request, id);
+      }
+    });
+  }
+
   for (const width of [320, 375]) {
     test.describe(`at ${width} pixels with a coarse pointer`, () => {
       test.use({ viewport: { width, height: 640 }, hasTouch: true, isMobile: true });
@@ -605,6 +700,11 @@ test.describe('Agent shared FormActions', () => {
         });
         await page.setViewportSize({ width, height: 480 });
         await expect(actions).toHaveCSS('position', 'static');
+        await captureForDesignReview(page, {
+          route: '/agents/new',
+          state: `shared FormActions, ${width} short viewport`,
+          source: SOURCE,
+        });
       });
     });
   }
