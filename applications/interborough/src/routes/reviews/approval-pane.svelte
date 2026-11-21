@@ -96,6 +96,7 @@
       <Input
         id={`review-${review.id}-note`}
         label={REVIEWS_COPY.noteLabel}
+        optional
         description={REVIEWS_COPY.noteDescription}
         placeholder={REVIEWS_COPY.notePlaceholder}
         bind:value={note}

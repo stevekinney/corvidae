@@ -24,6 +24,8 @@ export type TextareaProps = Omit<HTMLTextareaAttributes, 'class'> & {
   // accepted shape — there is no `...rest` escape hatch. textarea.test.ts pins this.
   /** Marks the field as required. Passed through to the native `required` attribute. */
   required?: boolean;
+  /** Appends "Optional" to the visible label. Do not combine with `required`; required wins. */
+  optional?: boolean;
   /** Maximum character count. Passed through to the native `maxlength` attribute and shown as the limit in the `countVisible` counter. */
   maxlength?: number;
   /** Disables the textarea. */

@@ -497,4 +497,12 @@ describe('Textarea — required marker', () => {
     });
     expect(container.querySelector('.cinder-_required-marker')).toBeNull();
   });
+
+  test('renders Optional in the standalone textarea accessible name', () => {
+    const { getByRole, container } = render(Textarea, {
+      props: { id: 'optional-textarea', value: '', label: 'Notes', optional: true },
+    });
+    expect(getByRole('textbox', { name: 'Notes Optional' }).id).toBe('optional-textarea');
+    expect(container.querySelector('.cinder-_optional-marker')?.textContent).toBe('Optional');
+  });
 });
