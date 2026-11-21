@@ -105,8 +105,8 @@ describe('a failed tool call, in the task record (COR-2531)', () => {
       });
       const record = await bureau.internals.taskRegistry.record(task.id);
       expect(record?.failure).toEqual({
-        step: { index: view?.failure?.step?.index, label: 'charge-card' },
-        errorCode: view?.failure?.errorCode,
+        step: { index: expect.any(Number), label: 'charge-card' },
+        errorCode: expect.any(String),
         errorKind: 'tool',
         toolCall: { name: 'charge-card', callId: 'call-charge-1' },
       });

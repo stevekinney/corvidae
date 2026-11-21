@@ -18,7 +18,12 @@
  * @module engine-run-tasks
  */
 
-import type { RegistryAgnosticEngine, WorkflowState, WorkflowSummary } from '@lostgradient/weft';
+import {
+  isWeftErrorCode,
+  type RegistryAgnosticEngine,
+  type WorkflowState,
+  type WorkflowSummary,
+} from '@lostgradient/weft';
 import {
   RUN_ENGINE_WORKFLOW_TYPE,
   isScheduleTick,
@@ -27,7 +32,6 @@ import {
 
 import type { TaskEngineRunFilter, TaskState, TaskView } from './task-registry';
 import { truncateFailureText, type TaskFailureView, type TaskRetrying } from './task-failure';
-import { publishableOptionalErrorCode } from './published-error-names';
 import type { TaskOrigin } from './task-origin';
 import { startOfRun } from './workflow-run-start';
 import type { TaskWorkflow } from './task-workflow';
@@ -167,7 +171,8 @@ function failureOfRun(
 ): TaskFailureView | null {
   if (status !== 'failed') return null;
   const failedStep = state.failedStep ?? run.failedStep;
-  const errorCode = publishableOptionalErrorCode(state.errorCode);
+  // The engine's code is a member of its closed list of public codes (`WorkflowTimeoutError`), never text.
+  const errorCode = isWeftErrorCode(state.errorCode) ? state.errorCode : undefined;
   if (failedStep === undefined && errorCode === undefined) return null;
   return {
     step:

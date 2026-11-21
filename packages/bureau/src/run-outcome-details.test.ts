@@ -2,12 +2,16 @@ import {
   type ActiveRun,
   AgentRunError,
   createAgentRunEventRegistry,
+  GenerateErrorEvent,
+  GenerateRetryEvent,
+  GenerateStartedEvent,
   RunErrorEvent,
+  ToolSettledBubbleEvent,
 } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { attachRunEventFeed } from './run-event-feed-attachment';
-import { createRunOutcomeDetails } from './run-outcome-details';
+import { createRunOutcomeDetails, peekTaskFailure } from './run-outcome-details';
 
 /** A run that is only an event target, which is all the attachment reads. */
 function fakeRun(): {
@@ -28,15 +32,73 @@ const PROVIDER_FAILURE = new AgentRunError('the provider failed', {
   code: 'UNKNOWN',
 });
 
+const TOOL_FAILURE = new AgentRunError('the tool failed', { kind: 'tool', code: 'UNKNOWN' });
+
 describe('run outcome details (COR-2095)', () => {
   it('hands an entry over once: take removes it', () => {
     const details = createRunOutcomeDetails();
     details.record('run-1', { step: 2, error: { code: 'E_CODE', kind: 'generate' } });
 
     expect(details.size()).toBe(1);
-    expect(details.take('run-1')).toEqual({ step: 2, errorCode: 'E_CODE', errorKind: 'generate' });
+    expect(details.take('run-1')).toEqual({
+      step: 2,
+      errorCode: 'E_CODE',
+      errorKind: 'generate',
+      stepLabel: 'model',
+    });
     expect(details.take('run-1')).toBeUndefined();
     expect(details.size()).toBe(0);
+  });
+
+  it('peeks an entry without removing it', () => {
+    const details = createRunOutcomeDetails();
+    details.record('run-1', { step: 2, error: { code: 'E_CODE', kind: 'generate' } });
+
+    expect(details.peek('run-1')).toEqual(details.peek('run-1'));
+    expect(details.size()).toBe(1);
+    expect(peekTaskFailure(details, 'run-1')).toEqual({
+      step: { index: 2, label: 'model' },
+      errorCode: 'E_CODE',
+      errorKind: 'generate',
+    });
+    expect(details.take('run-1')).toBeDefined();
+    expect(peekTaskFailure(details, 'run-1')).toBeUndefined();
+  });
+
+  it('labels a step by the failed tool, or `model` for a model or output failure, and by nothing otherwise', () => {
+    const details = createRunOutcomeDetails();
+    details.record('tool', {
+      step: 1,
+      error: { code: 'E_CODE', kind: 'tool' },
+      toolCall: { name: 'charge-card', callId: 'call-1' },
+    });
+    details.record('tool-without-call', { step: 1, error: { code: 'E_CODE', kind: 'tool' } });
+    details.record('output', { step: 1, error: { code: 'E_CODE', kind: 'output' } });
+    details.record('policy', { step: 1, error: { code: 'E_CODE', kind: 'policy' } });
+
+    expect(peekTaskFailure(details, 'tool')).toEqual({
+      step: { index: 1, label: 'charge-card' },
+      errorCode: 'E_CODE',
+      errorKind: 'tool',
+      toolCall: { name: 'charge-card', callId: 'call-1' },
+    });
+    expect(peekTaskFailure(details, 'tool-without-call')?.step).toBeUndefined();
+    expect(peekTaskFailure(details, 'output')?.step).toEqual({ index: 1, label: 'model' });
+    expect(peekTaskFailure(details, 'policy')?.step).toBeUndefined();
+  });
+
+  it('cuts a tool name and a call identifier to the length a failure keeps', () => {
+    const details = createRunOutcomeDetails();
+    details.record('run-1', {
+      step: 0,
+      error: { code: 'E_CODE', kind: 'tool' },
+      toolCall: { name: 'n'.repeat(500), callId: 'c'.repeat(500) },
+    });
+
+    const failure = peekTaskFailure(details, 'run-1');
+    expect(failure?.toolCall?.name).toHaveLength(200);
+    expect(failure?.toolCall?.callId).toHaveLength(200);
+    expect(failure?.step?.label).toHaveLength(200);
   });
 
   it('omits the step of a reconstructed RunErrorEvent, whose step is a count and not the failing step', () => {
@@ -90,7 +152,112 @@ describe('attachRunEventFeed and the outcome details (COR-2095)', () => {
       step: 3,
       errorCode: PROVIDER_FAILURE.code,
       errorKind: PROVIDER_FAILURE.kind,
+      stepLabel: 'model',
     });
+  });
+
+  it('names the tool call that settled in error in the step the run failed in, never its arguments', () => {
+    const details = createRunOutcomeDetails();
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+    const stamp = { agentName: 'default', runId: 'run-1', step: 2 };
+
+    // A call that succeeded, one in another step, and the call that failed; the first error wins.
+    dispatch(
+      new ToolSettledBubbleEvent(stamp, { toolName: 'lookup', toolCallId: 'a', status: 'success' }),
+    );
+    dispatch(
+      new ToolSettledBubbleEvent(
+        { ...stamp, step: 1 },
+        { toolName: 'earlier', toolCallId: 'b', status: 'error', error: 'ARGUMENT-MARKER' },
+      ),
+    );
+    dispatch(
+      new ToolSettledBubbleEvent(stamp, {
+        toolName: 'charge-card',
+        toolCallId: 'c',
+        status: 'error',
+        error: 'ARGUMENT-MARKER',
+      }),
+    );
+    dispatch(
+      new ToolSettledBubbleEvent(stamp, { toolName: 'sibling', toolCallId: 'd', status: 'error' }),
+    );
+    dispatch(new RunErrorEvent(2, TOOL_FAILURE));
+
+    const entry = details.take('run-1');
+    expect(entry?.toolCall).toEqual({ name: 'charge-card', callId: 'c' });
+    expect(entry?.stepLabel).toBe('charge-card');
+    expect(JSON.stringify(entry)).not.toContain('ARGUMENT-MARKER');
+  });
+
+  it('names no call for a failure in a step where no call settled in error', () => {
+    const details = createRunOutcomeDetails();
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+    dispatch(
+      new ToolSettledBubbleEvent(
+        { agentName: 'default', runId: 'run-1', step: 1 },
+        { toolName: 'charge-card', toolCallId: 'c', status: 'error' },
+      ),
+    );
+
+    dispatch(new RunErrorEvent(2, TOOL_FAILURE));
+
+    expect(details.take('run-1')).not.toHaveProperty('toolCall');
+  });
+
+  it('reports a model step on its second or later try, and clears it when the step settles or fails', () => {
+    const changes: Array<[string, unknown]> = [];
+    const details = createRunOutcomeDetails({
+      onRetrying: (runId, retrying) => changes.push([runId, retrying]),
+    });
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+
+    // The event names the attempt that failed: attempt 1 failed, so attempt 2 is starting.
+    dispatch(new GenerateRetryEvent(0, 1, new Error('rate limited')));
+    dispatch(new GenerateRetryEvent(0, 2, new Error('rate limited')));
+    dispatch(new GenerateErrorEvent(0, new Error('rate limited'), 5));
+    // Nothing is retrying, so nothing more is reported for a second ending.
+    dispatch(new GenerateErrorEvent(0, new Error('rate limited'), 5));
+
+    expect(changes).toEqual([
+      ['run-1', { label: 'model', attempt: 2 }],
+      ['run-1', { label: 'model', attempt: 3 }],
+      ['run-1', null],
+    ]);
+  });
+
+  it('does not report a retry for a step that never retried', () => {
+    const changes: unknown[] = [];
+    const details = createRunOutcomeDetails({
+      onRetrying: (_runId, change) => changes.push(change),
+    });
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), { outcomeDetails: details });
+
+    dispatch(new GenerateStartedEvent(0));
+    dispatch(new GenerateRetryEvent(0, 0, new Error('bad attempt number')));
+
+    expect(changes).toEqual([]);
+  });
+
+  it('reports a retry callback that throws, and the run’s own dispatch goes on', () => {
+    const reported: Array<[unknown, string]> = [];
+    const details = createRunOutcomeDetails({
+      onRetrying: () => {
+        throw new Error('registry down');
+      },
+    });
+    const { run, dispatch } = fakeRun();
+    attachRunEventFeed('run-1', run, createAgentRunEventRegistry(), {
+      outcomeDetails: details,
+      onError: (error, kind) => reported.push([error, kind]),
+    });
+
+    expect(() => dispatch(new GenerateRetryEvent(0, 1, new Error('rate limited')))).not.toThrow();
+    expect(reported.map(([, kind]) => kind)).toContain('generate.retry');
   });
 
   it('records a reconstructed RunErrorEvent without its step (a reattached run)', () => {

@@ -154,7 +154,7 @@ export type SharedActionTypeAttemptsCreate_605da491 = {
     readonly workflowId: string | null;
   } | null;
 };
-export type SharedActorAgentNameAttention_31615024 = {
+export type SharedActorAgentNameAttention_ffceb9e6 = {
   readonly actor: string | null;
   readonly agentName: string | null;
   readonly attention: ReadonlyArray<'stalled' | 'looping'>;
@@ -169,6 +169,12 @@ export type SharedActorAgentNameAttention_31615024 = {
     | null;
   readonly contextId: string;
   readonly createdAt: string;
+  readonly failure: {
+    readonly errorCode: string | null;
+    readonly errorKind: string | null;
+    readonly step: { readonly index: number; readonly label: string } | null;
+    readonly toolCall: { readonly callId: string; readonly name: string } | null;
+  } | null;
   readonly finishReason: string | null;
   readonly id: string;
   readonly kind: 'chat' | 'schedule-fire' | 'catalog';
@@ -189,6 +195,7 @@ export type SharedActorAgentNameAttention_31615024 = {
     | SharedKindPluginWorkflowId_b0296d57
     | null;
   readonly owner: string;
+  readonly retrying: { readonly attempt: number; readonly label: string } | null;
   readonly stalledSince: string | null;
   readonly status: 'submitted' | 'working' | 'input-required' | 'completed' | 'failed' | 'canceled';
   readonly statusMessage: string | null;

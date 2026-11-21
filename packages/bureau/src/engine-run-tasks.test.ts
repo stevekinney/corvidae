@@ -41,11 +41,11 @@ function fakeEngine(
 ) {
   const asked: unknown[] = [];
   const engine: EngineRunTaskEngine = {
-    list: async (filter) => {
+    list: async (filter?: { type?: string }) => {
       asked.push(filter);
       return { items: runs.filter((run) => run.type === filter?.type), nextCursor: undefined };
     },
-    get: async (id) => {
+    get: async (id: string) => {
       const run = runs.find((candidate) => candidate.id === id);
       return run === undefined ? null : stateOf(run, states[id]);
     },
@@ -73,7 +73,7 @@ describe('the engine’s runs as tasks (COR-2531)', () => {
     const { engine } = fakeEngine([failed], {
       'failed-run': {
         error: 'the card network refused the charge',
-        errorCode: 'ACTIVITY_FAILED',
+        errorCode: 'WorkflowTimeoutError',
         failedStep: { index: 3, label: 'charge-card' },
       },
     });
@@ -82,11 +82,29 @@ describe('the engine’s runs as tasks (COR-2531)', () => {
     expect(view?.status).toBe('failed');
     expect(view?.failure).toEqual({
       step: { index: 3, label: 'charge-card' },
-      errorCode: 'ACTIVITY_FAILED',
+      errorCode: 'WorkflowTimeoutError',
       errorKind: null,
       toolCall: null,
     });
     expect(view?.retrying).toBeNull();
+  });
+
+  it('shows only a code that is a member of the engine’s own list, never text set as one', async () => {
+    const failed = summary({ id: 'failed-run', status: 'failed' });
+    const { engine } = fakeEngine([failed], {
+      'failed-run': {
+        errorCode: 'card 4111 refused' as never,
+        failedStep: { index: 0, label: 'charge-card' },
+      },
+    });
+
+    const [view] = await tasksOf(engine).list();
+    expect(view?.failure).toEqual({
+      step: { index: 0, label: 'charge-card' },
+      errorCode: null,
+      errorKind: null,
+      toolCall: null,
+    });
   });
 
   it('shows no failure for a failed run the engine recorded nothing for, or for a run that did not fail', async () => {
