@@ -104,6 +104,38 @@ test.describe('Settings › General', () => {
     await checkA11y('settings general at 375px');
   });
 
+  test('/settings inherited duration placeholder', async ({ page }) => {
+    let saves = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method === 'bureau.settings.update') {
+        saves += 1;
+        await route.fallback();
+        return;
+      }
+      if (body?.method !== 'bureau.settings.get') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const answer = (await response.json()) as {
+        result: { values: Record<string, unknown>; effective: Record<string, unknown> };
+      };
+      delete answer.result.values['engine.workflowClaimRenewInterval'];
+      answer.result.effective['engine.workflowClaimRenewInterval'] = 15_000;
+      await route.fulfill({ response, json: answer });
+    });
+    await openGeneral(page);
+
+    const renew = settingRow(page, 'engine.workflowClaimRenewInterval');
+    const input = renew.getByRole('spinbutton');
+    await expect(input).toHaveValue('');
+    await expect(input).toHaveAttribute('placeholder', '15');
+    await expect(renew).toContainText('seconds');
+    expect(saves).toBe(0);
+    await captureAtBothWidths(page, 'inherited-duration-placeholder');
+  });
+
   test('/settings shows labels without raw configuration keys at 375px', async ({ page }) => {
     await openGeneral(page);
     const identifiers = page.locator('[data-view="settings"] .cinder-setting-row__identifier');

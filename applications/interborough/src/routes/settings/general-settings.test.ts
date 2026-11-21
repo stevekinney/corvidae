@@ -247,6 +247,34 @@ describe('the page', () => {
     expect(view.queryByRole('button', { name: /^Save/ })).toBeNull();
   });
 
+  test('shows an inherited claim interval as a seconds placeholder without saving it', async () => {
+    const served = servedSettings({
+      effective: { 'engine.workflowClaimRenewInterval': 15_000 },
+    });
+    delete served.values['engine.workflowClaimRenewInterval'];
+    const view = open(served);
+    await view.findByRole('group', READY);
+    const input = fieldOf(view.container, 'engine.workflowClaimRenewInterval');
+    expect(input.value).toBe('');
+    expect(input.placeholder).toBe('15');
+    expect(row(view.container, 'engine.workflowClaimRenewInterval')?.textContent).toContain(
+      'seconds',
+    );
+    expect(updates()).toHaveLength(0);
+
+    input.focus();
+    await fireEvent.blur(input);
+    await fireEvent.focusOut(input);
+    expect(updates()).toHaveLength(0);
+
+    await typeAndLeave(view.container, 'engine.workflowClaimRenewInterval', '20');
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toEqual({
+      patch: { 'engine.workflowClaimRenewInterval': 20_000 },
+      expectedRevision: 3,
+    });
+  });
+
   test('says a Bureau that keeps nothing does not keep the settings', async () => {
     const view = open(servedSettings({ persisted: false }));
     expect(await view.findByTestId('settings-not-persisted')).not.toBeNull();
