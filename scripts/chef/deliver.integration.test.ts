@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import { createDeliveryFixture, branchRunner as landingRunner } from './deliver.test-support.ts';
+import {
+  createDeliveryFixture,
+  branchRunner as landingRunner,
+  MERGE_TREE,
+} from './deliver.test-support.ts';
 import { deliver, renderDeliver, run, type DeliverOptions, type LeaseReading } from './deliver.ts';
 import { readDeliveryRequest } from './delivery-completion.ts';
 import { ledgerLine, type LedgerEntry } from './delivery-ledger.ts';
@@ -965,7 +969,7 @@ function branchWorld(answers: Record<string, RunnerResult> = {}) {
     [`rev-parse -q --verify ${BASE}:a.ts`]: reply(`${OLD_BLOB}\n`),
     [`log -n 60 --since=2 days ago --format=%H ${BASE} -- a.ts`]: reply(`${EARLIER}\n`),
     [`rev-parse -q --verify ${EARLIER}^:a.ts`]: reply(`${OLDER_BLOB}\n`),
-    [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${TREE}\n`),
+    [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${TREE}\0`),
     [`rev-parse ${BASE}^{tree}`]: reply(`${BASE_TREE}\n`),
     [`commit-tree ${TREE} -p ${BASE} -F ${messageFile}`]: reply(`${SQUASH}\n`),
     [`push origin ${SQUASH}:refs/heads/main`]: reply(),
@@ -1147,10 +1151,11 @@ scenarios.describe('deliver --branch', () => {
     'a conflict with main is refused at conflict, with no commit made',
     async () => {
       const world = branchWorld({
-        [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${TREE}\nCONFLICT\n`, 1),
+        [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${TREE}\0a.ts\0`, 1),
       });
       const { report } = await deliverBranch(world);
       expect(report).toMatchObject({ merged: false, failedStep: 'conflict' });
+      expect(report.detail).toContain('conflicts with origin/main at a.ts');
       expect(world.calls.some((call) => /^(commit-tree|push)/.test(call))).toBe(false);
     },
   );
@@ -1159,7 +1164,7 @@ scenarios.describe('deliver --branch', () => {
     'a branch that changes nothing is refused rather than pushed as an empty commit',
     async () => {
       const world = branchWorld({
-        [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${BASE_TREE}\n`),
+        [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${BASE_TREE}\0`),
       });
       const { report } = await deliverBranch(world);
       expect(report).toMatchObject({ merged: false, failedStep: 'merge' });

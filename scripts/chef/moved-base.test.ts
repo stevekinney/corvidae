@@ -113,7 +113,7 @@ describe('acceptMovedMain', () => {
   test('main moving never asks for a new evidence run: no CI read, no plan, only Git', () => {
     const { git, calls } = repository({ gained: [C1] });
     acceptMovedMain(git, attested, HEAD, CURRENT_BASE, CURRENT_TREE);
-    expect(calls.map((call) => call[0]).toSorted()).toEqual([
+    expect(calls.map((call) => call[0] ?? '').toSorted()).toEqual([
       'merge-base',
       'merge-tree',
       'merge-tree',

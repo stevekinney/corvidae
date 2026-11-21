@@ -244,6 +244,8 @@ const clean = await outcomeOf(async () => {
     },
   });
   expect(report).toMatchObject({ merged: true, failedStep: null, detail: null, base: movedMain });
+  // The base the evidence names is the one that landed: the existing path, no moved-base check.
+  expect(report.mergedMainCommits).toBeUndefined();
   const merged = report.mergeCommit ?? '';
   expect(merged).toMatch(/^[0-9a-f]{40}$/);
   expect(guardRevisions).toEqual([merged]);
