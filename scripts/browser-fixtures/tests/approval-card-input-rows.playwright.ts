@@ -21,6 +21,31 @@ function requiredEntry(slug: string) {
 
 const approvalEntry = requiredEntry('approval-card');
 
+for (const theme of ['light', 'dark'] as const) {
+  test(`reads the canceled approval state at 320px in ${theme}`, async ({
+    componentPage,
+  }, testInfo) => {
+    const page = await componentPage.open({
+      entry: approvalEntry,
+      theme,
+      viewport: narrowPhone,
+    });
+    const route = new URL(page.url());
+    route.searchParams.set('canceled', '1');
+    await page.goto(route.toString(), { waitUntil: 'load' });
+    const canceled = page.locator('#approval-card-canceled');
+    await expect(
+      canceled.getByRole('heading', {
+        name: 'Canceled before a decision: Deploy the approved release?',
+      }),
+    ).toBeVisible();
+    await testInfo.attach(`canceled-approval-${theme}`, {
+      body: await canceled.screenshot(),
+      contentType: 'image/png',
+    });
+  });
+}
+
 /** Sets the page's density the way a host does, on the root, or leaves the default. */
 async function useDensity(page: Page, density: (typeof DENSITIES)[number]): Promise<void> {
   if (density === 'default') return;

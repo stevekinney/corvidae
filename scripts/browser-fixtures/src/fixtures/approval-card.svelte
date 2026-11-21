@@ -38,6 +38,7 @@
     headingLevel={4}
     question="Deploy the approved release?"
     tool={{ name: 'deploy-cloud', label: 'Deploy release', risk: 'medium' }}
+    operation={{ kind: 'other' }}
     state="cancelled"
   />
 {/if}

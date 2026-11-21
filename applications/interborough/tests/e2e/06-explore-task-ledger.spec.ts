@@ -6,6 +6,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 
+import { captureForDesignReview } from './design-review-capture.ts';
 import {
   E2E_BARRIER_URL,
   E2E_CANCELLATION_REASON,
@@ -152,6 +153,11 @@ test('an acknowledged cancellation is attributed to the owning attempt', async (
     page.getByRole('list', { name: 'Attempt history' }).getByText('Canceled', { exact: true }),
   ).toBeVisible();
 
+  await captureForDesignReview(page, {
+    route: '/health/workers (task ledger)',
+    state: 'acknowledged cancellation',
+    source: '06-explore-task-ledger.spec.ts',
+  });
   await checkA11y('workers—task with acknowledged cancellation');
 });
 
