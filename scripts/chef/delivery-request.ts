@@ -93,6 +93,7 @@ import {
   ExecutionStateError,
   readExecutionSnapshot,
   recordMutationIntent,
+  withProviderTransitionLock,
   type ExecutionStateStore,
 } from './execution-state.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
@@ -120,7 +121,10 @@ import {
 
 export { UsageError };
 
-/** The `main.yml` job every criterion's obligation names: it has no `needs`, so it starts first. */
+/**
+ * The `main.yml` job every criterion's obligation names. It has no `needs`, so it is queued when
+ * the run starts rather than after another job, and its runner is known soonest.
+ */
 export const EVIDENCE_JOB = 'Root checks, scripts tests, audit';
 export const EVIDENCE_WORKFLOW = 'Main';
 export const EVIDENCE_WORKFLOW_PATH = '.github/workflows/main.yml';
@@ -190,6 +194,8 @@ export interface PrepareDependencies {
   readJobs: (runId: number) => RunJob[];
   wait: (milliseconds: number) => Promise<void>;
   dispatch: (ref: string, binding: VerificationBinding, cwd: string) => string[];
+  /** The current time in epoch milliseconds, read when the saved members are written and read. */
+  now: () => number;
 }
 
 function operationIdOf(branch: string, head: string): string {
@@ -257,7 +263,14 @@ function membersOf(
       assignment,
       plan: {
         version: base.version,
-        risks: base.risks,
+        // The base plan's per-risk obligations are replaced by one bound job per criterion, so a
+        // risk it marked covered is not covered by anything this request names.
+        risks: Object.fromEntries(
+          Object.entries(base.risks).map(([risk, state]) => [
+            risk,
+            state === 'covered' ? 'unknown' : state,
+          ]),
+        ) as typeof base.risks,
         invalidatedBy: base.invalidatedBy,
         obligations: criteria.map((criterionId) => ({
           criterionId,
@@ -289,18 +302,37 @@ function writeWhole(path: string, text: string): void {
   renameSync(staged, path);
 }
 
-/** The members an earlier attempt saved for `fingerprint`, or `undefined` when there are none. */
-function readPending(path: string, fingerprint: string): DeliveryMember[] | undefined {
+/** How long an attempt's saved members are reused: the lifetime of the project lease. */
+const PENDING_LIFETIME_MILLISECONDS = 12 * 60 * 60 * 1000;
+
+/**
+ * The members an earlier attempt saved for `fingerprint` within the last lease lifetime, or
+ * `undefined` when there are none.
+ */
+function readPending(path: string, fingerprint: string, now: number): DeliveryMember[] | undefined {
   try {
     const saved = JSON.parse(readFileSync(path, 'utf8')) as {
       fingerprint?: unknown;
       members?: unknown;
+      savedAt?: unknown;
     };
-    return saved.fingerprint === fingerprint && Array.isArray(saved.members)
+    const fresh =
+      typeof saved.savedAt === 'number' && now - saved.savedAt <= PENDING_LIFETIME_MILLISECONDS;
+    return fresh && saved.fingerprint === fingerprint && Array.isArray(saved.members)
       ? (saved.members as DeliveryMember[])
       : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** Whether an earlier attempt recorded that it dispatched the run for `requestKey`. */
+function dispatchAttempted(path: string, requestKey: string): boolean {
+  try {
+    const saved = JSON.parse(readFileSync(path, 'utf8')) as { dispatchedRequestKey?: unknown };
+    return saved.dispatchedRequestKey === requestKey;
+  } catch {
+    return false;
   }
 }
 
@@ -362,6 +394,9 @@ export async function prepare(
 
   const changed = changedPaths(runner, cwd, options.base, options.head);
   if (typeof changed === 'string') throw new UsageError(changed);
+  // Every changed path, deletions included: deleting a file can require a full run as surely as
+  // editing it. The plan hashes only the paths that still exist as its relevant inputs.
+  const plan = dependencies.plan(changed, cwd);
   const kept = git(runner, cwd, [
     'diff',
     '--name-only',
@@ -370,7 +405,6 @@ export async function prepare(
   ])
     .split('\n')
     .filter((path) => path !== '');
-  const plan = dependencies.plan(kept, cwd);
 
   const operationId = operationIdOf(options.branch, options.head);
   const directory = join(dependencies.mainCheckout, 'tmp', 'chef', 'requests');
@@ -388,34 +422,32 @@ export async function prepare(
       options.classification ?? null,
     ]),
   );
-  // The members of an earlier attempt with these arguments: the request key covers each issue's
-  // Linear revision, so a retry must not read it again and dispatch a second run for a new key.
-  let members = readPending(pendingFile, fingerprint);
-  if (members === undefined) {
-    const read = await dependencies.readAssignments({
-      issues: options.issues,
-      repository,
-      base: options.base,
-      run: options.run,
-      classification: options.classification,
-      sourceContext: options.sourceContext,
-    });
-    const accepted = read.assignments.map(acceptedAssignment);
-    const refused = [
-      ...read.refusals,
-      ...accepted.flatMap((assignment) => {
-        const gate = gateAssignment(assignment, 'held');
-        return gate.dispatchable ? [] : [refusalReasons([assignment], [gate])];
-      }),
-    ];
-    if (refused.length > 0)
-      throw new UsageError(`Refused: an assignment is not dispatchable.\n${refused.join('\n')}`);
-    if (
-      accepted.map((assignment) => assignment.identity.identifier).join() !== options.issues.join()
-    )
-      throw new UsageError('the assignments read do not match --issue, in order.');
-    members = membersOf(accepted, options, plan, plan.changed);
-  }
+  // Every attempt reads the issues again and refuses a blocker or another run's claim that appeared
+  // since. The members of an earlier attempt with these arguments are still the ones used: the
+  // request key covers each issue's Linear revision, so a retry must not dispatch for a new key.
+  const read = await dependencies.readAssignments({
+    issues: options.issues,
+    repository,
+    base: options.base,
+    run: options.run,
+    classification: options.classification,
+    sourceContext: options.sourceContext,
+  });
+  const accepted = read.assignments.map(acceptedAssignment);
+  const refused = [
+    ...read.refusals,
+    ...accepted.flatMap((assignment) => {
+      const gate = gateAssignment(assignment, 'held');
+      return gate.dispatchable ? [] : [refusalReasons([assignment], [gate])];
+    }),
+  ];
+  if (refused.length > 0)
+    throw new UsageError(`Refused: an assignment is not dispatchable.\n${refused.join('\n')}`);
+  if (accepted.map((assignment) => assignment.identity.identifier).join() !== options.issues.join())
+    throw new UsageError('the assignments read do not match --issue, in order.');
+  const members =
+    readPending(pendingFile, fingerprint, dependencies.now()) ??
+    membersOf(accepted, options, plan, kept);
 
   const resource = await dependencies.leaseResource(options.project, options.run);
   let authority;
@@ -449,23 +481,39 @@ export async function prepare(
   };
   const attempts = Math.ceil((options.waitMinutes * 60_000) / POLL_INTERVAL_MILLISECONDS);
 
-  const found = await dependencies.provider.findRuns(identity);
-  if (found.length > 1)
-    throw new UsageError(
-      `${found.length} runs carry request key ${identity.requestKey}: a second dispatch for this head cannot be told from the first; push a new head.`,
-    );
+  // One dispatch per request key, ever: the attempt is recorded under the key's lock before the
+  // workflow is sent, so an overlapping `prepare`, or a retry that runs before GitHub lists the
+  // first run, polls for that run instead of sending a second one that would cancel it.
   let dispatched = false;
   let command: string[] = [];
-  if (found.length === 0) {
-    mkdirSync(directory, { recursive: true });
-    writeWhole(pendingFile, JSON.stringify({ fingerprint, members }));
-    command = dependencies.dispatch(
-      options.branch,
-      { request: identity.requestKey, plan: identity.verificationPlanDigest, base: options.base },
-      cwd,
-    );
-    dispatched = true;
-  }
+  await withProviderTransitionLock(
+    dependencies.state,
+    `delivery-dispatch:${identity.requestKey}`,
+    async () => {
+      const found = await dependencies.provider.findRuns(identity);
+      if (found.length > 1)
+        throw new UsageError(
+          `${found.length} runs carry request key ${identity.requestKey}: a second dispatch for this head cannot be told from the first; push a new head.`,
+        );
+      if (found.length > 0 || dispatchAttempted(pendingFile, identity.requestKey)) return;
+      mkdirSync(directory, { recursive: true });
+      writeWhole(
+        pendingFile,
+        JSON.stringify({
+          fingerprint,
+          members,
+          savedAt: dependencies.now(),
+          dispatchedRequestKey: identity.requestKey,
+        }),
+      );
+      command = dependencies.dispatch(
+        options.branch,
+        { request: identity.requestKey, plan: identity.verificationPlanDigest, base: options.base },
+        cwd,
+      );
+      dispatched = true;
+    },
+  );
   const observed = await poll(attempts, dependencies, async () => {
     try {
       const runs = await dependencies.provider.findRuns(identity);
@@ -756,6 +804,7 @@ async function productionDependencies(
     }),
     readJobs: (runId) => jobsOf(defaultRunner, config.repository, worktree, runId),
     wait: (milliseconds) => Bun.sleep(milliseconds),
+    now: () => Date.now(),
     dispatch: (ref, binding, cwd) =>
       dispatchVerificationRun(defaultRunner, ref, binding, { cwd }).command,
   };

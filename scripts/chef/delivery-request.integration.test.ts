@@ -47,6 +47,7 @@ import {
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'c'.repeat(40);
+const NOW = Date.parse('2026-11-20T12:00:00Z');
 const TREE = '1'.repeat(40);
 const BRANCH = 'cor-9-widgets';
 const RUNNER_NAME = 'GitHub Actions 7';
@@ -238,6 +239,7 @@ async function harness(
     readJobs: () => [
       { name: EVIDENCE_JOB, runner: jobReads++ === 0 ? '' : RUNNER_NAME, startedAt: 't' },
     ],
+    now: () => NOW,
     wait: async (milliseconds) => {
       waits.push(milliseconds);
     },
@@ -395,7 +397,10 @@ scenarios.describe('prepare', () => {
 
       // landing-evidence binds a run built only from those inputs, and nothing else.
       for (const route of ['branch', 'pull-request'] as const) {
-        const routed = await harness({}, { route }, answers(), `state-${route}`);
+        // Each route stands for a separate host: its own requests directory and its own GitHub.
+        const mainCheckout = join(sandbox, `main-${route}`);
+        mkdirSync(mainCheckout, { recursive: true });
+        const routed = await harness({ mainCheckout }, { route }, answers(), `state-${route}`);
         const prepared = await routed.prepared();
         const problems = await check(
           {
@@ -484,6 +489,159 @@ scenarios.describe('prepare', () => {
   );
 
   scenarios.scenario(
+    'a retry before GitHub lists the dispatched run polls for it and dispatches nothing',
+    async () => {
+      // GitHub has not listed the run yet: every read finds none.
+      const sent: string[][] = [];
+      const setup = await harness(
+        {
+          provider: { findRuns: async () => [] },
+          dispatch: (ref, binding, cwd) => {
+            const command = dispatchVerificationRun(
+              () => reply('https://github.com/acme/widgets/actions/runs/4242\n'),
+              ref,
+              binding,
+              { cwd },
+            ).command;
+            sent.push(command);
+            return command;
+          },
+        },
+        { waitMinutes: 0 },
+      );
+      expect(String(await rejectionOf(setup.prepared()))).toContain('no run carries request key');
+      expect(String(await rejectionOf(setup.prepared()))).toContain('no run carries request key');
+      expect(sent).toHaveLength(1);
+    },
+  );
+
+  scenarios.scenario(
+    'plans from every changed path, deletions included, and hashes only the kept ones',
+    async () => {
+      let planned: string[] = [];
+      const setup = await harness(
+        {
+          plan: (changed) => {
+            planned = changed;
+            return computeEvidencePlan(changed, {
+              knownSlugs: new Set(),
+              paths: new Set(changed),
+              read: () => undefined,
+              selectUnitTests: () => [],
+            });
+          },
+        },
+        {},
+        answers({
+          [`diff --name-only ${BASE}...${HEAD}`]: reply('a.ts\ngone.ts\n'),
+          [`diff --name-only --diff-filter=d ${BASE}...${HEAD}`]: reply('a.ts\n'),
+        }),
+      );
+      const result = await setup.prepared();
+      expect(planned).toEqual(['a.ts', 'gone.ts']);
+      const request = readDeliveryRequest(result.file, result.digest);
+      for (const member of request.members)
+        for (const obligation of member.plan.obligations)
+          expect(obligation.relevantInputs).toEqual(['a.ts']);
+    },
+  );
+
+  scenarios.scenario(
+    'a retry refuses a blocker that appeared since, though it reuses the saved members',
+    async () => {
+      const setup = await harness({ readJobs: () => [] }, { waitMinutes: 0 });
+      expect(String(await rejectionOf(setup.prepared()))).toContain('has no runner yet');
+      const blocked = await rejectionOf(
+        prepare(setup.options, {
+          ...setup.dependencies,
+          readAssignments: async () => ({
+            assignments: [assignmentFor('COR-1', ['AC1', 'AC2']), assignmentFor('COR-2', ['AC1'])],
+            refusals: ['- COR-1: blocked by COR-0'],
+          }),
+        }),
+      );
+      expect(String(blocked)).toContain('blocked by COR-0');
+      expect(setup.dispatched).toHaveLength(1);
+    },
+  );
+
+  scenarios.scenario(
+    'saved members are reused within the lease lifetime and read again after it',
+    async () => {
+      // GitHub as it is: a run carries the request key it was dispatched with.
+      const keys: string[] = [];
+      const sent: string[][] = [];
+      const setup = await harness(
+        {
+          readJobs: () => [],
+          provider: {
+            findRuns: async (identity: CiEvidenceRequest) =>
+              keys.includes(identity.requestKey)
+                ? [{ state: 'pending' as const, id: LANDING_RUN_ID, attempt: 1 }]
+                : [],
+          },
+          dispatch: (ref, binding, cwd) => {
+            const command = dispatchVerificationRun(
+              () => reply('https://github.com/acme/widgets/actions/runs/4242\n'),
+              ref,
+              binding,
+              { cwd },
+            ).command;
+            keys.push(binding.request);
+            sent.push(command);
+            return command;
+          },
+        },
+        { waitMinutes: 0 },
+      );
+      await rejectionOf(setup.prepared());
+      // The issue is edited in Linear afterwards: a new revision would mean a new request key.
+      const edited = async () => {
+        const first = assignmentFor('COR-1', ['AC1', 'AC2']);
+        first.identity = { ...first.identity, revision: 'edited' };
+        return { assignments: [first, assignmentFor('COR-2', ['AC1'])], refusals: [] };
+      };
+      const retry = (now: number) =>
+        rejectionOf(
+          prepare(setup.options, {
+            ...setup.dependencies,
+            readAssignments: edited,
+            now: () => now,
+          }),
+        );
+      await retry(NOW + 60_000);
+      expect(sent).toHaveLength(1);
+      await retry(NOW + 13 * 60 * 60 * 1000);
+      expect(sent).toHaveLength(2);
+      expect(keys[1]).not.toBe(keys[0]);
+    },
+  );
+
+  scenarios.scenario('two overlapping prepares for one head dispatch once', async () => {
+    const setup = await harness({}, { waitMinutes: 0 });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reads = 0;
+    // The first read waits until both calls are under way, so neither has seen the other's run.
+    const provider = {
+      findRuns: async () => {
+        reads += 1;
+        if (reads === 1) await held;
+        return setup.dispatched.length > 0
+          ? [{ state: 'pending' as const, id: LANDING_RUN_ID, attempt: 1 }]
+          : [];
+      },
+    };
+    const first = prepare(setup.options, { ...setup.dependencies, provider });
+    const second = prepare(setup.options, { ...setup.dependencies, provider });
+    release();
+    await Promise.allSettled([first, second]);
+    expect(setup.dispatched).toHaveLength(1);
+  });
+
+  scenarios.scenario(
     'says to run it again, without a second dispatch, when the evidence job has no runner yet',
     async () => {
       const setup = await harness({
@@ -529,8 +687,12 @@ scenarios.describe('prepare', () => {
         },
         readJobs: () => [{ name: EVIDENCE_JOB, runner: RUNNER_NAME, startedAt: 't' }],
       });
-      expect(reads).toBe(0);
+      // Linear is read again, so a blocker or claim that appeared since is refused, but the members
+      // saved by the first attempt are the ones used.
+      expect(reads).toBe(1);
       expect(retried.dispatched).toBe(false);
+      const unedited = await prepare(first.options, first.dependencies);
+      expect(retried.digest).toBe(unedited.digest);
       expect(first.dispatched).toHaveLength(1);
     },
   );
