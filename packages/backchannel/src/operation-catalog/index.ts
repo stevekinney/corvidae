@@ -47,8 +47,4 @@ export {
 } from './types.ts';
 export { UNIVERSAL_FAULT_DEFAULTS } from './universal-faults.ts';
 
-export type {
-  OperationHostFactory,
-  OperationInterceptor,
-  OperationInterceptorContext,
-} from './operation-interceptors.ts';
+export type { OperationHostFactory, OperationInterceptor } from './operation-interceptors.ts';

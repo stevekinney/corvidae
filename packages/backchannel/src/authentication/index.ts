@@ -43,13 +43,11 @@ export {
   type RateLimitConfig,
   type RateLimitDecision,
   type RateLimiter,
-  type RateLimitStore,
 } from './rate-limiter.ts';
 export { isSensitiveHeader, redactCredential, redactHeaders } from './redaction.ts';
 export {
   createRotatingApiKeyStore,
   type ApiKeyRegistration,
-  type ApiKeyStore,
   type RotatingApiKeyStore,
 } from './rotating-api-key-store.ts';
 export {

@@ -284,7 +284,7 @@ export type OperationMetadata<
  * enforces this at the type level: passing `eventSchema` to a unary
  * operation is a TypeScript error, not a silent runtime mismatch.
  */
-export type UnaryOperationDefinition<
+type UnaryOperationDefinition<
   Input,
   InvokeOutput,
   SchemaOutput = InvokeOutput,
@@ -302,7 +302,7 @@ export type UnaryOperationDefinition<
  * have no contract to validate per-element output against, which would
  * silently leak un-validated data to consumers.
  */
-export type StreamOperationDefinition<
+type StreamOperationDefinition<
   Input,
   InvokeOutput,
   SchemaOutput,
@@ -323,7 +323,7 @@ export type StreamOperationDefinition<
  * rationale as `StreamOperationDefinition` — the type forbids declaring a
  * subscription without its element schema.
  */
-export type SubscriptionOperationDefinition<
+type SubscriptionOperationDefinition<
   Input,
   InvokeOutput,
   SchemaOutput,
