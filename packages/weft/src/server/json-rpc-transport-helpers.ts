@@ -4,6 +4,7 @@ import {
   type OperationRegistry,
   handleJsonRpcHttpRequest,
 } from '@lostgradient/backchannel/internals';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 import type { Engine } from '../core/engine.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
 import { createWeftDiscoverDocument } from './weft-documents.ts';
@@ -36,7 +37,7 @@ export async function handleJsonRpcHttpRequestSafely(args: {
     return await handleJsonRpcHttpRequest(args.request, {
       registry: args.registry,
       host: args.engine,
-      principal: authContextToPrincipal(args.authContext),
+      principal: authContextToPrincipal(args.authContext, WEFT_SCOPE_VOCABULARY),
       discoverDocument: createWeftDiscoverDocument(args.registry, args.engine),
       ...(args.maxBodyBytes !== undefined ? { maxBodyBytes: args.maxBodyBytes } : {}),
     });

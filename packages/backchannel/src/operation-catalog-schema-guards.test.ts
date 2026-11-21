@@ -7,7 +7,7 @@ import {
   type ErasedOperation,
   type OperationRegistry,
 } from './operation-catalog.ts';
-import { dispatchUnary } from './operation-catalog/operation-dispatch.ts';
+import { dispatchOperation } from './operation-catalog/operation-dispatch.ts';
 import type { OperationFault } from './operation-fault.ts';
 import { anonymousPrincipal } from './principal.ts';
 
@@ -31,7 +31,7 @@ function malformedDispatchOperation(
 ): unknown {
   const operation: Record<string, unknown> = { ...base, ...overrides };
   operation['dispatch'] = (rawInput: unknown, context: unknown) =>
-    Reflect.apply(dispatchUnary, undefined, [operation, { rawInput, context }]);
+    Reflect.apply(dispatchOperation, undefined, [operation, { rawInput, context }]);
   return operation;
 }
 

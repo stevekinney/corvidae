@@ -53,6 +53,7 @@ export type SchemaFormSecretCopy = {
   notChosen: string;
   /** A read-only boolean's two words. */
   yes: string;
+  /** The text for a false value in a read-only boolean field. */
   no: string;
 };
 

@@ -162,7 +162,7 @@ describe('weft.workflows.updates.list', () => {
           id: 1,
         }),
         {
-          principal: principalFromApiKey({ subject: 'svc', scopes: scopes as never }),
+          principal: principalFromApiKey({ subject: 'svc', scopes }),
           host: engine!,
           transport: 'jsonRpcHttp',
           registry,

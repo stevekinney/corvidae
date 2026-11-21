@@ -1,4 +1,5 @@
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
+import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 
 import { principalFromStdioLocal } from '@lostgradient/backchannel';
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
@@ -176,7 +177,7 @@ async function serveConnection(
   const engine = options.engine as Engine;
   await using feed = new McpChangeFeed(engine);
   const transport = new StreamLineTransport(write);
-  const principal = principalFromStdioLocal();
+  const principal = principalFromStdioLocal(WEFT_SCOPE_VOCABULARY);
   // Work a call starts and does not await (cancelling the workflow of a cancelled call) must
   // finish before the session ends, or the process can exit with the workflow still running.
   const pendingWork = new Set<Promise<unknown>>();

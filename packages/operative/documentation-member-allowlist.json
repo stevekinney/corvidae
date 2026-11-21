@@ -64,7 +64,6 @@
     ". AgentRunWorkflowResult.runId",
     ". AgentRunWorkflowResult.schemaVersion",
     ". AgentRunWorkflowResult.steps",
-    ". AgentScheduledEvent.agentName",
     ". AgentScheduledEvent.scheduleId",
     ". AgentScheduledEvent.sessionId",
     ". AgentScheduledEvent.spec",

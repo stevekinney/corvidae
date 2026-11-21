@@ -21,6 +21,7 @@ const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'backchannel',
+  'backchannel-mcp',
   'bureau',
   'interborough-plugin',
   'operative',
@@ -61,6 +62,7 @@ function publicWorkspaceName(directoryName: string): string {
 /** The complete, exact set of current workspace names, per the COR-1284 ruling. */
 const expectedWorkspaceNames = new Set([
   '@lostgradient/backchannel',
+  '@lostgradient/backchannel-mcp',
   '@lostgradient/weft',
   '@lostgradient/cinder',
   '@lostgradient/chat',

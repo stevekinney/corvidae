@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
 import { principalFromJwtClaims } from '@lostgradient/backchannel';
 import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
@@ -221,7 +222,10 @@ describe('weft.tasks.diagnostics filters', () => {
       'weft.tasks.diagnostics',
       {},
       {
-        principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
+        principal: principalFromJwtClaims(
+          { sub: 'user', scope: 'workflows:read' },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY },
+        ),
         host: engine,
         transport: 'jsonRpcStdio',
         registry: operationRegistry,

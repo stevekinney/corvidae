@@ -30,7 +30,9 @@ export const FORBIDDEN_TEXT_PATTERNS: Readonly<Record<string, string>> = {
 
 /** One thing a page said that no page may say, and the text it was found in. */
 export interface ForbiddenText {
+  /** The rule that identified the text. */
   readonly rule: string;
+  /** The text matched by the rule. */
   readonly found: string;
 }
 
