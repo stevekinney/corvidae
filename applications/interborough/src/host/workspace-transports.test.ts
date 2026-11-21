@@ -1,12 +1,14 @@
-import { principalFromApiKey } from '@lostgradient/backchannel';
+import { defineOperation, principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES, type WorkspaceMembership } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
+import * as weft from '@lostgradient/weft';
 import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { startOAuthMcpServer } from './tool-source-servers.test-support.ts';
 
 import type { ApiPrincipal } from './api-routes.ts';
@@ -224,6 +226,38 @@ describe('injected workspace transport authority', () => {
     expect([
       ...composeOperationNames(['weft.storage.capabilities'], ['bureau.agents.list']),
     ]).toEqual(['bureau.agents.list']);
+  });
+
+  test('refuses host startup when a hidden Weft operation shares a Bureau name', async () => {
+    const hiddenOperation = defineOperation({
+      name: 'bureau.agents.list',
+      summary: 'Hidden operation for the catalog collision test',
+      access: { kind: 'authenticated' },
+      discoverable: false,
+      mcpExposable: false,
+      destructive: false,
+      inputSchema: z.object({}),
+      outputSchema: z.null(),
+      transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+      invoke: async () => null,
+    });
+    const serve = weft.serve;
+    const server = spyOn(weft, 'serve').mockImplementation((options) =>
+      serve({ ...options, operations: [...(options.operations ?? []), hiddenOperation] }),
+    );
+    try {
+      const failure = await authenticatedHost().then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(server).toHaveBeenCalledTimes(1);
+      expect(String(failure)).toContain(
+        'duplicate operation name in the composed JSON-RPC catalog: bureau.agents.list',
+      );
+    } finally {
+      server.mockRestore();
+    }
   });
 
   test('answers a Bureau call on /jsonrpc as /bureau/jsonrpc does, result and fault', async () => {

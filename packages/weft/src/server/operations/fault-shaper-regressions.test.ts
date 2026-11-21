@@ -2,7 +2,9 @@ import { describe, expect, it } from 'bun:test';
 
 import { type OperationFault } from '@lostgradient/backchannel';
 import { invalidParamsFault, shapeOperationFaultAsJson } from '@lostgradient/backchannel/internals';
+import { fleetEventsSseRestBinding } from './fleet-events-sse.ts';
 import { shapeRestFault } from './operation-helpers.ts';
+import { workflowEventsSseRestBinding } from './workflow-events-sse.ts';
 
 const operationsDirectory = new URL('.', import.meta.url);
 
@@ -39,6 +41,38 @@ async function operationSourceFiles(): Promise<string[]> {
 }
 
 describe('REST fault shaper regressions', () => {
+  it.each([
+    ['fleet', fleetEventsSseRestBinding],
+    ['workflow', workflowEventsSseRestBinding],
+  ] as const)(
+    'checks the host error-code vocabulary for %s event stream refusals',
+    async (_kind, binding) => {
+      const { shapeFault } = binding;
+      if (shapeFault === undefined) throw new Error('Expected an event stream fault shaper');
+
+      const refused = (weftCode: string): OperationFault => ({
+        code: 'NotFound',
+        message: 'Workflow not found',
+        data: { resource: 'workflow', weftCode },
+      });
+      const recognized = shapeFault(refused('WorkflowNotFoundError'));
+      expect(recognized.status).toBe(404);
+      expect(await recognized.json()).toEqual({
+        error: 'Workflow not found',
+        weftCode: 'WorkflowNotFoundError',
+        data: { resource: 'workflow' },
+        retryable: false,
+      });
+
+      await expectJsonErrorResponse(
+        shapeFault(refused('UnrecognizedHostError')),
+        404,
+        'Workflow not found',
+        { resource: 'workflow' },
+      );
+    },
+  );
+
   it('masks canonical EngineFailure responses while preserving mapped client faults', async () => {
     const engineFailureFault: OperationFault = {
       code: 'EngineFailure',

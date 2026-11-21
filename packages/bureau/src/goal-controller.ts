@@ -13,7 +13,7 @@ import {
   type GoalWorkflowAbortRequest,
   type GoalWorkflowPorts,
 } from '@lostgradient/operative';
-import { WorkflowAlreadyExistsError } from '@lostgradient/weft';
+import { WorkflowAlreadyExistsError, WorkflowClaimUnavailableError } from '@lostgradient/weft';
 
 import type { AttemptForwarder } from './goal-forwarder';
 import { goalIdentifiers } from './goal-ports';
@@ -304,12 +304,35 @@ export async function ensureController(
     }
     return { goal: record, controller: { status: 'started' } };
   } catch (error) {
+    const workflowId = goalWorkflowId(record.goalRunId);
+    let reason = describeError(error);
+    if (error instanceof WorkflowClaimUnavailableError && error.workflowId === workflowId) {
+      try {
+        // Boot recovery can acquire the folded claim and durably start this controller while
+        // create is committing the same start. A held claim alone does not prove it ran.
+        const existing = await engine.get(workflowId);
+        const input = existing?.input;
+        if (
+          existing?.id === workflowId &&
+          existing.type === GOAL_WORKFLOW_TYPE &&
+          !TERMINAL_CONTROLLER_STATUSES.has(existing.status) &&
+          typeof input === 'object' &&
+          input !== null &&
+          Object.hasOwn(input, 'goalRunId') &&
+          Reflect.get(input, 'goalRunId') === record.goalRunId
+        ) {
+          return { goal: record, controller: { status: 'started' } };
+        }
+      } catch (lookupError) {
+        reason += ` Could not confirm the controller: ${describeError(lookupError)}`;
+      }
+    }
     dependencies.diagnose({
       level: 'error',
       scope: 'goals',
-      message: `[bureau] Goal "${record.goalRunId}" was recorded but its controller did not start; recover() starts it: ${describeError(error)}`,
+      message: `[bureau] Goal "${record.goalRunId}" was recorded but its controller did not start; recover() starts it: ${reason}`,
       cause: error,
     });
-    return { goal: record, controller: { status: 'start-failed', reason: describeError(error) } };
+    return { goal: record, controller: { status: 'start-failed', reason } };
   }
 }
