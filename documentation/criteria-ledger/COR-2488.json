@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2488",
+  "branch": "steve/cor-2488-concurrent-dispatch-receipts",
+  "checkedAt": "2e36e3288f404f52e0fbcd0b1a50574e5c52e078",
+  "briefVersion": "b00084f78407",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/src/core/engine/mid-operation-side-effects.test.ts proves two nested ctx.all calls with one key execute once and persist one completed receipt."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "packages/bureau/src/run-human-waits.test.ts proves a timeout-cleared stale review is removed and resolves as NOT_FOUND, not CONFLICT."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/src/core/engine/side-effect-capture.test.ts covers reuse under a new parent and confirms a closed inherited capture is replaced."
+    }
+  ]
+}
