@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2592",
+  "branch": "steve/cor-2592-browser-shard-sharing",
+  "checkedAt": "dd1899882eaf53d475183baeff3be441bfb8ed12",
+  "briefVersion": "7d0dd6382212",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "browser-suites.yml applies job-level concurrency only to trusted same-repository pull requests and bound workflow_dispatch runs, keyed by candidate, base, shard, suite, and image; all other jobs use run-isolated groups. browser-suites-workflow.test.ts passes."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The shard-one group has cancel-in-progress false and queue max, retaining producers and every waiting consumer FIFO; its Turbo command and failed-run artifact remain unchanged. browser-suites-workflow.test.ts passes."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Workflow regression coverage asserts the trust boundary, candidate/base identities, bound-manual inputs, shard-one scope, isolated fallback, queue configuration, unchanged invocation, and artifacts. ci-turbo-cache-workflow.test.ts also asserts a positive suite-wide cache input and runtime entrypoint."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Awaiting the coordinator-owned next required matched automatic and bound-full provider pair; no additional dispatch, cache eviction, or forced miss was performed."
+    }
+  ]
+}
