@@ -417,18 +417,27 @@ export function githubMainRuns(
     return parsed.map((entry: unknown): MainRun => {
       if (typeof entry !== 'object' || entry === null)
         throw new UsageError('gh run list returned an entry that is not a run');
-      const headSha = 'headSha' in entry ? entry.headSha : undefined;
-      const status = 'status' in entry ? entry.status : undefined;
-      const databaseId = 'databaseId' in entry ? entry.databaseId : undefined;
-      const conclusion = 'conclusion' in entry ? entry.conclusion : undefined;
+      // Own properties only: an inherited key is never evidence that a run verified main.
+      const own = (key: string): unknown =>
+        Object.hasOwn(entry, key) ? (entry as Record<string, unknown>)[key] : undefined;
+      const headSha = own('headSha');
+      const status = own('status');
+      const databaseId = own('databaseId');
+      const conclusion = own('conclusion');
       if (typeof headSha !== 'string' || typeof status !== 'string')
         throw new UsageError('gh run list returned a run without a head or a status');
+      // A run that verifies main is named in the verdict, so a run with no id is no evidence:
+      // the read fails, and the queue fails closed.
+      const id =
+        typeof databaseId === 'number' && Number.isSafeInteger(databaseId) && databaseId > 0
+          ? String(databaseId)
+          : typeof databaseId === 'string' && /^\d+$/.test(databaseId)
+            ? databaseId
+            : undefined;
+      if (id === undefined) throw new UsageError('gh run list returned a run without an id');
       return {
         sha: headSha,
-        id:
-          typeof databaseId === 'number' || typeof databaseId === 'string'
-            ? String(databaseId)
-            : '',
+        id,
         status,
         conclusion: typeof conclusion === 'string' && conclusion !== '' ? conclusion : null,
       };

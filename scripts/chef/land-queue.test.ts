@@ -443,6 +443,33 @@ describe('main run provider (gh)', () => {
     expect(() => reader(ghRunner('{}'))()).toThrow('did not return a list');
     expect(() => reader(ghRunner('[{"headSha":"a"}]'))()).toThrow('without a head or a status');
     expect(() => reader(ghRunner('[null]'))()).toThrow('not a run');
+    // A successful run with no id names no evidence, so the read fails rather than verifying.
+    const success = { headSha: 'a', status: 'completed', conclusion: 'success' };
+    for (const databaseId of [undefined, '', 0, -1, 1.5, 'run-1']) {
+      expect(() => reader(ghRunner(JSON.stringify([{ ...success, databaseId }])))()).toThrow(
+        'without an id',
+      );
+    }
+    expect(reader(ghRunner(JSON.stringify([{ ...success, databaseId: 42 }])))()).toEqual([
+      { sha: 'a', id: '42', status: 'completed', conclusion: 'success' },
+    ]);
+  });
+
+  test('reads only a run entry’s own properties, never inherited ones', () => {
+    const inherited = Object.create({
+      headSha: 'a',
+      status: 'completed',
+      conclusion: 'success',
+      databaseId: 7,
+    }) as object;
+    // JSON never carries a prototype, so the case is reached through the parsed list itself.
+    const parse = JSON.parse;
+    JSON.parse = (() => [inherited]) as typeof JSON.parse;
+    try {
+      expect(() => reader(ghRunner('[]'))()).toThrow('without a head or a status');
+    } finally {
+      JSON.parse = parse;
+    }
   });
 });
 
