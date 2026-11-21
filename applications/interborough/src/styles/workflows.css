@@ -105,7 +105,7 @@
  * never by a value, within two screens at a phone's width. The floor is no wider than the
  * container at 768px (about 642px), so there the table fills it with no sideways scroll, and Type,
  * which carries the tags as its second line, takes what the fixed columns leave. */
-.weft-workflows-table {
+.weft-workflows-table--with-floor {
   min-inline-size: 40rem;
 }
 

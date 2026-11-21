@@ -141,7 +141,7 @@
   selectable={selectionEnabled}
   fit
   {...stackTable ? {} : { stackBelow: false }}
-  class="weft-workflows-table"
+  class={`weft-workflows-table${stackTable ? '' : ' weft-workflows-table--with-floor'}`}
 >
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}

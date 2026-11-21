@@ -237,7 +237,11 @@ test.describe('the sample world', () => {
 
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
       await expect(main.getByRole('heading', { level: 2, name: 'Workflow runs' })).toBeVisible();
-      await expectTabOpen(main, 'Runs');
+      if (width === 375) {
+        await expect(main.getByRole('combobox', { name: 'Section' })).toHaveText(/Section:\s*Runs/);
+      } else {
+        await expectTabOpen(main, 'Runs');
+      }
       await expect(main.getByRole('button', { name: 'Live' })).toBeVisible();
       await expect(main.getByRole('status', { name: /Connection/ })).toHaveCount(1);
       await expect(table.locator('tbody tr').first().getByRole('link')).toBeVisible();
