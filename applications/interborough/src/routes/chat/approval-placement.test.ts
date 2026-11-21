@@ -106,6 +106,46 @@ describe('placing the approval again when the header grows', () => {
     placement.release();
   });
 
+  test('a narrower transcript places the approval again until the person scrolls', () => {
+    const { transcript } = layout();
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+    let onResize: (() => void) | undefined;
+    let target: Element | undefined;
+    let disconnected = false;
+    class TranscriptResizeObserver {
+      constructor(callback: () => void) {
+        onResize = callback;
+      }
+      observe(element: Element) {
+        target = element;
+      }
+      disconnect() {
+        disconnected = true;
+      }
+    }
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: TranscriptResizeObserver,
+    });
+    let placements = 0;
+    const placement = createApprovalPlacement(() => (placements += 1));
+    try {
+      placement.placed(transcript);
+      expect(target).toBe(transcript);
+      onResize?.();
+      expect(placements).toBe(1);
+
+      transcript.dispatchEvent(new window.Event('wheel'));
+      expect(disconnected).toBe(true);
+      onResize?.();
+      expect(placements).toBe(1);
+    } finally {
+      placement.release();
+      if (descriptor === undefined) Reflect.deleteProperty(globalThis, 'ResizeObserver');
+      else Object.defineProperty(globalThis, 'ResizeObserver', descriptor);
+    }
+  });
+
   test('the person’s own scrolling ends it, and the header then leaves the transcript where it is', () => {
     for (const type of ['wheel', 'touchmove', 'pointerdown', 'keydown']) {
       const { transcript } = layout();

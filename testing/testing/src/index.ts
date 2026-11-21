@@ -43,5 +43,6 @@ export { hydrateServerHtml, renderThenHydrate } from './helpers/svelte-hydration
 export {
   importSvelteOnServer,
   prepareSvelteServerSource,
+  prepareSvelteServerSources,
   renderSvelteOnServer,
 } from './helpers/svelte-server.ts';

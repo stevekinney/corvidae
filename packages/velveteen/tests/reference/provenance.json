@@ -1,0 +1,18 @@
+{
+  "source": {
+    "repository": "https://github.com/sveltejs/kit",
+    "commit": "a58e0a92c35dbeee161e96c733464dc7397e073a",
+    "package": "@sveltejs/kit@3.3.0 (executed from tests/reference/upstream/packages/kit)"
+  },
+  "toolchain": {
+    "svelte": "5.57.1",
+    "vite": "8.3.3",
+    "svelteVitePlugin": "7.3.1",
+    "playwright": "1.63.0"
+  },
+  "identity": {
+    "usedSourceFiles": 243,
+    "packageJsonSha256": "3da3fee93c4eaba3246702b8d36cbb2d99d4794bdbb76e20a669d618600b5765"
+  },
+  "launcherContract": "JSON string-array command; stdout JSON URL record; SIGTERM shutdown"
+}

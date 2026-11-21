@@ -29,12 +29,34 @@ import { landAt } from '../chat/pages.test-support.ts';
 import { AUDIT_LOOKUPS_IN_FLIGHT } from './audit-lookups.svelte.ts';
 
 let stub: BureauStub | undefined;
+// ListDetail opens the newest event only once it measures itself wide, and happy-dom has no layout,
+// so every element is given a desktop width.
+const measure = HTMLElement.prototype.getBoundingClientRect;
+beforeEach(() => {
+  HTMLElement.prototype.getBoundingClientRect = () =>
+    ({
+      width: 1280,
+      height: 800,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 1280,
+      bottom: 800,
+    }) as DOMRect;
+});
 afterEach(() => {
+  HTMLElement.prototype.getBoundingClientRect = measure;
   jest.useRealTimers();
   cleanup();
   stub?.restore();
   stub = undefined;
 });
+
+/** The parameters of the address other than the open event, which ListDetail names beside the table. */
+function filtersInAddress(): string[] {
+  return [...new URLSearchParams(window.location.search).keys()].filter((key) => key !== 'record');
+}
 
 const MINUTE = 60_000;
 const NOW = Date.now();
@@ -544,8 +566,8 @@ describe('the open event', () => {
     await waitFor(() => expect(cutText?.getAttribute('tabindex')).toBe('0'));
   }
 
-  test('the pane says to select an event when none is open, after the filters change', async () => {
-    const { container, findByTestId, findByText, getByLabelText } = open((params) =>
+  test('after the filters change the first event they list opens, and the pane never says to select one', async () => {
+    const { container, findByTestId, getByLabelText, queryByText } = open((params) =>
       params['types'] !== undefined &&
       (params['types'] as string[]).length < AUDIT_EVENT_TYPES.length
         ? { records: [BOOTED], nextCursor: null }
@@ -553,13 +575,20 @@ describe('the open event', () => {
     );
     await findByTestId('audit-detail');
     expect(rowsOf(container)[0]?.getAttribute('aria-current')).toBe('true');
+    const before = new URLSearchParams(window.location.search).get('record');
 
     await fireEvent.change(getByLabelText(AUDIT_COPY.actionLabel), {
       target: { value: 'started' },
     });
 
-    await findByText(AUDIT_COPY.emptyDetailTitle);
-    expect(window.location.search).not.toContain('record=');
+    await waitFor(() => {
+      expect(rowsOf(container)).toHaveLength(1);
+      expect(rowsOf(container)[0]?.getAttribute('aria-current')).toBe('true');
+      const open = new URLSearchParams(window.location.search).get('record');
+      expect(open).not.toBeNull();
+      expect(open).not.toBe(before);
+    });
+    expect(queryByText(AUDIT_COPY.emptyDetailTitle)).toBeNull();
   });
 });
 
@@ -638,7 +667,8 @@ describe('the filters', () => {
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.noMatches.clear }));
     await findByText('Removed the Anthropic key');
     expect(box.value).toBe('');
-    expect(window.location.search).toBe('');
+    // No filter is left in the address; only the event that opens beside the table is named.
+    expect(filtersInAddress()).toEqual([]);
   });
 
   test('the address holds the filters, so a search can be linked to and survives a reload', async () => {
@@ -744,14 +774,24 @@ describe('an address that names an event', () => {
       principal: 'system:host',
       detail: null,
     });
-    const { findByTestId } = open(
-      (params) =>
-        params['cursor'] === 'c1'
-          ? { records: [wanted], nextCursor: null }
-          : { records: [KEY_REMOVED], nextCursor: 'c1' },
-      {},
+    const laterPage = Promise.withResolvers<Page>();
+    const { findByTestId, findByText, queryByRole } = open(
+      FULL,
+      {
+        'bureau.audit.query': (params) => {
+          if (isProbe(params) || isTotal(params))
+            return { records: [KEY_REMOVED], nextCursor: null };
+          if (params['cursor'] === 'c1') return laterPage.promise;
+          return { records: [KEY_REMOVED], nextCursor: 'c1' };
+        },
+      },
       { at: `/health/audit?record=${encodeURIComponent(`${wanted.timestamp}#3`)}` },
     );
+
+    await findByText('Removed the Anthropic key');
+    await waitFor(() => expect(queries().some((query) => query['cursor'] === 'c1')).toBe(true));
+    expect(queryByRole('heading', { name: AUDIT_COPY.recordNotFound.title })).toBeNull();
+    laterPage.resolve({ records: [wanted], nextCursor: null });
 
     const detail = await findByTestId('audit-detail');
     await waitFor(() => expect(detail.querySelector('h3')?.textContent).toBe('Server started'));
@@ -1294,7 +1334,7 @@ describe('the search box and the end of the table', () => {
     await fireEvent.click(view.getByRole('button', { name: 'Clear search' }));
 
     await waitFor(() => expect(box.value).toBe(''));
-    await waitFor(() => expect(window.location.search).toBe(''));
+    await waitFor(() => expect(filtersInAddress()).toEqual([]));
   });
 
   test('reading to the end of the table reads the next page of the log', async () => {

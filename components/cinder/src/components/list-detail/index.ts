@@ -8,6 +8,7 @@ export type {
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,
+  ListDetailSelectionChange,
   ListDetailSelectionLocation,
   ListDetailStorage,
 } from './list-detail.types.ts';

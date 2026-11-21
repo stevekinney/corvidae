@@ -608,6 +608,7 @@
             <Input
               id="workflow-builder-title"
               label={copy.titleLabel}
+              optional
               placeholder={copy.titlePlaceholder}
               value={view.title}
               onValueChange={changeTitle}

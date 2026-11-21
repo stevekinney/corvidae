@@ -4,7 +4,7 @@
  * Chat publishes Cinder's `fullShikiHighlighter()` for every code block in a transcript, and that
  * highlighter looks a block's language up in `shiki/langs` and `shiki/themes`, whose complete
  * registries would make a bundler emit every grammar and theme Shiki ships. The build resolves
- * both specifiers to this module instead (`curatedShikiPlugin` in `scripts/build.ts`), so the
+ * both specifiers to this module instead (`curatedShikiPlugin` in `scripts/browser-build.ts`), so the
  * tables hold what the application already ships: the grammars Markdown highlights with
  * (`BUNDLED_LANGUAGES` in `packages/markdown/src/rendering/highlighter.ts`) and the grammars those
  * embed, which include JSON, the language of every tool call's arguments and result, and the two
