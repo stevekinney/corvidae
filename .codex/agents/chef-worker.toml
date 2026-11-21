@@ -1,6 +1,6 @@
 name = "chef-worker"
 description = "Implementation worker for chef runs. Use for every chef dispatch; it delivers exactly one issue from its brief file, in its own worktree, pushes its branch, and owns any pull request it opens through its review threads."
-model = "gpt-5.6-terra"
+model = "gpt-6.1-terra"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 developer_instructions = '''
