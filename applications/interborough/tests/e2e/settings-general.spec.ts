@@ -129,6 +129,24 @@ test.describe('Settings › General', () => {
     });
   });
 
+  test('advanced settings: ordinary rows stay visible while the additional settings are disclosed', async ({
+    page,
+  }) => {
+    await openGeneral(page);
+    const disclosure = page.getByRole('button', { name: 'Advanced' });
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
+    await expect(settingRow(page, 'tools.decide')).toHaveCount(0);
+    await captureAtBothWidths(page, 'advanced settings collapsed');
+
+    await disclosure.focus();
+    await page.keyboard.press('Enter');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    const decide = settingRow(page, 'tools.decide');
+    await expect(decide.getByRole('switch', { name: 'Decide' })).toBeVisible();
+    await captureAtBothWidths(page, 'advanced settings open');
+  });
+
   test('reverted: Revert puts the waiting change back to the running value, with an Undo toast', async ({
     page,
   }) => {
@@ -189,6 +207,7 @@ test.describe('Settings › General', () => {
       reason: 'the test refuses the save, so the request fails',
     });
     await openGeneral(page);
+    await page.getByRole('button', { name: 'Advanced' }).click();
     await page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { method?: string } | null;
       if (body?.method === 'bureau.settings.update') {
@@ -264,6 +283,10 @@ test.describe('Settings › General', () => {
     await expect(cap).toContainText(SETTINGS_COPY.lockedMessage);
     await expect(cap.getByRole('spinbutton')).toBeDisabled();
     await expect(cap.getByRole('spinbutton')).toHaveValue('4');
+    await page.getByRole('button', { name: 'Advanced' }).click();
+    const durable = settingRow(page, 'durable');
+    await expect(durable).toContainText(SETTINGS_COPY.lockedMessage);
+    await expect(durable.getByRole('switch')).toBeDisabled();
     await captureAtBothWidths(page, 'locked-remote');
   });
 
