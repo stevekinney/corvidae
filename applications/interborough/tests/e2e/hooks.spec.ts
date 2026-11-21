@@ -129,6 +129,23 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
   await checkA11y('hooks — the editor with a delivery');
 });
 
+for (const width of WIDTHS) {
+  test(`[shared-form-actions] /hooks/new: the Check actions share Cinder FormActions at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks/new', []);
+    const actions = page.getByRole('group', { name: 'Form actions' });
+    await expect(actions).toBeVisible();
+    await expect(actions.getByRole('button')).toHaveText([copy.check.create, copy.check.test]);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'shared FormActions Check',
+      source: SOURCE,
+    });
+  });
+}
+
 test('fires for a real event, and shows that delivery beside the test', async ({
   page,
   request,

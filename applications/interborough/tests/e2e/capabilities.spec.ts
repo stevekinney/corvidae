@@ -11,11 +11,13 @@ import type { Page } from '@playwright/test';
 
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { readCatalog } from './agent-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 const copy = CAPABILITIES_COPY;
+const SOURCE = 'capabilities.spec.ts';
 
 const area = (page: Page) => page.locator('[data-view="capabilities"]');
 const toolRows = (page: Page) => page.locator('[data-tool-row]');
@@ -91,6 +93,22 @@ test.describe('the Tools tab', () => {
       // No word stands in for an empty list.
       await expect(detail).not.toContainText(/\bNone\b/);
       await checkA11y(`the Tools tab with ${tool.name} open at ${width}px`);
+    });
+
+    test(`keeps Connect actions in shared FormActions at ${width} pixels`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/capabilities/connect');
+      const actions = page.getByRole('group', { name: 'Form actions' });
+      await expect(actions).toBeVisible();
+      await expect(actions.getByRole('button')).toHaveText([
+        connect.actions.cancel,
+        connect.actions.connect,
+      ]);
+      await captureForDesignReview(page, {
+        route: '/capabilities/connect',
+        state: 'shared FormActions',
+        source: SOURCE,
+      });
     });
   }
 

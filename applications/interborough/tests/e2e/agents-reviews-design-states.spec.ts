@@ -19,7 +19,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 
-import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { MEMORY_COPY } from '../../src/app/copy/memory.ts';
 import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { REVIEW_ALREADY_RESOLVED } from '../../src/lib/bureau-reviews.ts';
@@ -41,6 +41,7 @@ import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 const WIDTHS = designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 const SOURCE = 'agents-reviews-design-states.spec.ts';
 const settingsCopy = AGENT_PAGE_COPY.settings;
+const editorCopy = AGENT_EDITOR_COPY;
 
 /** The chats a case started, deleted once it ends, whether it passed or not. */
 const threads: string[] = [];
@@ -514,3 +515,97 @@ for (const width of WIDTHS) {
     });
   });
 }
+
+test.describe('Agent shared FormActions', () => {
+  for (const width of WIDTHS) {
+    test(`captures a saved agent's shared FormActions at ${width} pixels`, async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const id = `e2e-design-shared-actions-${String(width)}`;
+      try {
+        await createAgentFile(request, id, {
+          name: 'Shared actions agent',
+          instructions: 'Answer the question.',
+        });
+        await page.goto(`/agents/${id}/edit`);
+        const actions = page.getByRole('group', { name: 'Form actions' });
+        await expect(actions).toBeVisible();
+        await expect(actions.getByRole('button')).toHaveText([
+          editorCopy.cancelAction,
+          editorCopy.saveAction,
+        ]);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared FormActions, saved agent',
+          source: SOURCE,
+        });
+      } finally {
+        await removeAgent(request, id);
+      }
+    });
+  }
+
+  test.describe('at 320 pixels with a coarse pointer', () => {
+    test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+
+    test('keeps the shared FormActions actions reachable above phone navigation', async ({
+      page,
+    }) => {
+      await page.goto('/agents/new');
+      const actions = page.getByRole('group', { name: 'Form actions' });
+      const save = actions.getByRole('button', { name: editorCopy.createAction });
+      await save.scrollIntoViewIfNeeded();
+      await expect(save).toBeInViewport();
+      const reachability = await save.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          coarse: matchMedia('(pointer: coarse)').matches,
+          width: box.width,
+          height: box.height,
+          receivesPointer: button.contains(hit),
+        };
+      });
+      expect(reachability.coarse).toBe(true);
+      expect(reachability.width).toBeGreaterThanOrEqual(44);
+      expect(reachability.height).toBeGreaterThanOrEqual(44);
+      expect(reachability.receivesPointer).toBe(true);
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'shared FormActions, 320 coarse pointer',
+        source: SOURCE,
+      });
+    });
+  });
+
+  test('keeps the same shared FormActions after Try it opens and closes at 768 pixels', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 768, height: 900 });
+    const id = 'e2e-design-shared-actions-try';
+    try {
+      await createAgentFile(request, id, {
+        name: 'Shared actions trial',
+        instructions: 'Answer the question.',
+      });
+      await page.goto(`/agents/${id}/edit`);
+      const actions = page.getByRole('group', { name: 'Form actions' });
+      await expect(actions).toBeVisible();
+      await page.getByRole('button', { name: editorCopy.try.action }).click();
+      await expect(page.getByTestId('agent-try-panel')).toBeVisible();
+      await page.getByRole('button', { name: 'Close' }).click();
+      await expect(page.getByTestId('agent-try-panel')).toBeHidden();
+      await expect(actions).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/agents/:agent/edit',
+        state: 'shared FormActions, Try it closed at 768',
+        source: SOURCE,
+      });
+    } finally {
+      await removeAgent(request, id);
+    }
+  });
+});
