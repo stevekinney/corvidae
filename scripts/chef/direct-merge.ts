@@ -22,7 +22,10 @@
 //                 head. A branch that changes nothing relative to the base is refused at `merge`;
 //   3b. queue     `land-queue.ts`: a commit on `origin/<default>` since the head's merge-base that
 //                 touches what the head's evidence plan reaches refuses the landing, naming the
-//                 files, because the head's evidence never saw it. It runs here, inside the merge
+//                 files, because the head's evidence never saw it, unless main's own CI verified
+//                 it (a `main.yml` push run succeeded at that commit or a later one on main, owner
+//                 decision 2026-11-21; the report's `verifiedOnMain` names the runs, and an
+//                 unreadable provider verifies nothing). It runs here, inside the merge
 //                 lock the push holds, so the decision and the push are one critical section. On
 //                 LAND with `main` moved, the integration-tree check accepts the attested base and
 //                 tree for the pushed ones only when Git shows the pushed tree is the attested
@@ -70,7 +73,13 @@ import {
 import { repositoryContext } from './evidence-plan.ts';
 import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { landQueueVerdict, type LandQueueResult } from './land-queue.ts';
+import {
+  describeVerified,
+  githubMainRuns,
+  landQueueVerdict,
+  type LandQueueResult,
+  type MainRunReader,
+} from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
@@ -124,6 +133,11 @@ export interface DirectMergeReport {
   guardsAlreadyFailing?: AlreadyFailingGuard[];
   /** The revert findings the caller named as intended, each file with the commit it undoes. */
   acceptedReverts?: string[];
+  /**
+   * The commits on `origin/<default>` since the head's evidence that main's own CI had already
+   * verified and the queue therefore did not count, one line per `main.yml` run. Absent when none.
+   */
+  verifiedOnMain?: string[];
   failedStep: string | null;
   detail: string | null;
   usage?: UsageTotals;
@@ -142,6 +156,8 @@ export interface DirectMergeDependencies {
   verification: DeliveryVerificationDependencies;
   /** The evidence plan of a changed-file list, read from `worktree`; a test supplies one. */
   evidencePlan: (changed: string[], worktree: string) => EvidencePlan;
+  /** Main's own `main.yml` push runs, for the landing queue; defaults to `gh run list`. */
+  mainRuns: MainRunReader;
 }
 
 /** The refusal's detail: the first failing guard by name, and the others that failed after it. */
@@ -202,6 +218,7 @@ function landingQueue(
   runner: Runner,
   base: string,
   defaultBranch: string,
+  repository: string,
 ): { refusal: string } | { classified: LandQueueResult } {
   try {
     const changed = runner(
@@ -220,10 +237,25 @@ function landingQueue(
       base,
       cwd: options.worktree,
       workspaces: discoverWorkspaces(options.worktree),
+      // Commits main's own CI has verified do not make the evidence stale.
+      mainRuns:
+        partial.mainRuns ??
+        githubMainRuns(runner, {
+          branch: defaultBranch,
+          cwd: options.worktree,
+          repository: repository,
+        }),
     });
     if (verdict.verdict === 'LAND') return { classified: verdict };
+    const verifiedNote = describeVerified(verdict.verified);
     return {
-      refusal: `commits on origin/${defaultBranch} since the evidence head ${options.head.slice(0, 12)} touch what its plan reaches, so it needs a new evidence run: ${verdict.overlapping.join(', ')}`,
+      refusal: [
+        verdict.refusal === undefined ? undefined : `${verdict.refusal}; `,
+        `commits on origin/${defaultBranch} since the evidence head ${options.head.slice(0, 12)} touch what its plan reaches, so it needs a new evidence run: ${verdict.overlapping.join(', ')}`,
+        verifiedNote.length === 0 ? undefined : ` (${verifiedNote.join('; ')})`,
+      ]
+        .filter((part) => part !== undefined)
+        .join(''),
     };
   } catch (error) {
     return {
@@ -234,7 +266,9 @@ function landingQueue(
 
 /**
  * `main` moved after the evidence and the queue classified every new commit as outside the plan's
- * scope. The integration-tree check may then accept the attested identity for the tree actually
+ * scope, or as verified by main's own CI (`classified.commits` holds both kinds: a verified commit
+ * is classified like one outside the plan, and the checks below hold it to the same proof). The
+ * integration-tree check may then accept the attested identity for the tree actually
  * pushed, but only when Git itself shows the two agree. Returns why not, or `undefined`:
  *   1. the attested base is an ancestor of the current one;
  *   2. merging the head onto the attested base reproduces the attested tree;
@@ -378,8 +412,11 @@ async function directMergeCore(
   // 3b. queue: inside the merge lock this step shares with the push, so the decision and the merge
   // are one critical section. Commits that reached `main` since the head's evidence, and touch
   // what its plan reaches, need a new evidence run: refuse with the files named.
-  const queued = landingQueue(options, partial, runner, base, defaultBranch);
+  const queued = landingQueue(options, partial, runner, base, defaultBranch, config.repository);
   if ('refusal' in queued) return fail('queue', queued.refusal);
+  // Say which commits main's own CI verified, so the landing comment can name them.
+  const verifiedOnMain = describeVerified(queued.classified.verified);
+  if (verifiedOnMain.length > 0) report.verifiedOnMain = verifiedOnMain;
   // The identity the verification chain attests: the actual base and tree, or, when main moved
   // outside the plan's scope and Git shows the tree is the attested one plus main's new commits,
   // the attested ones. Any other movement keeps the actual values and is refused below.

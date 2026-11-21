@@ -11,8 +11,15 @@
 //      transitively (any `scripts/` file when a test cannot be read); each fixture and
 //      end-to-end spec; each fixture slug's source; and the global inputs (`bun.lock`,
 //      `turbo.json`, the root `package.json`, any `tsconfig*.json`, `.github/`, `internal/`);
-//   3. no overlap: LAND, with no new run; overlap: REDISPATCH, naming the overlapping files.
-// A plan with `requires_full_run` covers the whole tree, so any commit on `main` overlaps it.
+//   3. a commit main's own CI already verified is not counted (owner decision, 2026-11-21): a
+//      `main.yml` run triggered by a push to `main` that completed successfully at a commit verifies
+//      that commit and every commit before it on `main`. Only the commits after the newest verified
+//      one, and any commit no green run covers yet, are intersected with the scope. When the
+//      provider cannot be read nothing is verified and the verdict is a REDISPATCH naming why;
+//   4. no overlap: LAND, with no new run (the verified commits and their run ids are reported);
+//      overlap: REDISPATCH, naming the overlapping files.
+// A plan with `requires_full_run` covers the whole tree, so any unverified commit on `main`
+// overlaps it.
 //
 // Usage:
 //   bun scripts/chef/land-queue.ts --evidence <sha> --plan <plan.json> [--base origin/main]
@@ -48,14 +55,50 @@ export interface MainCommit {
   files: string[];
 }
 
+/** One `main.yml` run triggered by a push to `main`, as the provider reports it. */
+export interface MainRun {
+  /** The commit the run built. */
+  sha: string;
+  id: string;
+  /** `completed` once the run has finished. */
+  status: string;
+  /** `success` when every job passed; `null` while the run is in progress. */
+  conclusion: string | null;
+}
+
+/**
+ * Reads the recent `main.yml` push runs on the default branch. It throws when the provider cannot
+ * be read: the queue then verifies nothing and fails closed.
+ */
+export type MainRunReader = () => readonly MainRun[];
+
+/** A commit on `main` that main's own CI already verified, and the run that covers it. */
+export interface VerifiedCommit {
+  sha: string;
+  /** The `main.yml` push run that succeeded at `runSha`. */
+  runId: string;
+  /** The commit that run built: this one, or a later one on `main`. */
+  runSha: string;
+}
+
 export interface LandQueueResult {
   verdict: LandVerdict;
   evidence: string;
   mergeBase: string;
   mainHead: string;
   commits: MainCommit[];
-  /** The files of `main`'s commits that fall inside the plan's scope, sorted. Empty on LAND. */
+  /**
+   * The files of `main`'s unverified commits that fall inside the plan's scope, sorted. Empty on
+   * LAND.
+   */
   overlapping: string[];
+  /**
+   * The commits since the merge base that main's own CI verified, oldest first, each with the run
+   * that covers it. Empty unless some commit overlapped the plan and a green run covered it.
+   */
+  verified: VerifiedCommit[];
+  /** Why the queue could not verify `main` (the provider read failed); absent otherwise. */
+  refusal?: string;
 }
 
 const FIXTURE_SOURCE = /^scripts\/browser-fixtures\/src\/fixtures\/([\w-]+)\.svelte$/;
@@ -220,6 +263,41 @@ export interface LandQueueOptions {
   cwd?: string | undefined;
   /** The workspace graph; the repository's own (`affected-tests.ts`) by default. */
   workspaces?: readonly WorkspaceGraphNode[];
+  /**
+   * Reads main's own `main.yml` push runs. A commit that a successful run built, or that sits
+   * before one on `main`, is verified and does not make the evidence stale. Absent, nothing is
+   * verified, as before.
+   */
+  mainRuns?: MainRunReader | undefined;
+}
+
+/**
+ * The commits main's own CI has verified: a `main.yml` push run that completed successfully at a
+ * commit verifies it and every commit before it on `main`. Returns the verified prefix of
+ * `commits` (oldest first), each with the earliest successful run at or after it.
+ */
+function verifiedPrefix(commits: readonly MainCommit[], runs: readonly MainRun[]): VerifiedCommit[] {
+  const green = new Map<string, string>();
+  for (const run of runs) {
+    if (run.status !== 'completed' || run.conclusion !== 'success') continue;
+    const known = green.get(run.sha);
+    if (known === undefined || Number(run.id) > Number(known)) green.set(run.sha, run.id);
+  }
+  let newest = -1;
+  for (let index = commits.length - 1; index >= 0; index -= 1)
+    if (green.has(commits[index]?.sha ?? '')) {
+      newest = index;
+      break;
+    }
+  const verified: VerifiedCommit[] = [];
+  let cover: { runSha: string; runId: string } | undefined;
+  for (let index = newest; index >= 0; index -= 1) {
+    const sha = commits[index]?.sha ?? '';
+    const runId = green.get(sha);
+    if (runId !== undefined) cover = { runSha: sha, runId };
+    if (cover !== undefined) verified.unshift({ sha, ...cover });
+  }
+  return verified;
 }
 
 /**
@@ -261,9 +339,24 @@ export function landQueueVerdict(options: LandQueueOptions): LandQueueResult {
       .split('\0')
       .filter(Boolean),
   }));
-  const overlapping = [
-    ...new Set(commits.flatMap((commit) => commit.files.filter((path) => inScope(scope, path)))),
-  ].toSorted();
+  const overlapOf = (candidates: readonly MainCommit[]): string[] => [
+    ...new Set(candidates.flatMap((commit) => commit.files.filter((path) => inScope(scope, path)))),
+  ];
+  let unverified: readonly MainCommit[] = commits;
+  let verified: VerifiedCommit[] = [];
+  let refusal: string | undefined;
+  // Main's own CI is read only when something on main reaches the plan: a commit outside the plan
+  // needs no verification, and a quiet main costs no provider call.
+  if (overlapOf(commits).length > 0 && options.mainRuns !== undefined) {
+    try {
+      verified = verifiedPrefix(commits, options.mainRuns());
+      unverified = commits.slice(verified.length);
+    } catch (error) {
+      // Fails closed: with the provider unreadable nothing is verified.
+      refusal = `the queue could not verify main: ${error instanceof Error ? error.message : 'unknown error'}`;
+    }
+  }
+  const overlapping = overlapOf(unverified).toSorted();
   return {
     verdict: overlapping.length === 0 ? 'LAND' : 'REDISPATCH',
     evidence,
@@ -271,6 +364,68 @@ export function landQueueVerdict(options: LandQueueOptions): LandQueueResult {
     mainHead,
     commits,
     overlapping,
+    verified,
+    ...(refusal === undefined ? {} : { refusal }),
+  };
+}
+
+const MAIN_RUN_LIMIT = 200;
+
+/**
+ * The reader for GitHub: `gh run list` for `main.yml` runs triggered by a push to `branch`. It
+ * throws on a failed or unreadable response, so the queue verifies nothing.
+ */
+export function githubMainRuns(
+  runner: Runner,
+  options: { branch: string; cwd?: string | undefined; repository?: string | undefined },
+): MainRunReader {
+  return () => {
+    const result = runner(
+      [
+        'gh',
+        'run',
+        'list',
+        ...(options.repository === undefined ? [] : ['--repo', options.repository]),
+        '--workflow',
+        'main.yml',
+        '--branch',
+        options.branch,
+        '--event',
+        'push',
+        '--limit',
+        String(MAIN_RUN_LIMIT),
+        '--json',
+        'databaseId,headSha,status,conclusion',
+      ],
+      options.cwd === undefined ? undefined : { cwd: options.cwd },
+    );
+    if (result.code !== 0)
+      throw new UsageError(
+        `gh run list failed: ${result.stderr.trim().split('\n')[0] ?? `exit ${result.code}`}`,
+      );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.stdout);
+    } catch {
+      throw new UsageError('gh run list did not return JSON');
+    }
+    if (!Array.isArray(parsed)) throw new UsageError('gh run list did not return a list');
+    return parsed.map((entry: unknown): MainRun => {
+      if (typeof entry !== 'object' || entry === null)
+        throw new UsageError('gh run list returned an entry that is not a run');
+      const headSha = 'headSha' in entry ? entry.headSha : undefined;
+      const status = 'status' in entry ? entry.status : undefined;
+      const databaseId = 'databaseId' in entry ? entry.databaseId : undefined;
+      const conclusion = 'conclusion' in entry ? entry.conclusion : undefined;
+      if (typeof headSha !== 'string' || typeof status !== 'string')
+        throw new UsageError('gh run list returned a run without a head or a status');
+      return {
+        sha: headSha,
+        id: String(databaseId ?? ''),
+        status,
+        conclusion: typeof conclusion === 'string' && conclusion !== '' ? conclusion : null,
+      };
+    });
   };
 }
 
@@ -281,17 +436,41 @@ export function formatVerdict(result: LandQueueResult): string {
     `merge base: ${result.mergeBase}`,
     `main: ${result.mainHead} (${result.commits.length} commits since the merge base)`,
   ];
-  if (result.verdict === 'LAND')
-    lines.push('no commit on main touches the plan scope: land without a new run');
-  else {
+  if (result.verdict === 'LAND') {
+    lines.push(
+      result.verified.length === 0
+        ? 'no commit on main touches the plan scope: land without a new run'
+        : 'every commit on main that touches the plan scope was verified by main CI: land without a new run',
+    );
+  } else {
+    if (result.refusal !== undefined) lines.push(result.refusal);
     lines.push('commits on main overlap the plan scope: a new evidence run is required');
     for (const path of result.overlapping) lines.push(`  ${path}`);
   }
+  lines.push(...describeVerified(result.verified));
   return lines.join('\n');
+}
+
+/** One line per `main.yml` run that verified commits, for the refusal and the landing comment. */
+export function describeVerified(verified: readonly VerifiedCommit[]): string[] {
+  const byRun = new Map<string, VerifiedCommit[]>();
+  for (const commit of verified) {
+    const group = byRun.get(commit.runId) ?? [];
+    group.push(commit);
+    byRun.set(commit.runId, group);
+  }
+  return [...byRun].map(
+    ([runId, commits]) =>
+      `verified by main.yml run ${runId} (green at ${commits[0]?.runSha.slice(0, 12) ?? ''}): ${commits
+        .map((commit) => commit.sha.slice(0, 12))
+        .join(', ')}`,
+  );
 }
 
 export interface LandQueueDependencies {
   runner: Runner;
+  /** Main's `main.yml` push runs; the command reads them with `gh` by default. */
+  mainRuns?: MainRunReader | undefined;
   readPlan: (path: string) => EvidencePlan;
   /** Runs `action` holding the merge lock. */
   withLock: <T>(
@@ -340,6 +519,12 @@ export async function run(
         plan,
         base,
         cwd: worktree,
+        mainRuns:
+          dependencies.mainRuns ??
+          githubMainRuns(dependencies.runner, {
+            branch: remote?.[2] ?? base,
+            cwd: worktree,
+          }),
       });
     },
   );

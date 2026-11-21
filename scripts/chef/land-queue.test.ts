@@ -2,7 +2,17 @@ import { describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 
-import { inScope, landQueueVerdict, planScope, run, UsageError } from './land-queue.ts';
+import {
+  formatVerdict,
+  githubMainRuns,
+  inScope,
+  landQueueVerdict,
+  planScope,
+  run,
+  UsageError,
+  type MainRun,
+  type MainRunReader,
+} from './land-queue.ts';
 import type { Runner } from './process-runner.ts';
 import type { EvidencePlan } from './verification-plan.ts';
 
@@ -194,8 +204,250 @@ describe('land-queue verdict', () => {
   });
 });
 
+// A commit that main's own CI verified does not make the evidence stale (owner decision,
+// 2026-11-21): a successful `main.yml` push run at a commit verifies it and every commit before it.
+describe('land-queue with main CI verification', () => {
+  const IN_PLAN = ['packages/armorer/src/registry.ts'];
+  const OUT_OF_PLAN = ['packages/weft/src/protocol.ts'];
+  const green = (sha: string, id: string): MainRun => ({
+    sha,
+    id,
+    status: 'completed',
+    conclusion: 'success',
+  });
+
+  function withRuns(commits: Record<string, string[]>, runs: MainRun[] | Error) {
+    const reads: number[] = [];
+    const mainRuns: MainRunReader = () => {
+      reads.push(1);
+      if (runs instanceof Error) throw runs;
+      return runs;
+    };
+    const { runner } = repository(commits);
+    const result = landQueueVerdict({
+      runner,
+      evidence: EVIDENCE,
+      plan,
+      workspaces,
+      mainRuns,
+    });
+    return { result, reads: reads.length };
+  }
+
+  // Row 1.
+  test('no new main commits: LAND, and main CI is not read', () => {
+    const { result, reads } = withRuns({}, new Error('must not be read'));
+    expect(result.verdict).toBe('LAND');
+    expect(result.verified).toEqual([]);
+    expect(reads).toBe(0);
+  });
+
+  // Row 2.
+  test('new commits outside the plan: LAND as before, and main CI is not read', () => {
+    const { result, reads } = withRuns(
+      { c1: OUT_OF_PLAN, c2: ['documentation/plans/other.md'] },
+      new Error('must not be read'),
+    );
+    expect(result.verdict).toBe('LAND');
+    expect(result.overlapping).toEqual([]);
+    expect(result.verified).toEqual([]);
+    expect(reads).toBe(0);
+  });
+
+  // Row 3.
+  test('in-plan commits at or before a green push run: LAND, reporting the commits and the run', () => {
+    const { result, reads } = withRuns({ c1: IN_PLAN, c2: OUT_OF_PLAN, c3: IN_PLAN }, [
+      green('c3', '303'),
+    ]);
+    expect(reads).toBe(1);
+    expect(result.verdict).toBe('LAND');
+    expect(result.overlapping).toEqual([]);
+    expect(result.verified).toEqual([
+      { sha: 'c1', runId: '303', runSha: 'c3' },
+      { sha: 'c2', runId: '303', runSha: 'c3' },
+      { sha: 'c3', runId: '303', runSha: 'c3' },
+    ]);
+    expect(result.commits.map((commit) => commit.sha)).toEqual(['c1', 'c2', 'c3']);
+    const text = formatVerdict(result);
+    expect(text.split('\n')[0]).toBe('LAND');
+    expect(text).toContain('verified by main.yml run 303');
+  });
+
+  test('a green run at a later commit covers an earlier commit whose own run failed', () => {
+    const { result } = withRuns({ c1: IN_PLAN, c2: IN_PLAN }, [
+      { sha: 'c1', id: '101', status: 'completed', conclusion: 'failure' },
+      green('c2', '202'),
+    ]);
+    expect(result.verdict).toBe('LAND');
+    expect(result.verified.map((commit) => [commit.sha, commit.runId])).toEqual([
+      ['c1', '202'],
+      ['c2', '202'],
+    ]);
+  });
+
+  test('each verified commit is credited to the earliest green run at or after it', () => {
+    const { result } = withRuns({ c1: IN_PLAN, c2: IN_PLAN, c3: IN_PLAN }, [
+      green('c1', '101'),
+      green('c3', '303'),
+    ]);
+    expect(result.verified).toEqual([
+      { sha: 'c1', runId: '101', runSha: 'c1' },
+      { sha: 'c2', runId: '303', runSha: 'c3' },
+      { sha: 'c3', runId: '303', runSha: 'c3' },
+    ]);
+  });
+
+  // Row 4.
+  test('in-plan commits after the newest green run: REDISPATCH naming only their files', () => {
+    const { result } = withRuns(
+      {
+        c1: ['packages/armorer/src/registry.ts'],
+        c2: ['packages/armorer/src/other.ts'],
+        c3: ['packages/operative/src/later.ts'],
+      },
+      [green('c2', '202')],
+    );
+    expect(result.verdict).toBe('REDISPATCH');
+    expect(result.overlapping).toEqual(['packages/operative/src/later.ts']);
+    expect(result.verified.map((commit) => commit.sha)).toEqual(['c1', 'c2']);
+  });
+
+  // Row 5.
+  test('a green run only at an older commit: REDISPATCH for the later in-plan commits', () => {
+    const { result } = withRuns(
+      {
+        c1: ['packages/armorer/src/registry.ts'],
+        c2: OUT_OF_PLAN,
+        c3: ['packages/operative/src/second.ts'],
+        c4: ['packages/core/src/third.ts'],
+      },
+      [green('c1', '101')],
+    );
+    expect(result.verdict).toBe('REDISPATCH');
+    expect(result.overlapping).toEqual([
+      'packages/core/src/third.ts',
+      'packages/operative/src/second.ts',
+    ]);
+    expect(result.verified).toEqual([{ sha: 'c1', runId: '101', runSha: 'c1' }]);
+    const text = formatVerdict(result);
+    expect(text.split('\n')[0]).toBe('REDISPATCH');
+    expect(text).toContain('verified by main.yml run 101');
+  });
+
+  // Row 6.
+  test('a newer run that failed, was cancelled or is still in progress verifies nothing', () => {
+    const { result } = withRuns(
+      {
+        c1: ['packages/armorer/src/registry.ts'],
+        c2: ['packages/armorer/src/two.ts'],
+        c3: ['packages/armorer/src/three.ts'],
+        c4: ['packages/armorer/src/four.ts'],
+      },
+      [
+        green('c1', '101'),
+        { sha: 'c2', id: '202', status: 'in_progress', conclusion: null },
+        { sha: 'c3', id: '303', status: 'completed', conclusion: 'failure' },
+        { sha: 'c4', id: '404', status: 'completed', conclusion: 'cancelled' },
+      ],
+    );
+    expect(result.verdict).toBe('REDISPATCH');
+    expect(result.overlapping).toEqual([
+      'packages/armorer/src/four.ts',
+      'packages/armorer/src/three.ts',
+      'packages/armorer/src/two.ts',
+    ]);
+    expect(result.verified.map((commit) => commit.sha)).toEqual(['c1']);
+  });
+
+  test('a run that is not completed does not verify even when it reports success', () => {
+    const { result } = withRuns({ c1: IN_PLAN }, [
+      { sha: 'c1', id: '101', status: 'queued', conclusion: 'success' },
+    ]);
+    expect(result.verdict).toBe('REDISPATCH');
+    expect(result.verified).toEqual([]);
+  });
+
+  // Row 7.
+  test('an unreadable provider verifies nothing: REDISPATCH saying main could not be verified', () => {
+    const { result } = withRuns(
+      { c1: IN_PLAN, c2: OUT_OF_PLAN },
+      new Error('gh run list failed: HTTP 502'),
+    );
+    expect(result.verdict).toBe('REDISPATCH');
+    expect(result.refusal).toContain('the queue could not verify main');
+    expect(result.refusal).toContain('HTTP 502');
+    expect(result.overlapping).toEqual(IN_PLAN);
+    expect(result.verified).toEqual([]);
+    expect(formatVerdict(result)).toContain('the queue could not verify main');
+  });
+
+  test('without a provider nothing is verified, as before', () => {
+    const { runner } = repository({ c1: IN_PLAN });
+    const result = landQueueVerdict({ runner, evidence: EVIDENCE, plan, workspaces });
+    expect(result.verdict).toBe('REDISPATCH');
+    expect(result.verified).toEqual([]);
+  });
+
+  test('a plan that requires a full run lands once main CI covers every commit', () => {
+    const { runner } = repository({ c1: ['documentation/plans/other.md'], c2: ['bun.lock'] });
+    const result = landQueueVerdict({
+      runner,
+      evidence: EVIDENCE,
+      plan: { ...plan, requires_full_run: true },
+      workspaces,
+      mainRuns: () => [green('c2', '202')],
+    });
+    expect(result.verdict).toBe('LAND');
+    expect(result.verified.map((commit) => commit.sha)).toEqual(['c1', 'c2']);
+  });
+});
+
+describe('main run provider (gh)', () => {
+  const ghRunner =
+    (stdout: string, code = 0): Runner =>
+    () => ({ code, stdout, stderr: code === 0 ? '' : 'HTTP 502' });
+  const reader = (runner: Runner) =>
+    githubMainRuns(runner, { branch: 'main', repository: 'acme/widgets' });
+
+  test('reads the main.yml push runs for the default branch', () => {
+    const calls: string[][] = [];
+    const runs = githubMainRuns(
+      (command) => {
+        calls.push(command);
+        return {
+          code: 0,
+          stdout: JSON.stringify([
+            { databaseId: 7, headSha: 'a'.repeat(40), status: 'completed', conclusion: 'success' },
+            { databaseId: 8, headSha: 'b'.repeat(40), status: 'in_progress', conclusion: '' },
+          ]),
+          stderr: '',
+        };
+      },
+      { branch: 'main', repository: 'acme/widgets' },
+    )();
+    expect(runs).toEqual([
+      { sha: 'a'.repeat(40), id: '7', status: 'completed', conclusion: 'success' },
+      { sha: 'b'.repeat(40), id: '8', status: 'in_progress', conclusion: null },
+    ]);
+    const command = calls[0]?.join(' ') ?? '';
+    expect(command).toContain('--workflow main.yml');
+    expect(command).toContain('--branch main');
+    expect(command).toContain('--event push');
+    expect(command).toContain('--repo acme/widgets');
+    expect(command).toContain('--json databaseId,headSha,status,conclusion');
+  });
+
+  test('a failed command, bad JSON or a malformed run all throw, so the queue fails closed', () => {
+    expect(() => reader(ghRunner('', 1))()).toThrow('gh run list failed: HTTP 502');
+    expect(() => reader(ghRunner('not json'))()).toThrow('did not return JSON');
+    expect(() => reader(ghRunner('{}'))()).toThrow('did not return a list');
+    expect(() => reader(ghRunner('[{"headSha":"a"}]'))()).toThrow('without a head or a status');
+    expect(() => reader(ghRunner('[null]'))()).toThrow('not a run');
+  });
+});
+
 describe('land-queue command', () => {
-  const dependencies = (commits: Record<string, string[]>) => ({
+  const dependencies =(commits: Record<string, string[]>) => ({
     runner: repository(commits).runner,
     readPlan: () => plan,
     withLock: async <T>(_: unknown, action: () => T) => action(),

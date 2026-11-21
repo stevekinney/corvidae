@@ -338,6 +338,8 @@ const queueOverlap = await outcomeOf(async () => {
     runner: watching,
     verification: w.verification,
     guards: guardsPass,
+    // No green main.yml run covers the new commit.
+    mainRuns: () => [],
   });
   expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'queue' });
   expect(report.detail).toContain('bun.lock');
@@ -379,6 +381,98 @@ const queueLand = await outcomeOf(async () => {
   expect(observed?.base).toBe(verification.request.base);
   expect(observed?.landedBase).toBe(notes);
   expect(observed?.landedTree).toBe(git(w.origin, 'rev-parse', `${merged}^{tree}`));
+});
+
+// Main's own CI verified a commit that reaches the plan (the lockfile is a global input): the queue
+// says LAND, and the integration-tree check accepts because Git shows the pushed tree is the
+// attested tree plus main's new commit. No new evidence run is needed.
+const queueLandVerified = await outcomeOf(async () => {
+  const w = await world();
+  const lock = commit(w.other, 'bun.lock', 'lock\n', 'Change the lockfile on main');
+  git(w.other, 'push', '-q', 'origin', 'main');
+  let reads = 0;
+  const report = await directMerge(w.options, {
+    runner: isolated,
+    verification: w.verification,
+    guards: guardsPass,
+    mainRuns: () => {
+      reads += 1;
+      return [{ sha: lock, id: '4242', status: 'completed', conclusion: 'success' }];
+    },
+  });
+  expect(reads).toBe(1);
+  expect(report).toMatchObject({ merged: true, failedStep: null, detail: null, base: lock });
+  expect(report.verifiedOnMain?.join('\n')).toContain('main.yml run 4242');
+  expect(report.verifiedOnMain?.join('\n')).toContain(lock.slice(0, 12));
+  const merged = report.mergeCommit ?? '';
+  // The merged tree is the attested tree plus main's commit: what merging the head onto the new
+  // main gives, and it holds the lockfile.
+  expect(git(w.origin, 'rev-parse', `${merged}^{tree}`)).toBe(mergeTree(w.other, lock, w.head).first);
+  expect(git(w.origin, 'ls-tree', '--name-only', merged).split('\n')).toEqual([
+    'bun.lock',
+    'feature.txt',
+    'moved.txt',
+    'package.json',
+    'shared.txt',
+  ]);
+  const verification = loadDeliveryVerification(w.options.verification, w.verification);
+  const observed = readExecutionSnapshot(verification.state).operations[
+    verification.request.operationId
+  ]?.observed as { base: string; landedBase: string } | undefined;
+  expect(observed?.base).toBe(verification.request.base);
+  expect(observed?.landedBase).toBe(lock);
+});
+
+// The same verified commit, but main also gained a merge whose own change no commit's file list
+// shows: the pushed tree holds something besides the attested tree plus main's commits, so the
+// verified commit does not excuse it.
+const queueVerifiedButTreeDiffers = await outcomeOf(async () => {
+  const w = await world(false, true, {
+    afterEvidence: (other) => {
+      commit(other, 'bun.lock', 'lock\n', 'Change the lockfile on main');
+      git(other, 'checkout', '-q', '-b', 'side');
+      commit(other, 'side.txt', 'side\n', 'A side commit');
+      git(other, 'checkout', '-q', 'main');
+      git(other, 'merge', '-q', '--no-ff', '--no-commit', 'side');
+      writeFileSync(join(other, 'evil.txt'), 'evil\n');
+      git(other, 'add', 'evil.txt');
+      git(other, 'commit', '-q', '-m', 'Merge side, with a change only the merge makes');
+      git(other, 'push', '-q', 'origin', 'main');
+      return undefined;
+    },
+  });
+  const tip = refs(w.origin, 'refs/heads/main');
+  const mainTip = tip;
+  const report = await directMerge(w.options, {
+    runner: isolated,
+    verification: w.verification,
+    guards: guardsPass,
+    mainRuns: () => [{ sha: tip, id: '4243', status: 'completed', conclusion: 'success' }],
+  });
+  expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'verification' });
+  expect(report.detail).toContain('the trees differ outside main');
+  expect(refs(w.origin, 'refs/heads/main')).toBe(mainTip);
+  expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+});
+
+// A provider that cannot be read verifies nothing: the queue refuses, never lands.
+const queueProviderFails = await outcomeOf(async () => {
+  const w = await world();
+  commit(w.other, 'bun.lock', 'lock\n', 'Change the lockfile on main');
+  git(w.other, 'push', '-q', 'origin', 'main');
+  const mainTip = refs(w.origin, 'refs/heads/main');
+  const report = await directMerge(w.options, {
+    runner: isolated,
+    verification: w.verification,
+    guards: guardsPass,
+    mainRuns: () => {
+      throw new Error('gh run list failed: HTTP 502');
+    },
+  });
+  expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'queue' });
+  expect(report.detail).toContain('the queue could not verify main');
+  expect(report.detail).toContain('bun.lock');
+  expect(refs(w.origin, 'refs/heads/main')).toBe(mainTip);
 });
 
 const planWithoutShared = (): EvidencePlan => ({
@@ -768,6 +862,18 @@ describe('directMerge against real Git', () => {
 
   test('lands without a new run when main moved only outside the plan scope, and the tree is proven', () => {
     rethrow(queueLand);
+  });
+
+  test('lands without a new run when main moved with a commit main CI had already verified, and the tree is proven', () => {
+    rethrow(queueLandVerified);
+  });
+
+  test('still refuses a verified moved main whose pushed tree holds anything besides the attested tree and main commits', () => {
+    rethrow(queueVerifiedButTreeDiffers);
+  });
+
+  test('refuses at the queue when main CI cannot be read, never landing on a guess', () => {
+    rethrow(queueProviderFails);
   });
 
   test('still refuses a moved main whose tree is not the attested tree plus its new commits', () => {
