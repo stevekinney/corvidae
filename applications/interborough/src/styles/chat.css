@@ -367,7 +367,7 @@
 
 /* The compact action's touch area extends below the title line. Keep it clear of phone search. */
 @media (max-width: 639.98px) and (any-pointer: coarse) {
-  .ib-chats__title:has(+ .cinder-search-field) {
+  .ib-chats__title:has(+ .ib-chats__search) {
     padding-block-end: var(--cinder-space-1);
   }
 }

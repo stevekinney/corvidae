@@ -689,6 +689,7 @@
         <!-- No search or segments over nothing: they come with the first chat (owner report, 2026-11-19). -->
         {#if searchAvailable && listState !== 'first-use'}
           <SearchField
+            class="ib-chats__search"
             size="md"
             aria-label={CHAT_COPY.list.searchLabel}
             placeholder={CHAT_COPY.list.searchPlaceholder}
