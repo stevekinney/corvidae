@@ -12,6 +12,7 @@ import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
+import { readBoxes } from './read-boxes.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
@@ -153,15 +154,11 @@ test.describe('the run setup page at /workflows/:workflow/run and its queued res
       await timing.scrollIntoViewIfNeeded();
       await expect(timing).toBeInViewport({ ratio: 1 });
       await expect(footer(page)).toBeInViewport({ ratio: 1 });
-      const [optionsBox, footerBox] = await Promise.all([
-        options.boundingBox(),
-        footer(page).boundingBox(),
-      ]);
-      expect(optionsBox).not.toBeNull();
-      expect(footerBox).not.toBeNull();
-      if (optionsBox !== null && footerBox !== null) {
-        expect(optionsBox.y + optionsBox.height).toBeLessThanOrEqual(footerBox.y);
-      }
+      const { optionsBox, footerBox } = await readBoxes(page, {
+        optionsBox: options,
+        footerBox: footer(page),
+      });
+      expect(optionsBox.y + optionsBox.height).toBeLessThanOrEqual(footerBox.y);
       await options.evaluate((element) => {
         element.scrollTop = 0;
       });
