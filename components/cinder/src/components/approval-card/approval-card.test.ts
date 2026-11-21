@@ -1226,7 +1226,7 @@ describe('ApprovalCard', () => {
   });
 
   test('renders cancelled terminal copy with American spelling', () => {
-    const { getByText, getByRole } = render(ApprovalCard, {
+    const { getByText } = render(ApprovalCard, {
       ...approvalCardProps({ state: 'cancelled' }),
     });
 
