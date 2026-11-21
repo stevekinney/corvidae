@@ -84,7 +84,9 @@ test('a worker drains after a confirmation that says what happens, and then read
 }) => {
   await page.goto(`/health/workers?worker=${E2E_FLEET_WORKER_ID}`);
   await expect(detail(page)).toBeVisible();
-  await expect(detail(page).locator('.cinder-status-dot').first()).toContainText('Connected');
+  await expect(detail(page).locator('.ib-worker-detail__status .cinder-badge')).toContainText(
+    'Connected',
+  );
 
   await detail(page).getByRole('button', { name: 'Drain this worker' }).click();
   const dialog = page.getByRole('dialog', { name: /^Drain .*\?$/ });
@@ -95,7 +97,9 @@ test('a worker drains after a confirmation that says what happens, and then read
   await expect(dialog).toBeHidden();
   // The worker holds no task, so there is nothing to wait out: it has stopped, and Forget is all
   // there is to do with it.
-  await expect(detail(page).locator('.cinder-status-dot').first()).toContainText('Stopped');
+  await expect(detail(page).locator('.ib-worker-detail__status .cinder-badge')).toContainText(
+    'Stopped',
+  );
   await expect(detail(page).getByRole('button', { name: 'Forget this worker' })).toBeVisible();
   await expect(detail(page).getByRole('button', { name: 'Drain this worker' })).toHaveCount(0);
 

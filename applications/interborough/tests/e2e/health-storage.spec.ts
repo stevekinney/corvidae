@@ -215,6 +215,11 @@ test.describe('Health › Storage on the sample world', () => {
     const nextKey = main.getByTestId('storage-key-name');
     await expect(nextKey).toHaveText(/^audit:v1:/);
     await expect(page).toHaveURL(/\/health\/storage$/);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'first key after a prefix filter',
+      source: SOURCE,
+    });
 
     // A chosen group and typed text that part ways match nothing.
     await main.getByLabel('Group', { exact: true }).selectOption({ label: 'Chat sessions' });

@@ -302,7 +302,8 @@ test('a deployment with remote workers: the list, the open worker, its notice, f
   await page.setViewportSize({ width: 1280, height: 900 });
   const fleet = newFleet();
   await answerFleet(page, fleet);
-  await page.goto('/health/workers?worker=reports-worker');
+  await page.goto('/health/workers');
+  await expect(page).toHaveURL(/worker=reports-worker$/);
 
   // 78g, 78h: Health's header with Workers active, the list titled Workers, one line of counts.
   await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
