@@ -96,7 +96,7 @@ describe('a waiting approval', () => {
       const onResolve = mock((_resolution: unknown) => undefined);
       const view = mount('dangerous', onResolve);
       await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-      await fireEvent.input(view.getByRole('textbox', { name: 'Note' }), {
+      await fireEvent.input(view.getByRole('textbox', { name: /^Note\b/ }), {
         target: { value: 'The order number matches.' },
       });
       await fireEvent.click(view.getByRole('checkbox', { name: /for the rest of this chat/ }));
