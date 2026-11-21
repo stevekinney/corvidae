@@ -12,6 +12,10 @@
       "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
       "suiteExitCode": 0
     },
+    "autocomplete": {
+      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
+      "suiteExitCode": 0
+    },
     "breadcrumbs": {
       "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
       "suiteExitCode": 0
@@ -36,12 +40,36 @@
       "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
       "suiteExitCode": 0
     },
+    "checkbox": {
+      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
+      "suiteExitCode": 0
+    },
+    "checkbox-group": {
+      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
+      "suiteExitCode": 0
+    },
+    "combobox": {
+      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
+      "suiteExitCode": 0
+    },
     "copy-button": {
       "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
       "suiteExitCode": 0
     },
     "description-list": {
       "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "suiteExitCode": 0
+    },
+    "form-field": {
+      "renderedSourceSha": "dff1b871e1bb8ae4e81fdb83abcb7fc22fbaabe7",
+      "suiteExitCode": 0
+    },
+    "multi-select": {
+      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
+      "suiteExitCode": 0
+    },
+    "number-input": {
+      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
       "suiteExitCode": 0
     },
     "page-header": {

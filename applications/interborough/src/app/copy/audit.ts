@@ -180,6 +180,8 @@ export const AUDIT_COPY = {
   },
   /** An address that names an event the page could not show. */
   recordNotFound: {
+    title: 'Event not found',
+    back: 'Back to Audit log',
     more: 'That event was not found in the recent log. Load more to keep looking.',
     end: 'That event is not in the log.',
   },

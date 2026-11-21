@@ -62,6 +62,28 @@ const chatList = (page: Page) => page.getByRole('region', { name: 'Chats' });
 const openChat = (page: Page) => page.getByRole('region', { name: 'Open chat' });
 const blockedRow = (page: Page) => page.locator('[data-chat-composer-status="blocked"]');
 
+test('Warning indicator in Chat', async ({ page }) => {
+  await rewriteBureauAnswer(page, 'bureau.contexts.window', (answer) => ({
+    ...answer,
+    maxTokens: 100_000,
+    usedEstimated: 80_000,
+    usedReported: null,
+    categories: [{ name: 'messages', tokens: 80_000 }],
+  }));
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+
+  const ring = page.locator('.weft-context-ring');
+  await expect(ring).toHaveAttribute('data-tone', 'warning');
+  await expect(ring).toHaveAccessibleName(/80%/);
+  await captureForDesignReview(page, {
+    route: '/chats/:chat',
+    state: 'context window 80% warning',
+    source: SOURCE,
+  });
+});
+
 /**
  * The waiting approval's placement, read in one layout pass: the transcript's box, the card's box,
  * Deny's and Approve's boxes with whether a tap at each centre reaches the button (a composer, the
@@ -426,6 +448,61 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(
       reminder.drawer.x + reminder.drawer.width - (reminder.button.x + reminder.button.width),
     ).toBeLessThan(20);
+  });
+
+  test('a waiting approval stays actionable when the chat narrows from 375 to 320', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const approval = page.locator('[data-approval-decision]');
+    await expect(approval).toBeFocused();
+    const tool = page.getByRole('button', { name: /Issue refund/ }).first();
+    await expect(tool).toBeVisible();
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await page.setViewportSize({ width: 320, height: 640 });
+
+    const readToolTarget = () =>
+      tool.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const top = element.closest('.chat-timeline')?.scrollTop ?? 0;
+        const points = [
+          [rect.left + 2, rect.top + 2],
+          [rect.right - 2, rect.top + 2],
+          [rect.left + 2, rect.bottom - 2],
+          [rect.right - 2, rect.bottom - 2],
+        ];
+        return {
+          scrollTop: top,
+          corners: points.map(([x, y]) => element.contains(document.elementFromPoint(x!, y!))),
+        };
+      });
+    const expectArrival = async () => {
+      const layout = await readApprovalPlacement(page);
+      expectDecisionInView(layout);
+      expectQuestionAndApproveInView(layout);
+      const target = await readToolTarget();
+      expect(target.corners).toEqual([true, true, true, true]);
+    };
+    await expect(expectArrival).toPass();
+    const placed = await readToolTarget();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await expectArrival();
+    const settled = await readToolTarget();
+    expect(settled.scrollTop).toBe(placed.scrollTop);
+    await expect(approval).toBeFocused();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'approval rests after narrowing',
+      source: SOURCE,
+      ready: expectArrival,
+    });
   });
 
   test('at 320 by 640 with a provider connected, the waiting approval’s decision row is in view and not covered by the live composer (COR-2327 B1)', async ({

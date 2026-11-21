@@ -1,0 +1,11 @@
+{
+  "control": "published-package-versus-pinned-source-location",
+  "publishedArtifact": "@sveltejs/kit@3.3.0 from node_modules/@sveltejs/kit.published-artifact",
+  "publishedArtifactResult": "production build exited 1 with server_only_import while resolving Kit source through the symlinked upstream path",
+  "cause": "Kit's guard uses module paths and the symlink realpath made the pinned checkout appear inside the application source graph",
+  "correction": "copy the exact pinned packages/kit tree into node_modules/@sveltejs/kit while preserving source contents and package identity",
+  "copiedPinnedResult": "production build and adapter-node preview passed",
+  "development": "development launcher served /proof and /endpoint with 200",
+  "production": "production launcher served /proof and /endpoint with 200",
+  "warningHandling": "reference child environment removes conflicting NO_COLOR and FORCE_COLOR"
+}

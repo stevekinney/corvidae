@@ -9,6 +9,7 @@
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import { ALLOWED_MODELS_COPY } from '../../app/copy/models.ts';
 import { SETTINGS_COPY } from '../../app/copy/settings.ts';
@@ -148,6 +149,33 @@ describe('the page', () => {
       row?.querySelector('select') as HTMLSelectElement;
     expect(select(prefer).selectedOptions[0]?.textContent).toBe('Neither');
     expect(select(effort).selectedOptions[0]?.textContent).toBe('High');
+  });
+
+  test('keeps model identifiers but omits preference configuration keys on phones', async () => {
+    const view = await ready(open({ connected: true }));
+    const preferences = view.container
+      .querySelector<HTMLElement>('[data-setting="preferences.prefer"]')
+      ?.closest('.cinder-form-section');
+    if (preferences === null || preferences === undefined) {
+      throw new Error('expected the preferences section');
+    }
+    const testWindow = window;
+    if (!(testWindow instanceof Window)) throw new Error('expected a happy-dom test window');
+    try {
+      for (const width of [320, 375]) {
+        testWindow.happyDOM.setViewport({ width, height: 800 });
+        await waitFor(() =>
+          expect(preferences?.querySelectorAll('.cinder-setting-row__identifier')).toHaveLength(0),
+        );
+        expect(preferences?.textContent).toContain('Prefer');
+        expect(preferences?.textContent).toContain('Default effort');
+        expect(view.container.querySelector('.ib-model-name__identifier')?.textContent).toBe(
+          'claude-opus-5-5',
+        );
+      }
+    } finally {
+      testWindow.happyDOM.setViewport({ width: 1024, height: 768 });
+    }
   });
 });
 

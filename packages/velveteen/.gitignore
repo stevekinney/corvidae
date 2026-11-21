@@ -1,0 +1,11 @@
+node_modules/
+.velveteen/
+test-results/
+playwright-report/
+tests/reference/node_modules/
+tests/reference/.svelte-kit/
+tests/reference/upstream
+tests/reference/build/
+
+!src/build/
+!tests/build/

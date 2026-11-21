@@ -81,8 +81,10 @@ test('a leased second attempt shows its fenced history, lease clocks, and heartb
 }) => {
   await openTask(page, E2E_LEASED_TASK_OPERATION_ID);
 
-  // The real dispatch carries the qualified routing name; it is shown once.
-  await expect(page.getByText('order-processing.chargeCard', { exact: true })).toBeVisible();
+  // The real dispatch carries the qualified routing name; the ledger shows it once. (The worker
+  // that opens beside the list, COR-2445, names the same task in its own diagnostics.)
+  const ledger = page.getByRole('tabpanel', { name: 'Diagnostics' });
+  await expect(ledger.getByText('order-processing.chargeCard', { exact: true })).toBeVisible();
   await expect(page.getByText('order-processing.order-processing.chargeCard')).toHaveCount(0);
 
   // Attempt 1 was requeued when its worker disconnected; attempt 2 holds the lease.

@@ -485,16 +485,20 @@
     >
       {copy.loadFailed.description(failureStatus)}
       {#snippet actions()}
-        <Button variant="secondary" size="sm" onclick={tryAgain}>{copy.loading.tryAgain}</Button>
-        <Button variant="ghost" size="sm" href={router.href('/health')} onclick={openHealth}
-          >{copy.loadFailed.openHealth}</Button
-        >
+        <Button variant="secondary" size="sm" onclick={tryAgain} label={copy.loading.tryAgain} />
+        <Button
+          variant="ghost"
+          size="sm"
+          href={router.href('/health')}
+          onclick={openHealth}
+          label={copy.loadFailed.openHealth}
+        />
       {/snippet}
     </Banner>
   {:else if canceled}
     <div data-testid="plugins-canceled">
       <p class="ib-plugins__alert">{copy.loading.canceled}</p>
-      <Button variant="secondary" size="sm" onclick={tryAgain}>{copy.loading.tryAgain}</Button>
+      <Button variant="secondary" size="sm" onclick={tryAgain} label={copy.loading.tryAgain} />
     </div>
   {:else}
     <!-- The navigation and heading are real. The placeholder is the loaded page's own frame and
@@ -550,24 +554,22 @@
     min-inline-size: 0;
   }
 
-  /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+  /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. It
+     draws no box at any width: the list and the open plugin sit on the page, and ListDetail's
+     divider is the one line between them. */
   .ib-plugins__frame {
     block-size: max(32rem, calc(100dvh - 13rem));
     min-inline-size: 0;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
     overflow: hidden;
   }
 
   /* On a phone the list and the open plugin are one pane at a time, flat on the page: the frame's
-     border, radius and fixed height go, so there is no box in the page's own padding, and the open
-     plugin's pane adds no inline inset of its own (COR-2512, through ListDetail's `flushDetail`).
-     The list and the open plugin are told apart by the stacked layout's own Back button. */
+     fixed height goes, and the open plugin's pane adds no inline inset of its own (COR-2512,
+     through ListDetail's `flushDetail`). The list and the open plugin are told apart by the stacked
+     layout's own Back button. */
   @media (max-width: 39.99rem) {
     .ib-plugins__frame {
       block-size: auto;
-      border: 0;
-      border-radius: 0;
       overflow: visible;
     }
   }
