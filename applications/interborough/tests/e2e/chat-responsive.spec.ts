@@ -64,6 +64,7 @@ const openChat = (page: Page) => page.getByRole('region', { name: 'Open chat' })
 const blockedRow = (page: Page) => page.locator('[data-chat-composer-status="blocked"]');
 
 test('Warning indicator in Chat', async ({ page }) => {
+  await connectProvider(page);
   await rewriteBureauAnswer(page, 'bureau.contexts.window', (answer) => ({
     ...answer,
     maxTokens: 100_000,
@@ -75,9 +76,10 @@ test('Warning indicator in Chat', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
 
-  const ring = page.locator('.weft-context-ring');
-  await expect(ring).toHaveAttribute('data-tone', 'warning');
-  await expect(ring).toHaveAccessibleName(/80%/);
+  const meter = page.locator('.weft-context-meter');
+  await expect(meter).toHaveAttribute('data-tone', 'warning');
+  await expect(meter).toHaveAccessibleName(/80%/);
+  await expect(meter.locator('[role="meter"]')).toHaveAttribute('data-cinder-state', 'low');
   await captureForDesignReview(page, {
     route: '/chats/:chat',
     state: 'context window 80% warning',
