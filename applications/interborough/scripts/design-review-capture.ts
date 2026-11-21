@@ -190,6 +190,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/agents-reviews-design-states.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
+  // The four typed-confirmation dialogs (bulk action, purge, drain, clear dead letter) in each
+  // state, which no page capture sees (COR-2547). `--grep confirm-dialog-states` selects it.
+  'tests/e2e/confirm-dialog-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';
