@@ -214,8 +214,10 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       expect(bounds?.height).toBeLessThanOrEqual(36);
       await button.click({ trial: true });
     }
-    const reason = deck.locator('dt').filter({ hasText: /^Reason$/ });
-    const reasonValue = reason.locator('xpath=following-sibling::dd[1]');
+    const reasonField = deck
+      .locator('.cinder-payload-inspector__field')
+      .filter({ has: page.getByText('Reason', { exact: true }) });
+    const reasonValue = reasonField.locator('dd');
     await expect(reasonValue).toHaveText(/\S/);
     await reasonValue.scrollIntoViewIfNeeded();
     await expect(reasonValue).toBeInViewport({ ratio: 1 });
