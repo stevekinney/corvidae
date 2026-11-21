@@ -609,10 +609,10 @@ test.describe('Agent shared FormActions', () => {
         .fill('Keep the refused draft visible.');
       const create = page.getByRole('button', { name: editorCopy.createAction });
       await create.click();
-      await expect(name).toBeInvalid();
-      await expect(name).toHaveAccessibleDescription(
-        expect.stringContaining(editorCopy.newAgent.nameTaken('Shared refusal')),
-      );
+      await expect(name).toHaveAttribute('aria-invalid', 'true');
+      await expect(
+        page.getByText(editorCopy.newAgent.nameTaken('Shared refusal'), { exact: true }),
+      ).toBeVisible();
       await expect(name).toHaveValue('Shared refusal');
       await expect(
         page.getByRole('group', { name: 'Form actions' }).getByRole('button'),
@@ -667,7 +667,12 @@ test.describe('Agent shared FormActions', () => {
           source: SOURCE,
         });
         release();
-        await expect(save).not.toHaveAttribute('data-cinder-loading', '');
+        await expect(page).toHaveURL(new RegExp(`/agents/${id}$`));
+        const savedAgent = await readAgent(request, id);
+        expect(savedAgent.definition).toMatchObject({
+          description: 'Keep this saving state visible.',
+        });
+        expect(attempts).toBe(1);
       } finally {
         release();
         await removeAgent(request, id);
