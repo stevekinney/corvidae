@@ -252,7 +252,9 @@ async function captureState(
   }
 }
 
-const status = (app: FrameLocator) => app.getByRole('status');
+// The page's own status, not the live region a busy Button adds beside itself.
+const status = (app: FrameLocator) =>
+  app.locator('[role="status"]:not([data-cinder-button-status])');
 const save = (app: FrameLocator) =>
   app.getByRole('button', { name: /^(Save changes|Create schedule)$/ });
 

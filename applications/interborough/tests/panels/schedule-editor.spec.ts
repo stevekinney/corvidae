@@ -163,7 +163,9 @@ test.describe('the schedule editor MCP App against the running host', () => {
     // When it runs.
     await when.fill('2h');
     await app.getByRole('button', { name: 'Save changes' }).click();
-    await expect(app.getByRole('status')).toHaveText('Saved the changes.');
+    await expect(app.locator('[role="status"]:not([data-cinder-button-status])')).toHaveText(
+      'Saved the changes.',
+    );
     const afterWhen = await readBack(request, id);
     expect(afterWhen.intervalMs).toBe(7_200_000);
     expect(afterWhen.revision).toBe(2);
@@ -171,7 +173,9 @@ test.describe('the schedule editor MCP App against the running host', () => {
     // Which agent it runs, with the cadence it has resent and the text it sends kept.
     await app.getByLabel('Agent', { exact: true }).selectOption(SECOND_AGENT);
     await app.getByRole('button', { name: 'Save changes' }).click();
-    await expect(app.getByRole('status')).toHaveText('Saved the changes.');
+    await expect(app.locator('[role="status"]:not([data-cinder-button-status])')).toHaveText(
+      'Saved the changes.',
+    );
     const afterAgent = await readBack(request, id);
     expect(afterAgent.target).toEqual({ kind: 'agent', agentName: SECOND_AGENT });
     expect(afterAgent.intervalMs).toBe(7_200_000);
@@ -180,7 +184,9 @@ test.describe('the schedule editor MCP App against the running host', () => {
     // Whether it is paused: a pause of its own, fenced by the revision the page read.
     await app.getByRole('switch', { name: 'Paused' }).click();
     await app.getByRole('button', { name: 'Save changes' }).click();
-    await expect(app.getByRole('status')).toHaveText('Saved the changes.');
+    await expect(app.locator('[role="status"]:not([data-cinder-button-status])')).toHaveText(
+      'Saved the changes.',
+    );
     const afterPause = await readBack(request, id);
     expect(afterPause.status).toBe('paused');
     expect(afterPause.revision).toBe(4);
@@ -241,7 +247,9 @@ test.describe('the schedule editor MCP App against the running host', () => {
     await app.getByLabel('What each run sends the agent').fill('Report in');
     await app.getByLabel('Description').fill(description);
     await app.getByRole('button', { name: 'Create schedule' }).click();
-    await expect(app.getByRole('status')).toHaveText('Created the schedule.');
+    await expect(app.locator('[role="status"]:not([data-cinder-button-status])')).toHaveText(
+      'Created the schedule.',
+    );
 
     const listed = (await bureauCall(request, 'bureau.schedules.list', { limit: 100 })) as {
       schedules: Stored[];
@@ -271,7 +279,9 @@ test.describe('the schedule editor MCP App against the running host', () => {
     await app.getByLabel('What each run sends the agent').fill('Report in');
     await app.getByLabel('Description').fill(description);
     await app.getByRole('button', { name: 'Create schedule' }).click();
-    await expect(app.getByRole('status')).toContainText('could not be read again');
+    await expect(app.locator('[role="status"]:not([data-cinder-button-status])')).toContainText(
+      'could not be read again',
+    );
     await app.getByRole('button', { name: 'Create schedule' }).click({ force: true });
 
     const listed = (await bureauCall(request, 'bureau.schedules.list', { limit: 100 })) as {
@@ -310,10 +320,12 @@ test.describe('the schedule editor MCP App against the running host', () => {
     // The error is the cadence field's alone.
     await expect(app.getByLabel('Description')).not.toHaveAttribute('aria-invalid', 'true');
     // One save error, in one place: the Bureau's reason is the field's, and the page only says so.
-    await expect(app.getByRole('status')).toHaveText(
+    await expect(app.locator('[role="status"]:not([data-cinder-button-status])')).toHaveText(
       'Not saved. Fix the fields that show a problem.',
     );
-    await expect(app.getByRole('status')).not.toContainText(message);
+    await expect(app.locator('[role="status"]:not([data-cinder-button-status])')).not.toContainText(
+      message,
+    );
     const unchanged = await readBack(request, id);
     expect(unchanged.revision).toBe(1);
   });
