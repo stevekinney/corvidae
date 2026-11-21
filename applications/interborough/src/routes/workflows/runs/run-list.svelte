@@ -68,6 +68,7 @@
     buildRunRows,
     filterLabelOf,
     filterRunRows,
+    isEngineRunTask,
     isRunRowRunning,
     parseRunFilter,
     RUN_PAGE_SIZE,
@@ -99,16 +100,29 @@
   // a chat by `session.*` (`app/bureau-event-queries.ts`). Each asks again on a timer only while the
   // feed is not live, read in the option getter so the timer returns when the feed is lost.
   const bureauLive = useBureauEventsLive();
+  /** Whether the list still holds an engine-only instance waiting for an execution slot. */
+  function hasQueuedWorkflowInstance(tasks: Parameters<typeof buildRunRows>[0]['tasks']): boolean {
+    return tasks.some(
+      (task) =>
+        task.status === 'submitted' &&
+        task.workflow?.type !== 'scheduleTick' &&
+        isEngineRunTask(task),
+    );
+  }
   // Every run, every page of them: the listing has no total, and the segments count all of them.
   const tasks = createQuery(() => {
     const polling = !bureauLive();
     return {
       queryKey: TASKS_QUERY_KEY,
       queryFn: ({ signal }: { signal: AbortSignal }) => listAllTasks({}, { signal }),
-      // A catalog run is announced by `run.settled` alone: no event says one has started, and
-      // `run.removed` is not emitted for it (COR-1730), so a run still going shows only on the timer.
+      // A catalog run is announced by `run.settled` alone: no event says it took an execution slot.
+      // Keep this one query current while an engine-only instance is queued, even with a live feed;
+      // its next read stops the timer once the instance starts or settles (COR-1730, COR-2433).
       // poll-reason: fallback
-      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
+      refetchInterval: (query) =>
+        polling || hasQueuedWorkflowInstance(query.state.data ?? [])
+          ? REVIEW_POLL_MILLISECONDS
+          : false,
       retry: false,
     };
   }, undefined);

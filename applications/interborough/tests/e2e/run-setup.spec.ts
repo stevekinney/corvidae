@@ -97,7 +97,7 @@ async function finish(
     .toBe('completed');
 }
 
-test.describe('the run setup page', () => {
+test.describe('the run setup page at /workflows/:workflow/run and its queued result at /runs', () => {
   test('57f, 58a, 58b, 58c and 58z: names the workflow, lays out Input and When, and pins the action', async ({
     page,
     request,
@@ -406,7 +406,28 @@ test.describe('the run setup page', () => {
       const first = blockingWorkflows[0]!;
       await finish(request, first, running.get(first)!);
       running.delete(first);
-      await expect(row).toHaveAttribute('data-status', 'Waiting');
+      await expect
+        .poll(async () => {
+          const [workflowStatus, tasks] = await Promise.all([
+            workflowRunStatus(request, run.id),
+            bureau(request, 'bureau.tasks.list', { workflow: id }),
+          ]);
+          expect(tasks.fault, `listing the task for ${id}`).toBeUndefined();
+          const task = (tasks.result as { tasks: Array<Record<string, unknown>> }).tasks.find(
+            (candidate) => candidate['id'] === run.id,
+          );
+          return {
+            workflowStatus,
+            taskStatus: task?.['status'],
+            awaitingSignal: task?.['workflow'],
+          };
+        })
+        .toEqual({
+          workflowStatus: 'running',
+          taskStatus: 'working',
+          awaitingSignal: expect.objectContaining({ awaitingSignal: `${id}-wait` }),
+        });
+      await expect(row).toHaveAttribute('data-status', 'Waiting for a signal');
       await expect(row).toContainText(`waiting for signal ${id}-wait`);
     } finally {
       for (const runId of running.values()) {
@@ -578,7 +599,7 @@ test.describe('reaching the page', () => {
   });
 });
 
-test.describe('on a schedule', () => {
+test.describe('on a schedule at /workflows/:workflow/run', () => {
   test('S67: gives the named start text when the caller cannot create schedules', async ({
     page,
   }) => {

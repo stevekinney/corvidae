@@ -373,15 +373,20 @@ describe('results', () => {
     const engine = served.bureau.durableEngine()!;
     await engine.start('suspended', null, { id: 'suspended-run' });
     try {
-      await waitUntil(async () => (await engine.get('suspended-run'))?.status === 'running', {
-        message: 'the run to begin executing',
-      });
+      await waitUntil(
+        async () => {
+          const run = await engine.get('suspended-run');
+          return run?.status === 'running';
+        },
+        { message: 'the run to begin executing' },
+      );
       expect(await ownerRpc(served.owner, 'bureau.workflows.concurrency', {})).toMatchObject({
         result: { max: 4, running: 1 },
       });
 
       await engine.suspend('suspended-run');
-      expect((await engine.get('suspended-run'))?.status).toBe('suspended');
+      const suspended = await engine.get('suspended-run');
+      expect(suspended?.status).toBe('suspended');
       expect(await ownerRpc(served.owner, 'bureau.workflows.concurrency', {})).toMatchObject({
         result: { max: 4, running: 0 },
       });
@@ -437,8 +442,10 @@ describe('results', () => {
     expect(first.error).toBeUndefined();
     expect(replay.error).toBeUndefined();
     expect(replay.result?.['runId']).toBe(first.result?.['runId']);
+    const runId = first.result?.['runId'];
+    if (typeof runId !== 'string') throw new Error('starting the workflow did not return a run id');
     const runs = await served.bureau.durableEngine()!.list({ type: 'manual-once' });
-    expect(runs.items.map((run) => run.id)).toEqual([first.result?.['runId']]);
+    expect(runs.items.map((run) => run.id)).toEqual([runId]);
   });
 
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {

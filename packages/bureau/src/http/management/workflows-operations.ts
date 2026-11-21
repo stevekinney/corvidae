@@ -1253,7 +1253,7 @@ const workflowsConcurrencyOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: ({ host, principal }) => {
+  invoke: async ({ host, principal }) => {
     if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
       throw {
         code: 'Forbidden',
@@ -1266,6 +1266,7 @@ const workflowsConcurrencyOperation = defineOperation<
       throw {
         code: 'UnsupportedCapability',
         message: 'Workflow concurrency is unavailable',
+        data: { capability: 'workflowConcurrency' },
       } satisfies OperationFault;
     return { max: snapshot.max, running: snapshot.running.length };
   },
