@@ -1549,9 +1549,9 @@
   );
   $effect(() => {
     // A fresh turn or a real wait revokes an earlier refusal.
-    const activity = context.data?.activity;
+    const contextActivity = context.data?.activity;
     if (
-      (activity !== undefined && activity !== 'awaiting-input') ||
+      (contextActivity !== undefined && contextActivity !== 'awaiting-input') ||
       (session.waitingApprovals?.size ?? 0) > 0 ||
       session.humanRequests.length > 0
     ) {
