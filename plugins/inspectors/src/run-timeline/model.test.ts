@@ -87,6 +87,8 @@ describe('reading what the host answered', () => {
     expect(runIdOf({ runId: '' })).toBeUndefined();
     expect(runIdOf({ runId: 3 })).toBeUndefined();
     expect(runIdOf(undefined)).toBeUndefined();
+    // A key the arguments only inherit names no run.
+    expect(runIdOf(Object.create({ runId: 'inherited' }))).toBeUndefined();
   });
 });
 

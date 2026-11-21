@@ -170,9 +170,7 @@ test.describe('the run timeline MCP App', () => {
         ],
       });
     });
-    await expect(app.getByText('This run has more steps than the timeline holds.')).toBeVisible({
-      timeout: 6_000,
-    });
+    await expect(app.getByText('This run has more steps than the timeline holds.')).toBeVisible();
   });
 
   test('says when the run could not be read', async ({ page }) => {
@@ -186,10 +184,12 @@ test.describe('the run timeline MCP App', () => {
     await page.evaluate(() => {
       delete window.referenceHost.handlers['bureau.runs.timeline'];
     });
-    await expect(app.getByRole('status')).toHaveText(/The timeline could not be refreshed\./, {
-      timeout: 6_000,
-    });
+    await expect(app.getByRole('status')).toHaveText('Connection lost. Retrying.');
     await expect(app.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.evaluate((timeline) => {
+      window.referenceHost.handlers['bureau.runs.timeline'] = () => timeline;
+    }, RUN);
+    await expect(app.getByRole('status')).toHaveText('Reconnected.');
   });
 
   for (const scheme of SCHEMES) {

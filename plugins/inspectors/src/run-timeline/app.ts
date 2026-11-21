@@ -58,6 +58,13 @@ async function start(): Promise<void> {
     }
   };
 
+  // A read that did not give a timeline: the page says so when it has nothing to show, and keeps
+  // what it shows, saying the connection is lost until a read gives one again, when it has.
+  const unreadable = (): void => {
+    if (model === undefined) view.phase = 'unreadable';
+    else connectionLost();
+  };
+
   const refresh = async (): Promise<void> => {
     const id = runId;
     const generationAtStart = generation;
@@ -76,19 +83,13 @@ async function start(): Promise<void> {
       if (generationAtStart !== generation || mine < applied) return;
       applied = mine;
       const timeline = result.isError === true ? undefined : readTimeline(result.structuredContent);
-      if (timeline === undefined) {
-        // The host answered, so the connection is fine; what it said is not a timeline. What the
-        // page already shows stays.
-        if (model === undefined) view.phase = 'unreadable';
-        else view.announcement = 'The timeline could not be refreshed.';
-        return;
-      }
+      if (timeline === undefined) return unreadable();
       const wasConnected = connected;
       connected = true;
       show(timeline, !wasConnected);
     } catch {
       // A transport failure is the same as a host that did not answer.
-      if (generationAtStart === generation) connectionLost();
+      if (generationAtStart === generation) unreadable();
     }
   };
 

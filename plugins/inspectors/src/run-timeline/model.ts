@@ -96,6 +96,7 @@ export function readTimeline(value: unknown): Timeline | undefined {
 export function runIdOf(argumentsOfCall: unknown): string | undefined {
   if (!isRecord(argumentsOfCall)) return undefined;
   for (const key of ['runId', 'taskId']) {
+    if (!Object.hasOwn(argumentsOfCall, key)) continue;
     const value = argumentsOfCall[key];
     if (typeof value === 'string' && value !== '') return value;
   }
