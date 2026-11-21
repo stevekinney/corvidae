@@ -44,7 +44,8 @@ import {
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, BureauShuttingDownError, ContextArchivedError } from '../../bureau-errors.ts';
+import { BureauShuttingDownError, ContextArchivedError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { contextArchivedFault } from './contexts-archive-operation.ts';
 import type { SteeringCommandAdmissionOutcome, SteeringCommandSnapshot } from '../../steering.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
@@ -373,22 +374,9 @@ export const contextsSteerOperation = defineOperation<
       }
       // Refused before anything was decided or logged, as a fault: the context takes no command.
       if (error instanceof ContextArchivedError) throw contextArchivedFault(error.message);
-      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
-        throw {
-          code: 'InvalidParams',
-          message: error.message,
-          data: {
-            issues: [
-              {
-                path: [steeredSettingKey(input, STEERED_SETTING_KEYS) ?? STEERED_SETTING_KEYS[0]],
-                message: error.message,
-                code: 'custom',
-              },
-            ],
-          },
-        } satisfies OperationFault;
-      }
-      throw error;
+      throw bureauFaultOf(error, {
+        invalidPath: [steeredSettingKey(input, STEERED_SETTING_KEYS) ?? STEERED_SETTING_KEYS[0]],
+      });
     }
     if (outcome.outcome === 'not-found') throw resourceNotFound('context', contextId);
     return projectSteeringOutcome(outcome);
