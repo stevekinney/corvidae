@@ -529,6 +529,29 @@ scenarios.describe('prepare', () => {
           },
         },
       );
+      const observed = 'scripts/chef/delivery-request.integration.test.ts';
+      for (const lane of [
+        { workspace: '', full: false, paths: [observed, 'scripts/another.test.ts'] },
+        { workspace: '', full: true, paths: [] },
+      ]) {
+        const control = lane.full ? 'whole-suite' : 'missing-file';
+        const fallback = await harness(
+          {
+            mainCheckout: join(sandbox, control),
+            plan: (changed, cwd) => ({
+              ...setup.dependencies.plan(changed, cwd),
+              unit_tests: [lane],
+            }),
+          },
+          { route: 'pull-request', sourceCriteria: setup.options.sourceCriteria },
+          answers(),
+          control,
+        );
+        fallback.dependencies.provider.findAutomaticPullRequestRuns = async () => [automatic];
+        const prepared = await fallback.prepared();
+        expect(prepared.dispatched).toBe(true);
+        expect(fallback.dispatched).toHaveLength(1);
+      }
       const result = await setup.prepared();
       const request = readDeliveryRequest(result.file, result.digest);
       expect(result.dispatched).toBe(false);

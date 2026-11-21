@@ -115,7 +115,11 @@ import {
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
-import { dispatchVerificationRun, type VerificationBinding } from './targeted-run.ts';
+import {
+  dispatchVerificationRun,
+  inputsFromPlan,
+  type VerificationBinding,
+} from './targeted-run.ts';
 import {
   computeEvidencePlan,
   createVerificationPlan,
@@ -370,7 +374,8 @@ function reusablePullRequestRun(
   runs: readonly CiEvidenceRun[],
   binding: PullRequestSourceCriteriaBinding | undefined,
 ): CiEvidenceRun | undefined {
-  if (plan.requires_full_run || runs.length !== 1) return undefined;
+  if (plan.requires_full_run || inputsFromPlan(plan).undispatchable.length > 0 || runs.length !== 1)
+    return undefined;
   const candidateRun = runs[0];
   if (candidateRun === undefined || !candidateRun.jobs.includes(PULL_REQUEST_AGGREGATE))
     return undefined;
@@ -389,6 +394,14 @@ function reusablePullRequestRun(
     browserRequired ||
     binding === undefined ||
     candidateRun.receiptTestFiles === undefined ||
+    plan.unit_tests.some((lane) =>
+      lane.paths.some(
+        (path) =>
+          !candidateRun.receiptTestFiles?.includes(
+            lane.workspace ? `${lane.workspace}/${path}` : path,
+          ),
+      ),
+    ) ||
     binding.members.some((member) =>
       member.criteria.some((criterion) =>
         criterion.testFiles.some((path) => !candidateRun.receiptTestFiles?.includes(path)),
