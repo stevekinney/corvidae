@@ -293,9 +293,79 @@ export function workflowCreatedMessages(): Record<string, unknown>[] {
   ];
 }
 
+/** The thread identifier of the Smoke tester chat waiting on an Always approval with no arguments (COR-2438). */
+export const DISCOVER_AGENTS_THREAD = 'sample-chat-discover-agents';
+
+/** What the person asked Smoke tester, which is the chat's title. */
+export const DISCOVER_AGENTS_ASK =
+  'Which agents are on this Bureau? Use your discover-agents tool to find out.';
+
+/** The agent the chat is with, whose name a person reads as "Smoke tester". */
+export const DISCOVER_AGENTS_AGENT = 'smoke-tester';
+
+/**
+ * The policy's reason for the approval, which the Bureau also sends as its message because the tool
+ * declares no summary. The page asks "Run Discover agents?" and never this (COR-2438).
+ */
+export const DISCOVER_AGENTS_REASON =
+  'Tool "bureau:discover-agents" (read-only tier) requires approval (mode: always).';
+
+/** The moment Smoke tester asked, 12 minutes before the sample clock's 10:46 AM. */
+const DISCOVER_ASKED = Date.parse('2026-11-02T16:34:05.000Z');
+
+/**
+ * The thread of the owner's approval (COR-2438): `bureau__discover-agents`, a read-only tool set to
+ * Always, called with no arguments, parked on its approval. The row the call is parked on carries
+ * the policy's reason, and so does the approval's message.
+ */
+export function discoverAgentsMessages(): Record<string, unknown>[] {
+  const callId = 'states-discover-agents';
+  return [
+    userMessage('user-states-discover', DISCOVER_AGENTS_ASK, DISCOVER_ASKED - 1000),
+    {
+      id: 'run-states-discover:step:0',
+      role: 'assistant',
+      metadata: { ...stamp(DISCOVER_ASKED - 20), 'bureau:replyModel': REPLY_MODEL },
+      toolCalls: [
+        {
+          id: callId,
+          type: 'function',
+          function: { name: 'bureau__discover-agents', arguments: '{}' },
+          metadata: stamp(DISCOVER_ASKED - 20),
+        },
+      ],
+    },
+    {
+      id: `run-states-discover:step:0:result:${callId}`,
+      role: 'tool',
+      toolCallId: callId,
+      content: DISCOVER_AGENTS_REASON,
+      metadata: {
+        ...stamp(DISCOVER_ASKED),
+        'conversationalist:toolResult': {
+          outcome: 'action_required',
+          action: {
+            type: 'approval',
+            message: DISCOVER_AGENTS_REASON,
+            risk: 'low',
+            operation: { argsPreview: {}, kind: 'other' },
+            policyVersion: 'policy:1',
+            idempotencyKey: 'approval:discover-agents',
+          },
+          content: DISCOVER_AGENTS_REASON,
+        },
+      },
+    },
+  ];
+}
+
 /** Which of the board's chats a record is for. */
 export type StatesChat =
-  'failed-partway' | 'ended-on-tool-call' | 'held-by-plugin' | 'workflow-created';
+  | 'failed-partway'
+  | 'ended-on-tool-call'
+  | 'held-by-plugin'
+  | 'workflow-created'
+  | 'discover-agents';
 
 /** The thread identifier of `chat`. */
 export function threadOf(chat: StatesChat): string {
@@ -308,6 +378,8 @@ export function threadOf(chat: StatesChat): string {
       return HELD_BY_PLUGIN_THREAD;
     case 'workflow-created':
       return WORKFLOW_CREATED_THREAD;
+    case 'discover-agents':
+      return DISCOVER_AGENTS_THREAD;
   }
 }
 
@@ -322,6 +394,8 @@ export function messagesOf(chat: StatesChat): Record<string, unknown>[] {
       return heldByPluginMessages();
     case 'workflow-created':
       return workflowCreatedMessages();
+    case 'discover-agents':
+      return discoverAgentsMessages();
   }
 }
 
@@ -336,6 +410,8 @@ function previewOf(chat: StatesChat): string {
       return REFUND_TITLE;
     case 'workflow-created':
       return WORKFLOW_CREATED_REPLY;
+    case 'discover-agents':
+      return DISCOVER_AGENTS_ASK;
   }
 }
 
@@ -368,18 +444,26 @@ export function contextOf(
   const messages = messagesOf(chat);
   const held = chat === 'held-by-plugin';
   const created = chat === 'workflow-created';
-  const startedAt = held ? Date.parse('2026-11-02T16:34:00.000Z') : ASKED;
+  const discover = chat === 'discover-agents';
+  const startedAt = held || discover ? Date.parse('2026-11-02T16:34:00.000Z') : ASKED;
   return {
     ...kind,
     id: threadOf(chat),
-    title: held ? HELD_BY_PLUGIN_TITLE : created ? WORKFLOW_CREATED_ASK : REFUND_TITLE,
+    title: held
+      ? HELD_BY_PLUGIN_TITLE
+      : created
+        ? WORKFLOW_CREATED_ASK
+        : discover
+          ? DISCOVER_AGENTS_ASK
+          : REFUND_TITLE,
     ...(held ? { agentName: HELD_BY_PLUGIN_AGENT } : {}),
     ...(created ? { agentName: 'workflow-author' } : {}),
+    ...(discover ? { agentName: DISCOVER_AGENTS_AGENT, permissionMode: 'always' } : {}),
     lastMessagePreview: previewOf(chat),
     messageCount: messages.length,
     createdAt: iso(startedAt),
     updatedAt: iso(startedAt + 5000),
-    activity: held ? 'awaiting-input' : 'idle',
+    activity: held || discover ? 'awaiting-input' : 'idle',
     endReason: null,
     archivedAt: null,
   };
@@ -452,6 +536,7 @@ export function tasksOf(chat: StatesChat): Record<string, unknown>[] {
         },
       ];
     case 'held-by-plugin':
+    case 'discover-agents':
       return [];
   }
 }

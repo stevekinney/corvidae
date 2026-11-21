@@ -24,7 +24,7 @@
   import { getAgentModels, steerContext, type AgentModelChoice } from '../../lib/bureau-client.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { agentModel } from './agent-model.ts';
+  import { agentModel, modelDisplayName } from './agent-model.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
 
   type ModelName = { readonly provider: string | null; readonly model: string };
@@ -122,16 +122,17 @@
       : []),
     // The model the session runs on may no longer be one the agent lists.
     ...(known !== null && listed(known) === undefined
-      ? [{ value: keyOf(known), label: known.model, disabled: true }]
+      ? [{ value: keyOf(known), label: modelDisplayName(known.model), disabled: true }]
       : []),
     // A model the model policy forbids, or the agent's cost budget cannot count, is shown disabled,
     // so the person sees why it cannot be chosen. The policy's reason is the one named when both hold.
     ...choices.map((choice) => {
       const reason =
         choice.denied === true ? COPY.policyDenied : choice.unpriced === true ? COPY.unpriced : '';
+      const label = modelDisplayName(choice.model, choice.displayName);
       return {
         value: keyOf(choice),
-        label: reason === '' ? choice.displayName : `${choice.displayName} (${reason})`,
+        label: reason === '' ? label : `${label} (${reason})`,
         ...(reason === '' ? {} : { disabled: true }),
       };
     }),
@@ -150,11 +151,12 @@
   async function choose(next: string): Promise<void> {
     const choice = choices.find((entry) => keyOf(entry) === next);
     if (choice === undefined || next === shown) return;
+    const displayName = modelDisplayName(choice.model, choice.displayName);
     if (draft) {
       onDraft?.({
         provider: choice.provider,
         model: choice.model,
-        displayName: choice.displayName,
+        displayName,
       });
       return;
     }
@@ -181,7 +183,7 @@
       notice = result.notice;
       // Until the session is read again the admitted choice stays on screen.
       if (!result.applied || result.reloaded) pending = undefined;
-      if (result.applied) onApplied?.(choice.displayName);
+      if (result.applied) onApplied?.(displayName);
     } finally {
       busy = false;
       onBusyChange?.(false);

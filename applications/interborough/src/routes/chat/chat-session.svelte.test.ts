@@ -11,6 +11,8 @@ import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
+import { ApprovalNotWaitingError } from './run-wiring.ts';
+import { approvalLapsed } from './tool-activity.ts';
 
 /** The text of a request's JSON body. */
 function bodyText(init: RequestInit | undefined): string {
@@ -1621,5 +1623,71 @@ describe('a follow-up sent on a page that joined the run', () => {
     await turn;
 
     expect(contents(session)).toEqual(['Start', 'First.', 'More', 'Second.']);
+  });
+});
+
+// COR-2438: the banner read "The agent did not answer" over "No approval is waiting for this tool
+// call." while the card under it still offered Approve and Deny, and Approve did nothing.
+describe('a decision on an approval that is no longer waiting', () => {
+  test('says so in one sentence in place of any failure, and reads the chat again', async () => {
+    const mounted = mountOver({
+      start: [],
+      // Nothing is going on the thread, and nothing waits: the run that asked has stopped.
+      history: () => Response.json({ threadId: THREAD, messages: parkedThread.messages }),
+    });
+    const session = open(mounted.fetch);
+    await session.attach();
+    await until(() => session.approvals.length === 1 && !session.attaching);
+    // The page reads what the run waits on, and the parked call is not among it.
+    expect(session.waitingApprovals).toEqual(new Set());
+    const entry = { state: 'needs-you' as const, decision: undefined, callId: 'call-refund' };
+    const known = () => ({
+      waiting: session.waitingApprovals,
+      refused: session.refusedApprovals,
+      reviewed: new Set<string>(),
+      settled: true,
+    });
+    expect(approvalLapsed(entry, known())).toBe(true);
+    session.failure = 'The run failed.';
+    const reads = mounted.requests.filter((request) => request.endsWith('/messages')).length;
+
+    const refused = await session.controller.adapter
+      .resolveToolApproval?.('call-refund', { decision: 'approve', remember: false })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(refused).toBeInstanceOf(ApprovalNotWaitingError);
+    expect(session.approvalNotice).toBe(CHAT_COPY.approval.notWaiting);
+    expect(session.failure).toBeUndefined();
+    // Nothing was sent, and the thread is read again so the card shows what became of it.
+    expect(mounted.bodies).toHaveLength(0);
+    await until(
+      () =>
+        mounted.requests.filter((request) => request.endsWith('/messages')).length > reads &&
+        !session.attaching,
+    );
+    expect(session.refusedApprovals.has('call-refund')).toBe(true);
+    // Refused, it offers no decision even where the Bureau still says the run is parked on input.
+    expect(approvalLapsed(entry, { ...known(), parked: true })).toBe(true);
+    // The next turn begins with nothing said.
+    session.dismissFailure();
+    expect(session.approvalNotice).toBeUndefined();
+  });
+
+  test('is told apart from an approval still waiting, and from one that is being read', () => {
+    const entry = { state: 'needs-you' as const, decision: undefined, callId: 'call-refund' };
+    const none = new Set<string>();
+    const read = { waiting: none, reviewed: none, settled: true };
+    expect(approvalLapsed(entry, { ...read, waiting: new Set(['call-refund']) })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, waiting: undefined })).toBe(false);
+    // The Bureau's pending reviews, which the chat list reads, still hold it, or are not read yet.
+    expect(approvalLapsed(entry, { ...read, reviewed: new Set(['call-refund']) })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, reviewed: undefined })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, settled: false })).toBe(false);
+    expect(approvalLapsed(entry, { ...read, parked: true })).toBe(false);
+    expect(approvalLapsed({ ...entry, state: 'done' }, read)).toBe(false);
+    expect(approvalLapsed(entry, read)).toBe(true);
   });
 });

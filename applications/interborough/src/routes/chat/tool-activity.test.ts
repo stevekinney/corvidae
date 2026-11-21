@@ -60,7 +60,7 @@ describe('toolGroups', () => {
       ['lookup-order', 'done'],
       ['issue-refund', 'needs-you'],
     ]);
-    expect(entries[0]?.summary).toBe('status delivered');
+    expect(entries[0]?.summary).toBe('Status delivered');
   });
 
   test('marks an approval expired at its observed deadline without changing its identity', () => {
@@ -192,7 +192,7 @@ describe('toolGroups', () => {
     );
     const entries = groups.get('s0')?.entries ?? [];
     expect(entries.map((entry) => [entry.name, entry.state, entry.summary])).toEqual([
-      ['lookup-order', 'failed', 'status unreachable'],
+      ['lookup-order', 'failed', 'Status unreachable'],
       ['issue-refund', 'failed', 'The card was declined.'],
       ['close-ticket', 'running', ''],
     ]);
@@ -335,9 +335,22 @@ describe('a call the run ended on', () => {
     expect(railCall(entry, false)).toMatchObject({
       status: 'interrupted',
       name: 'Issue refund',
-      identifier: 'issue-refund',
       input: '4471',
       result: 'Interrupted, may have run',
+    });
+  });
+
+  // COR-2438: a parked call no run waits on any more kept its Waiting on you badge.
+  test('renders an approval no run waits on without the Waiting badge, and keeps it in view', () => {
+    const entry = {
+      ...toolGroups(ended, { runActive: false, tools }).groups.get('s0')!.entries[0]!,
+      state: 'needs-you' as const,
+    };
+    expect(railCall(entry, false).status).toBe('waiting');
+    expect(railCall({ ...entry, lapsed: true }, false)).toMatchObject({
+      status: 'expired',
+      result: 'No longer waiting',
+      pinned: true,
     });
   });
 
@@ -377,6 +390,8 @@ describe('how a call is named', () => {
     expect(toolDisplayName('lookup-order')).toBe('Lookup order');
     expect(toolDisplayName('issue_refund', null)).toBe('Issue refund');
     expect(toolDisplayName('lookup-order', 'Find an order')).toBe('Find an order');
+    expect(toolDisplayName('RequestHumanInput')).toBe('Request human input');
+    expect(toolDisplayName('bureau__discover-agents')).toBe('Discover agents');
     expect(toolDisplayName('', null)).toBe('');
   });
 });

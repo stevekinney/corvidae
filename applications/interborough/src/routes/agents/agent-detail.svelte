@@ -54,6 +54,7 @@
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { chatReadiness, CHAT_READINESS_PATHS } from '../../app/first-run.ts';
   import {
     agentDuplicatePath,
     agentEditPath,
@@ -256,9 +257,11 @@
   const needsProvider = $derived(
     !unavailable &&
       listed !== undefined &&
-      listed.media !== null &&
       providers.data !== undefined &&
-      !providers.data.providers.some((provider) => provider.connected),
+      chatReadiness({
+        agents: [{ media: listed.media }],
+        providers: providers.data.providers,
+      }) === 'needs-provider',
   );
 
   // The plugin's title, as Settings › Plugins shows it, for the one line on each tab that names the
@@ -402,7 +405,7 @@
   const editPath = agentEditPath(id);
   // Duplicate on an agent defined in code opens the form for a new agent filled from it.
   const duplicatePath = agentDuplicatePath(id);
-  const connectPath = '/settings/models';
+  const connectPath = CHAT_READINESS_PATHS['needs-provider'];
 
   function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -509,7 +512,7 @@
         {CHAT_COPY.newChat}
       </Button>
     </Tooltip>
-  {:else}
+  {:else if !needsProvider}
     <Button
       href={router.href(newChatPath(id))}
       variant={newChatVariant}
@@ -638,6 +641,7 @@
             name={name ?? id}
             counts={chatCounts}
             bind:empty={chatsEmpty}
+            {needsProvider}
             {unavailable}
             {pluginTitle}
           />
