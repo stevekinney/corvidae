@@ -97,6 +97,7 @@ test.describe('an open chat on the sample world', () => {
     page,
   }) => {
     await openRefundChat(page, { width: 1280, height: 800 });
+    await expect(page.locator('#weft-chat-model')).toContainText('Claude Sonnet 5.5');
     await trail(page).getByRole('button', { name: TITLE }).click();
     const details = page.getByTestId('chat-details');
     await expect(details).toBeVisible();
