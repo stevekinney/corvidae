@@ -369,7 +369,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       'clip-path',
       'inset(50%)',
     );
-    await expect(header.getByText('Waiting on you', { exact: true })).toBeVisible();
+    await expect(header).not.toContainText('Waiting on you');
+    const waiting = openChat(page).getByText('Waiting on you', { exact: true }).filter({
+      visible: true,
+    });
+    await expect(waiting).toHaveCount(1);
+    await expect(waiting).toHaveAttribute('data-cinder-variant', 'warning');
     // Nothing was typed: the page focused the card by script as it opened, and a script focus draws
     // no ring unless the keyboard was the last input (the owner's comment on `grid-card-320`).
     await expect(row).toHaveCSS('outline-style', 'none');

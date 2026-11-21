@@ -191,8 +191,7 @@ test.describe('Chat ended by a restart (frame a: 19a, 19b, 19c, 19e)', () => {
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
     await expect(header(page)).not.toContainText('Waiting on you');
-    const waiting = page
-      .getByRole('region', { name: 'Conversation', exact: true })
+    const waiting = transcript(page)
       .getByText('Waiting on you', { exact: true })
       .filter({ visible: true });
     await expect(waiting).toHaveCount(1);
@@ -208,8 +207,7 @@ test('shows one waiting status in the refund conversation on a phone (COR-2451)'
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
   await expect(page.locator('[data-approval-decision]')).toBeVisible();
 
-  const status = page
-    .getByRole('region', { name: 'Conversation', exact: true })
+  const status = transcript(page)
     .getByText('Waiting on you', { exact: true })
     .filter({ visible: true });
   for (const width of [320, 375]) {
@@ -233,8 +231,7 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
 
     await expectTopBar(page);
     await expect(trail(page).getByRole('button', { name: /^Refund order 4471/ })).toBeVisible();
-    const waitingStatus = page
-      .getByRole('region', { name: 'Conversation', exact: true })
+    const waitingStatus = transcript(page)
       .getByText('Waiting on you', { exact: true })
       .filter({ visible: true });
     await expect(waitingStatus).toHaveCount(1);
