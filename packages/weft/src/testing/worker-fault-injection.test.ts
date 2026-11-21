@@ -301,10 +301,27 @@ function interceptSockets(options: { endThrows: boolean }): { handlers: () => So
   };
 }
 
+function servePlainHttp(): ReturnType<typeof Bun.serve> {
+  const server = Bun.serve({
+    hostname: LOOPBACK,
+    port: 0,
+    fetch: () => new Response('no upgrade', { status: 200 }),
+  });
+  cleanups.push(() => server.stop(true));
+  return server;
+}
+
 describe('connection failures', () => {
+  it('owns the loopback address for a plain HTTP handshake refusal', () => {
+    const { port } = servePlainHttp();
+    expect(() => {
+      const shadow = Bun.serve({ hostname: LOOPBACK, port, fetch: () => new Response('shadow') });
+      cleanups.push(() => shadow.stop(true));
+    }).toThrow();
+  });
   it('rejects a handshake the server never answers', async () => {
     const silent = Bun.listen({
-      hostname: '127.0.0.1',
+      hostname: LOOPBACK,
       port: 0,
       socket: { data() {}, open() {} },
     });
@@ -313,7 +330,7 @@ describe('connection failures', () => {
     expect(
       await throwingRejectionOf(
         connectFaultInjectingWorker({
-          url: `ws://127.0.0.1:${String(silent.port)}/`,
+          url: `ws://${LOOPBACK}:${String(silent.port)}/`,
           handshakeTimeoutMs: 30,
         }),
       ),
@@ -321,8 +338,7 @@ describe('connection failures', () => {
   });
 
   it('rejects when the server answers the upgrade with a plain HTTP response', async () => {
-    const server = Bun.serve({ port: 0, fetch: () => new Response('no upgrade', { status: 200 }) });
-    cleanups.push(() => server.stop(true));
+    const server = servePlainHttp();
 
     expect(
       await throwingRejectionOf(
@@ -333,8 +349,7 @@ describe('connection failures', () => {
 
   it('still rejects a refused handshake when the socket cannot be ended', async () => {
     interceptSockets({ endThrows: true });
-    const server = Bun.serve({ port: 0, fetch: () => new Response('no upgrade', { status: 200 }) });
-    cleanups.push(() => server.stop(true));
+    const server = servePlainHttp();
 
     expect(
       await throwingRejectionOf(
@@ -354,14 +369,16 @@ describe('connection failures', () => {
     expect(worker.closedState).toBe('closed');
   });
 
-  it('rejects when nothing is listening on the port', async () => {
-    const server = Bun.serve({ port: 0, fetch: () => new Response('gone') });
-    const port = server.port;
-    await server.stop(true);
+  it('propagates a refused TCP connection', async () => {
+    // A port released by a fixture can be claimed before the worker dials it.
+    const refusal = new Error('connect ECONNREFUSED');
+    const connect = spyOn(Bun, 'connect').mockRejectedValueOnce(refusal);
+    cleanups.push(() => connect.mockRestore());
 
-    expect(
-      await rejectionOf(connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(port)}/` })),
-    ).toBeDefined();
+    expect(await rejectionOf(connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:1/` }))).toBe(
+      refusal,
+    );
+    expect(connect).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -371,7 +388,7 @@ describe('connection failures', () => {
  */
 function serveRawFrames(frames: Uint8Array): number {
   const server = Bun.listen({
-    hostname: '127.0.0.1',
+    hostname: LOOPBACK,
     port: 0,
     socket: {
       async data(socket, chunk) {
@@ -409,7 +426,7 @@ describe('malformed server frames', () => {
     ['a fragmented frame', new Uint8Array([0x01, 0x00]), 'Fragmented WebSocket frames'],
   ])('fails the stream with 1002 for %s', async (_label, frame, reason) => {
     const port = serveRawFrames(frame);
-    const worker = await connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(port)}/` });
+    const worker = await connectFaultInjectingWorker({ url: `ws://${LOOPBACK}:${String(port)}/` });
 
     const info = await worker.closed;
 
