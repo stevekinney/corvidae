@@ -220,6 +220,54 @@ test('a refresh discarded after a follow-up repairs the transcript once the turn
   });
 });
 
+test('repairing a discarded refresh keeps the failed local message available to retry', async () => {
+  const staleHistory = Promise.withResolvers<Response>();
+  const durable = { id: 'previous', role: 'user', content: 'The previous message' };
+  const unsent = 'The message that never reached the server';
+  let historyReads = 0;
+  const submissions: string[] = [];
+  const session = open(async (input, init) => {
+    const url = urlOf(input);
+    if (isHistoryRead(url)) {
+      historyReads += 1;
+      if (historyReads === 1) return staleHistory.promise;
+      return Response.json({ threadId: 'thread', messages: [durable] });
+    }
+    if (url === `${AG_UI_PATH}/threads/thread/run`) {
+      return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+    }
+    if (url !== `${AG_UI_PATH}/agents/assistant/run` || init?.method !== 'POST')
+      return new Response('', { status: 404 });
+    submissions.push(String(init.body));
+    if (submissions.length === 1) throw new TypeError('The network dropped the request');
+    return sse([started, ...reply, finished]);
+  });
+
+  const refreshing = session.refresh();
+  await waitUntil(() => historyReads === 1, { message: 'the original refresh reached history' });
+  try {
+    const result = await session.send(unsent).catch((error: unknown) => error);
+    expect(result).toBeInstanceOf(TypeError);
+    const row = Object.values(session.conversation.messages).find(
+      (message) => message.metadata['_deliveryStatus'] === 'failed',
+    );
+    if (row === undefined) throw new Error('The local failed message was never marked');
+
+    staleHistory.resolve(Response.json({ threadId: 'thread', messages: [] }));
+    expect(await refreshing).toBe(false);
+    await waitUntil(() => session.conversation.ids.includes(durable.id), {
+      message: 'the repaired read restored its authoritative rows',
+    });
+    expect(session.conversation.ids.at(-1)).toBe(row.id);
+    expect(session.conversation.messages[row.id]).toEqual(row);
+    await session.adapter.retryMessage?.(row.id);
+    expect(submissions).toHaveLength(2);
+    expect(submissions[1]).toContain(unsent);
+  } finally {
+    staleHistory.resolve(Response.json({ threadId: 'thread', messages: [] }));
+  }
+});
+
 test('a refresh discarded during a running follow-up repairs after the turn settles', async () => {
   const staleHistory = Promise.withResolvers<Response>();
   let historyReads = 0;
@@ -414,16 +462,18 @@ test('a live history snapshot cannot discard accepted input it does not carry', 
     expect(session.queuedFollowUps).toBe(1);
 
     const nextReply = { ...refreshed, id: 'next-reply' };
+    const durableInput = 'The durable representation of the queued input';
     stream?.enqueue(
       encoded({
         type: 'MESSAGES_SNAPSHOT',
-        messages: [{ id: inputId, role: 'user', content: text }, nextReply],
+        messages: [{ id: inputId, role: 'user', content: durableInput }, nextReply],
       }),
     );
     await waitUntil(() => session.conversation.ids.includes(nextReply.id), {
       message: 'the next snapshot named the queued input',
     });
     expect(session.conversation.ids).toEqual([inputId, nextReply.id]);
+    expect(session.conversation.messages[inputId]?.content).toBe(durableInput);
     expect(session.queuedFollowUps).toBe(1);
   } finally {
     try {

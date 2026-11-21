@@ -347,7 +347,7 @@ export class ChatSessionState {
         this.usage = new Map(this.usage).set(runId, usage);
       },
       onSnapshot: (history) => {
-        if (!this.#abort.signal.aborted) this.#restoreStreamHistory(history);
+        if (!this.#abort.signal.aborted) this.#restoreKeepingLocalInput(history, true);
       },
       onApprovalDeadlines: (deadlines) => {
         this.#approvalDeadlines = deadlines;
@@ -1041,23 +1041,44 @@ export class ChatSessionState {
     this.#reconcileApprovalDeadlines();
   }
 
-  /** The stream's snapshot owns its durable rows. The controller still owns queued input. */
-  #restoreStreamHistory(restored: ConversationHistory): void {
-    const followUps = this.conversation.ids.flatMap((id) => {
-      const row = this.conversation.messages[id];
-      return row?.metadata[FOLLOW_UP_METADATA_KEY] === true ? [[id, row] as const] : [];
+  /** Keeps local input the server cannot report. A durable row always owns its message data. */
+  #restoreKeepingLocalInput(restored: ConversationHistory, streamingSnapshot: boolean): void {
+    const before = new Map<string | undefined, string[]>();
+    let nextDurableId: string | undefined;
+    const carried = this.conversation.ids.toReversed().flatMap((id) => {
+      const durable = Object.hasOwn(restored.messages, id) ? restored.messages[id] : undefined;
+      if (durable !== undefined) nextDurableId = id;
+
+      const local = this.conversation.messages[id];
+      if (local?.role !== 'user') return [];
+      const followUp = streamingSnapshot && local.metadata[FOLLOW_UP_METADATA_KEY] === true;
+      if (durable === undefined) {
+        if (!followUp && local.metadata['_deliveryStatus'] !== 'failed') return [];
+        const ids = before.get(nextDurableId) ?? [];
+        ids.push(id);
+        before.set(nextDurableId, ids);
+        return [[id, local] as const];
+      }
+      if (!followUp || durable.role !== 'user') return [];
+
+      // A snapshot can carry the row ahead of the input receipt. Keep only the controller's
+      // local queue state until its receipt arrives, alongside the server's text and metadata.
+      const metadata = {
+        ...durable.metadata,
+        [FOLLOW_UP_METADATA_KEY]: true,
+        ...(local.metadata['_deliveryStatus'] === 'sending' ? { _deliveryStatus: 'sending' } : {}),
+      };
+      return [[id, { ...durable, metadata }] as const];
     });
-    if (followUps.length === 0) {
+    if (carried.length === 0) {
       this.restore(restored);
       return;
     }
-    const missing = followUps
-      .map(([id]) => id)
-      .filter((id) => !Object.hasOwn(restored.messages, id));
+    const restoredIds = restored.ids.flatMap((id) => [...(before.get(id)?.toReversed() ?? []), id]);
     this.restore({
       ...restored,
-      ids: [...restored.ids, ...missing],
-      messages: { ...restored.messages, ...Object.fromEntries(followUps) },
+      ids: [...restoredIds, ...(before.get(undefined)?.toReversed() ?? [])],
+      messages: { ...restored.messages, ...Object.fromEntries(carried) },
     });
   }
 
@@ -1074,7 +1095,7 @@ export class ChatSessionState {
       this.#requestHistoryRepair();
       return false;
     }
-    this.restore(restored);
+    this.#restoreKeepingLocalInput(restored, false);
     return true;
   }
 
