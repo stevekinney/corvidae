@@ -98,6 +98,13 @@ const failedWorkerRender = await outcomeOf(async () => {
     incrementRebuildGeneration();
   }
 });
+const signaledWorkerThrow = await throwingRejectionOf(
+  renderFeaturedExample('failed-component', 'failed-scenario', 'failed-mount', () => [
+    process.execPath,
+    '--eval',
+    'process.kill(process.pid, "SIGTERM");',
+  ]),
+);
 
 describe('featured example server renderer', () => {
   test('reports a failed child exit code and captured output', () => {
@@ -106,6 +113,10 @@ describe('featured example server renderer', () => {
     expect(failedWorkerThrow!).toThrow(
       'exit code 17; stdout: "worker stdout"; stderr: "worker stderr"',
     );
+  });
+
+  test('reports the signal when a worker dies without output', () => {
+    expect(signaledWorkerThrow).toThrow('signal SIGTERM; stdout: ""; stderr: ""');
   });
 
   test('removes every Svelte hydration marker form without touching authored comments', () => {

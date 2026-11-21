@@ -95,8 +95,10 @@ async function renderInFreshProcess(
     new Response(worker.stderr).text(),
   ]);
   if (exitCode !== 0) {
+    const result =
+      worker.signalCode === null ? `exit code ${exitCode}` : `signal ${worker.signalCode}`;
     throw new Error(
-      `[playground] featured example render failed for ${componentName}/${scenario}: exit code ${exitCode}; stdout: ${JSON.stringify(stdout.trim())}; stderr: ${JSON.stringify(stderr.trim())}`,
+      `[playground] featured example render failed for ${componentName}/${scenario}: ${result}; stdout: ${JSON.stringify(stdout.trim())}; stderr: ${JSON.stringify(stderr.trim())}`,
     );
   }
   const parsed: unknown = JSON.parse(stdout);
