@@ -214,7 +214,7 @@ export const WORKFLOW_HELP_TEXT = `
 weft workflow - List, inspect, start, signal, and cancel workflows on a server
 
 Usage:
-  weft workflow ls [--type <type>] [--status <status>] [--limit <n>] [options]
+  weft workflow ls [--type <type>] [--status <status>] [--failed-step <step>] [--retrying] [--limit <n>] [options]
   weft workflow get <workflow-id> [options]
   weft workflow events <workflow-id> [options]
   weft workflow start <workflow-type> [--input <json> | --input-file <path|->] [--id <id>] [options]
@@ -227,6 +227,8 @@ Options:
       --profile <name>     Profile from ~/.weft/config
       --type <type>        (ls) Filter by workflow type
       --status <status>    (ls) Filter by workflow status
+      --failed-step <step> (ls) Only failed workflows that stopped at the step with this label
+      --retrying           (ls) Only running workflows that are retrying an activity
       --limit <n>          (ls) Maximum number of rows
       --input <json>       (start/signal) JSON input payload
       --input-file <path>  (start/signal) Read JSON input from a file, or '-' for stdin

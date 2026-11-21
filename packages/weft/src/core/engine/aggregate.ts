@@ -22,8 +22,9 @@ import { normalizeWorkflowTags } from '../workflow-tags.ts';
 import { CONSTRAINED_ID_CHUNK_SIZE } from './candidate-read-batching.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveListCandidateIds } from './list-candidate-resolution.ts';
+import { matchesListFilterAndRecords } from './list-filter-match.ts';
 import { readSearchAttributesForStates } from './search-attribute-records.ts';
-import { decodeSearchAttributeRecord, matchesListFilter } from './state-utilities.ts';
+import { decodeSearchAttributeRecord } from './state-utilities.ts';
 import { decodeWorkflowState } from './validation.ts';
 import { MAX_LIST_SCAN_ROWS, WorkflowListScanCapExceededError } from './workflow-indexes.ts';
 import { isTopLevelWorkflowStateKey } from './workflow-state-stream.ts';
@@ -270,13 +271,14 @@ async function accumulateFromConstrainedIds(
       if (!stateBytes) continue;
       const state = decodeWorkflowState(stateBytes);
       if (
-        !matchesListFilter(
+        !(await matchesListFilterAndRecords(
+          internals,
           state,
           normalizedFilter,
           constrainedIds,
           normalizedTagFilters,
           searchAttributesByWorkflowId.get(state.id) ?? null,
-        )
+        ))
       ) {
         continue;
       }
@@ -318,7 +320,16 @@ async function accumulateFromFullScan(
     const state = decodeWorkflowState(value);
     // A filter with attribute clauses always resolves to a constrained id set, so the full scan
     // only ever runs without one and has no pre-read attribute record to hand to the matcher.
-    if (!matchesListFilter(state, normalizedFilter, null, normalizedTagFilters, null)) {
+    if (
+      !(await matchesListFilterAndRecords(
+        internals,
+        state,
+        normalizedFilter,
+        null,
+        normalizedTagFilters,
+        null,
+      ))
+    ) {
       continue;
     }
     matchingStates.push(state);

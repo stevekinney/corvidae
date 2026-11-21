@@ -14,7 +14,6 @@ import type {
   WorkflowSummary,
 } from '../types.ts';
 import { normalizeWorkflowTags } from '../workflow-tags.ts';
-import { decodeActivityRetrying } from './activity-retrying-record.ts';
 import { mutateWorkflowTags, validateAttributeValueSizes } from './attributes-tags.ts';
 import { CONSTRAINED_ID_CHUNK_SIZE } from './candidate-read-batching.ts';
 import {
@@ -24,11 +23,12 @@ import {
 import type { Engine } from './index.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveListCandidateIds } from './list-candidate-resolution.ts';
+import { matchesListFilterAndRecords, readRetryingRecord } from './list-filter-match.ts';
 import {
   readSearchAttributesForFilter,
   readSearchAttributesForStates,
 } from './search-attribute-records.ts';
-import { matchesListFilter, paginateWorkflowSummaries } from './state-utilities.ts';
+import { paginateWorkflowSummaries } from './state-utilities.ts';
 import { decodeWorkflowState, normalizeBulkFilterNumber } from './validation.ts';
 import { MAX_LIST_SCAN_ROWS, WorkflowListScanCapExceededError } from './workflow-indexes.ts';
 import {
@@ -105,13 +105,14 @@ async function collectSummariesFromConstrainedIds(
       if (!stateBytes) continue;
       const state = decodeWorkflowState(stateBytes);
       if (
-        !matchesListFilter(
+        !(await matchesListFilterAndRecords(
+          internals,
           state,
           normalizedFilter,
           constrainedIds,
           normalizedTagFilters,
           searchAttributesByWorkflowId.get(state.id) ?? null,
-        )
+        ))
       ) {
         continue;
       }
@@ -143,7 +144,16 @@ async function collectSummariesFromFullScan(
       state.id,
       normalizedFilter,
     );
-    if (!matchesListFilter(state, normalizedFilter, null, normalizedTagFilters, searchAttributes)) {
+    if (
+      !(await matchesListFilterAndRecords(
+        internals,
+        state,
+        normalizedFilter,
+        null,
+        normalizedTagFilters,
+        searchAttributes,
+      ))
+    ) {
       continue;
     }
 
@@ -154,26 +164,11 @@ async function collectSummariesFromFullScan(
       summaryFromState(
         state,
         failureCategoryFromAttributeBytes(attributeBytes),
-        await readRetryingActivity(internals, state),
+        await readRetryingRecord(internals, state),
       ),
     );
   }
   return items;
-}
-
-/**
- * The activity a run is retrying, read only for a run that is running: the record is deleted when
- * the run leaves `running`, but never trusted after it. One small read per running run.
- */
-async function readRetryingActivity(
-  internals: EngineInternals,
-  state: WorkflowState,
-): Promise<WorkflowRetrying | undefined> {
-  if (state.status !== 'running') return undefined;
-  return decodeActivityRetrying(
-    await internals.storage.get(KEYS.activityRetrying(state.id)),
-    state.workflowExecutionToken,
-  );
 }
 
 export function assertWorkflowListScanWithinCap(scannedRows: number): void {
@@ -191,7 +186,7 @@ async function summariesFromStates(
   const retryingByWorkflowId = new Map<string, WorkflowRetrying | undefined>();
   await Promise.all(
     states.map(async (state) => {
-      retryingByWorkflowId.set(state.id, await readRetryingActivity(internals, state));
+      retryingByWorkflowId.set(state.id, await readRetryingRecord(internals, state));
       if (!shouldReadFailureCategoryAttribute(state, options)) return;
       attributeBytesByWorkflowId.set(
         state.id,
