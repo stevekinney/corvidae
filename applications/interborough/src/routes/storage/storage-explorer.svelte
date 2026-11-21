@@ -245,6 +245,7 @@
   // A new filter reads the keys afresh, so what happened to the last read does not carry over.
   $effect(() => {
     void boundsKey;
+    selectedKey = null;
     loadStopped = false;
     loadMoreFailed = false;
   });
@@ -301,7 +302,6 @@
       value={group}
       onchange={(event) => {
         group = event.currentTarget.value;
-        selectedKey = null;
       }}
     />
     <SegmentedControl
@@ -440,12 +440,14 @@
         {copy.footer(entries.length, totalKeys, listing.hasNextPage)}
       </p>
     {/if}
+    <!-- Storage keys are user data and stay out of URLs and browser history. -->
     <ListDetail
       items={entries}
       key={(entry) => entry.key}
       label={copy.tableLabel}
       detailLabel={copy.detail.paneLabel}
       class="ib-storage__layout"
+      openFirst
       selectionParameter={null}
       bind:selectedKey
       storageKey="interborough-storage"

@@ -19,7 +19,7 @@ test('operator drains and resumes a worker deployment', async ({ page, checkA11y
   await page.goto(`/health/workers?worker=${E2E_FLEET_WORKER_ID}&tab=queues`);
   const pane = page.getByTestId('worker-detail');
   const detail = page.getByTestId('worker-technical-details');
-  const status = pane.locator('.cinder-status-dot').first();
+  const status = pane.locator('.ib-worker-detail__status .cinder-badge');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot
   // skeleton `page.goto()`'s `load` event resolves under.

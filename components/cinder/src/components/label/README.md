@@ -9,8 +9,10 @@ Accessible form label that associates descriptive text with its input element.
   import { Label } from '@lostgradient/cinder';
 </script>
 
-<Label for="my-input">Email address</Label>
+<Label for="my-input" optional>Email address</Label>
 ```
+
+Use either `optional` or `required`, never both. When both are supplied, Cinder renders the required marker.
 
 ## Props
 
@@ -21,6 +23,7 @@ Accessible form label that associates descriptive text with its input element.
 | `class` | `string` | no | — | Additional class names merged with `.cinder-label`. |
 | `disabled` | `boolean` | no | — | When true, render the label in the disabled color treatment. |
 | `for` | `string` | yes | — | The id of the form control this label labels. Sets `for` on the rendered `<label>`. |
+| `optional` | `boolean` | no | — | When true, append "Optional" to the label. Do not combine with `required`; required wins. |
 | `required` | `boolean` | no | — | When true, append a visual indicator that the field is required. |
 | `children` | `(opaque)` | yes | — | The label text or composed content. Not expressible in JSON Schema; see the component types for the signature. |
 

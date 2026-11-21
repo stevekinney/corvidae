@@ -13,6 +13,8 @@ export type LabelProps = Omit<HTMLLabelAttributes, 'class'> & {
   for: string;
   /** When true, append a visual indicator that the field is required. */
   required?: boolean;
+  /** When true, append "Optional" to the label. Do not combine with `required`; required wins. */
+  optional?: boolean;
   /** When true, render the label in the disabled color treatment. */
   disabled?: boolean;
   /** Additional class names merged with `.cinder-label`. */

@@ -426,9 +426,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
    * heard, is stale, and is hidden from its list as one resolved here is.
    */
   function closedElsewhere(reviewId: string): void {
+    resolved.add(reviewId);
     for (const [runId, wait] of restored) {
       if (reviewIdFor(wait) === reviewId) {
-        resolved.add(reviewId);
         restored.delete(runId);
         dependencies.released?.(runId);
       }
@@ -585,8 +585,8 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         );
       }
       if (!state?.waitingForSignals?.includes(review.signalName)) {
-        resolved.add(review.id);
-        throw createError(`Review "${review.id}" is no longer pending`, 'CONFLICT');
+        closedElsewhere(review.id);
+        throw createError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
       }
       const claim = await decisions.claim(request);
       if (claim.outcome === 'conflict') {
