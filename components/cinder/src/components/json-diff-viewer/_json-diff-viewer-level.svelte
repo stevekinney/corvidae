@@ -54,6 +54,20 @@
     return `${formatNumber(count)} unchanged ${count === 1 ? 'entry' : 'entries'}`;
   }
 
+  // The nested levels the render budget closed that the reader has opened, by entry id.
+  let opened: ReadonlySet<string> = $state(new Set());
+
+  function toggleOpened(id: string): void {
+    const next = new Set(opened);
+    if (!next.delete(id)) next.add(id);
+    opened = next;
+  }
+
+  function nestedControlLabel(entry: JsonDiffEntry): string {
+    const count = entry.children?.changes.length ?? 0;
+    return `${opened.has(entry.id) ? 'Hide' : 'Show'} ${formatNumber(count)} ${count === 1 ? 'change' : 'changes'}`;
+  }
+
   const unchangedControlLabel = $derived(
     `${unchangedOpen ? 'Hide' : 'Show'} ${unchangedLabel(level.unchanged.length)}`,
   );
@@ -115,7 +129,20 @@
       >{MARKERS[entry.kind]}</span
     >
     <span class="cinder-json-diff-viewer__key">{entry.key}</span>
-    {#if entry.children}
+    {#if entry.children && entry.collapsed}
+      <!-- A nested level the render budget closed: it opens on request, so a huge comparison never builds it unasked. -->
+      <button
+        type="button"
+        class="cinder-json-diff-viewer__button"
+        aria-expanded={opened.has(entry.id)}
+        onclick={() => toggleOpened(entry.id)}
+      >
+        {nestedControlLabel(entry)}
+      </button>
+      {#if opened.has(entry.id)}
+        <Self level={entry.children} />
+      {/if}
+    {:else if entry.children}
       <Self level={entry.children} />
     {:else}
       <span class="cinder-json-diff-viewer__value">{valueText(entry)}</span>

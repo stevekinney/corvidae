@@ -29,6 +29,7 @@ Nothing moves focus. The controls are native buttons that keep focus when activa
 | Tab | The comparison | Moves between the controls in reading order; rows are not focus stops. |
 | Enter, Space | Unchanged-entries control | Toggles the unchanged entries of that level, and updates `aria-expanded`. |
 | Enter, Space | Show-more control | Reveals the next 200 entries of that level. |
+| Enter, Space | Nested-changes control | Opens or closes a nested level the render budget closed, and updates `aria-expanded`. |
 
 ### Assistive-technology announcements
 

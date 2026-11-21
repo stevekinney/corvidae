@@ -330,6 +330,43 @@ describe('JsonDiffViewer bounded rendering', () => {
     expect(rowsOfKind(container, 'unchanged')).toHaveLength(400);
   });
 
+  test('nested changes in two 1 MB arrays of objects stay under 1,000 elements, with the levels that do not fit closed', async () => {
+    const before = Array.from({ length: 9_000 }, (_, index) => ({
+      id: index,
+      label: `item number ${index} with some text to fill the payload out`,
+      detail: { owner: 'data-platform', rank: index, flags: ['a', 'b', 'c'] },
+    }));
+    const after = before.map((item) => ({ ...item, detail: { ...item.detail, rank: -1 } }));
+    expect(JSON.stringify(before).length).toBeGreaterThan(1_000_000);
+    expect(JSON.stringify(after).length).toBeGreaterThan(1_000_000);
+
+    const { container } = render(JsonDiffViewer, { before, after });
+    expect(container.querySelectorAll('*').length).toBeLessThanOrEqual(1000);
+
+    // Every row of the first page is a changed item; the budget closed the levels it could not afford.
+    const closed = buttons(container).filter((button) =>
+      /^Show \d+ changes?$/.test(button.textContent?.replace(/\s+/g, ' ').trim() ?? ''),
+    );
+    expect(closed.length).toBeGreaterThan(0);
+    for (const button of closed) expect(button.getAttribute('aria-expanded')).toBe('false');
+
+    const elementsBefore = container.querySelectorAll('*').length;
+    await fireEvent.click(requiredInstance(closed[0] ?? null, HTMLButtonElement));
+    expect(closed[0]?.getAttribute('aria-expanded')).toBe('true');
+    expect(closed[0]?.textContent?.replace(/\s+/g, ' ').trim()).toMatch(/^Hide \d+ changes?$/);
+    expect(container.querySelectorAll('*').length).toBeGreaterThan(elementsBefore);
+  });
+
+  test('keeps a small nested comparison fully open', () => {
+    const { container } = render(JsonDiffViewer, {
+      before: THREE_LEVELS_BEFORE,
+      after: THREE_LEVELS_AFTER,
+    });
+    expect(buttons(container).every((button) => /unchanged/.test(button.textContent ?? ''))).toBe(
+      true,
+    );
+  });
+
   test('pages a nested level independently of its parent', () => {
     const before = { list: Array.from({ length: 300 }, (_, index) => index) };
     const after = { list: Array.from({ length: 300 }, (_, index) => index + 1) };
