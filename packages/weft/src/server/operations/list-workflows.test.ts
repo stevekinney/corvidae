@@ -163,25 +163,30 @@ describe('weft.workflows.list', () => {
     const held = await engine.start('hold', null, { id: 'held-1' });
     await waitForWorkflowStatus(engine, held.id, 'running');
 
-    const ids = async (query: string) => {
+    const query = async (search: string) => {
       const response = await handleRequest(
-        new Request(`http://localhost/v1/workflows?${query}`, { method: 'GET' }),
+        new Request(`http://localhost/v1/workflows?${search}`, { method: 'GET' }),
         engine,
         { operationRegistry: registry, restBindings: bindings },
       );
-      return { status: response.status, body: await response.json() };
+      const body = await response.json();
+      const items: { id: string }[] = body.items ?? [];
+      return { status: response.status, ids: items.map((item) => item.id).toSorted() };
     };
 
-    const byStep = await ids('failed_step=charge-card');
-    expect(byStep.status).toBe(200);
-    expect(byStep.body.items.map((item: { id: string }) => item.id)).toEqual(['checkout-1']);
-    expect((await ids('failed_step=ship-order')).body.items).toEqual([]);
-    expect((await ids('failed_step=charge-card&status=running')).body.items).toEqual([]);
-    expect((await ids('retrying=true')).body.items).toEqual([]);
-    expect(
-      (await ids('retrying=false')).body.items.map((item: { id: string }) => item.id).toSorted(),
-    ).toEqual(['checkout-1', 'held-1']);
-    expect((await ids('retrying=maybe')).status).toBeGreaterThanOrEqual(400);
+    expect(await query('failed_step=charge-card')).toEqual({ status: 200, ids: ['checkout-1'] });
+    expect(await query('failed_step=ship-order')).toEqual({ status: 200, ids: [] });
+    expect(await query('failed_step=charge-card&status=running')).toEqual({
+      status: 200,
+      ids: [],
+    });
+    expect(await query('retrying=true')).toEqual({ status: 200, ids: [] });
+    expect(await query('retrying=false')).toEqual({
+      status: 200,
+      ids: ['checkout-1', 'held-1'],
+    });
+    const refused = await query('retrying=maybe');
+    expect(refused.status).toBeGreaterThanOrEqual(400);
   });
 
   it('filters workflow history by originating schedule over REST', async () => {

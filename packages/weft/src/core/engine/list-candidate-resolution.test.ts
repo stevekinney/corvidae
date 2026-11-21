@@ -461,9 +461,8 @@ describe('resolveListCandidateIds', () => {
         await resolveListCandidateIds(internals, { failedStep: 'flaky' }, undefined),
       ).toBeNull();
       storage.resetObservations();
-      expect(
-        (await engine.list({ retrying: true, idPrefix: 'retrying-' })).items.map((item) => item.id),
-      ).toEqual(['retrying-1']);
+      const prefixed = await engine.list({ retrying: true, idPrefix: 'retrying-' });
+      expect(prefixed.items.map((item) => item.id)).toEqual(['retrying-1']);
       expect(storage.countScans('wf:')).toBe(0);
       expect(storage.countScans(KEYS.activityRetryingPrefix())).toBe(1);
 

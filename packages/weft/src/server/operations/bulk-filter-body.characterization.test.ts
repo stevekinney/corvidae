@@ -10,9 +10,11 @@
  *   6. offset
  *   7. idPrefix
  *   8. failureCategory
- *   9. createdAt
- *  10. updatedAt
- *  11. executionDeadline
+ *   9. failedStep
+ *  10. retrying
+ *  11. createdAt
+ *  12. updatedAt
+ *  13. executionDeadline
  *
  * Adjacent-pair tests assert that when two consecutive fields are invalid, the
  * error for the earlier-listed field surfaces first. The all-bad test passes

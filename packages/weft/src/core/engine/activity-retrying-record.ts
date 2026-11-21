@@ -1,7 +1,8 @@
 /**
- * The `wf:{id}:retrying` record behind `WorkflowSummary.retrying` (COR-2529): which activity a
+ * The `wf-retrying:{id}` record behind `WorkflowSummary.retrying` (COR-2529): which activity a
  * running workflow is retrying and on which attempt, kept in a small record of its own so a list
- * answers it without loading a checkpoint.
+ * answers it without loading a checkpoint. Under its own prefix, a scan of the records is also the
+ * index behind `ListFilter.retrying` (COR-2530).
  *
  * It is derived at the checkpoint commit, never written by the retry loop: the retry decision
  * already lives in the checkpoint's locals (`activity-retry-state.ts`) and commits with the
@@ -82,14 +83,14 @@ export function activityRetryingOperation(
   return { type: 'put', key, value: encode(record) };
 }
 
-/** What the `wf:{id}:retrying` record holds: the retrying activity and the run it belongs to. */
+/** What the `wf-retrying:{id}` record holds: the retrying activity and the run it belongs to. */
 type ActivityRetryingRecord = WorkflowRetrying & { workflowExecutionToken?: string };
 
 /**
  * The decoded record when it belongs to the run with `workflowExecutionToken`, and `undefined` when
  * it is absent, not the shape the engine writes, or left by another run under the same id.
  */
-export function decodeActivityRetrying(
+function decodeActivityRetrying(
   bytes: Uint8Array | null,
   workflowExecutionToken: string | undefined,
 ): WorkflowRetrying | undefined {

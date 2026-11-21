@@ -316,9 +316,9 @@ describe('COR-2530 failedStep filter', () => {
       'a-1',
       'a-2',
     ]);
-    expect(
-      (await engine.list({ failedStep: 'charge-card', limit: 1, offset: 1 })).items,
-    ).toHaveLength(1);
+    const secondPage = await engine.list({ failedStep: 'charge-card', limit: 1, offset: 1 });
+    expect(secondPage.items).toHaveLength(1);
+    expect(secondPage.total).toBe(2);
   });
 
   it('aggregate: counts the same runs', async () => {

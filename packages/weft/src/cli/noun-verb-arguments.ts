@@ -110,7 +110,7 @@ const WORKFLOW_ACTION_BUILDERS: Record<
       ...(values.type !== undefined ? { type: values.type } : {}),
       ...(values.status !== undefined ? { status: values.status } : {}),
       ...(values['failed-step'] !== undefined ? { failedStep: values['failed-step'] } : {}),
-      ...(values.retrying === true ? { retrying: true } : {}),
+      ...(values.retrying ? { retrying: true } : {}),
       ...(limit !== undefined ? { limit } : {}),
     };
   },
