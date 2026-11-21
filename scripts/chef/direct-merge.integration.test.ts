@@ -407,7 +407,9 @@ const queueLandVerified = await outcomeOf(async () => {
   const merged = report.mergeCommit ?? '';
   // The merged tree is the attested tree plus main's commit: what merging the head onto the new
   // main gives, and it holds the lockfile.
-  expect(git(w.origin, 'rev-parse', `${merged}^{tree}`)).toBe(mergeTree(w.other, lock, w.head).first);
+  expect(git(w.origin, 'rev-parse', `${merged}^{tree}`)).toBe(
+    mergeTree(w.other, lock, w.head).first,
+  );
   expect(git(w.origin, 'ls-tree', '--name-only', merged).split('\n')).toEqual([
     'bun.lock',
     'feature.txt',

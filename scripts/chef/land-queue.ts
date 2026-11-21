@@ -276,12 +276,16 @@ export interface LandQueueOptions {
  * commit verifies it and every commit before it on `main`. Returns the verified prefix of
  * `commits` (oldest first), each with the earliest successful run at or after it.
  */
-function verifiedPrefix(commits: readonly MainCommit[], runs: readonly MainRun[]): VerifiedCommit[] {
+function verifiedPrefix(
+  commits: readonly MainCommit[],
+  runs: readonly MainRun[],
+): VerifiedCommit[] {
   const green = new Map<string, string>();
-  for (const run of runs) {
-    if (run.status !== 'completed' || run.conclusion !== 'success') continue;
-    const known = green.get(run.sha);
-    if (known === undefined || Number(run.id) > Number(known)) green.set(run.sha, run.id);
+  for (const candidate of runs) {
+    if (candidate.status !== 'completed' || candidate.conclusion !== 'success') continue;
+    const known = green.get(candidate.sha);
+    if (known === undefined || Number(candidate.id) > Number(known))
+      green.set(candidate.sha, candidate.id);
   }
   let newest = -1;
   for (let index = commits.length - 1; index >= 0; index -= 1)
@@ -421,7 +425,10 @@ export function githubMainRuns(
         throw new UsageError('gh run list returned a run without a head or a status');
       return {
         sha: headSha,
-        id: String(databaseId ?? ''),
+        id:
+          typeof databaseId === 'number' || typeof databaseId === 'string'
+            ? String(databaseId)
+            : '',
         status,
         conclusion: typeof conclusion === 'string' && conclusion !== '' ? conclusion : null,
       };

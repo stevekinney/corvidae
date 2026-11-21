@@ -447,7 +447,7 @@ describe('main run provider (gh)', () => {
 });
 
 describe('land-queue command', () => {
-  const dependencies =(commits: Record<string, string[]>) => ({
+  const dependencies = (commits: Record<string, string[]>) => ({
     runner: repository(commits).runner,
     readPlan: () => plan,
     withLock: async <T>(_: unknown, action: () => T) => action(),
