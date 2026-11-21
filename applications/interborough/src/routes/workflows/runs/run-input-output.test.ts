@@ -108,8 +108,8 @@ describe('a workflow’s input and output', () => {
     expect(container.querySelectorAll('.ib-run__payloads')).toHaveLength(1);
   });
 
-  test('a failed workflow shows the failure-category badge and plain-language explanation', () => {
-    const { getByText } = render(Harness, {
+  test('a failed workflow leads with a Cinder Alert before its input, and keeps its cause out of raw JSON', () => {
+    const { container, getByRole, getByText } = render(Harness, {
       props: {
         workflow: workflow({
           status: 'failed',
@@ -119,9 +119,14 @@ describe('a workflow’s input and output', () => {
       },
     });
 
-    expect(getByText('timeout')).not.toBeNull();
-    expect(getByText(/exceeded its configured deadline/)).not.toBeNull();
-    expect(getByText('the activity took too long')).not.toBeNull();
+    const alert = container.querySelector<HTMLElement>('[data-run-failure][data-cinder-variant="danger"]');
+    const input = getByRole('group', { name: copy.input });
+    expect(alert).not.toBeNull();
+    expect(alert?.textContent).toContain('timeout');
+    expect(alert?.textContent).toMatch(/exceeded its configured deadline/);
+    expect(alert?.textContent).toContain('the activity took too long');
+    expect(alert?.textContent).not.toContain('{');
+    expect(alert?.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(getByText(copy.noOutputFailed)).not.toBeNull();
   });
 
@@ -142,11 +147,11 @@ describe('a workflow’s input and output', () => {
   });
 
   test('a failed workflow with no failure category shows neither the badge nor the explanation', () => {
-    const { getByText, queryByText } = render(Harness, {
+    const { container, getByText, queryByText } = render(Harness, {
       props: { workflow: workflow({ status: 'failed', error: 'boom' }) },
     });
 
-    expect(getByText('Failed')).not.toBeNull();
+    expect(container.querySelector('[data-run-failure][data-cinder-variant="danger"]')).not.toBeNull();
     expect(getByText('boom')).not.toBeNull();
     expect(queryByText(/could not be classified/)).toBeNull();
   });
