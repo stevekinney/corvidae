@@ -589,8 +589,12 @@ test.describe('Agent shared FormActions', () => {
       await create.click();
       await expect(name).toBeInvalid();
       await expect(name).toHaveAccessibleDescription(
-        editorCopy.newAgent.nameTaken('Shared refusal'),
+        expect.stringContaining(editorCopy.newAgent.nameTaken('Shared refusal')),
       );
+      await expect(name).toHaveValue('Shared refusal');
+      await expect(
+        page.getByRole('group', { name: 'Form actions' }).getByRole('button'),
+      ).toHaveText([editorCopy.cancelAction, editorCopy.createAction]);
       expect(attempts).toBe(1);
       await expect(create).toBeEnabled();
       await captureForDesignReview(page, {
@@ -598,6 +602,8 @@ test.describe('Agent shared FormActions', () => {
         state: 'shared FormActions, duplicate refusal',
         source: SOURCE,
       });
+      await create.click();
+      await expect(name).toBeFocused();
     });
   }
 
@@ -629,6 +635,9 @@ test.describe('Agent shared FormActions', () => {
         const save = page.getByRole('button', { name: editorCopy.saveAction });
         await save.click();
         await expect(save).toHaveAttribute('data-cinder-loading', '');
+        await expect(page.getByTestId('agent-save-status')).toHaveText(editorCopy.newAgent.saving);
+        await expect(page.getByRole('button', { name: editorCopy.cancelAction })).toBeEnabled();
+        await save.press('Enter');
         expect(attempts).toBe(1);
         await captureForDesignReview(page, {
           route: '/agents/:agent/edit',

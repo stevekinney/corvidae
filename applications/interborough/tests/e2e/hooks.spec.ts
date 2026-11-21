@@ -1514,7 +1514,7 @@ test('[plugin-hook-save-failed] /hooks/:hook: shared FormActions keeps every val
   expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toHaveLength(1);
   await captureForDesignReview(page, {
     route: '/hooks/:hook',
-    state: 'shared FormActions, failed save',
+    state: 'plugin-hook-save-failed',
     source: SOURCE,
   });
   await save.click();
