@@ -1,14 +1,14 @@
 {
   "issue": "COR-2544",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "ea37cf64de5a00d1cb4f625b04d5a990cc2a15ea",
+  "checkedAt": "710bd9fbdf770d0ecf80878bfa79354fca25769e",
   "briefVersion": "bdf0e93b22ae",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated. Unchanged by design round 1."
+      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated. A fork whose source id was replaced by a start-new restart (the engine throws WorkflowNotFoundError for the source's old execution) is answered NotFound with 'The source run <id> is no longer available', not an opaque EngineFailure; runs-compare-operation.test.ts covers the replaced source and the fork the engine no longer finds. The fork preview (weft.workflows.fork dryRun) already maps a missing workflow to NotFound through resolveForkAccess."
     },
     {
       "id": "AC2",
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs, refined by the design review of #1219: a card mounts only when it has something to say. run-panel-scope.ts holds the rules; run-panels.test.ts and run-detail-engine-runs.test.ts test each mount: a fork gets the run comparison and neither the run inspector nor the schedule editor; a workflow instance that is not a fork gets none of the three; an agent run gets the run inspector and the schedule editor and no comparison; a panel with no rule shows on every run. Each panel is given { runId, runKind: 'workflow' } on a workflow run and { taskId } on an agent run. The host's run panel frame has no duplicate card title and no 'From the plugin' line (region named by aria-label)."
+      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs, refined by the design review of #1219: a card mounts only when it has something to say. run-panel-scope.ts holds the rules; run-panels.test.ts and run-detail-engine-runs.test.ts test each mount: a fork gets the run comparison and neither the run inspector nor the schedule editor; a workflow instance that is not a fork gets none of the three; an agent run gets the run inspector and the schedule editor and no comparison; a panel with no rule (the run timeline among them) shows on every run, and the Inspector spec asserts per panel (data-app) so the timeline never changes a count. Each panel is given { runId, runKind: 'workflow' } on a workflow run and { taskId } on an agent run. The host's run panel frame has no duplicate card title and no 'From the plugin' line (region named by aria-label)."
     },
     {
       "id": "AC4",

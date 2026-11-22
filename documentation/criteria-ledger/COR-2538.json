@@ -1,7 +1,7 @@
 {
   "issue": "COR-2538",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "ea37cf64de5a00d1cb4f625b04d5a990cc2a15ea",
+  "checkedAt": "710bd9fbdf770d0ecf80878bfa79354fca25769e",
   "briefVersion": "a01825d1cece",
   "status": "READY",
   "criteria": [
@@ -28,7 +28,7 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict (a warning Callout under role=alert) with Create fork disabled, nothing asked for a non-number or without workflows:write. Design round 1: a different revision is one warning Callout that replaces the Retains line (no revision id printed), the preview has no box of its own, Create fork is a normal-width button, the success line names the fork by its workflow and links to its id. tests/fixture-seed.test.ts pins on a real engine that the dry run for the fork spec's candidate revision is refused with WorkflowRevisionUnavailableError reason 'not-registered', and that the newest checkpoint keeps one step and reruns one."
+      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict (a warning Callout under role=alert, in the person's words: That revision isn't loaded, so the fork can't run on it; never the engine's text) with Create fork disabled, nothing asked for a non-number or without workflows:write. Design round 1: a different revision is one warning Callout that replaces the Retains line (no revision id printed), the preview has no box of its own, Create fork is a normal-width button, the success line names the fork by its workflow and links to its id. tests/fixture-seed.test.ts pins on a real engine that the dry run for the fork spec's candidate revision is refused with WorkflowRevisionUnavailableError reason 'not-registered', and that the newest checkpoint keeps one step and reruns one."
     },
     {
       "id": "AC6",
