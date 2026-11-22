@@ -51,17 +51,29 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
   }
 });
 
-test('the text face gives its label at least one and a half times as much side room as vertical room', async ({
+test('a stretched 32px text face gives its label enough real side room without moving the icon', async ({
   page,
 }) => {
   await page.goto(fixtureRoute('copy-button'), { waitUntil: 'load' });
-  const text = page.locator('button.cinder-copy-button').nth(1);
-  const padding = await text.evaluate((button) => {
-    const style = getComputedStyle(button);
+  const text = page.getByTestId('stretched-action-row').getByRole('button');
+  const geometry = await text.evaluate((button) => {
+    const label = button.querySelector<HTMLElement>(
+      '.cinder-copy-button__word[data-cinder-current]',
+    );
+    const icon = button.querySelector<SVGElement>('svg');
+    if (label === null || icon === null) throw new Error('Missing CopyButton text face.');
+    const face = button.getBoundingClientRect();
+    const words = label.getBoundingClientRect();
+    const glyph = icon.getBoundingClientRect();
     return {
-      block: Number.parseFloat(style.paddingBlockStart),
-      inline: Number.parseFloat(style.paddingInlineStart),
+      faceHeight: face.height,
+      sideRoom: Math.min(words.left - face.left, face.right - words.right),
+      verticalRoom: Math.min(words.top - face.top, face.bottom - words.bottom),
+      glyphCenter: (glyph.top + glyph.bottom) / 2,
+      labelCenter: (words.top + words.bottom) / 2,
     };
   });
-  expect(padding.inline / padding.block).toBeGreaterThanOrEqual(1.5);
+  expect(geometry.faceHeight).toBeCloseTo(32, 0);
+  expect(geometry.sideRoom / geometry.verticalRoom).toBeGreaterThanOrEqual(1.5);
+  expect(Math.abs(geometry.glyphCenter - geometry.labelCenter)).toBeLessThanOrEqual(0.5);
 });
