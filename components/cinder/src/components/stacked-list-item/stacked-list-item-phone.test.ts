@@ -217,6 +217,30 @@ describe('StackedListItem on a phone', () => {
     ]) {
       expect(ordinaryLineActionSelector).toContain(exception);
     }
+
+    const narrowActionBlock = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-stacked-list-item (max-width: 448px)', 7000),
+    );
+    const trailingRule = (selector: string) =>
+      new RegExp(`${selector}\\s+\\.cinder-stacked-list-item__trailing\\s*\\{([^}]*)\\}`).exec(
+        narrowActionBlock,
+      )?.[1] ?? '';
+    const noLeadingAction = trailingRule(
+      String.raw`\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--single-action:not\([^)]*?\.cinder-stacked-list-item--has-leading[^)]*?\)\.cinder-stacked-list-item--status-leading`,
+    );
+    const leadingAction = trailingRule(
+      String.raw`\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--single-action:not\([^)]*?\)\.cinder-stacked-list-item--status-leading`,
+    );
+    for (const [action, textStart] of [
+      [noLeadingAction, 'title / -1'],
+      [leadingAction, 'status / -1'],
+    ]) {
+      expect(action).toContain(`grid-column: ${textStart}`);
+      expect(action).not.toContain('grid-row');
+      expect(action).toContain('align-self: start');
+      expect(action).toContain('margin-inline-start: 0');
+      expect(action).toContain('margin-block-start: var(--cinder-space-2)');
+    }
     cleanup();
     setPhone(false);
   });
