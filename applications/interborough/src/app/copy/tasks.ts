@@ -196,6 +196,8 @@ export const TASK_COPY = {
   failedStepPlaceholder: 'Any step',
   /** The filter on the runs retrying a step now (COR-2535). */
   retryingLabel: 'Retrying',
+  /** The value the applied Retrying chip carries: "Retrying: Yes". */
+  retryingOn: 'Yes',
   loading: 'Loading runs',
   loadFailed: {
     title: 'The runs could not be loaded',

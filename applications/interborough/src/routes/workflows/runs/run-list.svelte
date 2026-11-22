@@ -357,20 +357,23 @@
       multiple: false,
       options: agentNames.map((name) => ({ value: name, label: filterLabelOf(agentLabel(name)) })),
     },
-    { type: 'toggle', key: 'retrying', label: TASK_COPY.retryingLabel, tone: 'warning' },
+    // The two failure filters live in the Filter menu, never in the row: a row that holds the
+    // segments and the three chips has no room for them (COR-2535), and the row's folding, which the
+    // other filters' rows depend on, stays what it was. While one is on, the row shows it as a
+    // chip, "Failed at step: charge-card", which removes it.
+    { type: 'toggle', key: 'retrying', label: TASK_COPY.retryingLabel, menuOnly: true },
     {
       type: 'custom',
       key: 'failedStep',
       label: TASK_COPY.failedStepLabel,
-      // Filled, the field reads "charge-card"; its label stays before it, as Status's does.
-      labelVisible: true,
+      menuOnly: true,
       control: failedStepControl,
     },
   ]);
   // The chips that move into the Filter menu when the row cannot hold them, least used first: a
   // chip with a filter applied never moves, so an applied filter stays visible and removable
   // (row 52x).
-  const FOLD_ORDER = ['retrying', 'workflow', 'agent', 'startedBy'] as const;
+  const FOLD_ORDER = ['workflow', 'agent', 'startedBy'] as const;
   const appliedFilters = $derived<AppliedFilter[]>([
     ...(filter.startedBy === undefined
       ? []
@@ -383,7 +386,7 @@
       : [{ key: 'agent', value: filter.agent, label: TASK_COPY.agentLabel }]),
     ...(filter.retrying === undefined
       ? []
-      : [{ key: 'retrying', value: 'true', label: TASK_COPY.retryingLabel }]),
+      : [{ key: 'retrying', value: TASK_COPY.retryingOn, label: TASK_COPY.retryingLabel }]),
     ...(filter.failedStep === undefined
       ? []
       : [{ key: 'failedStep', value: filter.failedStep, label: TASK_COPY.failedStepLabel }]),

@@ -220,8 +220,78 @@ function lastTasksRequest(): Record<string, unknown> | undefined {
     .findLast((params) => params['limit'] === 100 && params['status'] === undefined);
 }
 
+/**
+ * Opens the bar's Filter menu on the row named `label`, where the Retrying checkbox and the
+ * Failed at step field are: neither has a control in the row, which holds the segments and chips.
+ */
+async function openMenuRow(view: ReturnType<typeof open>, label: string): Promise<void> {
+  if (document.querySelector('.cinder-filter-bar__menu') === null) {
+    await fireEvent.click(view.getByRole('button', { name: 'Filter' }));
+    flushSync();
+  }
+  const row = [
+    ...document.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__menu-row'),
+  ].find((candidate) => candidate.textContent?.includes(label));
+  if (row === undefined) throw new Error(`The Filter menu has no row for ${label}.`);
+  if (row.getAttribute('aria-expanded') !== 'true') await fireEvent.click(row);
+  flushSync();
+}
+
+/**
+ * The open Filter menu's controls, by selector: the menu is a popover outside the page's tree,
+ * which a query by role does not reach. Only the open row's control is in the menu.
+ */
+function menuCheckbox(): HTMLInputElement {
+  const found = document.querySelector<HTMLInputElement>(
+    '.cinder-filter-bar__menu input[type="checkbox"]',
+  );
+  if (found === null) throw new Error('The Filter menu holds no checkbox.');
+  return found;
+}
+
+function menuField(): HTMLInputElement {
+  const found = document.querySelector<HTMLInputElement>(
+    `.cinder-filter-bar__menu input[aria-label="${TASK_COPY.failedStepLabel}"]`,
+  );
+  if (found === null) throw new Error('The Filter menu holds no Failed at step field.');
+  return found;
+}
+
 describe('the Retrying and Failed at step filters (COR-2535)', () => {
   const failures = [CHARGE_FAILED, MODEL_FAILED, CHARGE_RETRYING];
+
+  test('neither has a control in the row: one Filter button holds them, so the segments and chips keep their room', async () => {
+    const view = open('/runs', { tasks: failures });
+    await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
+    const bar = view.getByRole('search', { name: TASK_COPY.filtersLabel });
+    expect(bar.querySelector('.cinder-filter-bar__toggle')).toBeNull();
+    expect(bar.querySelector('input[role="combobox"]')).toBeNull();
+    expect(bar.querySelectorAll('.cinder-filter-bar__menu-button')).toHaveLength(1);
+    expect(view.getByRole('radio', { name: /^All\s*,\s*6$/ })).not.toBeNull();
+    for (const chip of [TASK_COPY.startedByLabel, TASK_COPY.workflowLabel, TASK_COPY.agentLabel]) {
+      expect(view.getByRole('button', { name: chip })).not.toBeNull();
+    }
+    await openMenuRow(view, TASK_COPY.retryingLabel);
+    const rows = [...document.querySelectorAll('.cinder-filter-bar__menu-label')].map(
+      (label) => label.textContent,
+    );
+    expect(rows).toEqual([TASK_COPY.retryingLabel, TASK_COPY.failedStepLabel]);
+  });
+
+  test('while one is on, the row shows it as a chip named with its value, and the chip removes it', async () => {
+    const view = open('/runs?retrying=true&failedStep=charge-card', { tasks: failures });
+    await view.findByRole('heading', { level: 2, name: TASK_COPY.noMatch.title });
+    expect(
+      view.getByRole('button', {
+        name: `Remove filter: ${TASK_COPY.retryingLabel}: ${TASK_COPY.retryingOn}`,
+      }),
+    ).not.toBeNull();
+    await fireEvent.click(
+      view.getByRole('button', { name: 'Remove filter: Failed at step: charge-card' }),
+    );
+    await waitFor(() => expect(router.search.get('failedStep')).toBeNull());
+    expect(router.search.get('retrying')).toBe('true');
+  });
 
   test('Retrying narrows the read to the runs retrying a step, and the row says which and its try', async () => {
     const view = open('/runs', { tasks: failures });
@@ -232,7 +302,8 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
       stub?.callsTo('bureau.tasks.list').some((call) => call.params['status'] === 'failed'),
     ).toBe(false);
 
-    await fireEvent.click(view.getByRole('button', { name: TASK_COPY.retryingLabel }));
+    await openMenuRow(view, TASK_COPY.retryingLabel);
+    await fireEvent.click(menuCheckbox());
     await waitFor(() => expect(router.search.get('retrying')).toBe('true'));
     await waitFor(() => expect(rowIds(view.container)).toEqual(['charge-retrying']));
     expect(lastTasksRequest()).toMatchObject({ retrying: true });
@@ -246,10 +317,14 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
   test('Failed at step suggests the steps the runs failed at, and a chosen one narrows the read', async () => {
     const view = open('/runs', { tasks: failures });
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
-    const field = view.getByRole('combobox', { name: TASK_COPY.failedStepLabel });
+    await openMenuRow(view, TASK_COPY.failedStepLabel);
+    const field = menuField();
     await fireEvent.focus(field);
     await fireEvent.input(field, { target: { value: 'c' } });
-    const options = await view.findAllByRole('option');
+    await waitFor(() =>
+      expect(document.querySelectorAll('[role="option"]').length).toBeGreaterThan(0),
+    );
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
     expect(options.map((option) => option.textContent?.trim())).toEqual(['charge-card']);
     // The listbox completes on the pointer going down, as a person's press does.
     await fireEvent.mouseDown(options[0]!);
@@ -262,7 +337,8 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
   test('a typed name is kept on Enter, never on each key, and emptying the field takes it out', async () => {
     const view = open('/runs', { tasks: failures });
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
-    const field = view.getByRole('combobox', { name: TASK_COPY.failedStepLabel });
+    await openMenuRow(view, TASK_COPY.failedStepLabel);
+    const field = menuField();
     await fireEvent.input(field, { target: { value: 'mod' } });
     expect(router.search.get('failedStep')).toBeNull();
     await fireEvent.input(field, { target: { value: 'model' } });
@@ -283,9 +359,12 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
     });
     await waitFor(() => expect(rowIds(view.container)).toEqual(['charge-failed']));
     expect(lastTasksRequest()).toMatchObject({ failedStep: 'charge-card' });
+    // The row says it, with its label, and the field in the menu holds it.
     expect(
-      (view.getByRole('combobox', { name: TASK_COPY.failedStepLabel }) as HTMLInputElement).value,
-    ).toBe('charge-card');
+      view.getByRole('button', { name: 'Remove filter: Failed at step: charge-card' }),
+    ).not.toBeNull();
+    await openMenuRow(view, TASK_COPY.failedStepLabel);
+    expect(menuField().value).toBe('charge-card');
     // The other filters of the address are applied with it: the agent has its chip.
     expect(view.getByRole('button', { name: 'Remove filter: Agent: Echo' })).not.toBeNull();
   });
@@ -296,8 +375,12 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
     expect(
       view.getByText('No runs that failed at nothing-fails-here. Try another step.'),
     ).not.toBeNull();
-    // The bar stays, with its field, so another step can be tried.
-    expect(view.getByRole('combobox', { name: TASK_COPY.failedStepLabel })).not.toBeNull();
+    // The bar stays, with its chip and its menu, so another step can be tried.
+    expect(
+      view.getByRole('button', { name: 'Remove filter: Failed at step: nothing-fails-here' }),
+    ).not.toBeNull();
+    await openMenuRow(view, TASK_COPY.failedStepLabel);
+    expect(menuField()).not.toBeNull();
     expect(view.queryByText(TASK_COPY.empty.title)).toBeNull();
   });
 

@@ -43,6 +43,7 @@
     formKey,
     fromControlValue,
     isCollapsible,
+    isMenuOnly,
     layoutForm,
     measureFilterBarRow,
     nextFilterBarFit,
@@ -148,6 +149,7 @@
           ? [facet.placeholder ?? null, facet.options.map((option) => option.label)]
           : null,
         facet.type === 'toggle' ? (facet.count ?? null) : null,
+        isMenuOnly(facet),
       ]),
       appliedFilters.map((filter) => [filter.key, filter.label, appliedValues(filter)]),
       foldOrder,
@@ -297,6 +299,16 @@
     appliedFilters.filter((filter) => !facets.some((facet) => facet.key === filter.key)),
   );
 
+  // The facets that have a control in the row, and those that live only in the Filter menu
+  // (`menuOnly`): the menu is opened by one icon button in every layout but the narrow one, which
+  // already holds every facet in it. A menu-only facet that has a value is drawn in the row as a
+  // removable chip, so a filter that is on is never out of sight.
+  const rowFacets = $derived(facets.filter((facet) => !isMenuOnly(facet)));
+  const menuOnlyFacets = $derived(facets.filter((facet) => isMenuOnly(facet)));
+  const menuOnlyChips = $derived(
+    appliedFilters.filter((filter) => menuOnlyFacets.some((facet) => facet.key === filter.key)),
+  );
+
   const activeSummaries = $derived([
     ...facets.flatMap((facet) => {
       const summary = facetSummary(facet);
@@ -315,8 +327,8 @@
   // does not depend on the order the consumer listed them in. The facets are one keyed list, so a
   // chip that gains a value moves instead of remounting, and its open popover stays with it.
   const orderedFacets = $derived([
-    ...facets.filter((facet) => !(facet.type === 'choice' && appliedFilterFor(facet.key))),
-    ...facets.filter((facet) => facet.type === 'choice' && appliedFilterFor(facet.key)),
+    ...rowFacets.filter((facet) => !(facet.type === 'choice' && appliedFilterFor(facet.key))),
+    ...rowFacets.filter((facet) => facet.type === 'choice' && appliedFilterFor(facet.key)),
   ]);
 
   function handleSegmentChange(next: string): void {
@@ -660,9 +672,9 @@
 {/snippet}
 
 {#snippet facetControls()}
-  {#if foldedKeys.size > 0}
+  {#if foldedKeys.size > 0 || menuOnlyFacets.length > 0}
     {@render filterMenu(
-      facets.filter((facet) => foldedKeys.has(facet.key)),
+      [...facets.filter((facet) => foldedKeys.has(facet.key)), ...menuOnlyFacets],
       false,
     )}
   {/if}
@@ -682,37 +694,42 @@
     {:else if facet.type === 'toggle'}
       {@render toggleControl(facet)}
     {:else}
-      <div class="cinder-filter-bar__facet">
-        {#if facet.labelVisible === true}
-          <span class="cinder-filter-bar__facet-label" aria-hidden="true">{facet.label}:</span>
-        {/if}
-        {@render customControl(facet)}
-      </div>
+      <div class="cinder-filter-bar__facet">{@render customControl(facet)}</div>
     {/if}
   {/each}
   {#each orphanFilters as filter (filter.key)}
-    {@const summary = appliedValues(filter).join(', ')}
-    <span
-      class="cinder-filter-bar__chip"
-      data-cinder-applied=""
-      data-cinder-static=""
-      data-cinder-disabled={disabled ? '' : undefined}
-    >
-      <span class="cinder-filter-bar__chip-trigger">
-        <span class="cinder-filter-bar__chip-label">{filter.label}:</span>
-        <span class="cinder-filter-bar__chip-value">{summary}</span>
-      </span>
-      <button
-        type="button"
-        class="cinder-filter-bar__chip-remove"
-        {disabled}
-        aria-label={`Remove filter: ${filter.label}: ${summary}`}
-        onclick={(event) => handleFilterRemove(filter.key, event.currentTarget)}
-      >
-        <X class="cinder-icon-xs" aria-hidden="true" />
-      </button>
-    </span>
+    {@render appliedChip(filter)}
   {/each}
+  {#each menuOnlyChips as filter (filter.key)}
+    {@render appliedChip(filter)}
+  {/each}
+{/snippet}
+
+<!-- A filter with no control in the row: removable, and named with its value ("Failed at step:
+     charge-card"). A filter no facet owns, and an applied facet that lives only in the Filter menu
+     (`menuOnly`), are drawn this way. -->
+{#snippet appliedChip(filter: AppliedFilter)}
+  {@const summary = appliedValues(filter).join(', ')}
+  <span
+    class="cinder-filter-bar__chip"
+    data-cinder-applied=""
+    data-cinder-static=""
+    data-cinder-disabled={disabled ? '' : undefined}
+  >
+    <span class="cinder-filter-bar__chip-trigger">
+      <span class="cinder-filter-bar__chip-label">{filter.label}:</span>
+      <span class="cinder-filter-bar__chip-value">{summary}</span>
+    </span>
+    <button
+      type="button"
+      class="cinder-filter-bar__chip-remove"
+      {disabled}
+      aria-label={`Remove filter: ${filter.label}: ${summary}`}
+      onclick={(event) => handleFilterRemove(filter.key, event.currentTarget)}
+    >
+      <X class="cinder-icon-xs" aria-hidden="true" />
+    </button>
+  </span>
 {/snippet}
 
 <div

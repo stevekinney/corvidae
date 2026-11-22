@@ -82,6 +82,11 @@ export type ToggleFacet = {
   count?: number;
   /** Tone of the dot before the label. Defaults to `warning`. */
   tone?: ToggleFacetTone;
+  /**
+   * Keeps the chip out of the row: it is a checkbox row of the Filter menu in every layout, opened
+   * by one icon button, and while it is on the row shows it as a removable chip. Default `false`.
+   */
+  menuOnly?: boolean;
   /** Whether the facet control is disabled. */
   disabled?: boolean;
 };
@@ -98,12 +103,12 @@ export type CustomFacet = {
   /** Accessible label for the facet, and its row in the narrow form's Filter menu. */
   label: string;
   /**
-   * Draws the label before the control in the bar's row, as muted text ("Failed at step:" then the
-   * field), so a field that is filled still says what it filters, as the Status select reads
-   * "Status: All". Default `false`: the control carries its own label. It is decorative (the
-   * control's own accessible name stays), and the Filter menu names the facet by its row.
+   * Keeps the facet out of the row: its control is a row of the Filter menu in every layout, opened
+   * by one icon button. A custom control is wide, so a filter that is rarely used takes no room
+   * a segment or a chip needs. While it has an applied filter, the row shows it as a removable chip
+   * ("Failed at step: charge-card"). Default `false`.
    */
-  labelVisible?: boolean;
+  menuOnly?: boolean;
   /**
    * Consumer-supplied snippet that renders the full facet control. Receives
    * the bar-level `disabled` state — the snippet MUST apply it to its own

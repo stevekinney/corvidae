@@ -1,10 +1,12 @@
 /**
  * The Runs list's Retrying and Failed at step filters (`/runs`, COR-2535) on the sample world at
- * the browser's sample clock (Monday, Nov 2, 10:46 AM Central time). The Bureau lists the runs and
- * applies the two filters; the sample world holds no run that failed at a step or is retrying one,
- * so the spec adds three the Bureau would list in a busier world (one that failed at `charge-card`,
- * one that failed at `model`, one on its third try of `charge-card`) to the real answer, and lists
- * each of them only when the request carries the filter that matches it. What the page asks of
+ * the browser's sample clock (Monday, Nov 2, 10:46 AM Central time). Both live in the filter bar's
+ * Filter menu, never in its row, so the segments and chips keep their room; while one is on, the row
+ * shows it as a removable chip. The Bureau lists the runs and applies the two filters; the sample
+ * world holds no run that is retrying a step, and none that failed at `charge-card` or
+ * `send-receipt`, so the spec adds three the Bureau would list in a busier world (one that failed
+ * at each of those steps, one on its third try of `charge-card`) to the real answer, and lists each
+ * of them only when the request carries the filter that matches it. What the page asks of
  * `bureau.tasks.list` is read from the request, not from what comes back: a list that narrowed
  * itself in the browser would pass on the rows alone.
  */
@@ -52,7 +54,7 @@ function failedRun(id: string, createdAt: string, step: string) {
 
 const FIXTURE_RUNS = [
   failedRun('failure-filters-charge', '2026-11-02T16:30:00.000Z', 'charge-card'),
-  failedRun('failure-filters-model', '2026-11-02T16:31:00.000Z', 'model'),
+  failedRun('failure-filters-receipt', '2026-11-02T16:31:00.000Z', 'send-receipt'),
   {
     id: 'failure-filters-retrying',
     contextId: 'failure-filters-retrying',
@@ -113,18 +115,35 @@ async function listWithFixtureRuns(page: Page): Promise<ListRequest[]> {
 
 const filterBar = (page: Page) => page.getByRole('search', { name: 'Filter runs' });
 const listedRuns = (page: Page) => page.locator('main li[data-run]');
-const failedStepField = (page: Page) =>
-  filterBar(page).getByRole('combobox', { name: 'Failed at step' });
+/** The Failed at step field, which is in the Filter menu once {@link openFilterMenuOn} opened it. */
+const failedStepField = (page: Page) => page.getByRole('combobox', { name: 'Failed at step' });
+/** The chip the row shows while the step is filtered: it names the filter and its value. */
+const failedStepChip = (page: Page, step: string) =>
+  filterBar(page).getByRole('button', { name: `Remove filter: Failed at step: ${step}` });
 
 /** Opens the list at the sample clock and waits until it is listed. */
-async function openRuns(page: Page, path = '/runs', width = 1920): Promise<void> {
+async function openRuns(page: Page, path = '/runs', width = 1280): Promise<void> {
   await page.clock.setFixedTime(SAMPLE_NOW);
-  // The wide desktop, where the bar holds every filter in its row: the specifications that press a
-  // chip run here. The states the design review captures at the narrower widths, where the bar
-  // folds some of its filters into the Filter menu, are opened by their address below.
   await page.setViewportSize({ width, height: 1080 });
   await page.goto(path);
   await expect(filterBar(page)).toBeVisible();
+}
+
+/**
+ * Opens the bar's Filter menu on the row named `row`, which shows that filter's control. The two
+ * filters have no control in the row at any width: the one Filter button opens them.
+ */
+async function openFilterMenuOn(page: Page, row: string): Promise<void> {
+  const menuRow = page.locator('.cinder-filter-bar__menu-row', { hasText: row });
+  if (!(await menuRow.isVisible())) {
+    await filterBar(page)
+      .getByRole('button', { name: /^Filter/ })
+      .first()
+      .click();
+  }
+  await expect(menuRow).toBeVisible();
+  if ((await menuRow.getAttribute('aria-expanded')) !== 'true') await menuRow.click();
+  await expect(menuRow).toHaveAttribute('aria-expanded', 'true');
 }
 
 /**
@@ -144,6 +163,24 @@ function newestRunsRead(requests: readonly ListRequest[]): ListRequest | undefin
 
 // Every title names `/runs`, so a design review's route filter (`--grep '/runs'`) runs it.
 test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () => {
+  test('neither has a control in the row, so the segments and the chips keep their room', async ({
+    page,
+  }) => {
+    await listWithFixtureRuns(page);
+    await openRuns(page);
+    await expect(listedRuns(page).first()).toBeVisible();
+    const bar = filterBar(page);
+    // The row at the default desktop width is what it was: every segment, the three chips, and the
+    // one Filter button that holds the two filters.
+    await expect(bar.getByRole('radio', { name: /^All\s*,\s*\d+$/ })).toBeVisible();
+    for (const chip of ['Started by', 'Workflow', 'Agent']) {
+      await expect(bar.getByRole('button', { name: chip, exact: true })).toBeVisible();
+    }
+    await expect(bar.locator('.cinder-filter-bar__toggle')).toHaveCount(0);
+    await expect(failedStepField(page)).toHaveCount(0);
+    await expect(bar.locator('.cinder-filter-bar__menu-button')).toHaveCount(1);
+  });
+
   test('Retrying narrows the Bureau’s list to the runs retrying a step, and the row names the step and its try', async ({
     page,
   }) => {
@@ -154,13 +191,17 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
     expect(newestRunsRead(requests)).not.toHaveProperty('retrying');
     expect(newestRunsRead(requests)).not.toHaveProperty('failedStep');
 
-    await filterBar(page).getByRole('button', { name: 'Retrying' }).click();
+    await openFilterMenuOn(page, 'Retrying');
+    await page.getByRole('checkbox', { name: 'Retrying' }).check();
     await expect(page).toHaveURL(/[?&]retrying=true/);
     await expect(listedRuns(page)).toHaveCount(1);
     const row = page.locator('main li[data-run="failure-filters-retrying"]');
     await expect(row.locator('.cinder-stacked-list-item__line-two')).toContainText(
       'retrying charge-card, try 3, running 6 min',
     );
+    await expect(
+      filterBar(page).getByRole('button', { name: 'Remove filter: Retrying: Yes' }),
+    ).toBeVisible();
     await expect.poll(() => newestRunsRead(requests)).toMatchObject({ retrying: true });
     await captureForDesignReview(page, {
       route: '/runs',
@@ -176,11 +217,12 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
     await openRuns(page);
     await expect(listedRuns(page).first()).toBeVisible();
 
+    await openFilterMenuOn(page, 'Failed at step');
     await failedStepField(page).click();
     await failedStepField(page).fill('c');
     // The steps the listed runs failed at that hold the typed letter.
     await expect(page.getByRole('option', { name: 'charge-card', exact: true })).toBeVisible();
-    await expect(page.getByRole('option', { name: 'model', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'send-receipt', exact: true })).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/runs',
       state: 'failed at step suggestions',
@@ -191,15 +233,17 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
     await expect(page).toHaveURL(/[?&]failedStep=charge-card/);
     await expect(listedRuns(page)).toHaveCount(1);
     await expect(page.locator('main li[data-run="failure-filters-charge"]')).toBeVisible();
+    // The row says it, with the filter's label, as a chip that removes it.
+    await expect(failedStepChip(page, 'charge-card')).toBeVisible();
     await expect.poll(() => newestRunsRead(requests)).toMatchObject({ failedStep: 'charge-card' });
     // The other step stays offered while the list is narrowed to this one, so another can be
     // chosen. The names come from a second read that answers after the list, and suggestions are
     // made as a letter is typed: type again until the read has answered. The field is never
     // emptied, which would take the filter out.
     await expect(async () => {
-      await failedStepField(page).fill('mo');
-      await failedStepField(page).fill('mod');
-      await expect(page.getByRole('option', { name: 'model', exact: true })).toBeVisible();
+      await failedStepField(page).fill('se');
+      await failedStepField(page).fill('send');
+      await expect(page.getByRole('option', { name: 'send-receipt', exact: true })).toBeVisible();
     }).toPass();
     await captureForDesignReview(page, {
       route: '/runs',
@@ -215,21 +259,29 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
     await openRuns(page);
     await expect(listedRuns(page).first()).toBeVisible();
 
-    await failedStepField(page).fill('model');
+    await openFilterMenuOn(page, 'Failed at step');
+    await failedStepField(page).fill('send-receipt');
     // Nothing is asked of the Bureau, and the address keeps nothing, until Enter.
     expect(requests.filter((request) => request['failedStep'] !== undefined)).toEqual([]);
     await expect(page).not.toHaveURL(/failedStep/);
     await failedStepField(page).press('Enter');
-    await expect(page).toHaveURL(/[?&]failedStep=model/);
+    await expect(page).toHaveURL(/[?&]failedStep=send-receipt/);
     await expect(listedRuns(page)).toHaveCount(1);
-    await expect(page.locator('main li[data-run="failure-filters-model"]')).toBeVisible();
+    await expect(page.locator('main li[data-run="failure-filters-receipt"]')).toBeVisible();
 
     await page.reload();
     await expect(filterBar(page)).toBeVisible();
-    await expect(failedStepField(page)).toHaveValue('model');
+    await expect(failedStepChip(page, 'send-receipt')).toBeVisible();
+    await openFilterMenuOn(page, 'Failed at step');
+    await expect(failedStepField(page)).toHaveValue('send-receipt');
     await expect(listedRuns(page)).toHaveCount(1);
-    await expect(page.locator('main li[data-run="failure-filters-model"]')).toBeVisible();
-    await expect.poll(() => newestRunsRead(requests)).toMatchObject({ failedStep: 'model' });
+    await expect(page.locator('main li[data-run="failure-filters-receipt"]')).toBeVisible();
+    await expect.poll(() => newestRunsRead(requests)).toMatchObject({ failedStep: 'send-receipt' });
+
+    // Removing the chip takes the filter out of the address and lists every run again.
+    await failedStepChip(page, 'send-receipt').click();
+    await expect(page).not.toHaveURL(/failedStep/);
+    await expect(listedRuns(page).nth(1)).toBeVisible();
   });
 
   test('both combine with the status filter, and a pair that matches nothing says so and offers Clear filters', async ({
@@ -242,7 +294,8 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
     await expect.poll(() => newestRunsRead(requests)).toMatchObject({ failedStep: 'charge-card' });
 
     // A run that retries a step has not failed at one: the pair lists nothing.
-    await filterBar(page).getByRole('button', { name: 'Retrying' }).click();
+    await openFilterMenuOn(page, 'Retrying');
+    await page.getByRole('checkbox', { name: 'Retrying' }).check();
     await expect(page).toHaveURL(/[?&]retrying=true/);
     await expect(page).toHaveURL(/[?&]failedStep=charge-card/);
     await expect(page).toHaveURL(/[?&]status=failed/);
@@ -269,8 +322,7 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
   });
 });
 
-// The bar holds fewer of its filters in its row as it narrows, so each state the design review
-// captures is opened by its address, never by pressing a chip that may have moved into the menu.
+// Each state the design review captures is opened by its address.
 for (const width of [1280, 375] as const) {
   test(`/runs: the Retrying and Failed at step lists, opened by their address, at ${String(width)} pixels (COR-2535)`, async ({
     page,
@@ -296,47 +348,35 @@ for (const width of [1280, 375] as const) {
   });
 }
 
-/** Opens the bar's Filter menu on the row named `row`, which shows that facet's control in it. */
-async function openFilterMenuOn(page: Page, row: string): Promise<void> {
-  const menuRow = page.locator('.cinder-filter-bar__menu-row', { hasText: row });
-  if (!(await menuRow.isVisible())) {
-    await filterBar(page)
-      .getByRole('button', { name: /^Filter/ })
-      .first()
-      .click();
-  }
-  await expect(menuRow).toBeVisible();
-  if ((await menuRow.getAttribute('aria-expanded')) !== 'true') await menuRow.click();
-  await expect(menuRow).toHaveAttribute('aria-expanded', 'true');
+// The Filter menu holds the two filters at every width; it is captured open on each of them, and
+// the capture repeats at the width the helper adds, where it puts the menu back before the pixels.
+for (const width of [1280, 375] as const) {
+  test(`/runs: the Filter menu holds Failed at step and Retrying at ${String(width)} pixels (COR-2535)`, async ({
+    page,
+  }) => {
+    await listWithFixtureRuns(page);
+    await openRuns(page, '/runs?failedStep=charge-card', width);
+    await expect(listedRuns(page)).toHaveCount(1);
+
+    await openFilterMenuOn(page, 'Failed at step');
+    await expect(failedStepField(page)).toHaveValue('charge-card');
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'filter menu with failed at step',
+      source: SOURCE,
+      ready: (target) => openFilterMenuOn(target, 'Failed at step'),
+    });
+
+    await openFilterMenuOn(page, 'Retrying');
+    await expect(page.getByRole('checkbox', { name: 'Retrying' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'filter menu with retrying',
+      source: SOURCE,
+      ready: (target) => openFilterMenuOn(target, 'Retrying'),
+    });
+  });
 }
-
-// On a phone the two filters live in the Filter menu, so the menu is captured open on each of them;
-// the capture repeats at 320, where the helper puts the menu back before the pixels.
-test('/runs: the Filter menu on a phone holds Failed at step and Retrying (COR-2535)', async ({
-  page,
-}) => {
-  await listWithFixtureRuns(page);
-  await openRuns(page, '/runs?failedStep=charge-card', 375);
-  await expect(listedRuns(page)).toHaveCount(1);
-
-  await openFilterMenuOn(page, 'Failed at step');
-  await expect(page.getByRole('combobox', { name: 'Failed at step' })).toHaveValue('charge-card');
-  await captureForDesignReview(page, {
-    route: '/runs',
-    state: 'filter menu with failed at step',
-    source: SOURCE,
-    ready: (target) => openFilterMenuOn(target, 'Failed at step'),
-  });
-
-  await openFilterMenuOn(page, 'Retrying');
-  await expect(page.getByRole('checkbox', { name: /Retrying/ })).toBeVisible();
-  await captureForDesignReview(page, {
-    route: '/runs',
-    state: 'filter menu with retrying',
-    source: SOURCE,
-    ready: (target) => openFilterMenuOn(target, 'Retrying'),
-  });
-});
 
 for (const width of [1280, 375] as const) {
   test(`/health/runs: the query builder offers Failed at step and Retrying at ${String(width)} pixels, and an address carrying both sends them to the engine’s list (COR-2535)`, async ({
