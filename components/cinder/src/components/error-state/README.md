@@ -86,6 +86,23 @@ The `neutral` tone is for a state where nothing failed, such as a missing page: 
 </ErrorState>
 ```
 
+The `warning` tone is for a problem the person can resolve, such as a conflicting change: the warning colors instead of red, announced politely as a status. Add `announce` to raise a `warning` or `neutral` state to an alert when it replaces the content the person came for:
+
+```svelte
+<script lang="ts">
+  import { ErrorState } from '@lostgradient/cinder';
+</script>
+
+<ErrorState
+  tone="warning"
+  announce
+  title="Someone else changed this workflow"
+  description="Your edit was not saved because the workflow changed while you were editing."
+  remediation="Read the workflow again, then make your change on the new revision."
+  onRetry={() => {}}
+/>
+```
+
 Flat — no disc and no padding of its own, for a card or tab whose container already pads it. The content is start-aligned and the error is still announced as an alert:
 
 ```svelte
@@ -123,6 +140,7 @@ Row — a small warning glyph, the title and description read as one sentence, a
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `announce` | `boolean` | no | `false` | Announces a `'warning'` or `'neutral'` state as an alert, so assistive technology interrupts with it as it does for a failure. Use it when the state replaces the content the person came for, so staying quiet would leave them with nothing. The `'danger'` tone is always an alert. |
 | `bordered` | `boolean` | no | `false` | Draws the state inside a bordered, rounded box, for a list or page body that has no container of its own. Leave it off when a card or panel already surrounds the state. It applies to the centred layout; the `'flat'` variant has no box. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-error-state` root element. |
 | `description` | `string` | yes | — | Secondary descriptive text rendered as a paragraph below the title. A `'row'` whose title is its whole sentence passes `''` and draws no second paragraph. |
@@ -135,7 +153,7 @@ Row — a small warning glyph, the title and description read as one sentence, a
 | `retryVariant` | `"primary"` \| `"secondary"` | no | `"primary"` | How prominent the retry button is. `'primary'` suits a full-page failure, where retrying is the one thing to do. `'secondary'` suits a section of a page that has other controls, such as a tab's body under a tab bar, so the retry does not outrank them. |
 | `size` | `"default"` \| `"compact"` | no | `"default"` | Scale of the centred layout. `'compact'` tightens the padding, shrinks the disc to 40px and tints it neutral, sets the title in the base size, and makes the retry a small secondary button with no refresh glyph, so the state fits a list pane that failed to load without claiming the page's one primary action. It has no effect on the `'flat'` and `'row'` variants. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
-| `tone` | `"danger"` \| `"neutral"` | no | `"danger"` | What kind of problem this reports. `'danger'` is a failure and is announced as an alert; `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group. |
+| `tone` | `"danger"` \| `"warning"` \| `"neutral"` | no | `"danger"` | What kind of problem this reports. `'danger'` is a failure and is announced as an alert; `'warning'` is a problem that may clear by itself or that the person can resolve, such as a conflicting change or a server that is not answering, drawn in the warning colors and announced politely as a status; `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group. `announce` raises a warning or neutral state to an alert. |
 | `variant` | `"default"` \| `"flat"` \| `"row"` | no | `"default"` | Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title, the description, the progress line, then the actions, centred in the region it fills. `'flat'` renders the same text as a start-aligned block with no disc and no padding of its own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph, the title and description as one sentence, and a secondary retry button (no refresh glyph unless `retryIcon` is given) on one line, for the failure of one card among others that are live; the retry drops under the words on a phone. |
 | `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. The default is a warning triangle for the `'danger'` tone and a magnifying glass for `'neutral'`. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetry` | `(opaque)` | no | — | Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action. Not expressible in JSON Schema; see the component types for the signature. |

@@ -437,6 +437,64 @@ describe('ErrorState details disclosure', () => {
   });
 });
 
+describe('ErrorState warning tone', () => {
+  test('is a status with the warning disc and glyph, labelled by its title', async () => {
+    const { container, getByRole } = render(ErrorState, {
+      props: {
+        title: 'Someone else changed this',
+        description: 'Your edit was not saved.',
+        remediation: 'Read it again, then change it.',
+        tone: 'warning',
+      },
+    });
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    const status = getByRole('status');
+    expect(status.getAttribute('aria-labelledby')).toBe(
+      container.querySelector('.cinder-error-state-title')?.id ?? null,
+    );
+    expect(container.querySelector('.cinder-error-state')?.getAttribute('data-cinder-tone')).toBe(
+      'warning',
+    );
+    expect(container.querySelector('.cinder-error-state-icon svg')).not.toBeNull();
+    expect(status.querySelector('.cinder-error-state-remediation')?.textContent).toBe(
+      'Read it again, then change it.',
+    );
+
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const disc = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-icon",
+    );
+    expect(disc.get('background')).toBe('var(--cinder-status-warning-background)');
+    expect(disc.get('color')).toBe('var(--cinder-status-warning-text)');
+    const glyph = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-glyph",
+    );
+    expect(glyph.get('color')).toBe('var(--cinder-status-warning-text)');
+  });
+
+  test('announce raises a warning to an alert, and there is still one role', () => {
+    const { container, queryByRole } = render(ErrorState, {
+      props: { title: 'Conflict', description: 'It changed.', tone: 'warning', announce: true },
+    });
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(queryByRole('status')).toBeNull();
+  });
+
+  test('the row and flat variants keep the warning tone', () => {
+    for (const variant of ['row', 'flat'] as const) {
+      const { container } = render(ErrorState, {
+        props: { title: 'Conflict', description: 'It changed.', tone: 'warning', variant },
+      });
+      expect(container.querySelector('.cinder-error-state')?.getAttribute('data-cinder-tone')).toBe(
+        'warning',
+      );
+      cleanup();
+    }
+  });
+});
+
 describe('ErrorState neutral tone', () => {
   test('is a plain group with a neutral disc and a search glyph, not an alert', async () => {
     const { container, getByRole } = render(ErrorState, {
@@ -462,6 +520,17 @@ describe('ErrorState neutral tone', () => {
       ".cinder-error-state[data-cinder-tone='neutral'] .cinder-error-state-icon",
     );
     expect(neutral.get('background')).toBe('var(--cinder-surface-inset)');
+  });
+
+  test('announce raises a neutral state to an alert', () => {
+    const { container, queryByRole } = render(ErrorState, {
+      props: { title: 'Gone', description: 'Deleted.', tone: 'neutral', announce: true },
+    });
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(queryByRole('group')).toBeNull();
+    expect(container.querySelector('.cinder-error-state')?.getAttribute('data-cinder-tone')).toBe(
+      'neutral',
+    );
   });
 
   test('an unknown tone behaves as a failure and stays announced', () => {

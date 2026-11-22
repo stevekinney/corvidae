@@ -74,6 +74,11 @@
     color: var(--cinder-text-muted);
   }
 
+  .cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-icon {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
   /* Compact fits a list pane: less padding, a smaller neutral disc, and quieter type. */
   .cinder-error-state[data-cinder-size='compact'] {
     padding-block: var(--cinder-space-6);
@@ -120,6 +125,11 @@
   .cinder-error-state[data-cinder-variant='flat'][data-cinder-tone='danger']
     .cinder-error-state-title {
     color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-error-state[data-cinder-variant='flat'][data-cinder-tone='warning']
+    .cinder-error-state-title {
+    color: var(--cinder-status-warning-text);
   }
 
   /* The sentence holds a 380px measure however wide the region is. */
@@ -283,6 +293,10 @@
 
   .cinder-error-state[data-cinder-tone='neutral'] .cinder-error-state-glyph {
     color: var(--cinder-text-muted);
+  }
+
+  .cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-glyph {
+    color: var(--cinder-status-warning-text);
   }
 
   .cinder-error-state-text {

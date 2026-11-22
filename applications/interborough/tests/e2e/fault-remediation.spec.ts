@@ -78,8 +78,11 @@ const SURFACES: readonly Surface[] = [
   },
 ];
 
-/** Answers every call of `method` with a 503 JSON-RPC fault carrying `advice`. */
-async function answerWithFault(page: Page, method: string, advice: Advice) {
+/**
+ * Answers every call of `method` with a JSON-RPC fault carrying `advice`: a 503 unless `status` says
+ * otherwise, which the console classifies by status (503 is `internal`, 409 is `conflict`).
+ */
+async function answerWithFault(page: Page, method: string, advice: Advice, status = 503) {
   await page.route(BUREAU_CALLS, async (route) => {
     const body = route.request().postData() ?? '';
     if (!body.includes(`"${method}"`)) {
@@ -88,14 +91,14 @@ async function answerWithFault(page: Page, method: string, advice: Advice) {
     }
     const { id } = JSON.parse(body) as { id: unknown };
     await route.fulfill({
-      status: 503,
+      status,
       json: {
         jsonrpc: '2.0',
         id,
         error: {
           code: -32000,
           message: 'The Bureau is not ready.',
-          data: { httpStatus: 503, ...advice },
+          data: { httpStatus: status, ...advice },
         },
       },
     });
@@ -176,3 +179,42 @@ for (const surface of SURFACES) {
     }
   });
 }
+
+// A conflict is the warning tone of the shared fault row (`conflict` and `unreachable`, which
+// Cinder's `ErrorState` draws in the warning colors): amber, not red, and still announced as an
+// alert. Only the Reviews page's row has a tone of its own; the Hooks list's failed state is always
+// a failure.
+test.describe('/reviews: a conflict is drawn in the warning tone', () => {
+  test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
+
+  for (const width of WIDTHS) {
+    test(`/reviews: a conflict shows its remediation in the warning tone and offers Try again, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+      pageErrors,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      pageErrors.expectEvery({
+        pattern: loggedFailedResponse(409, BUREAU_LOGGED),
+        reason: 'the test answers bureau.reviews.list with a 409',
+      });
+      const remediation = 'Read the list again, then decide.';
+      await answerWithFault(page, 'bureau.reviews.list', { retryable: true, remediation }, 409);
+      await page.goto('/reviews');
+
+      const fault = page.locator('[data-page="reviews"] .weft-fault-boundary').first();
+      await expect(fault.getByRole('heading', { name: 'Conflict' })).toBeVisible();
+      await expect(fault).toHaveAttribute('data-tone', 'warning');
+      await expect(fault.getByRole('alert')).toHaveCount(1);
+      await expect(fault.locator('.cinder-error-state-remediation')).toHaveText(remediation);
+      await expect(fault.getByRole('button', { name: 'Try again' })).toHaveCount(1);
+
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'fault warning conflict',
+        source: SOURCE,
+      });
+      await checkA11y(`/reviews failed, a conflict in the warning tone, ${width}px`);
+    });
+  }
+});

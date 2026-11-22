@@ -19,10 +19,11 @@ export type ErrorStateRetryVariant = 'primary' | 'secondary';
 
 /**
  * What kind of problem the state reports. `'danger'` is a failure (a red disc with a warning glyph,
- * announced as an alert); `'neutral'` is a state where nothing failed, such as a thing that no longer
- * exists (a neutral disc with a search glyph, not announced).
+ * announced as an alert); `'warning'` is a problem that may clear or that the person can resolve (an
+ * amber disc with a warning glyph, announced as a status); `'neutral'` is a state where nothing
+ * failed, such as a thing that no longer exists (a neutral disc with a search glyph, not announced).
  */
-export type ErrorStateTone = 'danger' | 'neutral';
+export type ErrorStateTone = 'danger' | 'warning' | 'neutral';
 
 export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'title'> & {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
@@ -57,10 +58,20 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
   retryStatus?: string;
   /**
    * What kind of problem this reports. `'danger'` is a failure and is announced as an alert;
-   * `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group.
+   * `'warning'` is a problem that may clear by itself or that the person can resolve, such as a
+   * conflicting change or a server that is not answering, drawn in the warning colors and
+   * announced politely as a status; `'neutral'` is a state where nothing failed, such as a missing
+   * page, and is a plain group. `announce` raises a warning or neutral state to an alert.
    * @default 'danger'
    */
   tone?: ErrorStateTone;
+  /**
+   * Announces a `'warning'` or `'neutral'` state as an alert, so assistive technology interrupts
+   * with it as it does for a failure. Use it when the state replaces the content the person came
+   * for, so staying quiet would leave them with nothing. The `'danger'` tone is always an alert.
+   * @default false
+   */
+  announce?: boolean;
   /** Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action. */
   onRetry?: () => void;
   /**
@@ -165,10 +176,20 @@ export interface ErrorStateSchemaProps {
   retryStatus?: string;
   /**
    * What kind of problem this reports. `'danger'` is a failure and is announced as an alert;
-   * `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group.
+   * `'warning'` is a problem that may clear by itself or that the person can resolve, such as a
+   * conflicting change or a server that is not answering, drawn in the warning colors and
+   * announced politely as a status; `'neutral'` is a state where nothing failed, such as a missing
+   * page, and is a plain group. `announce` raises a warning or neutral state to an alert.
    * @default 'danger'
    */
   tone?: ErrorStateTone;
+  /**
+   * Announces a `'warning'` or `'neutral'` state as an alert, so assistive technology interrupts
+   * with it as it does for a failure. Use it when the state replaces the content the person came
+   * for, so staying quiet would leave them with nothing. The `'danger'` tone is always an alert.
+   * @default false
+   */
+  announce?: boolean;
   /**
    * Label of the retry button.
    * @default "Try again"

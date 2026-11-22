@@ -23,6 +23,7 @@
     detailsLabel = 'Show the error details',
     retryStatus,
     tone = 'danger',
+    announce = false,
     onRetry,
     retryLabel = 'Try again',
     retryVariant = 'primary',
@@ -50,7 +51,12 @@
   const tag = $derived(`h${safeLevel}`);
 
   // An unknown tone behaves as a failure, so an error is never silently demoted to a quiet group.
-  const safeTone = $derived(tone === 'neutral' ? 'neutral' : 'danger');
+  const safeTone = $derived(tone === 'neutral' || tone === 'warning' ? tone : 'danger');
+  // A failure is an alert; a warning is a status and a neutral state a plain group, unless the
+  // caller raises either to an alert with `announce`.
+  const role = $derived(
+    safeTone === 'danger' || announce ? 'alert' : safeTone === 'warning' ? 'status' : 'group',
+  );
   const flat = $derived(variant === 'flat');
   const row = $derived(variant === 'row');
   const compact = $derived(size === 'compact' && !flat && !row);
@@ -65,11 +71,7 @@
   data-cinder-tone={safeTone}
 >
   <!-- A failure is announced as an alert; a neutral state (nothing failed) is a plain group. -->
-  <div
-    class="cinder-error-state-body"
-    role={safeTone === 'danger' ? 'alert' : 'group'}
-    aria-labelledby={titleId}
-  >
+  <div class="cinder-error-state-body" {role} aria-labelledby={titleId}>
     {#if row}
       <span class="cinder-error-state-glyph" aria-hidden="true">
         {#if icon}

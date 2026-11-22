@@ -780,6 +780,11 @@
   background: var(--cinder-surface-raised);
 }
 
+.weft-fault-boundary[data-tone='warning'] {
+  border-color: var(--cinder-status-warning-border);
+  background: var(--cinder-status-warning-background);
+}
+
 .weft-fault-boundary[data-tone='danger'] {
   border-color: var(--cinder-status-danger-border);
   background: var(--cinder-status-danger-background);

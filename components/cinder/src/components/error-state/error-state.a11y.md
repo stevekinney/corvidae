@@ -24,6 +24,8 @@ The only interactive element is the optional retry `Button`, which is a native b
 
 The title renders as a heading at `headingLevel` (default 2), so pick the level that fits the surrounding outline. The optional `remediation`, the next step to take, is a paragraph inside the labelled region, directly after the description and before any progress line, so assistive technology reads what failed and then what to do, in that order, as part of the alert. The optional `detail`, such as a fault code, is plain text and is announced with the alert. The retry button's accessible name is its `retryLabel`; make it specific when several error states share a page. Meaning is carried by text, never by color alone.
 
+The role follows the tone. `danger` is always `role="alert"`. `warning` is `role="status"`, announced politely, because a problem the person can resolve, such as a conflicting change, need not interrupt what a screen reader is saying. `neutral` is a plain `role="group"` and is not announced, because nothing failed. `announce` raises a `warning` or `neutral` state to `role="alert"`; use it when the state replaces the content the person came for, so staying quiet would leave them with nothing. Whatever the role, exactly one element carries it and it is named by the title.
+
 ## Verification
 
 - Render ErrorState with and without `onRetry` in the playground or a focused test fixture.

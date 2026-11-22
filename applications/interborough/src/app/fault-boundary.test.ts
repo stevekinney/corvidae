@@ -24,9 +24,9 @@ async function renderHarness(props: {
 }
 
 /**
- * The tone and role of the Cinder `ErrorState` a fault is drawn on: a failure is `danger` and its
- * body is an alert; a fault of the neutral tone (`not-found`, `not-supported`) is a plain group that
- * the box around it announces as the alert, so every kind is one.
+ * The tone and role of the Cinder `ErrorState` a fault is drawn on. Every kind is announced as an
+ * alert (`announce`), whatever its tone: danger, warning (`conflict`, `unreachable`) or neutral
+ * (`not-found`, `not-supported`).
  */
 function rowOf(container: HTMLElement): { tone: string | null; role: string | null } {
   return {
@@ -51,12 +51,10 @@ describe('FaultBoundary', () => {
       error: new HttpClientError(404, 'workflow wf-1 not found'),
     });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('neutral');
+    await findByRole('alert');
     expect(await findByText('Not found')).not.toBeNull();
     expect(await findByText('workflow wf-1 not found')).not.toBeNull();
-    // Cinder's neutral tone is a plain group, which the announcing box wraps.
-    expect(rowOf(container)).toEqual({ tone: 'neutral', role: 'group' });
+    expect(rowOf(container)).toEqual({ tone: 'neutral', role: 'alert' });
   });
 
   test('conflict: spent idempotency key shows the extra explanation', async () => {
@@ -67,7 +65,7 @@ describe('FaultBoundary', () => {
     const { container, findByRole, findByText } = await renderHarness({ error });
 
     await findByRole('alert');
-    expect(rowOf(container)).toEqual({ tone: 'danger', role: 'alert' });
+    expect(rowOf(container)).toEqual({ tone: 'warning', role: 'alert' });
     expect(await findByText('Conflict')).not.toBeNull();
     expect(
       await findByText(
@@ -117,10 +115,19 @@ describe('FaultBoundary', () => {
     const error = new HttpClientError(501, 'not implemented', { faultCode: 'NotImplemented' });
     const { container, findByRole, findByText } = await renderHarness({ error });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('neutral');
+    await findByRole('alert');
     expect(await findByText('Not supported')).not.toBeNull();
-    expect(rowOf(container).tone).toBe('neutral');
+    expect(rowOf(container)).toEqual({ tone: 'neutral', role: 'alert' });
+  });
+
+  test('unreachable: a request that got no answer is the warning tone, still announced as an alert', async () => {
+    const { container, findByRole, findByText } = await renderHarness({
+      error: new TypeError('Failed to fetch'),
+    });
+
+    await findByRole('alert');
+    expect(await findByText('Server unreachable')).not.toBeNull();
+    expect(rowOf(container)).toEqual({ tone: 'warning', role: 'alert' });
   });
 
   test('internal: REST-masked 500 shows the try-via-JSON-RPC hint', async () => {
