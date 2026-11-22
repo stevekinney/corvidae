@@ -391,9 +391,12 @@ test.describe('fork-comparison-states: /runs/:run, the fork dialog’s preview',
  * workflow runs). The seeded runs are the engine's own, with no Bureau task: the run inspector says
  * it has no task to inspect, the schedule editor lists the schedules, and the comparison card reads
  * `bureau.runs.compare`, which the Bureau serves for an instance of a workflow file and answers
- * with its own message for a run it does not hold as one. A fork of a workflow file is not in the
- * seeded world (the Bureau's engine cannot fork under its default lease, COR-2635), so the card
- * with a comparison is answered at the panel route's edge, in the shape the Bureau serves.
+ * with its own message for a run it does not hold as one. The seeded fork is a fork of a fixture
+ * workflow the console's own engine runs, not of an instance of a workflow file, and a fork of a
+ * workflow file would need an instance the seeded world does not hold (a seeded file's run calls the
+ * model and sleeps, and an extra instance changes the Workflows list other specifications count). So
+ * the card with a comparison is answered at the panel route's edge, in the shape the Bureau serves;
+ * the Bureau's own answer for a fork of a workflow file is `runs-compare-operation.test.ts`.
  */
 test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow run’s page', () => {
   const PANEL_TITLES = ['Run inspector', 'Schedule editor', 'Run comparison'] as const;

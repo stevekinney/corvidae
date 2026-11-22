@@ -39,11 +39,7 @@ async function serveWithFork(
   options: Parameters<typeof serveWorkflows>[1] = {},
   owner = 'api-key:alice',
 ) {
-  // Weft's `engine.fork` throws under the Bureau's default `workflow-lease` posture, so a fork needs `none`.
-  const served = await serveWorkflows(cleanups, {
-    durableOwnership: { ownership: 'none' },
-    ...options,
-  });
+  const served = await serveWorkflows(cleanups, options);
   await served.bureau.workflows!.create('digest', {
     agent: 'writer',
     trigger: FAST_SCHEDULE,

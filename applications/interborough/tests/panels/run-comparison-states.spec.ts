@@ -7,9 +7,9 @@
  * does, and captures it at 1280 (and 1920, which the helper repeats) and at 375 (and 320 by 640).
  * Each capture is named `run-comparison--<state>` (the route and the state of `captureForDesignReview`).
  *
- * The comparison is a fixture because the Bureau's own engine cannot fork a run while it holds the
- * default `workflow-lease` ownership (COR-2635), so the end-to-end host has no fork for the Bureau
- * to compare; the answer is the shape `bureau.runs.compare` serves. The refusal is the shape the
+ * The comparison is a fixture because the end-to-end host holds no fork of an instance of a workflow
+ * file for the Bureau to compare (`fork-comparison-states.spec.ts` says why); the answer is the shape
+ * `bureau.runs.compare` serves, and the Bureau's own is `runs-compare-operation.test.ts`. The refusal is the shape the
  * MCP adapter gives a Bureau fault: an error result with the fault as structured content.
  *
  * The reference host holds the frame in a `main.weft-shell-outlet`, as the shell holds a page, and
