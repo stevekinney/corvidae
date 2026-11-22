@@ -105,7 +105,7 @@ for (const width of WIDTHS) {
       await expect(root.getByTestId('workflow-state')).toHaveCount(0);
       const starts = root.getByTestId('workflow-line-starts');
       await expect(starts).toContainText('Starts every Friday at 11:00 AM');
-      await expect(starts).toContainText('Runs as Assistant');
+      await expect(starts).toContainText(WORKFLOW_COPY.page.header.runsAs('Assistant'));
       await expect(root.getByTestId('workflow-line-last-run')).toContainText(/failed\s+at step 2/i);
       await expect(root.getByTestId('workflow-line-schedule')).toContainText(
         'Release notes digest',
