@@ -154,7 +154,7 @@ describe('a new agent', () => {
     const select = await findByRole('combobox', { name: 'Model' });
 
     const listed = await openModelOptions(select);
-    expect(listed.map(optionLabel)).toEqual(['openai/gpt-4.1', 'anthropic/claude-haiku-5']);
+    expect(listed.map(optionLabel)).toEqual(['GPT 4.1', 'Claude Haiku 5']);
     // A new agent has no tool yet, and the picker offers every tool the catalog lists. The count
     // sits beside the Tools title (row 41k).
     expect(getByRole('group', { name: /^Tools/ }).textContent).toContain(
@@ -793,7 +793,7 @@ describe('the default effort', () => {
     bureau({ catalog: catalog() });
     const { findByRole, findByLabelText, getByText } = mountEditor();
     const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
-    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'openai/gpt-4.1');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'GPT 4.1');
     expect(optionsOf(select)).toEqual(['None']);
     expect(select.disabled).toBe(true);
     expect(getByText(AGENT_EDITOR_COPY.effort.notSupportedByModel)).not.toBeNull();

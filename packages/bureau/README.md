@@ -1421,11 +1421,11 @@ export const askSummarizerDurably = createPeerCallTool({
 
 The target is an AI host that observes and steers existing work: Claude Desktop and Claude Code, over Streamable HTTP. Interborough mounts the adapter at `/bureau/mcp` (not `/mcp`, which is the engine's own endpoint) and its on-demand `smoke:claude-code-mcp` script connects a real Claude Code to it. Other hosts that speak Streamable HTTP MCP should work, but none is tested or supported.
 
-Twenty-three operations are exposed, as tools of the same name:
+Twenty-four operations are exposed, as tools of the same name:
 
 | Area | Tools |
 | --- | --- |
-| Tasks | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
+| Tasks | `bureau.tasks.list`, `get`, `events`, `inspect`, `explain`, `respond`, `cancel` |
 | Runs | `bureau.runs.timeline` |
 | Reviews | `bureau.reviews.list`, `get`, `resolve` |
 | Contexts | `bureau.contexts.list`, `get`, `input` |
@@ -1434,6 +1434,8 @@ Twenty-three operations are exposed, as tools of the same name:
 | Agents | `bureau.agents.list` |
 
 `bureau.runs.timeline` reads one run's steps in the order the run took them, for a waterfall: each entry's `label`, `operationType`, `status`, `timestamp` (its start), `duration` and `tries`, with no step's input or output. The run is an agent run's task id or a workflow instance's id, and `kind` says which; it is read with the access `bureau.tasks.get` or `bureau.workflows.runs.get` asks, and any other run, or one the caller may not read, is `NotFound`. The layout that turns the entries into bars is `stepWaterfall` in `@lostgradient/interborough-plugin/step-waterfall`, which the Interborough run page and a plugin's panel share.
+
+`bureau.tasks.explain` answers why one run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time, on every surface. `runId` is an agent run's task id or a workflow instance's id, read with the access `bureau.runs.timeline` asks. The answer is `{ summary, cause: { category, code, kind }, step, tries, verdicts, remediation, nextCommands }`: `summary` is one sentence naming the step and the cause, built from the failure category (a workflow instance's is the engine's; an agent run's is read from its finish reason and its error's kind) and the error's kind; `step` is the step the run failed at and `tries` how many times the engine tried it (`null` when its history records no failed attempt, as for an agent run that ended on a failed result); `verdicts` lists each guardrail that fired in the run (a workflow instance's own steps included) with its `name` and `outcome`; and `nextCommands` are `interborough` command lines that read the run. It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`; a workflow instance on a Bureau with no durable engine is `UnsupportedCapability`.
 
 `bureau.tasks.events` is the one subscription: a call answers with the events recorded after its `fromCursor`, up to `maxEvents`, and the cursor to resume from, so a client polls it rather than holding a stream. `respond`, `cancel`, `resolve`, and `input` change state and carry the matching tool annotations. Nothing here starts a run, creates or edits a goal, schedule, or workflow, reads memory or assets, or touches agent definitions: those stay on the management plane, and `bureau.surfaces` commands have no MCP tool.
 

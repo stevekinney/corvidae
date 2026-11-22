@@ -1,5 +1,9 @@
+import {
+  createTemporaryDirectory,
+  removeTemporaryPath,
+} from '@lostgradient/testing/temporary-path';
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { assetsRoot } from './paths.ts';
@@ -12,6 +16,7 @@ import {
   INDEX_PATH,
   planPublishBatches,
   previewReport,
+  readCreatedOnFiles,
   replacementCharacterPositions,
   sentenceNumber,
   WATCHED_PREVIEWS,
@@ -87,12 +92,51 @@ describe('designSystemIndex', () => {
       { name: 'react-dom', version: '18' },
     ]);
     expect(index['docs']).toEqual({ readme: 'project/README.md', sections: [] });
+    expect(index['createdOnFiles']).toEqual({ v: 1, at: '2026-11-09T00:00:00Z' });
     expect(index['lastChange']).toEqual({
       by: 'A',
       at: '2026-11-09T00:00:00Z',
       via: 'Claude Code, stevekinney/corvidae@abc',
       note: 'N',
     });
+  });
+
+  test('retains only a valid Cinder files creation record while last change advances', () => {
+    const outputRoot = createTemporaryDirectory('cinder-design-system-creation');
+    const indexPath = join(outputRoot, 'project', 'design-system.json');
+    mkdirSync(join(outputRoot, 'project'), { recursive: true });
+    try {
+      expect(readCreatedOnFiles(indexPath)).toBeUndefined();
+      writeFileSync(
+        indexPath,
+        JSON.stringify({
+          v: 3,
+          layout: 'files',
+          title: 'Cinder',
+          createdOnFiles: { v: 1, at: '2026-11-20T12:00:00Z' },
+        }),
+      );
+      expect(readCreatedOnFiles(indexPath)).toEqual({ v: 1, at: '2026-11-20T12:00:00Z' });
+      expect(
+        designSystemIndex({
+          sha: 'next',
+          author: 'B',
+          note: 'Rebuilt',
+          at: '2026-11-20T13:00:00Z',
+          createdOnFiles: readCreatedOnFiles(indexPath),
+        }),
+      ).toMatchObject({
+        createdOnFiles: { v: 1, at: '2026-11-20T12:00:00Z' },
+        lastChange: { at: '2026-11-20T13:00:00Z' },
+      });
+
+      writeFileSync(indexPath, JSON.stringify({ v: 3, layout: 'files', title: 'Other' }));
+      expect(readCreatedOnFiles(indexPath)).toBeUndefined();
+      writeFileSync(indexPath, '{invalid');
+      expect(readCreatedOnFiles(indexPath)).toBeUndefined();
+    } finally {
+      removeTemporaryPath(outputRoot);
+    }
   });
 });
 

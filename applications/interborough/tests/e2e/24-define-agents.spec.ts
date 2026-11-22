@@ -11,7 +11,10 @@ import { join } from 'node:path';
 
 import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
-import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
+import {
+  modelDisplayName,
+  providerDisplayName,
+} from '../../src/routes/settings/models/format-model.ts';
 import {
   addTools,
   agentDirectory,
@@ -134,13 +137,13 @@ test.describe('a new agent', () => {
       // The field holds the chosen model, and opening it as it stands lists every option.
       await model.click();
       const options = page.locator('.cinder-combobox__option-label');
-      // What can be chosen is each catalog row that is not unavailable, in the catalog's order.
+      // Enabled choices show catalog display names in catalog order. The saved agent uses the ID.
       await expect(
         page.locator('[role="option"]:not([aria-disabled="true"]) .cinder-combobox__option-label'),
       ).toHaveText(
         catalog.models
           .filter((row) => row.availability !== 'unavailable')
-          .map((row) => `${row.provider}/${row.model}`),
+          .map((row) => modelDisplayName(row.model)),
       );
       // A provider the host can call and has no key for is listed once, disabled, not by its rows.
       for (const provider of unkeyed) {
@@ -150,7 +153,7 @@ test.describe('a new agent', () => {
             .filter({ hasText: copy.model.notConnected(providerDisplayName(provider)) }),
         ).toHaveCount(1);
       }
-      await expect(options.first()).toHaveText('anthropic/claude-sonnet-5');
+      await expect(options.first()).toHaveText('Claude Sonnet 5');
       await expect(page.locator('.cinder-_option-group__label').first()).toHaveText('Anthropic');
       // The chosen model's abilities show under the field.
       await expect(page.getByTestId('agent-model-abilities')).toBeVisible();

@@ -275,18 +275,57 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
   await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Aecho$/);
 });
 
-test('g then a letter opens a view', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
-  await page.keyboard.press('g');
-  await page.keyboard.press('a');
-  await expect(page).toHaveURL(/\/agents$/);
-  await page.keyboard.press('g');
-  await page.keyboard.press('c');
-  await expect(page).toHaveURL(/\/chats(?:\/(?!new$)[^/?]+)?$/);
-  await page.keyboard.press('g');
-  await page.keyboard.press('h');
-  await expect(page).toHaveURL(/\/$/);
+test('g then a letter opens a view', async ({ page, request }) => {
+  const chat = newThreadId('shell-shortcut');
+  const message = 'Echo this message from the shortcut test';
+  const keyboard = await page.context().newCDPSession(page);
+  try {
+    await runToEnd(request, 'demo:echo', chat, message);
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
+
+    // Chromium delivers trusted key events at the supplied input times. Waiting for each
+    // browser command can otherwise consume the chord window while the chat is painting.
+    let nextKeyTime = await page.evaluate(() => performance.timeOrigin + performance.now());
+    async function pressChord(
+      destination: 'a' | 'c' | 'h',
+      intervalMilliseconds: number,
+    ): Promise<void> {
+      for (const [index, key] of ['g', destination].entries()) {
+        const capital = key.toUpperCase();
+        const event = {
+          key,
+          code: `Key${capital}`,
+          windowsVirtualKeyCode: capital.charCodeAt(0),
+          timestamp: (nextKeyTime + index * intervalMilliseconds) / 1000,
+        };
+        await keyboard.send('Input.dispatchKeyEvent', {
+          ...event,
+          type: 'keyDown',
+          text: key,
+          unmodifiedText: key,
+        });
+        await keyboard.send('Input.dispatchKeyEvent', { ...event, type: 'keyUp' });
+      }
+      nextKeyTime += intervalMilliseconds + 100;
+    }
+
+    await pressChord('a', 50);
+    await expect(page).toHaveURL(/\/agents$/);
+    await pressChord('c', 50);
+    const chatUrl = new URL(`/chats/${encodeURIComponent(chat)}`, page.url()).href;
+    await expect(page).toHaveURL(chatUrl);
+    await expect(
+      page.getByRole('log', { name: 'Messages' }).getByText(message).first(),
+    ).toBeVisible();
+
+    await pressChord('h', 1235);
+    expect(page.url()).toBe(chatUrl);
+    await pressChord('h', 50);
+    await expect(page).toHaveURL(/\/$/);
+  } finally {
+    await Promise.all([keyboard.detach(), deleteChats([chat])]);
+  }
 });
 
 test('Health carries a dot, and the words of what it says are in the link’s name', async ({
