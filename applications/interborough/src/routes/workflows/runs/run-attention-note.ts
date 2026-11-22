@@ -46,7 +46,7 @@ export function runAttentionNotes(
   const states = task.attention ?? [];
   const over = isTerminalState(task.status);
   const notes = RUN_ATTENTION_COPY.note;
-  return TASK_ATTENTION_KINDS.filter((state) => states.includes(state)).map(
+  const listed = TASK_ATTENTION_KINDS.filter((state) => states.includes(state)).map(
     (state): RunAttentionNote => {
       switch (state) {
         case 'stalled': {
@@ -68,4 +68,8 @@ export function runAttentionNotes(
       }
     },
   );
+  // A run that is still going says once, under its last note, that it keeps going.
+  const last = listed.at(-1);
+  if (over || last === undefined) return listed;
+  return [...listed.slice(0, -1), { ...last, line: `${last.line} ${notes.keepsRunning}` }];
 }

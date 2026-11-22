@@ -470,20 +470,22 @@
 
 {#snippet toggleControl(facet: ToggleFacet)}
   {@const pressed = appliedFilterFor(facet.key) !== undefined}
+  <!-- One mark at a time: the tone's dot while the filter is off, the chip's own check and quiet
+       accent tint while it is on, so a selected toggle never carries both. -->
+  {#snippet toggleDot()}
+    <span class="cinder-filter-bar__dot" data-cinder-tone={facet.tone ?? 'warning'}></span>
+  {/snippet}
   <Chip
     mode="toggle"
     density="toolbar"
     class="cinder-filter-bar__toggle"
-    variant={pressed ? 'warning' : 'neutral'}
+    variant="neutral"
     label={facet.count === undefined ? facet.label : `${facet.label} ${facet.count}`}
     {pressed}
     disabled={disabled || facet.disabled === true}
     onPressedChange={(next) => onFacetChange?.(facet.key, next ? 'true' : '')}
-  >
-    {#snippet leadingIcon()}
-      <span class="cinder-filter-bar__dot" data-cinder-tone={facet.tone ?? 'warning'}></span>
-    {/snippet}
-  </Chip>
+    leadingIcon={pressed ? undefined : toggleDot}
+  />
 {/snippet}
 
 {#snippet customControl(facet: Extract<FacetDefinition, { type: 'custom' }>)}

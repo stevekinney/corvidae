@@ -37,7 +37,7 @@ describe('the notes of a task', () => {
     expect(note).toEqual({
       state: 'stalled',
       title: 'This run has stopped making progress',
-      line: 'It was seen stalled at 9:05 AM, so it last made progress before then. It is still running.',
+      line: 'It was seen stalled at 9:05 AM, so it last made progress before then. It keeps running until you stop it.',
     });
   });
 
@@ -70,7 +70,7 @@ describe('the notes of a task', () => {
       NOW,
       ZONE,
     );
-    expect(note?.line).toBe('It was seen stalled, and it is still running.');
+    expect(note?.line).toBe('It was seen stalled. It keeps running until you stop it.');
   });
 
   test('of a looping run say so, and that it keeps running', () => {
@@ -122,6 +122,33 @@ describe('the notes of a task', () => {
       ZONE,
     );
     expect(notes.map((note) => note.state)).toEqual(['stalled', 'looping', 'overspending']);
+  });
+
+  test('say that a run keeps running once, under the last note, and not at all for a run that is over', () => {
+    const going = runAttentionNotes(
+      taskFixture({
+        status: 'working',
+        attention: ['stalled', 'looping', 'overspending'],
+        stalledSince: '2026-11-02T09:05:00-06:00',
+      }),
+      NOW,
+      ZONE,
+    );
+    const said = going.filter((note) => note.line.includes('It keeps running until you stop it.'));
+    expect(said.map((note) => note.state)).toEqual(['overspending']);
+    expect(
+      going
+        .map((note) => note.line)
+        .join(' ')
+        .split('keeps running'),
+    ).toHaveLength(2);
+
+    const over = runAttentionNotes(
+      taskFixture({ status: 'completed', attention: ['looping', 'overspending'] }),
+      NOW,
+      ZONE,
+    );
+    expect(over.map((note) => note.line).join(' ')).not.toContain('keeps running');
   });
 });
 

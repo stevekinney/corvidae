@@ -274,11 +274,6 @@
     background: var(--cinder-text-muted);
   }
 
-  /* A pressed toggle is a solid fill, so its dot takes the fill's own text colour to stay visible. */
-  .cinder-filter-bar__toggle[aria-pressed='true'] .cinder-filter-bar__dot {
-    background: currentcolor;
-  }
-
   /* ----------------------------------------
    * Choice popover: a titled list of rows with counts
    * ---------------------------------------- */

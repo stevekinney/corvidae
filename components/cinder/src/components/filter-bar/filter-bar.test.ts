@@ -316,6 +316,30 @@ describe('FilterBar wide layout (rows 10e 60c 70c)', () => {
     expect(changes).toEqual([['missed', '']]);
   });
 
+  test('a pressed toggle carries one mark, the chip’s check, in the quiet selected tint, never a dot as well', () => {
+    const off = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [MISSED],
+    });
+    const idle = off.container.querySelector<HTMLButtonElement>('.cinder-filter-bar__toggle')!;
+    expect(idle.querySelector('.cinder-filter-bar__dot')).not.toBeNull();
+    expect(idle.querySelector('.cinder-chip__check')).toBeNull();
+    off.unmount();
+
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [MISSED],
+      appliedFilters: [{ key: 'missed', value: 'true', label: 'Missed runs' }],
+    });
+    const pressed = container.querySelector<HTMLButtonElement>('.cinder-filter-bar__toggle')!;
+    expect(pressed.querySelector('.cinder-chip__check')).not.toBeNull();
+    expect(pressed.querySelector('.cinder-filter-bar__dot')).toBeNull();
+    // The neutral selected recipe: an accent tint, not a solid status fill.
+    expect(pressed.getAttribute('data-cinder-variant')).toBe('neutral');
+  });
+
   test('a toggle at zero still shows its count', () => {
     const { container } = render(FilterBar, {
       layout: 'wide',

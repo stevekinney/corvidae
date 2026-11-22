@@ -66,6 +66,19 @@ const SETTLED_RUN: Json = {
   stalledSince: null,
 };
 
+/** A run that is in all three states at once, so a row draws three badges: the list is given it too. */
+const THREE_STATES_RUN_ID = 'run-attention-all';
+const THREE_STATES_RUN: Json = {
+  ...SETTLED_RUN,
+  id: THREE_STATES_RUN_ID,
+  contextId: THREE_STATES_RUN_ID,
+  status: 'working',
+  createdAt: '2026-11-02T10:49:00-06:00',
+  updatedAt: '2026-11-02T10:49:40-06:00',
+  attention: ['stalled', 'looping', 'overspending'],
+  stalledSince: STALLED_SINCE,
+};
+
 /**
  * The state two of the sample world's runs are made to be in, and the fields the Bureau reports
  * with it. Both are made the newest runs, so the Runs list's first page of ten holds them.
@@ -187,7 +200,7 @@ async function installRunsNeedingAttention(
               params['pageToken'] === undefined &&
               Object.keys(params).every((key) => ['limit', 'pageToken', 'attention'].includes(key));
             const tasks = [
-              ...(wholeList ? [SETTLED_RUN] : []),
+              ...(wholeList ? [THREE_STATES_RUN, SETTLED_RUN] : []),
               ...((result['tasks'] as Json[] | undefined) ?? []).map(given),
             ];
             return wanted === undefined
@@ -307,10 +320,44 @@ test.describe('/runs: badges and the Needs attention chip (COR-2528)', () => {
       await expect(rowOf(SETTLED_RUN_ID).locator('[data-attention="overspending"]')).toHaveText(
         RUN_ATTENTION_COPY.badges.overspending,
       );
-      await expect(page.locator('main li[data-run] [data-attention]')).toHaveCount(3);
+      // One badge each on those three rows, and the three-state run's three.
+      await expect(page.locator('main li[data-run] [data-attention]')).toHaveCount(6);
       await captureForDesignReview(page, {
         route: '/runs',
         state: 'attention badges',
+        source: SOURCE,
+      });
+    });
+
+    test(`a row in three states draws three badges and keeps its title, at ${String(width)} pixels`, async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await installRunsNeedingAttention(page, world);
+      await openAt(page, '/runs', width);
+
+      const row = page.locator(`main li[data-run="${THREE_STATES_RUN_ID}"]`);
+      await expect(row).toBeVisible();
+      const badges = row.locator('[data-attention]');
+      await expect(badges).toHaveText([
+        RUN_ATTENTION_COPY.badges.stalled,
+        RUN_ATTENTION_COPY.badges.looping,
+        RUN_ATTENTION_COPY.badges.overspending,
+      ]);
+      // The title is never crushed beside them: it is drawn whole (its row's width, or its own),
+      // and the badges that do not fit beside it drop to a line under it, never past the row.
+      const title = await row.locator('.cinder-stacked-list-item__title').boundingBox();
+      const frame = await row.boundingBox();
+      expect(title?.width ?? 0).toBeGreaterThan(40);
+      for (let index = 0; index < 3; index += 1) {
+        const badge = await badges.nth(index).boundingBox();
+        expect((badge?.x ?? 0) + (badge?.width ?? 0)).toBeLessThanOrEqual(
+          (frame?.x ?? 0) + (frame?.width ?? 0) + 1,
+        );
+      }
+      await captureForDesignReview(page, {
+        route: '/runs',
+        state: 'three badges on one row',
         source: SOURCE,
       });
     });
@@ -337,6 +384,11 @@ test.describe('/runs: badges and the Needs attention chip (COR-2528)', () => {
         await expect(rowOf(world.runs.done)).toBeVisible();
         await page.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) }).click();
         await expect(page).toHaveURL(/[?&]attention=1(&|$)/);
+        // The pressed chip carries one mark, its check, and no dot beside it.
+        const chip = page.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) });
+        await expect(chip).toHaveAttribute('aria-pressed', 'true');
+        await expect(chip.locator('.cinder-chip__check')).toHaveCount(1);
+        await expect(chip.locator('.cinder-filter-bar__dot')).toHaveCount(0);
       }
 
       await expect(rowOf(world.runs.done)).toBeVisible();
@@ -344,7 +396,7 @@ test.describe('/runs: badges and the Needs attention chip (COR-2528)', () => {
       // A settled run that overspent is on the list, and a run with no state is not.
       await expect(rowOf(SETTLED_RUN_ID)).toBeVisible();
       await expect(rowOf(world.runs.failed)).toHaveCount(0);
-      await expect(page.locator('main li[data-run]')).toHaveCount(3);
+      await expect(page.locator('main li[data-run]')).toHaveCount(4);
       expect([...asked].toSorted()).toEqual(['looping', 'overspending', 'stalled']);
       await captureForDesignReview(page, {
         route: '/runs',

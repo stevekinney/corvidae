@@ -178,6 +178,9 @@
     hasActions && phone && phoneActions !== 'buttons' && (actions?.length ?? 0) >= 2,
   );
   const actionsAsPhoneButtons = $derived(hasActions && phone && phoneActions === 'buttons');
+  // Actions drawn as buttons beside the text (the default off a phone, and a phone's one action).
+  // In a narrow row they take a line of their own under the text (`--action-buttons`, below).
+  const actionsAsButtons = $derived(hasActions && !actionsAsMenu && !actionsAsPhoneButtons);
   const detailsId = $derived(`${generatedId}-details`);
   const errorId = $derived(`${generatedId}-error`);
 
@@ -280,6 +283,7 @@
     linkHref !== undefined && 'cinder-stacked-list-item--linked',
     actionsAsMenu && 'cinder-stacked-list-item--collapsed-actions',
     actionsAsPhoneButtons && 'cinder-stacked-list-item--phone-buttons',
+    actionsAsButtons && 'cinder-stacked-list-item--action-buttons',
     className,
   )}
   data-cinder-density={resolvedDensity}

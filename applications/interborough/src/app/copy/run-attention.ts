@@ -32,12 +32,12 @@ export const RUN_ATTENTION_COPY = {
        */
       line: (when: string | undefined): string =>
         when === undefined
-          ? 'It was seen stalled, and it is still running.'
-          : `It was seen stalled ${when}, so it last made progress before then. It is still running.`,
+          ? 'It was seen stalled.'
+          : `It was seen stalled ${when}, so it last made progress before then.`,
     },
     looping: {
       title: 'This run is repeating itself',
-      line: 'Its tools reported a loop. It keeps running until you stop it.',
+      line: 'Its tools reported a loop.',
     },
     overspending: {
       title: 'This run is over the spend threshold',
@@ -45,8 +45,13 @@ export const RUN_ATTENTION_COPY = {
       line: (cost: string | undefined, over: boolean): string => {
         const spent = over ? 'It cost' : 'It has cost';
         const amount = cost === undefined ? 'more' : `${cost}, more`;
-        return `${spent} ${amount} than the spend threshold.${over ? '' : ' It keeps running until you stop it.'}`;
+        return `${spent} ${amount} than the spend threshold.`;
       },
     },
+    /**
+     * Said once, at the end of the last note, however many states the run is in: none of them
+     * stops a run that is still going.
+     */
+    keepsRunning: 'It keeps running until you stop it.',
   },
 } as const;

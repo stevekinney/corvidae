@@ -74,6 +74,13 @@ describe('StackedListItem badge (R10-01)', () => {
     expect(badge).toMatch(/white-space:\s*nowrap;/);
     // Several marks side by side (a run's states) are spaced by the slot, not by the page.
     expect(badge).toMatch(/gap:\s*var\(--cinder-space-1\);/);
+    // ... and where they do not fit beside the title they drop whole to a line under it; a single
+    // badge keeps the nowrap row above.
+    const several = ruleBody(
+      '.cinder-stacked-list-item__title-row:has(> .cinder-stacked-list-item__badge > :nth-child(2))',
+    );
+    expect(several).toMatch(/flex-wrap:\s*wrap;/);
+    expect(several).toMatch(/row-gap:\s*var\(--cinder-space-1\);/);
     // On a phone (320 and 375 pixels) the title beside a mark is one line ending in an ellipsis, so
     // the mark sits the 6px gap after the last character drawn, within 8px of the title's text: a
     // title that wrapped would keep its box's width and strand the mark after a short first line.
