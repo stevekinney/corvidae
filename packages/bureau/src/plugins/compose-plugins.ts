@@ -63,6 +63,7 @@ import { HOST_PANEL_OPERATIONS } from '../http/host-panel-operations';
 import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../bureau-types/options';
+import { RUN_TIMELINE_TOOL_NAME } from '../run-timeline-tool';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
 import {
   createVersionedCatalog,
@@ -371,7 +372,8 @@ function checkPlacement(
     if (
       agentTools !== undefined &&
       !Object.hasOwn(agentTools, agentTool) &&
-      !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`)
+      !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`) &&
+      agentTool !== `bureau:${RUN_TIMELINE_TOOL_NAME}`
     ) {
       throw new TypeError(
         `setup returned the panel "${app.name}" opened from unknown agent tool "${agentTool}".`,
