@@ -16,7 +16,7 @@ function listOf(props: Record<string, unknown>): HTMLElement {
   const { container } = render(DataList, {
     props: {
       items: [{ id: 'a' }],
-      key: (item: { id: string }) => item.id,
+      key: (item: unknown) => (item as { id: string }).id,
       children: row,
       ...props,
     },
