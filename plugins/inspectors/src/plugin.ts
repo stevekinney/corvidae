@@ -2,6 +2,7 @@ import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugi
 
 import {
   BASE_STYLES,
+  FAILURE_EXPLANATION_STYLES,
   PENDING_REVIEW_STYLES,
   SCHEDULE_EDITOR_STYLES,
   WORKFLOW_REVISION_STYLES,
@@ -97,17 +98,45 @@ export const scheduleEditor: PluginPanel = {
 };
 
 /**
- * Four interface panels, the run inspector, pending-review list, workflow revision review and schedule
- * editor. Each is a page the host builds from a browser entry at startup and serves as a `ui://`
- * resource.
+ * The failure explanation (COR-2543): why one failed run failed, in the Bureau's own words from
+ * what it stored about the run and nothing else: the summary, the cause, the step, how often it was
+ * tried, the guardrails that fired and what to do next. A client opens it from the explain tool,
+ * which hands the page its result, and a run's page mounts it with the run's `taskId`, which the
+ * page reads through the same tool. That read is the only call it makes, and it is a read, so the
+ * panel has nothing a model or a person could change through it. A run that did not fail is the
+ * Bureau's refusal, whose message and remediation the page shows. `allowedTools` lists every tool the
+ * page calls, which a test keeps true.
+ */
+export const failureExplanation: PluginPanel = {
+  name: 'failure-explanation',
+  title: 'Failure explanation',
+  description: 'Why one failed run failed, from what the Bureau stored about it.',
+  uri: 'ui://inspectors/failure-explanation/v1',
+  entry: new URL('./failure-explanation/app.ts', import.meta.url),
+  styles: FAILURE_EXPLANATION_STYLES,
+  allowedTools: ['bureau.tasks.explain'],
+  placements: [{ kind: 'run' }],
+  opensFromTool: 'bureau.tasks.explain',
+};
+
+/**
+ * Five interface panels, the run inspector, pending-review list, workflow revision review, schedule
+ * editor and failure explanation. Each is a page the host builds from a browser entry at startup and
+ * serves as a `ui://` resource.
  */
 export default definePlugin({
   name: 'inspectors',
   title: 'Inspectors',
   version: '1.0.1',
   description:
-    'Adds the run inspector, the pending-review list, the workflow revision review and the schedule editor as interface panels over the run, review, workflow and schedule tools.',
+    'Adds the run inspector, the pending-review list, the workflow revision review, the schedule editor and the failure explanation as interface panels over the run, review, workflow and schedule tools.',
   setup: () => ({
-    panels: [runInspector, pendingReview, workflowRevisionReview, scheduleEditor],
+    panels: [
+      runInspector,
+      pendingReview,
+      workflowRevisionReview,
+      scheduleEditor,
+      failureExplanation,
+    ],
   }),
 });

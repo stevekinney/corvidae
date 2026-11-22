@@ -10,6 +10,12 @@
     },
     {
       "kind": "panel",
+      "id": "inspectors:failure-explanation",
+      "version": "1.0.1",
+      "schema": "sha256:9447e3dd9d48e7faee4a4bed44bc78b8d4fe64924452c1c7d35a0b65784547b4"
+    },
+    {
+      "kind": "panel",
       "id": "inspectors:pending-review",
       "version": "1.0.1",
       "schema": "sha256:5c2158263a82973eba08b2a376c393ce14548bfedf504935d75b6d840b2eb964"
