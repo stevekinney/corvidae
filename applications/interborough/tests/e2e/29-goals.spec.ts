@@ -198,9 +198,9 @@ test.describe('Goal edit actions above the phone tab bar', () => {
         await expect(page).toHaveURL(/\/goals\/seeded-goal$/);
       }
 
-      const tab = page.locator(
-        '.cinder-navigation-bar[data-cinder-placement="bottom"] [data-cinder-navigation-item][aria-current]',
-      );
+      const tab = page.getByRole('navigation', { name: 'Main tabs' }).getByRole('link', {
+        name: 'Home',
+      });
       await expect(tab).toBeVisible();
       const tabHit = await tab.evaluate((element) => {
         const box = element.getBoundingClientRect();
@@ -213,6 +213,8 @@ test.describe('Goal edit actions above the phone tab bar', () => {
       });
       expect(tabHit.height).toBeGreaterThanOrEqual(44);
       expect(tabHit.owned).toBe(true);
+      await page.touchscreen.tap(tabHit.x, tabHit.y);
+      await expect(page).toHaveURL(/\/$/);
     });
   }
 });
