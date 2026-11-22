@@ -10,7 +10,7 @@
  * read and its commit writes nothing, a lost catalog race is still reported as the revision race,
  * and a fork whose launch fails after its commit gives its claim back.
  */
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import {
   MemoryStorage,
@@ -19,7 +19,6 @@ import {
   type Storage,
 } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import { KEYS } from '../../../storage/keys.ts';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { buildWorkflowManifestFromDefinition } from '../../registry-workflow-manifest.ts';
@@ -77,19 +76,18 @@ function leaseEngine(storage: Storage, extra: Partial<Parameters<typeof Engine.c
 
 /** Collect every `WeftWorkflowClaimLostWarning` emitted while `body` runs. */
 async function collectClaimLostWarnings(body: () => Promise<void>): Promise<string[]> {
-  const workflowIds: string[] = [];
-  const listener = (warning: Error): void => {
-    if (warning instanceof WeftWorkflowClaimLostWarning) workflowIds.push(warning.workflowId);
-  };
-  process.on('warning', listener);
+  // Read at the emit call itself, which is synchronous, rather than from the `warning` event a
+  // later turn delivers: nothing has to be waited for once `body` settles.
+  const emitWarning = spyOn(process, 'emitWarning');
   try {
     await body();
-    // `process.emitWarning` delivers on a later turn.
-    await yieldEventLoopTurn();
   } finally {
-    process.off('warning', listener);
+    emitWarning.mockRestore();
   }
-  return workflowIds;
+  return emitWarning.mock.calls
+    .map(([warning]) => warning)
+    .filter((warning) => warning instanceof WeftWorkflowClaimLostWarning)
+    .map((warning) => warning.workflowId);
 }
 
 async function holderEngineId(storage: Storage, workflowId: string): Promise<string | null> {
@@ -167,7 +165,7 @@ describe('engine.fork under ownership: workflow-lease (COR-2635)', () => {
     });
 
     expect(warnings).toEqual([]);
-    expect((await engine.get(forkId))?.status).toBe('completed');
+    expect(await engine.get(forkId)).toMatchObject({ status: 'completed' });
     // Acquired (the epoch exists) and released at the terminal write (the holder is gone).
     expect(await storage.get(KEYS.workflowOwnerEpoch(forkId))).not.toBeNull();
     expect(await storage.get(KEYS.workflowOwnerHolder(forkId))).toBeNull();
@@ -206,7 +204,7 @@ describe('engine.fork under ownership: workflow-lease (COR-2635)', () => {
 
     const fork = await engine.fork('revision-source', { revision: revisionV2 });
     expect(await fork.result()).toBe('v2');
-    expect((await engine.get(fork.id))?.revision).toBe(revisionV2);
+    expect(await engine.get(fork.id)).toMatchObject({ revision: revisionV2 });
     expect(await storage.get(KEYS.workflowOwnerHolder(fork.id))).toBeNull();
   });
 
@@ -245,9 +243,9 @@ describe('engine.fork under ownership: workflow-lease (COR-2635)', () => {
     expect(warnings).toEqual([]);
     expect(getInternals(holder).deposed).toBe(false);
     expect(getInternals(forker).deposed).toBe(false);
-    expect((await loadWorkflowState(getInternals(holder), 'held-source'))?.status).toBe(
-      'completed',
-    );
+    expect(await loadWorkflowState(getInternals(holder), 'held-source')).toMatchObject({
+      status: 'completed',
+    });
   });
 
   it('writes nothing when another engine claims the fork id between the fork’s read and its commit', async () => {
@@ -262,7 +260,7 @@ describe('engine.fork under ownership: workflow-lease (COR-2635)', () => {
     let claimedForkId = '';
     const storage = interceptForkCommit(base, 'claim-race-source', async (forkId) => {
       claimedForkId = forkId;
-      expect((await foreign.acquire(forkId)).status).toBe('acquired');
+      expect(await foreign.acquire(forkId)).toMatchObject({ status: 'acquired' });
     });
     await using engine = await leaseEngine(storage);
     const source = await engine.start(twoSteps.name, {}, { id: 'claim-race-source' });
@@ -292,7 +290,8 @@ describe('engine.fork under ownership: workflow-lease (COR-2635)', () => {
     await using engine = await leaseEngine(storage);
     const source = await engine.start(twoSteps.name, {}, { id: 'catalog-race-source' });
     await source.result();
-    pinnedRevision = (await engine.get('catalog-race-source'))?.revision;
+    const sourceState = await engine.get('catalog-race-source');
+    pinnedRevision = sourceState?.revision;
     expect(pinnedRevision).toBeDefined();
 
     const error = await rejectionOf(engine.fork('catalog-race-source'));
@@ -325,9 +324,16 @@ describe('engine.fork under ownership: workflow-lease (COR-2635)', () => {
 
     expect((error as Error).message).toBe('launch failed');
     // The run is durable and ownerless, so the reclaim scan can hand it to an engine that drives it.
-    expect((await engine.get(failedForkId))?.status).toBe('running');
+    expect(await engine.get(failedForkId)).toMatchObject({ status: 'running' });
     expect(await storage.get(KEYS.workflowOwnerEpoch(failedForkId))).not.toBeNull();
     expect(await storage.get(KEYS.workflowOwnerHolder(failedForkId))).toBeNull();
     expect(internals.workflowClaimRegistry?.currentEpoch(failedForkId)).toBeNull();
+
+    // Nothing the failed launch left behind keeps the run from being driven: a resume takes the
+    // claim afresh and replays the fork from its checkpoint to its result.
+    const redriven = await engine.resume(failedForkId);
+    expect(await redriven.result()).toBe(2);
+    expect(await engine.get(failedForkId)).toMatchObject({ status: 'completed' });
+    expect(await storage.get(KEYS.workflowOwnerHolder(failedForkId))).toBeNull();
   });
 });

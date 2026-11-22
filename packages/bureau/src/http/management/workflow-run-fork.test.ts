@@ -37,18 +37,20 @@ describe('a workflow run forked on the Bureau’s durable engine', () => {
     });
     const engine = served.bureau.durableEngine()!;
     const { runId } = await served.bureau.workflows!.start('digest', { owner: 'api-key:alice' });
-    await waitForCondition(
-      async () => (await engine.get(runId))?.status === 'completed',
-      'the source run completes',
-    );
+    await waitForCondition(async () => {
+      const state = await engine.get(runId);
+      return state?.status === 'completed';
+    }, 'the source run completes');
     // The source ran under a claim of its own, so the engine is in its default `workflow-lease` posture.
     expect(await claimEpochKeys(storage, runId)).toHaveLength(1);
 
     const fork = await engine.fork(runId);
     await fork.result();
 
-    expect((await engine.get(fork.id))?.status).toBe('completed');
-    expect((await engine.get(fork.id))?.forkedFrom?.workflowId).toBe(runId);
+    expect(await engine.get(fork.id)).toMatchObject({
+      status: 'completed',
+      forkedFrom: { workflowId: runId },
+    });
     // The fork's create batch claimed the fork's id; the claim was released at its terminal write.
     expect(await claimEpochKeys(storage, fork.id)).toHaveLength(1);
     expect(await engine.claimHolder(fork.id)).toBeUndefined();
