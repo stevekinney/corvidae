@@ -795,8 +795,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
   test('draws nothing for the first 300 ms, then placeholders in its real layout (02c, 02d)', async ({
     page,
     checkA11y,
-    testInfo,
-  }) => {
+  }, testInfo) => {
     await pausedClock(page);
     const release = await holdHomeReads(page);
     await page.setViewportSize({ width: 1280, height: 900 });
