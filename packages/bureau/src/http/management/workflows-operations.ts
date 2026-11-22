@@ -1502,11 +1502,7 @@ const startOutput = z.object({
  * The engine accepts at most 117 UTF-8 bytes, so the namespace is a fixed-size digest instead of
  * concatenating supported owner, workflow, and request-key lengths.
  */
-function manualStartIdempotencyKey(
-  owner: string,
-  workflow: string,
-  requestKey: string,
-): string {
+function manualStartIdempotencyKey(owner: string, workflow: string, requestKey: string): string {
   return `manual:${sha256HexSync(JSON.stringify([owner, workflow, requestKey]))}`;
 }
 
@@ -1550,11 +1546,7 @@ export const workflowsStartOperation = defineOperation<
         ...(input.idempotencyKey === undefined
           ? {}
           : {
-              idempotencyKey: manualStartIdempotencyKey(
-                owner,
-                input.id,
-                input.idempotencyKey,
-              ),
+              idempotencyKey: manualStartIdempotencyKey(owner, input.id, input.idempotencyKey),
             }),
       });
     } catch (error) {
