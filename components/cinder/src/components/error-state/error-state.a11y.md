@@ -22,11 +22,12 @@ The only interactive element is the optional retry `Button`, which is a native b
 
 ## Names, roles, and state
 
-The title renders as a heading at `headingLevel` (default 2), so pick the level that fits the surrounding outline. The optional `detail`, such as a fault code, is plain text and is announced with the alert. The retry button's accessible name is its `retryLabel`; make it specific when several error states share a page. Meaning is carried by text, never by color alone.
+The title renders as a heading at `headingLevel` (default 2), so pick the level that fits the surrounding outline. The optional `remediation`, the next step to take, is a paragraph inside the labelled region, directly after the description and before any progress line, so assistive technology reads what failed and then what to do, in that order, as part of the alert. The optional `detail`, such as a fault code, is plain text and is announced with the alert. The retry button's accessible name is its `retryLabel`; make it specific when several error states share a page. Meaning is carried by text, never by color alone.
 
 ## Verification
 
 - Render ErrorState with and without `onRetry` in the playground or a focused test fixture.
+- Render it with `remediation` and confirm a screen reader reads the title, the description, then the remediation.
 - Confirm a screen reader announces the alert when it appears.
 - Tab to the retry button and activate it with Enter and Space.
 - Check contrast of the title, description, and detail in light and dark themes.

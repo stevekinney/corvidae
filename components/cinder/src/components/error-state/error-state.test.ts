@@ -281,6 +281,113 @@ describe('ErrorState actions', () => {
   });
 });
 
+describe('ErrorState remediation', () => {
+  test('renders the next step as its own line right after the description', () => {
+    const { container } = render(ErrorState, {
+      props: {
+        title: 'Couldn’t load runs',
+        description: 'The server answered with an error.',
+        remediation: 'Check that the server is running, then try again.',
+        retryStatus: 'Retrying in 8 s (attempt 3 of 8)',
+      },
+    });
+    const remediation = container.querySelector('.cinder-error-state-remediation');
+    expect(remediation?.tagName).toBe('P');
+    expect(remediation?.textContent).toBe('Check that the server is running, then try again.');
+    expect(
+      remediation?.previousElementSibling?.classList.contains('cinder-error-state-description'),
+    ).toBe(true);
+    expect(remediation?.nextElementSibling?.classList.contains('cinder-error-state-status')).toBe(
+      true,
+    );
+  });
+
+  test('sits inside the labelled region, so assistive technology reads it with the title', () => {
+    const { container } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', remediation: 'Sign in again.' },
+    });
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.getAttribute('aria-labelledby')).toBe(
+      container.querySelector('.cinder-error-state-title')?.id ?? null,
+    );
+    expect(alert?.contains(container.querySelector('.cinder-error-state-remediation'))).toBe(true);
+  });
+
+  test('follows the description in the row variant and in the flat variant', () => {
+    for (const variant of ['row', 'flat'] as const) {
+      const { container } = render(ErrorState, {
+        props: { title: 'Failed', description: 'Nope.', remediation: 'Sign in again.', variant },
+      });
+      expect(
+        container
+          .querySelector('.cinder-error-state-remediation')
+          ?.previousElementSibling?.classList.contains('cinder-error-state-description'),
+      ).toBe(true);
+      cleanup();
+    }
+  });
+
+  test('renders alongside a retry button, and on its own when onRetry is omitted', () => {
+    const withRetry = render(ErrorState, {
+      props: {
+        title: 'Failed',
+        description: 'Nope.',
+        remediation: 'Try again.',
+        onRetry: () => {},
+      },
+    });
+    expect(withRetry.container.querySelector('.cinder-error-state-remediation')).not.toBeNull();
+    expect(withRetry.container.querySelector('button')).not.toBeNull();
+    cleanup();
+
+    const withoutRetry = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', remediation: 'Ask an owner for access.' },
+    });
+    expect(withoutRetry.container.querySelector('.cinder-error-state-remediation')).not.toBeNull();
+    expect(withoutRetry.container.querySelector('button')).toBeNull();
+  });
+
+  test('renders no remediation element without the prop or with an empty one', () => {
+    const without = render(ErrorState, { props: { title: 'Failed', description: 'Nope.' } });
+    expect(without.container.querySelector('.cinder-error-state-remediation')).toBeNull();
+    cleanup();
+
+    const empty = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', remediation: '' },
+    });
+    expect(empty.container.querySelector('.cinder-error-state-remediation')).toBeNull();
+  });
+
+  test('a row draws it on its own line under the sentence, not run on inside it', async () => {
+    const { container } = render(ErrorState, {
+      props: {
+        title: 'Couldn’t load system problems.',
+        description: 'The rest of Home is live.',
+        remediation: 'Check the connection.',
+        variant: 'row',
+      },
+    });
+    const text = container.querySelector('.cinder-error-state-text');
+    expect(text?.querySelector('.cinder-error-state-remediation')).not.toBeNull();
+
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const rule = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-remediation",
+    );
+    expect(rule.get('display')).toBe('block');
+    expect(rule.get('margin-block-start')).toBe('var(--cinder-space-1)');
+    expect(rule.get('font-size')).toBe('inherit');
+  });
+
+  test('takes the description’s type and its colour token', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const rule = declarationsFor(css, '.cinder-error-state-remediation');
+    expect(rule.get('font-size')).toBe('var(--cinder-text-sm)');
+    expect(rule.get('color')).toBe('var(--cinder-text-muted)');
+  });
+});
+
 describe('ErrorState retry status', () => {
   test('renders the progress line under the description and out of any live region', () => {
     const { container } = render(ErrorState, {

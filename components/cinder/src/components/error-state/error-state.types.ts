@@ -33,6 +33,13 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    */
   description: string;
   /**
+   * What to do next, such as "Check that the server is running, then try again." It renders as its
+   * own line right after the description, in the same type, inside the labelled region, so
+   * assistive technology reads it in order. Leave it off when the fault names no next step. Pair
+   * it with `onRetry` when asking again can help, and omit `onRetry` when it cannot.
+   */
+  remediation?: string;
+  /**
    * Optional technical detail, such as a fault code. It sits behind a disclosure labelled
    * `detailsLabel`, so the plain-words description stays the first thing a person reads.
    */
@@ -133,6 +140,13 @@ export interface ErrorStateSchemaProps {
    * its whole sentence passes `''` and draws no second paragraph.
    */
   description: string;
+  /**
+   * What to do next, such as "Check that the server is running, then try again." It renders as its
+   * own line right after the description, in the same type, inside the labelled region, so
+   * assistive technology reads it in order. Leave it off when the fault names no next step. Pair
+   * it with `onRetry` when asking again can help, and omit `onRetry` when it cannot.
+   */
+  remediation?: string;
   /**
    * Optional technical detail, such as a fault code. It sits behind a disclosure labelled
    * `detailsLabel`, so the plain-words description stays the first thing a person reads.
