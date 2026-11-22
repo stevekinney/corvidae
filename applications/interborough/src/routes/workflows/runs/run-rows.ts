@@ -650,8 +650,9 @@ export function buildRunRows(input: {
             origin: goalRow.origin,
             title: goalRow.title,
             attempt: goalRow.attempt,
-            // The task's own figure wins; the goal's record of the attempt fills in a task with none.
-            cost: row.cost ?? goalRow.cost ?? null,
+            // The task's own figure wins, an explicit `null` (the Bureau priced no request) included:
+            // the goal's record of the attempt fills in only a task that has reported no usage at all.
+            cost: task.usage == null ? (row.cost ?? goalRow.cost ?? null) : row.cost,
             checkNotMet: missedCheck.has(task.id) && row.status === 'completed',
           }
         : row,

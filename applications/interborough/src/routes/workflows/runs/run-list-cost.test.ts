@@ -70,6 +70,24 @@ describe('a run’s cost on its row', () => {
     expect(byId.get('goal-1-a0')?.cost).toEqual({ costUsd: 0.75, partial: false });
     expect(byId.get('goal-1-a1')?.cost).toBeNull();
   });
+
+  test('a task that says it priced nothing is not given the goal record’s cost, but one with no usage is', () => {
+    const goal = goalFixture('goal-1', {
+      attempts: [goalAttemptFixture('goal-1-a0', { usage: { steps: 1, tokens: 1, costUsd: 0.5 } })],
+    });
+    const costOfTask = (reported: TaskView['usage'] | null) =>
+      runListRows(
+        buildRunRows({
+          tasks: [taskFixture({ id: 'goal-1-a0', status: 'completed', usage: reported })],
+          goals: [goal],
+          chats: [],
+        }),
+      )[0]?.cost;
+
+    expect(costOfTask(usage(null))).toBeNull();
+    expect(costOfTask(null)).toEqual({ costUsd: 0.5, partial: false });
+    expect(costOfTask(usage(0.75))).toEqual({ costUsd: 0.75, partial: false });
+  });
 });
 
 describe('the cost of an instance of a workflow file', () => {
