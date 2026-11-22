@@ -1,11 +1,14 @@
 import { expect, test } from '@playwright/test';
-import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 test('the browser entry registers every component in the Cinder manifest', async ({ page }) => {
-  const manifest: { components: { id: string }[] } = await Bun.file(
-    resolve(import.meta.dirname, '../../../components/cinder/.metadata/components.json'),
-  ).json();
-  const tags = manifest.components.map(({ id }) => `cinder-${id}`).toSorted();
+  const manifest: { components: { id: string }[] } = JSON.parse(
+    await readFile(
+      new URL('../../../components/cinder/.metadata/components.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const tags = manifest.components.map(({ id }) => `cinder-${id}`);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
 
@@ -19,6 +22,43 @@ test('the browser entry registers every component in the Cinder manifest', async
   }, tags);
   expect(registrations).toEqual(tags);
   expect(errors).toEqual([]);
+});
+
+test('generated controls publish source defaults and user-edited values', async ({ page }) => {
+  await page.goto('/web-components/index.html');
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<cinder-input component-id="account-input" value="Before"></cinder-input><cinder-checkbox label="Enabled"></cinder-checkbox><cinder-slider label="Level" min="5" max="10"></cinder-slider>',
+    );
+  });
+  const input = page.locator('cinder-input');
+  await input.getByRole('textbox').fill('After');
+  await expect(input).toHaveJSProperty('value', 'After');
+  const checkbox = page.locator('cinder-checkbox');
+  await expect(checkbox).toHaveJSProperty('checked', false);
+  await checkbox.getByRole('checkbox', { name: 'Enabled' }).check();
+  await expect(checkbox).toHaveJSProperty('checked', true);
+  const slider = page.locator('cinder-slider');
+  await expect(slider).toHaveJSProperty('value', 5);
+  await slider.getByRole('slider').press('ArrowRight');
+  await expect(slider).toHaveJSProperty('value', 6);
+});
+
+test('numeric enum attributes reach source components as numbers', async ({ page }) => {
+  await page.goto('/web-components/index.html');
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<cinder-page-header render-title="Account" title-lines="1"></cinder-page-header>',
+    );
+  });
+  const header = page.locator('cinder-page-header');
+  await expect(header).toHaveJSProperty('titleLines', 1);
+  await expect(header.locator('[data-cinder-title-lines]')).toHaveAttribute(
+    'data-cinder-title-lines',
+    '1',
+  );
 });
 
 test('VirtualList passes live row data to a plain JavaScript renderer', async ({ page }) => {

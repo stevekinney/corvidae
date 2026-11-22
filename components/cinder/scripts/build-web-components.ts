@@ -1,8 +1,9 @@
 import { sveltePlugin } from '@lostgradient/testing';
 import { relative, resolve } from 'node:path';
-import { compile } from 'svelte/compiler';
+import { compile, parse } from 'svelte/compiler';
 import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
 import { inlineImports } from './design-system/css.ts';
+import { observeBrowserBindings } from './web-component-bindings.ts';
 import { readWebComponentCatalog, type PropertyOptions } from './web-component-catalog.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -74,37 +75,43 @@ function componentFile(
   return resolve(directory, `${name}.${suffix}`);
 }
 
-function createCatalogSource(name: string, options: ElementOptions) {
+const publish =
+  'cinderPublishBindable={(property, value) => { if (!Object.is(host[property], value)) host[property] = value; }}';
+
+function createCatalogSource(name: string, options: ElementOptions, publishes: boolean) {
   const renderer = resolve(webComponents, 'browser-renderer.svelte.ts');
   const properties = Object.entries(options.properties);
   const slots = properties.flatMap(([property, definition]) =>
     definition.renderer ? [definition.source ?? property] : [],
   );
-  const bindings = properties.flatMap(([property, definition]) => {
-    if (name === 'select' && property === 'value') return [];
+  const bindings = properties.map(([property, definition]) => {
     const value = `properties[${JSON.stringify(property)}]`;
-    return [
-      `${JSON.stringify(definition.source ?? property)}: ${
-        definition.renderer
-          ? `browserContent(${value}, authored.get(${JSON.stringify(definition.source ?? property)}))`
-          : value
-      }`,
-    ];
+    return `${JSON.stringify(definition.source ?? property)}: ${
+      definition.renderer
+        ? `browserContent(${value}, authored.get(${JSON.stringify(definition.source ?? property)}))`
+        : value
+    }`;
   });
   return `<script lang="ts" module></script>
 <script lang="ts">
   import Component from ${JSON.stringify(componentFile(name, 'svelte'))};
   import { browserContent, inheritProjectedContext, readAuthoredContent } from ${JSON.stringify(renderer)};
-  ${name === 'select' ? 'let { value = $bindable(), ...properties } = $props();' : 'let properties = $props();'}
+  let properties = $props();
   const host = $host();
   inheritProjectedContext(host);
   const authored = readAuthoredContent(host, ${JSON.stringify(slots)});
-  const input = $derived({${bindings.join(',\n')}});
+  const input = $derived(Object.fromEntries(
+    Object.entries({${bindings.join(',\n')}}).filter(([, value]) => value !== undefined)
+  ));
 </script>
-<Component {...input} ${name === 'select' ? 'bind:value' : ''} />`;
+<Component {...input} ${publishes ? publish : ''} />`;
 }
 
-function createCompoundSource(name: string, { part, attributes }: CompoundOptions) {
+function createCompoundSource(
+  name: string,
+  { part, attributes }: CompoundOptions,
+  publishes: boolean,
+) {
   const tag = `cinder-${part}`;
   const properties = Object.entries(attributes).map(([property, { attribute, boolean }]) => {
     const argument = JSON.stringify(attribute);
@@ -129,11 +136,11 @@ ${inlineImports(componentFile(name, 'css'))}`;
 
   const stylesheet = ${JSON.stringify(stylesheet)};
   const properties = $props();
+  const host = $host();
   let items = $state.raw<{ element: Element; id: string; content: Snippet }[]>([]);
   let nextId = 0;
 
   onMount(() => {
-    const host = $host();
     const read = () => Array.from(host.querySelectorAll(':scope > ${tag}'));
     function update(children: Element[]) {
       const previous = new Map(items.map((item) => [item.element, item]));
@@ -150,7 +157,7 @@ ${inlineImports(componentFile(name, 'css'))}`;
 </script>
 
 <svelte:element this={'style'}>{stylesheet}</svelte:element>
-<Root {...properties}>
+<Root {...properties} ${publishes ? publish : ''}>
   {#each items as item (item.id)}
     <Part id={item.id} ${properties.join(' ')}>
       {@render item.content()}
@@ -160,8 +167,8 @@ ${inlineImports(componentFile(name, 'css'))}`;
 }
 
 function compileElement(path: string, text: string, options: ElementOptions) {
-  const script = '<script lang="ts" module>';
-  if (!text.includes(script)) throw new Error(`Missing module script in ${path}`);
+  const module = parse(text, { modern: true }).module;
+  if (!module) throw new Error(`Missing module script in ${path}`);
   const extension = options.extend;
   const extensions = [
     'withAttributeDefaults',
@@ -170,10 +177,11 @@ function compileElement(path: string, text: string, options: ElementOptions) {
   ];
   const imports = extensions.join(', ');
   const extend = `(base) => ${extensions.reduce((base, helper) => `${helper}(${base})`, 'base')}`;
-  const component = text.replace(
-    script,
-    `${script}\nimport { ${imports} } from ${JSON.stringify(lifecycle)};`,
-  );
+  const { content } = module;
+  if (!('start' in content) || typeof content.start !== 'number')
+    throw new Error(`Missing module script source position in ${path}`);
+  const { start } = content;
+  const component = `${text.slice(0, start)}\nimport { ${imports} } from ${JSON.stringify(lifecycle)};\n${text.slice(start)}`;
   const props = Object.entries(options.properties).map(([name, definition]) => {
     const entries = Object.entries(definition)
       .filter(([field]) => field !== 'source' && field !== 'renderer')
@@ -203,19 +211,27 @@ export async function buildWebComponents(
   }: { definitions?: Record<string, ElementOptions>; example?: string; exampleEntry?: string } = {},
 ) {
   const entry = resolve(webComponents, 'web-components.ts');
-  const inputs = Object.entries(definitions ?? (await catalogDefinitions())).map(
-    ([name, options]) => ({
-      name,
-      options,
-      path:
-        options.compound || options.catalog
-          ? resolve(webComponents, `${name}.generated.svelte`)
-          : componentFile(name, 'svelte', options.directory),
-      virtualSource: options.compound
-        ? createCompoundSource(name, options.compound)
-        : options.catalog
-          ? createCatalogSource(name, options)
-          : undefined,
+  const sources = new Map<string, string>();
+  const inputs = await Promise.all(
+    Object.entries(definitions ?? (await catalogDefinitions())).map(async ([name, options]) => {
+      const sourcePath = componentFile(name, 'svelte', options.directory);
+      const patched = options.catalog
+        ? observeBrowserBindings(await Bun.file(sourcePath).text(), options.properties)
+        : undefined;
+      if (patched !== undefined) sources.set(sourcePath, patched);
+      return {
+        name,
+        options,
+        path:
+          options.compound || options.catalog
+            ? resolve(webComponents, `${name}.generated.svelte`)
+            : componentFile(name, 'svelte', options.directory),
+        virtualSource: options.compound
+          ? createCompoundSource(name, options.compound, patched !== undefined)
+          : options.catalog
+            ? createCatalogSource(name, options, patched !== undefined)
+            : undefined,
+      };
     }),
   );
   const byPath = new Map(inputs.map((input) => [input.path, input]));
@@ -263,6 +279,12 @@ for (const [name, element] of [${registrations.join(', ')}]) {
             return { contents: '', loader: 'js' };
           });
           builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => {
+            const patched = sources.get(path);
+            if (patched !== undefined)
+              return {
+                loader: 'js',
+                contents: compile(patched, { filename: path, css: 'injected' }).js.code,
+              };
             const input = byPath.get(path);
             if (input === undefined) return undefined;
             const text = input.virtualSource ?? (await Bun.file(path).text());
@@ -274,7 +296,10 @@ for (const [name, element] of [${registrations.join(', ')}]) {
     ],
   });
   const declarations = inputs.flatMap(({ name, options }) => {
-    const types = relative(outdir, componentFile(name, 'types.ts', options.directory));
+    const types = relative(outdir, componentFile(name, 'types.ts', options.directory)).replaceAll(
+      '\\',
+      '/',
+    );
     const propsType = `import(${JSON.stringify(types)}).${options.propsType}`;
     const properties = Object.entries(options.properties).map(([key, definition]) => {
       const originalName = JSON.stringify(definition.source ?? key);

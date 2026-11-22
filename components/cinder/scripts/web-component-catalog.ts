@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import ts from 'typescript';
 import type { ComponentSchemaOutput } from '../../../internal/component-tooling/scripts/generate-component-schema.ts';
 
@@ -33,6 +33,9 @@ function attributeType(
   if (schema.type === 'boolean') return 'Boolean';
   if (schema.type === 'array') return 'Array';
   if (schema.type === 'object') return 'Object';
+  const values = (schema.enum ?? [schema.const]).filter((value) => value != null);
+  if (values.length > 0 && values.every((value) => typeof value === 'number')) return 'Number';
+  if (values.length > 0 && values.every((value) => typeof value === 'boolean')) return 'Boolean';
   const variants = schema.anyOf?.map(attributeType);
   const first = variants?.[0];
   return first !== undefined && variants?.every((variant) => variant === first) ? first : undefined;
@@ -66,7 +69,7 @@ export async function readWebComponentCatalog(root: string) {
   );
   const program = ts.createProgram(typesFiles, options);
   const checker = program.getTypeChecker();
-  const dom = program.getSourceFiles().find((file) => file.fileName.endsWith('/lib.dom.d.ts'));
+  const dom = program.getSourceFiles().find((file) => basename(file.fileName) === 'lib.dom.d.ts');
   const htmlElement =
     dom && checker.resolveName('HTMLElement', dom, ts.SymbolFlags.Interface, false);
   if (!htmlElement) throw new Error('Unable to resolve HTMLElement for custom element properties');
