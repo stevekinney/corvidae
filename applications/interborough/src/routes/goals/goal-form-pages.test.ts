@@ -188,7 +188,7 @@ async function filledPage(view: View, heading: string, agent: string, check = CH
   await waitFor(() => expect(select.value).toBe(agent));
   // An empty `check` is a picker with nothing chosen, which shows its placeholder and no value.
   if (check !== '') {
-    await waitFor(() => expect(shownChoice(view.container, CHECK_ID)).toBe(check));
+    await waitFor(() => expect(shownChoice(view.container, CHECK_ID) === check).toBe(true));
   }
   // The picker stays off until the Bureau has listed its checks.
   await waitFor(() =>
