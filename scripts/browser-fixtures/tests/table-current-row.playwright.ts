@@ -22,6 +22,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
     expect(await background(current)).toBe(tint);
     await current.hover();
     expect(await background(current)).toBe(tint);
+    await open.focus();
+    await expect(open).toBeFocused();
+    expect(await background(open)).toBe(tint);
   });
 }
 

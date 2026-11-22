@@ -60,7 +60,8 @@
     block-size: var(--_cinder-data-table-row-height, 44px);
   }
 
-  .cinder-data-table tbody .cinder-table__row:focus-within {
+  /* An open row already carries Table's current-row tint. */
+  .cinder-data-table tbody .cinder-table__row:focus-within:where(:not([data-cinder-open])) {
     background: var(--_cinder-table-row-hover);
   }
 

@@ -13,6 +13,7 @@
   } from '@lostgradient/cinder';
 
   const showCurrent = new URLSearchParams(globalThis.location.search).has('current');
+  let openContributor = $state('ada');
   const headerTokens = new URLSearchParams(globalThis.location.search).get('header-tokens') === '1';
   const densities = ['comfortable', 'condensed', 'spacious'] as const satisfies TableDensity[];
 
@@ -175,7 +176,8 @@
     <DataTable
       columns={[{ key: 'name', label: 'Name' }]}
       rows={[{ id: 'ada', name: 'Ada Lovelace' }]}
-      openRowId="ada"
+      openRowId={openContributor}
+      onRowOpen={(row) => (openContributor = row.id)}
     />
   </div>
   <div data-testid="stacked-current">
