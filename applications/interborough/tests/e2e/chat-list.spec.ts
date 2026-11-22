@@ -202,7 +202,8 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await row(page, refund).getByRole('link').first().click();
     const detail = page.getByRole('region', { name: 'Open chat' });
     await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
-    const detailBefore = (await readBoxes(page, { detail })).detail.width;
+    const { detail: beforeBox } = await readBoxes(page, { detail });
+    const detailBefore = beforeBox.width;
 
     // One control: a handle on the divider, never in the header beside the list's "+" (COR-2438).
     const hide = page.getByRole('button', { name: 'Hide chats' });
@@ -247,7 +248,10 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
 
     // Hiding removes a flex pane. In a loaded host Chromium can expose the changed DOM before its
     // next layout pass, so wait for the same expansion contract before reading its stable geometry.
-    const readDetailWidth = async () => (await readBoxes(page, { detail })).detail.width;
+    const readDetailWidth = async () => {
+      const { detail: box } = await readBoxes(page, { detail });
+      return box.width;
+    };
     await expect.poll(readDetailWidth).toBeGreaterThan(detailBefore + 150);
     const detailAfter = await readDetailWidth();
     await testInfo.attach('chat-list-collapse-settled.json', {
