@@ -114,7 +114,7 @@ const tasksListInput = z.object({
     .enum(TASK_ATTENTION_KINDS as [TaskAttention, ...TaskAttention[]])
     .optional()
     .describe(
-      'Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.',
+      'Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop, `overspending` for a run a step found over the spend threshold (it stays after the run settles). A task that has ended lists neither of the first two, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.',
     ),
   failedStep: z
     .string()

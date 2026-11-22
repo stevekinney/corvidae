@@ -57,6 +57,7 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'decisions.maximumPerTask': 3,
   'scorers.sampleRate': 0.25,
   'scorers.dailyBudget': 40,
+  'runs.spendThresholdUsd': 5,
   'retention.audit': { olderThan: 86_400_000 },
   'retention.runs': { olderThan: 2_592_000_000 },
   'retention.chats': { olderThan: 5_184_000_000 },

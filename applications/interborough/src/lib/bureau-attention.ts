@@ -12,15 +12,24 @@ import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-/** One problem that needs attention, as `bureau.health.attention` lists it. */
+/**
+ * The kinds of run the Bureau lists (a stalled run, a looping run, and a run over the spend
+ * threshold) that this build has no row for yet. The Health dot counts them; no row says them.
+ */
+type RunAttentionKind = 'run-stalled' | 'run-looping' | 'run-overspending';
+
+/** One problem that needs attention and that this build words, as `bureau.health.attention` lists it. */
 export type AttentionItem =
-  | Exclude<WireAttentionItem, { readonly kind: 'alert' }>
+  | Exclude<WireAttentionItem, { readonly kind: 'alert' | RunAttentionKind }>
   // The metric is a string: a rule a newer Bureau watches still reaches the bell.
   | (Omit<Extract<WireAttentionItem, { readonly kind: 'alert' }>, 'metric'> & {
       readonly metric: string;
     });
 
 type WireAttentionItem = BureauOutput<'bureau.health.attention'>['items'][number];
+
+/** Any item the Bureau lists, including the kinds this build has no row for. */
+type ListedAttentionItem = AttentionItem | Extract<WireAttentionItem, { kind: RunAttentionKind }>;
 
 /** The kinds of item this build words. A Bureau newer than the browser may list one it does not know. */
 const KNOWN_ATTENTION_KINDS: ReadonlySet<string> = new Set([
@@ -33,8 +42,10 @@ const KNOWN_ATTENTION_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /** The items of a kind this build knows: a row has to say what to look at, so any other is left out. */
-export function knownAttentionItems(items: readonly AttentionItem[]): readonly AttentionItem[] {
-  return items.filter((item) => KNOWN_ATTENTION_KINDS.has(item.kind));
+export function knownAttentionItems(
+  items: readonly ListedAttentionItem[],
+): readonly AttentionItem[] {
+  return items.filter((item): item is AttentionItem => KNOWN_ATTENTION_KINDS.has(item.kind));
 }
 
 /**
