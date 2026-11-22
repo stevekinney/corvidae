@@ -10,6 +10,9 @@
   const metadataRail = new URLSearchParams(globalThis.location.search).get('metadata-rail') === '1';
   const metadataCode =
     'const metadataRailMustReserveEveryVisibleLabel = response.headers.get("x-correlation-id");';
+  const oneLineMetadataCode = 'const response = await model.complete();';
+  const longLanguage = 'TypeScript declaration metadata';
+  const longStreamingLabel = 'Writing response from the selected model…';
 </script>
 
 <div class="code-block-rail">
@@ -49,6 +52,18 @@
     </div>
     <div data-testid="floating-language-wrapped">
       <CodeBlock code={metadataCode} language="typescript" copyable copyFloating wrap />
+    </div>
+    <!-- These stay one line at desktop width: wide metadata reserves inline rail space, not height. -->
+    <div data-testid="floating-language-one-line">
+      <CodeBlock code={oneLineMetadataCode} language={longLanguage} copyable copyFloating />
+    </div>
+    <div data-testid="floating-streaming-one-line">
+      <CodeBlock
+        code={oneLineMetadataCode}
+        streaming
+        streamingLabel={longStreamingLabel}
+        copyFloating
+      />
     </div>
   {/if}
 </div>

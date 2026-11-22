@@ -112,6 +112,40 @@ async function readFloatingMetadataOverlap(page: Page, testId: string) {
   });
 }
 
+async function readOneLineMetadataRail(page: Page, testId: string) {
+  return page.getByTestId(testId).evaluate((host) => {
+    const root = host.firstElementChild;
+    const metadata = root?.querySelector(':scope > .cinder-code-block__meta');
+    const viewport = root?.querySelector(':scope > .cinder-code-block__viewport');
+    const code = viewport?.querySelector('code');
+    if (
+      !(root instanceof HTMLElement) ||
+      !(metadata instanceof HTMLElement) ||
+      !(viewport instanceof HTMLElement) ||
+      !(code instanceof HTMLElement)
+    ) {
+      throw new Error('No one-line code block metadata rail.');
+    }
+    const codeRange = document.createRange();
+    codeRange.selectNodeContents(code);
+    const lineTops = new Set(
+      [...codeRange.getClientRects()]
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .map((rect) => Math.round(rect.top)),
+    );
+    const rootBox = root.getBoundingClientRect();
+    const metadataBox = metadata.getBoundingClientRect();
+    const viewportBox = viewport.getBoundingClientRect();
+    return {
+      lineCount: lineTops.size,
+      metadataWidth: metadataBox.width,
+      rootHeight: rootBox.height,
+      viewportRight: viewportBox.right,
+      metadataLeft: metadataBox.left,
+    };
+  });
+}
+
 async function widths(page: Page, testId: string) {
   return page.getByTestId(testId).evaluate((host) => {
     const block = host.querySelector('.cinder-code-block');
@@ -349,6 +383,21 @@ for (const theme of ['light', 'dark'] as const) {
       });
     });
   }
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`one-line code keeps a long metadata rail inline at 1280 in ${theme}`, async ({
+    componentPage,
+  }) => {
+    const page = await open(componentPage, 1280, theme, true);
+    for (const testId of ['floating-language-one-line', 'floating-streaming-one-line']) {
+      const reading = await readOneLineMetadataRail(page, testId);
+      expect(reading.lineCount).toBe(1);
+      expect(reading.metadataWidth).toBeGreaterThan(100);
+      expect(reading.rootHeight).toBeLessThan(reading.metadataWidth);
+      expect(reading.viewportRight).toBeLessThanOrEqual(reading.metadataLeft);
+    }
+  });
 }
 
 test('a wrapped floating language block gives later rows the full width', async ({
