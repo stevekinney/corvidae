@@ -93,6 +93,30 @@ describe('the cost of an instance of a workflow file', () => {
     });
     expect(rowsOf(step('s1', null), step('s2', null))[0]?.cost).toBeNull();
   });
+
+  // The engine's own row of the instance, as the normal `/runs` query lists it: it has no usage.
+  const engineRow = () =>
+    taskFixture({
+      id: 'instance-1',
+      kind: 'catalog',
+      agentName: null,
+      status: 'completed',
+      origin: { kind: 'api' },
+      usage: null,
+    });
+
+  test('AC3: an engine row with no usage of its own is the sum of its steps, partial when a step has none', () => {
+    const priced = rowsOf(engineRow(), step('s1', 0.75));
+    expect(priced).toHaveLength(1);
+    expect(priced[0]?.id).toBe('instance-1');
+    expect(priced[0]?.cost).toEqual({ costUsd: 0.75, partial: false });
+
+    expect(rowsOf(engineRow(), step('s1', 0.75), step('s2', null))[0]?.cost).toEqual({
+      costUsd: 0.75,
+      partial: true,
+    });
+    expect(rowsOf(engineRow(), step('s1', null))[0]?.cost).toBeNull();
+  });
 });
 
 describe('the Cost column of a row', () => {

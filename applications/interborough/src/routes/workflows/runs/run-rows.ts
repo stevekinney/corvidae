@@ -582,6 +582,14 @@ const INSTANCE_STATUS_ORDER: readonly TaskState[] = [
   'completed',
 ];
 
+/**
+ * What the steps of a workflow instance cost together (COR-2525): the sum of the steps that have a
+ * cost, partial when a step has none, and `null` when none has one.
+ */
+function stepsCost(steps: readonly RunRow[]): AttemptsCost | null {
+  return attemptsCost(steps.map((step) => ({ usage: { costUsd: step.cost?.costUsd ?? null } })));
+}
+
 /** One instance of a workflow file, from the rows of its steps: the run a person started. */
 function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
   const status =
@@ -600,7 +608,7 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     startedAt,
     updatedAt,
     durationMs: isTerminalState(status) ? Math.max(0, updatedAt - startedAt) : null,
-    cost: attemptsCost(steps.map((step) => ({ usage: { costUsd: step.cost?.costUsd ?? null } }))),
+    cost: stepsCost(steps),
     attempt: null,
     checkNotMet: false,
     // No task is the instance, only its steps are: the engine holds the run a person started.
@@ -672,11 +680,17 @@ export function runListRows(rows: readonly RunRow[]): RunRow[] {
     const instance = listed.get(parentRunId);
     if (instance === undefined) {
       listed.set(parentRunId, instanceRow(parentRunId, instanceSteps));
-    } else if (instance.agentName === null) {
+    } else {
       // The engine's record of an instance names no agent; its steps say which one ran them, which
-      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant").
-      const agentName = instanceSteps.find((step) => step.agentName !== null)?.agentName ?? null;
-      if (agentName !== null) listed.set(parentRunId, { ...instance, agentName });
+      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant"). It holds no
+      // usage either (its view's is `null`), so the steps' costs are the instance's, summed as an
+      // instance with no row of its own sums them (COR-2525).
+      const agentName =
+        instance.agentName ?? instanceSteps.find((step) => step.agentName !== null)?.agentName;
+      const cost = instance.cost ?? stepsCost(instanceSteps);
+      if (agentName !== instance.agentName || cost !== instance.cost) {
+        listed.set(parentRunId, { ...instance, agentName: agentName ?? null, cost });
+      }
     }
   }
   return [...listed.values()].toSorted(
