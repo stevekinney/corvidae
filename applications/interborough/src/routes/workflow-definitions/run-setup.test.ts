@@ -1043,6 +1043,8 @@ describe('the design of the page', () => {
     });
     const root = await ready(view.container);
     await fireEvent.click(root.querySelector('#run-setup-when-schedule') as HTMLInputElement);
+    await type(field(root, 'Branch'), 'main');
+    await type(field(root, 'Since'), '2026-10-23');
     await type(field(root, 'Name'), '  RELEASE NOTES DIGEST ');
     await fireEvent.click(primary(root));
 
