@@ -52,6 +52,7 @@
     description={RUN_PAGE_COPY.panelFromPlugin(panel.plugin)}
     data-section="plugin-panel"
     data-plugin={panel.plugin}
+    data-app={panel.app}
   >
     {#key taskId}
       <McpApp

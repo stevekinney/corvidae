@@ -69,7 +69,7 @@ async function start(
     port: 0,
     // These tests are about the routes and the tool calls, not about the page's bytes, which the
     // panel build's own tests and the browser specs cover: a page that is a stub keeps every start
-    // from building four Cinder pages.
+    // from building five Cinder pages.
     panelBuild: { build: async (request) => stubPage(request.title) },
     ...extra,
     ...(authenticated
@@ -260,8 +260,8 @@ describe('a panel build that never finishes (COR-2219)', () => {
     };
     const starting = start(false, { panelBuild: { build, clock } });
     // Only the hung build still holds its timer once the others are served; that is when it fires.
-    await waitUntil(() => built.length === 3 && timers.size === 1, {
-      message: 'the three other builds are served and only the stalled one waits',
+    await waitUntil(() => built.length === 4 && timers.size === 1, {
+      message: 'the four other builds are served and only the stalled one waits',
     });
     for (const fire of timers.values()) fire();
     const host = await starting;
@@ -274,6 +274,7 @@ describe('a panel build that never finishes (COR-2219)', () => {
     expect(apps.apps.map(({ app }) => app).toSorted()).toEqual([
       'pending-review',
       'run-timeline',
+      'schedule-editor',
       'workflow-revision-review',
     ]);
     const pluginsResponse = await fetch(new URL('/host/plugins', host.url));

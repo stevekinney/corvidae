@@ -18,6 +18,7 @@
   let {
     title,
     description,
+    remediation,
     detail,
     detailsLabel = 'Show the error details',
     retryStatus,
@@ -87,6 +88,9 @@
         {#if description !== ''}
           <p class="cinder-error-state-description">{description}</p>
         {/if}
+        {#if remediation}
+          <p class="cinder-error-state-remediation">{remediation}</p>
+        {/if}
         {#if retryStatus}
           <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
         {/if}
@@ -129,6 +133,9 @@
         {title}
       </svelte:element>
       <p class="cinder-error-state-description">{description}</p>
+      {#if remediation}
+        <p class="cinder-error-state-remediation">{remediation}</p>
+      {/if}
       {#if retryStatus}
         <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
       {/if}

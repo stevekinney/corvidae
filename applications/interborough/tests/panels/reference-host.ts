@@ -13,9 +13,27 @@ import {
 
 type ToolHandler = (args: Record<string, unknown>) => unknown;
 
+/** A tool result exactly as the host answers it, errors and their structured content included. */
+type RawToolResult = {
+  content: { type: 'text'; text: string }[];
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
 type ReferenceHost = {
   calls: { name: string; arguments: Record<string, unknown> }[];
   handlers: Record<string, ToolHandler>;
+  /**
+   * Handlers whose answer is the whole tool result, consulted before `handlers`: a spec that
+   * forwards a call to a running host hands the panel what that host answered, an error and the
+   * fault's structured content included.
+   */
+  rawHandlers: Record<
+    string,
+    (args: Record<string, unknown>) => RawToolResult | Promise<RawToolResult>
+  >;
+  /** Tools whose call the host does not answer: it fails at the transport, never with a result. */
+  unreachable: string[];
   mount(
     html: string,
     csp: McpUiResourceCsp,
@@ -59,13 +77,17 @@ let frame: HTMLIFrameElement | undefined;
 const host: ReferenceHost = {
   calls: [],
   handlers: {},
+  rawHandlers: {},
+  unreachable: [],
   initialized: false,
   async mount(html, csp, toolInput, title = 'Run inspector', hostContext) {
     frame = document.createElement('iframe');
     frame.title = title;
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.srcdoc = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${policy(csp).replaceAll('"', '&quot;')}">${html}`;
-    document.body.append(frame);
+    // A spec that captures the panel for the design review gives the host page an outlet to hold
+    // the frame in, as the application's shell holds a page; any other spec has none.
+    (document.getElementById('host-outlet') ?? document.body).append(frame);
     bridge = new AppBridge(
       null,
       { name: 'reference-host', version: '1.0.0' },
@@ -85,6 +107,17 @@ const host: ReferenceHost = {
     };
     bridge.oncalltool = async (params): ReturnType<NonNullable<AppBridge['oncalltool']>> => {
       host.calls.push({ name: params.name, arguments: params.arguments ?? {} });
+      // A host that does not answer: the request is refused at the transport, so the panel's call
+      // rejects, which is not the same as a tool that answers with an error.
+      if (host.unreachable.includes(params.name)) throw new Error('The host did not answer.');
+      const raw = host.rawHandlers[params.name];
+      if (raw !== undefined) {
+        try {
+          return await raw(params.arguments ?? {});
+        } catch (error) {
+          return { isError: true, content: [{ type: 'text', text: String(error) }] };
+        }
+      }
       const handler = host.handlers[params.name];
       if (handler === undefined) {
         return { isError: true, content: [{ type: 'text', text: 'unknown tool' }] };

@@ -123,7 +123,8 @@
   }
 
   /* The sentence holds a 380px measure however wide the region is. */
-  .cinder-error-state-description {
+  .cinder-error-state-description,
+  .cinder-error-state-remediation {
     margin: 0;
     margin-block-start: var(--cinder-space-1);
     max-inline-size: 23.75rem;
@@ -132,7 +133,13 @@
     color: var(--cinder-text-muted);
   }
 
-  .cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-description {
+  /* The next step reads as its own line, a little apart from the sentence that says what failed. */
+  .cinder-error-state-remediation {
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  .cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-description,
+  .cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-remediation {
     max-inline-size: none;
   }
 
@@ -293,6 +300,17 @@
     max-inline-size: none;
     font-size: inherit;
     font-weight: var(--cinder-font-normal);
+    line-height: inherit;
+    color: inherit;
+  }
+
+  /* The next step is not part of the sentence: it takes its own line under it, in the same type. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-remediation {
+    display: block;
+    margin: 0;
+    margin-block-start: var(--cinder-space-1);
+    max-inline-size: none;
+    font-size: inherit;
     line-height: inherit;
     color: inherit;
   }

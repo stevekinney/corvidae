@@ -45,6 +45,7 @@ describe('the words of each kind of record', () => {
     const kinds: [string, string][] = [
       ['schedule.fired', 'Started a scheduled run'],
       ['schedule.created', 'Created a schedule'],
+      ['schedule.updated', 'Changed a schedule'],
       ['schedule.paused', 'Paused a schedule'],
       ['schedule.resumed', 'Resumed a schedule'],
       ['schedule.cancelled', 'Canceled a schedule'],
@@ -418,6 +419,7 @@ describe('the panes of the schedule and memory records not shown above', () => {
       'schedule.missed',
       'schedule.fired',
       'schedule.created',
+      'schedule.updated',
       'schedule.resumed',
       'schedule.cancelled',
     ]) {
