@@ -113,6 +113,10 @@ export type WorkflowRunSummary = {
   readonly updatedAt: number;
   /** What started it, when the Bureau recorded that; a code type's instances have none. */
   readonly origin: WorkflowRunOrigin | null;
+  /** Progress and terminal detail a file-workflow instance reports on its wire summary. */
+  readonly steps?: { readonly total: number; readonly at: number | null } | null;
+  readonly awaitingSignal?: string | null;
+  readonly failure?: string | null;
 };
 
 /** What every row of one workflow's runs shares: the workflow's name and the agent it runs. */
@@ -121,6 +125,10 @@ export type WorkflowRunRowContext = {
   readonly title: string;
   /** The agent the workflow runs, or `null` when it names none. */
   readonly agentName: string | null;
+  /** File workflows enrich their common Runs rows; engine-only types leave this absent. */
+  readonly type?: string;
+  /** Human schedule names keyed by the schedule that started the instance. */
+  readonly scheduleNames?: ReadonlyMap<string, string>;
 };
 
 /** Whether a task state is one a run cannot leave. */
@@ -133,19 +141,40 @@ function ended(state: TaskState): boolean {
  * instance an agent's tool call started, which names the agent that called it.
  */
 export function workflowRunRow(run: WorkflowRunSummary, context: WorkflowRunRowContext): RunRow {
-  const status = workflowRunState(run.status);
+  const awaitingSignal = run.awaitingSignal ?? null;
+  const status =
+    awaitingSignal !== null && run.status === 'suspended'
+      ? 'working'
+      : workflowRunState(run.status);
+  const origin = workflowRunOrigin(run.origin);
+  const scheduleId = origin.kind === 'schedule' ? origin.scheduleId : null;
   return {
     id: run.id,
     agentName: run.origin?.kind === 'agent-run' ? run.origin.agentId : context.agentName,
     status,
-    origin: workflowRunOrigin(run.origin),
+    origin,
     title: context.title,
-    summary: '',
+    summary: status === 'failed' ? (run.failure ?? '') : '',
     startedAt: run.createdAt,
     updatedAt: run.updatedAt,
     durationMs: ended(status) ? Math.max(0, run.updatedAt - run.createdAt) : null,
     attempt: null,
     checkNotMet: false,
+    ...(context.type === undefined
+      ? {}
+      : {
+          workflowType: context.type,
+          workflow: {
+            type: context.type,
+            scheduleId,
+            scheduleName: null,
+            tick: null,
+            steps: run.steps ?? null,
+            awaitingSignal,
+          },
+          scheduleName:
+            scheduleId === null ? null : (context.scheduleNames?.get(scheduleId) ?? null),
+        }),
   };
 }
 

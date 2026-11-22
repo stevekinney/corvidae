@@ -116,6 +116,34 @@ describe('one instance as a row', () => {
     expect(workflowRunRow(summary({ status: 'running' }), CONTEXT).durationMs).toBeNull();
   });
 
+  test('uses a file summary for the failed step and a signal wait, without calling it Waiting on you', () => {
+    const file = { ...CONTEXT, type: 'release-notes' };
+    const failed = workflowRunRow(
+      summary({ status: 'failed', steps: { total: 4, at: 2 }, failure: 'GitHub did not answer' }),
+      file,
+    );
+    expect(
+      runLineTwo(failed, {
+        now: 1_760_000_010_000,
+        zone: 'America/Chicago',
+        agentLabel: (name) => name,
+      }),
+    ).toContain('failed at step 2 of 4');
+    expect(failed.summary).toBe('GitHub did not answer');
+    const waiting = workflowRunRow(
+      summary({ status: 'suspended', awaitingSignal: 'notes-approved' }),
+      file,
+    );
+    expect(runStatusWord(waiting)).toBe('Waiting for a signal');
+    expect(
+      runLineTwo(waiting, {
+        now: 1_760_000_010_000,
+        zone: 'America/Chicago',
+        agentLabel: (name) => name,
+      }),
+    ).toContain('notes-approved');
+  });
+
   test('says on line two what started it, the agent and how long it took, kind first', () => {
     const row = workflowRunRow(
       summary({ origin: { kind: 'schedule', scheduleId: 'nightly', fireId: 'fire-1' } }),

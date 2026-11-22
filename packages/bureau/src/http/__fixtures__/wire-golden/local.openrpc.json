@@ -20092,6 +20092,42 @@
                   "lastRunAt": {
                     "type": "string"
                   },
+                  "runs": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "firstRunAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "lastRunAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "count",
+                          "firstRunAt",
+                          "lastRunAt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Runs on this version, or `null` when the caller may not read run counts."
+                  },
                   "workflowVersion": {
                     "type": "string"
                   }
@@ -20100,15 +20136,23 @@
                   "workflowVersion",
                   "firstRunAt",
                   "lastRunAt",
+                  "runs",
                   "document",
                   "compatibility"
                 ],
                 "type": "object"
               },
               "type": "array"
+            },
+            "savedVersionCount": {
+              "description": "Every saved version of the workflow, including versions that have never run.",
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
+            "savedVersionCount",
             "revisions"
           ],
           "type": "object"

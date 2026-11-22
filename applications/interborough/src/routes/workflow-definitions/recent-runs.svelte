@@ -89,6 +89,9 @@
             createdAt: Date.parse(run.createdAt),
             updatedAt: Date.parse(run.updatedAt),
             origin: run.origin ?? null,
+            steps: run.steps ?? null,
+            awaitingSignal: run.awaitingSignal ?? null,
+            failure: run.failure ?? null,
           }));
         }
         const page = await client.list({ type, limit: RECENT_LIMIT });
@@ -114,7 +117,12 @@
   // A run a trigger started names its plugin by its title.
   const pluginTitle = usePluginTitle();
 
-  const everyRun = $derived<RunRow[]>(workflowRunRows(runs.data ?? [], { title, agentName }));
+  const everyRun = $derived<RunRow[]>(
+    workflowRunRows(
+      runs.data ?? [],
+      kind === 'agent-authored' ? { title, agentName, type } : { title, agentName },
+    ),
+  );
 
   // The tab's own filters: a status segment, and what started the run.
   let filter = $state<RunFilter>({});

@@ -3105,7 +3105,12 @@
     "$.revisions[].document.trigger.*.*",
     "$.revisions[].firstRunAt",
     "$.revisions[].lastRunAt",
-    "$.revisions[].workflowVersion"
+    "$.revisions[].runs",
+    "$.revisions[].runs|anyOf[0].count",
+    "$.revisions[].runs|anyOf[0].firstRunAt",
+    "$.revisions[].runs|anyOf[0].lastRunAt",
+    "$.revisions[].workflowVersion",
+    "$.savedVersionCount"
   ],
   "output:bureau.workflows.runs.cancel": [
     "$|anyOf[0].dryRun",

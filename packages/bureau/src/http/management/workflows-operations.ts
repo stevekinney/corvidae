@@ -1032,11 +1032,23 @@ const compatibilitySchema = z.discriminatedUnion('compatible', [
 ]);
 
 const revisionsOutput = z.object({
+  savedVersionCount: z
+    .number()
+    .int()
+    .describe('Every saved version of the workflow, including versions that have never run.'),
   revisions: z.array(
     z.object({
       workflowVersion: z.string(),
       firstRunAt: z.string(),
       lastRunAt: z.string(),
+      runs: z
+        .object({
+          count: z.number().int(),
+          firstRunAt: z.string().nullable(),
+          lastRunAt: z.string().nullable(),
+        })
+        .nullable()
+        .describe('Runs on this version, or `null` when the caller may not read run counts.'),
       document: documentSchema,
       /**
        * Weft's verdict for this revision against the workflow's current revision; `null` when the
@@ -1079,11 +1091,18 @@ export const workflowsRevisionsOperation = defineOperation<
           },
     );
     if (revisions === undefined) throw resourceNotFound('workflow', input.id);
+    const history = await workflows.history(input.id);
+    if (history === undefined) throw resourceNotFound('workflow', input.id);
+    const runsByVersion = new Map(
+      history.map((revision) => [revision.workflowVersion, revision.runs]),
+    );
     return {
+      savedVersionCount: history.length,
       revisions: revisions.map((revision) => ({
         workflowVersion: revision.workflowVersion,
         firstRunAt: revision.firstRunAt,
         lastRunAt: revision.lastRunAt,
+        runs: runsByVersion.get(revision.workflowVersion) ?? null,
         document: {
           name: revision.document.name,
           trigger: { ...revision.document.trigger },

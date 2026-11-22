@@ -662,6 +662,10 @@ describe('an invalid file', () => {
       expect(testId(root, 'workflow-file-path')?.textContent).toBe('workflows/broken.json'),
     );
     expect(testId(root, 'workflow-file-source')?.textContent).toContain('"name": "broken"');
+    await fireEvent.click(getByRole('link', { name: WORKFLOW_COPY.editAction }));
+    await waitFor(() =>
+      expect(`${router.pathname}?${router.search.toString()}`).toBe('/workflows/broken/edit?tab=json'),
+    );
   });
 
   test('says which line a file’s JSON stops on, marks the line before it, and offers Edit as JSON', async () => {
@@ -689,7 +693,10 @@ describe('an invalid file', () => {
         WORKFLOW_COPY.page.problem.missingComma(3),
       ),
     );
-    expect(getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson })).not.toBeNull();
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }));
+    await waitFor(() =>
+      expect(`${router.pathname}?${router.search.toString()}`).toBe('/workflows/broken/edit?tab=json'),
+    );
   });
 
   test('has no action at all when it has no hash, because nothing can be written against it', async () => {

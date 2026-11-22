@@ -476,7 +476,10 @@ describe('results', () => {
     const localHistory = await ownerRpc(local, 'bureau.workflows.history', { id: 'digest' });
     expect(localHistory.result?.['revisions']).toMatchObject([{ runs: { count: 3 } }]);
     const localRevisions = await ownerRpc(local, 'bureau.workflows.revisions', { id: 'digest' });
-    expect(localRevisions.result?.['revisions']).toHaveLength(1);
+    expect(localRevisions.result).toMatchObject({
+      savedVersionCount: 1,
+      revisions: [{ runs: { count: 3 } }],
+    });
     const localImpact = await ownerRpc(local, 'bureau.workflows.impact', {
       id: 'digest',
       definition: DEFINITION,
