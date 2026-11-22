@@ -63,6 +63,69 @@ test.describe('flat by default, framed on request', () => {
   });
 });
 
+test.describe('flat Collapsible touch reach', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375]) {
+    test(`the flat Collapsible reaches 44px without covering its panel control at ${String(width)}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(fixtureRoute('collapsible'), { waitUntil: 'load' });
+      const trigger = page
+        .getByTestId('collapsible-nested-flat')
+        .getByRole('button', { name: 'Tracking events', exact: true });
+      await trigger.scrollIntoViewIfNeeded();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      await trigger.evaluate((button) => {
+        const panel = document.getElementById(button.getAttribute('aria-controls') ?? '');
+        const panelContent = panel?.firstElementChild;
+        if (panelContent === null || panelContent === undefined) {
+          throw new Error('The Collapsible trigger must name its panel.');
+        }
+        const control = document.createElement('button');
+        control.type = 'button';
+        control.textContent = 'Inside tracking';
+        control.addEventListener('click', () => {
+          control.textContent = 'Tracking activated';
+        });
+        panelContent.prepend(control);
+      });
+
+      const adjacent = page.getByRole('button', { name: 'Inside tracking' });
+      await adjacent.tap();
+      await expect(page.getByRole('button', { name: 'Tracking activated' })).toBeVisible();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      const measured = await trigger.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        const x = bounds.x + bounds.width / 2;
+        const centreY = bounds.y + bounds.height / 2;
+        const top = centreY - 21.5;
+        const bottom = centreY + 21.5;
+        return {
+          coarse: window.matchMedia('(any-pointer: coarse)').matches,
+          drawnHeight: bounds.height,
+          x,
+          top,
+          bottom,
+          edgesReachTrigger: [top, bottom].map((y) =>
+            button.contains(document.elementFromPoint(x, y)),
+          ),
+        };
+      });
+      expect(measured.coarse).toBe(true);
+      expect(measured.drawnHeight).toBeLessThan(44);
+      expect(measured.edgesReachTrigger).toEqual([true, true]);
+      await page.touchscreen.tap(measured.x, measured.top);
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await page.touchscreen.tap(measured.x, measured.bottom);
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    });
+  }
+});
+
 /**
  * COR-2634: a Collapsible's open, disabled, chevron and flat styles apply to that Collapsible alone,
  * never to one nested in its panel. Each nested element is compared with the same element of a

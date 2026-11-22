@@ -393,7 +393,7 @@ describe('the states of the list', () => {
 });
 
 describe('the list on a phone and a modified click', () => {
-  test('a phone’s list is its own screen titled Chat, with no search or segments (06l)', async () => {
+  test('a phone’s list is its own screen titled Chat, with Search and status segments (06l)', async () => {
     serveChats();
     landAt('/chats');
     const original = window.matchMedia;
@@ -406,11 +406,16 @@ describe('the list on a phone and a modified click', () => {
       removeListener: () => {},
     })) as unknown as typeof window.matchMedia;
     try {
-      const { findByRole, queryByRole } = mount();
+      const { container, findByRole } = mount();
 
       const heading = await findByRole('heading', { level: 1 });
       expect(heading.textContent?.trim()).toBe('Chat');
-      expect(queryByRole('searchbox', { name: 'Search chats' })).toBeNull();
+      expect(await findByRole('searchbox', { name: 'Search chats' })).not.toBeNull();
+      const status = await findByRole('radiogroup', { name: 'Status' });
+      for (const name of [/^All/, /^Waiting on you/, /^Done/]) {
+        expect(within(status).getByRole('radio', { name })).not.toBeNull();
+      }
+      expect(container.querySelector('.chat-input-wrapper')).toBeNull();
     } finally {
       window.matchMedia = original;
     }

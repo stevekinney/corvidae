@@ -677,6 +677,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.tasks.respond',
         'bureau.validators.list',
         'bureau.workflows.catalog',
+        'bureau.workflows.concurrency',
         'bureau.workflows.create',
         'bureau.workflows.delete',
         'bureau.workflows.get',

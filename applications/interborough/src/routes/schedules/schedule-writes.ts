@@ -298,6 +298,7 @@ export async function runNowTarget(
       const { runId } = await startWorkflowFile(
         target.kind.file.id,
         triggerInput(target.kind.file) ?? {},
+        undefined,
       );
       return { outcome: 'started', runId };
     }

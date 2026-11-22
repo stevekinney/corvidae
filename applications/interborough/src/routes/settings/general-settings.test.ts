@@ -80,6 +80,12 @@ const fieldOf = (container: HTMLElement, key: string) =>
 
 const updates = () => stub?.callsTo('bureau.settings.update') ?? [];
 
+async function openAdvanced(container: HTMLElement): Promise<void> {
+  const disclosure = within(container).getByRole('button', { name: 'Advanced' });
+  await fireEvent.click(disclosure);
+  expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+}
+
 /** The text of a row's status line. */
 const statusOf = (container: HTMLElement, key: string) =>
   row(container, key)?.querySelector('.cinder-setting-row__status')?.textContent?.trim() ?? '';
@@ -127,7 +133,7 @@ describe('the page', () => {
     );
   });
 
-  test('puts the tools under Tools and the engine settings under Runs, the claim interval first', async () => {
+  test('keeps ordinary settings visible and reveals the advanced rows only from its disclosure', async () => {
     const view = open(servedSettings());
     await view.findByRole('group', READY);
     const keysIn = (heading: string) => {
@@ -138,15 +144,21 @@ describe('the page', () => {
         found.getAttribute('data-setting'),
       );
     };
-    // Tools holds the two rows the board draws; Decide, which it does not draw, follows them under Runs.
+    // Tools holds the two rows the board draws; Decide, which it does not draw, is in Advanced.
     expect(keysIn('Tools')).toEqual(['tools.humanInput', 'tools.wakeup']);
     const runs = keysIn('Runs');
-    expect(runs[0]).toBe('engine.workflowClaimRenewInterval');
-    expect(runs).toContain('tools.decide');
-    expect(runs).toContain('engine.history');
+    expect(runs).toEqual(['engine.workflowClaimRenewInterval', 'engine.maxConcurrentRuns']);
     expect(runs).not.toContain('retention.audit');
     expect(runs).not.toContain('decisions.model');
     expect(runs).not.toContain('a2a.push.enabled');
+    const disclosure = view.getByRole('button', { name: 'Advanced' });
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(row(view.container, 'tools.decide')).toBeNull();
+    expect(row(view.container, 'tools.wakeup')).not.toBeNull();
+    await fireEvent.click(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(row(view.container, 'tools.decide')).not.toBeNull();
+    expect(row(view.container, 'engine.history')).not.toBeNull();
   });
 
   test('names the default agent the way the Agents list does, in words and not as its identifier', async () => {
@@ -247,6 +259,34 @@ describe('the page', () => {
     expect(view.queryByRole('button', { name: /^Save/ })).toBeNull();
   });
 
+  test('shows an inherited claim interval as a seconds placeholder without saving it', async () => {
+    const served = servedSettings({
+      effective: { 'engine.workflowClaimRenewInterval': 15_000 },
+    });
+    delete served.values['engine.workflowClaimRenewInterval'];
+    const view = open(served);
+    await view.findByRole('group', READY);
+    const input = fieldOf(view.container, 'engine.workflowClaimRenewInterval');
+    expect(input.value).toBe('');
+    expect(input.placeholder).toBe('15');
+    expect(row(view.container, 'engine.workflowClaimRenewInterval')?.textContent).toContain(
+      'seconds',
+    );
+    expect(updates()).toHaveLength(0);
+
+    input.focus();
+    await fireEvent.blur(input);
+    await fireEvent.focusOut(input);
+    expect(updates()).toHaveLength(0);
+
+    await typeAndLeave(view.container, 'engine.workflowClaimRenewInterval', '20');
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toEqual({
+      patch: { 'engine.workflowClaimRenewInterval': 20_000 },
+      expectedRevision: 3,
+    });
+  });
+
   test('says a Bureau that keeps nothing does not keep the settings', async () => {
     const view = open(servedSettings({ persisted: false }));
     expect(await view.findByTestId('settings-not-persisted')).not.toBeNull();
@@ -340,6 +380,7 @@ describe('a save', () => {
     await waitFor(() => expect(statusOf(view.container, 'tools.wakeup')).toBe('Saved just now'));
 
     // The next save names the revision the first produced.
+    await openAdvanced(view.container);
     await fireEvent.click(toggleOf(view.container, 'tools.decide'));
     await waitFor(() => expect(updates()).toHaveLength(2));
     expect(updates()[1]?.params).toEqual({
@@ -347,6 +388,10 @@ describe('a save', () => {
       expectedRevision: 8,
     });
     expect(row(view.container, 'tools.wakeup')?.dataset['dirty']).toBe('false');
+    await fireEvent.click(view.getByRole('button', { name: 'Advanced' }));
+    expect(row(view.container, 'tools.decide')).toBeNull();
+    await openAdvanced(view.container);
+    expect(toggleOf(view.container, 'tools.decide').getAttribute('aria-checked')).toBe('false');
   });
 
   test('shows Saving while the request is in flight', async () => {
@@ -402,6 +447,7 @@ describe('a save', () => {
   test('refuses a value that fails its check at the field, and sends nothing', async () => {
     const view = open(servedSettings());
     await view.findByRole('group', READY);
+    await openAdvanced(view.container);
     await typeAndLeave(view.container, 'logs.maximumLinesPerRun', '9999');
 
     const found = row(view.container, 'logs.maximumLinesPerRun');
@@ -465,15 +511,24 @@ describe('a save', () => {
       },
     });
     await view.findByRole('group', READY);
+    await openAdvanced(view.container);
     await typeAndLeave(view.container, 'logs.maximumLinesPerRun', '300');
 
     const found = row(view.container, 'logs.maximumLinesPerRun');
     await waitFor(() => expect(found?.textContent).toContain(SETTINGS_COPY.couldNotSave));
     expect(fieldOf(view.container, 'logs.maximumLinesPerRun').value).toBe('300');
+    await fireEvent.click(view.getByRole('button', { name: 'Advanced' }));
+    expect(row(view.container, 'logs.maximumLinesPerRun')).toBeNull();
+    await openAdvanced(view.container);
+    expect(fieldOf(view.container, 'logs.maximumLinesPerRun').value).toBe('300');
+    expect(row(view.container, 'logs.maximumLinesPerRun')?.textContent).toContain(
+      SETTINGS_COPY.couldNotSave,
+    );
 
     failing = false;
-    await fireEvent.click(within(found as HTMLElement).getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(found?.textContent).not.toContain(SETTINGS_COPY.couldNotSave));
+    const reopened = row(view.container, 'logs.maximumLinesPerRun') as HTMLElement;
+    await fireEvent.click(within(reopened).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(reopened.textContent).not.toContain(SETTINGS_COPY.couldNotSave));
     expect(served.values['logs.maximumLinesPerRun']).toBe(300);
   });
 
@@ -637,11 +692,16 @@ describe('the restart banner', () => {
   test('says a second change is the second that waits', async () => {
     const view = open(servedSettings({ pendingRestart: new Set([KEY]) }));
     await view.findByTestId('settings-restart-summary');
+    await openAdvanced(view.container);
     await typeAndLeave(view.container, 'engine.checkpointHistory', '9');
     await waitFor(() =>
       expect(view.getByTestId('settings-restart-summary').textContent).toContain(
         '2 changes wait for a restart',
       ),
+    );
+    await fireEvent.click(view.getByRole('button', { name: 'Advanced' }));
+    expect(view.getByTestId('settings-restart-summary').textContent).toContain(
+      '2 changes wait for a restart',
     );
   });
 });
@@ -750,6 +810,7 @@ describe('a page whose read fails', () => {
     expect(banner.textContent).toContain('Showing what loaded as of');
     // The old values stay, at full contrast, and there is no full error state beside the banner.
     expect(view.getByRole('group', READY)).not.toBeNull();
+    await openAdvanced(view.container);
     expect(toggleOf(view.container, 'tools.decide')).not.toBeNull();
     expect(view.container.querySelector('.cinder-error-state')).toBeNull();
 
@@ -771,6 +832,7 @@ describe('a page that follows the Bureau', () => {
     served.revision = 4;
     stream.push(4, ['tools.decide']);
 
+    await openAdvanced(view.container);
     await waitFor(() =>
       expect(toggleOf(view.container, 'tools.decide').getAttribute('aria-checked')).toBe('false'),
     );
@@ -817,6 +879,7 @@ describe('a page that follows the Bureau', () => {
     releaseFirstRead();
 
     await view.findByRole('group', READY);
+    await openAdvanced(view.container);
     await waitFor(() =>
       expect(toggleOf(view.container, 'tools.decide').getAttribute('aria-checked')).toBe('false'),
     );

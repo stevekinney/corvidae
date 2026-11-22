@@ -235,11 +235,8 @@ export function resolveBureauReviewMutation(): CreateMutationResult<
         };
       }
     },
-    // A review that is no longer waiting is said in its place, not as a fault (COR-2426, row 26g);
-    // any other failure is the toast every mutation's failure is.
-    onError: (error) => {
-      if (!isReviewNoLongerWaiting(error)) showFault(faultTreatment(error));
-    },
+    // The Reviews pane owns the inline outcome and retry for this mutation.
+    onError: () => undefined,
     onSettled: () => {
       void invalidateReviewQueries(queryClient);
     },

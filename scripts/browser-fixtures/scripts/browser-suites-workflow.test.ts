@@ -103,7 +103,9 @@ describe('the browser suites workflow', () => {
 
   test('keeps a real Interborough Turborepo invocation and failed-run artifact for every consumer', () => {
     const interborough = jobText('interborough');
-    expect(interborough).toContain('- run: bunx turbo run //#ci:browser-interborough\n');
+    expect(interborough).toContain(
+      '- run: bunx turbo run //#ci:browser-interborough --log-order=stream\n',
+    );
     expect(interborough).toContain('name: playwright-interborough-${{ matrix.shard }}\n');
     expect(interborough).toContain('if: ${{ failure() }}\n');
   });

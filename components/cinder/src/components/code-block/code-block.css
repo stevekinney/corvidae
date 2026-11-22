@@ -566,8 +566,16 @@
       var(--cinder-space-2),
       calc((var(--cinder-touch-target-min) - var(--_cinder-code-block-float-size)) / 2)
     );
-    --_cinder-code-block-float-reserve: calc(
+    /* The clipped root needs just enough block space for Copy's target. Visible language or status
+     * metadata can be wider inline, but must not turn that inline measurement into extra height.
+     * The component measures the painted metadata after mount, while this fallback keeps the
+     * original Copy-only rail during server rendering. */
+    --_cinder-code-block-float-target-size: calc(
       var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset)
+    );
+    --_cinder-code-block-float-reserve: max(
+      var(--_cinder-code-block-float-target-size),
+      var(--_cinder-code-block-float-meta-width, 0px)
     );
     /* The distance from the block's top to the middle of the first line: the block's padding plus
      * half a line box. The button is centred on it and, in a wrapping block, so is the end of the
@@ -584,9 +592,9 @@
     background: var(--cinder-code-block-background);
   }
 
-  /* The block is at least as tall as the button, so the clipped root never cuts it off. */
+  /* The block is at least as tall as Copy's target, so the clipped root never cuts it off. */
   .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) {
-    min-block-size: var(--_cinder-code-block-float-reserve);
+    min-block-size: var(--_cinder-code-block-float-target-size);
   }
 
   /* A scrolling block keeps the scrollport's actual inline size independent from the copy rail.

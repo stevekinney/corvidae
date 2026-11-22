@@ -3,7 +3,7 @@
  * COR-2018, rows 76b to 77f) and the Storage tab at a phone and a tablet width (rows 06o to 06r).
  *
  * The Overview is read at 1280, 768 and 375 pixels: the frame (the heading, the line that names the
- * storage backend, the Live indicator, the four tabs with no Diagnostics among them), the four
+ * storage backend, the Live indicator, the tabs with no Diagnostics among them), the four
  * counts, Needs attention with the sample world's three problems, Recent activity, the metric
  * cards, and Advanced collapsed at the foot, and then expanded the way an "Open Diagnostics" link
  * opens it. A fresh installation has no storage rule, so its list has no storage row (row 76i's
@@ -17,7 +17,7 @@ import type { Page } from '@playwright/test';
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { answerRecentActivityAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BASE_URL, E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { touchHeight } from './hit-area.ts';
 import { readBoxes } from './read-boxes.ts';
@@ -76,7 +76,7 @@ test.describe('the sample world', () => {
         details.x >= words.x + words.width - 1 || details.y >= words.y + words.height - 1,
         'Storage details overlaps the storage line',
       ).toBe(true);
-      await expectTabOpen(main, 'Overview');
+      await expectTabOpen(main, 'Overview', 'Section');
       await expect(
         main.getByRole('tab', { name: /Diagnostics|Metrics|Alerts|Checks/ }),
       ).toHaveCount(0);
@@ -225,6 +225,82 @@ test.describe('the sample world', () => {
     });
   }
 
+  for (const width of [1280, 375] as const) {
+    test.describe(`engine run link at ${String(width)}px`, () => {
+      test.use({ hasTouch: width === 375, isMobile: width === 375 });
+      test(`engine runs in Health at ${width} pixels`, async ({ page, checkA11y }) => {
+        await page.setViewportSize({ width, height: 900 });
+        // The showcase host owns Health's board data but has no engine run rows. The seeded engine
+        // host carries the real order-processing run this screen must make usable.
+        await page.goto(`${E2E_BASE_URL}/workflows/order-processing?tab=runs`);
+        const allRuns = page.getByRole('link', { name: 'All runs', exact: true });
+        await expect(allRuns).toHaveAttribute('href', '/health/runs?type=order-processing');
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow',
+          tab: 'runs',
+          state: 'All runs links to engine runs in Health',
+          source: SOURCE,
+        });
+        await allRuns.click();
+        await expect(page).toHaveURL(/\/health\/runs\?type=order-processing$/);
+        const main = page.locator('main');
+        const table = main.locator('table.weft-workflows-table');
+        await expect(table.locator('tbody tr').first()).toBeVisible();
+
+        await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
+        await expect(main.getByRole('heading', { level: 2, name: 'Workflow runs' })).toBeVisible();
+        if (width === 375) {
+          await expect(main.getByRole('combobox', { name: 'Section' })).toHaveText(
+            /Section:\s*Runs/,
+          );
+        } else {
+          await expectTabOpen(main, 'Runs', 'Section');
+        }
+        await expect(main.getByRole('button', { name: 'Live' })).toBeVisible();
+        await expect(main.getByRole('status', { name: /Connection/ })).toHaveCount(1);
+        const runLink = table
+          .locator('tbody tr')
+          .first()
+          .locator('a.weft-workflows-table__id-link');
+        await expect(runLink).toBeVisible();
+
+        const scroller = main.locator('.cinder-table-scroll');
+        expect(
+          await scroller.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        ).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        await captureForDesignReview(page, {
+          route: '/health/runs',
+          state: 'engine runs in Health',
+          source: SOURCE,
+        });
+        await checkA11y(`health engine runs at ${width}px`);
+        if (width === 375) {
+          await runLink.scrollIntoViewIfNeeded();
+          const hit = await runLink.evaluate((link) => {
+            const box = link.getBoundingClientRect();
+            const x = box.x + box.width / 2;
+            const y = box.y + box.height / 2;
+            const above = y - 21.5;
+            const below = y + 21.5;
+            return {
+              x,
+              above,
+              reachesEdges: [above, below].map((target) =>
+                link.contains(document.elementFromPoint(x, target)),
+              ),
+            };
+          });
+          expect(hit.reachesEdges).toEqual([true, true]);
+          await page.touchscreen.tap(hit.x, hit.above);
+          await expect(page).toHaveURL(/\/workflows\/order-processing\/runs\/[^/?]+$/);
+        }
+      });
+    });
+  }
+
   test('Advanced opened by an Open Diagnostics link shows Metrics, Alerts and Checks, each with a link', async ({
     page,
     checkA11y,
@@ -280,7 +356,7 @@ test.describe('the sample world', () => {
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
       // 06o: the responsive section control keeps Storage selected, whether the tab bar fits or
       // Cinder collapses it after measuring its container.
-      await expectTabOpen(main, 'Storage');
+      await expectTabOpen(main, 'Storage', 'Section');
       await expect(main.getByTestId('storage-warning')).toContainText(
         'Storage is over its warning level, 1.6 GB.',
       );
@@ -348,7 +424,13 @@ test.describe('the sample world', () => {
     const main = page.locator('main');
 
     // 06q: the tab bar, without a Diagnostics tab.
-    await expect(main.getByRole('tab')).toHaveText(['Overview', 'Workers', 'Storage', 'Audit log']);
+    await expect(main.getByRole('tab')).toHaveText([
+      'Overview',
+      'Runs',
+      'Workers',
+      'Storage',
+      'Audit log',
+    ]);
     await expect(main.getByRole('tab', { name: 'Storage' })).toHaveAttribute(
       'aria-selected',
       'true',

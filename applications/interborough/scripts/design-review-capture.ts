@@ -168,10 +168,15 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/agent-duplicate.spec.ts',
   'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
+  // These populated pages live on the fixture plugin host, outside the sample world.
+  'tests/e2e/plugin-page.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
+  // Run Setup's real workflow-file states: schema input, invalid input, paused, no input, capacity,
+  // and scheduling (COR-2433). Its named states let the design reviewer trace every capture to a row.
+  'tests/e2e/run-setup.spec.ts',
   // The Runs list and the run page in the states the sample world does not hold, and the run page
   // in each state it does (COR-2423, COR-2424).
   'tests/e2e/runs-states.spec.ts',

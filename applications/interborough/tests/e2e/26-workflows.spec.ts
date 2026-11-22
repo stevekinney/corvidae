@@ -808,9 +808,8 @@ test.describe('the runs of a type', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/workflows/inventory-sync-sweep?tab=runs');
       await detail(page).getByRole('link', { name: WORKFLOW_COPY.runsAction }).click();
-      await expect(page).toHaveURL(/\/workflows\/inventory-sync-sweep\/runs$/);
-      await expect(area(page)).toHaveAttribute('data-state', 'ready');
-      const rows = page.locator('tbody tr');
+      await expect(page).toHaveURL(/\/health\/runs\?type=inventory-sync-sweep$/);
+      const rows = page.locator('main table.weft-workflows-table tbody tr');
       await expect(rows.first()).toBeVisible();
       // Every row is a run of this type.
       const texts = await rows.allTextContents();

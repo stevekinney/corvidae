@@ -199,7 +199,9 @@ describe('the Settings form (rows 38u to 38w)', () => {
     const { findByRole, findByLabelText } = mount();
 
     await fireEvent.change(await findByLabelText('Effort'), { target: { value: 'high' } });
-    await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '20' } });
+    const steps = await findByLabelText('Step limit');
+    await fireEvent.input(steps, { target: { value: '20' } });
+    await fireEvent.blur(steps);
     await fireEvent.click(await findByRole('button', { name: copy.save }));
 
     await waitFor(() =>
@@ -222,6 +224,7 @@ describe('the Settings form (rows 38u to 38w)', () => {
 
     const steps = await findByLabelText('Step limit');
     await fireEvent.input(steps, { target: { value: '0' } });
+    await fireEvent.blur(steps);
     const save = await findByRole('button', { name: copy.save });
     await fireEvent.click(save);
 
@@ -231,6 +234,15 @@ describe('the Settings form (rows 38u to 38w)', () => {
     expect(installed.callsTo('bureau.agents.definitions.update')).toHaveLength(0);
   });
 
+  test('renders the step limit as an accessible numeric control', async () => {
+    landAt('/agents/researcher/settings');
+    serve();
+    const { findByLabelText } = mount();
+
+    const stepLimit = await findByLabelText('Step limit');
+    expect(stepLimit.getAttribute('role')).toBe('spinbutton');
+  });
+
   test('Discard puts the form back as the file has it', async () => {
     landAt('/agents/researcher/settings');
     serve();
@@ -238,6 +250,7 @@ describe('the Settings form (rows 38u to 38w)', () => {
 
     const steps = (await findByLabelText('Step limit')) as HTMLInputElement;
     await fireEvent.input(steps, { target: { value: '40' } });
+    await fireEvent.blur(steps);
     await fireEvent.click(await findByRole('button', { name: copy.discard }));
 
     await waitFor(() => expect(steps.value).toBe(''));
@@ -251,7 +264,9 @@ describe('leaving the Settings tab with changes (row 39b)', () => {
     const { findByRole, findByLabelText } = mount();
 
     await fireEvent.change(await findByLabelText('Effort'), { target: { value: 'high' } });
-    await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '20' } });
+    const steps = await findByLabelText('Step limit');
+    await fireEvent.input(steps, { target: { value: '20' } });
+    await fireEvent.blur(steps);
 
     await fireEvent.click(await findByRole('tab', { name: /^Instructions/ }));
     let dialog = await findByRole('dialog', { name: copy.leave.title });

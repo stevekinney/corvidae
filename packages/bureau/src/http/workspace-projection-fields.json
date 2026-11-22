@@ -2869,6 +2869,7 @@
     "$.workflows[].name",
     "$.workflows[].title"
   ],
+  "output:bureau.workflows.concurrency": ["$.max", "$.running"],
   "output:bureau.workflows.create": ["$.hash", "$.id"],
   "output:bureau.workflows.delete": [
     "$|anyOf[0].dryRun",
