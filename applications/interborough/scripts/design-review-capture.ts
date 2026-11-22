@@ -190,8 +190,11 @@ const SHOWCASE_SPECIFICATIONS = [
   // Chat opening the failure explanation panel inline, over the result of an agent's explain call.
   'tests/e2e/failure-explanation-chat.spec.ts',
   // What a run cost: a reply's details, the run page's rail, the Runs list's Cost column, a goal's
-  // row and Health's Needs attention (COR-2525).
+  // row and the spend threshold in Settings (COR-2525, COR-2527).
   'tests/e2e/run-cost-states.spec.ts',
+  // The runs that need a look: Needs attention's run rows, a badge on a Runs list row, the Needs
+  // attention filter, and the Run page's note (COR-2528).
+  'tests/e2e/run-attention-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
   // The Checks page in each state of its design rows: first use, filtered to nothing, loading,

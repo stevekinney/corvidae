@@ -193,6 +193,13 @@ describe('Callout neutral variant and action', () => {
     );
   });
 
+  test('the title is heavier than the message under it, and sits 4px above it', async () => {
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    const title = declarationsFor(css, '.cinder-callout__title');
+    expect(title.get('font-weight')).toBe('var(--cinder-font-semibold)');
+    expect(title.get('margin')).toBe('0 0 var(--cinder-space-1)');
+  });
+
   test('on phones the icon sits beside the first line only and later lines start at the padding', async () => {
     const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
     expect(css).toContain('@container (inline-size < 30rem)');
