@@ -61,7 +61,7 @@
       items.push({
         id: 'step',
         term: words.step,
-        definition: words.stepValue(answer.step.index, answer.step.label),
+        definition: answer.step.label,
       });
     }
     if (answer.tries !== null) {
@@ -89,7 +89,7 @@
 {#snippet guardrails()}
   <ul class="ib-run-explanation__guardrails" data-explanation="guardrails">
     {#each answer?.verdicts ?? [] as verdict (`${verdict.name}:${String(verdict.step)}:${verdict.outcome}`)}
-      <li>{words.verdict(verdict.name, verdict.outcome, verdict.step)}</li>
+      <li>{words.verdict(verdict.name, verdict.outcome)}</li>
     {/each}
   </ul>
 {/snippet}

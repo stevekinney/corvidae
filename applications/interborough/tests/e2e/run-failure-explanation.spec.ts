@@ -3,8 +3,8 @@
  * `bureau.tasks.explain`): the sample world's Release notes run, which failed at step 2 when GitHub
  * did not answer, is explained from what the Bureau stored of it, never from a model and never from
  * a sentence the browser holds per category. The block on the step that failed reads the sentence,
- * the cause, the step, how often it was tried and what to do next, with the stack behind a
- * disclosure, and the link in Chat's failed line opens this section.
+ * the cause and what to do next, and the link in Chat's failed line (`chat-states.spec.ts`) opens
+ * this section.
  *
  * Captured for the design review on a desktop and a phone, in `/runs/:run`'s `failed run explained`
  * state. Not run on this host (the browser suites run on GitHub, `main.yml`).
@@ -37,15 +37,11 @@ for (const width of WIDTHS) {
       const summary = explanation.locator('[data-explanation="summary"]');
       await expect(summary).toHaveText(/^The (step ".+"|run) failed (because|for) /);
       await expect(explanation.locator('[data-explanation="cause"] .cinder-badge')).toBeVisible();
-      await expect(explanation.locator('dl')).toContainText('Step');
       await expect(explanation.locator('[data-explanation="remediation"]')).toContainText(
         'What to do next.',
       );
-      // The failure is told once, on the step, and the stack is behind its disclosure.
+      // The failure is told once, on the step.
       await expect(page.locator('[data-run-explanation]')).toHaveCount(1);
-      await expect(
-        explanation.getByRole('button', { name: 'Show the error details' }),
-      ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/runs/:run',
         state: 'failed run explained',

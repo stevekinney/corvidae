@@ -40,13 +40,13 @@ describe('a failed run’s explanation', () => {
     expect(cause?.textContent).toContain('code UNKNOWN, kind tool');
 
     const facts = container.querySelector('dl')?.textContent ?? '';
-    expect(facts).toContain('charge-card (step 2)');
+    // The step by its label alone: the server's index is the engine's, not the page's step number.
+    expect(facts).toContain('charge-card');
+    expect(facts).not.toContain('step 2');
     expect(facts).toContain('Tries');
     expect(facts).toContain('3');
 
-    expect(part(container, 'guardrails')?.textContent).toContain(
-      'sentinel-card stopped the run at step 2',
-    );
+    expect(part(container, 'guardrails')?.textContent).toContain('sentinel-card stopped the run');
     expect(part(container, 'remediation')?.textContent).toContain(
       FAILED_RUN_EXPLANATION.remediation,
     );

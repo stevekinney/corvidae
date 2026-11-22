@@ -207,6 +207,26 @@ describe('a workflow’s input and output', () => {
     expect(section?.querySelector('#failure-explanation')).not.toBeNull();
   });
 
+  test('COR-2533: a failed agent run the engine holds as a completed run still explains itself, where Chat’s link lands', async () => {
+    restore?.();
+    restore = bureau(explainAnswers()).restore;
+    const { container, findByText } = render(Harness, {
+      props: {
+        task: taskFixture({
+          id: 'run-1',
+          status: 'failed',
+          statusMessage: 'The model provider dropped the connection.',
+        }),
+        // An agent run ends as a completed engine run that carries a failed result.
+        workflow: workflow({ id: 'run-1', status: 'completed' }),
+      },
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    const section = container.querySelector<HTMLElement>('[data-run-failure]');
+    expect(section?.textContent).toContain('The model provider dropped the connection.');
+    expect(container.querySelectorAll('#failure-explanation')).toHaveLength(1);
+  });
+
   test('COR-2533: a failed run with no message still explains itself', async () => {
     restore?.();
     restore = bureau(explainAnswers()).restore;

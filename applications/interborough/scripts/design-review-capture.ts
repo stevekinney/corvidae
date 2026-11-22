@@ -174,8 +174,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/runs-states.spec.ts',
   'tests/e2e/run-page-states.spec.ts',
   'tests/e2e/run-page-live-states.spec.ts',
-  // A failed run's section on the Run page, which says why it failed in the Bureau's words, for an
-  // instance and for an agent run (COR-2533).
+  // A failed instance's section on the Run page, which says why it failed in the Bureau's words
+  // (COR-2533).
   'tests/e2e/run-failure-explanation.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',

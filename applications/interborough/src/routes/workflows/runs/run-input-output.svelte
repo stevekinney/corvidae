@@ -257,10 +257,11 @@
         {errorStack}
       />
     </Alert>
-  {:else if task !== undefined && workflow === undefined && task.status === 'failed'}
-    <!-- A run only the Bureau holds says why in its own words, here and not only in the rail, which
-         sits under everything on a phone (COR-2489), and what the Bureau stored about the failure
-         (COR-2533). -->
+  {:else if task !== undefined && task.status === 'failed'}
+    <!-- A failed agent run says why in its own words, here and not only in the rail, which sits
+         under everything on a phone (COR-2489), and what the Bureau stored about the failure
+         (COR-2533). Whether the engine holds the run too does not matter: an agent run ends as a
+         completed engine run that carries a failed result, so its engine state is not `failed`. -->
     <Section
       title={RUN_DETAIL_COPY.instance.whyItFailed}
       description={bureauFailure === '' ? undefined : bureauFailure}

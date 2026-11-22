@@ -428,16 +428,18 @@ export const RUN_DETAIL_COPY = {
         [code === null ? undefined : `code ${code}`, kind === null ? undefined : `kind ${kind}`]
           .filter((part) => part !== undefined)
           .join(', '),
+      /**
+       * The step the run failed at is named by its label alone. The server's index counts the
+       * engine's durable steps, which is not the number the page's heading gives a step of the
+       * file, so no number is drawn from it.
+       */
       step: 'Step',
-      /** The step the run failed at, by its place in the run (the server counts from zero). */
-      stepValue: (index: number, label: string): string => `${label} (step ${String(index + 1)})`,
       tries: 'Tries',
       guardrails: 'Guardrails',
-      /** One guardrail that fired: "sentinel stopped the run at step 1". */
+      /** One guardrail that fired: "sentinel stopped the run". */
       verdict: (
         name: string,
         outcome: 'tripwire' | 'block' | 'warn' | 'sanitize' | 'redact',
-        step: number | null,
       ): string => {
         const did = {
           tripwire: 'stopped the run',
@@ -446,7 +448,7 @@ export const RUN_DETAIL_COPY = {
           sanitize: 'sanitized the step',
           redact: 'redacted the step',
         }[outcome];
-        return `${name} ${did}${step === null ? '' : ` at step ${String(step + 1)}`}`;
+        return `${name} ${did}`;
       },
       next: 'What to do next',
     },
