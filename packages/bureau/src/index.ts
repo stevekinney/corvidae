@@ -857,6 +857,7 @@ export type {
   BureauSchedules,
   CreateScheduleOptions,
   DurableScheduleDefinition,
+  ScheduleActor,
 } from './bureau-types/schedules';
 export type {
   CreateRunRequest,
@@ -1005,7 +1006,11 @@ export {
 } from './http/create-bureau-handler';
 export { createBureauCatalogSnapshot } from './http/bureau-catalog-snapshot';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
-export { HOST_PANEL_OPERATIONS } from './http/host-panel-operations';
+export {
+  HOST_PANEL_OPERATIONS,
+  hostPanelUriOfCall,
+  runAsHostPanel,
+} from './http/host-panel-operations';
 export { startIdleTurn } from './http/ag-ui-thread-admission';
 export type { SkillSourceStanding, SkillsStanding } from './http/management/skills-operations';
 export {
