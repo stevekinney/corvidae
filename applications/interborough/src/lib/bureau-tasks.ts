@@ -373,6 +373,26 @@ export async function inspectTaskHooks(taskId: string, options?: Options): Promi
 }
 
 /**
+ * Why a failed run failed, from what the Bureau stored about it (`bureau.tasks.explain`, COR-2533):
+ * a sentence, the cause, the step, how often it was tried, the guardrails that fired, what to do
+ * next and the commands that read it. The browser words none of it: the Run page shows this answer,
+ * and so do the CLI and the failure explanation panel.
+ */
+export type RunFailureExplanation = BureauOutput<'bureau.tasks.explain'>;
+
+/**
+ * The explanation of the failed run `runId`, an agent run's task or an instance of a workflow file.
+ * A run that did not fail is an `Unprocessable` fault with a message and a remediation, and a run the
+ * caller may not read is a not-found fault.
+ */
+export async function explainRunFailure(
+  runId: string,
+  options?: Options,
+): Promise<RunFailureExplanation> {
+  return bureauClient['bureau.tasks.explain']({ runId }, options);
+}
+
+/**
  * The Bureau's answer to a cancellation: the task, the receipt, and the task's view when the
  * Bureau sends it.
  */

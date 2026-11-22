@@ -247,6 +247,36 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* Why a failed run failed (COR-2533): the server's sentence, then its facts, then what to do next. */
+.ib-run-explanation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-run-explanation__summary,
+.ib-run-explanation__next,
+.ib-run-explanation__fallback {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-run-explanation__detail {
+  margin-inline-start: var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-run-explanation__guardrails {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* An entry still to come reads quieter than what has happened. */
 .ib-run-happened__entry[data-state='pending'] .ib-run-happened__title {
   color: var(--cinder-text-muted);

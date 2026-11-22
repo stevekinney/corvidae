@@ -63,6 +63,11 @@ export interface RunFailureFacts {
   readonly tries: number | null;
   /** The guardrails that fired, in the order they were read. */
   readonly verdicts: readonly RunVerdict[];
+  /**
+   * Whether `bureau.workflows.runs.retry` would run this instance again for the caller: a failed
+   * instance of a workflow file that failed at a step that can run again (COR-2533).
+   */
+  readonly retryable: boolean;
 }
 
 /** What `bureau.tasks.explain` answers. */
@@ -185,12 +190,19 @@ function shellWord(value: string): string {
 }
 
 /**
- * The `interborough` command lines that read a run. Every entry is a command the CLI has: `runs
- * get` reads either kind of run, named by `--kind`.
+ * The `interborough` command lines for a run. Every entry is a command the CLI has: `runs get`
+ * reads either kind of run, named by `--kind`, and `runs retry` runs an instance again from the step
+ * it failed at, which is offered only for an instance a retry accepts (COR-2533).
  */
-function nextCommandsFor(kind: 'agent' | 'workflow', runId: string): readonly string[] {
+function nextCommandsFor(
+  kind: 'agent' | 'workflow',
+  runId: string,
+  retryable: boolean,
+): readonly string[] {
+  const id = shellWord(runId);
   return [
-    `interborough runs get --kind ${kind === 'agent' ? 'task' : 'workflow'} ${shellWord(runId)}`,
+    `interborough runs get --kind ${kind === 'agent' ? 'task' : 'workflow'} ${id}`,
+    ...(kind === 'workflow' && retryable ? [`interborough runs retry ${id}`] : []),
   ];
 }
 
@@ -204,6 +216,6 @@ export function explainRunFailure(facts: RunFailureFacts): RunFailureExplanation
     tries: facts.tries,
     verdicts: facts.verdicts,
     remediation: `${CATEGORY_REMEDIATION[facts.category ?? 'unclassified']}${halted ? TRIPWIRE_REMEDIATION : ''}`,
-    nextCommands: nextCommandsFor(facts.kind, facts.runId),
+    nextCommands: nextCommandsFor(facts.kind, facts.runId, facts.retryable),
   };
 }

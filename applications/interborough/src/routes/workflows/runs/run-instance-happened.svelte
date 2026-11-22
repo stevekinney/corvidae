@@ -6,7 +6,7 @@
    * why it failed under it and no banner above the page (row 14t). The entries are made from the
    * history the Bureau keeps of the instance (`run-instance.ts`).
    */
-  import { Alert, Badge, Button, Collapsible, Section } from '@lostgradient/cinder';
+  import { Alert, Button, Section } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { Play, RefreshCw } from '@lucide/svelte';
 
@@ -23,10 +23,12 @@
     type InstanceProgress,
   } from './run-instance.ts';
   import { oneLine } from '../../../lib/one-line.ts';
-  import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { durationWords } from './run-rows.ts';
+  import RunFailureExplanation from './run-failure-explanation.svelte';
 
   interface RunInstanceHappenedProps {
+    /** The instance's id, whose failure the block explains. */
+    runId: string;
     entries: readonly InstanceEntry[];
     /** When the run started, in epoch milliseconds. */
     startedAt: number;
@@ -70,6 +72,7 @@
   }
 
   let {
+    runId,
     entries,
     startedAt,
     progress,
@@ -226,21 +229,9 @@
           {/if}
         </div>
       {/if}
-      <!-- The engine's kind of failure and its operator sentence are details, with the stack, not
-           the block's headline (rows 14t, 55b). -->
-      {#if category !== undefined || (errorStack !== undefined && errorStack.length > 0)}
-        <Collapsible variant="flat" trigger={copy.inBlock.errorDetails}>
-          {#if category !== undefined}
-            <p class="weft-overview-tab__failure-explanation" data-run-failure-category>
-              <Badge variant="danger">{failureCategoryLabel(category)}</Badge>
-              {failureCategoryExplanation(category)}
-            </p>
-          {/if}
-          {#if errorStack !== undefined && errorStack.length > 0}
-            <pre class="weft-send-tab__result">{errorStack}</pre>
-          {/if}
-        </Collapsible>
-      {/if}
+      <!-- Why it failed, as the Bureau stored it (COR-2533): the server's sentence, cause, step,
+           tries, guardrails and remediation, with the stack behind a disclosure (rows 14t, 55b). -->
+      <RunFailureExplanation {runId} {category} {errorStack} />
     </Alert>
   {/if}
 </Section>

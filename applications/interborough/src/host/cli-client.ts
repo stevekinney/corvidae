@@ -190,8 +190,10 @@ export const CLI_OPERATION_MAPPINGS = Object.freeze({
     'bureau.tasks.get',
     'bureau.tasks.inspect',
     'bureau.tasks.cancel',
+    'bureau.tasks.explain',
     'bureau.workflows.runs.list',
     'bureau.workflows.runs.get',
+    'bureau.workflows.runs.retry',
     'weft.workflows.cancel',
   ],
   events: [
@@ -718,7 +720,7 @@ const helpText: Record<string, string> = {
   chat: 'Usage: interborough chat --agent <name> [message]\n\n  --message-file <path>  Read one message from a file',
   chats: 'Usage: interborough chats <list|get|send|fork|rename|delete|configure> [options]',
   reviews: 'Usage: interborough reviews <list|get|approve|reject> [options]',
-  runs: 'Usage: interborough runs <list|get|inspect|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  --output jsonl       Emit one typed watch record per line',
+  runs: 'Usage: interborough runs <list|get|inspect|explain|retry|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  explain <id>         Why a failed run failed, from what Bureau stored (either kind of run)\n  retry <id>           Run a failed workflow run again from the step it failed at; --step N names it\n  --output jsonl       Emit one typed watch record per line',
   events:
     'Usage: interborough events watch [options]\n\n  --kind task|workflow  Required for watch',
   audit: 'Usage: interborough audit list [options]',
@@ -1569,7 +1571,7 @@ export async function executeCli(
             'disable',
             'set',
           ].includes(parsed.arguments[0] ?? '')) ||
-        (parsed.command === 'runs' && parsed.arguments[0] === 'cancel') ||
+        (parsed.command === 'runs' && ['cancel', 'retry'].includes(parsed.arguments[0] ?? '')) ||
         (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
           [
             'create',

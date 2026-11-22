@@ -169,6 +169,19 @@ describe('an instance of a workflow file opened from the Runs list', () => {
         },
       ],
     });
+    // What the Bureau stored of the failure (COR-2533): the failure section is its words.
+    fetchScript.routeJsonRpcMethod('bureau.tasks.explain', {
+      summary: 'The step "Collect merged changes" failed because the code it ran raised an error.',
+      cause: { category: 'application', code: null, kind: null },
+      step: { index: 1, label: 'Collect merged changes' },
+      tries: 2,
+      verdicts: [],
+      remediation: 'Read the run’s failure message, then start the run again.',
+      nextCommands: [
+        'interborough runs get --kind workflow release-run',
+        'interborough runs retry release-run',
+      ],
+    });
     fetchScript.routeJsonRpcMethod('bureau.workflows.get', {
       id: 'release-notes',
       state: 'ready',
@@ -257,7 +270,17 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     );
     expect(actions?.textContent).toContain('Run again');
     expect(actions?.textContent).toContain('Open step 2');
-    expect(block.textContent).not.toContain('Show full stack trace');
+    // COR-2533: the block carries what the Bureau stored about the failure, in the server’s words.
+    await waitFor(() =>
+      expect(block.querySelector('[data-explanation="summary"]')?.textContent).toBe(
+        'The step "Collect merged changes" failed because the code it ran raised an error.',
+      ),
+    );
+    expect(block.querySelector('[data-explanation="remediation"]')?.textContent).toContain(
+      'Read the run’s failure message, then start the run again.',
+    );
+    expect(block.querySelector('[data-explanation="cause"]')?.textContent).toContain('application');
+    expect(block.querySelector('#failure-explanation')).not.toBeNull();
     // The failure is told once, on the step, and no banner repeats it.
     expect(view.container.querySelectorAll('.weft-overview-tab__failure')).toHaveLength(1);
     await waitFor(() => {

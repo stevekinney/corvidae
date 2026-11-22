@@ -367,7 +367,11 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
     };
     expect(result.step).not.toBeNull();
     expect(result.summary).toContain(`"${result.step!.label}"`);
-    expect(result.nextCommands).toEqual(['interborough runs get --kind workflow failed-digest']);
+    // The agent step failed, a step a retry can run again (COR-2533).
+    expect(result.nextCommands).toEqual([
+      'interborough runs get --kind workflow failed-digest',
+      'interborough runs retry failed-digest',
+    ]);
     expect(JSON.stringify(response)).not.toContain(SENTINEL);
 
     // The same answer again.
@@ -413,6 +417,44 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
     }
     const reader = await explainRun(served, 'private-digest', 'workflows-reader-key');
     expect(reader.error).toBeUndefined();
+  });
+
+  it('COR-2533: suggests `runs retry` only to a caller the retry would let in', async () => {
+    const served = await serveFailing();
+    await failedRun(served, 'reader-digest');
+    const reader = await explainRun(served, 'reader-digest', 'workflows-reader-key');
+    expect(reader.error).toBeUndefined();
+    expect((reader.result as { nextCommands: string[] }).nextCommands).toEqual([
+      'interborough runs get --kind workflow reader-digest',
+    ]);
+    const operator = await explainRun(served, 'reader-digest');
+    expect((operator.result as { nextCommands: string[] }).nextCommands).toContain(
+      'interborough runs retry reader-digest',
+    );
+  });
+
+  it('COR-2533: every command line it returns runs, and the retry mends the run', async () => {
+    const served = await serveFailing();
+    await failedRun(served, 'mended-digest');
+    const lines = (await explainRun(served, 'mended-digest')).result as { nextCommands: string[] };
+    // The retry's own acceptance is what offers the line: it answers the step the line will run.
+    expect(await served.bureau.workflows!.retryableStep('mended-digest')).toBe(1);
+    writerDown = false;
+    const retried = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.retry',
+      { runId: 'mended-digest' },
+      'operator-key',
+    );
+    expect(retried.error).toBeUndefined();
+    expect(retried.result).toMatchObject({ runId: 'mended-digest', step: 1 });
+    await waitUntil(() => runStatusIs(served, 'mended-digest', 'completed'), {
+      message: 'the retried run completes',
+    });
+    expect(lines.nextCommands).toContain('interborough runs retry mended-digest');
+    // Once it is running again there is nothing to retry, and nothing to explain.
+    const after = await explainRun(served, 'mended-digest');
+    expect(after.error?.data).toMatchObject({ reason: 'run-not-failed' });
   });
 });
 

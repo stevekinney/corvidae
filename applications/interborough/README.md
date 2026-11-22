@@ -35,6 +35,12 @@ Every JSON envelope carries `schemaVersion`, which is `2` (COR-2519). A failed c
 
 Two golden files, `src/host/__fixtures__/cli-error-golden/server-fault.json` and `local-error.json`, pin the JSON error for one server fault and one local error.
 
+### Explaining and retrying a failed run
+
+`interborough runs explain <id>` prints why a run failed, from what Bureau stored about it and never from a model: the summary, the cause, the step, how many times it was tried, the guardrails that fired, what to do next and the commands that read the run. It takes either kind of run by its identifier, so it needs no `--kind`. `--output json` prints the operation's own result (`bureau.tasks.explain`) in the usual envelope. A run that did not fail prints the server's message, and its `Try:` remediation, on stderr and exits with the usage status (2).
+
+`interborough runs retry <id>` runs a failed instance of a workflow file again from the step it failed at, in place (`bureau.workflows.runs.retry`); `--step N`, counted from 1, names the step and must be the one it failed at. It is the command `runs explain` offers in `nextCommands` for an instance a retry accepts. An outcome the CLI cannot know is exit 7, as for `runs cancel`. It has no `--dry-run`, because the operation has no preview.
+
 ### Previewing and confirming destructive commands
 
 Every command that cancels, pauses, disables, removes or deletes something takes `--dry-run`, which prints what it would change and changes nothing, and the ones that cannot be undone also ask first. `--yes` answers that question. `src/host/cli-destructive.ts` lists the commands, and `cli-destructive.test.ts` fails when a command is mapped to a destructive operation that the list lacks.

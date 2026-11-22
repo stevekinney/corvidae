@@ -793,6 +793,7 @@
      failed. A failed instance draws it above Input and output, any other after it. -->
 {#snippet instanceHappened(entries: NonNullable<typeof instanceEntryList>, startedAt: number)}
   <RunInstanceHappened
+    runId={initialRunId}
     {entries}
     {startedAt}
     progress={failureProgress}

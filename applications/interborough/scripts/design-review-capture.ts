@@ -108,7 +108,8 @@ const SPECIFICATIONS = {
  * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`), and the hook
  * editor and its deliveries: a plugin hook, a default hook, a withdrawn one, the secret field, a
  * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
- * state of its board (`hooks-states.spec.ts`).
+ * state of its board (`hooks-states.spec.ts`), and the Run page of a failed run that says why it
+ * failed in the Bureau's words (`run-failure-explanation.spec.ts`).
  */
 /**
  * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
@@ -173,6 +174,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/runs-states.spec.ts',
   'tests/e2e/run-page-states.spec.ts',
   'tests/e2e/run-page-live-states.spec.ts',
+  // A failed run's section on the Run page, which says why it failed in the Bureau's words, for an
+  // instance and for an agent run (COR-2533).
+  'tests/e2e/run-failure-explanation.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
   // The Checks page in each state of its design rows: first use, filtered to nothing, loading,

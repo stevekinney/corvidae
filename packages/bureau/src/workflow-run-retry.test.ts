@@ -346,4 +346,59 @@ describe('retrying a failed workflow run from its failed step', () => {
     const after = await runOf(harness, runId);
     expect(after?.status).toBe('failed');
   });
+
+  it('COR-2533: runs the step the instance failed at when the request names none', async () => {
+    const { harness, control } = await failingHarness();
+    const runId = await failedRun(harness);
+    control.failing = false;
+    const answer = await harness.bureau.workflows!.retryRun(runId, { retryId: 'no-step' });
+    expect(answer).toMatchObject({ runId, step: 2, retryId: 'no-step' });
+    await settled(harness, runId, 'completed');
+    expect(agentCalls(harness, 'writer')).toHaveLength(1);
+  });
+
+  it('COR-2533: refuses a request that names no step for an instance that is not failed', async () => {
+    const { harness, control } = await failingHarness();
+    control.failing = false;
+    const { runId } = await harness.bureau.workflows!.start('notes', { owner: OWNER });
+    await settled(harness, runId, 'completed');
+    expect(await refusal(harness.bureau.workflows!.retryRun(runId, {}))).toBe('run-not-failed');
+  });
+});
+
+describe('the step a retry would run (COR-2533)', () => {
+  it('is the step the instance failed at, and changes nothing', async () => {
+    const { harness } = await failingHarness();
+    const runId = await failedRun(harness);
+    expect(await harness.bureau.workflows!.retryableStep(runId)).toBe(2);
+    expect(await harness.bureau.workflows!.retryableStep(runId)).toBe(2);
+    expect(await engineStatus(harness, runId)).toBe('failed');
+    expect(agentCalls(harness, 'editor')).toHaveLength(1);
+  });
+
+  it('is undefined for an instance that completed, and for a run that is no instance', async () => {
+    const { harness, control } = await failingHarness();
+    control.failing = false;
+    const { runId } = await harness.bureau.workflows!.start('notes', { owner: OWNER });
+    await settled(harness, runId, 'completed');
+    expect(await harness.bureau.workflows!.retryableStep(runId)).toBeUndefined();
+    expect(await harness.bureau.workflows!.retryableStep('no-such-run')).toBeUndefined();
+  });
+
+  it('is undefined when the version the instance ran can no longer run', async () => {
+    const storage = new MemoryStorage();
+    const { harness } = await failingHarness(storage);
+    const runId = await failedRun(harness);
+    const version = (await runOf(harness, runId))!.workflowVersion;
+    await harness.put(
+      'notes.json',
+      workflowFileText('notes', {
+        ...twoSteps,
+        steps: [...twoSteps.steps, { kind: 'sleep', duration: 1 }],
+      }),
+    );
+    await harness.bureau.workflows!.refresh();
+    await storage.delete(`bureau-workflow-snapshot:v1:notes:${version}`);
+    expect(await harness.bureau.workflows!.retryableStep(runId)).toBeUndefined();
+  });
 });

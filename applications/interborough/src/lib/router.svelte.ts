@@ -93,6 +93,18 @@ export function workflowDetailPath(
   return identifierPath('runs', '/runs/:run', workflowId, search);
 }
 
+/** The anchor of a failed run's explanation on its page: the section's `id` and the fragment that opens it. */
+export const FAILURE_EXPLANATION_ANCHOR = 'failure-explanation';
+
+/**
+ * A failed run's page at its explanation of the failure (COR-2533): the same page as
+ * {@link workflowDetailPath}, at the section that says why it failed. A link to the failure in Chat
+ * and elsewhere uses this one address.
+ */
+export function failureExplanationPath(runId: string): string {
+  return `${workflowDetailPath(runId)}#${FAILURE_EXPLANATION_ANCHOR}`;
+}
+
 /**
  * A run's page under the workflow it belongs to, for a caller that knows the workflow type. It is
  * the same page as {@link workflowDetailPath}, and neither redirects to the other.

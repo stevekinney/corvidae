@@ -382,7 +382,99 @@ async function cancel(
   return { ...response, data: { kind, id: qualified(kind, rawId), ...body } };
 }
 
-/** Execute task or workflow listing, inspection, event watching, and cancellation commands. */
+/** A run's explanation as the lines a person reads: the sentence, then each fact, then what to do. */
+function explanationText(explanation: RecordValue): string {
+  const cause = record(explanation['cause']) ?? {};
+  const step = record(explanation['step']);
+  const lines = [String(explanation['summary'] ?? '')];
+  const category = cause['category'];
+  lines.push(`Cause: ${typeof category === 'string' ? category : 'not classified'}`);
+  for (const [label, key] of [
+    ['Code', 'code'],
+    ['Kind', 'kind'],
+  ] as const) {
+    if (typeof cause[key] === 'string') lines.push(`${label}: ${cause[key]}`);
+  }
+  if (step !== undefined) lines.push(`Step: ${String(step['index'])} ${String(step['label'])}`);
+  if (typeof explanation['tries'] === 'number') lines.push(`Tries: ${explanation['tries']}`);
+  const verdicts = Array.isArray(explanation['verdicts']) ? explanation['verdicts'] : [];
+  for (const verdict of verdicts.map(record)) {
+    if (verdict === undefined) continue;
+    const at = typeof verdict['step'] === 'number' ? ` at step ${verdict['step']}` : '';
+    lines.push(`Guardrail: ${String(verdict['name'])} (${String(verdict['outcome'])})${at}`);
+  }
+  lines.push(`Next: ${String(explanation['remediation'] ?? '')}`);
+  const commands = Array.isArray(explanation['nextCommands']) ? explanation['nextCommands'] : [];
+  for (const command of commands) lines.push(`  ${String(command)}`);
+  return lines.join('\n');
+}
+
+/**
+ * Why a run failed, from what Bureau stored: `bureau.tasks.explain`, which takes either kind of run
+ * by its identifier, so no `--kind` is needed. A run that did not fail is the server's
+ * `Unprocessable` fault with its message and remediation, which is a misuse of the command, so it
+ * exits with the usage status (2) and says what the server said (COR-2533).
+ */
+async function explain(
+  target: CliTarget,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+): Promise<CliCommandResult> {
+  const rawId = identifier(parsed);
+  try {
+    const response = await rpc(target, parsed, dependencies, 'bureau.tasks.explain', {
+      runId: rawId,
+    });
+    const explanation = record(response.data);
+    if (explanation === undefined || parsed.output !== 'text') return response;
+    return { ...response, data: explanationText(explanation) };
+  } catch (error) {
+    if (error instanceof Error && Reflect.get(error, 'faultCode') === 'Unprocessable')
+      throw Object.assign(error, { usage: true });
+    throw error;
+  }
+}
+
+/**
+ * Run a failed instance of a workflow file again from the step it failed at:
+ * `bureau.workflows.runs.retry`, which runs that step when `--step` names none (COR-2533). An agent
+ * run has no step to run again, so `--kind task` is a usage error. A retry changes a run, so an
+ * outcome the CLI cannot know is exit 7 (see `executeCli`).
+ */
+async function retry(
+  target: CliTarget,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+): Promise<CliCommandResult> {
+  const kind = option(parsed, 'kind');
+  if (kind !== undefined && kind !== 'workflow')
+    throw Object.assign(new Error('runs retry supports --kind workflow only.'), { usage: true });
+  const rawId = identifier(parsed);
+  const step = numberOption(parsed, 'step');
+  if (step === 0) throw Object.assign(new Error('Option --step counts from 1.'), { usage: true });
+  let response: CliCommandResult;
+  try {
+    response = await rpc(target, parsed, dependencies, 'bureau.workflows.runs.retry', {
+      runId: rawId,
+      ...(step === undefined ? {} : { step }),
+    });
+  } catch (error) {
+    // A fault the server answered with says the retry was refused and nothing changed, so it is no
+    // unknown outcome (exit 7); only a request that got no answer is.
+    if (error instanceof Error && typeof Reflect.get(error, 'faultCode') === 'string')
+      throw Object.assign(error, { exitCode: 1 });
+    throw error;
+  }
+  return {
+    ...response,
+    data: { kind: 'workflow', ...(record(response.data) ?? {}), id: qualified('workflow', rawId) },
+  };
+}
+
+/**
+ * Execute task or workflow listing, inspection, explanation, retry, event watching, and
+ * cancellation commands.
+ */
 export async function executeRuns(
   target: CliTarget,
   parsed: Parsed,
@@ -394,9 +486,14 @@ export async function executeRuns(
   if (action === 'inspect') return getOrInspect(target, parsed, dependencies, true);
   if (action === 'watch' || action === 'events') return watch(target, parsed, dependencies);
   if (action === 'cancel') return cancel(target, parsed, dependencies);
-  throw Object.assign(new Error('Usage: runs list|get|inspect|watch|cancel [options].'), {
-    usage: true,
-  });
+  if (action === 'explain') return explain(target, parsed, dependencies);
+  if (action === 'retry') return retry(target, parsed, dependencies);
+  throw Object.assign(
+    new Error('Usage: runs list|get|inspect|explain|retry|watch|cancel [options].'),
+    {
+      usage: true,
+    },
+  );
 }
 
 /** Execute the redacted, paginated audit listing command. */
