@@ -223,8 +223,8 @@
     return JSON.stringify(value) ?? 'null';
   }
 
-  function manualStartKeyFor(input: unknown): string {
-    const snapshot = canonicalJson(input ?? null);
+  function manualStartKeyFor(value: unknown): string {
+    const snapshot = canonicalJson(value ?? null);
     const existing = manualStartKeys.get(snapshot);
     if (existing !== undefined) return existing;
     const key = crypto.randomUUID();
