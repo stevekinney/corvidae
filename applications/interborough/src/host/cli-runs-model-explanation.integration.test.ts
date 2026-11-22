@@ -4,7 +4,7 @@
  * what it cost, and the run's chat, exported as Markdown from the messages the Bureau serves for the
  * thread, does not hold what the model wrote.
  */
-import { appendMessages, createConversationHistory, type ChatMessage } from '@lostgradient/chat';
+import { appendMessages, createConversationHistory } from '@lostgradient/chat';
 import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -73,9 +73,13 @@ async function failedTask(opened: OpenedBureau): Promise<{ id: string; contextId
   const handle = await opened.bureau.tasks.start('writer', USER_MESSAGE, {
     principal: OWNER.alice,
   });
-  await waitUntil(async () => (await opened.bureau.tasks.get(handle.id))?.status === 'failed', {
-    message: `task ${handle.id} failed`,
-  });
+  await waitUntil(
+    async () => {
+      const current = await opened.bureau.tasks.get(handle.id);
+      return current?.status === 'failed';
+    },
+    { message: `task ${handle.id} failed` },
+  );
   await opened.bureau.internals.taskRegistry.flush();
   const task = await opened.bureau.tasks.get(handle.id);
   return { id: handle.id, contextId: task!.contextId };
@@ -108,7 +112,7 @@ describe('interborough runs explain --model', () => {
     };
     const conversation = appendMessages(
       createConversationHistory({ id: task.contextId }),
-      ...served.messages.map((message): ChatMessage => ({
+      ...served.messages.map((message) => ({
         id: message.id,
         role: message.role,
         content: message.content ?? '',

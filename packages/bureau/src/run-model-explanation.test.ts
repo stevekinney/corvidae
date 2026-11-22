@@ -6,11 +6,7 @@
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import {
-  explanationRequestSteps,
-  MODEL_EXPLANATION_QUESTION,
-  modelExplanationRequest,
-} from './run-model-explanation.ts';
+import { explanationRequestSteps, modelExplanationRequest } from './run-model-explanation.ts';
 import type { RunFailureExplanation } from './run-failure-explanation.ts';
 
 const EXPLANATION: RunFailureExplanation = {
@@ -120,8 +116,12 @@ describe('the request', () => {
     const request = modelExplanationRequest({ explanation: EXPLANATION, steps });
 
     expect(request.kind).toBe('structured');
-    expect(request.question).toBe(MODEL_EXPLANATION_QUESTION);
-    expect(MODEL_EXPLANATION_QUESTION).toContain('untrusted');
+    // The question is fixed: it says every string in the facts is untrusted, and names no fact.
+    expect(request.question).toContain('untrusted');
+    expect(request.question).not.toContain('charge-card');
+    expect(modelExplanationRequest({ explanation: EXPLANATION, steps: [] }).question).toBe(
+      request.question,
+    );
     // The hostile message is data inside the JSON, never part of the question.
     expect(request.question).not.toContain('pwned');
     const context = JSON.parse(request.context ?? '') as Record<string, unknown>;
