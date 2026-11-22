@@ -15,6 +15,7 @@ import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { COST_COPY } from '../../src/app/copy/cost.ts';
+import { RUN_PAGE_COPY } from '../../src/app/copy/runs.ts';
 import { isBureauCall, rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { untilChatLoaded } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -50,10 +51,16 @@ async function reportRunUsage(page: Page, runId: string, reported: Json | null):
   );
 }
 
+/**
+ * The Run page's rail, by the name its landmark carries. The shell's navigation is a complementary
+ * landmark too, so the role alone names two.
+ */
+const runRail = (page: Page) =>
+  page.getByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
+
 /** One fact of the Run page's rail, by its term, or the empty locator when the rail has none. */
 const railFact = (page: Page, term: string) =>
-  page
-    .getByRole('complementary')
+  runRail(page)
     .locator('dt', { hasText: new RegExp(`^${term}$`) })
     .locator('xpath=following-sibling::dd[1]');
 
@@ -85,7 +92,7 @@ test.describe('/runs/:run: tokens and cost in the rail (COR-2525)', () => {
         await openAt(page, `/runs/${encodeURIComponent(world.runs.done)}`, width);
         await expect(page.locator('[data-run-header] [data-status-word]')).toBeVisible();
 
-        await expect(page.getByRole('complementary')).toBeVisible();
+        await expect(runRail(page)).toBeVisible();
         if ('tokens' in run) await expect(railFact(page, 'Tokens')).toHaveText(run.tokens);
         else await expect(railFact(page, 'Tokens')).toHaveCount(0);
         if ('cost' in run) await expect(railFact(page, COST_COPY.label)).toHaveText(run.cost);
@@ -292,6 +299,44 @@ test.describe('/health: Needs attention while the Bureau lists runs over the thr
       await captureForDesignReview(page, {
         route: '/health',
         state: 'needs attention with run items',
+        source: SOURCE,
+      });
+    });
+  }
+});
+
+const THRESHOLD_KEY = 'runs.spendThresholdUsd';
+
+test.describe('/settings: the spend threshold (COR-2527)', () => {
+  test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
+
+  for (const width of WIDTHS) {
+    test(`a number field that refuses 0 and a negative amount, unset and refused, at ${String(width)} pixels`, async ({
+      page,
+    }) => {
+      await openAt(page, '/settings', width);
+      const row = page.locator(`[data-setting="${THRESHOLD_KEY}"]`);
+      await expect(row).toBeVisible();
+      await expect(row).toContainText(COST_COPY.threshold.label);
+      const field = row.getByRole('spinbutton');
+      await expect(field).toBeVisible();
+      await expect(row).toContainText(COST_COPY.threshold.unit);
+      await captureForDesignReview(page, {
+        route: '/settings',
+        state: 'spend threshold unset',
+        source: SOURCE,
+      });
+
+      // Nothing is saved: the row only says why the amount is refused.
+      await field.fill('0');
+      await field.blur();
+      await expect(row).toContainText('Enter more than 0.');
+      await field.fill('-5');
+      await field.blur();
+      await expect(row).toContainText('Enter more than 0.');
+      await captureForDesignReview(page, {
+        route: '/settings',
+        state: 'spend threshold refused',
         source: SOURCE,
       });
     });

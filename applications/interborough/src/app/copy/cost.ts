@@ -17,6 +17,15 @@ export const COST_COPY = {
   atLeast: (amount: string): string => `At least ${amount}`,
   /** The tooltip of a goal's cost that is only part of the whole. */
   partialNote: 'Not every attempt has a cost, so this is the sum of those that do.',
+  /**
+   * The workspace's spend threshold on Settings › General (`runs.spendThresholdUsd`): a run that
+   * costs more is flagged under Needs attention, and never stopped.
+   */
+  threshold: {
+    label: 'Spend threshold per run',
+    /** The word after the amount. */
+    unit: 'US dollars',
+  },
   /** The accessible name of a run's cost on a row. */
   rowLabel: (amount: string): string => `Cost ${amount}`,
 } as const;

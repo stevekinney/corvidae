@@ -13,6 +13,7 @@
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
   import { formatAttemptsCost } from '../../../lib/format/cost.ts';
+  import { phoneViewport } from '../../../lib/phone-viewport.svelte.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { runLineTwo, runStatusWord, type RunRow } from './run-rows.ts';
 
@@ -81,12 +82,16 @@
   // run the Bureau priced no request of never shows "$0.00" or a dash. An instance of a workflow
   // file says the sum of its steps that have a cost, as "At least" when a step has none.
   const cost = $derived(formatAttemptsCost(row.cost ?? null));
+  // A phone's row has no room for a column beside its time at large text, so the cost takes the
+  // line under line two, as a goal's check does, and the row never grows wider than the screen.
+  const phone = $derived(phoneViewport.current);
 </script>
 
 {#snippet lockedNote()}{TASK_COPY.list.engineRunLocked}{/snippet}
 {#snippet costCell()}
   <span
     class="ib-run-list-cost"
+    class:ib-run-list-cost--line={phone}
     data-testid="run-cost"
     title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.column}
     aria-label={cost === undefined ? undefined : COST_COPY.rowLabel(cost)}>{cost}</span
@@ -101,7 +106,7 @@
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
-  {...cost === undefined ? {} : { trailing: costCell }}
+  {...cost === undefined ? {} : phone ? { detail: costCell } : { trailing: costCell }}
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
   {#snippet title()}{row.title}{/snippet}
@@ -112,13 +117,21 @@
 </StackedListItem>
 
 <style>
-  /* The Cost column: figures right-aligned in the row's last column, and as wide as the widest one. */
+  /* The Cost column: figures right-aligned in the row's last column. On a phone it is the row's
+     last line and reads from the start, like the line above it. */
   .ib-run-list-cost {
     display: inline-block;
-    min-inline-size: 5.5rem;
+    max-inline-size: 100%;
+    min-inline-size: 0;
     text-align: end;
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+    /* The cost wraps inside the row, so large text or a long sum never widens the page. */
+    white-space: normal;
+    overflow-wrap: anywhere;
     color: var(--cinder-text-muted);
+  }
+
+  .ib-run-list-cost--line {
+    text-align: start;
   }
 </style>

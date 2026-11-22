@@ -10,6 +10,7 @@ import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { RUN_PAGE_COPY } from '../../src/app/copy/runs.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -69,7 +70,7 @@ test('a finished run shows its cost on its page and in the Runs list', async ({ 
 
   await page.goto(`/runs/${encodeURIComponent(world.runs.done)}`);
   await expect(page.locator('[data-run-header] [data-status-word]')).toBeVisible();
-  const rail = page.getByRole('complementary');
+  const rail = page.getByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
   await expect(rail.locator('dt', { hasText: /^Tokens$/ })).toBeVisible();
   await expect(
     rail.locator('dt', { hasText: /^Tokens$/ }).locator('xpath=following-sibling::dd[1]'),
@@ -96,7 +97,7 @@ test('a finished run with no cost says none on its page or in the Runs list, and
 
   await page.goto(`/runs/${encodeURIComponent(world.runs.done)}`);
   await expect(page.locator('[data-run-header] [data-status-word]')).toBeVisible();
-  const rail = page.getByRole('complementary');
+  const rail = page.getByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
   await expect(rail.locator('dt', { hasText: /^Tokens$/ })).toBeVisible();
   await expect(rail.locator('dt', { hasText: /^Cost$/ })).toHaveCount(0);
   await expect(page.getByText('$0.00')).toHaveCount(0);
