@@ -2,6 +2,7 @@ import { open } from 'node:fs/promises';
 
 import { request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
+import { cliPreview, isDryRun } from './cli-destructive.ts';
 
 type RecordValue = Record<string, unknown>;
 
@@ -118,6 +119,17 @@ async function schedules(
       'bureau.schedules.update',
       guarded(parsed, { scheduleId, ...record(await inputFile(parsed, dependencies)) }),
     );
+  // Bureau has no dry run for a pause, so the CLI reads the schedule and says what it would send.
+  if (action === 'pause' && isDryRun(parsed)) {
+    const current = await rpc(target, parsed, dependencies, 'bureau.schedules.get', {
+      scheduleId,
+    });
+    return cliPreview({
+      target: { kind: 'schedule', id: scheduleId },
+      current: record(current.data),
+      wouldSend: { method: 'bureau.schedules.pause', params: guarded(parsed, { scheduleId }) },
+    });
+  }
   if (['pause', 'resume'].includes(action))
     return rpc(
       target,
@@ -170,7 +182,13 @@ async function goals(
   const goalRunId = identifier(parsed);
   if (action === 'get') return rpc(target, parsed, dependencies, 'bureau.goals.get', { goalRunId });
   if (action === 'cancel')
-    return rpc(target, parsed, dependencies, 'bureau.goals.cancel', guarded(parsed, { goalRunId }));
+    return rpc(
+      target,
+      parsed,
+      dependencies,
+      'bureau.goals.cancel',
+      guarded(parsed, { goalRunId, ...(isDryRun(parsed) ? { dryRun: true } : {}) }),
+    );
   throw Object.assign(new Error('Usage: goals list|get|create|cancel.'), { usage: true });
 }
 
@@ -214,7 +232,10 @@ async function hooks(
     return { data: await writeSecret(parsed, response.data) };
   }
   if (action === 'delete' || action === 'test')
-    return rpc(target, parsed, dependencies, `bureau.hooks.${action}`, { hookId });
+    return rpc(target, parsed, dependencies, `bureau.hooks.${action}`, {
+      hookId,
+      ...(action === 'delete' && isDryRun(parsed) ? { dryRun: true } : {}),
+    });
   if (action === 'deliveries')
     return rpc(target, parsed, dependencies, 'bureau.hooks.deliveries', {
       hookId,

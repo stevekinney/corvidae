@@ -34,9 +34,20 @@ const reassignmentSchema = z
   })
   .strict();
 
+/**
+ * Who asked for the transition (COR-2545), kept in the pending record so a replay after a crash
+ * writes the same audit entry the live drain would have: the caller's owner of record, and the host
+ * panel's `ui://` URI when the call came through one.
+ */
+const actorSchema = z
+  .object({ principal: z.string().min(1), panelUri: z.string().min(1).optional() })
+  .strict();
+
 export interface PendingScheduleTransition {
   /** Redacted shared configuration audit, committed atomically with the new authority. */
   readonly reassignment?: z.infer<typeof reassignmentSchema>;
+  /** Who asked, for the audit entry the transition owes; absent for a transition no caller asked for. */
+  readonly actor?: z.infer<typeof actorSchema>;
   readonly kind: ScheduleTransitionKind;
   readonly scheduleId: string;
   /** When the transition was committed, and the time both of its records carry. */
@@ -77,6 +88,7 @@ export function scheduleTransitionOperation(
       scheduleId: transition.scheduleId,
       committedAtMs: transition.committedAtMs,
       ...(transition.reassignment === undefined ? {} : { reassignment: transition.reassignment }),
+      ...(transition.actor === undefined ? {} : { actor: transition.actor }),
     }),
   };
 }
@@ -106,10 +118,15 @@ export function decodeScheduleTransition(bytes: Uint8Array): PendingScheduleTran
   const reassignmentValue: unknown = Reflect.get(value, 'reassignment');
   const reassignment = reassignmentSchema.safeParse(reassignmentValue);
   if (reassignmentValue !== undefined && !reassignment.success) return undefined;
+  const actorValue: unknown = Reflect.get(value, 'actor');
+  const actor = actorSchema.safeParse(actorValue);
+  // An actor this build cannot read is a record it cannot write the audit entry of, so it stays pending.
+  if (actorValue !== undefined && !actor.success) return undefined;
   return {
     kind: kind as ScheduleTransitionKind,
     scheduleId,
     committedAtMs,
     ...(reassignment.success ? { reassignment: reassignment.data } : {}),
+    ...(actor.success ? { actor: actor.data } : {}),
   };
 }

@@ -1,6 +1,11 @@
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
 
-import { BASE_STYLES, PENDING_REVIEW_STYLES, WORKFLOW_REVISION_STYLES } from './styles.ts';
+import {
+  BASE_STYLES,
+  PENDING_REVIEW_STYLES,
+  SCHEDULE_EDITOR_STYLES,
+  WORKFLOW_REVISION_STYLES,
+} from './styles.ts';
 
 /**
  * The run inspector: one Bureau task's liveness, ownership tree, progress, result, and abort. A
@@ -52,14 +57,57 @@ export const workflowRevisionReview: PluginPanel = {
 };
 
 /**
- * Three interface panels, the run inspector, pending-review list, and workflow revision review. Each is a page the host
- * builds from a browser entry at startup and serves as a `ui://` resource.
+ * The schedule editor (COR-2545): the schedules the caller may change, and one schedule's form to
+ * change when it runs, which agent or workflow it runs, and whether it is paused, or to make a new
+ * one. It reads through `bureau.schedules.list`, `bureau.schedules.get`, `bureau.agents.list` and
+ * `bureau.workflows.list`, and saves through the four schedule writes, which are `hostOnlyTools`:
+ * they are not MCP tools, so no model reaches them, and the host's panel route names this panel's
+ * URI to the Bureau so the audit entry of each write says it came from here. `allowedTools` lists
+ * every tool the page calls, which a test keeps true. It opens as a page of its own, and on a run's
+ * page, which passes it the run's `taskId`: the editor reads that task through `bureau.tasks.get`
+ * and opens the schedule whose fire started it, and shows the list for a run nothing scheduled.
+ */
+export const scheduleEditor: PluginPanel = {
+  name: 'schedule-editor',
+  title: 'Schedule editor',
+  description: 'Change when a schedule runs, what it runs, and whether it is paused, or make one.',
+  uri: 'ui://inspectors/schedule-editor/v1',
+  entry: new URL('./schedule-editor/app.ts', import.meta.url),
+  styles: SCHEDULE_EDITOR_STYLES,
+  allowedTools: [
+    'bureau.schedules.list',
+    'bureau.schedules.get',
+    'bureau.schedules.create',
+    'bureau.schedules.update',
+    'bureau.schedules.pause',
+    'bureau.schedules.resume',
+    'bureau.agents.list',
+    'bureau.workflows.list',
+    'bureau.tasks.get',
+  ],
+  hostOnlyTools: [
+    'bureau.schedules.create',
+    'bureau.schedules.update',
+    'bureau.schedules.pause',
+    'bureau.schedules.resume',
+  ],
+  // A page of its own, reachable from the command palette and by its path, and a run's page. No
+  // sidebar entry: the application's own Schedules page is where people look for schedules.
+  placements: [{ kind: 'page', path: 'schedules' }, { kind: 'run' }],
+};
+
+/**
+ * Four interface panels, the run inspector, pending-review list, workflow revision review and schedule
+ * editor. Each is a page the host builds from a browser entry at startup and serves as a `ui://`
+ * resource.
  */
 export default definePlugin({
   name: 'inspectors',
   title: 'Inspectors',
   version: '1.0.1',
   description:
-    'Adds the run inspector, the pending-review list and the workflow revision review as interface panels over the run, review and workflow tools.',
-  setup: () => ({ panels: [runInspector, pendingReview, workflowRevisionReview] }),
+    'Adds the run inspector, the pending-review list, the workflow revision review and the schedule editor as interface panels over the run, review, workflow and schedule tools.',
+  setup: () => ({
+    panels: [runInspector, pendingReview, workflowRevisionReview, scheduleEditor],
+  }),
 });

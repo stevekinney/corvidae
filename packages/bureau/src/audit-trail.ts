@@ -26,6 +26,7 @@ import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { notPurgedCondition, runTombstoneKey } from './chat-content-tombstone';
+import { eventActorOf } from './event-actor';
 import type { EventTimestampResolver } from './event-timestamp';
 import type { ScheduleMissedEvent } from './events';
 import { SCHEDULER_ACTOR } from './owner-of-record';
@@ -198,6 +199,9 @@ export const AUDIT_EVENT_TYPES = [
   'schedule.paused',
   'schedule.resumed',
   'schedule.cancelled',
+  // COR-2545 — a schedule's cadence, target, description, overlap or time zone changed. Written by
+  // the update itself (`bureau-seams/schedule-operations.ts`) after its commit, never from an event.
+  'schedule.updated',
   // COR-2009 — a schedule's occurrences the Bureau found missed (it was down, or a daylight-saving
   // gap swallowed them), dispatched on the bureau-level emitter as `schedule.missed` and recorded by
   // a dedicated listener below under `schedule:<id>`, with `system:scheduler` as the actor. The
@@ -323,8 +327,10 @@ export interface AuditRecord {
    * `step.completed`, `budget.exceeded`,
    * `toolbox.loop-warning`/`loop-blocked`/`budget-exceeded`) have no principal; they are
    * attributed to the run. The AB-228 `schedule.*` listeners below also write
-   * through the out-of-band path but likewise carry no principal — a schedule
-   * pause/resume/cancel has no authenticated caller to attribute today. A
+   * through the out-of-band path and carry a principal only when a caller asked for the change
+   * (COR-2545: `schedule.created`, `schedule.updated`, `schedule.paused` and `schedule.resumed`
+   * from `bureau.schedules.*`, with the host panel's URI as `detail.panelUri` when the call came
+   * through one); a change nobody asked for, such as the pause after a timer failure, has none. A
    * `session.deleted` entry carries the principal that asked for the deletion
    * (COR-2018) and none for a session the store expired.
    *
@@ -1865,12 +1871,17 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
   }
   const scheduleCreatedListener = (event: AgentScheduledEvent): void => {
     if (!auditEventSet.has('schedule.created')) return;
+    // COR-2545: a caller who asked for the schedule is the entry's principal, and the host panel
+    // they asked through is in its detail.
+    const actor = eventActorOf(event);
     void writeOutOfBandRecord(
       {
         runId: scheduleOwnerId(event.scheduleId),
         type: 'schedule.created',
+        ...principalOf(actor?.principal),
         detail: {
           scheduleId: event.scheduleId,
+          ...(actor?.panelUri === undefined ? {} : { panelUri: actor.panelUri }),
           // COR-2546: a schedule of a workflow runs no agent, so it has no `agentName`.
           ...(event.agentName !== undefined ? { agentName: event.agentName } : {}),
           target: event.scheduleTarget,
