@@ -47,7 +47,11 @@
     type TaskCleanup,
     type TaskView,
   } from '../../../lib/bureau-tasks.ts';
-  import { classifyFault } from '../../../lib/faults.ts';
+  import {
+    classifyFault,
+    faultErrorStateAdvice,
+    treatmentErrorStateAdvice,
+  } from '../../../lib/faults.ts';
   import { chatSessionPath } from '../../../lib/identifier-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
@@ -841,7 +845,10 @@
       description={TASK_COPY.loadFailed.description}
       headingLevel={2}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void (notFound && goals.isError ? goals.refetch() : task.refetch())}
+      {...faultErrorStateAdvice(
+        notFound && goals.isError ? goals.error : task.error,
+        () => void (notFound && goals.isError ? goals.refetch() : task.refetch()),
+      )}
     />
   </article>
 {:else if lookupFailed}
@@ -853,10 +860,10 @@
       description={engine.fault?.message ?? TASK_COPY.loadFailed.description}
       headingLevel={2}
       retryLabel={RETRY_LABEL}
-      onRetry={() => {
+      {...treatmentErrorStateAdvice(engine.fault ?? {}, () => {
         void queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(initialRunId) });
         void fileRun.refetch();
-      }}
+      })}
     />
   </article>
 {:else if loadCanceled && summary === undefined}
@@ -992,10 +999,13 @@
                 description={engine.fault.message}
                 headingLevel={2}
                 retryLabel={RETRY_LABEL}
-                onRetry={() =>
-                  void queryClient.invalidateQueries({
-                    queryKey: queryKeys.workflows.detail(initialRunId),
-                  })}
+                {...treatmentErrorStateAdvice(
+                  engine.fault,
+                  () =>
+                    void queryClient.invalidateQueries({
+                      queryKey: queryKeys.workflows.detail(initialRunId),
+                    }),
+                )}
               />
             {/if}
           {/snippet}

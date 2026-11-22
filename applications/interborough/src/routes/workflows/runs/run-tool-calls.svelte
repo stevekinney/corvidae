@@ -19,6 +19,7 @@
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
+  import { faultErrorStateAdvice } from '../../../lib/faults.ts';
   import type { TaskView } from '../../../lib/bureau-tasks.ts';
   import ToolCalls from '../../chat/tool-calls.svelte';
   import { toolCallsOfRun } from './run-tool-calls.ts';
@@ -106,7 +107,7 @@
     description={TASK_COPY.toolCallsLoadFailed.description}
     headingLevel={3}
     retryLabel={RETRY_LABEL}
-    onRetry={() => void thread.refetch()}
+    {...faultErrorStateAdvice(thread.error, () => void thread.refetch())}
   />
 {:else if unmatchedApprovals.length === 0}
   <p class="ib-run__note">{TASK_COPY.noToolCalls}</p>

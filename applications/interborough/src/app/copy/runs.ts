@@ -113,7 +113,8 @@ export const RUN_COMPARISON_COPY = {
   action: 'Compare with source',
   actionHide: 'Hide comparison',
   heading: 'Compared with the source run',
-  loadFailedTitle: 'The comparison could not be read',
+  /** What the comparison's error state says failed to load, in the one "Couldn’t load …" pattern every screen uses. */
+  loadFailedSubject: 'the comparison',
   intro: (forkPoint: number): string =>
     `Forked from checkpoint step ${String(forkPoint)}. The steps before it keep the source’s results; the rest ran again.`,
   sharedSummary: (count: number): string =>

@@ -178,7 +178,7 @@ describe('ForkComparison', () => {
       },
     });
 
-    await waitFor(() => expect(getByText('The comparison could not be read')).not.toBeNull());
+    await waitFor(() => expect(getByText('Couldn’t load the comparison')).not.toBeNull());
     expect(getByText(/not a fork/)).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Try again' }));

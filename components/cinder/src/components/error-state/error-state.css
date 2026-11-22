@@ -74,6 +74,11 @@
     color: var(--cinder-text-muted);
   }
 
+  .cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-icon {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
   /* Compact fits a list pane: less padding, a smaller neutral disc, and quieter type. */
   .cinder-error-state[data-cinder-size='compact'] {
     padding-block: var(--cinder-space-6);
@@ -120,6 +125,11 @@
   .cinder-error-state[data-cinder-variant='flat'][data-cinder-tone='danger']
     .cinder-error-state-title {
     color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-error-state[data-cinder-variant='flat'][data-cinder-tone='warning']
+    .cinder-error-state-title {
+    color: var(--cinder-status-warning-text);
   }
 
   /* The sentence holds a 380px measure however wide the region is. */
@@ -285,6 +295,10 @@
     color: var(--cinder-text-muted);
   }
 
+  .cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-glyph {
+    color: var(--cinder-status-warning-text);
+  }
+
   .cinder-error-state-text {
     flex: 1 1 12rem;
     min-inline-size: 0;
@@ -295,13 +309,52 @@
 
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title,
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-description {
-    display: inline;
+    display: block;
     margin: 0;
     max-inline-size: none;
     font-size: inherit;
     font-weight: var(--cinder-font-normal);
     line-height: inherit;
     color: inherit;
+  }
+
+  /* The title is the row's heading: the centred page title's semibold weight (the title and the
+   * sentence under it are one size, so weight and a small gap carry the hierarchy), on a line of
+   * its own, so it never runs on into the sentence under it. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title {
+    margin-block-end: var(--cinder-space-1);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* A bordered row is a quiet hairline in its tone's border token, never the centred box's grey
+   * panel: the row fills a card's width and its own words carry the weight. The status border
+   * tokens are drawn for a soft fill and read at 1.9:1 (light) to 4.7:1 (dark) on the page
+   * surface, so the hairline mixes each toward transparent, per scheme, to about 1.5:1 against
+   * that surface in both: danger 65% / 32%, warning 65% / 43% (light / dark). The neutral token
+   * is already 1.4:1. */
+  .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered] {
+    /* cinder-allow-raw-color: structural-pattern — a theme-arm mix amount of the danger border token, not a colour literal */
+    --_cinder-error-state-edge: light-dark(
+      color-mix(in oklch, var(--cinder-status-danger-border) 65%, transparent),
+      color-mix(in oklch, var(--cinder-status-danger-border) 32%, transparent)
+    );
+
+    border-color: var(--_cinder-error-state-edge);
+    border-radius: var(--cinder-radius-md);
+    background: none;
+    padding: 0;
+  }
+
+  .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='warning'] {
+    /* cinder-allow-raw-color: structural-pattern — a theme-arm mix amount of the warning border token, not a colour literal */
+    --_cinder-error-state-edge: light-dark(
+      color-mix(in oklch, var(--cinder-status-warning-border) 65%, transparent),
+      color-mix(in oklch, var(--cinder-status-warning-border) 43%, transparent)
+    );
+  }
+
+  .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='neutral'] {
+    --_cinder-error-state-edge: var(--cinder-status-neutral-border);
   }
 
   /* The next step is not part of the sentence: it takes its own line under it, in the same type. */

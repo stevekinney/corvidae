@@ -16,6 +16,7 @@
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { getClient } from '../../lib/client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import {
@@ -83,7 +84,7 @@
       description={copy.loadFailed.description}
       headingLevel={2}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void catalog.refetch()}
+      {...faultErrorStateAdvice(catalog.error, () => void catalog.refetch())}
     />
   {:else if rows.length === 0}
     <EmptyState

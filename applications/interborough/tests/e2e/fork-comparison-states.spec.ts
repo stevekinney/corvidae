@@ -225,8 +225,9 @@ test.describe('fork-comparison-states: /runs/:run, the comparison on a fork’s 
     const lineage = await openLineage(page, forkId);
     await lineage.getByRole('button', { name: 'Compare with source' }).click();
     await captureLineage(page, 'comparison error', async () => {
-      await expect(lineage.getByText('The comparison could not be read')).toBeVisible();
-      await expect(lineage.getByRole('button', { name: 'Try again' })).toBeVisible();
+      await expect(lineage.getByText('Couldn’t load the comparison')).toBeVisible();
+      // The server said repeating the read cannot succeed (`retryable: false`), so no Retry is offered.
+      await expect(lineage.getByRole('button', { name: 'Try again' })).toHaveCount(0);
     });
   });
 

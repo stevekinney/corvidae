@@ -34,7 +34,7 @@
 
   import { RETRY_LABEL } from '../../../../app/copy/views.ts';
   import { RUN_COMPARISON_COPY } from '../../../../app/copy/runs.ts';
-  import { faultTreatment } from '../../../../lib/faults.ts';
+  import { faultTitle, faultTreatment, treatmentErrorStateAdvice } from '../../../../lib/faults.ts';
   import {
     fetchForkComparison,
     forkComparisonQueryKey,
@@ -122,11 +122,11 @@
   {:else if treatment}
     <ErrorState
       variant="flat"
-      title={RUN_COMPARISON_COPY.loadFailedTitle}
+      title={faultTitle(treatment.kind, RUN_COMPARISON_COPY.loadFailedSubject)}
       description={treatment.message}
       headingLevel={3}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void comparisonQuery.refetch()}
+      {...treatmentErrorStateAdvice(treatment, () => void comparisonQuery.refetch())}
     />
   {:else if comparisonQuery.data}
     <p class="weft-fork-comparison__intro">

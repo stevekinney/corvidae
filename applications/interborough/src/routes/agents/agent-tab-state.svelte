@@ -18,6 +18,7 @@
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { useAgentTabStale } from './agent-tab-stale.ts';
 
   interface Props {
@@ -61,7 +62,7 @@
       description={copy.failedDescription(status)}
       headingLevel={2}
       retryLabel={RETRY_LABEL}
-      {onRetry}
+      {...faultErrorStateAdvice(error, onRetry)}
     />
   </div>
 {:else if !hasData && pending}

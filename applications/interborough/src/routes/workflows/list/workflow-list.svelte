@@ -352,7 +352,11 @@
         <Skeleton height="2.5rem" />
       </div>
     {:else if listQuery.isError}
-      <QueryFaultBanner error={listQuery.error} onRetry={() => void listQuery.refetch()} />
+      <QueryFaultBanner
+        error={listQuery.error}
+        subject="workflows"
+        onRetry={() => void listQuery.refetch()}
+      />
     {:else if rows.length === 0 && !hasActiveFilter}
       <EmptyState
         kind="first-use"
