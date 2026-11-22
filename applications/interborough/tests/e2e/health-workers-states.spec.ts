@@ -645,6 +645,71 @@ test('a long worker ID can be copied from the detail and the list cuts it from t
   await checkA11y('workers—a long worker id');
 });
 
+// COR-2548: the drawer names a worker by its name beside a Copy button for its id (the id itself is
+// no longer drawn, COR-2445), so a name longer than the heading's row must wrap and leave the button
+// whole inside the pane at 320 pixels, which the capture at 375 repeats.
+test('a worker name longer than the heading wraps and keeps its Copy button inside the pane on a phone', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const name =
+    'Payments worker EU West availability zone 1b canary replica for the nightly settlement';
+  await answerFleet(
+    page,
+    newFleet({
+      workers: [
+        {
+          id: 'payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68',
+          name,
+          queue: 'payments',
+          inFlight: 1,
+          health: 'active',
+          heardMinutesAgo: 0,
+        },
+      ],
+    }),
+  );
+  await page.goto('/health/workers');
+  await rows(page).first().getByRole('link').click();
+  await expect(detail(page)).toBeVisible();
+
+  await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText(name);
+  const copy = detail(page).getByRole('button', { name: 'Copy the worker ID' });
+  await expect(copy).toBeVisible();
+  const fits = await detail(page).evaluate((root) => {
+    const heading = root.querySelector('h2');
+    const button = root.querySelector('.cinder-copy-button');
+    if (heading === null || button === null)
+      throw new Error('The name or its Copy button is missing.');
+    const pane = root.getBoundingClientRect();
+    const box = button.getBoundingClientRect();
+    return {
+      // The name takes more than one row, so the test judged a name that did not fit one.
+      rows: new Set(
+        (() => {
+          const text = document.createRange();
+          text.selectNodeContents(heading);
+          return [...text.getClientRects()]
+            .filter((rect) => rect.width > 0)
+            .map((rect) => Math.round(rect.top));
+        })(),
+      ).size,
+      inside: box.left >= pane.left && box.right <= pane.right,
+      pageFits: document.documentElement.scrollWidth <= innerWidth,
+    };
+  });
+  expect(fits.rows).toBeGreaterThan(1);
+  expect(fits.inside).toBe(true);
+  expect(fits.pageFits).toBe(true);
+  await captureForDesignReview(page, {
+    route: '/health/workers',
+    state: 'long-name',
+    source: SOURCE,
+  });
+  await checkA11y('workers—a long worker name on a phone');
+});
+
 test('a worker whose drain has finished reads Stopped, with Forget as its only action', async ({
   page,
   checkA11y,
