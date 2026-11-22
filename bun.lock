@@ -443,6 +443,9 @@
     "packages/cinder-mcp": {
       "name": "@lostgradient/cinder-mcp",
       "version": "0.1.24",
+      "bin": {
+        "cinder-mcp": "./src/bin.ts",
+      },
       "dependencies": {
         "@lostgradient/cinder": "workspace:*",
         "@modelcontextprotocol/sdk": "catalog:",
