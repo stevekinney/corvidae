@@ -3,17 +3,26 @@
  * sentence from a template per category and kind, a remediation per category, and the `interborough`
  * commands that read the run.
  */
+import type { AgentRunErrorKind } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import {
   classifyAgentRunFailure,
   explainRunFailure,
-  nextCommandsFor,
   RUN_FAILURE_CATEGORIES,
-  RUN_FAILURE_KINDS,
   type RunFailureFacts,
-  summarizeRunFailure,
 } from './run-failure-explanation.ts';
+
+/** Every kind Operative names; a kind added there must be added here, so its clause is tested. */
+const KINDS = [
+  'load',
+  'contract',
+  'generate',
+  'tool',
+  'abort',
+  'output',
+  'policy',
+] as const satisfies readonly AgentRunErrorKind[];
 
 function factsOf(overrides: Partial<RunFailureFacts> = {}): RunFailureFacts {
   return {
@@ -29,12 +38,15 @@ function factsOf(overrides: Partial<RunFailureFacts> = {}): RunFailureFacts {
   };
 }
 
+const summaryOf = (overrides: Partial<RunFailureFacts>): string =>
+  explainRunFailure(factsOf(overrides)).summary;
+
 describe('summary (AC3)', () => {
   it('is one sentence that names the step and the cause, for every category and every kind', () => {
     const summaries = new Set<string>();
     for (const category of [...RUN_FAILURE_CATEGORIES, null]) {
-      for (const errorKind of [...RUN_FAILURE_KINDS, null, 'not-a-kind']) {
-        const summary = summarizeRunFailure({
+      for (const errorKind of [...KINDS, null, 'not-a-kind']) {
+        const summary = summaryOf({
           category,
           errorKind,
           step: { index: 1, label: 'charge-card' },
@@ -49,12 +61,12 @@ describe('summary (AC3)', () => {
       }
     }
     // Six causes by eight kind clauses (the seven kinds, and no clause for null or an unknown kind).
-    expect(summaries.size).toBe(6 * (RUN_FAILURE_KINDS.length + 1));
+    expect(summaries.size).toBe(6 * (KINDS.length + 1));
   });
 
   it('gives each category its own clause, and an unclassified failure its own', () => {
     const clauses = [...RUN_FAILURE_CATEGORIES, null].map((category) =>
-      summarizeRunFailure({ category, errorKind: null, step: { index: 0, label: 'step' } }),
+      summaryOf({ category, errorKind: null, step: { index: 0, label: 'step' } }),
     );
     expect(new Set(clauses).size).toBe(6);
     expect(clauses[1]).toBe('The step "step" failed because it ran past its deadline.');
@@ -62,11 +74,11 @@ describe('summary (AC3)', () => {
   });
 
   it('names the run when no step was recorded, and flattens a label to one line', () => {
-    expect(summarizeRunFailure({ category: 'system', errorKind: null, step: null })).toBe(
+    expect(summaryOf({ category: 'system', errorKind: null, step: null })).toBe(
       'The run failed because of a fault in the server, its storage or a worker.',
     );
     expect(
-      summarizeRunFailure({
+      summaryOf({
         category: 'timeout',
         errorKind: 'generate',
         step: { index: 0, label: 'two\nlines\t here' },
@@ -78,7 +90,7 @@ describe('summary (AC3)', () => {
 
   it('adds no clause for a kind it does not know', () => {
     expect(
-      summarizeRunFailure({
+      summaryOf({
         category: 'application',
         errorKind: 'constructor',
         step: { index: 0, label: 'x' },
@@ -146,14 +158,16 @@ describe('explainRunFailure', () => {
 
 describe('nextCommands (AC5)', () => {
   it('reads a run with `runs get`, naming its kind', () => {
-    expect(nextCommandsFor('agent', 'run-1')).toEqual(['interborough runs get --kind task run-1']);
-    expect(nextCommandsFor('workflow', 'run-1')).toEqual([
+    expect(explainRunFailure(factsOf({ kind: 'agent' })).nextCommands).toEqual([
+      'interborough runs get --kind task run-1',
+    ]);
+    expect(explainRunFailure(factsOf({ kind: 'workflow' })).nextCommands).toEqual([
       'interborough runs get --kind workflow run-1',
     ]);
   });
 
   it('quotes an identifier the shell would split or expand', () => {
-    expect(nextCommandsFor('agent', "it's a run; rm")).toEqual([
+    expect(explainRunFailure(factsOf({ runId: "it's a run; rm" })).nextCommands).toEqual([
       `interborough runs get --kind task 'it'\\''s a run; rm'`,
     ]);
   });

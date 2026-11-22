@@ -22,17 +22,6 @@ export const RUN_FAILURE_CATEGORIES = [
   'system',
 ] as const satisfies readonly FailureCategory[];
 
-/** What an agent run's error kind says went wrong, for the kinds Operative names. */
-export const RUN_FAILURE_KINDS = [
-  'load',
-  'contract',
-  'generate',
-  'tool',
-  'abort',
-  'output',
-  'policy',
-] as const satisfies readonly AgentRunErrorKind[];
-
 /** How a run's guardrail verdict came out: a tripwire halts the run; the rest let it go on. */
 export const RUN_VERDICT_OUTCOMES = ['tripwire', 'block', 'warn', 'sanitize', 'redact'] as const;
 
@@ -178,7 +167,7 @@ function isKnownKind(kind: string | null): kind is AgentRunErrorKind {
  * One sentence that names the step and the cause: a template for the category, then a template for
  * the error kind, over the step's label.
  */
-export function summarizeRunFailure(facts: {
+function summarizeRunFailure(facts: {
   readonly category: FailureCategory | null;
   readonly errorKind: string | null;
   readonly step: RunFailureStep | null;
@@ -199,7 +188,7 @@ function shellWord(value: string): string {
  * The `interborough` command lines that read a run. Every entry is a command the CLI has: `runs
  * get` reads either kind of run, named by `--kind`.
  */
-export function nextCommandsFor(kind: 'agent' | 'workflow', runId: string): readonly string[] {
+function nextCommandsFor(kind: 'agent' | 'workflow', runId: string): readonly string[] {
   return [
     `interborough runs get --kind ${kind === 'agent' ? 'task' : 'workflow'} ${shellWord(runId)}`,
   ];

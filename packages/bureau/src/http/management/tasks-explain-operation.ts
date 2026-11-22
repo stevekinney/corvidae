@@ -16,8 +16,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module tasks-explain-operation
  */
 
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
-import type { FailureCategory } from '@lostgradient/weft';
+import type { FailureCategory, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
@@ -35,25 +34,25 @@ import { readableRun } from './runs-timeline-operation.ts';
 import type { BureauTasksOperationHost } from './tasks-operations.ts';
 import type { BureauWorkflowsOperationHost } from './workflows-operations.ts';
 
-/** What the engine holds about one run that explaining it reads. */
-export interface RunEngineState {
-  readonly status: string;
-  /** The category the engine sorted the failure into; `null` for a failure it could not; absent for a run it did not fail. */
-  readonly failureCategory?: FailureCategory | null | undefined;
-  /** The Weft error code of the failure. */
-  readonly errorCode?: string | undefined;
-  /** The step the failed run stopped at. */
-  readonly failedStep?: RunFailureStep | undefined;
-}
-
 /** What `bureau.tasks.explain` reads from the handler's `host`. */
 export type BureauTasksExplainOperationHost = BureauTasksOperationHost &
   BureauWorkflowsOperationHost & {
     /**
-     * The engine's state of the run `runId`, or `undefined` for a Bureau with no durable engine or a
-     * run it holds none for. Read only after the caller has been let in to the run.
+     * What the engine holds of the run `runId` that explaining it reads, or `undefined` for a
+     * Bureau with no durable engine or a run it holds none for: its `status`, the `failureCategory`
+     * it sorted a failure into (`null` for a failure it could not sort, absent for a run it did not
+     * fail), the Weft `errorCode` of the failure, and the step the failed run stopped at. Read only
+     * after the caller has been let in to the run.
      */
-    readonly runState: (runId: string) => Promise<RunEngineState | undefined>;
+    readonly runState: (runId: string) => Promise<
+      | {
+          readonly status: string;
+          readonly failureCategory?: FailureCategory | null | undefined;
+          readonly errorCode?: string | undefined;
+          readonly failedStep?: RunFailureStep | undefined;
+        }
+      | undefined
+    >;
     /** The engine's timeline of the run, or `undefined` for a Bureau with no durable engine. */
     readonly runTimeline: (runId: string) => Promise<readonly WorkflowTimelineEntry[] | undefined>;
     /** The guardrails that fired in the run, read from the audit trail. */

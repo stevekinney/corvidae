@@ -101,9 +101,13 @@ async function settledTask(
   until: 'failed' | 'completed' = 'failed',
 ): Promise<string> {
   const handle = await opened.bureau.tasks.start(agent, input, { principal: OWNER.alice });
-  await waitUntil(async () => (await opened.bureau.tasks.get(handle.id))?.status === until, {
-    message: `task ${handle.id} is ${until}`,
-  });
+  await waitUntil(
+    async () => {
+      const task = await opened.bureau.tasks.get(handle.id);
+      return task?.status === until;
+    },
+    { message: `task ${handle.id} is ${until}` },
+  );
   await opened.bureau.internals.taskRegistry.flush();
   return handle.id;
 }
@@ -317,7 +321,7 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
             return { content: 'written', toolCalls: [] };
           },
           ...(extra.guarded === true
-            ? { guardrails: sentinelGuardrail('digest', 'tripwire') as GuardrailsOptions }
+            ? { guardrails: sentinelGuardrail('digest', 'tripwire') }
             : {}),
         }),
       },
@@ -332,12 +336,14 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
 
   async function failedRun(served: Served, runId: string): Promise<void> {
     await served.bureau.durableEngine()!.start('digest', null, { id: runId });
-    await waitUntil(
-      async () => (await served.bureau.workflows!.getRun(runId))?.status === 'failed',
-      {
-        message: `workflow run ${runId} failed`,
-      },
-    );
+    await waitUntil(() => runStatusIs(served, runId, 'failed'), {
+      message: `workflow run ${runId} failed`,
+    });
+  }
+
+  async function runStatusIs(served: Served, runId: string, expected: string): Promise<boolean> {
+    const run = await served.bureau.workflows!.getRun(runId);
+    return run?.status === expected;
   }
 
   const explainRun = (served: Served, runId: string, key = 'operator-key'): Promise<RpcBody> =>
@@ -364,7 +370,8 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
     expect(JSON.stringify(response)).not.toContain(SENTINEL);
 
     // The same answer again.
-    expect((await explainRun(served, 'failed-digest')).result).toEqual(response.result);
+    const again = await explainRun(served, 'failed-digest');
+    expect(again.result).toEqual(response.result);
   });
 
   it('AC4: lists the guardrail that fired in one of the instance’s steps', async () => {
@@ -383,10 +390,9 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
     const served = await serveFailing();
     writerDown = false;
     await served.bureau.durableEngine()!.start('digest', null, { id: 'ok-digest' });
-    await waitUntil(
-      async () => (await served.bureau.workflows!.getRun('ok-digest'))?.status === 'completed',
-      { message: 'the digest completes' },
-    );
+    await waitUntil(() => runStatusIs(served, 'ok-digest', 'completed'), {
+      message: 'the digest completes',
+    });
 
     const response = await explainRun(served, 'ok-digest');
 
@@ -404,8 +410,7 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
       expect([key, response.result]).toEqual([key, undefined]);
       expect([key, status(response)]).toEqual([key, 404]);
     }
-    expect(
-      (await explainRun(served, 'private-digest', 'workflows-reader-key')).error,
-    ).toBeUndefined();
+    const reader = await explainRun(served, 'private-digest', 'workflows-reader-key');
+    expect(reader.error).toBeUndefined();
   });
 });

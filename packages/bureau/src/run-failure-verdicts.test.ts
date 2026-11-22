@@ -107,13 +107,11 @@ describe('readRunVerdicts', () => {
     ]);
     const tasks = tasksOf({ instance: ['step-b', 'step-a'] });
 
-    expect(
-      (await readRunVerdicts({ trail, tasks }, 'instance', 'workflow')).map((v) => v.name),
-    ).toEqual(['own', 'first', 'second']);
+    const workflow = await readRunVerdicts({ trail, tasks }, 'instance', 'workflow');
+    expect(workflow.map((verdict) => verdict.name)).toEqual(['own', 'first', 'second']);
     // An agent run is read by its own id alone.
-    expect(
-      (await readRunVerdicts({ trail, tasks }, 'instance', 'agent')).map((v) => v.name),
-    ).toEqual(['own']);
+    const agent = await readRunVerdicts({ trail, tasks }, 'instance', 'agent');
+    expect(agent.map((verdict) => verdict.name)).toEqual(['own']);
   });
 
   it('reads the trail to its end, a page at a time', async () => {
