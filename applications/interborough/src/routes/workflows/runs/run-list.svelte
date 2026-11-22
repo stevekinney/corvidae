@@ -560,3 +560,18 @@
     {/if}
   </StaleRegion>
 </section>
+
+<style>
+  /*
+   * The Cost column (COR-2525): the trailing track is one width in every row of the list, with a cost
+   * or without, so the times before it end at one edge, and a cost sits on the first line's baseline.
+   * The track is as wide as the widest figure ("At least $1,204.50"). A phone's row has no column:
+   * its cost is the line under line two (`run-list-row.svelte`).
+   */
+  @media (min-width: 640px) {
+    .ib-runs__list {
+      --cinder-stacked-list-trailing-track: 9rem;
+      --cinder-stacked-list-trailing-align: baseline;
+    }
+  }
+</style>

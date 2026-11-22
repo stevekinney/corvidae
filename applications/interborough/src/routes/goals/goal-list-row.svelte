@@ -46,7 +46,18 @@
     ><AttemptsIndicator made={row.made} allowed={row.allowed} />{count}</span
   >
 {/snippet}
+{#snippet costText()}
+  <span
+    data-testid="goal-cost"
+    title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.label}>{cost}</span
+  >
+{/snippet}
+<!-- A phone's third and fourth lines: what the goal cost, which does not wrap onto line two at 320
+     pixels, then the check, which ends in an ellipsis. -->
 {#snippet phoneCheck()}
+  {#if cost !== undefined}
+    <span class="ib-goal-row__cost">{@render costText()}</span>
+  {/if}
   <span class="ib-goal-row__check" data-testid="goal-check">{check}</span>
 {/snippet}
 
@@ -68,10 +79,10 @@
   {/snippet}
   {#snippet meta()}
     <span class="ib-goal-row__line"
-      ><span>{agent}</span>{@render attempts()}{#if cost !== undefined}<span
-          data-testid="goal-cost"
-          title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.label}>{cost}</span
-        >{/if}{#if !phone}<span data-testid="goal-check">{check}</span>{/if}</span
+      ><span>{agent}</span
+      >{@render attempts()}{#if cost !== undefined && !phone}{@render costText()}{/if}{#if !phone}<span
+          data-testid="goal-check">{check}</span
+        >{/if}</span
     >
   {/snippet}
 </StackedListItem>
@@ -92,7 +103,12 @@
     vertical-align: middle;
   }
 
-  /* The phone's third line ends in an ellipsis, so a long check never grows the row. */
+  .ib-goal-row__cost {
+    display: block;
+    max-inline-size: 100%;
+  }
+
+  /* The phone's last line ends in an ellipsis, so a long check never grows the row. */
   .ib-goal-row__check {
     display: block;
     max-inline-size: 100%;

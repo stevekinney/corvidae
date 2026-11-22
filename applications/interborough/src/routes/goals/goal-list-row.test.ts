@@ -119,7 +119,24 @@ describe('a goal’s cost on its row (COR-2525)', () => {
     expect(costOf([])).toBeNull();
   });
 
-  test('keeps the cost on line two on a phone, with the check on its own line', () => {
-    expect(costOf([0.5], true)?.textContent).toBe('$0.50');
+  test('puts the cost in the phone’s detail lines, above the check, and not on line two', () => {
+    const row = goalRow(
+      goalFixture('goal-1', {
+        agentName: 'tool-runner',
+        attempts: [attempt(0, 4.5), attempt(1, null)],
+      }),
+    );
+    const { container } = render(GoalListRow, {
+      props: { row, agent: 'Tool runner', zone: 'America/Chicago', phone: true },
+    } as never);
+    const detail = container.querySelector('.cinder-stacked-list-item__detail');
+    const lineTwo = container.querySelector('.cinder-stacked-list-item__meta');
+    expect(detail?.querySelector('[data-testid="goal-cost"]')?.textContent).toBe(
+      COST_COPY.atLeast('$4.50'),
+    );
+    expect(lineTwo?.querySelector('[data-testid="goal-cost"]')).toBeNull();
+    expect(detail?.textContent?.indexOf('$4.50')).toBeLessThan(
+      detail?.textContent?.indexOf('Check') ?? -1,
+    );
   });
 });

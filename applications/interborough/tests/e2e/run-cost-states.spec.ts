@@ -184,6 +184,26 @@ test.describe('/runs: the Cost column (COR-2525)', () => {
       await expect(cost('run-cost-tokens-only')).toHaveCount(0);
       await expect(cost('run-cost-no-usage')).toHaveCount(0);
       await expect(page.getByText('$0.00')).toHaveCount(0);
+      if (width > 640) {
+        // The trailing track is one width in every row: the time of a row with a cost ends where
+        // the time of a row with none does.
+        const timeEdge = async (id: string) =>
+          page
+            .locator(`main li[data-run="${id}"] time`)
+            .evaluate((element) => Math.round(element.getBoundingClientRect().right));
+        const priced = await timeEdge('run-cost-priced');
+        expect(await timeEdge('run-cost-no-usage')).toBe(priced);
+        expect(await timeEdge('run-cost-instance')).toBe(priced);
+        // A cost sits on the first line, level with the title's text.
+        const level = async (selector: string) =>
+          page
+            .locator(`main li[data-run="run-cost-priced"] ${selector}`)
+            .first()
+            .evaluate((element) => Math.round(element.getBoundingClientRect().bottom));
+        expect(
+          Math.abs((await level('[data-testid="run-cost"]')) - (await level('time'))),
+        ).toBeLessThanOrEqual(3);
+      }
       await captureForDesignReview(page, {
         route: '/runs',
         state: 'cost column',
@@ -298,7 +318,7 @@ test.describe('/health: Needs attention while the Bureau lists runs over the thr
       await expect(page.getByText('run-cost-priced')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/health',
-        state: 'needs attention with run items',
+        state: 'needs attention with no run rows yet',
         source: SOURCE,
       });
     });

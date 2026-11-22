@@ -271,7 +271,7 @@
     row-gap: var(--cinder-space-0-5);
     grid-template-columns:
       [status] var(--_cinder-status-track) [leading] auto [title] minmax(0, 1fr) [time] auto
-      [trailing] auto;
+      [trailing] var(--cinder-stacked-list-trailing-track, auto);
     grid-template-areas:
       'status leading title time trailing'
       'status leading line line trailing'
@@ -525,9 +525,17 @@
     flex: none;
   }
 
-  /* The trailing region spans both lines and stays beside them. */
+  /*
+   * The trailing region spans both lines and stays beside them. A list whose rows carry a figure
+   * there (a cost, a count) sets `--cinder-stacked-list-trailing-track` on the list to the width of
+   * its widest figure, so the track is the same in every row, with or without a trailing region, and
+   * the times before it end at one edge. It sets `--cinder-stacked-list-trailing-align` to
+   * `baseline` to hold the figure on the first line's baseline instead of centering it on both
+   * lines. Both default to the row's own: a track sized by its content, and centered.
+   */
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__trailing {
     margin-inline-start: var(--cinder-space-3);
+    align-self: var(--cinder-stacked-list-trailing-align, center);
   }
 
   /* The chat list's exception: the pane is too narrow for a leading column, so line one is the
@@ -537,7 +545,7 @@
     > .cinder-stacked-list-item__layout {
     grid-template-columns:
       [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
-      [trailing] auto;
+      [trailing] var(--cinder-stacked-list-trailing-track, auto);
     grid-template-areas:
       'leading title title time trailing'
       'leading status line line trailing'
