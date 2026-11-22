@@ -25,6 +25,8 @@ type ReferenceHost = {
   ): Promise<void>;
   teardown(): Promise<void>;
   initialized: boolean;
+  /** Set before `mount` to give the panel no `serverTools` capability, as a host that blocks its calls does. */
+  withoutServerTools?: boolean;
   /** Sent to the panel as the tool result that opened it, once it has initialized. */
   toolResult?: Parameters<AppBridge['sendToolResult']>[0];
 };
@@ -68,7 +70,8 @@ const host: ReferenceHost = {
       null,
       { name: 'reference-host', version: '1.0.0' },
       {
-        serverTools: {},
+        // A host that does not let a panel call the server omits the capability (a spec sets this).
+        ...(host.withoutServerTools ? {} : { serverTools: {} }),
         sandbox: { permissions: {}, csp },
       },
       // The theme and style variables the host sends: what a panel follows (COR-2218).
