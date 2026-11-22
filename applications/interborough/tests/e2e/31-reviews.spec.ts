@@ -252,7 +252,7 @@ test.describe('a tool approval', () => {
 
     // The pane says what is asked, who asked it, and what the call was given, and where from.
     await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
-    const source = paneOf(page).getByTestId('review-source');
+    const source = paneOf(page).getByRole('paragraph').filter({ hasText: 'Asked by' });
     await expect(source).toContainText('Asked by');
     await expect(source.getByRole('link', { name: /tool runner/i })).toBeVisible();
     await expect(source).toContainText(/waiting \d+ (min|h|days?)/);
@@ -301,17 +301,12 @@ test.describe('a tool approval', () => {
 
     await note.fill('');
     await paneOf(page).getByRole('heading', { level: 2 }).click();
-    const risk = await paneOf(page)
-      .locator('[data-cinder-layout="row"]')
-      .getAttribute('data-cinder-risk');
     await page.keyboard.press('a');
-    if (risk === 'high') {
-      await expect(rowOf(page, approved.review)).toBeVisible();
-      await expect(
-        paneOf(page).getByRole('button', { name: 'Press again to approve' }),
-      ).toBeVisible();
-      await page.keyboard.press('a');
-    }
+    await expect(rowOf(page, approved.review)).toBeVisible();
+    await expect(
+      paneOf(page).getByRole('button', { name: 'Press again to approve' }),
+    ).toBeVisible();
+    await page.keyboard.press('a');
     await expect(rowOf(page, approved.review)).toHaveCount(0);
     await expect
       .poll(async () => refundRan(await threadMessages(request, approved.threadId)))
@@ -344,7 +339,7 @@ test.describe('a tool approval', () => {
     });
     await remember.check();
     await expect.poll(() => resolves).toHaveLength(0);
-    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(page));
 
     await expect(rowOf(page, review)).toHaveCount(0);
     expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
@@ -422,7 +417,8 @@ test.describe('a tool approval', () => {
         const pane = paneOf(page);
         await expect(pane.getByRole('checkbox')).toHaveCount(0);
         try {
-          await pane.getByRole('button', { name: decision, exact: true }).click();
+          if (decision === 'Approve') await approveReview(pane);
+          else await pane.getByRole('button', { name: decision, exact: true }).click();
           await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
             'aria-busy',
             'true',
@@ -444,7 +440,8 @@ test.describe('a tool approval', () => {
         expect(refundRan(await threadMessages(request, threadId))).toBe(false);
         expect(requests).toHaveLength(1);
         await captureApprovalAtWidths(page, `${decision} failing`);
-        await pane.getByRole('button', { name: decision, exact: true }).click();
+        if (decision === 'Approve') await approveReview(pane);
+        else await pane.getByRole('button', { name: decision, exact: true }).click();
         await expect(rowOf(page, review)).toHaveCount(0);
         expect(requests).toHaveLength(2);
       });
@@ -529,7 +526,7 @@ test.describe('a tool approval', () => {
     const { review } = await waitingRefund(page, request, 'reviews-done', REFUND_APPROVAL);
     const note = 'Confirmed with the customer.';
     await paneOf(page).getByRole('textbox', { name: 'Note (optional)' }).fill(note);
-    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(page));
     await expect(rowOf(page, review)).toHaveCount(0);
 
     await page.goto(inboxAt(review, 'done'));
