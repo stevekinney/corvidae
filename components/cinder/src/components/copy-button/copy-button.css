@@ -106,4 +106,27 @@
     color: var(--cinder-status-success-text);
     border-color: var(--cinder-status-success-border);
   }
+
+  .cinder-copy-button[data-cinder-appearance='inline'] {
+    padding: 0.1em;
+    min-inline-size: 0;
+    min-block-size: 0;
+    margin-inline-start: 0.2em;
+    font-size: inherit;
+    vertical-align: middle;
+    border-width: 0;
+    border-color: transparent;
+    user-select: none;
+  }
+
+  .cinder-copy-button[data-cinder-appearance='inline'] svg {
+    inline-size: 1em;
+    block-size: 1em;
+  }
+
+  @media (hover: hover) {
+    .cinder-copy-button[data-cinder-appearance='inline']:hover {
+      background: transparent;
+    }
+  }
 }

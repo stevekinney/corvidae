@@ -179,22 +179,29 @@ describe('CopyableValue', () => {
     await waitFor(() => expect(written).toEqual([value]));
   });
 
-  test('draws its control quiet and bare, as CodeBlock does, not as CopyButton’s bordered chip', () => {
-    const rule =
-      /\.cinder-copyable-value \.cinder-copyable-value__control \.cinder-copy-button \{([^}]*)\}/.exec(
-        css,
-      )?.[1] ?? '';
-    expect(rule).toContain('border: 1px solid transparent;');
-    expect(rule).toContain('background: transparent;');
-    expect(rule).toContain('color: var(--cinder-text-muted);');
-    expect(rule).toContain('inline-size: 1.5rem;');
-    // The hover wash and the copied colour are written at the same specificity, so they win.
-    expect(css).toMatch(
-      /\.cinder-copyable-value \.cinder-copyable-value__control \.cinder-copy-button:hover \{[^}]*background: var\(--cinder-surface-hover\);/,
-    );
-    expect(css).toMatch(
-      /\.cinder-copy-button\[data-cinder-copied\] \{[^}]*color: var\(--cinder-status-success-text\);/,
-    );
+  test('uses the inline copy face beside the value', () => {
+    const { container } = render(CopyableValue, { props: { value: ADDRESS } });
+    expect(
+      container.querySelector('.cinder-copy-button')?.getAttribute('data-cinder-appearance'),
+    ).toBe('inline');
+  });
+
+  test.each([
+    ['file://archive/orders', ['file://', 'file://archive/']],
+    ['a..b', ['a.', 'a..']],
+    ['::1', [':', '::']],
+    ['a-@b.', ['a-', 'a-@']],
+  ] as const)('prefers the marked breaks in %s and preserves its text', (value, expected) => {
+    const { container } = render(CopyableValue, { props: { value, breakHints: true } });
+    const root = rootOf(container);
+    const prefixes = Array.from(root.querySelectorAll('wbr'), (hint) => {
+      const range = document.createRange();
+      range.setStart(root, 0);
+      range.setEndBefore(hint);
+      return range.toString();
+    });
+    expect(prefixes).toEqual([...expected]);
+    expect(shown(container)).toBe(value);
   });
 
   test('breaks the value anywhere, and never between its last character and the control', () => {

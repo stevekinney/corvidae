@@ -371,6 +371,7 @@ describe('DescriptionList formatted values', () => {
       const copy = container.querySelector<HTMLButtonElement>('dd .cinder-copy-button');
       expect(copy).not.toBeNull();
       expect(copy?.getAttribute('aria-label')).toBe('Copy Run ID');
+      expect(copy?.getAttribute('data-cinder-appearance')).toBe('inline');
       // Icon-only: an icon and no visible text.
       expect(copy?.querySelector('svg')).not.toBeNull();
       expect(copy?.textContent?.trim()).toBe('');

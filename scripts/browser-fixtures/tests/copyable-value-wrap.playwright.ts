@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
+import { fixtureRoute, setFixtureWidth } from './layout-fixture.ts';
 
 test('the address breaks across lines and the control sits on the last of them', async ({
   browser,
@@ -51,4 +51,49 @@ test('the address breaks across lines and the control sits on the last of them',
   } finally {
     await context.close();
   }
+});
+
+test('separator hints wrap an address as a unit and keep the button on its last line', async ({
+  page,
+}) => {
+  await page.goto(`${fixtureRoute('copyable-value')}&hints=1`, { waitUntil: 'load' });
+  await setFixtureWidth(page.getByTestId('hinted-address-wrapper'), '200px');
+  const value = page.getByTestId('hinted-address');
+  const control = value.locator('.cinder-copyable-value__control');
+  await expect(value).toHaveCSS('user-select', 'all');
+  await expect(control).toHaveCSS('user-select', 'none');
+  await expect(page.getByTestId('address')).toHaveCSS('user-select', 'auto');
+
+  const { lines, buttonTop } = await value.evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) =>
+        node.parentElement?.closest('.cinder-copyable-value__control')
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    });
+    const range = document.createRange();
+    const lines: Array<{ text: string; top: number; bottom: number }> = [];
+    let previous: DOMRect | undefined;
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const text = node.textContent ?? '';
+      for (let index = 0; index < text.length; index++) {
+        range.setStart(node, index);
+        range.setEnd(node, index + 1);
+        const rect = range.getBoundingClientRect();
+        if (previous === undefined || rect.top - previous.top > previous.height / 2) {
+          lines.push({ text: '', top: rect.top, bottom: rect.bottom });
+        }
+        const line = lines.at(-1)!;
+        line.text += text[index];
+        line.bottom = Math.max(line.bottom, rect.bottom);
+        previous = rect;
+      }
+    }
+    return { lines, buttonTop: element.querySelector('button')!.getBoundingClientRect().top };
+  });
+  expect(lines.length).toBeGreaterThanOrEqual(2);
+  for (const line of lines.slice(0, -1)) expect(line.text).toMatch(/[.\-@:/]$/);
+  const last = lines.at(-1)!;
+  expect(buttonTop).toBeGreaterThanOrEqual(last.top);
+  expect(buttonTop).toBeLessThan(last.bottom);
 });
