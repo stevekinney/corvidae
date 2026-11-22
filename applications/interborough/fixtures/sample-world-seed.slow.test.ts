@@ -6,6 +6,7 @@
  * time between the moments the seed sets, so a time is asserted as the moment it was set to, plus at
  * most {@link SLACK}.
  */
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -52,11 +53,14 @@ const SLACK = 60_000;
 
 let home = '';
 let world: SampleWorld;
+/** The steps the seed said it began, in order. */
+const steps: string[] = [];
 
 beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), 'interborough-sample-world-'));
   world = await seedSampleWorld(join(home, 'home'), {
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
+    onStep: (step) => steps.push(step),
   });
 });
 
@@ -103,6 +107,35 @@ type ContextRow = {
   updatedAt: string;
   lastMessagePreview: string | null;
 };
+
+describe('the steps of the seed (COR-2632)', () => {
+  test('says each step as it begins: every host started, its work, and its host stopped', () => {
+    expect(steps.slice(0, 3)).toEqual([
+      'Tool runner version 1: starting its host',
+      'Tool runner version 1',
+      'Tool runner version 1: stopping its host',
+    ]);
+    expect(steps).toContain('Oct 23');
+    expect(steps).toContain('Oct 24');
+    expect(steps.slice(-2)).toEqual(['Nov 2: starting its host', 'Nov 2']);
+  });
+
+  test('rejects with an error that names the step that failed', async () => {
+    const failing = await mkdtemp(join(tmpdir(), 'interborough-sample-world-failing-'));
+    try {
+      const seeded = seedSampleWorld(join(failing, 'home'), {
+        onStep: (step) => {
+          if (step === 'Tool runner version 1: starting its host') throw new Error('no host today');
+        },
+      });
+      expect(await throwingRejectionOf(seeded)).toThrow(
+        `The sample world's step "Tool runner version 1: starting its host" failed: no host today`,
+      );
+    } finally {
+      await rm(failing, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('the sample world, part A', () => {
   test('holds the agent file the end-to-end showcase editor opens (COR-2412)', async () => {

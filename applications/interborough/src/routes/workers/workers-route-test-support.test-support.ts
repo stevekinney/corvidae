@@ -143,7 +143,8 @@ export class ScriptedFetch {
    */
   routeRest(match: (url: URL, method: string) => boolean, respond: () => Response): void {
     this.#routes.push({
-      matches: (call) => match(new URL(call.url), call.init?.method ?? 'GET'),
+      // A relative address (the host's own, such as `/host/paths`) is read against the page's origin.
+      matches: (call) => match(new URL(call.url, 'http://localhost/'), call.init?.method ?? 'GET'),
       respond,
     });
   }
