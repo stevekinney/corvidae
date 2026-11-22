@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import type { AgentDefinitionInput, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import {
@@ -20,6 +20,7 @@ import {
   StubFault,
 } from '../../lib/bureau-stub.test-support.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
+import { LIMIT_BOUNDS } from '../agent-editor/agent-editor-state.svelte.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
 import {
@@ -658,10 +659,14 @@ describe('guardrails and spend', () => {
       let current = detailWith({ limits: { steps: null, cost: { run: 7, chat: 7 }, tools: null } });
       const served = serve({ 'bureau.agents.definitions.get': () => current });
       const client = createQueryClient();
-      const { findByLabelText } = mount(undefined, client);
+      const { findByLabelText, queryByText } = mount(undefined, client);
 
       const chat = await findByLabelText(copy.spendLabel);
+      expect(chat).toHaveValue('7');
+      await fireEvent.focus(chat);
       await fireEvent.input(chat, { target: { value: '0,' } });
+      await tick();
+      expect(chat).toHaveValue('0,');
       current = {
         ...detailWith({ limits: { steps: null, cost: null, tools: null } }),
         hash: 'hash-2',
@@ -672,6 +677,8 @@ describe('guardrails and spend', () => {
 
       await fireEvent.blur(chat);
       expect(chat).toHaveValue('');
+      expect(chat).not.toHaveAttribute('aria-invalid', 'true');
+      expect(queryByText(AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd))).toBeNull();
       expect(updatesOf(served)).toHaveLength(0);
     } finally {
       if (originalLanguage === undefined) delete (navigator as { language?: string }).language;
