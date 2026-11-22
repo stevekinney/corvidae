@@ -27,7 +27,160 @@ const page = (offset: number, count: number, more: boolean) => ({
   nextOffset: more ? offset + count : null,
 });
 
+const sse = (events: readonly unknown[]) =>
+  new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+    headers: { 'content-type': 'text/event-stream' },
+  });
+
 describe('the list of sessions', () => {
+  test('keeps Show chats focus when an attached approval arrives after the list is shown', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    let releaseAttach: (response: Response) => void = () => {
+      throw new Error('The chat did not begin attaching.');
+    };
+    window.localStorage.setItem('interborough-chats:list-collapsed', 'true');
+    try {
+      restore = bureau(
+        {
+          'bureau.agents.list': () => ({ agents: [AGENT] }),
+          'bureau.contexts.get': () => CONTEXT,
+          'bureau.contexts.list': () => ({ contexts: [CONTEXT], nextOffset: null }),
+          'bureau.reviews.list': () => ({ reviews: [] }),
+        },
+        (url) => {
+          if (url.endsWith('/messages'))
+            return Response.json({ threadId: 'session-1', messages: [] });
+          if (url.includes('/threads/'))
+            return new Promise<Response>((resolve) => {
+              releaseAttach = resolve;
+            });
+          return undefined;
+        },
+      ).restore;
+      landAt('/chats/session-1');
+      const { findByRole, findByText } = mount();
+
+      const show = await findByRole('button', { name: 'Show chats' });
+      await fireEvent.click(show);
+      const hide = await findByRole('button', { name: 'Hide chats' });
+      expect(document.activeElement).toBe(hide);
+
+      releaseAttach(
+        sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'native-1' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: 'session-1',
+            runId: 'native-1',
+            outcome: {
+              type: 'interrupt',
+              interrupts: [
+                {
+                  id: 'approval:native-1:call-refund',
+                  reason: 'tool-approval',
+                  toolCallId: 'call-refund',
+                  message: 'Refund order-1001?',
+                  metadata: { '@lostgradient/bureau': { kind: 'tool-approval', round: 2 } },
+                },
+              ],
+            },
+          },
+        ]),
+      );
+
+      await findByText('Refund order-1001?');
+      await waitFor(() => expect(document.activeElement).toBe(hide));
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+      window.localStorage.removeItem('interborough-chats:list-collapsed');
+    }
+  });
+
+  test('moves focus from the chat row that opened an attached approval', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    let releaseAttach: (response: Response) => void = () => {
+      throw new Error('The chat did not begin attaching.');
+    };
+    try {
+      restore = bureau(
+        {
+          'bureau.agents.list': () => ({ agents: [AGENT] }),
+          'bureau.contexts.get': () => CONTEXT,
+          'bureau.contexts.list': () => ({ contexts: [CONTEXT], nextOffset: null }),
+          'bureau.reviews.list': () => ({ reviews: [] }),
+        },
+        (url) => {
+          if (url.endsWith('/messages'))
+            return Response.json({ threadId: 'session-1', messages: [] });
+          if (url.includes('/threads/'))
+            return new Promise<Response>((resolve) => {
+              releaseAttach = resolve;
+            });
+          return undefined;
+        },
+      ).restore;
+      landAt('/chats');
+      const { findByRole, findByText } = mount();
+
+      const opener = await findByRole('link', { name: /Plan the week/ });
+      opener.focus();
+      await fireEvent.click(opener);
+      expect(document.activeElement).toBe(opener);
+      releaseAttach(
+        sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'native-1' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: 'session-1',
+            runId: 'native-1',
+            outcome: {
+              type: 'interrupt',
+              interrupts: [
+                {
+                  id: 'approval:native-1:call-refund',
+                  reason: 'tool-approval',
+                  toolCallId: 'call-refund',
+                  message: 'Refund order-1001?',
+                  metadata: { '@lostgradient/bureau': { kind: 'tool-approval', round: 2 } },
+                },
+              ],
+            },
+          },
+        ]),
+      );
+
+      await findByText('Refund order-1001?');
+      await waitFor(() => {
+        const approval = document.querySelector<HTMLElement>('[data-approval-decision]');
+        expect(document.activeElement).toBe(approval);
+      });
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+  });
+
   test('keeps the open chat mounted when a refused approval changes its list status', async () => {
     const waiting = { ...CONTEXT, activity: 'awaiting-input' };
     let reads = 0;
