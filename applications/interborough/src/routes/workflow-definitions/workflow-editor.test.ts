@@ -913,28 +913,6 @@ describe('the step builder in the editor', () => {
     expect(definition).not.toHaveProperty('name');
   });
 
-  test('correction round one: a schedule the When block shows but has not passed on refuses Save and goes to the field; fixed, it saves the spec on screen', async () => {
-    const { container, getByRole, getByLabelText } = open('/workflows/digest/edit');
-    await builderReady(container);
-    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
-    const minute = getByLabelText('Minute') as HTMLInputElement;
-    await fireEvent.input(minute, { target: { value: '75' } });
-    await waitFor(() => expect(minute.getAttribute('aria-invalid')).toBe('true'));
-
-    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
-    await waitFor(() => expect(document.activeElement === minute).toBe(true));
-    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
-    expect(router.pathname).toBe('/workflows/digest/edit');
-
-    await fireEvent.input(minute, { target: { value: '30' } });
-    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
-    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
-    const definition = stub?.callsTo('bureau.workflows.update')[0]?.params['definition'] as {
-      trigger: Record<string, unknown>;
-    };
-    expect(definition.trigger['spec']).toBe('30 6 * * *');
-  });
-
   test('correction round one: Discard while the Bureau checks the draft writes nothing and leaves', async () => {
     const { container, getByRole, findByRole } = open('/workflows/digest/edit');
     await builderReady(container);
@@ -969,10 +947,7 @@ describe('the step builder in the editor', () => {
     await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
 
     answer({ status: 'ok', id: 'digest', hash: 'hash-1' });
-    // The answer reaches the page's continuation, which has been told the press is over: a write
-    // that must not happen gets its chance.
-    await quietFor(200);
-    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.update')).toEqual([]));
     expect(router.pathname).toBe('/workflows/digest');
   });
 

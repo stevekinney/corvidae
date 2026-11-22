@@ -536,11 +536,11 @@
             documentProblem = null;
           }}
         >
-          {#snippet actions(readOnly: boolean)}
+          {#snippet actions(readOnly: boolean, locked: boolean)}
             <Button
               variant="secondary"
               size="sm"
-              disabled={save.isPending || checking}
+              disabled={locked}
               onclick={cancel}>{editor.cancelAction}</Button
             >
             <Button
@@ -549,7 +549,7 @@
               onclick={() => void submit()}
               variant="primary"
               size="sm"
-              disabled={save.isPending || checking || readOnly}
+              disabled={locked || readOnly}
               >{save.isPending || checking ? editor.savingAction : editor.saveAction}</Button
             >
           {/snippet}

@@ -202,8 +202,8 @@
         documentProblem = null;
       }}
     >
-      {#snippet actions(readOnly: boolean)}
-        <Button variant="secondary" size="sm" disabled={save.isPending || checking} onclick={cancel}
+      {#snippet actions(readOnly: boolean, locked: boolean)}
+        <Button variant="secondary" size="sm" disabled={locked} onclick={cancel}
           >{creator.cancelAction}</Button
         >
         <Button
@@ -212,7 +212,7 @@
           onclick={() => void submit()}
           variant="primary"
           size="sm"
-          disabled={save.isPending || checking || readOnly}
+          disabled={locked || readOnly}
           >{save.isPending || checking ? creator.creatingAction : creator.saveAction}</Button
         >
       {/snippet}
