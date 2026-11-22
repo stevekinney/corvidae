@@ -363,4 +363,44 @@ describe('CLI run control', () => {
     expect(refused.exitCode).toBe(1);
     expect(refused.stderr).toContain('not failed');
   });
+
+  // spawn-free: injected fetch replaces the management process; the server answers a fault.
+  test('COR-2533: a fault that can come after the retry committed stays an unknown outcome', async () => {
+    const fault = (weftCode: string, httpStatus: number) => async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 'x',
+        error: {
+          code: -32000,
+          message: `The server said ${weftCode}.`,
+          data: { weftCode, httpStatus },
+        },
+      });
+    // The server refused or found the call malformed, so nothing ran: exit 1, authorization 3, conflict 4.
+    const refusals: Array<[string, number, number]> = [
+      ['InvalidParams', 400, 1],
+      ['NotFound', 404, 1],
+      ['Unprocessable', 422, 1],
+      ['Forbidden', 403, 3],
+      ['Conflict', 409, 4],
+    ];
+    for (const [weftCode, httpStatus, exitCode] of refusals) {
+      const result = await executeCli(['runs', 'retry', 'w1'], {
+        fetch: fault(weftCode, httpStatus),
+      });
+      expect([weftCode, result.exitCode]).toEqual([weftCode, exitCode]);
+    }
+    // The retry may have run when the server failed after it, say writing its receipt.
+    for (const [weftCode, httpStatus] of [
+      ['EngineFailure', 500],
+      ['Unavailable', 503],
+      ['Timeout', 504],
+    ] as const) {
+      const result = await executeCli(['runs', 'retry', 'w1', '--output', 'json'], {
+        fetch: fault(weftCode, httpStatus),
+      });
+      expect([weftCode, result.exitCode]).toEqual([weftCode, 7]);
+      expect(JSON.parse(result.stdout).error).toMatchObject({ exitCode: 7, code: weftCode });
+    }
+  });
 });

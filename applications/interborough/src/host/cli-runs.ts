@@ -1,4 +1,9 @@
-import { request, stream, type CliTarget } from './cli-client-transport.ts';
+import {
+  faultRefusedBeforeAnyEffect,
+  request,
+  stream,
+  type CliTarget,
+} from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { isDryRun } from './cli-destructive.ts';
 
@@ -461,10 +466,16 @@ async function retry(
       ...(step === undefined ? {} : { step }),
     });
   } catch (error) {
-    // A fault the server answered with says the retry was refused and nothing changed, so it is no
-    // unknown outcome (exit 7); only a request that got no answer is.
-    if (error instanceof Error && typeof Reflect.get(error, 'faultCode') === 'string')
-      throw Object.assign(error, { exitCode: 1 });
+    // Only a fault that guarantees nothing ran is a refusal (exit 1, or the authorization and
+    // conflict statuses `executeCli` already gives a 401, 403 or 409). `EngineFailure`,
+    // `Unavailable` and `Timeout` can come after the retry committed, for example when a later
+    // write of its receipt fails, so they stay an unknown outcome (exit 7), as does a request that
+    // got no answer.
+    if (error instanceof Error && faultRefusedBeforeAnyEffect(error)) {
+      const status: unknown = Reflect.get(error, 'status');
+      if (status !== 401 && status !== 403 && status !== 409)
+        throw Object.assign(error, { exitCode: 1 });
+    }
     throw error;
   }
   return {
