@@ -63,6 +63,15 @@
     children,
   }: FaultErrorStateProps = $props();
 
+  /** Opens Health inside the application, unless the person asked for a new tab or window. */
+  function openHealthPage(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(HEALTH_PATH);
+  }
+
   /** The address of Health or any page under it. */
   const HEALTH_PAGE = /^\/health(?:\/|$)/;
 
@@ -110,7 +119,12 @@
 </script>
 
 {#snippet openHealth()}
-  <Button variant="secondary" href={router.href(HEALTH_PATH)} label={OPEN_HEALTH_LABEL} />
+  <Button
+    variant="secondary"
+    href={router.href(HEALTH_PATH)}
+    label={OPEN_HEALTH_LABEL}
+    onclick={openHealthPage}
+  />
 {/snippet}
 
 <!-- Every kind is announced as an alert, as every fault was before it was drawn on `ErrorState`. -->

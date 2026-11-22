@@ -520,6 +520,15 @@ describe('withoutInternalNames', () => {
     }
   });
 
+  test('leaves a quoted or backticked span alone: a person’s own name for something', () => {
+    expect(withoutInternalNames('No agent "Travel Bureau" here. Bureau is shutting down.')).toBe(
+      'No agent "Travel Bureau" here. The server is shutting down.',
+    );
+    expect(withoutInternalNames('The agent `Travel Bureau` or “Bureau North” failed')).toBe(
+      'The agent `Travel Bureau` or “Bureau North” failed',
+    );
+  });
+
   test('classifyFault applies it to the message, the remediation and each field error', () => {
     const error = new HttpClientError(422, 'This Bureau rejected it.', {
       remediation: 'Ask the Bureau again.',

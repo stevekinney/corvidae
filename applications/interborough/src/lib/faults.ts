@@ -289,6 +289,15 @@ export function classifyFault(error: unknown): FaultTreatment | null {
  * sent it, so the words are mapped here, where every fault is classified.
  */
 export function withoutInternalNames(text: string): string {
+  // A quoted or backticked span is a person's own words, such as an agent named "Travel Bureau",
+  // and is left as it came; the odd indexes of the split are those spans.
+  return text
+    .split(/("[^"]*"|“[^”]*”|`[^`]*`)/)
+    .map((part, index) => (index % 2 === 1 ? part : renameServerParts(part)))
+    .join('');
+}
+
+function renameServerParts(text: string): string {
   return text
     .replace(/\b(the|this|The|This) Bureau\b/g, '$1 server')
     .replace(/(^|[.:!?] )Bureau\b/g, '$1The server')

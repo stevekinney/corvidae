@@ -264,6 +264,26 @@ describe('FaultBoundary', () => {
       expect(container.querySelector('.cinder-error-state-action')?.contains(link)).toBe(true);
     });
 
+    test('Open Health opens inside the application on a plain click, and leaves a modified click to the browser', async () => {
+      router.navigate('/', { replace: true });
+      const error = new HttpClientError(503, 'The server is not ready.');
+      const { findByRole } = await renderHarness({ error });
+      const link = await findByRole('link', { name: 'Open Health' });
+
+      // A click with a modifier is the browser's own: nothing is prevented, the router stays put.
+      const modified = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true });
+      link.dispatchEvent(modified);
+      expect(modified.defaultPrevented).toBe(false);
+      expect(router.pathname).toBe('/');
+
+      try {
+        await fireEvent.click(link);
+        expect(router.pathname).toBe('/health');
+      } finally {
+        router.navigate('/', { replace: true });
+      }
+    });
+
     test('a bug the boundary caught while rendering says nothing about the server: no Open Health', async () => {
       const { findByRole, queryByRole } = await renderHarness({ error: new Error('render bug') });
 
