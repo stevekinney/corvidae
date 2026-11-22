@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2560",
+  "branch": "worktree-agent-aa7c89813f4b0485e",
+  "checkedAt": "7b0d47d91fc5f7ee2ec1c0c769796212af3f7cca",
+  "briefVersion": "5bfc033455b0",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "lib/faults.ts treatmentErrorStateAdvice/faultErrorStateAdvice put the fault's remediation on ErrorState and are spread at every ErrorState whose words come from a classified fault or that has the fault object at its render site (run-related, run-logs, run-detail, checkpoints-tab, timeline-tab, schedule-detail/edit, new-schedule, hook-list/deliveries, goal-list, audit, checks-list, run-list, workers-states, view-frame and the others in the diff), plus app/fault-error-state.svelte under the fault boundary and the three query-fault-banner components. faults.test.ts 'the fault-to-view mapping' asserts the remediation for one fault of each of the seven treatment kinds. Not covered, with no fault object at the site: boot-failure, route-outlet, home activity cards, models-section catalog failure, the stopped and canceled states, the refresh-failed Banners."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "canRetryFault/treatmentErrorStateAdvice give onRetry only when retryable is not false. faults.test.ts: Retry present for retryable true, for a fault with no field, and for a non-wire error; absent for retryable false across every HttpClientError kind. fault-boundary.test.ts, the three query-fault-banner tests and schedules/fault-banner.test.ts assert the button; run-list-sentences.test.ts and faults.test.ts cover screens that read several things (Retry stays while any failed read can be retried)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "fault-boundary.svelte draws app/fault-error-state.svelte, a Cinder ErrorState row, with the same remediation and Retry rule; fault-boundary.test.ts passes with new assertions for remediation as a line under the description and Retry present, absent and defaulted. Deleted from foundation.css, workflows.css and reviews.css: the banner, icon and message rules and the warning tone. Kept: the box (border, background) because the ErrorState row draws none, and the note, field-error and stack rules. Changed assertions: conflict is danger, not warning (ErrorState has no warning tone); danger kinds read their tone from data-cinder-tone on the ErrorState."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Remediation is rendered only through ErrorState's remediation prop, a paragraph after the description; no site passes it as title. fault-boundary.test.ts asserts the title is the treatment title and does not contain the remediation, and the line follows the description in document order."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "NOT VERIFIED by the worker: the capture and the design-review verdict are the coordinator's. In place: tests/e2e/fault-remediation.spec.ts calls captureForDesignReview for 'fault retryable with remediation', 'fault not retryable' and 'fault with no remediation' on /hooks (an ErrorState page state) and /reviews (the shared fault row), at 1280 and 375 (the capture repeats a phone at 320 by 640), registered in scripts/design-review-capture.ts and design-review-capture.test.ts."
+    }
+  ]
+}
