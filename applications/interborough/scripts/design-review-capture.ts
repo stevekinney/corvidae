@@ -108,7 +108,8 @@ const SPECIFICATIONS = {
  * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`), and the hook
  * editor and its deliveries: a plugin hook, a default hook, a withdrawn one, the secret field, a
  * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
- * state of its board (`hooks-states.spec.ts`).
+ * state of its board (`hooks-states.spec.ts`), and a fault's remediation and Retry on the Hooks
+ * list's failed state (`fault-remediation.spec.ts`).
  */
 /**
  * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
@@ -175,6 +176,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/runs-states.spec.ts',
   'tests/e2e/run-page-states.spec.ts',
   'tests/e2e/run-page-live-states.spec.ts',
+  // What a run cost: a reply's details, the run page's rail, the Runs list's Cost column, a goal's
+  // row and Health's Needs attention (COR-2525).
+  'tests/e2e/run-cost-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
   // The Checks page in each state of its design rows: first use, filtered to nothing, loading,
@@ -196,6 +200,10 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/31-reviews.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
+  // A fault's remediation and Retry on the Hooks list's failed state and the Reviews fault row: a
+  // retryable fault with a remediation, one that is not retryable, one with no remediation, and a
+  // conflict in the warning tone, and the failed row under a run's hooks (COR-2560).
+  'tests/e2e/fault-remediation.spec.ts',
   // The four typed-confirmation dialogs (bulk action, purge, drain, clear dead letter) in each
   // state, which no page capture sees (COR-2547). `--grep confirm-dialog-states` selects it.
   'tests/e2e/confirm-dialog-states.spec.ts',

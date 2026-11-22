@@ -91,7 +91,11 @@
       variant="flat"
     />
   {:else if leaseQuery.isError}
-    <QueryFaultBanner error={leaseQuery.error} onRetry={() => leaseQuery.refetch()} />
+    <QueryFaultBanner
+      error={leaseQuery.error}
+      subject="the server lease"
+      onRetry={() => leaseQuery.refetch()}
+    />
   {:else if presentation}
     {#if leaseQuery.data?.status === 'contested'}
       <Alert variant="danger">{presentation.description}</Alert>
