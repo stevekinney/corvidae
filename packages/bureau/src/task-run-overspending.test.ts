@@ -84,6 +84,8 @@ async function start(
   scripts: Record<string, () => unknown>,
   options: {
     readonly threshold?: number;
+    /** Whether runs go through the durable engine; the default is that they do not. */
+    readonly durable?: boolean;
     readonly model?: string;
     readonly catalog?: ReturnType<typeof createVendorCatalog>['descriptors'];
   } = {},
@@ -95,7 +97,7 @@ async function start(
     overrides: {
       runtime,
       maintenance: 'manual',
-      durable: false,
+      durable: options.durable ?? false,
       ...(options.catalog === undefined ? {} : { models: { catalog: options.catalog } }),
       answerEncryption: { current: key },
       hooks: {},
@@ -175,50 +177,58 @@ describe('the spend threshold setting (COR-2527)', () => {
 });
 
 describe('a run over the spend threshold (COR-2527)', () => {
-  it('AC2, AC3, AC4: is flagged at the step that crosses, stays flagged after it settles, is announced once, and is never stopped', async () => {
-    const model = threeSteps();
-    const world = await start({ 'claude-opus-5-5': model.script }, { threshold: THRESHOLD });
-    const hook = await world.bureau.hooks!.create({
-      url: 'https://receiver.example/hook',
-      signingSecret: SIGNING_SECRET,
-      principal: PRINCIPAL,
-      events: ['run.overspending'],
-    });
-    const task = await world.bureau.tasks.start('helper', 'Go.', { principal: PRINCIPAL });
+  it.each(['non-durable', 'durable'] as const)(
+    'AC2, AC3, AC4: is flagged at the step that crosses, stays flagged after it settles, is announced once, and is never stopped, %s dispatch',
+    async (dispatch) => {
+      const model = threeSteps();
+      const world = await start(
+        { 'claude-opus-5-5': model.script },
+        { threshold: THRESHOLD, durable: dispatch === 'durable' },
+      );
+      const hook = await world.bureau.hooks!.create({
+        url: 'https://receiver.example/hook',
+        signingSecret: SIGNING_SECRET,
+        principal: PRINCIPAL,
+        events: ['run.overspending'],
+      });
+      const task = await world.bureau.tasks.start('helper', 'Go.', { principal: PRINCIPAL });
 
-    // One step in: under the threshold.
-    await model.reachedSecond;
-    await waitUntil(
-      async () => (await world.bureau.tasks.get(task.id))?.usage?.costUsd !== undefined,
-    );
-    expect(await attentionOf(world, task.id)).toEqual([]);
+      // One step in: under the threshold.
+      await model.reachedSecond;
+      await waitUntil(
+        async () => (await world.bureau.tasks.get(task.id))?.usage?.costUsd !== undefined,
+      );
+      expect(await attentionOf(world, task.id)).toEqual([]);
 
-    // The second step crosses it, and the run goes on.
-    model.releaseSecond();
-    await model.reachedThird;
-    await waitUntil(
-      async () => (await attentionOf(world, task.id))?.includes('overspending') === true,
-    );
-    const running = await world.bureau.tasks.get(task.id);
-    expect(running?.status).toBe('working');
-    expect(running?.attention).toEqual(['overspending']);
+      // The second step crosses it, and the run goes on.
+      model.releaseSecond();
+      await model.reachedThird;
+      await waitUntil(
+        async () => (await attentionOf(world, task.id))?.includes('overspending') === true,
+      );
+      const running = await world.bureau.tasks.get(task.id);
+      expect(running?.status).toBe('working');
+      expect(running?.attention).toEqual(['overspending']);
 
-    // The third step is over the threshold too: nothing more is announced, and the run completes.
-    model.releaseThird();
-    await settle(world, task);
-    const settled = await world.bureau.tasks.get(task.id);
-    expect(settled?.status).toBe('completed');
-    expect(settled?.attention).toEqual(['overspending']);
+      // The third step is over the threshold too: nothing more is announced, and the run completes.
+      model.releaseThird();
+      await settle(world, task);
+      const settled = await world.bureau.tasks.get(task.id);
+      expect(settled?.status).toBe('completed');
+      expect(settled?.attention).toEqual(['overspending']);
 
-    expect(world.overspending).toHaveLength(1);
-    expect(world.overspending[0]).toMatchObject({ runId: task.id, thresholdUsd: THRESHOLD });
-    expect(world.overspending[0]!.costUsd).toBeCloseTo(STEP_COST * 2, 10);
-    const deliveries = await waitForSettledDeliveries(world.bureau, hook.id, 1);
-    expect(deliveries).toHaveLength(1);
-    expect(deliveries[0]).toMatchObject({ kind: 'run.overspending', status: 'delivered' });
-    const body = JSON.parse(world.receiver.calls[0]!.body) as { payload: Record<string, unknown> };
-    expect(body.payload).toMatchObject({ runId: task.id, thresholdUsd: THRESHOLD });
-  });
+      expect(world.overspending).toHaveLength(1);
+      expect(world.overspending[0]).toMatchObject({ runId: task.id, thresholdUsd: THRESHOLD });
+      expect(world.overspending[0]!.costUsd).toBeCloseTo(STEP_COST * 2, 10);
+      const deliveries = await waitForSettledDeliveries(world.bureau, hook.id, 1);
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0]).toMatchObject({ kind: 'run.overspending', status: 'delivered' });
+      const body = JSON.parse(world.receiver.calls[0]!.body) as {
+        payload: Record<string, unknown>;
+      };
+      expect(body.payload).toMatchObject({ runId: task.id, thresholdUsd: THRESHOLD });
+    },
+  );
 
   it('flags a run whose only step crosses, whichever of the step and the settlement lands first', async () => {
     const world = await start(
@@ -253,6 +263,26 @@ describe('a run over the spend threshold (COR-2527)', () => {
     expect((await world.bureau.tasks.get(task.id))?.usage?.costUsd).toBeNull();
     expect(await attentionOf(world, task.id)).toEqual([]);
     expect(world.overspending).toEqual([]);
+  });
+
+  it('a flagged run that is canceled keeps `overspending` and announces it once', async () => {
+    const model = threeSteps();
+    const world = await start({ 'claude-opus-5-5': model.script }, { threshold: THRESHOLD });
+    const task = await world.bureau.tasks.start('helper', 'Go.', { principal: PRINCIPAL });
+    model.releaseSecond();
+    await model.reachedThird;
+    await waitUntil(
+      async () => (await attentionOf(world, task.id))?.includes('overspending') === true,
+    );
+
+    await world.bureau.tasks.cancel(task.id);
+    model.releaseThird();
+    await settle(world, task);
+
+    const view = await world.bureau.tasks.get(task.id);
+    expect(view?.status).toBe('canceled');
+    expect(view?.attention).toEqual(['overspending']);
+    expect(world.overspending).toHaveLength(1);
   });
 
   it('AC7: a changed threshold applies only to later steps', async () => {
