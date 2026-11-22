@@ -1,0 +1,179 @@
+import { afterEach, expect, test } from 'bun:test';
+import { rmSync } from 'node:fs';
+
+import { ciEvidenceRequestKey, type CiEvidenceRequest } from './ci-evidence.ts';
+import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
+import { loadDeliveryVerification } from './delivery-verification.ts';
+import { changedAnswer, jobsAnswer, runsAnswer } from './landing-evidence.test-support.ts';
+import { validateLandingEvidence } from './landing-evidence.ts';
+import type { Runner } from './process-runner.ts';
+
+const directories: string[] = [];
+
+afterEach(() => {
+  for (const directory of directories.splice(0))
+    rmSync(directory, { recursive: true, force: true });
+});
+
+async function evidence(
+  paths: string[],
+  duplicate:
+    | { id: number; status: string; conclusion: string; pinned?: boolean; noJobs?: boolean }
+    | undefined,
+  receiptJobs?: Record<string, 'success' | 'not-applicable'>,
+  checkedTree?: string,
+  actualIntegrationTree?: string,
+): Promise<string | undefined> {
+  const fixture = await createDeliveryVerificationFixture(undefined, {
+    route: 'pull-request',
+    landing: true,
+  });
+  directories.push(fixture.directory);
+  const loaded = loadDeliveryVerification(fixture.verification, fixture.dependencies);
+  const { request } = loaded;
+  const listed = [
+    { id: 4242, head_sha: request.revision },
+    ...(duplicate === undefined
+      ? []
+      : [
+          {
+            id: duplicate.id,
+            head_sha: request.revision,
+            path: '.github/workflows/pull-request.yml',
+            status: duplicate.status,
+            conclusion: duplicate.conclusion,
+          },
+        ]),
+  ];
+  if (duplicate?.pinned === true && request.ciEvidence?.[0] !== undefined) {
+    const identity: Omit<CiEvidenceRequest, 'requestKey'> = {
+      ...request.ciEvidence[0],
+      event: 'pull_request',
+      workflow: 'Pull request',
+      workflowPath: '.github/workflows/pull-request.yml',
+    };
+    request.ciEvidence.push({ ...identity, requestKey: ciEvidenceRequestKey(identity) });
+  }
+  const answers = {
+    ...runsAnswer(request.repository, request.revision, listed),
+    ...jobsAnswer(request.repository),
+    ...changedAnswer(request.base, request.revision, paths),
+    ...(duplicate === undefined
+      ? {}
+      : duplicate.noJobs
+        ? {
+            [`api repos/${request.repository}/actions/runs/${duplicate.id}/jobs?per_page=100`]: {
+              code: 0,
+              stderr: '',
+              stdout: '{"jobs":[]}',
+            },
+          }
+        : jobsAnswer(
+            request.repository,
+            duplicate.id,
+            duplicate.conclusion === 'failure' ? 'failure' : 'success',
+          )),
+  };
+  const runner: Runner = (command) =>
+    answers[command.slice(1).join(' ')] ?? { code: 1, stdout: '', stderr: 'unexpected command' };
+  return validateLandingEvidence(
+    loaded,
+    {
+      route: 'pull-request',
+      defaultBranch: 'main',
+      integrationTree: actualIntegrationTree ?? request.integrationTree,
+    },
+    {
+      runner,
+      ciProvider: {
+        async findRuns(identity) {
+          const id = identity.workflowPath.endsWith('pull-request.yml') ? duplicate?.id : 4242;
+          return [
+            {
+              id: id ?? 4242,
+              attempt: 1,
+              repository: identity.repository,
+              head: request.revision,
+              base: request.base,
+              integrationTree: request.integrationTree,
+              event: identity.event,
+              workflow: identity.workflow,
+              workflowPath: identity.workflowPath,
+              workflowRevision: identity.workflowRevision,
+              verificationPlanDigest: identity.verificationPlanDigest,
+              requestKey: identity.requestKey,
+              receiptRequestKey: identity.requestKey,
+              checkedRevision: request.revision,
+              checkedTree: checkedTree ?? request.integrationTree,
+              receiptJobs: receiptJobs ?? {
+                root: 'success',
+                workspaces: 'success',
+                tests: 'success',
+                'tests-slow': 'success',
+                browser: 'success',
+                'test-durations': 'success',
+              },
+              jobs: ['Evidence aggregate'],
+            },
+          ];
+        },
+      },
+    },
+  );
+}
+
+test('reuses a complete manual full receipt only for an unpinned pending pull-request run', async () => {
+  const pending = { id: 4243, status: 'in_progress', conclusion: '' };
+  expect(await evidence(['scripts/chef/landing-evidence.ts'], pending)).toBeUndefined();
+  expect(
+    await evidence(['scripts/chef/landing-evidence.ts'], {
+      ...pending,
+      status: 'queued',
+      noJobs: true,
+    }),
+  ).toBeUndefined();
+  expect(
+    await evidence(
+      ['scripts/chef/landing-evidence.ts'],
+      undefined,
+      undefined,
+      undefined,
+      '0'.repeat(40),
+    ),
+  ).toBeUndefined();
+  expect(await evidence(['.github/workflows/pull-request.yml'], pending)).toContain(
+    'has not finished',
+  );
+  expect(await evidence(['package.json'], pending)).toContain('has not finished');
+  expect(await evidence(['turbo.json'], pending)).toContain('has not finished');
+});
+
+test('keeps pinned, failed, incomplete, and wrong-tree evidence blocking', async () => {
+  expect(
+    await evidence(['a.ts'], { id: 4243, status: 'in_progress', conclusion: '', pinned: true }),
+  ).toContain('has not finished');
+  expect(
+    await evidence(['a.ts'], { id: 4243, status: 'in_progress', conclusion: 'failure' }),
+  ).toContain('concluded failure');
+  expect(
+    await evidence(['a.ts'], { id: 4243, status: 'in_progress', conclusion: '' }, {}),
+  ).toContain('has not finished');
+  expect(await evidence(['a.ts'], undefined, {})).toContain('no green run covers the head');
+  expect(
+    await evidence(
+      ['a.ts'],
+      { id: 4243, status: 'in_progress', conclusion: '' },
+      undefined,
+      '0'.repeat(40),
+    ),
+  ).toContain('checked');
+  expect(
+    await evidence(
+      ['a.ts'],
+      { id: 4243, status: 'in_progress', conclusion: '' },
+      undefined,
+      undefined,
+      '0'.repeat(40),
+    ),
+  ).toContain('has not finished');
+});

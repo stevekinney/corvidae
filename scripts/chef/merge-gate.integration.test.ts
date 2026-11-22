@@ -1233,7 +1233,7 @@ scenarios.describe('mergeGate landing evidence', () => {
   });
 
   scenarios.scenario(
-    'a one-way door needs a full main.yml run: a pull request run alone is refused, and the full run lands',
+    'a one-way door refuses a mismatched full-run identity, and the bound full run lands',
     async () => {
       const door = changedAnswer(BASE, HEAD, [DOOR]);
       const without = landing(
@@ -1247,7 +1247,7 @@ scenarios.describe('mergeGate landing evidence', () => {
       );
       const refused = await mergeGate(options, { runner: without.runner });
       expect(refused.failedStep).toBe('verification');
-      expect(refused.detail).toContain('requires a full main.yml run');
+      expect(refused.detail).toContain('not .github/workflows/main.yml');
       expect(without.merged()).toBe(false);
       const full = landing(asAnswers(door));
       const landed = await mergeGate(options, { runner: full.runner });

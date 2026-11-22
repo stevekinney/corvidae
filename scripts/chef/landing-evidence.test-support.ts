@@ -5,6 +5,7 @@ import {
   ciEvidenceRequestKey,
   type CiEvidenceProvider,
   type CiEvidenceRequest,
+  type CiEvidenceRun,
 } from './ci-evidence.ts';
 import type { DeliveryRequest } from './delivery-completion.ts';
 import type { Runner, RunnerResult } from './process-runner.ts';
@@ -29,7 +30,7 @@ export function landingIdentity(
     workflow: 'Main',
     workflowPath: '.github/workflows/main.yml',
     workflowRevision: request.revision,
-    event: pinned.event ?? 'pull_request',
+    event: pinned.event ?? 'workflow_dispatch',
   } satisfies Omit<CiEvidenceRequest, 'requestKey'>;
   return { ...input, requestKey: ciEvidenceRequestKey(input) };
 }
@@ -39,7 +40,7 @@ export function landingRun(
   identity: CiEvidenceRequest,
   request: Pick<DeliveryRequest, 'base' | 'revision' | 'integrationTree'>,
   overrides: Record<string, unknown> = {},
-) {
+): CiEvidenceRun {
   return {
     id: LANDING_RUN_ID,
     attempt: 1,
@@ -56,7 +57,14 @@ export function landingRun(
     receiptRequestKey: identity.requestKey,
     checkedRevision: request.revision,
     checkedTree: request.integrationTree,
-    receiptJobs: {},
+    receiptJobs: {
+      root: 'success',
+      workspaces: 'success',
+      tests: 'success',
+      'tests-slow': 'success',
+      browser: 'success',
+      'test-durations': 'success',
+    },
     jobs: [],
     ...overrides,
   };
