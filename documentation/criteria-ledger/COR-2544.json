@@ -1,14 +1,14 @@
 {
   "issue": "COR-2544",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "df56cb99290de2ef2fc6607c8ca1e0974ca29974",
+  "checkedAt": "9621dec0e372ee907d7f945ed36c07a3e64a4516",
   "briefVersion": "bdf0e93b22ae",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 10 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, and answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated; operation-map, workspace-privacy, create-bureau-handler, mcp-mount and wire-golden tests pass."
+      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated; the five test files above pass."
     },
     {
       "id": "AC2",

@@ -1,7 +1,7 @@
 {
   "issue": "COR-2538",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "df56cb99290de2ef2fc6607c8ca1e0974ca29974",
+  "checkedAt": "9621dec0e372ee907d7f945ed36c07a3e64a4516",
   "briefVersion": "a01825d1cece",
   "status": "READY",
   "criteria": [
@@ -28,7 +28,7 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict with Create fork disabled, nothing asked for a non-number or without workflows:write. The server answer for this fixture is pinned by tests/fixture-seed.test.ts against a real engine."
+      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict with Create fork disabled, nothing asked for a non-number or without workflows:write. tests/fixture-seed.test.ts pins on a real engine that the dry run for the fork spec's candidate revision is refused with WorkflowRevisionUnavailableError reason 'not-registered' (the reason isForkRevisionConflict reads from the JSON-RPC fault), and that the newest checkpoint keeps one step and reruns one."
     },
     {
       "id": "AC6",
