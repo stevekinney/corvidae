@@ -570,12 +570,18 @@
       inset: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)) 0;
     }
 
-    button.cinder-tool-call-rail__summary {
-      margin-block-end: calc(var(--cinder-space-1-5) + 0.75rem);
-    }
+    @media (any-pointer: coarse) {
+      /* The coarse summary extends 12px below its 20px face. Reserve exactly that reach after
+       * the existing 6px rhythm so its target stops before the first row's target begins. */
+      button.cinder-tool-call-rail__summary {
+        margin-block-end: calc(
+          var(--cinder-space-1-5) + (var(--cinder-touch-target-min) - 1.25rem) / 2
+        );
+      }
 
-    button.cinder-tool-call-rail__summary::before {
-      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      button.cinder-tool-call-rail__summary::before {
+        inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      }
     }
 
     .cinder-tool-call-rail__name,
