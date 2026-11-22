@@ -16,7 +16,7 @@ test('a narrow two-line row puts its action under the text, and several badges d
     waitUntil: 'load',
   });
   await page.getByTestId('actions-no-leading').evaluate((element) => {
-    element.hidden = false;
+    element.removeAttribute('hidden');
   });
   await page.locator('[data-testid="actions"] .cinder-button').waitFor({ state: 'visible' });
   const read = await page.evaluate(() => {
