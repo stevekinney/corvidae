@@ -324,6 +324,11 @@ test.describe('on a tablet', () => {
     });
     await open(page, '/', 1200);
     await expectWidth(sidebar(page), 56);
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'desktop sidebar preference',
+      source: SOURCE,
+    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await expectWidth(sidebar(page), 56);
   });
