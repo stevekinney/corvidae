@@ -468,11 +468,11 @@ describe('which panels have something to say about a run', () => {
     expect(comparison).not.toBeNull();
     await initialize(comparison?.contentWindow as object);
     await waitFor(() =>
-      expect(framePayloads.find((m) => m.method === 'ui/notifications/tool-input')?.params).toEqual(
-        {
-          arguments: { runId: 'wf-fork-1', runKind: 'workflow' },
-        },
-      ),
+      expect(
+        framePayloads.find((m) => m.method === 'ui/notifications/tool-input')?.['params'],
+      ).toEqual({
+        arguments: { runId: 'wf-fork-1', runKind: 'workflow' },
+      }),
     );
   });
 

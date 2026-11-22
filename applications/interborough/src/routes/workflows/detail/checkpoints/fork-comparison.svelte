@@ -289,12 +289,12 @@
     min-inline-size: 0;
   }
 
-  .weft-fork-comparison__frame[data-step-chosen]:has([data-cinder-layout='split']) {
+  .weft-fork-comparison__frame[data-step-chosen]:has(:global([data-cinder-layout='split'])) {
     block-size: 30rem;
     overflow: hidden;
   }
 
-  .weft-fork-comparison__frame:not([data-step-chosen]):has([data-cinder-layout='split']) {
+  .weft-fork-comparison__frame:not([data-step-chosen]):has(:global([data-cinder-layout='split'])) {
     max-block-size: 30rem;
     overflow-y: auto;
   }
