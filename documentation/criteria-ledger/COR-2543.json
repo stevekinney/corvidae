@@ -1,14 +1,14 @@
 {
   "issue": "COR-2543",
   "branch": "worktree-agent-adad48645b85a67de",
-  "checkedAt": "db48c622b1909b4db135fff043be4d787a6cd9ba",
+  "checkedAt": "dd31ee89e22b9e8b5b7684ec0def270170943002",
   "briefVersion": "68c6387c8a66",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "plugins/inspectors/src/failure-explanation (app.ts, model.ts, explanation.svelte, view.svelte.ts) is the panel ui://inspectors/failure-explanation/v1, registered in plugin.ts. It renders the summary, the cause (a badge with code and kind), the step by its label, the tries, the guardrails and the remediation, and reads a result as an object or as the JSON text Chat hands a panel. model.test.ts and explanation.test.ts read each part; panel-inspectors.slow.test.ts builds the page."
+      "evidence": "plugins/inspectors/src/failure-explanation (app.ts, model.ts, explanation.svelte, view.svelte.ts) is the panel ui://inspectors/failure-explanation/v1, registered in plugin.ts. It renders the summary, the cause (a badge with code and kind), the step by its label, the tries, the guardrails and the remediation, and reads a result as an object or as the JSON text Chat hands a panel. model.test.ts and explanation.test.ts read each part; panel-inspectors.slow.test.ts builds the page. Design round 1: the panel draws the answer with the same shared component, announces through Cinder VisuallyHidden role=status (the refused state announces its heading), inherits the BASE_STYLES width cap, shows no internal names; the Cinder DescriptionList two-column variant has no start inset, a label column of at most 10rem and a phone gap of space-1; origin/main (#1213) merged with both panels and tools kept; capture states added for the Chat inline panel and the Run page after the link."
     },
     {
       "id": "AC2",

@@ -1,14 +1,14 @@
 {
   "issue": "COR-2533",
   "branch": "worktree-agent-adad48645b85a67de",
-  "checkedAt": "db48c622b1909b4db135fff043be4d787a6cd9ba",
+  "checkedAt": "dd31ee89e22b9e8b5b7684ec0def270170943002",
   "briefVersion": "a3d6c9079ae0",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "run-failure-explanation.svelte renders bureau.tasks.explain (summary, cause badge with code and kind, step, tries, guardrails, remediation) with the stack behind a Collapsible, used at both failure sites: run-instance-happened.svelte (an instance) and run-input-output.svelte (an engine run that failed, and any failed agent run, whether or not the engine also holds it as a completed run). run-failure-explanation.test.ts reads each part for a failed fixture run; run-input-output.test.ts covers the task-only, task plus completed engine state, and no-message cases; run-detail-engine-runs.test.ts reads the summary and remediation in the failed instance's block on the page."
+      "evidence": "run-failure-explanation.svelte renders bureau.tasks.explain (summary, cause badge with code and kind, step, tries, guardrails, remediation) with the stack behind a Collapsible, used at both failure sites: run-instance-happened.svelte (an instance) and run-input-output.svelte (an engine run that failed, and any failed agent run, whether or not the engine also holds it as a completed run). run-failure-explanation.test.ts reads each part for a failed fixture run; run-input-output.test.ts covers the task-only, task plus completed engine state, and no-message cases; run-detail-engine-runs.test.ts reads the summary and remediation in the failed instance's block on the page. Design round 1: the Run page draws the answer once through the shared component packages/interborough-plugin/src/failure-explanation.svelte (the instance alert keeps no second hand-written explanation; the Bureau sentence leads, facts and the next step follow, steps are named by label, no message, stack or tool argument shows, the stack stays behind \"Show the error details\"); the Chat link sits in a Stack with --cinder-space-3; origin/main (#1213) merged with both agent tools kept."
     },
     {
       "id": "AC2",
