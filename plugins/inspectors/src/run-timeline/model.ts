@@ -52,7 +52,10 @@ const finite = (value: unknown): value is number =>
 function readEntry(value: unknown): TimelineEntry | undefined {
   if (!isRecord(value)) return undefined;
   const { step, label, operationType, status, timestamp, duration, tries } = value;
-  if (!finite(step) || !finite(timestamp)) return undefined;
+  // Weft numbers a run's steps with whole numbers from 1 (`isTimelineStep`), and the page keys its
+  // rows and looks up its bars by that number, so any other step is not one the engine wrote.
+  if (typeof step !== 'number' || !Number.isSafeInteger(step) || step < 1) return undefined;
+  if (!finite(timestamp)) return undefined;
   if (
     typeof label !== 'string' ||
     typeof operationType !== 'string' ||

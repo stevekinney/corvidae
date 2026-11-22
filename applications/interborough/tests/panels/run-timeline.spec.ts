@@ -168,6 +168,7 @@ test.describe('the run timeline MCP App', () => {
       window.referenceHost.handlers['bureau.runs.timeline'] = () => ({
         runId: 'run-1',
         kind: 'workflow',
+        runStatus: 'running',
         truncated: true,
         entries: [
           {

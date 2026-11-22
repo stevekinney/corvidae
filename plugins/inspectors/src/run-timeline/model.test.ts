@@ -37,6 +37,7 @@ describe('reading what the host answered', () => {
     const read = readTimeline({
       runId: 'run-1',
       kind: 'agent',
+      runStatus: 'completed',
       truncated: false,
       entries: [
         {
@@ -82,6 +83,33 @@ describe('reading what the host answered', () => {
     expect(readTimeline({ runId: 'r' })).toBeUndefined();
     expect(readTimeline({ runId: 'r', entries: [{ step: 'one' }] })).toBeUndefined();
     expect(readTimeline({ runId: 'r', entries: [null] })).toBeUndefined();
+  });
+
+  it.each([1.5, -1, 0, Number.NaN, Number.MAX_SAFE_INTEGER + 2])(
+    'refuses a step numbered %s: the engine numbers its steps from 1, and the page keys its rows by number',
+    (step) => {
+      const entry = {
+        step,
+        label: 'a',
+        operationType: 'activity',
+        status: 'completed',
+        timestamp: 1,
+      };
+      expect(readTimeline({ runId: 'r', entries: [entry] })).toBeUndefined();
+      expect(readTimeline({ runId: 'r', entries: [{ ...entry, step: 1 }] })).toBeDefined();
+    },
+  );
+
+  it('keeps reading a timeline whose steps are whole numbers from 1', () => {
+    const entry = { label: 'a', operationType: 'activity', status: 'completed', timestamp: 1 };
+    const read = readTimeline({
+      runId: 'r',
+      entries: [
+        { ...entry, step: 1 },
+        { ...entry, step: 7 },
+      ],
+    });
+    expect(read?.entries.map((each) => each.step)).toEqual([1, 7]);
   });
 
   it('counts a missing or invalid number of tries as one', () => {
