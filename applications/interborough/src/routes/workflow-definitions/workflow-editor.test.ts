@@ -951,12 +951,19 @@ describe('the step builder in the editor', () => {
   });
 
   test('COR-2432: a save the host cannot write names the file and why, nothing saved, Save the retry (row 65w)', async () => {
-    const { container, getByRole } = open('/workflows/digest/edit', {
+    const { container, getByRole, findByRole } = open('/workflows/digest/edit', {
       files: [readyFile('digest', { title: 'Release notes' })],
     });
     await builderReady(container);
     stub?.on('bureau.workflows.update', () => {
-      throw new Error('digest.json couldn’t be written: permission denied.');
+      throw new StubFault(
+        'Unprocessable',
+        422,
+        'digest.json couldn’t be written: permission denied.',
+        {
+          reason: 'workflow-file-write-denied',
+        },
+      );
     });
     await fireEvent.input(field(container, 'workflow-builder-description'), {
       target: { value: 'Changed.' },
@@ -975,7 +982,7 @@ describe('the step builder in the editor', () => {
     );
     expect(field(container, 'workflow-builder-description').value).toBe('Changed.');
     expect(router.pathname).toBe('/workflows/digest/edit');
-    expect(getByRole('button', { name: EDITOR.saveAction })).toBeTruthy();
+    expect(await findByRole('button', { name: EDITOR.saveAction })).toBeTruthy();
   });
 
   test('design correction: Input and Output are the fields table alone, in one column (row 65s)', async () => {

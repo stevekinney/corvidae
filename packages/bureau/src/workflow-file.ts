@@ -796,7 +796,8 @@ export type WorkflowFileErrorCode =
   | 'workflow-file-not-found'
   | 'workflow-file-exists'
   | 'workflow-file-changed'
-  | 'workflow-file-read-only';
+  | 'workflow-file-read-only'
+  | 'workflow-file-write-denied';
 
 /** A write or read of a workflow file that was refused. `problem` carries the detail, if any. */
 export class WorkflowFileError extends Error {

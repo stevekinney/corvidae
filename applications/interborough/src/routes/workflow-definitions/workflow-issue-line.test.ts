@@ -1,6 +1,7 @@
+import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { issuePathOf, lineOfIssue } from './workflow-issue-line.ts';
+import { documentProblemFor } from './workflow-issue-line.ts';
 
 const TEXT = `{
   "name": "morning-briefing",
@@ -17,25 +18,40 @@ const TEXT = `{
 `;
 
 describe('COR-2432: the line a Bureau issue names (row 65z)', () => {
-  test('reads both forms of an issue path', () => {
-    expect(issuePathOf('steps[1].duration')).toEqual(['steps', 1, 'duration']);
-    expect(issuePathOf('$.trigger.kind')).toEqual(['trigger', 'kind']);
-    expect(issuePathOf(['definition', 'steps', 0, 'input'])).toEqual(['steps', 0, 'input']);
+  test.each([
+    ['steps[1].duration', 9],
+    ['steps[0].input.message', 6],
+    ['$.trigger.kind', 3],
+    ['steps[1]', 7],
+    ['steps[1].signal', 7],
+    ['outputSchema', 1],
+  ])('marks the deepest field that exists for %s', async (path, line) => {
+    const problem = await documentProblemFor(TEXT, async () => ({
+      status: 'invalid',
+      code: 'invalid-document',
+      issues: [{ path, message: 'invalid value' }],
+    }));
+    expect(problem).toEqual({ line, message: 'Invalid value.' });
   });
 
-  test('names the line of the key the path ends on', () => {
-    expect(lineOfIssue(TEXT, ['steps', 1, 'duration'])).toBe(9);
-    expect(lineOfIssue(TEXT, ['steps', 0, 'input', 'message'])).toBe(6);
-    expect(lineOfIssue(TEXT, ['trigger'])).toBe(3);
-    expect(lineOfIssue(TEXT, ['steps', 1])).toBe(7);
+  test('reads an array path from an InvalidParams response', async () => {
+    const problem = await documentProblemFor(TEXT, async () => {
+      throw new HttpClientError(400, 'invalid params', {
+        data: {
+          weftCode: 'InvalidParams',
+          issues: [{ path: ['definition', 'steps', 0, 'input'], message: 'invalid input' }],
+        },
+      });
+    });
+    expect(problem).toEqual({ line: 6, message: 'Invalid input.' });
   });
 
-  test('a path that goes further than the text names the last part it holds', () => {
-    expect(lineOfIssue(TEXT, ['steps', 1, 'signal'])).toBe(7);
-    expect(lineOfIssue(TEXT, ['outputSchema'])).toBe(1);
-  });
-
-  test('text with no object at its root names no line', () => {
-    expect(lineOfIssue('[1, 2]', ['steps'])).toBeUndefined();
+  test('text with no object at its root names no line', async () => {
+    const problem = await documentProblemFor('[1, 2]', async () => ({
+      status: 'invalid',
+      code: 'invalid-document',
+      issues: [{ path: 'steps', message: 'invalid steps' }],
+    }));
+    expect(problem).toBeUndefined();
   });
 });

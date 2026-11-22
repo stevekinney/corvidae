@@ -291,7 +291,6 @@ export async function validateWorkflowDefinition(
   );
 }
 
-
 /**
  * One workflow-file run summary returned by the Bureau list operation, as
  * `bureau.workflows.runs.list` summarises an instance. Older fixtures and Bureau versions omit

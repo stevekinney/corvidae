@@ -1244,7 +1244,7 @@ describe('the builder', () => {
     const reason =
       '~/.interborough/workflows/morning-briefing.json couldn’t be written: permission denied.';
     stub?.on('bureau.workflows.create', () => {
-      throw workflowFaults.unprocessable(reason);
+      throw new StubFault('Unprocessable', 422, reason, { reason: 'workflow-file-write-denied' });
     });
     await fillValid(container, 'morning-briefing');
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));

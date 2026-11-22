@@ -88,15 +88,14 @@
       : REPEATS_OPTIONS,
   );
 
-  function handleRepeatsChange(event: Event): void {
+  async function handleRepeatsChange(event: Event): Promise<void> {
     const select = event.currentTarget as HTMLSelectElement;
     if (select.value === CHOOSE_DAYS) {
       choosingDays = true;
       // The list loses its Custom days entry once the chips show, so the select is put back on
       // the schedule's own choice after it is drawn again.
-      void tick().then(() => {
-        select.value = 'custom-days';
-      });
+      await tick();
+      select.value = 'custom-days';
       return;
     }
     // A person who picks Custom days from another choice is choosing days, whatever they were.

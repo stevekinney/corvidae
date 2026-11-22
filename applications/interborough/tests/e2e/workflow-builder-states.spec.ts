@@ -139,9 +139,7 @@ async function answerUnwritable(page: Page, method: string, file: string): Promi
           code: -32022,
           message: `${file} couldn’t be written: permission denied.`,
           data: {
-            reason: 'write-failed',
-            file,
-            cause: 'permission-denied',
+            reason: 'workflow-file-write-denied',
             weftCode: 'Unprocessable',
             httpStatus: 422,
           },
@@ -152,6 +150,23 @@ async function answerUnwritable(page: Page, method: string, file: string): Promi
 }
 
 test.describe('workflow builder design states for /workflows/new and /workflows/:workflow/edit', () => {
+  test('run setup uses form sections for Input and When on /workflows/:workflow/run (S52)', async ({
+    page,
+  }) => {
+    const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: WIDTH, height: 900 });
+    await page.goto(`/workflows/${encodeURIComponent(world.workflows.releaseNotes)}/run`);
+    const sections = page.locator('.cinder-form-section');
+    await expect(
+      sections.getByRole('heading', { name: WORKFLOW_COPY.runSetup.inputHeading }),
+    ).toBeVisible();
+    await expect(
+      sections.getByRole('heading', { name: WORKFLOW_COPY.runSetup.whenHeading }),
+    ).toBeVisible();
+    await capture(page, '/workflows/:workflow/run', 'input and when sections');
+  });
+
   test('an unreadable workflow opens on JSON with Builder unavailable (63g, 66f)', async ({
     page,
   }) => {
@@ -235,7 +250,11 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
   });
 
   test('create that the host cannot write stays at the action (65n)', async ({ page }) => {
-    await answerUnwritable(page, 'bureau.workflows.create', 'morning-briefing.json');
+    await answerUnwritable(
+      page,
+      'bureau.workflows.create',
+      '~/.interborough/workflows/morning-briefing.json',
+    );
     const root = await openBuilder(page, '/workflows/new');
     await openJsonTab(tabs(root));
     await replaceJsonEditorText(

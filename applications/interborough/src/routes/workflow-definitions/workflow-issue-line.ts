@@ -83,14 +83,14 @@ export async function documentProblemFor(
 }
 
 /** A path's parts: object keys, and array positions as numbers. */
-export type IssuePath = readonly (string | number)[];
+type IssuePath = readonly (string | number)[];
 
 /**
  * The parts of an issue path, in either form the Bureau answers: a dotted path with positions in
  * brackets (`steps[2].input.message`, a leading `$.` allowed), or a list of keys and positions.
  * A list that starts with `definition` (an operation's own parameter) drops it.
  */
-export function issuePathOf(path: string | readonly (string | number)[]): IssuePath {
+function issuePathOf(path: string | readonly (string | number)[]): IssuePath {
   const parts: (string | number)[] =
     typeof path === 'string'
       ? path
@@ -201,7 +201,7 @@ function partOf(
  * further than the text (a key the step lacks) names the line of the last part that is there, which
  * is where the fix goes. `undefined` for text that is not JSON with an object at its root.
  */
-export function lineOfIssue(text: string, path: IssuePath): number | undefined {
+function lineOfIssue(text: string, path: IssuePath): number | undefined {
   let value = skipWhitespace(text, 0);
   if (text.charAt(value) !== '{') return undefined;
   let mark = value;
