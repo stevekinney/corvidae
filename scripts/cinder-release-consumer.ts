@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 const name = process.argv[2];
@@ -18,8 +18,19 @@ for (const [entry, target] of Object.entries(manifest.exports)) {
   const specifier = packageName + entry.slice(1);
   const runtime = typeof target === 'string' ? target : (target.default ?? target.import);
   assert.ok(runtime, specifier);
-  if (runtime.endsWith('.js')) await import(specifier);
-  else require.resolve(specifier);
+  if (runtime.endsWith('.js')) {
+    await import(specifier);
+    continue;
+  }
+  const resolved = require.resolve(specifier);
+  if (runtime.endsWith('.json')) {
+    const document: unknown = JSON.parse(readFileSync(resolved, 'utf8'));
+    if (!document || typeof document !== 'object' || !('$schema' in document)) continue;
+    if (typeof document.$schema !== 'string' || URL.canParse(document.$schema)) continue;
+    const schemaPath = resolve(dirname(resolved), document.$schema);
+    assert.ok(schemaPath.startsWith(`${dirname(manifestPath)}${sep}`), specifier);
+    assert.doesNotThrow(() => JSON.parse(readFileSync(schemaPath, 'utf8')), specifier);
+  }
 }
 
 if (name === 'markdown') {

@@ -2,7 +2,7 @@ import { $, type BunPlugin } from 'bun';
 import { existsSync } from 'node:fs';
 import { copyFile, cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import ts from 'typescript';
 import { z } from 'zod';
@@ -147,6 +147,42 @@ function normalizeDeclarations(source: string, path: string): string {
     );
 }
 
+async function stageSchemas(stage: string): Promise<void> {
+  const schemas = join(repositoryRoot, 'internal/component-tooling/src/schemas');
+  const destination = join(stage, '.metadata/schemas');
+  const copied = new Set<string>();
+  for (const member of new Bun.Glob('**/*.json').scanSync({ cwd: stage, dot: true })) {
+    const path = join(stage, member);
+    const file = Bun.file(path);
+    const document: unknown = await file.json();
+    if (!document || typeof document !== 'object' || !('$schema' in document)) continue;
+    const schema = document.$schema;
+    if (typeof schema !== 'string' || URL.canParse(schema)) continue;
+
+    const shared =
+      /(?:^|\/)internal\/component-tooling\/src\/schemas\/([A-Za-z\d_.-]+\.json)$/.exec(
+        schema,
+      )?.[1];
+    let reference = schema;
+    if (shared) {
+      const target = join(destination, shared);
+      if (!copied.has(shared)) {
+        await mkdir(destination, { recursive: true });
+        await copyFile(join(schemas, shared), target);
+        copied.add(shared);
+      }
+      reference = relative(dirname(path), target).split(sep).join('/');
+      document.$schema = reference;
+      await Bun.write(file, `${JSON.stringify(document, null, 2)}\n`);
+    }
+
+    const resolved = resolve(dirname(path), reference);
+    if (!resolved.startsWith(`${stage}${sep}`) || !(await Bun.file(resolved).exists())) {
+      throw new Error(`${member} refers to an unavailable package schema: ${reference}`);
+    }
+  }
+}
+
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\da-z-]+(?:\.[\da-z-]+)*)?$/i;
 const { values } = parseArgs({
   options: {
@@ -240,6 +276,7 @@ try {
       filter: (path) => !testOnly.test(path),
     });
   }
+  await stageSchemas(stage);
   if (isCinder) {
     await Bun.write(join(stage, `${tokenVersionFile}.ts`), tokenVersionSource);
     await Bun.write(
