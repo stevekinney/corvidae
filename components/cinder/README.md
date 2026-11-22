@@ -22,6 +22,40 @@ Import components, utilities, types, and metadata from this one entry point. Com
 
 [Editor](../editor/README.md) and [Markdown](../../packages/markdown/README.md) own their respective product APIs in separate workspaces. Syntax highlighting dependencies used by Cinder's `CodeBlock` are declared directly by Cinder.
 
+## Web Components
+
+From the repository root, run `bun run --cwd components/cinder web-components:build`. Serve the resulting `components/cinder/dist/web-components/` directory over HTTP and open `index.html` to try the [plain HTML example](./src/web-components/example.html). The build compiles the Cinder source components directly and bundles the Svelte runtime. Load the module and stylesheet in the page.
+
+```html
+<link rel="stylesheet" href="./web-components.css" />
+<script type="module" src="./web-components.js"></script>
+```
+
+Workspace applications can import the generated assets as `@lostgradient/cinder/web-components` and `@lostgradient/cinder/web-components.css`. The stylesheet supplies the page theme. The browser build also emits element typings for the Web Components entry point. The accordion uses the shared Cinder styles in its shadow root.
+
+Each entry in the Cinder component manifest gets a `cinder-<id>` element. The build reads the corresponding prop schema to choose attribute conversions, such as Boolean presence, numbers, and JSON arrays. Assign structured values, DOM references, and callbacks directly as JavaScript properties. Use kebab-case in HTML for camel-case property names. Component props that share a name with a native element property use a `component` prefix, as in `component-id` and `componentId`.
+
+Use authored HTML for static `children`. To supply a named content region, use its snippet name as the `slot` attribute. For content that receives live data, assign the corresponding `render` property. For example, `renderRow` receives the current item and row context from VirtualList. Return a DOM node or a string. Strings are rendered as text.
+
+```html
+<template id="rows">
+  <cinder-virtual-list item-height="32" height="128px"></cinder-virtual-list>
+</template>
+<script type="module">
+  await customElements.whenDefined('cinder-virtual-list');
+  const template = document.querySelector('#rows');
+  const list = template.content.querySelector('cinder-virtual-list');
+  list.items = ['Daily digest', 'As they arrive'];
+  list.renderRow = (item, { index }) => `${index + 1}. ${item}`;
+  template.replaceWith(list);
+</script>
+```
+
+- `<cinder-avatar>` accepts `name`, `src`, `alt`, `size`, and `shape`. It inherits Cinder theme tokens from the page.
+- `<cinder-button>` accepts `label`, `variant`, `size`, `disabled`, and `loading`. Use `type="submit"` inside a form.
+- `<cinder-select>` accepts `label`, `name`, `value`, `required`, and `disabled`. Add `<option>` children with `value`, `disabled`, or `selected` attributes as needed, or set the `options` JavaScript property with objects containing `value` and `label`. The native select bubbles `change` and participates in form submission.
+- `<cinder-accordion>` takes direct `<cinder-accordion-item heading="…">` children. Each item's HTML becomes its panel content. Use `disabled` on an item to disable its trigger, or `multiple` on the parent to allow multiple expanded panels.
+
 ## Token utilities
 
 Import `@lostgradient/cinder/utilities.css` alongside Cinder's base styles to opt into unprefixed classes such as `gap-3`, `padding-inline-3`, `margin-block-start-4`, `text-muted`, `background-surface-raised`, and `rounded-medium`. The stylesheet is generated with Cinder's metadata and uses the same CSS variables as its components. A theme override applies anywhere the variable is in scope.

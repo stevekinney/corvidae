@@ -40,6 +40,7 @@
         "**/*.bench.ts",
         "**/*.fixture.svelte",
         "src/{components,lib/components}/*/*-fixtures.ts",
+        "src/web-components/*.ts!",
         "**/*.playwright.ts",
         "**/*.spec.ts"
       ],
@@ -150,7 +151,7 @@
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
     "scripts/browser-fixtures": {
-      "entry": ["tests/**/*.playwright.ts"],
+      "entry": ["tests/**/*.playwright.ts", "fixtures/workspace-web-components.ts"],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
     },
     "scripts/groom": {

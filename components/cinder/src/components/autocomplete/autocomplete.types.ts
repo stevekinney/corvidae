@@ -1,4 +1,4 @@
-import type { InputProps } from '../input/index.ts';
+import type { InputProps } from '../input/input.types.ts';
 
 export type AutocompleteSuggestion = {
   /** Text committed into the input when this suggestion is completed. */

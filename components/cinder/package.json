@@ -22,7 +22,12 @@
     "./manifest": "./.metadata/components.json",
     "./*/schema": "./.metadata/*/schema.json",
     "./*/variables": "./.metadata/*/variables.json",
-    "./*/examples": "./.metadata/*/examples.json"
+    "./*/examples": "./.metadata/*/examples.json",
+    "./web-components": {
+      "types": "./dist/web-components/web-components.d.ts",
+      "default": "./dist/web-components/web-components.js"
+    },
+    "./web-components.css": "./dist/web-components/web-components.css"
   },
   "scripts": {
     "types": "bun ../../internal/component-tooling/scripts/emit-declarations.ts",
@@ -42,7 +47,8 @@
     "design-system:url": "bun scripts/design-system/url.ts",
     "check:prop-conventions": "bun ../../internal/component-tooling/scripts/check-prop-conventions.ts src/components",
     "check:test-cleanup": "bun ../../internal/component-tooling/scripts/check-test-cleanup.ts",
-    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts"
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
+    "web-components:build": "bun scripts/build-web-components.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "catalog:",
@@ -103,6 +109,7 @@
   },
   "sideEffects": [
     "./src/index.ts",
-    "**/*.css"
+    "**/*.css",
+    "./dist/web-components/web-components.js"
   ]
 }
