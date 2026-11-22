@@ -5,7 +5,8 @@
  * tooltip panel inside the floating button's transformed row was a `max-content` box that the
  * block's clipped, scrollable box had to reach), and a wrapping block reserves the rail beside its
  * first row only, so every further row keeps the whole width and the rail never breaks a URL that
- * would sit whole without it.
+ * would sit whole without it. Where a URL wider than a row breaks is
+ * `code-block-breaks.playwright.ts`'s (COR-2548).
  */
 
 import { loadManifest } from '@lostgradient/testing';
@@ -111,6 +112,43 @@ async function readFloatingMetadataOverlap(page: Page, testId: string) {
   });
 }
 
+async function readOneLineMetadataRail(page: Page, testId: string) {
+  return page.getByTestId(testId).evaluate((host) => {
+    const root = host.firstElementChild;
+    const metadata = root?.querySelector(':scope > .cinder-code-block__meta');
+    const viewport = root?.querySelector(':scope > .cinder-code-block__viewport');
+    const code = viewport?.querySelector('code');
+    if (
+      !(root instanceof HTMLElement) ||
+      !(metadata instanceof HTMLElement) ||
+      !(viewport instanceof HTMLElement) ||
+      !(code instanceof HTMLElement)
+    ) {
+      throw new Error('No one-line code block metadata rail.');
+    }
+    const lineTops = new Set<number>();
+    const textNodes = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+    for (let node = textNodes.nextNode(); node !== null; node = textNodes.nextNode()) {
+      if (!(node instanceof Text) || node.data.trim() === '') continue;
+      const textRange = document.createRange();
+      textRange.selectNodeContents(node);
+      for (const rect of textRange.getClientRects()) {
+        if (rect.width > 0 && rect.height > 0) lineTops.add(Math.round(rect.top));
+      }
+    }
+    const rootBox = root.getBoundingClientRect();
+    const metadataBox = metadata.getBoundingClientRect();
+    const viewportBox = viewport.getBoundingClientRect();
+    return {
+      lineCount: lineTops.size,
+      metadataWidth: metadataBox.width,
+      rootHeight: rootBox.height,
+      viewportRight: viewportBox.right,
+      metadataLeft: metadataBox.left,
+    };
+  });
+}
+
 async function widths(page: Page, testId: string) {
   return page.getByTestId(testId).evaluate((host) => {
     const block = host.querySelector('.cinder-code-block');
@@ -149,10 +187,16 @@ async function readText(page: Page, testId: string, options: { fitToken?: number
         if (node instanceof Text && node.data.trim() !== '') nodes.push(node);
       }
       if (fitToken !== undefined) {
-        const range = document.createRange();
-        range.setStart(nodes[0]!, 0);
-        range.setEnd(nodes[0]!, fitToken);
-        const token = range.getBoundingClientRect().width;
+        // The first `fitToken` characters drawn on one row in the code's own font. A range over them
+        // would be as wide as the rows they sit on, and the block breaks them at a slash.
+        const probe = document.createElement('span');
+        probe.style.whiteSpace = 'pre';
+        probe.style.position = 'absolute';
+        probe.style.visibility = 'hidden';
+        probe.textContent = (code.textContent ?? '').slice(0, fitToken);
+        code.append(probe);
+        const token = probe.getBoundingClientRect().width;
+        probe.remove();
         const padding = Number.parseFloat(getComputedStyle(pre).paddingInlineStart);
         (host as HTMLElement).style.inlineSize = `${Math.ceil(token + 2 * padding + 8)}px`;
       }
@@ -164,24 +208,22 @@ async function readText(page: Page, testId: string, options: { fitToken?: number
           if (rect.width > 0) rects.push(rect);
         }
       }
-      /** The rows the endpoint occupies: one when it sits whole, more when a row breaks it. */
+      /**
+       * The rows the endpoint occupies: one when it sits whole, more when a row breaks it. The
+       * endpoint is a box of its own (a word with slashes in it), so its rows are those of its text.
+       */
       const endpointRowCount = () => {
-        let tops: number[] = [];
-        for (const node of nodes) {
-          const at = node.data.indexOf(endpoint);
-          if (at === -1) continue;
-          const endpointRange = document.createRange();
-          endpointRange.setStart(node, at);
-          endpointRange.setEnd(node, at + endpoint.length);
-          tops = [
-            ...new Set(
-              [...endpointRange.getClientRects()]
-                .filter((rect) => rect.width > 0)
-                .map((rect) => Math.round(rect.top)),
-            ),
-          ];
-        }
-        return tops.length;
+        const word = [...code.querySelectorAll('.cinder-code-block__word')].find(
+          (candidate) => candidate.textContent === endpoint,
+        );
+        if (word === undefined) return 0;
+        const endpointRange = document.createRange();
+        endpointRange.selectNodeContents(word);
+        return new Set(
+          [...endpointRange.getClientRects()]
+            .filter((rect) => rect.width > 0)
+            .map((rect) => Math.round(rect.top)),
+        ).size;
       };
       const endpointRows = endpointRowCount();
       // The same block with its rail reserved at no width. A wrapped line hangs by two characters,
@@ -207,6 +249,16 @@ async function readText(page: Page, testId: string, options: { fitToken?: number
         buttonLeft: box.left,
         railLeft: meta.getBoundingClientRect().left,
         rowRights: ordered.map(([, right]) => right),
+        // Where a row of text may end: the line's own edge less its padding. A later row's glyphs
+        // stop short of it wherever a word moves down whole, so the edge is read, not the glyphs.
+        textEdge: (() => {
+          const line = host.querySelector('.cinder-code-block__line');
+          if (!(line instanceof HTMLElement)) throw new Error('No line.');
+          return (
+            line.getBoundingClientRect().right -
+            Number.parseFloat(getComputedStyle(line).paddingInlineEnd)
+          );
+        })(),
         endpointRows,
         endpointRowsWithoutRail,
         scrolls: viewport.scrollWidth > viewport.clientWidth,
@@ -253,11 +305,12 @@ for (const width of [320, 375]) {
     expect(reading.underButton).toBe(0);
     // A later row runs past the rail's left edge: the rail is not reserved down the whole block.
     // The button's own box sits inside the rail, so it is not the edge a row would stop at.
-    expect(Math.max(...reading.rowRights.slice(1))).toBeGreaterThan(reading.railLeft);
+    expect(reading.textEdge).toBeGreaterThan(reading.railLeft);
     expect(reading.scrolls).toBe(false);
     // The rail never breaks the endpoint inside a word (…/bur | eau/mcp): it sits on as many rows
     // as it would with no rail, which is one wherever a row after the first, indented by the hang,
-    // is wide enough for it (375).
+    // is wide enough for it (375). Where a wider one breaks is `code-block-breaks.playwright.ts`'s.
+    expect(reading.endpointRows).toBeGreaterThan(0);
     expect(reading.endpointRows).toBe(reading.endpointRowsWithoutRail);
     if (width === 375) expect(reading.endpointRows).toBe(1);
   });
@@ -333,6 +386,21 @@ for (const theme of ['light', 'dark'] as const) {
       });
     });
   }
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`one-line code keeps a long metadata rail inline at 1280 in ${theme}`, async ({
+    componentPage,
+  }) => {
+    const page = await open(componentPage, 1280, theme, true);
+    for (const testId of ['floating-language-one-line', 'floating-streaming-one-line']) {
+      const reading = await readOneLineMetadataRail(page, testId);
+      expect(reading.lineCount).toBe(1);
+      expect(reading.metadataWidth).toBeGreaterThan(100);
+      expect(reading.rootHeight).toBeLessThan(reading.metadataWidth);
+      expect(reading.viewportRight).toBeLessThanOrEqual(reading.metadataLeft);
+    }
+  });
 }
 
 test('a wrapped floating language block gives later rows the full width', async ({

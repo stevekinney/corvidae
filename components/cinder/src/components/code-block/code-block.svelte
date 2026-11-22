@@ -14,7 +14,9 @@
   import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
   import {
+    allowBreaksAtPunctuation,
     annotationToneClass,
+    splitWords,
     decorateHighlightedLines,
     hangWrappedLines,
     keepFlagsWhole,
@@ -187,6 +189,19 @@
   </small>
 {/snippet}
 
+<!-- A wrapping block's text. A word with a slash, dot, colon or hyphen in it is a box of its own, with
+     a break opportunity after each of them: it moves to the next row whole when it fits one, and
+     breaks at a slash only when it is wider than a row. `<wbr>` is no character, so what is shown
+     and copied is the code as written. No whitespace around the pieces: inside a `pre` it would be
+     text. -->
+{#snippet broken(
+  text: string,
+)}{#each splitWords(text) as run, runIndex (runIndex)}{#if run.pieces.length > 1}<span
+        class="cinder-code-block__word"
+        >{#each run.pieces as piece, index (index)}{piece}{#if index < run.pieces.length - 1}<wbr
+            />{/if}{/each}</span
+      >{:else}{run.text}{/if}{/each}{/snippet}
+
 {#snippet plainCode()}
   {#if hasLineFeatures}
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
@@ -200,7 +215,7 @@
             style:--_cinder-code-block-indent-tabs={wrap ? leadingIndent(text).tabs : undefined}
             >{#if wrap}{#each splitFlags(text) as run, runIndex (runIndex)}{#if run.flag}<span
                     class="cinder-code-block__flag">{run.text}</span
-                  >{:else}{run.text}{/if}{/each}{:else}{text}{/if}</span
+                  >{:else}{@render broken(run.text)}{/if}{/each}{:else}{text}{/if}</span
           >{#each notes as annotation, noteIndex (noteIndex)}{@render note(
               annotation,
             )}{/each}{/each}{#if streaming}{@render caret()}{/if}</code
@@ -209,7 +224,9 @@
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
         >{#if wrap}{#each splitFlags(code) as run, index (index)}{#if run.flag}<span
                 class="cinder-code-block__flag">{run.text}</span
-              >{:else}{run.text}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
+              >{:else}{@render broken(
+                run.text,
+              )}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
       ></pre>
   {/if}
 {/snippet}
@@ -280,6 +297,7 @@
             {@attach markNumericTokens}
             {@attach wrap ? keepFlagsWhole : noopScrollFadeAttachment}
             {@attach wrap ? hangWrappedLines : noopScrollFadeAttachment}
+            {@attach wrap ? allowBreaksAtPunctuation : noopScrollFadeAttachment}
           >
             {@html highlighted}
           </div>
