@@ -282,6 +282,12 @@ describe('additional coverage', () => {
     await fireEvent.click(signalButton);
 
     expect(getByLabelText('Signal name')).not.toBeNull();
+    // A form filled in before anything can be confirmed opens on its first field, not on Cancel:
+    // the first control in the dialog that asks for focus is the field.
+    const firstToAsk = Array.from(document.querySelectorAll<HTMLElement>('dialog *')).find(
+      (element) => element.autofocus,
+    );
+    expect(firstToAsk).toBe(getByLabelText('Signal name'));
 
     await fireEvent.input(getByLabelText('Signal name'), { target: { value: 'restart' } });
     await fireEvent.input(getByLabelText('Payload'), { target: { value: '{not json' } });
@@ -347,6 +353,11 @@ describe('additional coverage', () => {
 
     expect(getByLabelText('Operation')).not.toBeNull();
     expect(getByLabelText('Tags (comma-separated)')).not.toBeNull();
+    // Its first field, the operation, takes the first focus, as the signal form's does.
+    const firstToAsk = Array.from(document.querySelectorAll<HTMLElement>('dialog *')).find(
+      (element) => element.autofocus,
+    );
+    expect(firstToAsk?.id).toBe('bulk-tags-operation');
   });
 
   test('clicking Retry failed (once enabled) opens the retry dialog and fires its dry run', async () => {
@@ -452,7 +463,7 @@ describe('additional coverage', () => {
       await fireEvent.click(getByRole('button', { name: 'Delete 6 workflows' }));
 
       await waitFor(() => {
-        expect(getByText(/changed since the preview/)).not.toBeNull();
+        expect(getByText('The matching workflows changed')).not.toBeNull();
       });
       // Refresh preview re-runs the dry run; the commit that follows carries the new token.
       await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));

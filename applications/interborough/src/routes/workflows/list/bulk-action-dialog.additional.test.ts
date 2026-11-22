@@ -92,7 +92,7 @@ describe('BulkActionDialog — commit fault treatment', () => {
   test('a stale confirmation token (Conflict) offers "Refresh preview", not a generic retry', async () => {
     let dryRunCalls = 0;
 
-    const { getByRole, getByLabelText, getByText } = render(BulkActionDialog, {
+    const { getByRole, getByLabelText, getByText, queryByText } = render(BulkActionDialog, {
       props: {
         title: 'Bulk cancel',
         verb: 'cancel',
@@ -120,11 +120,11 @@ describe('BulkActionDialog — commit fault treatment', () => {
     await fireEvent.click(getByRole('button', { name: 'Cancel 47 workflows' }));
 
     await waitFor(() => {
-      expect(
-        getByText('Bulk confirmation token does not match the current dry-run scope'),
-      ).not.toBeNull();
-      expect(getByText(/changed since the preview/)).not.toBeNull();
+      expect(getByText('The matching workflows changed')).not.toBeNull();
+      expect(getByText(/Check the new count before you confirm\./)).not.toBeNull();
     });
+    // The server's own sentence is never a title: the notice is ours, and says what to do next.
+    expect(queryByText(/does not match the current dry-run scope/)).toBeNull();
     expect(dryRunCalls).toBe(1);
 
     await fireEvent.click(getByRole('button', { name: 'Refresh preview' }));
@@ -169,7 +169,7 @@ describe('BulkActionDialog — commit fault treatment', () => {
     });
     expect(getByRole('button', { name: 'Retry' })).not.toBeNull();
     expect(queryByRole('button', { name: 'Refresh preview' })).toBeNull();
-    expect(queryByText(/changed since the preview/)).toBeNull();
+    expect(queryByText('The matching workflows changed')).toBeNull();
   });
 
   test('a transient commit fault (not Conflict) offers a same-token Retry', async () => {
@@ -242,7 +242,7 @@ describe('BulkActionDialog — non-dismissible while committing', () => {
     await fireEvent.click(getByRole('button', { name: 'Cancel 47 workflows' }));
 
     await waitFor(() => {
-      expect(getByText(/keep this open/)).not.toBeNull();
+      expect(getByText(/keeps running on the server/)).not.toBeNull();
     });
     expect(closed).toBe(false);
 
