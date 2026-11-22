@@ -112,6 +112,7 @@ jobs:
     if: ${{ inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}
     needs: package
     runs-on: ubuntu-latest
+    environment: cinder-npm-publish
     timeout-minutes: 15
     permissions:
       id-token: write
