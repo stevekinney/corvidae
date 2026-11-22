@@ -13,6 +13,10 @@ const workflow = readFileSync(
   resolve(REPOSITORY_ROOT, '.github/workflows/browser-suites.yml'),
   'utf8',
 );
+const pullRequestWorkflow = readFileSync(
+  resolve(REPOSITORY_ROOT, '.github/workflows/pull-request.yml'),
+  'utf8',
+);
 
 /** The text of one top-level job of the workflow, from its key to the next job's. */
 function jobText(name: string): string {
@@ -40,6 +44,28 @@ describe('the browser suites workflow', () => {
   test("runs Interborough's end-to-end suite in the same image", () => {
     const { playwrightVersion } = readRepositoryPins();
     expect(jobText('interborough')).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
+  });
+
+  test('queues every still-valid trusted consumer of the bound Interborough shard-one candidate', () => {
+    const interborough = jobText('interborough');
+    expect(interborough).toContain('concurrency:\n');
+    expect(interborough).toContain('matrix.shard == 1');
+    expect(interborough).toContain(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    );
+    expect(interborough).toContain('github.event.pull_request.head.sha');
+    expect(interborough).toContain('github.event.pull_request.base.sha');
+    expect(interborough).toContain("github.event_name == 'workflow_dispatch'");
+    expect(interborough).toContain('github.event.inputs.verification_request');
+    expect(interborough).toContain('github.event.inputs.verification_plan');
+    expect(interborough).toContain('github.event.inputs.verification_base');
+    expect(interborough).toContain('github.sha');
+    expect(interborough).toContain('github.run_id');
+    expect(interborough).toContain('queue: max');
+    expect(interborough).toContain('cancel-in-progress: false');
+    // The caller intentionally cancels a superseded pull-request parent. Its canceled child cannot
+    // produce a result; `queue: max` preserves every consumer whose parent remains valid.
+    expect(pullRequestWorkflow).toContain('cancel-in-progress: true');
   });
 
   // COR-2461: the design-review capture runs where the end-to-end layout checks run, so its fonts match.
@@ -73,5 +99,12 @@ describe('the browser suites workflow', () => {
   // Both suites gate (COR-2412). Job level only: a report upload step may fail without failing the job.
   test.each(['fixtures', 'packages', 'interborough'])('gates on the %s job', (job) => {
     expect(jobText(job)).not.toMatch(/\n {4}continue-on-error:/u);
+  });
+
+  test('keeps a real Interborough Turborepo invocation and failed-run artifact for every consumer', () => {
+    const interborough = jobText('interborough');
+    expect(interborough).toContain('- run: bunx turbo run //#ci:browser-interborough\n');
+    expect(interborough).toContain('name: playwright-interborough-${{ matrix.shard }}\n');
+    expect(interborough).toContain('if: ${{ failure() }}\n');
   });
 });
