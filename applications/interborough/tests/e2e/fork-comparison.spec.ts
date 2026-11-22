@@ -32,16 +32,18 @@ async function forkFromTheLastCheckpoint(page: Page): Promise<string> {
   // The dialog says what the fork will do, from the server's dry run, before it can be confirmed.
   const create = page.getByRole('button', { name: 'Create fork' });
   const preview = page.locator('[data-fork-preview]');
-  await expect(preview.getByText('Kept, not run again (1)')).toBeVisible();
-  await expect(preview.getByText('Run again (1)')).toBeVisible();
+  await expect(preview.getByText('Kept, not run again (1)', { exact: true })).toBeVisible();
+  await expect(preview.getByText('Run again (1)', { exact: true })).toBeVisible();
   await expect(preview.locator('[data-fork-preview-kept] li')).toHaveText(['Step 1, reserveStock']);
   await expect(preview.locator('[data-fork-preview-rerun] li')).toHaveText(['Step 2, issueTicket']);
   await expect(create).toBeEnabled();
 
   await create.click();
-  const forkId = page.locator('.weft-fork-dialog__success code');
-  await expect(forkId).toBeVisible();
-  return (await forkId.textContent()) ?? '';
+  // The fork is named by its workflow, never by its id, and the link carries the id.
+  const forkLink = page.locator('.weft-fork-dialog__success a');
+  await expect(forkLink).toBeVisible();
+  const href = (await forkLink.getAttribute('href')) ?? '';
+  return decodeURIComponent(href.split('/').pop() ?? '');
 }
 
 test('a fork is compared with its source after the page is loaded again, down to a changed payload', async ({
@@ -63,9 +65,8 @@ test('a fork is compared with its source after the page is loaded again, down to
   // The comparison needs nothing from the session that made the fork: a fresh load of the fork's page.
   await page.goto(`/runs/${encodeURIComponent(forkId)}`);
   await page.reload();
-  await openHowItRan(page);
-  await page.getByRole('tab', { name: 'Versioning' }).click();
 
+  // A fork's Lineage panel leads the page, ahead of the operator tabs: no tab is opened to reach it.
   const lineage = page.locator('[data-section="lineage"]');
   await expect(lineage.getByText('Forked from')).toBeVisible();
   await lineage.getByRole('button', { name: 'Compare with source' }).click();
@@ -74,7 +75,7 @@ test('a fork is compared with its source after the page is loaded again, down to
   await expect(comparison).toBeVisible();
 
   // The step before the fork point is shared, and collapsed.
-  const shared = comparison.getByRole('button', { name: '1 step shared with the source' });
+  const shared = comparison.getByRole('button', { name: '1 step the same as the source' });
   await expect(shared).toHaveAttribute('aria-expanded', 'false');
   await expect(comparison.locator('[data-shared-step]')).toHaveCount(0);
 
@@ -93,5 +94,5 @@ test('a fork is compared with its source after the page is loaded again, down to
   // The input is the same in both runs.
   await expect(comparison.getByText('The input is the same in both runs.')).toBeVisible();
 
-  await checkA11y('run — Versioning tab, a fork compared with its source');
+  await checkA11y('run — a fork compared with its source, under its Lineage');
 });

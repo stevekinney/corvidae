@@ -9,9 +9,12 @@
    *
    * Default fork behavior (`ForkOptions.revision` omitted) resolves and
    * persists the SOURCE run's own `revision` — shown up front as "Retains
-   * rev X" (or "Unpinned source" for a legacy run with no persisted
-   * revision) so an operator sees what will happen before confirming,
-   * without opening anything. A collapsed "Fork a different revision"
+   * the source run's own revision" (or "Unpinned source" for a legacy run
+   * with no persisted revision; the revision itself is in the tooltip, never
+   * a printed label) so an operator sees what will happen before confirming,
+   * without opening anything. Once the server's dry run says the fork would
+   * run on another revision, a warning Callout is the one statement of it
+   * and this line steps aside. A collapsed "Fork a different revision"
    * disclosure opts into an EXPLICIT revision (`ForkOptions.revision`,
    * diagnostic use) — a `Select` of installed revisions
    * (`weft.workflows.revisions.list`) when `workflows:read` is granted,

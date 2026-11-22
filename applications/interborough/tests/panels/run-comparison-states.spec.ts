@@ -29,6 +29,7 @@ import {
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
 import { captureForDesignReview, nextFrame } from '../e2e/design-review-capture.ts';
+import { CHANGED_LEAF_ROW } from './diff-rows.ts';
 import { hostContextFor, SCHEMES, type Scheme } from './host-theme.ts';
 
 const SOURCE = 'run-comparison-states.spec.ts';
@@ -228,10 +229,10 @@ for (const scheme of RUN_SCHEMES) {
       const app = await open(page, scheme, 'fork');
       const ready = async () => {
         await expect(
-          app.getByRole('heading', { level: 1, name: 'Run fork-1 compared with source-1' }),
+          app.getByRole('heading', { level: 1, name: 'Compared with the source run' }),
         ).toBeVisible();
         await expect(
-          app.getByRole('button', { name: '2 steps shared with the source' }),
+          app.getByRole('button', { name: '2 steps the same as the source' }),
         ).toHaveAttribute('aria-expanded', 'false');
         const kinds = ['changed', 'unchanged', 'source-only', 'fork-only'];
         for (const [position, kind] of kinds.entries()) {
@@ -247,7 +248,7 @@ for (const scheme of RUN_SCHEMES) {
 
     test('shared-open: the steps the fork kept, listed', async ({ page }) => {
       const app = await open(page, scheme, 'fork');
-      await app.getByRole('button', { name: '2 steps shared with the source' }).click();
+      await app.getByRole('button', { name: '2 steps the same as the source' }).click();
       const ready = async () => {
         await expect(app.locator('[data-shared-step]')).toHaveCount(2);
       };
@@ -261,16 +262,19 @@ for (const scheme of RUN_SCHEMES) {
       const app = await open(page, scheme, 'fork');
       await app.locator('[data-compared-step="2"]').click();
       const ready = async () => {
+        // Cinder marks the open row current, and the detail sits under the list at this width.
         await expect(app.locator('[data-compared-step="2"]')).toHaveAttribute(
-          'aria-pressed',
+          'aria-current',
           'true',
         );
         await expect(app.getByText('The input is the same in both runs.')).toBeVisible();
         const output = app.getByRole('group', { name: 'Output differences, step 3' });
         await expect(output).toBeVisible();
-        await expect(
-          output.locator('[data-cinder-diff-kind="changed"]').filter({ hasText: 'id' }),
-        ).toContainText('1 → 2');
+        // The one changed leaf row is the ticket's `id`; the row of `ticket` itself holds it.
+        const id = output.locator(CHANGED_LEAF_ROW);
+        await expect(id).toHaveCount(1);
+        await expect(id.locator('.cinder-json-diff-viewer__key')).toHaveText('id');
+        await expect(id).toContainText('1 → 2');
       };
       await ready();
       await captureState(page, app, 'step-selected', ready);

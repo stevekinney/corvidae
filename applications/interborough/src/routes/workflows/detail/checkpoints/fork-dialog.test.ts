@@ -48,7 +48,7 @@ function baseClient(
 }
 
 describe('ForkDialog', () => {
-  test('default state shows "Retains rev X" for a run with a persisted source revision', async () => {
+  test('default state says it retains the source run’s own revision for a run with a persisted source revision', async () => {
     const { getByText } = render(ForkDialogHarness, {
       props: {
         client: baseClient(),

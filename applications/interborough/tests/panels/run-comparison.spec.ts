@@ -10,6 +10,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
+import { CHANGED_LEAF_ROW } from './diff-rows.ts';
 import { expectFollowsHost, hostContextFor, SCHEMES, type Scheme } from './host-theme.ts';
 
 const HOST_ORIGIN = 'http://reference-host.test';
@@ -116,10 +117,10 @@ test.describe('the run comparison MCP App', () => {
     const { app, errors } = await open(page, { compare: () => FORK });
 
     await expect(
-      app.getByRole('heading', { level: 1, name: 'Run fork-1 compared with source-1' }),
+      app.getByRole('heading', { level: 1, name: 'Compared with the source run' }),
     ).toBeVisible();
-    // The step before the fork point is shared, and collapsed until it is asked for.
-    const shared = app.getByRole('button', { name: '1 step shared with the source' });
+    // The step before the fork point is the same, and collapsed until it is asked for.
+    const shared = app.getByRole('button', { name: '1 step the same as the source' });
     await expect(shared).toHaveAttribute('aria-expanded', 'false');
     await expect(app.locator('[data-shared-step]')).toHaveCount(0);
 
@@ -129,7 +130,9 @@ test.describe('the run comparison MCP App', () => {
     const output = app.getByRole('group', { name: 'Output differences, step 2' });
     await expect(output).toBeVisible();
     // The ticket's id changed from 1 to 2, read at its depth.
-    const id = output.locator('[data-cinder-diff-kind="changed"]').filter({ hasText: 'id' });
+    const id = output.locator(CHANGED_LEAF_ROW);
+    await expect(id).toHaveCount(1);
+    await expect(id.locator('.cinder-json-diff-viewer__key')).toHaveText('id');
     await expect(id).toContainText('1 → 2');
     await expect(app.getByText('The input is the same in both runs.')).toBeVisible();
     expect(errors).toEqual([]);

@@ -4,7 +4,7 @@
  * workflows list (filtered to `order-processing`, the eagerly-registered
  * seed type) → detail header shows the persisted revision AND its "matches
  * active" comparison → Checkpoints tab → select a checkpoint → Fork panel
- * shows "Retains rev X" → open the "Fork a different revision" picker →
+ * shows "Retains the source run's own revision" → open the "Fork a different revision" picker →
  * pick the fixture's deliberately-never-eagerly-registered candidate
  * (`fixtures/workflow-revisions.ts`'s `ORDER_PROCESSING_CANDIDATE_REVISION`)
  * → the dialog's dry run (COR-2538) is REALLY refused with a
@@ -73,7 +73,7 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await checkpointList.locator('.weft-checkpoints-tab__row').first().click();
 
   await page.getByRole('radio', { name: 'Fork' }).click();
-  await expect(page.getByText(/^Retains rev /)).toBeVisible();
+  await expect(page.getByText(/^Retains the source run's own revision/)).toBeVisible();
   await checkA11y('workflow detail — checkpoints, Fork panel (default retention line)');
 
   await page.getByRole('button', { name: 'Fork a different revision' }).click();

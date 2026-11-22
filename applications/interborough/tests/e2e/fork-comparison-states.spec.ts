@@ -16,6 +16,7 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { FORK_COMPARISON_RUN_ID } from '../../fixtures/fork-comparison-ids.ts';
+import { CHANGED_LEAF_ROW } from '../panels/diff-rows.ts';
 import { captureForDesignReviewWithPhone } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { openHowItRan } from './workflow-support.ts';
@@ -116,17 +117,6 @@ async function makeFork(request: APIRequestContext): Promise<string> {
 }
 
 /**
- * The one changed row whose key is `id`: a leaf row, so the row of its parent object, which contains
- * it, does not match as well.
- */
-function changedIdRow(output: Locator): Locator {
-  return output
-    .locator('[data-cinder-diff-kind="changed"]')
-    .filter({ hasNot: output.page().locator('[data-cinder-diff-kind]') })
-    .filter({ has: output.page().locator('.cinder-json-diff-viewer__key', { hasText: /^id$/ }) });
-}
-
-/**
  * Opens a fork's page. Its Lineage panel, with the Compare with source button, leads the page ahead
  * of the operator tabs, so no tab is opened to reach it.
  */
@@ -213,7 +203,11 @@ test.describe('fork-comparison-states: /runs/:run, the comparison on a fork’s 
       await expect(comparison.getByText('The input is the same in both runs.')).toBeVisible();
       const output = comparison.getByRole('group', { name: 'Output differences, step 3' });
       await expect(output).toBeVisible();
-      await expect(changedIdRow(output)).toContainText('1 → 2');
+      // The one changed leaf row is the ticket's `id`; the row of `ticket` itself holds it.
+      const id = output.locator(CHANGED_LEAF_ROW);
+      await expect(id).toHaveCount(1);
+      await expect(id.locator('.cinder-json-diff-viewer__key')).toHaveText('id');
+      await expect(id).toContainText('1 → 2');
     });
   });
 
@@ -395,7 +389,7 @@ test.describe('fork-comparison-states: /runs/:run, the fork dialog’s preview',
     const comparison = page.locator('[data-section="fork-comparison"]');
     await captureDialog(page, 'fork created, comparison under the tab', async () => {
       await expect(dialog.getByText(/^Forked as /)).toBeVisible();
-      await expect(page.getByText('Compared with the source run')).toBeVisible();
+      await expect(page.getByText('Compared with the source run', { exact: true })).toBeVisible();
       await expect(comparison.locator('[data-compared-step="2"]')).toHaveAttribute(
         'data-kind',
         'changed',
