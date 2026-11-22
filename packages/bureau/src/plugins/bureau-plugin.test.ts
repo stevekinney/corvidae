@@ -72,7 +72,7 @@ const WORKFLOW_TOOLS = [
   'workflows-runs-history',
 ];
 /** The run tools: a read of a run, offered on every Bureau, with or without workflow files. */
-const RUN_TOOLS = ['runs-timeline'];
+const RUN_TOOLS = ['runs-timeline', 'tasks-explain'];
 const CHILD_RUN_TOOLS = [
   'child-runs-dispatch',
   'child-runs-list',
