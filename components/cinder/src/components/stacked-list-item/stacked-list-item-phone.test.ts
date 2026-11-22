@@ -176,6 +176,53 @@ describe('StackedListItem on a phone', () => {
     setPhone(false);
   });
 
+  test('a narrow two-line row gives its action buttons a line of their own under the text, from a container query', () => {
+    // A button beside the text of a 270px row left the title and the meta a few words wide.
+    const block = stylesheet.slice(
+      stylesheet.indexOf(
+        '@container cinder-stacked-list-item (max-width: 448px) {\n    .cinder-stacked-list-item--lines.cinder-stacked-list-item--action-buttons',
+      ),
+    );
+    const rule =
+      /\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--action-buttons\s*\.cinder-stacked-list-item__trailing\s*\{([^}]*)\}/.exec(
+        block,
+      )?.[1] ?? '';
+    expect(rule).toMatch(/grid-row:\s*4;/);
+    expect(rule).toMatch(/grid-column:\s*title \/ -1;/);
+    expect(rule).toMatch(/align-self:\s*start;/);
+    expect(rule).toMatch(/margin-inline-start:\s*0;/);
+    expect(rule).toMatch(/margin-block-start:\s*var\(--cinder-space-2\);/);
+
+    // Only a row that draws its actions as buttons beside the text carries the class.
+    setPhone(true);
+    const one = render(ExtrasFixture, {
+      props: { mode: 'actions', actions: [{ label: 'Verdict', href: '/verdict' }] },
+    });
+    expect(
+      one.container
+        .querySelector('.cinder-stacked-list-item')
+        ?.classList.contains('cinder-stacked-list-item--action-buttons'),
+    ).toBe(true);
+    cleanup();
+    const two = render(ExtrasFixture, {
+      props: {
+        mode: 'actions',
+        actions: [
+          { label: 'Verdict', href: '/verdict' },
+          { label: 'Run', href: '/run' },
+        ],
+      },
+    });
+    // The phone's one menu button is compact and stays beside the text.
+    expect(
+      two.container
+        .querySelector('.cinder-stacked-list-item')
+        ?.classList.contains('cinder-stacked-list-item--action-buttons'),
+    ).toBe(false);
+    cleanup();
+    setPhone(false);
+  });
+
   test('two actions on a phone are still one menu button', () => {
     setPhone(true);
     const { container, getByRole } = render(ExtrasFixture, {

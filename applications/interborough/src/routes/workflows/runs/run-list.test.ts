@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
+import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { agentLabel } from '../../../lib/agent-label.ts';
@@ -275,7 +276,11 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
     const rows = [...document.querySelectorAll('.cinder-filter-bar__menu-label')].map(
       (label) => label.textContent,
     );
-    expect(rows).toEqual([TASK_COPY.retryingLabel, TASK_COPY.failedStepLabel]);
+    expect(rows).toEqual([
+      RUN_ATTENTION_COPY.filter,
+      TASK_COPY.retryingLabel,
+      TASK_COPY.failedStepLabel,
+    ]);
   });
 
   test('while one is on, the row shows it as a chip named with its value, and the chip removes it', async () => {
