@@ -200,12 +200,16 @@ describe('StackedListItem on a phone', () => {
     );
 
     const ordinaryLineActionMatch =
-      /@container cinder-stacked-list-item \(max-width: 448px\) \{[\s\S]*?\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--has-trailing:not\([\s\S]*?\)\s*> \.cinder-stacked-list-item__layout\s*\{([^}]*)\}/.exec(
+      /@container cinder-stacked-list-item \(max-width: 448px\) \{[\s\S]*?\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--has-trailing:not\([\s\S]*?\)\.cinder-stacked-list-item--status-leading\s*> \.cinder-stacked-list-item__layout\s*\{([^}]*)\}/.exec(
         stylesheet,
       ) ?? [];
     const [ordinaryLineActionSelector = '', ordinaryLineAction = ''] = ordinaryLineActionMatch;
-    expect(ordinaryLineAction).toContain("'leading body'");
-    expect(ordinaryLineAction).toContain("'trailing trailing'");
+    // Lines flattens `__body`, so these must name its actual grid items rather than creating an
+    // implicit `body` track. The same rule follows both row-width and viewport-width phone grids.
+    expect(ordinaryLineAction).toContain("'leading title title time'");
+    expect(ordinaryLineAction).toContain("'leading status line line'");
+    expect(ordinaryLineAction).toContain("'trailing trailing trailing trailing'");
+    expect(ordinaryLineAction).not.toContain('body');
     for (const exception of [
       'cinder-stacked-list-item--collapsed-actions',
       'cinder-stacked-list-item--trailing-glyph',
