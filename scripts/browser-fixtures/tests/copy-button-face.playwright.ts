@@ -50,3 +50,18 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
     await context.close();
   }
 });
+
+test('the text face gives its label at least one and a half times as much side room as vertical room', async ({
+  page,
+}) => {
+  await page.goto(fixtureRoute('copy-button'), { waitUntil: 'load' });
+  const text = page.locator('button.cinder-copy-button').nth(1);
+  const padding = await text.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return {
+      block: Number.parseFloat(style.paddingBlockStart),
+      inline: Number.parseFloat(style.paddingInlineStart),
+    };
+  });
+  expect(padding.inline / padding.block).toBeGreaterThanOrEqual(1.5);
+});

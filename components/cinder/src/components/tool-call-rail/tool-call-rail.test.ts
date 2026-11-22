@@ -641,6 +641,18 @@ describe('ToolCallRail styles', () => {
     expect(cssText).toContain('.cinder-tool-call-rail__summary-duration');
   });
 
+  test('compact rows and the disclosure use non-layout hit targets', () => {
+    expect(cssText).toMatch(
+      /button\.cinder-tool-call-rail__summary::before \{[^}]*position: absolute;[^}]*1\.5rem/s,
+    );
+    expect(cssText).toMatch(
+      /\.cinder-tool-call-rail__row \{[^}]*min-block-size: 2\.75rem;[^}]*padding-block: var\(--cinder-space-0-5\)/s,
+    );
+    expect(cssText).toMatch(
+      /\.cinder-tool-call-rail__row::before \{[^}]*position: absolute;[^}]*--cinder-touch-target-min/s,
+    );
+  });
+
   test('red and amber words use the status text tokens, never a fill', () => {
     expect(cssText).toContain('var(--cinder-status-danger-text)');
     expect(cssText).toContain('var(--cinder-status-warning-text)');

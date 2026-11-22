@@ -212,6 +212,10 @@ describe('CopyButton', () => {
     const source = await Bun.file(new URL('./copy-button.css', import.meta.url)).text();
     const css = source.replace(/\s+/g, ' ');
     expect(css).toContain('border: 1px solid var(--cinder-border-control);');
+    expect(css).toContain('padding: var(--cinder-space-1) var(--cinder-space-3);');
+    expect(css).toMatch(
+      /\.cinder-copy-button\[data-cinder-icon-only\] \{[^}]*padding-inline: var\(--cinder-space-1\)/,
+    );
     // A coarse pointer reaches it through a pseudo-element that takes no layout space.
     expect(css).toMatch(
       /@media \(any-pointer: coarse\) \{ \.cinder-copy-button \{ position: relative; \} \.cinder-copy-button::before \{[^}]*--cinder-touch-target-min/,
