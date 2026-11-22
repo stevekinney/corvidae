@@ -821,10 +821,12 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     expect(Math.round(after!.width)).toBe(Math.round(before!.width));
     await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
     const topsLoaded = await sectionTops();
+    const signedTopDifferences = topsLoaded.map((top, index) => top - topsWhileLoading[index]!);
+    const geometry = `loading=${JSON.stringify(topsWhileLoading)} loaded=${JSON.stringify(topsLoaded)} signed differences=${JSON.stringify(signedTopDifferences)}`;
     for (const [index, name] of ['Needs you', 'Needs attention', 'Start a chat'].entries()) {
       expect(
         Math.abs(topsLoaded[index]! - topsWhileLoading[index]!),
-        `${name} starts where its placeholder did`,
+        `${name} starts where its placeholder did; ${geometry}`,
       ).toBeLessThanOrEqual(1);
     }
   });
