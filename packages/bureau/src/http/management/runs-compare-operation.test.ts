@@ -3,6 +3,7 @@
  * source, step by step. The fork and then its source are each read with the access reading a workflow
  * run asks, before the engine reads either timeline, and a run that is not a fork says so.
  */
+import { WorkflowNotFoundError } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { waitForCondition } from '../../test';
@@ -217,6 +218,41 @@ describe('bureau.runs.compare asks about the source as well as the fork', () => 
 
     expect(response.result).toBeUndefined();
     expect(status(response)).toBe(404);
+  });
+
+  it('answers a fork whose source id was replaced by a restart as a missing run that says the source is gone, not an engine failure', async () => {
+    const { served, engine, sourceId, forkId } = await serveWithFork();
+    // The source's id still holds a run (a `start-new` replacement), so both reads of access pass;
+    // the engine compares executions and does not find the one the fork came from.
+    spyOn(engine, 'compare').mockRejectedValue(new WorkflowNotFoundError(sourceId));
+
+    const response = await rpc(
+      served.keyed,
+      'bureau.runs.compare',
+      { runId: forkId },
+      'operator-key',
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(status(response)).toBe(404);
+    expect(response.error?.data?.['resource']).toBe('run');
+    expect(response.error?.message).toContain(`source run ${sourceId} is no longer available`);
+    expect(response.error?.message).not.toMatch(/internal|engine/i);
+  });
+
+  it('answers a fork the engine no longer finds as the plain missing-run answer', async () => {
+    const { served, engine, forkId } = await serveWithFork();
+    spyOn(engine, 'compare').mockRejectedValue(new WorkflowNotFoundError(forkId));
+
+    const response = await rpc(
+      served.keyed,
+      'bureau.runs.compare',
+      { runId: forkId },
+      'operator-key',
+    );
+
+    expect(status(response)).toBe(404);
+    expect(response.error?.message).toBe(`No run with id "${forkId}"`);
   });
 
   it('answers a member who owns neither run as a missing run', async () => {

@@ -132,6 +132,18 @@ function noWorkflowDirectory(): OperationFault {
   };
 }
 
+/**
+ * The missing-run fault for a fork whose source execution is gone (the source's id was replaced by a
+ * restart), with the message saying so, so a panel that shows only the message is enough.
+ */
+function sourceNoLongerAvailable(runId: string, sourceRunId: string): OperationFault {
+  return {
+    code: 'NotFound',
+    message: `The source run ${sourceRunId} is no longer available: its id was reused by a restart, so run ${runId} cannot be compared with it.`,
+    data: { resource: 'run', identifier: sourceRunId, reason: 'source-replaced' },
+  };
+}
+
 /** A run that exists and cannot be compared, with what to do about it in the message itself. */
 function notComparable(message: string, reason: string): OperationFault {
   return { code: 'Unprocessable', message, data: { reason } };
@@ -221,6 +233,16 @@ export const runsCompareOperation = defineOperation<
             data: { issues: [{ path: ['cursor'], message: error.message, code: 'custom' }] },
           };
           throw fault;
+        }
+        // The two reads above passed on ids; the engine compares executions. A source whose id was
+        // since restarted with `onTerminalConflict: 'start-new'` still has a run under that id, so
+        // the caller was let in, but the execution the fork came from is gone, and the engine says
+        // it was not found. That is the missing-run answer, as `weft.workflows.compare` gives.
+        if (error instanceof Error && error.name === 'WorkflowNotFoundError') {
+          const missing = Reflect.get(error, 'workflowId');
+          throw missing === runId
+            ? resourceNotFound('run', runId)
+            : sourceNoLongerAvailable(runId, sourceRunId);
         }
         throw error;
       });
