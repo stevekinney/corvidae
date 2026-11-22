@@ -108,6 +108,13 @@
    * the form never answers (the input was invalid) leaves an entry that no later event can match.
    */
   const requested = new WeakMap<Event, { readonly context: Context }>();
+  /**
+   * The last submit event the form was handed, which it may still be checking when the page asks.
+   * The form drops a submit that arrives while it checks an earlier one, and answers with the
+   * earlier event, so an ask made while an Enter is being checked would be swallowed and nothing
+   * would start (COR-2637): the ask rides on that event too, unless an ask of its own already does.
+   */
+  let latest: Event | undefined;
 
   /** The JSON text as a value, or `undefined` while it does not parse. */
   const parsed = $derived.by((): { readonly value: unknown } | undefined => {
@@ -201,7 +208,13 @@
   /** Marks the submit the page asked for, before the form handles it. */
   function noteSubmit(event: Event): void {
     // A submit that was not asked for leaves a pending ask alone: it only ever fails to match.
-    if (asking !== undefined) requested.set(event, asking);
+    if (asking !== undefined) {
+      requested.set(event, asking);
+      // An event the form has already answered is never answered again, so this only ever
+      // reaches one it is still checking.
+      if (latest !== undefined && !requested.has(latest)) requested.set(latest, asking);
+    }
+    latest = event;
     asking = undefined;
   }
 

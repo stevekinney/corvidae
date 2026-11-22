@@ -14,6 +14,7 @@ import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { expectReviewsSettled } from './review-support.ts';
+import { pressChord } from './shortcut-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -313,17 +314,16 @@ test.describe('the keys', () => {
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
 
-    // On: G then R goes to Reviews.
-    await page.keyboard.press('g');
-    await page.keyboard.press('r');
+    // On: G then R goes to Reviews. Each chord is typed at the times a person presses it
+    // (`shortcut-support.ts`), so the off case below is off because of the setting, not the timing.
+    await pressChord(page, 'r');
     await expectReviewsSettled(page);
 
     // Off: G then R and C do nothing, but ⌘K and ? still answer.
     await page.goto('/settings');
     await page.getByRole('switch', { name: SETTINGS_COPY.keyboard.singleKeyLabel }).click();
     await page.getByRole('switch', { name: SETTINGS_COPY.keyboard.singleKeyLabel }).blur();
-    await page.keyboard.press('g');
-    await page.keyboard.press('r');
+    await pressChord(page, 'r');
     await page.keyboard.press('c');
     await expect(page).toHaveURL(/\/settings$/);
     await page.keyboard.press('?');

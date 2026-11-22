@@ -431,6 +431,21 @@ describe('starting now', () => {
     expect(stub?.callsTo('bureau.workflows.start')).toHaveLength(1);
   });
 
+  test('starts from the footer while the form is still checking an Enter (COR-2637)', async () => {
+    const { container } = open('/workflows/digest/run');
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'weather');
+    const form = root.querySelector('form') as HTMLFormElement;
+    // The click lands before the form's asynchronous check of the Enter's submit has finished, so
+    // the form drops the footer's own submit and answers with the Enter's.
+    await Promise.all([fireEvent.submit(form), fireEvent.click(primary(root))]);
+    await waitFor(() => expect(router.pathname).toMatch(/^\/workflows\/digest\/runs\//));
+    expect(stub?.callsTo('bureau.workflows.start')).toHaveLength(1);
+    expect(stub?.world.startedRuns).toEqual([
+      expect.objectContaining({ input: { topic: 'weather' } }),
+    ]);
+  });
+
   test('starts a workflow whose schema the form cannot draw from its JSON', async () => {
     const { container } = open('/workflows/free-object/run');
     const root = await ready(container);

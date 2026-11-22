@@ -15,8 +15,37 @@
  * N matching workflow…`) rather than hardcoded — the fixture set's current
  * failure count is an implementation detail of `fixtures/*.ts` this spec
  * shouldn't need to track.
+ *
+ * The commit is held at the JSON-RPC transport while the committing state is checked, then let
+ * through to the host, which retries for real. A retry of the one failed workflow the suite
+ * leaves by now finishes within a frame or two, so without the hold the dialog has moved on to
+ * its result before a check can read the committing state (COR-2642).
  */
+import type { Page } from '@playwright/test';
+
 import { expect, test } from './fixtures.ts';
+
+/**
+ * Holds the bulk retry's commit (the call with no `dryRun`) until the returned function is called,
+ * then lets it through to the host unchanged. Every other call goes straight through.
+ */
+async function holdRetryCommit(page: Page): Promise<() => void> {
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as {
+      method?: unknown;
+      params?: { dryRun?: unknown };
+    } | null;
+    if (body?.method === 'weft.workflows.bulk.retryfailed' && body.params?.dryRun !== true) {
+      await released;
+    }
+    await route.fallback();
+  });
+  return release;
+}
 
 test('operator bulk-retries every failed workflow with type-to-confirm', async ({
   page,
@@ -53,6 +82,7 @@ test('operator bulk-retries every failed workflow with type-to-confirm', async (
   await checkA11y('workflow list — bulk retry dialog (preview, type-to-confirm)');
 
   await confirmInput.fill(confirmPhrase);
+  const releaseCommit = await holdRetryCommit(page);
   await dialog.getByRole('button', { name: new RegExp(`^Retry ${matched} workflow`) }).click();
 
   await expect(dialog.getByRole('progressbar', { name: /in progress/ })).toBeVisible();
@@ -60,6 +90,7 @@ test('operator bulk-retries every failed workflow with type-to-confirm', async (
     dialog.getByText('Working on it. This keeps running on the server if you leave this page.'),
   ).toBeVisible();
   await checkA11y('workflow list — bulk retry dialog (committing)');
+  releaseCommit();
 
   await expect(dialog.getByText('Done')).toBeVisible();
   await checkA11y('workflow list — bulk retry dialog (result)');
