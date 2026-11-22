@@ -188,7 +188,6 @@ export const RUN_FORK_PREVIEW_COPY = {
       ? 'The fork would run on the revision you chose, not the source run’s own.'
       : 'The fork would run on a different revision than the source run.',
   refusedTitle: 'Revision unavailable',
-  refusedFallback: 'The requested revision could not be resolved.',
   /** The dialog's note under the choices: what making a fork does. */
   linked: 'A new run is created and linked to this one.',
   /** The start of the line after a fork is made: followed by its workflow's name, a link to the run. */

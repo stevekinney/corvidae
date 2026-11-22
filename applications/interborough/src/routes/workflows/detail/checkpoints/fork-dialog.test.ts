@@ -591,7 +591,10 @@ describe('ForkDialog fork preview (COR-2538)', () => {
     });
 
     await waitFor(() => expect(getByText('Revision unavailable')).not.toBeNull());
-    expect(getByText(/revision not registered/)).not.toBeNull();
+    // In the person's words: the engine's own text ("revision not registered") is never shown.
+    expect(getByText(/isn’t loaded, so the fork can’t run on it/)).not.toBeNull();
+    expect(container.textContent).not.toContain('revision not registered');
+    expect(container.textContent).not.toMatch(/this process/i);
     // Still announced as an alert, drawn by Cinder's Callout rather than a bordered box of its own.
     const alert = getByRole('alert');
     expect(alert.querySelector('.cinder-callout[data-cinder-variant="warning"]')).not.toBeNull();

@@ -71,9 +71,11 @@ const REVISION_UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
  * case toward the explicit picker instead.
  */
 export function forkConflictGuidance(selection: ForkRevisionSelection): string {
+  // Said in the person's words, never the engine's ("registered in this process"): the revision
+  // is not loaded, so the fork cannot run on it.
   return selection.mode === 'explicit'
-    ? 'Pick a different revision, or use the source revision instead.'
-    : 'This run’s own revision could not be resolved on this process. Use “Fork a different revision” and pick one that is currently installed.';
+    ? 'That revision isn’t loaded, so the fork can’t run on it. Pick a different revision, or use the source revision instead.'
+    : 'This run’s own revision isn’t loaded, so the fork can’t run on it. Use “Fork a different revision” and pick one that is currently installed.';
 }
 
 /** One installed revision, as the fork dialog's revision picker needs it — a narrow projection of `WorkflowRevisionRecord` (`@lostgradient/weft`). */

@@ -439,9 +439,6 @@
         {#if previewConflict}
           <div role="alert">
             <Callout variant="warning" title={RUN_FORK_PREVIEW_COPY.refusedTitle}>
-              {previewQuery.error instanceof Error
-                ? previewQuery.error.message
-                : RUN_FORK_PREVIEW_COPY.refusedFallback}
               {forkConflictGuidance(selection)}
             </Callout>
           </div>
@@ -503,9 +500,6 @@
     {#if revisionConflict}
       <div role="alert">
         <Callout variant="warning" title={RUN_FORK_PREVIEW_COPY.refusedTitle}>
-          {forkMutation.error instanceof Error
-            ? forkMutation.error.message
-            : RUN_FORK_PREVIEW_COPY.refusedFallback}
           {forkConflictGuidance(failedSelection)}
         </Callout>
       </div>

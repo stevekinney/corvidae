@@ -421,17 +421,25 @@ test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow 
     return { runId: forkId, sourceRunId: FORK_COMPARISON_RUN_ID, forkPoint, steps };
   }
 
+  /** The mounted card of one plugin panel, by its app, so another panel's mounting never changes a count. */
+  function panelOf(page: Page, app: string): Locator {
+    return page.locator(`[data-section="plugin-panel"][data-app="${app}"]`);
+  }
+
   /**
    * Opens a fork's Inspector tab. A card is mounted only when it has something to say about the run,
-   * so a fork's page holds the comparison and nothing else: the run has no agent task for the run
-   * inspector, and the schedule editor cannot narrow to its workflow.
+   * so a fork's page holds the comparison: the run has no agent task for the run inspector, and the
+   * schedule editor cannot narrow to its workflow. The run timeline shows on any run and is not
+   * asserted either way.
    */
   async function openPanels(page: Page, runId: string): Promise<void> {
     await page.goto(`/runs/${encodeURIComponent(runId)}`);
     await openHowItRan(page);
     await page.getByRole('tab', { name: 'Inspector' }).click();
     await expect(page.locator('iframe[title="Run comparison"]')).toBeVisible();
-    await expect(page.locator('[data-section="plugin-panel"]')).toHaveCount(1);
+    await expect(panelOf(page, 'run-comparison')).toHaveCount(1);
+    await expect(panelOf(page, 'run-inspector')).toHaveCount(0);
+    await expect(panelOf(page, 'schedule-editor')).toHaveCount(0);
   }
 
   /** Captures at the desktop widths and at 375 and 320. */
@@ -493,12 +501,14 @@ test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow 
     await page.goto(`/runs/${encodeURIComponent(FORK_COMPARISON_RUN_ID)}`);
     await openHowItRan(page);
     await page.getByRole('tab', { name: 'Inspector' }).click();
-    await capturePanels(page, 'workflow run page, no run cards', async () => {
-      // The page's own controls are there; no run inspector (no agent task), no schedule editor
-      // (it cannot narrow to this run's workflow) and no comparison (the run is not a fork).
+    await capturePanels(page, 'workflow run page, not a fork', async () => {
+      // The page's own controls are there. The run timeline shows on any run, so it is not counted
+      // out; the panels with nothing to say are each absent: no run inspector (no agent task), no
+      // schedule editor (it cannot narrow to this run's workflow) and no comparison (not a fork).
       await expect(page.locator('[data-section="change"]')).toBeVisible();
-      await expect(page.locator('[data-section="plugin-panel"]')).toHaveCount(0);
-      await expect(page.locator('iframe')).toHaveCount(0);
+      await expect(panelOf(page, 'run-comparison')).toHaveCount(0);
+      await expect(panelOf(page, 'run-inspector')).toHaveCount(0);
+      await expect(panelOf(page, 'schedule-editor')).toHaveCount(0);
     });
   });
 });
