@@ -34,6 +34,32 @@
       {/snippet}
     </DataList>
   </div>
+  <div data-testid="lines-control">
+    <DataList items={rows} key={(row) => row.id}>
+      {#snippet children()}
+        <StackedListItem actions={[{ label: 'Connect provider', href: '#provider' }]} lines>
+          {#snippet leading()}<span aria-hidden="true">!</span>{/snippet}
+          {#snippet title()}Connect a provider before the next run{/snippet}
+          {#snippet meta()}Scheduled runs cannot start until a provider is connected.{/snippet}
+        </StackedListItem>
+      {/snippet}
+    </DataList>
+  </div>
+  <div data-testid="lines-control-viewport">
+    <DataList items={rows} key={(row) => row.id}>
+      {#snippet children()}
+        <StackedListItem
+          actions={[{ label: 'Connect provider', href: '#provider' }]}
+          lines
+          phoneWidth="viewport"
+        >
+          {#snippet leading()}<span aria-hidden="true">!</span>{/snippet}
+          {#snippet title()}Connect a provider before the next run{/snippet}
+          {#snippet meta()}Scheduled runs cannot start until a provider is connected.{/snippet}
+        </StackedListItem>
+      {/snippet}
+    </DataList>
+  </div>
 </div>
 
 <!-- A 360px pane: the row's own width is a phone's, whatever the viewport is (COR-2448). -->

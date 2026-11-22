@@ -655,36 +655,6 @@
     }
   }
 
-  /* The ordinary 448px trailing rule comes before the two-line phone grid above. Keep a single
-     action under the body at that documented narrow width instead of letting the later status grid
-     squeeze its text; a collapsed menu, decorative glyph, or explicit phone buttons has its own
-     compact arrangement. */
-  @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
-        .cinder-stacked-list-item--collapsed-actions,
-        .cinder-stacked-list-item--trailing-glyph,
-        .cinder-stacked-list-item--phone-buttons
-      )
-      > .cinder-stacked-list-item__layout {
-      grid-template-columns: 1fr;
-      grid-template-areas:
-        'body'
-        'trailing';
-    }
-
-    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
-        .cinder-stacked-list-item--collapsed-actions,
-        .cinder-stacked-list-item--trailing-glyph,
-        .cinder-stacked-list-item--phone-buttons
-      )
-      > .cinder-stacked-list-item__layout {
-      grid-template-columns: auto 1fr;
-      grid-template-areas:
-        'leading body'
-        'trailing trailing';
-    }
-  }
-
   /* The phone form by the window (`phoneWidth="viewport"`): the rules of the container queries
      above, for a row the script marks as a phone while the viewport is below 640px. A
      list that fills the page's content column follows the window, so a tablet whose navigation
@@ -736,6 +706,45 @@
     )
     .cinder-stacked-list-item__status:has(*) {
     margin-inline-end: var(--cinder-space-1-5);
+  }
+
+  /* The generic narrow rule predates lines, whose body wrapper is flattened into this grid. Keep a
+     single action below the real title and line cells rather than creating an implicit `body` row.
+     This comes after both phone-width forms so an ordinary action gets the same usable text tracks
+     whether its phone state follows the row or the viewport. Menus, glyphs, and explicit phone
+     buttons each retain their compact or full-width arrangements. */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns:
+        [status] var(--_cinder-status-track) [leading] auto [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto);
+      grid-template-areas:
+        'status leading title time'
+        'status leading line line'
+        'trailing trailing trailing trailing'
+        '. . details details';
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns:
+        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto);
+      grid-template-areas:
+        'leading title title time'
+        'leading status line line'
+        'trailing trailing trailing trailing'
+        '. . details details';
+    }
   }
 
   /* The chat list's line-two status gives up its fixed column on a phone only (COR-2016): the

@@ -41,3 +41,39 @@ test('a narrow row keeps a trailing glyph beside the body and drops a trailing c
   // The button: on a line of its own under the body.
   expect(control.trailing!.top).toBeGreaterThanOrEqual(control.body!.bottom - 1);
 });
+
+for (const phoneWidth of ['row', 'viewport'] as const) {
+  test(`a narrow ${phoneWidth}-width line row keeps its action below the real text grid`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto(fixtureRoute('stacked-list-item', { fixtureName: 'narrow-trailing' }), {
+      waitUntil: 'load',
+    });
+    const row = page.locator(
+      `[data-testid="lines-control${phoneWidth === 'viewport' ? '-viewport' : ''}"] .cinder-stacked-list-item`,
+    );
+    await row.waitFor({ state: 'visible' });
+    const read = await row.evaluate((element) => {
+      const box = (selector: string) => {
+        const found = element.querySelector(selector);
+        if (!found) return null;
+        const { top, bottom, left, right, width } = found.getBoundingClientRect();
+        return { top, bottom, left, right, width };
+      };
+      return {
+        title: box('.cinder-stacked-list-item__title'),
+        line: box('.cinder-stacked-list-item__line-two'),
+        trailing: box('.cinder-stacked-list-item__trailing'),
+      };
+    });
+    expect(read.title).not.toBeNull();
+    expect(read.line).not.toBeNull();
+    expect(read.trailing).not.toBeNull();
+    // The flattened body has no box of its own. Its title and line remain in the declared grid,
+    // and the single compact action occupies a following row instead of stealing their width.
+    expect(read.title!.width).toBeGreaterThan(0);
+    expect(read.line!.width).toBeGreaterThan(0);
+    expect(read.trailing!.top).toBeGreaterThanOrEqual(read.line!.bottom - 1);
+  });
+}
