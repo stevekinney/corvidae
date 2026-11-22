@@ -23,6 +23,7 @@
     RelativeTime,
     SelectableRow,
     StatusDot,
+    type ApprovalResolution,
     type DataListGroup,
   } from '@lostgradient/cinder';
   import { Check } from '@lucide/svelte';
@@ -361,13 +362,13 @@
   /** Sends a decision on the open approval, then opens the review after it. */
   function decide(
     review: Extract<BureauReview, { kind: 'tool-approval' }>,
-    action: 'approve' | 'deny' | 'remember',
+    resolution: ApprovalResolution,
   ): void {
     if (mode !== 'waiting' || resolving || decisionSent || review.status !== 'pending') return;
     decisionSent = true;
-    const note = (notes.get(review.id) ?? '').trim();
-    const word =
-      action === 'deny' ? REVIEWS_COPY.announced.denied : REVIEWS_COPY.announced.approved;
+    const note = resolution.reason;
+    const denied = resolution.decision === 'deny';
+    const word = denied ? REVIEWS_COPY.announced.denied : REVIEWS_COPY.announced.approved;
     const advance = advancer(
       `bureau:${review.id}`,
       REVIEWS_COPY.announce(word, reviewTitle(review)),
@@ -377,12 +378,12 @@
       notes.delete(review.id);
       advance();
     };
-    if (action === 'deny') {
+    if (denied) {
       // A denial with a note is a rejection with that reason, which the agent reads.
       onResolve({
         review,
-        decision: note === '' ? 'deny' : 'reject',
-        reason: note === '' ? undefined : note,
+        decision: note === undefined ? 'deny' : 'reject',
+        reason: note,
         remember: false,
         onDone,
       });
@@ -390,20 +391,34 @@
       onResolve({
         review,
         decision: 'approve',
-        reason: note === '' ? undefined : note,
-        remember: action === 'remember',
+        reason: note,
+        remember: resolution.remember,
         onDone,
       });
     }
   }
 
-  function approvalOpen(): Extract<BureauReview, { kind: 'tool-approval' }> | undefined {
-    const review = selected?.review;
-    return review?.kind === 'tool-approval' ? review : undefined;
+  /** Uses the same controls for keys and pointer input, including the confirmation step. */
+  function pressApprovalControl(action: 'approve' | 'deny'): void {
+    if (!decisionKeysArmed || selected?.review.kind !== 'tool-approval') return;
+    const selector =
+      action === 'approve'
+        ? '.cinder-inline-confirm__two-press button'
+        : 'button[data-cinder-approval-deny]';
+    detailElement
+      ?.querySelector<HTMLButtonElement>(`.ib-review-pane__decision ${selector}`)
+      ?.click();
   }
 
   /** Moves focus to the first control of the open review's decision or answer, and presses none. */
   function focusDecision(): void {
+    const note = detailElement?.querySelector<HTMLElement>(
+      '.ib-review-pane__decision textarea:not([disabled])',
+    );
+    if (note !== null && note !== undefined) {
+      note.focus();
+      return;
+    }
     const region = detailElement?.querySelector<HTMLElement>(
       '.ib-review-pane__decision, .ib-review-pane__answer',
     );
@@ -444,20 +459,14 @@
         label: REVIEWS_COPY.approveShortcut,
         group,
         scope,
-        handler: () => {
-          const review = approvalOpen();
-          if (review !== undefined && decisionKeysArmed) decide(review, 'approve');
-        },
+        handler: () => pressApprovalControl('approve'),
       }),
       shortcuts.register({
         keys: ['d'],
         label: REVIEWS_COPY.denyShortcut,
         group,
         scope,
-        handler: () => {
-          const review = approvalOpen();
-          if (review !== undefined && decisionKeysArmed) decide(review, 'deny');
-        },
+        handler: () => pressApprovalControl('deny'),
       }),
       ...Array.from({ length: 9 }, (_, index) =>
         shortcuts.register({

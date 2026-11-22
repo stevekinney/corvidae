@@ -1,7 +1,9 @@
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { flushSync, tick } from 'svelte';
 
+import { discoverAgentsMessages, STATES_CONTEXT_WINDOW } from '../../../fixtures/chat-states.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { router } from '../../lib/router.svelte.ts';
 import Chats from './chats.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -26,6 +28,50 @@ const page = (offset: number, count: number, more: boolean) => ({
 });
 
 describe('the list of sessions', () => {
+  test('keeps the open chat mounted when a refused approval changes its list status', async () => {
+    const waiting = { ...CONTEXT, activity: 'awaiting-input' };
+    let reads = 0;
+    restore = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': () => waiting,
+        'bureau.contexts.list': () => ({ contexts: [waiting], nextOffset: null }),
+        'bureau.contexts.window': () => STATES_CONTEXT_WINDOW,
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          reads += 1;
+          return Response.json({ threadId: 'session-1', messages: discoverAgentsMessages() });
+        }
+        if (url.endsWith('/run')) {
+          return new Response(
+            'data: {"type":"RUN_ERROR","code":"RUN_NOT_FOUND","message":"none"}\n\n',
+            {
+              headers: { 'content-type': 'text/event-stream' },
+            },
+          );
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByRole, findByText, getByTestId, queryByRole } = mount();
+    const row = () => container.querySelector('[data-chat="session-1"]')?.textContent;
+    const approve = await findByRole('button', { name: /^Approve$/ });
+    expect(row()).toContain(CHAT_COPY.status.waiting);
+
+    await fireEvent.click(approve);
+
+    await findByText(CHAT_COPY.approval.notWaiting);
+    await findByText(CHAT_COPY.approval.lapsed);
+    expect(row()).toContain(CHAT_COPY.status.done);
+    expect(getByTestId('chat-header').textContent).toContain(CHAT_COPY.status.done);
+    expect(queryByRole('button', { name: /^Approve$/ })).toBeNull();
+    await waitFor(() => expect(reads).toBeGreaterThan(1));
+  });
+
   test('is the sessions the Bureau lists, newest first, each as a link with its latest message and its status', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 3, false),
@@ -403,7 +449,7 @@ describe('the list of sessions', () => {
     expect(row.closest('[data-chat]')?.querySelector('time')).toBeNull();
   });
 
-  test('says to pick a chat, with New chat as an action, until one is open', async () => {
+  test('says quietly that no chat is open, with no second empty state, until one is open (COR-2438)', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 1, false),
       'bureau.reviews.list': () => ({ reviews: [] }),
@@ -414,9 +460,9 @@ describe('the list of sessions', () => {
     const { findByRole } = mount();
 
     const detail = await findByRole('region', { name: 'Open chat' });
-    // While the list is read the pane holds a skeleton of the chat that is about to open (COR-2445).
-    await waitFor(() => expect(detail.textContent).toContain('Pick a chat'));
-    expect(detail.querySelector('a[href="/chats/new"]')?.textContent).toContain('New chat');
+    await waitFor(() => expect(detail.textContent?.trim()).toBe('No chat open'));
+    expect(detail.querySelector('.cinder-empty-state')).toBeNull();
+    expect(detail.querySelector('a[href="/chats/new"]')).toBeNull();
     const title = await findByRole('heading', { level: 1 });
     expect(title.textContent?.trim()).toBe('Chats');
   });

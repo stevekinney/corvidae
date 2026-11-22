@@ -424,6 +424,77 @@ describe('run', () => {
     }
   });
 
+  test('a delivery binding dispatches main.yml with exactly the three verification inputs, planning nothing', () => {
+    const request = 'a'.repeat(64);
+    const plan = 'b'.repeat(64);
+    const base = 'c'.repeat(40);
+    const bound = [
+      '--ref',
+      'chef/x',
+      '--verification-request',
+      request,
+      '--verification-plan',
+      plan,
+      '--verification-base',
+      base,
+    ];
+    const { dependencies, calls } = fake(['a.ts']);
+    const json = JSON.parse(run([...bound, '--dry-run', '--json'], dependencies).output);
+    expect(json.command).toEqual([
+      'gh',
+      'workflow',
+      'run',
+      'main.yml',
+      '--ref',
+      'chef/x',
+      '-f',
+      `verification_request=${request}`,
+      '-f',
+      `verification_plan=${plan}`,
+      '-f',
+      `verification_base=${base}`,
+    ]);
+    expect(Object.keys(json).toSorted()).toEqual(['command', 'inputs', 'ref', 'requiresFullRun']);
+    expect(json.requiresFullRun).toBe(true);
+    // No diff, no manifest and no git: a bound run is planned by its request, not by this script.
+    expect(calls).toEqual([]);
+    run(bound, dependencies);
+    expect(calls.filter((call) => call[0] === 'gh')).toHaveLength(1);
+  });
+
+  test('a delivery binding is refused when partial, malformed, refless or mixed with a selection', () => {
+    const { dependencies, calls } = fake(['a.ts']);
+    const request = ['--verification-request', 'a'.repeat(64)];
+    expect(() => run(['--ref', 'b', ...request], dependencies)).toThrow('go together');
+    const all = [
+      ...request,
+      '--verification-plan',
+      'b'.repeat(64),
+      '--verification-base',
+      'c'.repeat(40),
+    ];
+    expect(() => run(all, dependencies)).toThrow('needs --ref');
+    expect(() =>
+      run(['--ref', 'b', ...all, '--e2e-spec', 'tests/e2e/x.spec.ts'], dependencies),
+    ).toThrow('--e2e-spec');
+    expect(() =>
+      run(
+        [
+          '--ref',
+          'b',
+          '--verification-request',
+          'x',
+          '--verification-plan',
+          'b'.repeat(64),
+          '--verification-base',
+          'c'.repeat(40),
+        ],
+        dependencies,
+      ),
+    ).toThrow('SHA-256 request key');
+    expect(calls).toEqual([]);
+  });
+
   test('a whole suite of a few files stays targeted; a large one wants the full run', () => {
     const lane = (count: number) => ({
       ...planOf([]),

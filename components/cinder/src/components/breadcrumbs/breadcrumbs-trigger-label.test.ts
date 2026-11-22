@@ -25,6 +25,39 @@ function trimmedLabel(): Map<string, string> {
   return found;
 }
 
+/** The declarations of the top-level rule whose selector is exactly `selector`. */
+function topLevelRule(selector: string): Map<string, string> {
+  const found = new Map<string, string>();
+  parse(css).walkRules(selector, (rule) => {
+    if (rule.parent?.type === 'atrule' && (rule.parent as { name?: string }).name !== 'layer') {
+      return;
+    }
+    rule.walkDecls((declaration) => {
+      found.set(declaration.prop, declaration.value);
+    });
+  });
+  return found;
+}
+
+describe('Breadcrumbs item', () => {
+  // The foundation's `:where(li)` bottom margin made the trail 4px taller than its words, so a bar
+  // that centres the trail drew the crumbs 2px above its centre line (COR-2438).
+  test('drops the foundation list item margin, so the trail is as tall as its words', async () => {
+    expect(topLevelRule('.cinder-breadcrumbs__item').get('margin')).toBe('0');
+    // The rule this guards against is still there, so the reset still matters.
+    const foundation = parse(
+      await Bun.file(new URL('../../styles/foundation.css', import.meta.url)).text(),
+    );
+    let listItemMargin = false;
+    foundation.walkRules(':where(li)', (rule) => {
+      rule.walkDecls('margin-bottom', () => {
+        listItemMargin = true;
+      });
+    });
+    expect(listItemMargin).toBe(true);
+  });
+});
+
 describe('Breadcrumbs title switcher label', () => {
   test('is trimmed to its capitals and baseline where text-box-trim ships', () => {
     expect(trimmedLabel().get('text-box')).toBe('trim-both cap alphabetic');
