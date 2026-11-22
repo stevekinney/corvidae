@@ -1,4 +1,4 @@
-import type { ExplanationModel } from '@lostgradient/failure-explanation';
+import type { ExplanationModel } from '@lostgradient/interborough-plugin/failure-explanation';
 
 import type { Refusal } from './model.ts';
 

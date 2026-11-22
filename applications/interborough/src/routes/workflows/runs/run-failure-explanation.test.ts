@@ -40,10 +40,9 @@ describe('a failed run’s explanation', () => {
     expect(part(container, 'summary')?.textContent).toBe(FAILED_RUN_EXPLANATION.summary);
 
     const cause = part(container, 'cause');
-    expect(cause?.querySelector('.cinder-badge')?.textContent?.trim()).toBe('application');
-    expect(cause?.querySelector('.cinder-badge')?.getAttribute('data-cinder-variant')).toBe(
-      'danger',
-    );
+    // The cause is plain text on the label's edge: a badge's fill is the alert's own tint.
+    expect(cause?.querySelector('.cinder-badge')).toBeNull();
+    expect(cause?.textContent?.trim()).toStartWith('application');
     // The engine's UNKNOWN is no code, and the kind of error is in the sentence: neither is shown.
     expect(cause?.textContent).not.toContain('UNKNOWN');
     expect(cause?.textContent).not.toContain('kind');
@@ -161,7 +160,7 @@ describe('a failed run’s explanation', () => {
     expect(without.queryByRole('button', { name: 'Show the error details' })).toBeNull();
   });
 
-  test('AC2: the badge’s tone follows the server’s category, and no sentence is the browser’s', async () => {
+  test('AC2: the cause names the server’s category, and no sentence is the browser’s', async () => {
     restore = bureau(
       explainAnswers({
         ...FAILED_RUN_EXPLANATION,
@@ -173,9 +172,7 @@ describe('a failed run’s explanation', () => {
     ).restore;
     const { container, findByText } = show({ runId: 'run-1', category: 'application' });
     await findByText(FAILED_RUN_EXPLANATION.summary);
-    const badge = part(container, 'cause')?.querySelector('.cinder-badge');
-    expect(badge?.textContent?.trim()).toBe('timeout');
-    expect(badge?.getAttribute('data-cinder-variant')).toBe('warning');
+    expect(part(container, 'cause')?.textContent?.trim()).toBe('timeout');
     // No code, kind, step, tries or guardrail row for a stored fact that is not there.
     expect(container.querySelector('dl')?.textContent).not.toContain('Tries');
     expect(container.querySelector('dl')?.textContent).not.toContain('Step');

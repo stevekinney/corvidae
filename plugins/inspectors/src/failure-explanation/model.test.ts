@@ -1,4 +1,4 @@
-import type { Explanation } from '@lostgradient/failure-explanation';
+import type { Explanation } from '@lostgradient/interborough-plugin/failure-explanation';
 import { describe, expect, it } from 'bun:test';
 
 import { explanationOfResult, refusalOf, runIdOf } from './model.ts';
@@ -74,34 +74,34 @@ describe('the explanation a tool result carries (COR-2543)', () => {
 });
 
 describe('the Bureau’s refusal to explain a run (COR-2543)', () => {
-  it('reads the message and the remediation from the fault’s structured content', () => {
+  it('reads the reason, the message and the remediation from the fault’s structured content', () => {
     expect(
       refusalOf({
         isError: true,
         structuredContent: {
           code: 'Unprocessable',
-          message:
-            'Run "run-1" has not failed (its status is "completed"), so there is no failure to explain',
+          message: 'This run has not failed, so there is no failure to explain',
           data: { reason: 'run-not-failed' },
           retryable: false,
           remediation: 'Explain a run only after it has failed.',
         },
       }),
     ).toEqual({
-      message:
-        'Run "run-1" has not failed (its status is "completed"), so there is no failure to explain',
+      reason: 'run-not-failed',
+      message: 'This run has not failed, so there is no failure to explain',
       remediation: 'Explain a run only after it has failed.',
     });
   });
 
-  it('has no remediation when the fault sent none, and falls back to the text of the result', () => {
+  it('has no reason or remediation when the fault sent none, and falls back to the text of the result', () => {
     expect(refusalOf({ isError: true, structuredContent: { message: 'Not found' } })).toEqual({
+      reason: null,
       message: 'Not found',
       remediation: null,
     });
     expect(
       refusalOf({ isError: true, content: [{ type: 'text', text: 'the host refused' }] }),
-    ).toEqual({ message: 'the host refused', remediation: null });
+    ).toEqual({ reason: null, message: 'the host refused', remediation: null });
   });
 
   it('is nothing for a result that is not an error, or an error with nothing to read', () => {

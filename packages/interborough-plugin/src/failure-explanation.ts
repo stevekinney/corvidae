@@ -48,7 +48,28 @@ export const FAILURE_EXPLANATION_LABELS = {
   tries: 'Tries',
   guardrails: 'Guardrails',
   next: 'What to do next',
+  /** What the page says for a run that did not fail, in place of the Bureau's message. */
+  notFailed: 'This run didn’t fail, so there’s nothing to explain.',
 } as const;
+
+/** What the Bureau says when it will not explain a run, as the panel reads it from the fault. */
+export interface ExplanationRefusal {
+  /** The fault's `data.reason`, or `null` when it sent none. */
+  readonly reason: string | null;
+  readonly message: string;
+  readonly remediation: string | null;
+}
+
+/**
+ * The sentence a refusal is drawn as. A run that did not fail is worded here, from the fault's
+ * reason alone, so the sentence carries no run identifier and no quoted status; any other
+ * refusal is the Bureau's own message.
+ */
+export function refusalSentence(refusal: ExplanationRefusal): string {
+  return refusal.reason === 'run-not-failed'
+    ? FAILURE_EXPLANATION_LABELS.notFailed
+    : refusal.message;
+}
 
 /** Sentence-case-safe badge label for a failure category; `uncategorized` for a failure nothing classifies. */
 export function failureCategoryLabel(category: string | null | undefined): string {

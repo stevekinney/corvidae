@@ -4,7 +4,8 @@
   "description": "An Interborough plugin that contributes the run inspector, pending-review, workflow revision review, schedule editor, run timeline and failure explanation interface panels, served as ui:// resources.",
   "type": "module",
   "exports": {
-    ".": "./src/plugin.ts"
+    ".": "./src/plugin.ts",
+    "./failure-explanation.svelte": "./src/failure-explanation/failure-explanation.svelte"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",
@@ -20,7 +21,6 @@
   "devDependencies": {
     "@lostgradient/bureau": "workspace:*",
     "@lostgradient/cinder": "workspace:*",
-    "@lostgradient/failure-explanation": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@testing-library/dom": "catalog:",

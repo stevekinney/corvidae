@@ -88,14 +88,18 @@
 
   const copy = RUN_DETAIL_COPY.instance;
 
+  // How long a step that was tried again took in all (row 55b): the explanation's Tries row says
+  // it, and the page's own sentence below says it while the Bureau has no answer.
+  const tookWords = $derived(
+    progress === undefined || progress.tries < 2 || triesTook === undefined
+      ? undefined
+      : triesTookWords(triesTook),
+  );
   // "Interborough tried 3 times in 3.4 s.", said after why it failed when the step was tried again.
   const tried = $derived(
     progress === undefined || progress.tries < 2
       ? undefined
-      : copy.triedIn(
-          progress.tries,
-          triesTook === undefined ? undefined : triesTookWords(triesTook),
-        ),
+      : copy.triedIn(progress.tries, tookWords),
   );
   const retryKeeps = $derived(
     retryVersion === undefined || progress?.at === null || progress?.at === undefined
@@ -166,7 +170,14 @@
            stack behind a disclosure (rows 14t, 55b). The page's own words about the failure show
            only while the Bureau has no answer, or holds none. The step is named once, in the
            heading, and the Bureau's remediation is the one next step. -->
-      <RunFailureExplanation {runId} {category} {errorStack} showStep={false} {fallback} />
+      <RunFailureExplanation
+        {runId}
+        {category}
+        {errorStack}
+        showStep={false}
+        took={tookWords}
+        {fallback}
+      />
       {#if retryKeeps !== undefined}
         <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>{retryKeeps}</p>
       {/if}

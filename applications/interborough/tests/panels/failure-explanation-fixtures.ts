@@ -29,14 +29,16 @@ export const UNCLASSIFIED_FIXTURE_RUN = {
   nextCommands: ['interborough runs get --kind task run-1'],
 } as const;
 
+/** The sentence the page draws for the refusal below: its own, from the reason, not the Bureau's message. */
+export const NOT_FAILED_SENTENCE = 'This run didn’t fail, so there’s nothing to explain.';
+
 /** The refusal the Bureau answers for a run that did not fail. */
 export const NOT_FAILED_FAULT = {
   isError: true,
   content: [{ type: 'text', text: '{"code":"Unprocessable"}' }],
   structuredContent: {
     code: 'Unprocessable',
-    message:
-      'Run "run-1" has not failed (its status is "completed"), so there is no failure to explain',
+    message: 'This run has not failed, so there is no failure to explain',
     data: { reason: 'run-not-failed' },
     retryable: false,
     remediation:

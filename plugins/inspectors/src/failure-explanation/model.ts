@@ -4,10 +4,13 @@
  * stored about the run and nothing else, so nothing here words a cause. It reads the answer's
  * fields, names the ones a person reads, and reads a refusal's message and remediation back out of
  * an error result. What it draws of an answer, and the words for it, are the shared ones
- * (`@lostgradient/failure-explanation`), which the Run page draws too.
+ * (`@lostgradient/interborough-plugin/failure-explanation`), which the Run page draws too.
  */
 
-import type { Explanation } from '@lostgradient/failure-explanation';
+import type {
+  Explanation,
+  ExplanationRefusal,
+} from '@lostgradient/interborough-plugin/failure-explanation';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -66,16 +69,16 @@ export function explanationOfResult(result: {
   return isExplanation(content) ? content : undefined;
 }
 
-/** What the Bureau said when it would not explain: its message, and what to do next when it said. */
-export interface Refusal {
-  readonly message: string;
-  readonly remediation: string | null;
-}
+/**
+ * What the Bureau said when it would not explain: why (the fault's reason, which the page words
+ * itself for a run that did not fail), its message, and what to do next when it said.
+ */
+export type Refusal = ExplanationRefusal;
 
 /**
- * The refusal an error result carries: the Bureau's fault, as `message` and `remediation` in the
- * result's structured content, else the text of its content. `undefined` for a result that is not
- * an error, or an error with nothing to read.
+ * The refusal an error result carries: the Bureau's fault, as `message`, `remediation` and
+ * `data.reason` in the result's structured content, else the text of its content. `undefined` for
+ * a result that is not an error, or an error with nothing to read.
  */
 export function refusalOf(result: {
   readonly isError?: boolean | undefined;
@@ -86,14 +89,19 @@ export function refusalOf(result: {
   const fault = result.structuredContent;
   if (isRecord(fault) && typeof fault['message'] === 'string' && fault['message'] !== '') {
     const remediation = fault['remediation'];
+    const data = fault['data'];
+    const reason = isRecord(data) ? data['reason'] : undefined;
     return {
+      reason: typeof reason === 'string' && reason !== '' ? reason : null,
       message: fault['message'],
       remediation: typeof remediation === 'string' && remediation !== '' ? remediation : null,
     };
   }
   const first = Array.isArray(result.content) ? result.content[0] : undefined;
   const text = isRecord(first) ? first['text'] : undefined;
-  return typeof text === 'string' && text !== '' ? { message: text, remediation: null } : undefined;
+  return typeof text === 'string' && text !== ''
+    ? { reason: null, message: text, remediation: null }
+    : undefined;
 }
 
 /** The run a page was opened for: the explain tool's `runId`, or the `taskId` a run's page passes. */

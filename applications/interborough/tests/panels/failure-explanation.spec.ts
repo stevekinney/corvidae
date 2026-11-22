@@ -13,7 +13,12 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
-import { explained, FAILED_FIXTURE_RUN, NOT_FAILED_FAULT } from './failure-explanation-fixtures.ts';
+import {
+  explained,
+  FAILED_FIXTURE_RUN,
+  NOT_FAILED_FAULT,
+  NOT_FAILED_SENTENCE,
+} from './failure-explanation-fixtures.ts';
 import { expectFollowsHost, hostContextFor, SCHEMES, type Scheme } from './host-theme.ts';
 
 const HOST_ORIGIN = 'http://reference-host.test';
@@ -135,24 +140,26 @@ test.describe('the failure explanation MCP App', () => {
     expect(calls.length).toBeLessThanOrEqual(1);
   });
 
-  test('AC3: shows the Bureau’s message and what to do for a run that did not fail', async ({
+  test('AC3: says the run did not fail, in the page’s own sentence, and what to do', async ({
     page,
   }) => {
     const { app } = await open(page, { answer: NOT_FAILED_FAULT });
-    await expect(app.getByText(NOT_FAILED_FAULT.structuredContent.message)).toBeVisible();
-    await expect(app.getByRole('region', { name: 'What to do next' })).toContainText(
+    await expect(app.getByText(NOT_FAILED_SENTENCE)).toBeVisible();
+    // No run identifier and no quoted status in what the page says.
+    await expect(app.getByText('run-1')).toHaveCount(0);
+    await expect(app.locator('[data-explanation="remediation"]')).toContainText(
       'Explain a run only after it has failed',
     );
-    await expect(app.locator('[data-explanation="root"]')).toHaveCount(0);
+    await expect(app.locator('[data-explanation="cause"]')).toHaveCount(0);
   });
 
-  test('AC3: shows the message of a refusal opened from the explain tool', async ({ page }) => {
+  test('AC3: says the same for a refusal opened from the explain tool', async ({ page }) => {
     const { app } = await open(page, {
       toolInput: { runId: 'run-1' },
       toolResult: NOT_FAILED_FAULT,
       answer: NOT_FAILED_FAULT,
     });
-    await expect(app.getByText(NOT_FAILED_FAULT.structuredContent.message)).toBeVisible();
+    await expect(app.getByText(NOT_FAILED_SENTENCE)).toBeVisible();
   });
 
   test('says so when the host does not answer, and draws nothing it did not read', async ({

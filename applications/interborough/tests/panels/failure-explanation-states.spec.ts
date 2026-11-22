@@ -30,6 +30,7 @@ import {
   explained,
   FAILED_FIXTURE_RUN,
   NOT_FAILED_FAULT,
+  NOT_FAILED_SENTENCE,
   UNCLASSIFIED_FIXTURE_RUN,
 } from './failure-explanation-fixtures.ts';
 
@@ -192,13 +193,13 @@ test.describe('failure-explanation-states', () => {
     await captureState(page, app, 'explained-unclassified', ready);
   });
 
-  test('not-failed: the run did not fail, so the Bureau’s own message is shown', async ({
+  test('not-failed: the run did not fail, so the page says so in its own sentence', async ({
     page,
   }) => {
     const app = await open(page, { answer: NOT_FAILED_FAULT });
     const ready = async () => {
-      await expect(app.getByText(NOT_FAILED_FAULT.structuredContent.message)).toBeVisible();
-      await expect(app.getByRole('region', { name: 'What to do next' })).toBeVisible();
+      await expect(app.getByText(NOT_FAILED_SENTENCE)).toBeVisible();
+      await expect(app.locator('[data-explanation="remediation"]')).toBeVisible();
     };
     await ready();
     await captureState(page, app, 'not-failed', ready);

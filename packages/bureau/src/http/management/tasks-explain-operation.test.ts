@@ -263,7 +263,11 @@ describe('bureau.tasks.explain for a run that did not fail', () => {
 
     expect(response.result).toBeUndefined();
     expect(response.error?.data).toMatchObject({ reason: 'run-not-failed' });
-    expect(response.error?.message).toContain('"completed"');
+    // The message names neither the run nor its status, and quotes nothing: an MCP caller shows it
+    // as it is.
+    expect(response.error?.message).toBe(
+      'This run has not failed, so there is no failure to explain',
+    );
     expect(response.error?.data?.['remediation']).toEqual(expect.any(String));
     expect(String(response.error?.data?.['remediation']).length).toBeGreaterThan(0);
   });
@@ -403,7 +407,9 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
 
     expect(response.result).toBeUndefined();
     expect(response.error?.data).toMatchObject({ reason: 'run-not-failed' });
-    expect(response.error?.message).toContain('"completed"');
+    expect(response.error?.message).toBe(
+      'This run has not failed, so there is no failure to explain',
+    );
     expect(response.error?.data?.['remediation']).toEqual(expect.any(String));
   });
 

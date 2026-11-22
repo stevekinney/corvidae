@@ -249,6 +249,28 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     );
   });
 
+  test('that failed after three tries and is explained keeps how long they took in the Tries row (row 55b)', async () => {
+    const tried = (offset: number, duration: number) => ({
+      step: 1,
+      documentStep: 1,
+      operationType: 'activity',
+      operationLabel: 'agent',
+      inputSummary: '',
+      timestamp: 2_000 + offset,
+      duration,
+      status: 'failed',
+    });
+    serveFailedReleaseNotes([tried(0, 600), tried(1_200, 600), tried(2_800, 600)]);
+
+    const view = mount('release-run');
+
+    const block = await view.findByTestId('run-step-failure');
+    await waitFor(() => expect(block.querySelector('[data-explanation="summary"]')).not.toBeNull());
+    expect(block.querySelector('dl')?.textContent).toMatch(/Tries\s*\d+, 3\.4 s in all/);
+    // The page's own sentence stands only while the Bureau has no answer: the duration is said once.
+    expect(block.textContent).not.toContain('Interborough tried');
+  });
+
   test('that failed says where: at step 2 of 4 beside Failed, the failing step’s block, and the version it ran (rows 54y, 14t, 55b, 55d)', async () => {
     serveFailedReleaseNotes();
 

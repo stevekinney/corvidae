@@ -2,7 +2,7 @@
 import {
   buildExplanationModel,
   type Explanation as Answer,
-} from '@lostgradient/failure-explanation';
+} from '@lostgradient/interborough-plugin/failure-explanation';
 import { render } from '@testing-library/svelte';
 import { describe, expect, it } from 'bun:test';
 import { tick } from 'svelte';
@@ -40,7 +40,8 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
     expect(container.querySelector('b')).toBeNull();
     expect(shared(container, 'summary')?.textContent).toBe(answer.summary);
     expect(shared(container, 'cause')?.textContent).toContain('application');
-    expect(shared(container, 'cause')?.querySelector('.cinder-badge')).not.toBeNull();
+    // Plain text on the label's edge, not a badge whose fill is the alert's own tint.
+    expect(shared(container, 'cause')?.querySelector('.cinder-badge')).toBeNull();
     // The engine's UNKNOWN is no code, and the kind of error is in the sentence: neither is shown.
     expect(shared(container, 'cause')?.textContent).not.toContain('UNKNOWN');
     expect(shared(container, 'cause')?.textContent).not.toContain('kind');
@@ -113,22 +114,30 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
     expect(shared(container, 'guardrails')).toBeNull();
   });
 
-  it('AC3: shows the Bureau’s own message, and what it said to do, for a run that did not fail', () => {
-    const message =
-      'Run "run-1" has not failed (its status is "completed"), so there is no failure to explain';
+  it('AC3: says in its own sentence that the run did not fail, and shows what the Bureau said to do', () => {
+    const message = 'This run has not failed, so there is no failure to explain';
     const { container } = open(
       {
         kind: 'refused',
-        refusal: { message, remediation: 'Explain a run only after it has failed.' },
+        refusal: {
+          reason: 'run-not-failed',
+          message,
+          remediation: 'Explain a run only after it has failed.',
+        },
       },
       'Why this run failed',
     );
-    expect(part(container, 'message')?.textContent).toContain('has not failed');
-    expect(part(container, 'remediation')?.textContent).toBe(
+    // The component's sentence, from the reason: no run identifier, no quoted status.
+    expect(shared(container, 'summary')?.textContent).toBe(
+      'This run didn’t fail, so there’s nothing to explain.',
+    );
+    expect(shared(container, 'remediation')?.textContent).toContain(
       'Explain a run only after it has failed.',
     );
-    expect(shared(container, 'summary')).toBeNull();
     expect(container.querySelector('dl')).toBeNull();
+    // The body is the explained state's body: the same component, the same type.
+    expect(shared(container, 'summary')?.classList.contains('cinder-text')).toBe(true);
+    expect(shared(container, 'summary')?.getAttribute('data-cinder-variant')).toBe('body');
     // The live region says the heading, never the message the page already shows: the words are
     // there once to a person who reads them and once to one who hears them.
     expect(container.querySelector('[role="status"]')?.textContent?.trim()).toBe(
@@ -140,10 +149,11 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
   it('says nothing to do when the Bureau said nothing', () => {
     const { container } = open({
       kind: 'refused',
-      refusal: { message: 'Not found', remediation: null },
+      refusal: { reason: null, message: 'Not found', remediation: null },
     });
-    expect(part(container, 'message')?.textContent).toBe('Not found');
-    expect(part(container, 'remediation')).toBeNull();
+    // A refusal of any other reason is the Bureau's own message.
+    expect(shared(container, 'summary')?.textContent).toBe('Not found');
+    expect(shared(container, 'remediation')).toBeNull();
   });
 
   it('says what it is doing while it reads, and when no run is named, and when the host does not answer', () => {

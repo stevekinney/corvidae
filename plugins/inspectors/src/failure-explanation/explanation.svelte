@@ -1,16 +1,17 @@
 <script lang="ts">
   /**
    * The failure explanation page (COR-2543): the Bureau's own answer to why one run failed, drawn
-   * by the one component the Run page draws it with (`@lostgradient/failure-explanation`), so the
-   * two read alike. Text goes in as text, never as markup. The page is a `main` landmark under its
-   * heading, with one live region, visually hidden, for what the page has just learned. It makes no
-   * write and has no control: a run that did not fail shows the Bureau's message and what it said
-   * to do, and a read the host did not answer says so.
+   * by the one component the Run page draws it with (`failure-explanation.svelte`, which the
+   * application imports from this package), so the two read alike. Text goes in as text, never as
+   * markup. The page is a `main` landmark under its heading, with one live region, visually hidden,
+   * for what the page has just learned. It makes no write and has no control: a run that did not
+   * fail says so in a sentence of the component's own and shows what the Bureau said to do, and a
+   * read the host did not answer says so.
    */
-  import { Section, Text, VisuallyHidden } from '@lostgradient/cinder';
-  import { FAILURE_EXPLANATION_LABELS } from '@lostgradient/failure-explanation';
-  import FailureExplanation from '@lostgradient/failure-explanation/failure-explanation.svelte';
+  import { Text, VisuallyHidden } from '@lostgradient/cinder';
+  import { FAILURE_EXPLANATION_LABELS } from '@lostgradient/interborough-plugin/failure-explanation';
 
+  import FailureExplanation from './failure-explanation.svelte';
   import type { ExplanationView } from './view.svelte.ts';
 
   let { view }: { view: ExplanationView } = $props();
@@ -28,12 +29,7 @@
   {#if state.kind === 'explained'}
     <FailureExplanation model={state.model} />
   {:else if state.kind === 'refused'}
-    <Text variant="body" data-part="message">{state.refusal.message}</Text>
-    {#if state.refusal.remediation !== null}
-      <Section title={FAILURE_EXPLANATION_LABELS.next}>
-        <Text variant="body" data-part="remediation">{state.refusal.remediation}</Text>
-      </Section>
-    {/if}
+    <FailureExplanation refusal={state.refusal} />
   {:else if state.kind === 'reading'}
     <Text variant="body" data-part="reading">Reading why this run failed.</Text>
   {:else if state.kind === 'unreadable'}

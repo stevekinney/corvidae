@@ -96,10 +96,10 @@ const explainOutput = z.object({
 });
 
 /** The fault for a run that did not fail: nothing to explain. */
-function runNotFailed(runId: string, status: string): OperationFault {
+function runNotFailed(): OperationFault {
   return {
     code: 'Unprocessable',
-    message: `Run "${runId}" has not failed (its status is "${status}"), so there is no failure to explain`,
+    message: 'This run has not failed, so there is no failure to explain',
     data: { reason: 'run-not-failed' },
     remediation:
       'Explain a run only after it has failed; read the run to see its status, and wait for a run that is still going to settle.',
@@ -136,7 +136,7 @@ export const tasksExplainOperation = defineOperation<
       runId,
       async () => (await retryableStepFor(host, principal, runId)) !== undefined,
     );
-    if (read.outcome === 'not-failed') throw runNotFailed(runId, read.status);
+    if (read.outcome === 'not-failed') throw runNotFailed();
     if (read.outcome === 'unsupported') throw unsupported();
     return read.explanation;
   },

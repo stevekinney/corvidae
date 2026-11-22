@@ -10,4 +10,7 @@
  * panel draws it with; the label and the tone are that component's, so the badge reads the same on
  * both.
  */
-export { failureCategoryLabel, failureCategoryTone } from '@lostgradient/failure-explanation';
+export {
+  failureCategoryLabel,
+  failureCategoryTone,
+} from '@lostgradient/interborough-plugin/failure-explanation';

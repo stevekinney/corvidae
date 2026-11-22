@@ -156,7 +156,7 @@ describe('interborough runs explain', () => {
     expect(text.exitCode).toBe(2);
     expect(text.stdout).toBe('');
     expect(text.stderr).toContain('has not failed');
-    expect(text.stderr).toContain('"completed"');
+    expect(text.stderr).not.toContain('"');
     expect(text.stderr).toContain('\nTry: Explain a run only after it has failed');
 
     const json = await executeCli(

@@ -4,6 +4,7 @@ import {
   buildExplanationModel,
   failureCategoryLabel,
   failureCategoryTone,
+  refusalSentence,
   type Explanation,
 } from './failure-explanation.ts';
 
@@ -84,5 +85,19 @@ describe('the words of a run’s explanation (COR-2543)', () => {
     for (const category of ['application', 'system', null, undefined]) {
       expect(failureCategoryTone(category)).toBe('danger');
     }
+  });
+
+  it('words a run that did not fail itself, and leaves any other refusal to the Bureau', () => {
+    const message = 'This run has not failed, so there is no failure to explain';
+    const sentence = refusalSentence({ reason: 'run-not-failed', message, remediation: null });
+    expect(sentence).toBe('This run didn’t fail, so there’s nothing to explain.');
+    // No run identifier, no quoted status.
+    expect(sentence).not.toMatch(/["“”]|run-\d/);
+    expect(refusalSentence({ reason: null, message: 'Not found', remediation: null })).toBe(
+      'Not found',
+    );
+    expect(refusalSentence({ reason: 'other', message: 'Refused', remediation: 'Wait.' })).toBe(
+      'Refused',
+    );
   });
 });

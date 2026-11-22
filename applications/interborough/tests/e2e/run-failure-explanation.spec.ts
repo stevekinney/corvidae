@@ -36,7 +36,9 @@ for (const width of WIDTHS) {
       // The sentence is the server's: it names the step and the cause, from stored identifiers.
       const summary = explanation.locator('[data-explanation="summary"]');
       await expect(summary).toHaveText(/^The (step ".+"|run) failed (because|for) /);
-      await expect(explanation.locator('[data-explanation="cause"] .cinder-badge')).toBeVisible();
+      // The cause is plain text on the label's edge, not a badge in the alert's own tint.
+      await expect(explanation.locator('[data-explanation="cause"]')).toBeVisible();
+      await expect(explanation.locator('[data-explanation="cause"] .cinder-badge')).toHaveCount(0);
       await expect(explanation.locator('[data-explanation="remediation"]')).toContainText(
         'What to do next.',
       );

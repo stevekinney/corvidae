@@ -10,11 +10,11 @@
    * the page itself knows, and nothing else is invented.
    */
   import { Badge, Collapsible } from '@lostgradient/cinder';
-  import FailureExplanation from '@lostgradient/failure-explanation/failure-explanation.svelte';
+  import FailureExplanation from '@lostgradient/plugin-inspectors/failure-explanation.svelte';
   import {
     buildExplanationModel,
     FAILURE_EXPLANATION_LABELS,
-  } from '@lostgradient/failure-explanation';
+  } from '@lostgradient/interborough-plugin/failure-explanation';
   import type { WorkflowState } from '@lostgradient/weft';
   import { createQuery } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
@@ -34,6 +34,8 @@
     errorStack?: string | undefined;
     /** Whether the answer names the step, which a host that names it in its own heading leaves out. */
     showStep?: boolean;
+    /** How long the failing step's tries took, in words, when the engine's history says. */
+    took?: string | undefined;
     /** What the page itself says of the failure while the Bureau has no answer, or holds none. */
     fallback?: Snippet | undefined;
   }
@@ -43,6 +45,7 @@
     category = undefined,
     errorStack = undefined,
     showStep = true,
+    took = undefined,
     fallback = undefined,
   }: RunFailureExplanationProps = $props();
 
@@ -57,6 +60,15 @@
     undefined,
   );
   const answer = $derived(explanation.data);
+
+  // The Tries row says how long the tries took when the engine's history does (row 55b): the
+  // Bureau's answer holds how often, never how long.
+  function modelOf(held: NonNullable<typeof answer>) {
+    const model = buildExplanationModel(held);
+    return model.tries === null || took === undefined
+      ? model
+      : { ...model, tries: copy.inBlock.triesIn(model.tries, took) };
+  }
 
   // A client-side navigation to `#failure-explanation` (Chat's "Why it failed" link) never scrolls
   // as a page load does, and this section mounts after the run's own queries resolve, so it scrolls
@@ -78,7 +90,7 @@
   data-run-explanation
 >
   {#if answer !== undefined}
-    <FailureExplanation model={buildExplanationModel(answer)} {showStep} />
+    <FailureExplanation model={modelOf(answer)} {showStep} />
   {:else}
     {#if category !== undefined}
       <!-- Reading the answer, or the Bureau holds none: the engine's own kind of failure, in a badge. -->
