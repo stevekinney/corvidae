@@ -766,7 +766,7 @@ for (const width of STATE_WIDTHS) {
 
     // 78a, 78b: Health's header with Workers active; the shell's own rows are `shell-chrome.spec.ts`.
     await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-    await expectTabOpen(page.locator('main'), 'Workers');
+    await expectTabOpen(page.locator('main'), 'Workers', 'Section');
     // 78c: the empty state alone, with no "Workers" heading or summary line above it saying the
     // same thing (owner report, 2026-11-19).
     await expect(region).toHaveAttribute('data-state', 'empty');

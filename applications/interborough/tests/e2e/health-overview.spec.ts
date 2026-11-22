@@ -3,7 +3,7 @@
  * COR-2018, rows 76b to 77f) and the Storage tab at a phone and a tablet width (rows 06o to 06r).
  *
  * The Overview is read at 1280, 768 and 375 pixels: the frame (the heading, the line that names the
- * storage backend, the Live indicator, the four tabs with no Diagnostics among them), the four
+ * storage backend, the Live indicator, the tabs with no Diagnostics among them), the four
  * counts, Needs attention with the sample world's three problems, Recent activity, the metric
  * cards, and Advanced collapsed at the foot, and then expanded the way an "Open Diagnostics" link
  * opens it. A fresh installation has no storage rule, so its list has no storage row (row 76i's
@@ -76,7 +76,7 @@ test.describe('the sample world', () => {
         details.x >= words.x + words.width - 1 || details.y >= words.y + words.height - 1,
         'Storage details overlaps the storage line',
       ).toBe(true);
-      await expectTabOpen(main, 'Overview');
+      await expectTabOpen(main, 'Overview', 'Section');
       await expect(
         main.getByRole('tab', { name: /Diagnostics|Metrics|Alerts|Checks/ }),
       ).toHaveCount(0);
@@ -254,7 +254,7 @@ test.describe('the sample world', () => {
             /Section:\s*Runs/,
           );
         } else {
-          await expectTabOpen(main, 'Runs');
+          await expectTabOpen(main, 'Runs', 'Section');
         }
         await expect(main.getByRole('button', { name: 'Live' })).toBeVisible();
         await expect(main.getByRole('status', { name: /Connection/ })).toHaveCount(1);
@@ -356,7 +356,7 @@ test.describe('the sample world', () => {
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
       // 06o: the responsive section control keeps Storage selected, whether the tab bar fits or
       // Cinder collapses it after measuring its container.
-      await expectTabOpen(main, 'Storage');
+      await expectTabOpen(main, 'Storage', 'Section');
       await expect(main.getByTestId('storage-warning')).toContainText(
         'Storage is over its warning level, 1.6 GB.',
       );
@@ -424,7 +424,13 @@ test.describe('the sample world', () => {
     const main = page.locator('main');
 
     // 06q: the tab bar, without a Diagnostics tab.
-    await expect(main.getByRole('tab')).toHaveText(['Overview', 'Workers', 'Storage', 'Audit log']);
+    await expect(main.getByRole('tab')).toHaveText([
+      'Overview',
+      'Runs',
+      'Workers',
+      'Storage',
+      'Audit log',
+    ]);
     await expect(main.getByRole('tab', { name: 'Storage' })).toHaveAttribute(
       'aria-selected',
       'true',
