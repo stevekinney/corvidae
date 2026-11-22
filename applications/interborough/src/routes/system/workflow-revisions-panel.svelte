@@ -308,9 +308,17 @@
       <Skeleton height="2rem" />
     </div>
   {:else if revisionsQuery.isError}
-    <QueryFaultBanner error={revisionsQuery.error} onRetry={() => revisionsQuery.refetch()} />
+    <QueryFaultBanner
+      error={revisionsQuery.error}
+      subject="installed revisions"
+      onRetry={() => revisionsQuery.refetch()}
+    />
   {:else if activeQuery.isError}
-    <QueryFaultBanner error={activeQuery.error} onRetry={() => activeQuery.refetch()} />
+    <QueryFaultBanner
+      error={activeQuery.error}
+      subject="the active revision"
+      onRetry={() => activeQuery.refetch()}
+    />
   {:else if rows === undefined}
     <div class="weft-revisions-panel__malformed" role="alert">
       <TriangleAlert aria-hidden="true" size={16} />

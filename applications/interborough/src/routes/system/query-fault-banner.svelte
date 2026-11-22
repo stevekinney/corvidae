@@ -14,15 +14,17 @@
 
   interface Props {
     error: unknown;
+    /** What failed to load, for the title ("Couldn’t load the server lease"). */
+    subject?: string | undefined;
     onRetry?: (() => void) | undefined;
   }
 
-  let { error, onRetry }: Props = $props();
+  let { error, subject, onRetry }: Props = $props();
 
   const treatment = $derived(faultTreatment(error));
 </script>
 
-<FaultErrorState {treatment} {onRetry}>
+<FaultErrorState {treatment} {subject} {onRetry}>
   {#if treatment.kind === 'internal' && treatment.tryViaJsonRpc}
     <p class="weft-fault-boundary__note">
       The REST API hides internal error detail on this response — the same request over JSON-RPC

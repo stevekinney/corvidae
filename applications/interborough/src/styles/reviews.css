@@ -283,11 +283,6 @@
   margin: 0;
 }
 
-/* The Reviews lists' fault row (`src/routes/reviews/query-fault-banner.svelte`) keeps its inset. */
-.weft-query-fault {
-  margin: 16px;
-}
-
 .weft-review-artifact-sections {
   display: flex;
   flex-direction: column;

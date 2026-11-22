@@ -67,7 +67,7 @@
   class={classNames('cinder-error-state', className)}
   data-cinder-variant={flat ? 'flat' : row ? 'row' : undefined}
   data-cinder-size={compact ? 'compact' : undefined}
-  data-cinder-bordered={bordered && !flat && !row ? '' : undefined}
+  data-cinder-bordered={bordered && !flat ? '' : undefined}
   data-cinder-tone={safeTone}
 >
   <!-- A failure is announced as an alert; a neutral state (nothing failed) is a plain group. -->

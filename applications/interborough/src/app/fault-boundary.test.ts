@@ -12,6 +12,7 @@ import { describe, expect, test } from 'bun:test';
 import { HttpClientError } from '@lostgradient/weft';
 
 import type { FaultTreatment } from '../lib/faults.ts';
+import { router } from '../lib/router.svelte.ts';
 import { RETRY_LABEL } from './copy/views.ts';
 import FaultBoundaryHarness from './fault-boundary.test-harness.svelte';
 
@@ -247,6 +248,59 @@ describe('FaultBoundary', () => {
       const { findByRole } = await renderHarness({ error });
 
       expect(await findByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    });
+
+    test('a fault that is not retryable and that Health explains still has a way forward: Open Health', async () => {
+      const error = new HttpClientError(503, 'The server is not ready.', {
+        retryable: false,
+        remediation: 'Open Health to see which part of the server stopped, then start it.',
+      });
+      const { container, findByRole, queryByRole } = await renderHarness({ error });
+
+      const link = await findByRole('link', { name: 'Open Health' });
+      expect(link.getAttribute('href')).toBe('/health');
+      expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+      // The way forward sits in the row's own action region, beside where Try again would be.
+      expect(container.querySelector('.cinder-error-state-action')?.contains(link)).toBe(true);
+    });
+
+    test('a bug the boundary caught while rendering says nothing about the server: no Open Health', async () => {
+      const { findByRole, queryByRole } = await renderHarness({ error: new Error('render bug') });
+
+      await findByRole('alert');
+      expect(queryByRole('link', { name: 'Open Health' })).toBeNull();
+    });
+
+    test('Health’s own pages never offer Open Health', async () => {
+      router.navigate('/health/workers', { replace: true });
+      try {
+        const error = new HttpClientError(503, 'The server is not ready.');
+        const { findByRole, queryByRole } = await renderHarness({ error });
+
+        await findByRole('alert');
+        expect(queryByRole('link', { name: 'Open Health' })).toBeNull();
+      } finally {
+        router.navigate('/', { replace: true });
+      }
+    });
+
+    test('a fault Health cannot explain offers no Open Health', async () => {
+      const error = new HttpClientError(409, 'The workflow changed.', { faultCode: 'Conflict' });
+      const { findByRole, queryByRole } = await renderHarness({ error });
+
+      await findByRole('alert');
+      expect(queryByRole('link', { name: 'Open Health' })).toBeNull();
+    });
+
+    test('the row is a bordered Cinder hairline, with no box of the page’s own', async () => {
+      const error = new HttpClientError(500, 'Internal server error');
+      const { container, findByRole } = await renderHarness({ error });
+
+      await findByRole('alert');
+      const root = container.querySelector('.cinder-error-state');
+      expect(root?.getAttribute('data-cinder-variant')).toBe('row');
+      expect(root?.hasAttribute('data-cinder-bordered')).toBe(true);
+      expect(container.querySelector('.weft-fault-boundary')).toBeNull();
     });
 
     test('offers no Retry for a fault that is not retryable, and still shows its remediation', async () => {

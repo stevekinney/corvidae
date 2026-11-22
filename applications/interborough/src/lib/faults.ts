@@ -241,7 +241,7 @@ export function faultAdviceOf(source: unknown): FaultAdvice {
   const { retryable, remediation } = source as { retryable?: unknown; remediation?: unknown };
   return {
     ...(typeof retryable === 'boolean' ? { retryable } : {}),
-    ...(typeof remediation === 'string' ? { remediation } : {}),
+    ...(typeof remediation === 'string' ? { remediation: withoutInternalNames(remediation) } : {}),
   };
 }
 
@@ -258,13 +258,45 @@ const SPENT_IDEMPOTENCY_KEY_CODE: WeftErrorCode = 'IdempotencyKeyPurgedError';
 export function classifyFault(error: unknown): FaultTreatment | null {
   if (isNetworkFailure(error)) return { kind: 'unreachable', message: UNREACHABLE_MESSAGE };
   if (!(error instanceof HttpClientError)) return null;
-  const treatment = classifyHttpClientError(error);
-  if (treatment === null) return null;
+  const classified = classifyHttpClientError(error);
+  if (classified === null) return null;
+  // What the server said is shown as it said it, except for the name of its own parts.
+  const treatment =
+    classified.kind === 'invalid'
+      ? {
+          ...classified,
+          fieldErrors: classified.fieldErrors.map((fieldError) => ({
+            ...fieldError,
+            message: withoutInternalNames(fieldError.message),
+          })),
+        }
+      : classified;
   return {
     ...treatment,
+    message: withoutInternalNames(treatment.message),
     ...(error.retryable === undefined ? {} : { retryable: error.retryable }),
-    ...(error.remediation === undefined ? {} : { remediation: error.remediation }),
+    ...(error.remediation === undefined
+      ? {}
+      : { remediation: withoutInternalNames(error.remediation) }),
   };
+}
+
+/**
+ * A server sentence with the name of its own parts taken out, because a person reads "the server"
+ * and never "Bureau", the name of the part of it that answers: "This Bureau keeps no sessions"
+ * reads "This server keeps no sessions", and "Cannot forget grants: Bureau is shutting down" reads
+ * "Cannot forget grants: The server is shutting down". Interborough shows a server's message as it
+ * sent it, so the words are mapped here, where every fault is classified.
+ */
+export function withoutInternalNames(text: string): string {
+  return text
+    .replace(/\b(the|this|The|This) Bureau\b/g, '$1 server')
+    .replace(/(^|[.:!?] )Bureau\b/g, '$1The server')
+    .replace(
+      /\bBureau (?=(?:is|are|was|were|has|have|had|keeps|cannot|can|will|did|does|could|would|must|rejected|answered)\b)/g,
+      'the server ',
+    )
+    .replace(/\bBureau\b/g, 'server');
 }
 
 /** The `data.issues` of a fault as field errors: an issue with no text message is skipped. */
@@ -372,6 +404,18 @@ export function faultAdvisingRetry(errors: readonly unknown[]): unknown {
 /** {@link treatmentErrorStateAdvice} for the error a call rejected with, classified by {@link faultTreatment}. */
 export function faultErrorStateAdvice(error: unknown, onRetry?: () => void): FaultErrorStateAdvice {
   return treatmentErrorStateAdvice(faultTreatment(error), onRetry);
+}
+
+/**
+ * The title a screen gives a fault: where the screen knows what failed to load, the one pattern
+ * every screen uses ("Couldn’t load hooks", `subject` `hooks`), whatever the fault's kind, so the
+ * same fault reads the same on every page; where it does not (the fault boundary, which catches
+ * a render error, and a toast), the kind's own heading, {@link FAULT_TREATMENT_TITLE}.
+ */
+export function faultTitle(kind: FaultTreatmentKind, subject?: string): string {
+  return subject === undefined || subject === ''
+    ? FAULT_TREATMENT_TITLE[kind]
+    : `Couldn’t load ${subject}`;
 }
 
 /** Sentence-case heading for each treatment kind (plan §10.10 copy voice), shared by every surface presenting a `FaultTreatment`. */

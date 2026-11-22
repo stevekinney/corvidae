@@ -12,7 +12,7 @@ import type {
 import { jsonRpcHttpEndpoint } from '@lostgradient/backchannel/client';
 import { HttpClientError } from '@lostgradient/weft';
 
-import { faultAdviceOf } from './faults.ts';
+import { faultAdviceOf, withoutInternalNames } from './faults.ts';
 import { refuseWrite } from './write-guard.ts';
 
 /**
@@ -67,7 +67,10 @@ export async function postBureauCall(
     // The status says what kind of fault it is, which is all the console's treatments read.
     throw new HttpClientError(
       status,
-      typeof fault['message'] === 'string' ? fault['message'] : `HTTP ${status}`,
+      // The name of the server's own part never reaches a screen, whichever one prints the message.
+      typeof fault['message'] === 'string'
+        ? withoutInternalNames(fault['message'])
+        : `HTTP ${status}`,
       { data, ...faultAdviceOf(data) },
     );
   }

@@ -34,6 +34,12 @@
       "code": "<script lang=\"ts\">\n  import { ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"Couldn’t start this run\"\n  description=\"The workflow refers to a step that no longer exists. Nothing you did caused it.\"\n  remediation=\"Open the workflow and remove or replace the missing step, then start the run again.\"\n  detail=\"E_STEP_MISSING\"\n/>\n"
     },
     {
+      "id": "bordered-row-with-action",
+      "title": "Bordered row with a way forward",
+      "description": "A row for a fault that cannot be retried: a quiet hairline in the tone's border color, the remediation under the description, and a secondary action in place of Try again.",
+      "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  variant=\"row\"\n  bordered\n  title=\"Couldn’t load reviews\"\n  description=\"The server answered with an error (503).\"\n  remediation=\"Open Health to see which part of the server stopped, then start it.\"\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" href=\"/health\" label=\"Open Health\" />\n  {/snippet}\n</ErrorState>\n"
+    },
+    {
       "id": "warning",
       "title": "Warning tone",
       "description": "The warning tone for a problem the person can resolve, such as a conflicting change: amber instead of red, announced as a status. Add announce when the state replaces the content they came for and should interrupt like an alert.",

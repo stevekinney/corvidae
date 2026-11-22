@@ -50,6 +50,23 @@ describe('QueryFaultBanner', () => {
     expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
   });
 
+  test('names what failed to load in the title, whatever the fault, when the screen knows', async () => {
+    for (const error of [
+      new HttpClientError(403, 'Requires system:admin.', { faultCode: 'Forbidden' }),
+      new HttpClientError(503, 'The server is not ready.'),
+      new HttpClientError(409, 'It changed.', { faultCode: 'Conflict' }),
+    ]) {
+      const { container, getByRole, unmount } = render(QueryFaultBanner, {
+        props: { error, subject: 'the server lease', onRetry: () => {} },
+      });
+      expect(getByRole('heading', { name: 'Couldn’t load the server lease' })).not.toBeNull();
+      expect(container.querySelector('.cinder-error-state-title')?.textContent).not.toContain(
+        error.message,
+      );
+      unmount();
+    }
+  });
+
   test('offers no Retry for a fault that is not retryable', async () => {
     const error = new HttpClientError(409, 'The workflow changed.', {
       retryable: false,

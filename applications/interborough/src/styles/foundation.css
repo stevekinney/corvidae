@@ -763,41 +763,23 @@
 }
 
 /* Fault treatment (plan §10.4) — the row itself is a Cinder `ErrorState`
- * (`src/app/fault-error-state.svelte`), which covers its glyph, tone and text but draws no box (its
- * `row` variant has no border or background of its own, for a card that already surrounds it).
- * What is left is that box, with the tone of the row, and the stack that puts a note, the field
- * errors or a stack trace under it, shared by `src/app/fault-boundary.svelte` and
- * `src/routes/system/query-fault-banner.svelte`, so these rules live in this plain global
- * stylesheet, not a component's scoped \3c style> block (scoped styles never apply to another
- * component's markup). */
+ * (`src/app/fault-error-state.svelte`), which covers its box (the `bordered` hairline), tone,
+ * glyph and text. What is left is what puts a note, the field errors or a stack trace under it,
+ * shared by `src/app/fault-boundary.svelte` and `src/routes/system/query-fault-banner.svelte`, so
+ * these rules live in this plain global stylesheet, not a component's scoped \3c style> block
+ * (scoped styles never apply to another component's markup). */
 
-.weft-fault-boundary {
+/* Lines up with the row's glyph. A treatment with nothing to add under the row draws no gap. */
+.weft-fault-boundary__details {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-2, 0.5rem);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-raised);
-}
-
-.weft-fault-boundary[data-tone='warning'] {
-  border-color: var(--cinder-status-warning-border);
-  background: var(--cinder-status-warning-background);
-}
-
-.weft-fault-boundary[data-tone='danger'] {
-  border-color: var(--cinder-status-danger-border);
-  background: var(--cinder-status-danger-background);
-}
-
-/* What sits under the row (the row is the first child) lines up with the row's glyph, and the last
- * of it keeps the box's inset below. A treatment with nothing to add draws no gap. */
-.weft-fault-boundary > :not(:first-child) {
+  margin-block-start: var(--cinder-space-2, 0.5rem);
   margin-inline: var(--cinder-space-4);
 }
 
-.weft-fault-boundary > :not(:first-child):last-child {
-  margin-block-end: var(--cinder-space-3);
+.weft-fault-boundary__details:not(:has(> *)) {
+  display: none;
 }
 
 .weft-fault-boundary__note,

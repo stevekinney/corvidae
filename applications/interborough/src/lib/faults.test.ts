@@ -15,11 +15,13 @@ import {
   FAULT_TREATMENT_TITLE,
   faultAdvisingRetry,
   faultErrorStateAdvice,
+  faultTitle,
   faultTreatment,
   isNetworkFailure,
   ServerUnreachableError,
   treatmentErrorStateAdvice,
   UNKNOWN_FAULT_TREATMENT,
+  withoutInternalNames,
   type FaultTreatmentKind,
 } from './faults.ts';
 
@@ -494,6 +496,56 @@ describe('the fault-to-view mapping: remediation and Retry', () => {
   test('offers no Retry where the caller has none, and leaves out an empty remediation', () => {
     const treatment = { ...faultTreatment(new HttpClientError(500, 'x')), remediation: '' };
     expect(treatmentErrorStateAdvice(treatment)).toEqual({});
+  });
+});
+
+describe('withoutInternalNames', () => {
+  test('reads "the server" wherever a message names the part of it that answers', () => {
+    for (const [said, shown] of [
+      [
+        'This Bureau keeps no sessions, so it has no contexts',
+        'This server keeps no sessions, so it has no contexts',
+      ],
+      [
+        'Cannot forget grants: Bureau is shutting down.',
+        'Cannot forget grants: The server is shutting down.',
+      ],
+      ['Bureau is not ready.', 'The server is not ready.'],
+      ['The Bureau is not ready.', 'The server is not ready.'],
+      ['"x" is not a published Bureau event kind', '"x" is not a published server event kind'],
+      ['Wait until Bureau has restarted.', 'Wait until the server has restarted.'],
+      ['Nothing to rename here.', 'Nothing to rename here.'],
+    ] as const) {
+      expect(withoutInternalNames(said)).toBe(shown);
+    }
+  });
+
+  test('classifyFault applies it to the message, the remediation and each field error', () => {
+    const error = new HttpClientError(422, 'This Bureau rejected it.', {
+      remediation: 'Ask the Bureau again.',
+      data: { issues: [{ path: ['name'], message: 'Bureau already has this name' }] },
+    });
+    expect(classifyFault(error)).toMatchObject({
+      kind: 'invalid',
+      message: 'This server rejected it.',
+      remediation: 'Ask the server again.',
+      fieldErrors: [{ path: 'name', message: 'The server already has this name' }],
+    });
+    expect(JSON.stringify(classifyFault(error))).not.toContain('Bureau');
+  });
+});
+
+describe('faultTitle', () => {
+  test('names what failed to load, in one pattern, whatever the kind of fault', () => {
+    for (const kind of Object.keys(FAULT_TREATMENT_TITLE) as FaultTreatmentKind[]) {
+      expect(faultTitle(kind, 'hooks')).toBe('Couldn’t load hooks');
+    }
+  });
+
+  test('falls back to the kind’s own heading where the screen does not know what failed', () => {
+    expect(faultTitle('internal')).toBe(FAULT_TREATMENT_TITLE.internal);
+    expect(faultTitle('conflict', undefined)).toBe(FAULT_TREATMENT_TITLE.conflict);
+    expect(faultTitle('not-found', '')).toBe(FAULT_TREATMENT_TITLE['not-found']);
   });
 });
 

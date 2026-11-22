@@ -85,7 +85,8 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * A second action rendered alongside the retry button, such as an "Open Health" link or a
    * "Back to chats" button. Give it the secondary or ghost button variant so the retry button
    * stays the only primary on the page. When both actions are present, the secondary action is
-   * first in DOM and keyboard order, visually left of the primary.
+   * first in DOM and keyboard order, visually left of the primary. Every variant draws it, the
+   * `'row'` too, and it stands alone when the state has no retry.
    */
   secondaryAction?: Snippet;
   /**
@@ -113,9 +114,10 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
-   * the title and description as one sentence, and a secondary retry button (no refresh glyph
-   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
-   * live; the retry drops under the words on a phone.
+   * the title (medium weight, on its own line), the description and remediation under it, and
+   * the actions (a secondary retry button with no refresh glyph unless `retryIcon` is given, and
+   * any `secondaryAction`) at the end, for the failure of one card among others that are live;
+   * the actions drop under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
@@ -130,8 +132,10 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
   size?: ErrorStateSize;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
-   * container of its own. Leave it off when a card or panel already surrounds the state. It
-   * applies to the centred layout; the `'flat'` variant has no box.
+   * container of its own. Leave it off when a card or panel already surrounds the state. On the
+   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline in the tone's
+   * border token (danger, warning or neutral) around the one line; the `'flat'` variant has no
+   * box.
    * @default false
    */
   bordered?: boolean;
@@ -212,9 +216,10 @@ export interface ErrorStateSchemaProps {
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
-   * the title and description as one sentence, and a secondary retry button (no refresh glyph
-   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
-   * live; the retry drops under the words on a phone.
+   * the title (medium weight, on its own line), the description and remediation under it, and
+   * the actions (a secondary retry button with no refresh glyph unless `retryIcon` is given, and
+   * any `secondaryAction`) at the end, for the failure of one card among others that are live;
+   * the actions drop under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
@@ -229,8 +234,10 @@ export interface ErrorStateSchemaProps {
   size?: ErrorStateSize;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
-   * container of its own. Leave it off when a card or panel already surrounds the state. It
-   * applies to the centred layout; the `'flat'` variant has no box.
+   * container of its own. Leave it off when a card or panel already surrounds the state. On the
+   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline in the tone's
+   * border token (danger, warning or neutral) around the one line; the `'flat'` variant has no
+   * box.
    * @default false
    */
   bordered?: boolean;

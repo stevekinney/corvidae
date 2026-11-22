@@ -69,9 +69,10 @@ const SURFACES: readonly Surface[] = [
     route: '/reviews',
     method: 'bureau.reviews.list',
     async failed(page) {
-      const fault = page.locator('[data-page="reviews"] .weft-fault-boundary').first();
-      await expect(fault.getByRole('heading', { name: 'Something went wrong' })).toBeVisible();
-      await expect(fault).toContainText('The Bureau is not ready.');
+      const fault = page.locator('[data-page="reviews"] [data-fault-kind]').first();
+      // The same 503 reads "Couldn’t load ___" on every screen, naming what failed.
+      await expect(fault.getByRole('heading', { name: 'Couldn’t load reviews' })).toBeVisible();
+      await expect(fault).toContainText('The server is not ready.');
       return fault;
     },
     capture: (page, state) =>
@@ -98,7 +99,7 @@ async function answerWithFault(page: Page, method: string, advice: Advice, statu
         id,
         error: {
           code: -32000,
-          message: 'The Bureau is not ready.',
+          message: 'The server is not ready.',
           data: { httpStatus: status, ...advice },
         },
       },
@@ -159,6 +160,9 @@ for (const surface of SURFACES) {
 
         await expect(remediationLine(fault)).toHaveText(remediation);
         await expect(tryAgain(fault)).toHaveCount(0);
+        // No Try again, so the fault still has a way forward: the page-level state and the shared
+        // row both offer Open Health.
+        await expect(fault.getByRole('link', { name: 'Open Health' })).toBeVisible();
 
         await surface.capture(page, 'fault not retryable');
         await checkA11y(`${surface.route} failed, a fault that is not retryable, ${width}px`);
@@ -203,9 +207,11 @@ test.describe('/reviews: a conflict is drawn in the warning tone', () => {
       await answerWithFault(page, 'bureau.reviews.list', { retryable: true, remediation }, 409);
       await page.goto('/reviews');
 
-      const fault = page.locator('[data-page="reviews"] .weft-fault-boundary').first();
-      await expect(fault.getByRole('heading', { name: 'Conflict' })).toBeVisible();
-      await expect(fault).toHaveAttribute('data-tone', 'warning');
+      const fault = page.locator('[data-page="reviews"] [data-fault-kind="conflict"]').first();
+      await expect(fault.getByRole('heading', { name: 'Couldn’t load reviews' })).toBeVisible();
+      await expect(fault).toHaveAttribute('data-cinder-tone', 'warning');
+      // Health does not explain a conflict, so the row offers no Open Health.
+      await expect(fault.getByRole('link', { name: 'Open Health' })).toHaveCount(0);
       await expect(fault.getByRole('alert')).toHaveCount(1);
       await expect(fault.locator('.cinder-error-state-remediation')).toHaveText(remediation);
       await expect(fault.getByRole('button', { name: 'Try again' })).toHaveCount(1);

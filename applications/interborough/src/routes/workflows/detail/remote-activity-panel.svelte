@@ -15,11 +15,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import Lock from '@lucide/svelte/icons/lock';
 
-  import {
-    FAULT_TREATMENT_TITLE,
-    faultTreatment,
-    treatmentErrorStateAdvice,
-  } from '../../../lib/faults.ts';
+  import { faultTitle, faultTreatment, treatmentErrorStateAdvice } from '../../../lib/faults.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { isForbidden, scopeReason } from '../../../lib/scopes.svelte.ts';
@@ -86,7 +82,7 @@
     {@const treatment = faultTreatment(error)}
     <ErrorState
       variant="flat"
-      title={FAULT_TREATMENT_TITLE[treatment.kind]}
+      title={faultTitle(treatment.kind, 'the remote task')}
       description={treatment.message}
       headingLevel={4}
       {...treatmentErrorStateAdvice(treatment)}

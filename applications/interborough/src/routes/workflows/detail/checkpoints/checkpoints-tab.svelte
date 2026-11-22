@@ -37,11 +37,7 @@
 
   import { RETRY_LABEL } from '../../../../app/copy/views.ts';
   import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy/runs.ts';
-  import {
-    FAULT_TREATMENT_TITLE,
-    faultTreatment,
-    treatmentErrorStateAdvice,
-  } from '../../../../lib/faults.ts';
+  import { faultTitle, faultTreatment, treatmentErrorStateAdvice } from '../../../../lib/faults.ts';
   import { formatBytes, formatRelativeTime } from '../../../../lib/format/index.ts';
   import DivergenceView from './divergence-view.svelte';
   import {
@@ -95,7 +91,7 @@
   {:else if treatment}
     <ErrorState
       variant="flat"
-      title={FAULT_TREATMENT_TITLE[treatment.kind]}
+      title={faultTitle(treatment.kind, 'checkpoints')}
       description={treatment.message}
       headingLevel={3}
       retryLabel={RETRY_LABEL}

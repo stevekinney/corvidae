@@ -68,7 +68,8 @@
     {@const treatment = classifyFault(error) ?? UNKNOWN_FAULT_TREATMENT}
     {@const stack = treatment.kind === 'internal' ? stackTraceOf(error) : undefined}
     <!-- Retry is the app's one word for asking again (COR-2489), offered only when the fault can be retried (COR-2560). -->
-    <FaultErrorState {treatment} onRetry={reset}>
+    <!-- A bug caught while rendering says nothing about the server, so Open Health cannot help with it. -->
+    <FaultErrorState {treatment} offerHealth={classifyFault(error) !== null} onRetry={reset}>
       {#if treatment.kind === 'conflict' && treatment.isSpentIdempotencyKey}
         <p class="weft-fault-boundary__note">
           This idempotency key has already been used and its run was purged — start with a new key.
@@ -99,8 +100,8 @@
   {/snippet}
 </svelte:boundary>
 
-<!-- Styles: the `.weft-fault-boundary*` layout rules for what sits under the row (note, field
-     errors, stack) live in src/styles/foundation.css (plain global) because
-     `fault-error-state.svelte` draws the wrapper and
+<!-- Styles: the `.weft-fault-boundary__*` rules for what sits under the row (note, field errors,
+     stack) live in src/styles/foundation.css (plain global) because
+     `fault-error-state.svelte` draws their container and
      src/routes/system/query-fault-banner.svelte fills it with the same notes — a scoped <style>
      block here would never reach them. -->

@@ -552,7 +552,7 @@ describe('ErrorState row variant', () => {
     expect(container.querySelector('.cinder-error-state-description')).toBeNull();
   });
 
-  test('is one line: a small glyph, the title and description as one sentence, a secondary retry', async () => {
+  test('is a small glyph, the title above its description, and a secondary retry at the end', async () => {
     const onRetry = mock();
     const { container, getByRole } = render(ErrorState, {
       props: {
@@ -581,10 +581,20 @@ describe('ErrorState row variant', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
 
     const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
-    // The title and the description run on as one sentence.
+    // The title is the row's heading, on a line of its own above the description, in the flat
+    // variant's medium weight (COR-2560: it ran on into the sentence as "Conflict The server…").
     expect(css).toMatch(
-      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-description \{\s*display: inline;/,
+      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-description \{\s*display: block;/,
     );
+    // The row's own title rule (the combined rule above sets the description's normal weight).
+    expect(css).toMatch(
+      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title \{\s*font-weight: var\(--cinder-font-medium\);/,
+    );
+    const flatTitle = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-title",
+    );
+    expect(flatTitle.get('font-weight')).toBe('var(--cinder-font-medium)');
     // A grouped list row's insets, so the retry ends on the same edge as a list row's button
     // (COR-2329: it ended 8px short).
     const body = declarationsFor(
@@ -661,6 +671,46 @@ describe('compact size', () => {
   });
 });
 
+describe('ErrorState secondaryAction', () => {
+  const openHealth = () =>
+    createRawSnippet(() => ({
+      render: () => '<a href="/health" data-open-health>Open Health</a>',
+    }));
+
+  test('the default and row variants both draw it, and it stands alone with no retry', () => {
+    for (const variant of ['default', 'row'] as const) {
+      const alone = render(ErrorState, {
+        props: {
+          title: 'Failed.',
+          description: 'Nope.',
+          variant,
+          secondaryAction: openHealth(),
+        },
+      });
+      const action = alone.container.querySelector('.cinder-error-state-action');
+      expect(action?.querySelector('[data-open-health]'), variant).not.toBeNull();
+      expect(alone.queryByRole('button', { name: 'Try again' }), variant).toBeNull();
+      cleanup();
+
+      const both = render(ErrorState, {
+        props: {
+          title: 'Failed.',
+          description: 'Nope.',
+          variant,
+          onRetry: () => {},
+          secondaryAction: openHealth(),
+        },
+      });
+      const actions = both.container.querySelector('.cinder-error-state-action');
+      const children = [...(actions?.children ?? [])];
+      // The secondary action comes first in DOM order, before the retry button.
+      expect(children[0]?.hasAttribute('data-open-health'), variant).toBe(true);
+      expect(actions?.querySelector('button')?.textContent?.trim(), variant).toBe('Try again');
+      cleanup();
+    }
+  });
+});
+
 describe('ErrorState bordered', () => {
   test('is off by default and marks the centred root when on', async () => {
     const { container } = render(ErrorState, { props: { title: 'Failed', description: 'Nope.' } });
@@ -679,6 +729,51 @@ describe('ErrorState bordered', () => {
     expect(rule.get('border')).toBe('var(--cinder-border-width) solid var(--cinder-border)');
     expect(rule.get('border-radius')).toBe('var(--cinder-radius-lg)');
     expect(rule.get('padding-inline')).toBe('var(--cinder-space-8)');
+  });
+
+  test('a row draws a quiet hairline in its tone’s border token, not the centred panel', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    for (const [tone, token] of [
+      ['danger', '--cinder-status-danger-border'],
+      ['warning', '--cinder-status-warning-border'],
+      ['neutral', '--cinder-status-neutral-border'],
+    ] as const) {
+      const { container } = render(ErrorState, {
+        props: { title: 'Failed.', description: 'Nope.', variant: 'row', bordered: true, tone },
+      });
+      const root = container.querySelector('.cinder-error-state');
+      expect(root?.hasAttribute('data-cinder-bordered')).toBe(true);
+      expect(root?.getAttribute('data-cinder-tone')).toBe(tone);
+      const selector =
+        tone === 'danger'
+          ? ".cinder-error-state[data-cinder-variant='row'][data-cinder-bordered]"
+          : `.cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='${tone}']`;
+      // The tone's own border token feeds the edge, in a rule for that tone.
+      const block = css.slice(css.indexOf(`${selector} {`));
+      expect(block.slice(0, block.indexOf('}'))).toContain(`var(${token})`);
+      cleanup();
+    }
+    const rule = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'][data-cinder-bordered]",
+    );
+    expect(rule.get('border-color')).toBe('var(--_cinder-error-state-edge)');
+    expect(rule.get('background')).toBe('none');
+    expect(rule.get('padding')).toBe('0');
+  });
+
+  test('the row hairline is quiet, about 1.5:1 on the page surface in both schemes (COR-2560)', async () => {
+    // The status border tokens read 1.9:1 (light) and 4.7:1 (dark) for danger on the page
+    // surface, so the hairline mixes each toward transparent per scheme. These shares were
+    // computed from the resolved tokens (light 65% and dark 32% for danger, light 65% and dark
+    // 43% for warning); a change to them is a change to how loud the row is.
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /light-dark\(\s*color-mix\(in oklch, var\(--cinder-status-danger-border\) 65%, transparent\),\s*color-mix\(in oklch, var\(--cinder-status-danger-border\) 32%, transparent\)\s*\)/,
+    );
+    expect(css).toMatch(
+      /light-dark\(\s*color-mix\(in oklch, var\(--cinder-status-warning-border\) 65%, transparent\),\s*color-mix\(in oklch, var\(--cinder-status-warning-border\) 43%, transparent\)\s*\)/,
+    );
   });
 
   test('draws no box on the flat variant, which sits inside a container of its own', () => {

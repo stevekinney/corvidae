@@ -17,14 +17,14 @@
 
   interface QueryFaultBannerProps {
     error: unknown;
+    /** What failed to load, for the title ("Couldn’t load reviews"). */
+    subject?: string | undefined;
     onRetry: () => void;
   }
 
-  let { error, onRetry }: QueryFaultBannerProps = $props();
+  let { error, subject, onRetry }: QueryFaultBannerProps = $props();
 
   const treatment = $derived(faultTreatment(error));
 </script>
 
-<div class="weft-query-fault">
-  <FaultErrorState {treatment} {onRetry} />
-</div>
+<FaultErrorState {treatment} {subject} {onRetry} />
