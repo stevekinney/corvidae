@@ -46,7 +46,6 @@ export type RunOrigin =
   /** A person started it outside a chat, from the surface the origin names. */
   | {
       readonly kind: 'person';
-      readonly principal?: string | undefined;
       readonly surface: RunPersonSurface | null;
       /** Who started it, as the Bureau recorded them, when it did: "You" when it is the viewer. */
       readonly principal?: string | null | undefined;
