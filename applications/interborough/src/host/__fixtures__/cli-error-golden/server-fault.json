@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "Conflict",
+    "exitCode": 4,
+    "message": "The workflow changed under you.",
+    "remediation": "Re-read the workflow, then send the new revision.",
+    "retryable": false
+  },
+  "schemaVersion": 2
+}

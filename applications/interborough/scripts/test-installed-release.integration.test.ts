@@ -514,7 +514,7 @@ describe('installed-release harness arguments', () => {
         const json = arguments_.includes('--output') && !arguments_.includes('bash');
         return {
           exitCode: 0,
-          stdout: json ? JSON.stringify({ schemaVersion: 1, data: {} }) : '',
+          stdout: json ? JSON.stringify({ schemaVersion: 2, data: {} }) : '',
           stderr: '',
         };
       };
