@@ -356,7 +356,16 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     ).toBeVisible();
   },
   '/health/runs': async (page) => {
-    await expect(page.locator('.cinder-badge__label', { hasText: LONG_TAG }).first()).toBeVisible();
+    const table = page.locator('table.weft-workflows-table');
+    const tag = table.locator('.cinder-badge__label', { hasText: LONG_TAG }).first();
+    await expect(tag).toBeAttached();
+    // The long tag still seeds the desktop overflow check. Stacked rows deliberately omit detail.
+    await expect
+      .poll(async () => {
+        const stacked = (await table.getAttribute('data-cinder-stacked')) !== null;
+        return (await tag.isVisible()) === !stacked;
+      })
+      .toBe(true);
   },
   // The test delivery's line opens to the tries, each of which got no answer from the address.
   '/hooks/:hook': async (page) => {
