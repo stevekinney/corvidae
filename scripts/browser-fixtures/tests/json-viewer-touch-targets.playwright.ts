@@ -55,12 +55,14 @@ test('coarse JsonViewer disclosures are disjoint targets and activate only their
         const box = element.getBoundingClientRect();
         const centerX = box.left + box.width / 2;
         const centerY = box.top + box.height / 2;
-        return [
-          [centerX, box.top + 1],
-          [centerX, box.bottom - 1],
-          [box.left + 1, centerY],
-          [box.right - 1, centerY],
-        ].map(([x, y]) => element.contains(document.elementFromPoint(x, y)));
+        return (
+          [
+            [centerX, box.top + 1],
+            [centerX, box.bottom - 1],
+            [box.left + 1, centerY],
+            [box.right - 1, centerY],
+          ] as const
+        ).map(([x, y]) => element.contains(document.elementFromPoint(x, y)));
       });
       expect(edgeOwners).toEqual([true, true, true, true]);
     }
