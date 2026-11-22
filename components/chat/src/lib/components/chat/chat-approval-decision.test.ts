@@ -322,7 +322,8 @@ describe('Chat composer drawer for a waiting approval', () => {
     const shell = container.querySelector('.chat-input-shell')!;
 
     expect(drawer.compareDocumentPosition(shell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(drawer.parentElement).toBe(shell.parentElement);
+    const drawers = drawer.closest('[data-chat-composer-drawers]');
+    expect(drawers !== null && drawers.parentElement === shell.parentElement).toBe(true);
   });
 
   test('Review approval scrolls to the card and focuses it without answering it', async () => {

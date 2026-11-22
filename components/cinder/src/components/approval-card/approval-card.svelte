@@ -121,6 +121,7 @@
     now,
     onResolve,
     onAskAgain,
+    decisionReview,
     id,
     class: customClassName,
     ...rest
@@ -637,6 +638,7 @@
       inputRows={rowInputRows}
       operationBody={hasOpenOperation ? openOperationBody : undefined}
       {onAskAgain}
+      {decisionReview}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />
   </article>

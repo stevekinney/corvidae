@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2635",
+  "branch": "chef/cor-2635-fork-under-lease",
+  "checkedAt": "5b6fa83614bca7634c3fbbf2038bad2dd4613661",
+  "briefVersion": "83c8d79b283d",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Commit cf37c132dc names the cause: fork() committed the fork's create batch through commitForkWrite -> commitFencedEngineWrite(<fork id>); under workflow-lease that fences on wf-owner-epoch:<fork id> at the registry's tracked epoch, which a freshly minted id never has, so fencedCommitForWorkflow -> haltWorkflowClaim warned and threw EngineDeposedError before any storage write. Red tests confirmed it (the conditionalBatch interceptor never fired)."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/src/core/engine/lifecycle/fork-workflow-lease.test.ts: 'forks a settled run, acquires the fork id in its create batch, and releases it at the end' (result 2, status completed) and 'forks onto another installed revision and reads the result that revision returns' (result 'v2', revision pinned), both under ownership: 'workflow-lease'; red before the fix, green after."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "fork-workflow-lease.test.ts 'forks a run another engine holds without touching that engine’s claim or deposing it': the source's wf-owner-epoch and wf-owner-holder bytes are identical before and after, the fork's holder is the forking engine, both engines undeposed, no WeftWorkflowClaimLostWarning, and the holder's next fenced writes complete the source. 'writes nothing when another engine claims the fork id between the fork’s read and its commit' shows the fold's fence: WorkflowClaimUnavailableError and no fork record."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "packages/bureau/src/http/management/workflow-run-fork.test.ts forks through bureau.durableEngine() with no durableOwnership override (Bureau default workflow-lease) and asserts the fork's own claim epoch record; red without the fix. The ownership: 'none' fixture the issue names exists only on the unmerged origin/chef/fork-and-run-compare (COR-2544): serveWithFork in packages/bureau/src/http/management/runs-compare-operation.test.ts and the durableOwnership option and its comment in workflows-fixtures.test-support.ts must drop the override when that branch lands."
+    }
+  ]
+}
