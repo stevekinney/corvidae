@@ -1,0 +1,54 @@
+{
+  "issue": "COR-2534",
+  "branch": "chef/cor-2534-model-explanation",
+  "checkedAt": "1a1367162dcfa8d5a184e833eab110d3178ef951",
+  "briefVersion": "b8869fe2e302",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bureau.tasks.explanation.generate (packages/bureau/src/http/management/tasks-model-explanation-operation.ts, request in run-model-explanation.ts) asks Bureau.decisions with a structured request, prices the answering catalog row (usdPricingOfRow, estimateCost) and stores {text, model, generatedAt, costUsd} on the new TaskRecord.modelExplanation (task-registry.ts recordModelExplanation, validated by isTaskModelExplanation). tasks-model-explanation-operation.test.ts 'AC1' reads text, model 'anthropic/claude-haiku-5-5', generatedAt and costUsd (checked against the catalog price) from the stored record; run with the scripted generate."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The request holds the stored-facts explanation (readRunFailure) and, per step, name, status, error message and guardrail verdicts, as one JSON document the fixed question calls untrusted. tasks-model-explanation-operation.test.ts 'AC2': a fixture whose tool arguments, a tool result and the user message each hold a marker; the serialized request the scripted model received holds none of the three, and holds charge-card, the failed status and the error text. A second test runs a tripwire guardrail and asserts its name and outcome are sent and the flagged word is not. run-model-explanation.test.ts covers the step builder and that a hostile message stays data inside the JSON."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bureau.tasks.explanation.get reads the record and calls no model. tasks-model-explanation-operation.test.ts 'AC3': the model is called once across generate then two reads (callCount 1), the reads equal the generated answer, a second generate makes callCount 2 and the read then returns the second text. The Run page reads it when it opens (run-failure-explanation.test.ts AC3, no generate call)."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "With no provider the operation is UnsupportedCapability (capability generate) with a remediation that starts 'Connect a provider in Settings, under Models'. tasks-model-explanation-operation.test.ts 'AC4' asserts the fault and that nothing is stored; cli-runs-model-explanation.integration.test.ts and cli-runs.test.ts assert the CLI prints it and exits 1; run-failure-explanation.test.ts 'AC4' reads that remediation on the section the Run page draws (FaultErrorState), with the stored facts still drawn."
+    },
+    {
+      "id": "AC5",
+      "status": "needs-decision",
+      "evidence": "Built and tested for a failed agent run: run-failure-explanation.test.ts 'AC5' clicks 'Explain further', reads the text under 'Written by anthropic/claude-haiku-5-5' while the stored-facts summary and remediation are still rendered; run-input-output.test.ts mounts a failed task's page, clicks the action and reads the same. A failed instance of a workflow file has no task record to keep the text on, so run-input-output.test.ts asserts it offers no action and the Bureau answers run-has-no-task (tasks-model-explanation-operation.test.ts). Whether that satisfies the criterion is the open question."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "interborough runs explain <id> --model calls bureau.tasks.explanation.generate and prints the text, 'Written by <model> at <time>' and the cost (cli-runs.ts, option wired in cli-client.ts). cli-runs.test.ts asserts the exact stdout lines and the JSON output; cli-runs-model-explanation.integration.test.ts runs it against a real Bureau and handler."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "The cost is kept on the explanation (modelExplanation.costUsd), and recordModelExplanation moves neither usage nor revision. tasks-model-explanation-operation.test.ts 'AC7' reads the task's usage before and after generate and asserts it is equal, and that the stored explanation's costUsd equals the answered one; task-registry.test.ts asserts usage and revision are unchanged after recordModelExplanation. The failing fixture agent has no priced usage, so the run's own costUsd is null on both sides; the registry test carries a priced run (costUsd 0.5) through the write."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Both operations are mcpExposable: false. tasks-model-explanation-operation.test.ts 'AC8' asserts that and that the handler serves them; applications/interborough/src/host/host.test.ts lists the real MCP tools/list and asserts bureau.tasks.explain is there and no bureau.tasks.explanation.* is; the MCP tool list in mcp-mount.test.ts is unchanged."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "cli-runs-model-explanation.integration.test.ts: against a real Bureau, generates the explanation through the CLI, fetches the run's thread messages as the page does (GET /ag-ui/threads/<id>/messages), builds the conversation and runs chatMarkdown over it. The export holds the person's message and not the generated text; the served messages do not either. tasks-model-explanation-operation.test.ts 'AC9' reads the chat context and the task history, both of which hold the user message, and finds no generated text."
+    }
+  ]
+}
