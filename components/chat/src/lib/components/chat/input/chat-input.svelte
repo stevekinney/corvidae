@@ -2949,6 +2949,16 @@
     border-radius: var(--cinder-radius-sm);
   }
 
+  /* The footer's left group may give width to the controls after Attach, but on a fine pointer its
+   * compact face remains the 28px square Cinder gave it. Letting this item shrink made the desktop
+   * target narrower than Cinder's 24px minimum. A coarse pointer keeps Cinder's existing 44px
+   * pseudo-target without reserving more narrow-footer width. */
+  @media (any-pointer: fine) {
+    .chat-input-footer-left :global(.chat-input-attach) {
+      flex: 0 0 1.75rem;
+    }
+  }
+
   .chat-input-footer-left :global(.chat-input-attach:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
