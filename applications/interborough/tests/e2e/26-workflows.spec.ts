@@ -886,9 +886,9 @@ test.describe('the editor', () => {
     page,
     request,
   }) => {
-    await makeWorkflow(request, 'e2e-refused');
-    const before = await readWorkflow(request, 'e2e-refused');
-    await page.goto('/workflows/e2e-refused/edit');
+    await makeWorkflow(request, 'e2e-locally-invalid');
+    const before = await readWorkflow(request, 'e2e-locally-invalid');
+    await page.goto('/workflows/e2e-locally-invalid/edit');
     const root = page.locator('[data-page="workflow-editor"]');
     await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
@@ -915,8 +915,8 @@ test.describe('the editor', () => {
     );
     await expect(editor.locator('.cinder-json-editor__line--problem')).toHaveCount(1);
     expect(updates).toBe(0);
-    await expect(page).toHaveURL(/\/workflows\/e2e-refused\/edit$/);
-    const unchanged = await readWorkflow(request, 'e2e-refused');
+    await expect(page).toHaveURL(/\/workflows\/e2e-locally-invalid\/edit$/);
+    const unchanged = await readWorkflow(request, 'e2e-locally-invalid');
     expect(unchanged.hash).toBe(before.hash);
     expect(unchanged.text).toBe(before.text);
   });
@@ -926,8 +926,8 @@ test.describe('the editor', () => {
     request,
     pageErrors,
   }) => {
-    await makeWorkflow(request, 'e2e-refused');
-    const before = await readWorkflow(request, 'e2e-refused');
+    await makeWorkflow(request, 'e2e-server-refused');
+    const before = await readWorkflow(request, 'e2e-server-refused');
     pageErrors.expectEvery({
       pattern: loggedFailedResponse(500, /\/jsonrpc/),
       reason: 'the test makes the server reject an otherwise valid workflow update',
@@ -936,7 +936,7 @@ test.describe('the editor', () => {
       weftCode: 'Internal',
       message: 'The workflow file could not be written.',
     });
-    await page.goto('/workflows/e2e-refused/edit');
+    await page.goto('/workflows/e2e-server-refused/edit');
     const root = page.locator('[data-page="workflow-editor"]');
     await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
@@ -947,8 +947,8 @@ test.describe('the editor', () => {
 
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root).toContainText(/Couldn’t save /);
-    await expect(page).toHaveURL(/\/workflows\/e2e-refused\/edit$/);
-    const unchanged = await readWorkflow(request, 'e2e-refused');
+    await expect(page).toHaveURL(/\/workflows\/e2e-server-refused\/edit$/);
+    const unchanged = await readWorkflow(request, 'e2e-server-refused');
     expect(unchanged.hash).toBe(before.hash);
     expect(unchanged.text).toBe(before.text);
   });
