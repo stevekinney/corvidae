@@ -7,7 +7,7 @@
  */
 
 /** One guardrail that fired in the run. */
-export interface ExplanationVerdict {
+interface ExplanationVerdict {
   readonly name: string;
   readonly kind: 'guardrail' | 'tripwire';
   readonly outcome: 'tripwire' | 'block' | 'warn' | 'sanitize' | 'redact';

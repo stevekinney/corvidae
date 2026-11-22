@@ -436,7 +436,8 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
   it('COR-2533: every command line it returns runs, and the retry mends the run', async () => {
     const served = await serveFailing();
     await failedRun(served, 'mended-digest');
-    const lines = (await explainRun(served, 'mended-digest')).result as { nextCommands: string[] };
+    const explained = await explainRun(served, 'mended-digest');
+    const lines = explained.result as { nextCommands: string[] };
     // The retry's own acceptance is what offers the line: it answers the step the line will run.
     expect(await served.bureau.workflows!.retryableStep('mended-digest')).toBe(1);
     writerDown = false;
