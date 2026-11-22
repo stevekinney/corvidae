@@ -4,7 +4,7 @@
  * so the host's authorization decides every call. It holds no credential and reaches no origin.
  *
  * The run to compare comes from the tool input: `runId` when a client opens the page from the compare
- * tool, `taskId` when a run's page mounts it, which names every run panel's run the same way. The
+ * tool, `taskId` when a run's page mounts it, which names every run panel's run that way. The
  * server pages the comparison by step, so the page follows `nextCursor` until the last page and
  * shows one whole comparison. A refusal (a run that is not a fork, a source the caller may not
  * read) is the server's message, shown as it was written.
@@ -113,8 +113,8 @@ async function start(): Promise<void> {
   };
 
   app.ontoolinput = (params) => {
-    const arguments_ = isRecord(params.arguments) ? params.arguments : {};
-    const id = arguments_['runId'] ?? arguments_['taskId'];
+    const toolArguments = isRecord(params.arguments) ? params.arguments : {};
+    const id = toolArguments['runId'] ?? toolArguments['taskId'];
     if (typeof id === 'string' && id !== runId) watch(id);
   };
   // The result that opened the page is its first render, whether or not the host lets it call back.

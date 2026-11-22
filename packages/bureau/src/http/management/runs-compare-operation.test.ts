@@ -52,10 +52,10 @@ async function serveWithFork(
   const engine = served.bureau.durableEngine()!;
   // Started as the workflow runtime starts one, so the run has an owner of record.
   const { runId } = await served.bureau.workflows!.start('digest', { owner });
-  await waitForCondition(
-    async () => (await engine.get(runId))?.status === 'completed',
-    'the source run completes',
-  );
+  await waitForCondition(async () => {
+    const state = await engine.get(runId);
+    return state?.status === 'completed';
+  }, 'the source run completes');
   const fork = await engine.fork(runId);
   await fork.result();
   return { served, engine, sourceId: runId, forkId: fork.id };
