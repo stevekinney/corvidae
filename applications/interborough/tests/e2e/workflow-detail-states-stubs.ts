@@ -33,7 +33,7 @@ export function waitingSignalRun(workflow: string, workflowVersion: string): Jso
     status: 'suspended',
     createdAt: startedAt,
     updatedAt: startedAt,
-    origin: { kind: 'person', principal: 'local', surface: 'web' },
+    origin: { kind: 'person', principal: 'anonymous:local', surface: 'web' },
     steps: { total: 4, at: 4 },
     awaitingSignal: 'notes-approved',
     failure: null,

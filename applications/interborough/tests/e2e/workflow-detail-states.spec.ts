@@ -198,7 +198,7 @@ for (const width of WIDTHS) {
       await expect(line).toContainText('Waiting for the signal');
       await expect(line.locator('code', { hasText: 'notes-approved' })).toBeVisible();
       const runs = detail(page).getByTestId('workflow-recent-runs');
-      await expect(runs).toContainText('waiting for the signal notes-approved');
+      await expect(runs).toContainText('Workflow, You, waiting for the signal notes-approved');
       await expect(runs).toContainText('step 4 of 4');
       await expect(runs).toContainText('Waiting');
       await captureForDesignReview(page, {
