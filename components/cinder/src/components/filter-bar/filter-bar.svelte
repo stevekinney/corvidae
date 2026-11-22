@@ -682,7 +682,12 @@
     {:else if facet.type === 'toggle'}
       {@render toggleControl(facet)}
     {:else}
-      <div class="cinder-filter-bar__facet">{@render customControl(facet)}</div>
+      <div class="cinder-filter-bar__facet">
+        {#if facet.labelVisible === true}
+          <span class="cinder-filter-bar__facet-label" aria-hidden="true">{facet.label}:</span>
+        {/if}
+        {@render customControl(facet)}
+      </div>
     {/if}
   {/each}
   {#each orphanFilters as filter (filter.key)}

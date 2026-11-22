@@ -757,6 +757,87 @@ describe('FilterBar select facets (row 45u)', () => {
     expect(container.querySelector('[data-testid="custom"]')).not.toBeNull();
     expect(received[0]).toMatchObject({ value: 'week', disabled: true });
   });
+
+  test('a custom facet with labelVisible draws its label before the control, and without it draws none', () => {
+    const control = createRawSnippet(() => ({
+      render: () => '<input data-testid="custom" value="charge-card" />',
+      setup: () => {},
+    }));
+    const labelled = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [
+        { type: 'custom', key: 'step', label: 'Failed at step', labelVisible: true, control },
+      ],
+    });
+    const label = labelled.container.querySelector('.cinder-filter-bar__facet-label');
+    expect(textOf(label)).toBe('Failed at step:');
+    // Decorative: the control's own accessible name stays, and the label comes first in the facet.
+    expect(label?.getAttribute('aria-hidden')).toBe('true');
+    expect(label?.nextElementSibling?.getAttribute('data-testid')).toBe('custom');
+    cleanup();
+
+    const plain = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [{ type: 'custom', key: 'step', label: 'Failed at step', control }],
+    });
+    expect(plain.container.querySelector('.cinder-filter-bar__facet-label')).toBeNull();
+  });
+
+  test('the label is drawn in the row only: the Filter menu names the facet by its row', async () => {
+    const control = createRawSnippet(() => ({
+      render: () => '<input data-testid="custom" />',
+      setup: () => {},
+    }));
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      searchVisible: false,
+      facets: [
+        { type: 'custom', key: 'step', label: 'Failed at step', labelVisible: true, control },
+      ],
+    });
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('[aria-label="Filter"]')!);
+    flushSync();
+    await fireEvent.click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__menu-row')].find(
+        (row) => textOf(row).includes('Failed at step'),
+      )!,
+    );
+    flushSync();
+    expect(document.querySelector('[data-testid="custom"]')).not.toBeNull();
+    expect(document.querySelector('.cinder-filter-bar__facet-label')).toBeNull();
+  });
+});
+
+describe('FilterBar pressed toggle (COR-2535)', () => {
+  test('is a quiet tint with its tone dot as the one mark, and no check', () => {
+    const rule =
+      /\.cinder-filter-bar \.cinder-chip\.cinder-filter-bar__toggle\[aria-pressed='true'\]\s*\{([^}]*)\}/.exec(
+        filterBarCss,
+      );
+    expect(rule).not.toBeNull();
+    expect(rule?.[1]).toMatch(/background:\s*var\(--cinder-status-warning-background\)/);
+    expect(rule?.[1]).toMatch(/border-color:\s*var\(--cinder-status-warning-border\)/);
+    expect(rule?.[1]).not.toMatch(/-solid|-contrast/);
+    expect(filterBarCss).toMatch(
+      /\.cinder-filter-bar \.cinder-filter-bar__toggle\[aria-pressed='true'\] \.cinder-chip__check\s*\{\s*display:\s*none/,
+    );
+    // The dot keeps its tone while pressed, instead of taking the fill's text colour.
+    expect(filterBarCss).not.toMatch(/__toggle\[aria-pressed='true'\] \.cinder-filter-bar__dot/);
+  });
+
+  test('a pressed toggle still carries aria-pressed and its dot', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [MISSED],
+      appliedFilters: [{ key: 'missed', value: 'true', label: 'Missed runs' }],
+    });
+    const toggle = container.querySelector('.cinder-filter-bar__toggle');
+    expect(toggle?.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle?.querySelector('.cinder-filter-bar__dot')).not.toBeNull();
+  });
 });
 
 describe('FilterBar medium layout (row 10f)', () => {

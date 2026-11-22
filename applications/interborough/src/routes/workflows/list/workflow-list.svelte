@@ -393,7 +393,7 @@
       <EmptyState
         kind="filtered"
         title="No workflows match"
-        description="No results for the current filter set. Try widening the status or date range."
+        description="No results for the current filter set. Try widening the status or date range, or the step and retrying filters."
         onClearFilters={clearFilters}
       />
     {:else}

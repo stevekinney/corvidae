@@ -105,6 +105,16 @@
     min-inline-size: 0;
   }
 
+  /* A custom facet's visible label ("Failed at step:"): muted text before its control, the way the
+   * Status select's prefix reads, and never wrapped or cut. */
+  .cinder-filter-bar__facet-label {
+    flex: none;
+    margin-inline-end: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+    white-space: nowrap;
+  }
+
   .cinder-filter-bar__select {
     min-inline-size: 8rem;
   }
@@ -274,9 +284,19 @@
     background: var(--cinder-text-muted);
   }
 
-  /* A pressed toggle is a solid fill, so its dot takes the fill's own text colour to stay visible. */
-  .cinder-filter-bar__toggle[aria-pressed='true'] .cinder-filter-bar__dot {
-    background: currentcolor;
+  /* A pressed toggle is quiet: the tone's tint with its quiet border, and the dot as the one
+   * leading mark. The chip's own pressed recipe (a solid status fill and a check) is the loudest
+   * thing in a row of tinted chips, and the dot already says it is on, so the check is left out.
+   * The extra classes outrank the chip's pressed rules. */
+  .cinder-filter-bar .cinder-chip.cinder-filter-bar__toggle[aria-pressed='true'] {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+    border-color: var(--cinder-status-warning-border);
+    box-shadow: none;
+  }
+
+  .cinder-filter-bar .cinder-filter-bar__toggle[aria-pressed='true'] .cinder-chip__check {
+    display: none;
   }
 
   /* ----------------------------------------

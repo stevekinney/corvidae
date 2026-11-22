@@ -87,6 +87,7 @@
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
+  metaLines={2}
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
   {#snippet title()}{row.title}{/snippet}

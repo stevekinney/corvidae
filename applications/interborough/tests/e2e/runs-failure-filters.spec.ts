@@ -296,11 +296,53 @@ for (const width of [1280, 375] as const) {
   });
 }
 
-test.describe('/health/runs: the query builder (COR-2535)', () => {
-  test('offers Failed at step and Retrying, and an address carrying both sends them to the engine’s list', async ({
+/** Opens the bar's Filter menu on the row named `row`, which shows that facet's control in it. */
+async function openFilterMenuOn(page: Page, row: string): Promise<void> {
+  const menuRow = page.locator('.cinder-filter-bar__menu-row', { hasText: row });
+  if (!(await menuRow.isVisible())) {
+    await filterBar(page)
+      .getByRole('button', { name: /^Filter/ })
+      .first()
+      .click();
+  }
+  await expect(menuRow).toBeVisible();
+  if ((await menuRow.getAttribute('aria-expanded')) !== 'true') await menuRow.click();
+  await expect(menuRow).toHaveAttribute('aria-expanded', 'true');
+}
+
+// On a phone the two filters live in the Filter menu, so the menu is captured open on each of them;
+// the capture repeats at 320, where the helper puts the menu back before the pixels.
+test('/runs: the Filter menu on a phone holds Failed at step and Retrying (COR-2535)', async ({
+  page,
+}) => {
+  await listWithFixtureRuns(page);
+  await openRuns(page, '/runs?failedStep=charge-card', 375);
+  await expect(listedRuns(page)).toHaveCount(1);
+
+  await openFilterMenuOn(page, 'Failed at step');
+  await expect(page.getByRole('combobox', { name: 'Failed at step' })).toHaveValue('charge-card');
+  await captureForDesignReview(page, {
+    route: '/runs',
+    state: 'filter menu with failed at step',
+    source: SOURCE,
+    ready: (target) => openFilterMenuOn(target, 'Failed at step'),
+  });
+
+  await openFilterMenuOn(page, 'Retrying');
+  await expect(page.getByRole('checkbox', { name: /Retrying/ })).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/runs',
+    state: 'filter menu with retrying',
+    source: SOURCE,
+    ready: (target) => openFilterMenuOn(target, 'Retrying'),
+  });
+});
+
+for (const width of [1280, 375] as const) {
+  test(`/health/runs: the query builder offers Failed at step and Retrying at ${String(width)} pixels, and an address carrying both sends them to the engine’s list (COR-2535)`, async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.setViewportSize({ width, height: 900 });
     const sent = page.waitForRequest((request) => {
       const url = new URL(request.url());
       return (
@@ -319,4 +361,4 @@ test.describe('/health/runs: the query builder (COR-2535)', () => {
       source: SOURCE,
     });
   });
-});
+}

@@ -362,6 +362,8 @@
       type: 'custom',
       key: 'failedStep',
       label: TASK_COPY.failedStepLabel,
+      // Filled, the field reads "charge-card"; its label stays before it, as Status's does.
+      labelVisible: true,
       control: failedStepControl,
     },
   ]);

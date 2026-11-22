@@ -287,3 +287,53 @@ describe('StackedListItem glyph tile', () => {
     ).toBe(false);
   });
 });
+
+describe('StackedListItem metaLines', () => {
+  const retrying = 'API, Tool runner, retrying charge-card, try 3, running 6 min';
+
+  test('2 marks line two for a second line on a phone, and the default leaves it on one', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        status: textSnippet('Running'),
+        title: textSnippet('Run'),
+        meta: textSnippet(retrying),
+        metaLines: 2,
+      },
+    });
+    const meta = container.querySelector('.cinder-stacked-list-item__meta');
+    expect(meta?.getAttribute('data-cinder-meta-lines')).toBe('2');
+
+    const plain = render(StackedListItem, {
+      props: {
+        status: textSnippet('Running'),
+        title: textSnippet('Run'),
+        meta: textSnippet(retrying),
+      },
+    });
+    expect(
+      plain.container
+        .querySelector('.cinder-stacked-list-item__meta')
+        ?.hasAttribute('data-cinder-meta-lines'),
+    ).toBe(false);
+  });
+
+  test('the wrap is two clamped lines on a phone: by the row width, or by the window for a viewport row', () => {
+    const block =
+      /@container cinder-stacked-list-item \(max-width: 639\.98px\) \{\s*\.cinder-stacked-list-item--lines:not\(\[data-cinder-phone-width='viewport'\]\)\s*\.cinder-stacked-list-item__meta\[data-cinder-meta-lines='2'\] \{([^}]*)\}/.exec(
+        stylesheet,
+      );
+    expect(block).not.toBeNull();
+    expect(block?.[1]).toMatch(/-webkit-line-clamp:\s*2/);
+    expect(block?.[1]).toMatch(/white-space:\s*normal/);
+    // The Runs list follows the window (`phoneWidth="viewport"`), whose phone mark carries the rule.
+    const viewport =
+      /\.cinder-stacked-list-item--lines\[data-cinder-phone-width='viewport'\]\[data-cinder-phone\]\s*\.cinder-stacked-list-item__meta\[data-cinder-meta-lines='2'\] \{([^}]*)\}/.exec(
+        stylesheet,
+      );
+    expect(viewport?.[1]).toMatch(/-webkit-line-clamp:\s*2/);
+    // Outside that query line two keeps its single line.
+    expect(stylesheet).toMatch(
+      /\.cinder-stacked-list-item--lines \.cinder-stacked-list-item__description,\s*\.cinder-stacked-list-item--lines \.cinder-stacked-list-item__meta\s*\{[^}]*white-space:\s*nowrap/,
+    );
+  });
+});

@@ -98,6 +98,13 @@ export type CustomFacet = {
   /** Accessible label for the facet, and its row in the narrow form's Filter menu. */
   label: string;
   /**
+   * Draws the label before the control in the bar's row, as muted text ("Failed at step:" then the
+   * field), so a field that is filled still says what it filters, as the Status select reads
+   * "Status: All". Default `false`: the control carries its own label. It is decorative (the
+   * control's own accessible name stays), and the Filter menu names the facet by its row.
+   */
+  labelVisible?: boolean;
+  /**
    * Consumer-supplied snippet that renders the full facet control. Receives
    * the bar-level `disabled` state — the snippet MUST apply it to its own
    * control(s), since FilterBar cannot reach inside consumer markup.

@@ -193,7 +193,7 @@ export const TASK_COPY = {
   workflowLabel: 'Workflow',
   /** The filter on the step a run failed at (COR-2535), and the field the person types a name in. */
   failedStepLabel: 'Failed at step',
-  failedStepPlaceholder: 'Failed at step…',
+  failedStepPlaceholder: 'Any step',
   /** The filter on the runs retrying a step now (COR-2535). */
   retryingLabel: 'Retrying',
   loading: 'Loading runs',
