@@ -569,17 +569,31 @@ test.describe('a phone tool approval', () => {
         const buttons = Array.from(group.querySelectorAll('button'));
         return buttons.map((button) => {
           const { x, y, width, height } = button.getBoundingClientRect();
-          const center = document.elementFromPoint(x + width / 2, y + height / 2);
-          return { width, height, reachable: center !== null && button.contains(center) };
+          const centerX = x + width / 2;
+          const centerY = y + height / 2;
+          const halfTarget = 21.5;
+          const target = [
+            [centerX, centerY],
+            [centerX - halfTarget, centerY - halfTarget],
+            [centerX + halfTarget, centerY - halfTarget],
+            [centerX - halfTarget, centerY + halfTarget],
+            [centerX + halfTarget, centerY + halfTarget],
+          ] as const;
+          return {
+            width,
+            reachable: target.every(([pointX, pointY]) => {
+              const hit = document.elementFromPoint(pointX, pointY);
+              return hit !== null && button.contains(hit);
+            }),
+          };
         });
       });
       expect(targets).toHaveLength(2);
       const [deny, approve] = targets;
       if (deny === undefined || approve === undefined) throw new Error('Both actions are required');
       expect.soft(Math.abs(deny.width - approve.width)).toBeLessThanOrEqual(1);
-      expect.soft(deny.height).toBeGreaterThanOrEqual(44);
-      expect.soft(approve.height).toBeGreaterThanOrEqual(44);
-      expect.soft(deny.reachable && approve.reachable).toBe(true);
+      expect.soft(deny.reachable, 'Deny owns a 44px touch target').toBe(true);
+      expect.soft(approve.reachable, 'Approve owns a 44px touch target').toBe(true);
 
       const note = pane.getByRole('textbox', { name: 'Note (optional)', exact: true });
       await note.scrollIntoViewIfNeeded();
