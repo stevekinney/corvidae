@@ -158,6 +158,9 @@ Options:
       --jitter <duration>   Deterministic dispatch jitter for create (e.g. 30s, 5m)
   -j, --json                Output results as JSON
   -h, --help                Show this help message
+
+With --json, a failure prints { "ok": false, "error": { "code", "message", "retryable",
+"remediation"? } } on stdout; the exit code is 1 either way.
 `;
 
 export const VALIDATE_HELP_TEXT = `
@@ -246,6 +249,12 @@ Exit codes:
   3   Usage or input error
   4   Operation unavailable on this server (version skew)
   5   (cancel --dry-run) The workflow was not found
+
+Failures:
+  Without --json, stderr holds the message, then a 'Try:' line when there is a next step.
+  With --json, stdout holds one object and stderr stays empty:
+    { "ok": false, "error": { "code", "message", "retryable", "remediation"? } }
+  "code" is the server's fault code (for example NotFound, Unavailable, InvalidParams).
 `;
 
 export const TAIL_HELP_TEXT = `

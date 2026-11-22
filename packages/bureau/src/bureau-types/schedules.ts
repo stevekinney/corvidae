@@ -23,10 +23,25 @@ import type {
   EventHistoryUnsupportedOutcome,
 } from './common';
 
+/**
+ * Who asks for a schedule write, for the audit trail (COR-2545): the owner of record of the caller,
+ * and, when the call came through a host panel, that panel's `ui://` URI. A write with an actor
+ * records both on its entry (`schedule.created`, `schedule.updated`, `schedule.paused`,
+ * `schedule.resumed`); one without records neither.
+ */
+export interface ScheduleActor {
+  /** The caller's owner of record, as every audit entry names its principal. */
+  readonly principal: string;
+  /** The `ui://` URI of the host panel the call came through, when it came through one. */
+  readonly panelUri?: string | undefined;
+}
+
 /** What {@link BureauSchedules.create} takes beside the definition. */
 export interface CreateScheduleOptions {
   /** The run creating the schedule. See {@link BureauSchedules.create}. */
   readonly createdByRun?: string | undefined;
+  /** Who asks, for the `schedule.created` entry of the audit trail. */
+  readonly actor?: ScheduleActor | undefined;
 }
 /**
  * The durable schedules of a Bureau: registering, reading, and changing recurring schedules, and
@@ -78,6 +93,7 @@ export interface BureauSchedules {
    */
   createWorkflow(
     definition: DurableWorkflowScheduleDefinition,
+    options?: Pick<CreateScheduleOptions, 'actor'>,
   ): Promise<ScheduleSummary | undefined>;
 
   /**
@@ -280,6 +296,11 @@ export interface BureauSchedules {
  */
 export interface ScheduleRevisionGuard {
   readonly expectedRevision?: number | undefined;
+  /**
+   * Who asks, for the audit trail (COR-2545): a pause, resume, or update with an actor records the
+   * actor's principal and panel on its entry.
+   */
+  readonly actor?: ScheduleActor | undefined;
 }
 /**
  * What {@link BureauSchedules.update} changes. Omitted `description`, `overlap`, `agentName`,
