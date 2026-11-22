@@ -14,6 +14,7 @@ import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import {
   approveReview,
   bureauCall,
@@ -555,11 +556,10 @@ test.describe('a phone tool approval', () => {
       const pane = paneOf(page);
       const input = pane.getByRole('group', { name: 'Input', exact: true });
       const reason = input.getByText('Arrived damaged', { exact: true });
-      const inputBounds = await input.boundingBox();
-      const reasonBounds = await reason.boundingBox();
-      if (inputBounds === null || reasonBounds === null) {
-        throw new Error('The reason and its Fields container must be rendered');
-      }
+      const { input: inputBounds, reason: reasonBounds } = await readBoxes(page, {
+        input,
+        reason,
+      });
       expect
         .soft(reasonBounds.x + reasonBounds.width)
         .toBeLessThanOrEqual(inputBounds.x + inputBounds.width);
