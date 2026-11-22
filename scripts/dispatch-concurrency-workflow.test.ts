@@ -67,4 +67,19 @@ describe('workflow_dispatch concurrency', () => {
     expect(job).toContain('src/host|src/host/*|fixtures|fixtures/*) host=1');
     expect(job).toContain('UNIT_CONFIG=./bunfig.ui.toml');
   });
+
+  // COR-2643: run 45023128727's host lane passed `--conditions browser`, under which Prettier
+  // resolves to its standalone build and `bureau-client-generation.test.ts` could not load.
+  test('an Interborough host lane runs with no export conditions, as its test script does', () => {
+    const text = workflow('targeted-checks.yml');
+    const job = text.slice(text.indexOf('\n  unit:\n'));
+    const hostLane =
+      'if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then\n            conditions=""';
+    expect(job).toContain('conditions="--conditions browser --conditions svelte"');
+    expect(job).toContain(hostLane);
+    expect(job).toContain('bun test $config $conditions $UNIT_PATHS');
+    // The host lane's conditions are decided after the config default, which leaves UNIT_CONFIG
+    // empty only for a host path.
+    expect(job.indexOf(hostLane)).toBeGreaterThan(job.indexOf('UNIT_CONFIG=./bunfig.ui.toml'));
+  });
 });

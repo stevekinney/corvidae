@@ -10,8 +10,10 @@
    */
   import { AttemptsIndicator, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
+  import { COST_COPY } from '../../app/copy/cost.ts';
   import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { clockTime } from '../../lib/format/clock.ts';
+  import { formatAttemptsCost } from '../../lib/format/cost.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { GoalRow } from './goal-rows.ts';
@@ -30,8 +32,13 @@
 
   const count = $derived(GOALS_COPY.attempts(row.made, row.allowed));
   const check = $derived(GOALS_COPY.checkLine(row.check));
+  // What the attempts cost together (COR-2525): the sum of those with a cost, "At least" it when one
+  // has none, and nothing at all for a goal none of whose attempts has one.
+  const cost = $derived(formatAttemptsCost(row.cost));
   // Line two as plain text, for the tooltip that carries it whole when it is cut.
-  const lineTwoText = $derived(phone ? `${agent}. ${count}` : `${agent}. ${count}. ${check}`);
+  const lineTwoText = $derived(
+    [agent, count, ...(cost === undefined ? [] : [cost]), ...(phone ? [] : [check])].join('. '),
+  );
 </script>
 
 {#snippet attempts()}
@@ -39,7 +46,18 @@
     ><AttemptsIndicator made={row.made} allowed={row.allowed} />{count}</span
   >
 {/snippet}
+{#snippet costText()}
+  <span
+    data-testid="goal-cost"
+    title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.label}>{cost}</span
+  >
+{/snippet}
+<!-- A phone's third and fourth lines: what the goal cost, which does not wrap onto line two at 320
+     pixels, then the check, which ends in an ellipsis. -->
 {#snippet phoneCheck()}
+  {#if cost !== undefined}
+    <span class="ib-goal-row__cost">{@render costText()}</span>
+  {/if}
   <span class="ib-goal-row__check" data-testid="goal-check">{check}</span>
 {/snippet}
 
@@ -61,8 +79,9 @@
   {/snippet}
   {#snippet meta()}
     <span class="ib-goal-row__line"
-      ><span>{agent}</span>{@render attempts()}{#if !phone}<span data-testid="goal-check"
-          >{check}</span
+      ><span>{agent}</span
+      >{@render attempts()}{#if cost !== undefined && !phone}{@render costText()}{/if}{#if !phone}<span
+          data-testid="goal-check">{check}</span
         >{/if}</span
     >
   {/snippet}
@@ -84,7 +103,12 @@
     vertical-align: middle;
   }
 
-  /* The phone's third line ends in an ellipsis, so a long check never grows the row. */
+  .ib-goal-row__cost {
+    display: block;
+    max-inline-size: 100%;
+  }
+
+  /* The phone's last line ends in an ellipsis, so a long check never grows the row. */
   .ib-goal-row__check {
     display: block;
     max-inline-size: 100%;

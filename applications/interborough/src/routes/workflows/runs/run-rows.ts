@@ -28,6 +28,7 @@ import {
   type TaskView,
 } from '../../../lib/bureau-tasks.ts';
 import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format/clock.ts';
+import { attemptsCost, type AttemptsCost } from '../../../lib/format/cost.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
 import { oneLine } from '../../../lib/one-line.ts';
 import { reasonClause } from '../../../lib/reason-clause.ts';
@@ -139,6 +140,12 @@ export type RunRow = {
   readonly updatedAt: number;
   /** How long it took, once it is over. */
   readonly durationMs: number | null;
+  /**
+   * What the run cost (COR-2525), which the Cost column says: the run's own figure, or for an
+   * instance of a workflow file the sum of its steps that have one, marked partial when a step has
+   * none. `null` for a run the Bureau priced no request of, which shows no cost at all.
+   */
+  readonly cost?: AttemptsCost | null;
   /** Which attempt of its goal the run is, or `null` for a run no goal made. */
   readonly attempt: RunAttempt | null;
   /**
@@ -502,6 +509,7 @@ function taskRow(
     startedAt,
     updatedAt,
     durationMs: isTerminalState(task.status) ? Math.max(0, updatedAt - startedAt) : null,
+    cost: attemptsCost([{ usage: { costUsd: task.usage?.costUsd ?? null } }]),
     attempt: null,
     checkNotMet: false,
     workflowType: workflow?.type ?? null,
@@ -549,6 +557,7 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
       startedAt,
       updatedAt: completedAt ?? startedAt,
       durationMs: completedAt === null ? null : Math.max(0, completedAt - startedAt),
+      cost: attemptsCost([attempt]),
       attempt: {
         number: attempt.attemptIndex + 1,
         of: Math.max(goal.bounds.maximumAttempts, attempt.attemptIndex + 1),
@@ -573,6 +582,14 @@ const INSTANCE_STATUS_ORDER: readonly TaskState[] = [
   'completed',
 ];
 
+/**
+ * What the steps of a workflow instance cost together (COR-2525): the sum of the steps that have a
+ * cost, partial when a step has none, and `null` when none has one.
+ */
+function stepsCost(steps: readonly RunRow[]): AttemptsCost | null {
+  return attemptsCost(steps.map((step) => ({ usage: { costUsd: step.cost?.costUsd ?? null } })));
+}
+
 /** One instance of a workflow file, from the rows of its steps: the run a person started. */
 function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
   const status =
@@ -591,6 +608,7 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     startedAt,
     updatedAt,
     durationMs: isTerminalState(status) ? Math.max(0, updatedAt - startedAt) : null,
+    cost: stepsCost(steps),
     attempt: null,
     checkNotMet: false,
     // No task is the instance, only its steps are: the engine holds the run a person started.
@@ -632,6 +650,9 @@ export function buildRunRows(input: {
             origin: goalRow.origin,
             title: goalRow.title,
             attempt: goalRow.attempt,
+            // The task's own figure wins, an explicit `null` (the Bureau priced no request) included:
+            // the goal's record of the attempt fills in only a task that has reported no usage at all.
+            cost: task.usage == null ? (row.cost ?? goalRow.cost ?? null) : (row.cost ?? null),
             checkNotMet: missedCheck.has(task.id) && row.status === 'completed',
           }
         : row,
@@ -660,11 +681,17 @@ export function runListRows(rows: readonly RunRow[]): RunRow[] {
     const instance = listed.get(parentRunId);
     if (instance === undefined) {
       listed.set(parentRunId, instanceRow(parentRunId, instanceSteps));
-    } else if (instance.agentName === null) {
+    } else {
       // The engine's record of an instance names no agent; its steps say which one ran them, which
-      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant").
-      const agentName = instanceSteps.find((step) => step.agentName !== null)?.agentName ?? null;
-      if (agentName !== null) listed.set(parentRunId, { ...instance, agentName });
+      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant"). It holds no
+      // usage either (its view's is `null`), so the steps' costs are the instance's, summed as an
+      // instance with no row of its own sums them (COR-2525).
+      const agentName =
+        instance.agentName ?? instanceSteps.find((step) => step.agentName !== null)?.agentName;
+      const cost = instance.cost ?? stepsCost(instanceSteps);
+      if (agentName !== instance.agentName || cost !== instance.cost) {
+        listed.set(parentRunId, { ...instance, agentName: agentName ?? null, cost });
+      }
     }
   }
   return [...listed.values()].toSorted(
