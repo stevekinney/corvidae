@@ -150,6 +150,9 @@ describe('explainRunFailure', () => {
       factsOf({ verdicts: [{ name: 'pii', kind: 'tripwire', outcome: 'tripwire', step: 0 }] }),
     ).remediation;
     expect(halted).toContain('A guardrail halted this run');
+    // Said to a person: no field name of the answer in code font.
+    expect(halted).not.toContain('`');
+    for (const remediation of remediations) expect(remediation).not.toContain('`');
     const warned = explainRunFailure(
       factsOf({ verdicts: [{ name: 'tone', kind: 'guardrail', outcome: 'warn', step: 0 }] }),
     ).remediation;

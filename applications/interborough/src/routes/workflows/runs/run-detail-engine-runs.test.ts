@@ -125,7 +125,10 @@ describe('an instance of a workflow file opened from the Runs list', () => {
    * Serves Release notes' run `release-run` failed at step 2 on 1.2.0 (1.3.0 is current), with the
    * history's two starts of step 2's activity and, when given, the engine's timeline.
    */
-  function serveFailedReleaseNotes(timeline?: readonly unknown[]): void {
+  function serveFailedReleaseNotes(
+    timeline?: readonly unknown[],
+    options: { readonly explained?: boolean } = {},
+  ): void {
     if (timeline !== undefined) fetchScript.routeUrl('/workflows/release-run/timeline', timeline);
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
     const step = (kind: string, title?: string) => ({
@@ -173,18 +176,23 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       ],
     });
     // What the Bureau stored of the failure (COR-2533): the failure section is its words.
-    fetchScript.routeJsonRpcMethod('bureau.tasks.explain', {
-      summary: 'The step "Collect merged changes" failed because the code it ran raised an error.',
-      cause: { category: 'application', code: null, kind: null },
-      step: { index: 1, label: 'Collect merged changes' },
-      tries: 2,
-      verdicts: [],
-      remediation: 'Read the run’s failure message, then start the run again.',
-      nextCommands: [
-        'interborough runs get --kind workflow release-run',
-        'interborough runs retry release-run',
-      ],
-    });
+    if (options.explained === false) {
+      fetchScript.routeJsonRpcMethodNotFound('bureau.tasks.explain', 'No such run');
+    } else {
+      fetchScript.routeJsonRpcMethod('bureau.tasks.explain', {
+        summary:
+          'The step "Collect merged changes" failed because the code it ran raised an error.',
+        cause: { category: 'application', code: null, kind: null },
+        step: { index: 1, label: 'Collect merged changes' },
+        tries: 2,
+        verdicts: [],
+        remediation: 'Read the run’s failure message, then start the run again.',
+        nextCommands: [
+          'interborough runs get --kind workflow release-run',
+          'interborough runs retry release-run',
+        ],
+      });
+    }
     fetchScript.routeJsonRpcMethod('bureau.workflows.get', {
       id: 'release-notes',
       state: 'ready',
@@ -224,7 +232,10 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       duration,
       status: 'failed',
     });
-    serveFailedReleaseNotes([tried(0, 600), tried(1_200, 600), tried(2_800, 600)]);
+    // The Bureau holds no answer for it, so the page's own words about the failure stand.
+    serveFailedReleaseNotes([tried(0, 600), tried(1_200, 600), tried(2_800, 600)], {
+      explained: false,
+    });
 
     const view = mount('release-run');
 
@@ -257,14 +268,18 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       block.compareDocumentPosition(inputOutput as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 2 tries');
-    expect(block.textContent).toContain('Why it failed');
-    expect(block.textContent).toContain(
-      'GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests.',
-    );
+    // The Bureau's answer is the one reason in the block: the page's own "Why it failed" words show
+    // only while the Bureau has none (the test above), so the failure is stated once.
+    await waitFor(() => expect(block.querySelector('[data-explanation="summary"]')).not.toBeNull());
+    expect(block.textContent).not.toContain('Why it failed');
+    expect(block.textContent).not.toContain('GitHub did not answer');
+    expect(block.textContent).not.toContain('It wasn’t anything you did.');
+    // The step is named once, in the heading: the answer's own Step row is left out.
+    expect(block.querySelector('dl')?.textContent).not.toContain('Step');
+    // One next step: the Bureau's, before the actions, with no second sentence about Health.
+    expect(block.textContent).not.toContain('check Health');
     // What the step said, never the error's JSON (row 55b).
     expect(block.textContent).not.toContain('{');
-    // Row 14t: the block says it was not the person's doing, and carries its own actions.
-    expect(block.textContent).toContain('It wasn’t anything you did.');
     const actions = block.querySelector('[data-run-failure-actions]');
     expect(actions?.textContent).toContain('Retry from step 2');
     expect(actions?.textContent).toContain('runs on 1.2.0');

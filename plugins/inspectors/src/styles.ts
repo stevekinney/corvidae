@@ -36,11 +36,9 @@ export const WORKFLOW_REVISION_STYLES = `${BASE_STYLES}
 @media (max-width:600px){.revision-columns{display:none}.revision-row{grid-template-columns:1fr}.revision-value--proposed{border-inline-start:2px dashed var(--cinder-border)}}
 `;
 
-/** The failure explanation's styles: the shared ones plus its sentence and the code and kind after the cause. */
+/** The failure explanation's styles: the shared ones; the answer itself is drawn by Cinder's parts. */
 export const FAILURE_EXPLANATION_STYLES = `${BASE_STYLES}
 .panel-page{max-width:40rem}
-.explanation-summary{margin:0;overflow-wrap:anywhere}
-.explanation-detail{margin-inline-start:var(--cinder-space-2);color:var(--cinder-text-muted);font-size:var(--cinder-text-sm)}
 `;
 
 /** The schedule editor's styles: the shared ones plus its list of schedules and its form. */

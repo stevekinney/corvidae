@@ -11,7 +11,6 @@
   import { Play, RefreshCw } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
-  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import { clockTimeWithSeconds } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
@@ -115,7 +114,6 @@
   const stepNumber = $derived(progress?.at ?? undefined);
   // A cancellation is a person's doing; any other failure of a step is not (row 14t).
   const notYourFault = $derived(category !== 'cancellation');
-  const healthPath = TASK_COPY.list.loadFailed.healthPath;
 
   function openLink(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -124,15 +122,18 @@
     event.preventDefault();
     router.navigate(path);
   }
-
-  function openHealth(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(healthPath);
-  }
 </script>
+
+{#snippet fallback()}
+  {#if said !== undefined}
+    <p class="weft-overview-tab__failure-explanation">
+      <strong>{copy.whyItFailed}.</strong>
+      {said}{#if notYourFault}{` ${copy.notYourFault}`}{/if}{#if tried !== undefined}{` ${tried}`}{/if}
+    </p>
+  {:else if tried !== undefined}
+    <p class="weft-overview-tab__failure-explanation">{tried}</p>
+  {/if}
+{/snippet}
 
 <Section title={RUN_DETAIL_COPY.happened.heading} data-section="what-happened">
   <ol class="ib-run-happened" aria-label={RUN_DETAIL_COPY.happened.listLabel}>
@@ -161,20 +162,14 @@
       data-testid="run-step-failure"
       {heading}
     >
-      {#if said !== undefined}
-        <p class="weft-overview-tab__failure-explanation">
-          <strong>{copy.whyItFailed}.</strong>
-          {said}{#if notYourFault}{` ${copy.notYourFault}`}{/if}{#if tried !== undefined}{` ${tried}`}{/if}
-        </p>
-      {:else if tried !== undefined}
-        <p class="weft-overview-tab__failure-explanation">{tried}</p>
+      <!-- Why it failed, as the Bureau stored it (COR-2533): the one reason in the block, with the
+           stack behind a disclosure (rows 14t, 55b). The page's own words about the failure show
+           only while the Bureau has no answer, or holds none. The step is named once, in the
+           heading, and the Bureau's remediation is the one next step. -->
+      <RunFailureExplanation {runId} {category} {errorStack} showStep={false} {fallback} />
+      {#if retryKeeps !== undefined}
+        <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>{retryKeeps}</p>
       {/if}
-      <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>
-        {#if retryKeeps !== undefined}{`${retryKeeps} `}{/if}{copy.checkHealth.before}<a
-          href={router.href(healthPath)}
-          onclick={openHealth}>{copy.checkHealth.link}</a
-        >{copy.checkHealth.after}
-      </p>
       {#if retry !== undefined || (runAgain !== undefined && runAgain.blocked !== true) || (onOpenStep !== undefined && stepNumber !== undefined)}
         <div class="ib-run-happened__actions" data-run-failure-actions>
           {#if retry !== undefined && stepNumber !== undefined}
@@ -229,9 +224,6 @@
           {/if}
         </div>
       {/if}
-      <!-- Why it failed, as the Bureau stored it (COR-2533): the server's sentence, cause, step,
-           tries, guardrails and remediation, with the stack behind a disclosure (rows 14t, 55b). -->
-      <RunFailureExplanation {runId} {category} {errorStack} />
     </Alert>
   {/if}
 </Section>

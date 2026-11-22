@@ -156,7 +156,7 @@ const CATEGORY_REMEDIATION: Readonly<Record<FailureCategory | 'unclassified', st
 };
 
 const TRIPWIRE_REMEDIATION =
-  ' A guardrail halted this run: review the guardrail named in `verdicts` before starting it again.';
+  ' A guardrail halted this run. Review the guardrail listed above before starting it again.';
 
 /** A label as one line of text: control characters and runs of whitespace become one space. */
 function oneLine(label: string): string {

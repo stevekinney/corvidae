@@ -255,6 +255,12 @@ describe('a chat whose run failed on a call', () => {
       'The reply stopped while Issue refund was running',
     );
     expect(link.closest('.chat-note')?.querySelector('button')?.textContent).toContain('Retry');
+    // The link and Retry are one group with a Cinder space between them, never touching.
+    const retryButton = link.closest('.chat-note')?.querySelector('button');
+    const group = link.closest('.cinder-stack');
+    expect(group).not.toBeNull();
+    expect(group?.contains(retryButton ?? null)).toBe(true);
+    expect(group?.getAttribute('style') ?? '').toContain('var(--cinder-space-3)');
 
     // Clicked, it navigates inside the app, to the section's fragment: the Run page scrolls to it.
     await fireEvent.click(link);

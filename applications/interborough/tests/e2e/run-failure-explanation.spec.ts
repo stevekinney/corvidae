@@ -51,17 +51,27 @@ for (const width of WIDTHS) {
   });
 }
 
-test.describe('the link to a failed run’s explanation', () => {
-  test('opens the run’s page at the section that says why it failed (COR-2533)', async ({
-    page,
-  }) => {
-    const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
-    await page.clock.setFixedTime(SAMPLE_NOW_MILLISECONDS);
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(`/runs/${encodeURIComponent(world.runs.failed)}#failure-explanation`);
+for (const width of WIDTHS) {
+  test.describe(`the link to a failed run’s explanation at ${String(width)} pixels`, () => {
+    test('opens the run’s page scrolled to the section that says why it failed (COR-2533)', async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await page.clock.setFixedTime(SAMPLE_NOW_MILLISECONDS);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/runs/${encodeURIComponent(world.runs.failed)}#failure-explanation`);
 
-    const section = page.locator('#failure-explanation');
-    await expect(section).toBeVisible();
-    await expect(section.locator('[data-explanation="summary"]')).toBeVisible();
+      // The section mounts after the run's own queries resolve, so the page scrolls to it itself
+      // (the router's fragment), as it does after a client-side navigation from Chat.
+      const section = page.locator('#failure-explanation');
+      await expect(section).toBeVisible();
+      await expect(section.locator('[data-explanation="summary"]')).toBeVisible();
+      await expect(section).toBeInViewport();
+      await captureForDesignReview(page, {
+        route: '/runs/:run',
+        state: 'after the Why it failed link, scrolled to the explanation',
+        source: SOURCE,
+      });
+    });
   });
-});
+}

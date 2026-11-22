@@ -14,9 +14,14 @@ import { mountPanel } from '@lostgradient/cinder/panel';
 import { App } from '@modelcontextprotocol/ext-apps';
 import { unmount } from 'svelte';
 
+import {
+  buildExplanationModel,
+  FAILURE_EXPLANATION_LABELS,
+} from '@lostgradient/interborough-plugin/failure-explanation';
 import { followHostTheme } from '../host-theme.ts';
 import Explanation from './explanation.svelte';
-import { buildExplanationModel, explanationOfResult, refusalOf, runIdOf } from './model.ts';
+
+import { explanationOfResult, refusalOf, runIdOf } from './model.ts';
 import { createExplanationView, type ExplanationState } from './view.svelte.ts';
 
 async function start(): Promise<void> {
@@ -53,7 +58,8 @@ async function start(): Promise<void> {
     }
     const refusal = refusalOf(result);
     if (refusal !== undefined) {
-      show({ kind: 'refused', refusal }, refusal.message);
+      // The heading, not the message the page already shows under it.
+      show({ kind: 'refused', refusal }, FAILURE_EXPLANATION_LABELS.region);
       return true;
     }
     return false;

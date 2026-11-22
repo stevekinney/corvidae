@@ -1,10 +1,13 @@
 /// <reference lib="dom" />
+import {
+  buildExplanationModel,
+  type Explanation as Answer,
+} from '@lostgradient/interborough-plugin/failure-explanation';
 import { render } from '@testing-library/svelte';
 import { describe, expect, it } from 'bun:test';
 import { tick } from 'svelte';
 
 import Explanation from './explanation.svelte';
-import { buildExplanationModel, type Explanation as Answer } from './model.ts';
 import { createExplanationView, type ExplanationState } from './view.svelte.ts';
 
 const answer: Answer = {
@@ -27,23 +30,38 @@ function open(state: ExplanationState, announcement = '') {
 
 const part = (container: HTMLElement, name: string) =>
   container.querySelector(`[data-part="${name}"]`);
+const shared = (container: HTMLElement, name: string) =>
+  container.querySelector(`[data-explanation="${name}"]`);
 
 describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
   it('AC1: draws the sentence, the cause, the step, the tries, the guardrails and the remediation', () => {
     const { container } = open({ kind: 'explained', model: buildExplanationModel(answer) });
     // The sentence goes in as text, never as markup.
     expect(container.querySelector('b')).toBeNull();
-    expect(part(container, 'summary')?.textContent).toBe(answer.summary);
-    expect(part(container, 'cause')?.textContent).toContain('application');
-    expect(part(container, 'cause')?.textContent).toContain('code UNKNOWN, kind tool');
-    expect(part(container, 'cause')?.querySelector('.cinder-badge')).not.toBeNull();
+    expect(shared(container, 'summary')?.textContent).toBe(answer.summary);
+    expect(shared(container, 'cause')?.textContent).toContain('application');
+    expect(shared(container, 'cause')?.querySelector('.cinder-badge')).not.toBeNull();
+    // The engine's UNKNOWN is no code, and the kind of error is in the sentence: neither is shown.
+    expect(shared(container, 'cause')?.textContent).not.toContain('UNKNOWN');
+    expect(shared(container, 'cause')?.textContent).not.toContain('kind');
     const facts = container.querySelector('dl')?.textContent ?? '';
     expect(facts).toContain('charge-card');
     expect(facts).not.toContain('step 2');
     expect(facts).toContain('Tries');
     expect(facts).toContain('3');
-    expect(part(container, 'verdicts')?.textContent).toContain('sentinel-card stopped the run');
-    expect(part(container, 'remediation')?.textContent).toBe(answer.remediation);
+    expect(shared(container, 'guardrails')?.textContent).toContain('sentinel-card stopped the run');
+    expect(shared(container, 'remediation')?.textContent).toContain(answer.remediation);
+    expect(shared(container, 'remediation')?.textContent).toContain('What to do next.');
+  });
+
+  it('draws the answer with the one component the Run page draws it with', () => {
+    const { container } = open({ kind: 'explained', model: buildExplanationModel(answer) });
+    expect(shared(container, 'root')).not.toBeNull();
+    // Cinder's parts, not parts of its own: a two-column list under the sentence.
+    expect(
+      container.querySelector('.cinder-description-list')?.getAttribute('data-cinder-variant'),
+    ).toBe('two-column');
+    expect(container.querySelector('section')).toBeNull();
   });
 
   it('lists a guardrail that fired more than once, each time (a repeated verdict is no duplicate key)', () => {
@@ -55,7 +73,7 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
         verdicts: [fired, fired, { ...fired, step: null }],
       }),
     });
-    const items = [...(part(container, 'verdicts')?.querySelectorAll('li') ?? [])];
+    const items = [...(shared(container, 'guardrails')?.querySelectorAll(':scope > span') ?? [])];
     expect(items.map((item) => item.textContent)).toEqual([
       'pii redacted the step',
       'pii redacted the step',
@@ -63,22 +81,17 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
     ]);
   });
 
-  it('is a main landmark with one labelled section for each part, and a live region', () => {
-    const { container } = open({ kind: 'explained', model: buildExplanationModel(answer) });
+  it('is a main landmark under its heading, and its live region is visually hidden', () => {
+    const { container } = open(
+      { kind: 'explained', model: buildExplanationModel(answer) },
+      'Explanation loaded.',
+    );
     expect(container.querySelector('main[aria-labelledby="explanation-title"]')).not.toBeNull();
     expect(container.querySelector('h1')?.textContent).toBe('Why this run failed');
-    expect(container.querySelector('[role="status"][aria-live="polite"]')).not.toBeNull();
-    const sections = [...container.querySelectorAll('section')];
-    expect(sections.map((node) => node.querySelector('h2')?.textContent)).toEqual([
-      'Details',
-      'Guardrails',
-      'What to do next',
-    ]);
-    for (const node of sections) {
-      expect(container.querySelector(`#${node.getAttribute('aria-labelledby')}`)?.tagName).toBe(
-        'H2',
-      );
-    }
+    const status = container.querySelector('[role="status"][aria-live="polite"]');
+    expect(status?.textContent?.trim()).toBe('Explanation loaded.');
+    // Cinder's VisuallyHidden holds it, so the words are read and never drawn above the title.
+    expect(status?.classList.contains('cinder-sr-only')).toBe(true);
     expect(container.querySelector('button')).toBeNull();
   });
 
@@ -94,32 +107,34 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
       }),
     });
     const facts = container.querySelector('dl')?.textContent ?? '';
-    expect(facts).toContain('not classified');
+    expect(facts).toContain('uncategorized');
     expect(facts).not.toContain('Step');
     expect(facts).not.toContain('Tries');
-    expect(part(container, 'verdicts')).toBeNull();
-    expect(
-      [...container.querySelectorAll('section')].map(
-        (node) => node.querySelector('h2')?.textContent,
-      ),
-    ).toEqual(['Details', 'What to do next']);
+    expect(shared(container, 'guardrails')).toBeNull();
   });
 
   it('AC3: shows the Bureau’s own message, and what it said to do, for a run that did not fail', () => {
-    const { container } = open({
-      kind: 'refused',
-      refusal: {
-        message:
-          'Run "run-1" has not failed (its status is "completed"), so there is no failure to explain',
-        remediation: 'Explain a run only after it has failed.',
+    const message =
+      'Run "run-1" has not failed (its status is "completed"), so there is no failure to explain';
+    const { container } = open(
+      {
+        kind: 'refused',
+        refusal: { message, remediation: 'Explain a run only after it has failed.' },
       },
-    });
+      'Why this run failed',
+    );
     expect(part(container, 'message')?.textContent).toContain('has not failed');
     expect(part(container, 'remediation')?.textContent).toBe(
       'Explain a run only after it has failed.',
     );
-    expect(part(container, 'summary')).toBeNull();
+    expect(shared(container, 'summary')).toBeNull();
     expect(container.querySelector('dl')).toBeNull();
+    // The live region says the heading, never the message the page already shows: the words are
+    // there once to a person who reads them and once to one who hears them.
+    expect(container.querySelector('[role="status"]')?.textContent?.trim()).toBe(
+      'Why this run failed',
+    );
+    expect(container.querySelector('[role="status"]')?.textContent).not.toContain(message);
   });
 
   it('says nothing to do when the Bureau said nothing', () => {
@@ -132,9 +147,10 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
   });
 
   it('says what it is doing while it reads, and when no run is named, and when the host does not answer', () => {
-    expect(
-      part(open({ kind: 'reading', runId: 'run-1' }).container, 'reading')?.textContent,
-    ).toContain('run-1');
+    // No identifier of the run in the words: a person asked why a run failed, not for its id.
+    expect(part(open({ kind: 'reading', runId: 'run-1' }).container, 'reading')?.textContent).toBe(
+      'Reading why this run failed.',
+    );
     expect(part(open({ kind: 'waiting' }).container, 'waiting')?.textContent).toContain(
       'No run is named',
     );
@@ -153,7 +169,7 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
     view.state = { kind: 'explained', model: buildExplanationModel(answer) };
     view.announcement = 'Explanation loaded.';
     await tick();
-    expect(part(container, 'summary')).not.toBeNull();
+    expect(shared(container, 'summary')).not.toBeNull();
     expect(container.querySelector('[role="status"]')).toBe(status);
     expect(status?.textContent?.trim()).toBe('Explanation loaded.');
   });

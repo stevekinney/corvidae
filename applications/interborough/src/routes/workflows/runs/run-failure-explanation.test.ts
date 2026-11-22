@@ -44,7 +44,9 @@ describe('a failed run’s explanation', () => {
     expect(cause?.querySelector('.cinder-badge')?.getAttribute('data-cinder-variant')).toBe(
       'danger',
     );
-    expect(cause?.textContent).toContain('code UNKNOWN, kind tool');
+    // The engine's UNKNOWN is no code, and the kind of error is in the sentence: neither is shown.
+    expect(cause?.textContent).not.toContain('UNKNOWN');
+    expect(cause?.textContent).not.toContain('kind');
 
     const facts = container.querySelector('dl')?.textContent ?? '';
     // The step by its label alone: the server's index is the engine's, not the page's step number.
@@ -60,6 +62,18 @@ describe('a failed run’s explanation', () => {
     expect(part(container, 'remediation')?.textContent).toContain('What to do next.');
   });
 
+  test('shows a code that names something a person can act on, after the badge', async () => {
+    restore = bureau(
+      explainAnswers({
+        ...FAILED_RUN_EXPLANATION,
+        cause: { category: 'system', code: 'ECONNRESET', kind: 'tool' },
+      }),
+    ).restore;
+    const { container, findByText } = show({ runId: 'run-1' });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    expect(part(container, 'cause')?.textContent).toContain('code ECONNRESET');
+  });
+
   test('lists a guardrail that fired more than once, each time (a repeated verdict is no duplicate key)', async () => {
     const fired = { name: 'pii', kind: 'guardrail', outcome: 'redact', step: 1 } as const;
     restore = bureau(
@@ -70,7 +84,7 @@ describe('a failed run’s explanation', () => {
     ).restore;
     const { container, findByText } = show({ runId: 'run-1' });
     await findByText(FAILED_RUN_EXPLANATION.summary);
-    const items = [...(part(container, 'guardrails')?.querySelectorAll('li') ?? [])];
+    const items = [...(part(container, 'guardrails')?.querySelectorAll(':scope > span') ?? [])];
     expect(items.map((item) => item.textContent)).toEqual([
       'pii redacted the step',
       'pii redacted the step',

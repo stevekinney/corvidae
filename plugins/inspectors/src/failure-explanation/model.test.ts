@@ -1,12 +1,7 @@
+import type { Explanation } from '@lostgradient/interborough-plugin/failure-explanation';
 import { describe, expect, it } from 'bun:test';
 
-import {
-  buildExplanationModel,
-  explanationOfResult,
-  refusalOf,
-  runIdOf,
-  type Explanation,
-} from './model.ts';
+import { explanationOfResult, refusalOf, runIdOf } from './model.ts';
 
 /** Whether the shape is one the page draws, as a tool result carries it. */
 const isExplanation = (value: unknown): boolean =>
@@ -53,62 +48,6 @@ describe('what the explain read answers (COR-2543)', () => {
     ]) {
       expect(isExplanation(wrong)).toBe(false);
     }
-  });
-
-  it('names each part: the sentence, the cause, the step, the tries, the guardrails and the remediation', () => {
-    expect(buildExplanationModel(explanation)).toEqual({
-      summary: explanation.summary,
-      category: 'application',
-      causeDetail: 'code UNKNOWN, kind tool',
-      step: 'charge-card',
-      tries: '3',
-      verdicts: ['sentinel-card stopped the run', 'pii redacted the step'],
-      remediation: explanation.remediation,
-    });
-  });
-
-  it('says what a failure that nothing classifies is, and leaves out what is not stored', () => {
-    expect(
-      buildExplanationModel({
-        ...explanation,
-        cause: { category: null, code: null, kind: null },
-        step: null,
-        tries: null,
-        verdicts: [],
-      }),
-    ).toMatchObject({
-      category: 'not classified',
-      causeDetail: '',
-      step: null,
-      tries: null,
-      verdicts: [],
-    });
-    expect(
-      buildExplanationModel({
-        ...explanation,
-        cause: { category: 'timeout', code: 'X', kind: null },
-      }).causeDetail,
-    ).toBe('code X');
-  });
-
-  it('words every guardrail outcome the Bureau answers', () => {
-    const outcomes = ['tripwire', 'block', 'warn', 'sanitize', 'redact'] as const;
-    const lines = buildExplanationModel({
-      ...explanation,
-      verdicts: outcomes.map((outcome) => ({
-        name: outcome,
-        kind: outcome === 'tripwire' ? ('tripwire' as const) : ('guardrail' as const),
-        outcome,
-        step: 0,
-      })),
-    }).verdicts;
-    expect(lines).toEqual([
-      'tripwire stopped the run',
-      'block blocked the step',
-      'warn warned',
-      'sanitize sanitized the step',
-      'redact redacted the step',
-    ]);
   });
 });
 

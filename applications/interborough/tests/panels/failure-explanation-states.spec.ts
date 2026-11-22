@@ -173,7 +173,7 @@ test.describe('failure-explanation-states', () => {
     const app = await open(page);
     const ready = async () => {
       await expect(app.getByText(FAILED_FIXTURE_RUN.summary)).toBeVisible();
-      await expect(app.getByRole('region', { name: 'Guardrails' })).toBeVisible();
+      await expect(app.locator('[data-explanation="guardrails"]')).toBeVisible();
     };
     await ready();
     await captureState(page, app, 'explained', ready);
@@ -185,8 +185,8 @@ test.describe('failure-explanation-states', () => {
     const app = await open(page, { answer: explained(UNCLASSIFIED_FIXTURE_RUN) });
     const ready = async () => {
       await expect(app.getByText(UNCLASSIFIED_FIXTURE_RUN.summary)).toBeVisible();
-      await expect(app.getByRole('region', { name: 'Details' })).toContainText('not classified');
-      await expect(app.getByRole('region', { name: 'Guardrails' })).toHaveCount(0);
+      await expect(app.locator('.cinder-description-list')).toContainText('uncategorized');
+      await expect(app.locator('[data-explanation="guardrails"]')).toHaveCount(0);
     };
     await ready();
     await captureState(page, app, 'explained-unclassified', ready);
@@ -207,7 +207,7 @@ test.describe('failure-explanation-states', () => {
   test('reading: the explain read is in flight', async ({ page }) => {
     const app = await open(page, { held: true });
     const ready = async () => {
-      await expect(app.getByText('Reading what the Bureau stored about run run-1.')).toBeVisible();
+      await expect(app.getByText('Reading why this run failed.')).toBeVisible();
     };
     await ready();
     await captureState(page, app, 'reading', ready);

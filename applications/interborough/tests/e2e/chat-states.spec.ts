@@ -24,7 +24,10 @@ import {
 import { SAMPLE_NOW_MILLISECONDS, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { connectProvider, open, openStatesChat } from './chat-states-support.ts';
-import { captureForDesignReview } from './design-review-capture.ts';
+import {
+  captureForDesignReview,
+  captureForDesignReviewWithPhone,
+} from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
@@ -479,7 +482,8 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
     // The conversation stays live: a provider is connected, so the composer takes a message.
     await expect(page.getByRole('textbox', { name: /^Message/ })).toBeVisible();
     await expect(blockedRow(page)).toHaveCount(0);
-    await captureForDesignReview(page, {
+    // At a phone too (375, and so 320): the line and its two actions wrap there (COR-2533).
+    await captureForDesignReviewWithPhone(page, {
       route: '/chats/:chat',
       state: 'reply failed partway',
       source: SOURCE,

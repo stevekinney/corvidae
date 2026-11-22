@@ -413,45 +413,6 @@ export const RUN_DETAIL_COPY = {
       openStep: (at: number): string => `Open step ${String(at)}`,
       errorDetails: 'Show the error details',
     },
-    /** The sentence under the reason: where to look when it keeps failing, with Health as a link. */
-    checkHealth: { before: 'If it keeps failing, check ', link: 'Health', after: '.' },
-    /**
-     * Why a failed run failed, as the Bureau stored it (COR-2533, `bureau.tasks.explain`): the
-     * labels around its words. The sentence, the cause and what to do next are the server's own, so
-     * no copy here describes a category.
-     */
-    explanation: {
-      region: 'Why this run failed',
-      cause: 'Cause',
-      /** The error's code and kind after the category badge: "code UNKNOWN, kind tool". */
-      causeDetail: (code: string | null, kind: string | null): string =>
-        [code === null ? undefined : `code ${code}`, kind === null ? undefined : `kind ${kind}`]
-          .filter((part) => part !== undefined)
-          .join(', '),
-      /**
-       * The step the run failed at is named by its label alone. The server's index counts the
-       * engine's durable steps, which is not the number the page's heading gives a step of the
-       * file, so no number is drawn from it.
-       */
-      step: 'Step',
-      tries: 'Tries',
-      guardrails: 'Guardrails',
-      /** One guardrail that fired: "sentinel stopped the run". */
-      verdict: (
-        name: string,
-        outcome: 'tripwire' | 'block' | 'warn' | 'sanitize' | 'redact',
-      ): string => {
-        const did = {
-          tripwire: 'stopped the run',
-          block: 'blocked the step',
-          warn: 'warned',
-          sanitize: 'sanitized the step',
-          redact: 'redacted the step',
-        }[outcome];
-        return `${name} ${did}`;
-      },
-      next: 'What to do next',
-    },
     /** The Version row: which version the run ran, and where it stands against the current one. */
     versionCurrent: (version: string): string => `${version}, current version`,
     versionOlder: (version: string): string => `${version}, older version`,

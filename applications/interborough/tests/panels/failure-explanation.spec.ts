@@ -102,16 +102,16 @@ test.describe('the failure explanation MCP App', () => {
     const { app, errors } = await open(page);
     await expect(app.getByRole('heading', { level: 1, name: 'Why this run failed' })).toBeVisible();
     await expect(app.getByText(FAILED_FIXTURE_RUN.summary)).toBeVisible();
-    await expect(app.getByRole('region', { name: 'Details' })).toContainText('application');
-    await expect(app.getByRole('region', { name: 'Details' })).toContainText(
-      'code UNKNOWN, kind tool',
-    );
-    await expect(app.getByRole('region', { name: 'Details' })).toContainText('charge-card');
-    await expect(app.getByRole('region', { name: 'Details' })).toContainText('3');
-    await expect(app.getByRole('region', { name: 'Guardrails' })).toContainText(
+    const facts = app.locator('.cinder-description-list');
+    await expect(facts).toContainText('application');
+    // The engine's UNKNOWN is no code, and the kind is in the sentence: neither is drawn.
+    await expect(facts).not.toContainText('UNKNOWN');
+    await expect(facts).toContainText('charge-card');
+    await expect(facts).toContainText('3');
+    await expect(app.locator('[data-explanation="guardrails"]')).toContainText(
       'sentinel-card stopped the run',
     );
-    await expect(app.getByRole('region', { name: 'What to do next' })).toContainText(
+    await expect(app.locator('[data-explanation="remediation"]')).toContainText(
       FAILED_FIXTURE_RUN.remediation,
     );
     // The page calls the explain read, once, for the run the run's page named, and nothing else.
@@ -143,7 +143,7 @@ test.describe('the failure explanation MCP App', () => {
     await expect(app.getByRole('region', { name: 'What to do next' })).toContainText(
       'Explain a run only after it has failed',
     );
-    await expect(app.getByRole('region', { name: 'Details' })).toHaveCount(0);
+    await expect(app.locator('[data-explanation="root"]')).toHaveCount(0);
   });
 
   test('AC3: shows the message of a refusal opened from the explain tool', async ({ page }) => {
@@ -160,7 +160,7 @@ test.describe('the failure explanation MCP App', () => {
   }) => {
     const { app } = await open(page, { unreachable: true });
     await expect(app.getByText('The host did not answer')).toBeVisible();
-    await expect(app.getByRole('region', { name: 'Details' })).toHaveCount(0);
+    await expect(app.locator('[data-explanation="root"]')).toHaveCount(0);
   });
 
   test('says no run is named when it is opened with none', async ({ page }) => {

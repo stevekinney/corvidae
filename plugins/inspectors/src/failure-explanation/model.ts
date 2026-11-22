@@ -3,33 +3,11 @@
  * with no DOM and no bridge. The page is the Bureau's own answer to why one run failed, from what it
  * stored about the run and nothing else, so nothing here words a cause. It reads the answer's
  * fields, names the ones a person reads, and reads a refusal's message and remediation back out of
- * an error result.
+ * an error result. What it draws of an answer, and the words for it, are the shared ones
+ * (`@lostgradient/interborough-plugin/failure-explanation`), which the Run page draws too.
  */
 
-/** One guardrail that fired in the run. */
-interface ExplanationVerdict {
-  readonly name: string;
-  readonly kind: 'guardrail' | 'tripwire';
-  readonly outcome: 'tripwire' | 'block' | 'warn' | 'sanitize' | 'redact';
-  /** The step it fired at, counted from zero, or `null`. */
-  readonly step: number | null;
-}
-
-/** What the explain read answers for a failed run. */
-export interface Explanation {
-  readonly summary: string;
-  readonly cause: {
-    readonly category: string | null;
-    readonly code: string | null;
-    readonly kind: string | null;
-  };
-  /** The step the run failed at, counted from zero, or `null` when none was recorded. */
-  readonly step: { readonly index: number; readonly label: string } | null;
-  readonly tries: number | null;
-  readonly verdicts: readonly ExplanationVerdict[];
-  readonly remediation: string;
-  readonly nextCommands: readonly string[];
-}
+import type { Explanation } from '@lostgradient/interborough-plugin/failure-explanation';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -37,7 +15,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const isNullableString = (value: unknown): boolean => value === null || typeof value === 'string';
 
-function isVerdict(value: unknown): value is ExplanationVerdict {
+function isVerdict(value: unknown): value is Explanation['verdicts'][number] {
   return (
     isRecord(value) &&
     typeof value['name'] === 'string' &&
@@ -86,54 +64,6 @@ export function explanationOfResult(result: {
     }
   }
   return isExplanation(content) ? content : undefined;
-}
-
-/** What the page draws of an explanation: each part as the words a person reads. */
-export interface ExplanationModel {
-  readonly summary: string;
-  /** The category as the Bureau names it, or `not classified` for a failure nothing classifies. */
-  readonly category: string;
-  /** The error's code and kind, as `code UNKNOWN, kind tool`; empty when it has neither. */
-  readonly causeDetail: string;
-  /**
-   * The step the run failed at, by its label alone. The Bureau's index counts the engine's own
-   * steps, which is not the number a page gives a step of the file, so none is drawn from it.
-   */
-  readonly step: string | null;
-  /** How many times the engine tried that step, or `null` when it kept no history. */
-  readonly tries: string | null;
-  /** One line for each guardrail that fired. */
-  readonly verdicts: readonly string[];
-  readonly remediation: string;
-}
-
-const OUTCOME_WORDS = {
-  tripwire: 'stopped the run',
-  block: 'blocked the step',
-  warn: 'warned',
-  sanitize: 'sanitized the step',
-  redact: 'redacted the step',
-} as const;
-
-/** The lines the page draws for `explanation`. */
-export function buildExplanationModel(explanation: Explanation): ExplanationModel {
-  const { cause, step } = explanation;
-  return {
-    summary: explanation.summary,
-    category: cause.category ?? 'not classified',
-    causeDetail: [
-      cause.code === null ? undefined : `code ${cause.code}`,
-      cause.kind === null ? undefined : `kind ${cause.kind}`,
-    ]
-      .filter((part) => part !== undefined)
-      .join(', '),
-    step: step === null ? null : step.label,
-    tries: explanation.tries === null ? null : String(explanation.tries),
-    verdicts: explanation.verdicts.map(
-      (verdict) => `${verdict.name} ${OUTCOME_WORDS[verdict.outcome]}`,
-    ),
-    remediation: explanation.remediation,
-  };
 }
 
 /** What the Bureau said when it would not explain: its message, and what to do next when it said. */

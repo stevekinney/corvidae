@@ -1,4 +1,6 @@
-import type { ExplanationModel, Refusal } from './model.ts';
+import type { ExplanationModel } from '@lostgradient/interborough-plugin/failure-explanation';
+
+import type { Refusal } from './model.ts';
 
 /**
  * What the page is showing, and no more: no run named yet, the read in flight, the Bureau's

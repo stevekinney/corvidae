@@ -169,7 +169,7 @@ export const FAILED_RUN_EXPLANATION: RunFailureExplanation = {
   tries: 3,
   verdicts: [{ name: 'sentinel-card', kind: 'tripwire', outcome: 'tripwire', step: 1 }],
   remediation:
-    'Read the run’s failure message, fix the input or the code the step ran, and start the run again. A guardrail halted this run: review the guardrail named in `verdicts` before starting it again.',
+    'Read the run’s failure message, fix the input or the code the step ran, and start the run again. A guardrail halted this run. Review the guardrail listed above before starting it again.',
   nextCommands: ['interborough runs get --kind task run-1'],
 };
 

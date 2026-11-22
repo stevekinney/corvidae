@@ -54,6 +54,7 @@
     EmptyState,
     Link,
     PageHeader,
+    Stack,
     ToolCallPanel,
     VisuallyHidden,
     type ApprovalResolution,
@@ -2469,31 +2470,36 @@
           {#snippet noteAction(note: MessageNoteInfo)}
             <!-- A failed run's line says why it stopped in a few words, and leads to the Run page's
                  explanation of the failure (COR-2533), for every failed attempt on record. -->
-            {#if note.kind === 'stopped' && note.failed === true}
-              {@const failedRunId = stoppedRunIdOf(note.id)}
-              {#if failedRunId !== undefined}
-                <!-- `data-chat-note-link` opens it inside the app (`openNoteLink`). -->
-                <Link
-                  color="inherit"
-                  underline="always"
-                  data-chat-note-link
-                  data-chat-explain-link
-                  href={router.href(failureExplanationPath(failedRunId))}
-                >
-                  {CHAT_COPY.stopLine.explain}
-                </Link>
-              {/if}
-            {/if}
-            {#if note.id === retryNoteId}
-              <Button
-                data-changes
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!session.canRetryTurn}
-                onclick={() => void retryTurn()}
-                label={CHAT_COPY.stopLine.retry}
-              />
+            <!-- The link and Retry are one group a Cinder space apart, never touching. -->
+            {#if (note.kind === 'stopped' && note.failed === true) || note.id === retryNoteId}
+              <Stack direction="row" align="center" wrap gap="var(--cinder-space-3)">
+                {#if note.kind === 'stopped' && note.failed === true}
+                  {@const failedRunId = stoppedRunIdOf(note.id)}
+                  {#if failedRunId !== undefined}
+                    <!-- `data-chat-note-link` opens it inside the app (`openNoteLink`). -->
+                    <Link
+                      color="inherit"
+                      underline="always"
+                      data-chat-note-link
+                      data-chat-explain-link
+                      href={router.href(failureExplanationPath(failedRunId))}
+                    >
+                      {CHAT_COPY.stopLine.explain}
+                    </Link>
+                  {/if}
+                {/if}
+                {#if note.id === retryNoteId}
+                  <Button
+                    data-changes
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!session.canRetryTurn}
+                    onclick={() => void retryTurn()}
+                    label={CHAT_COPY.stopLine.retry}
+                  />
+                {/if}
+              </Stack>
             {/if}
           {/snippet}
           {#snippet row({ message }, renderDefault)}
