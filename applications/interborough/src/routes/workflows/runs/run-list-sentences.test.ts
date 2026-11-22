@@ -61,6 +61,18 @@ describe('runNoMatchDescription', () => {
     );
   });
 
+  test('names the step a run failed at, and a run that retries one (COR-2535)', () => {
+    expect(runNoMatchDescription({ failedStep: 'charge-card' }, undefined)).toBe(
+      'No runs that failed at charge-card. Try another step.',
+    );
+    expect(runNoMatchDescription({ retrying: true }, undefined)).toBe(
+      'No runs retrying a step. Change the filters to see more runs.',
+    );
+    expect(
+      runNoMatchDescription({ status: 'running', retrying: true, failedStep: 'model' }, undefined),
+    ).toBe('No running runs retrying a step that failed at model. Try another status or step.');
+  });
+
   test('has one status word for each segment the bar draws', () => {
     const words = Object.keys(TASK_COPY.list.noMatch.statusWords);
     expect(words).toEqual(['waiting', 'signal', 'running', 'done', 'failed', 'canceled']);
