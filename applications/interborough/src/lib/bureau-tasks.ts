@@ -153,6 +153,17 @@ export type TaskFilter = {
   /** Only the tasks that ran on this workflow type (COR-2423); a task's `workflow.type` says which. */
   readonly workflow?: string;
   /**
+   * Only the tasks that failed at the step with this label (COR-2531, `failure.step.label`): a
+   * tool's name, `model` for a model step, or a workflow run's failed step. The Bureau compares the
+   * first 200 characters and refuses a value past 1,000.
+   */
+  readonly failedStep?: string;
+  /**
+   * `true` lists only the tasks with a step on a second or later try (COR-2531, `retrying` on the
+   * task); `false` only the tasks with none.
+   */
+  readonly retrying?: boolean;
+  /**
    * `false` lists only the tasks that have records (COR-2424): the schedule tick's runs and the
    * instances of workflow files, which the engine holds, are left out so a reader of the newest
    * tasks (the chat list, the command palette) is not given its slots to them.
