@@ -138,6 +138,7 @@ describe('parseArguments', () => {
       'tests/e2e/31-reviews.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
+      'tests/e2e/confirm-dialog-states.spec.ts',
       'tests/panels/schedule-editor-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
@@ -222,6 +223,7 @@ describe('parseArguments', () => {
       'tests/e2e/31-reviews.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
+      'tests/e2e/confirm-dialog-states.spec.ts',
       'tests/panels/schedule-editor-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
     ]);
@@ -291,6 +293,7 @@ describe('parseArguments', () => {
       'tests/e2e/31-reviews.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
+      'tests/e2e/confirm-dialog-states.spec.ts',
       'tests/panels/schedule-editor-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
       'tests/e2e/responsive.spec.ts',

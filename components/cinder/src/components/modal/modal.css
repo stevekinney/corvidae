@@ -303,6 +303,14 @@
     outline: none;
   }
 
+  /* A body with nothing in it takes no room. A confirmation whose only content is its failure (the
+   * callout lives in the footer) would otherwise leave a padded band between the title and the
+   * footer. `:empty` ignores the comment nodes a template leaves, so only a body that renders
+   * nothing collapses. */
+  .cinder-modal__body:empty {
+    display: none;
+  }
+
   .cinder-modal__body[data-cinder-chrome='none'] {
     padding: 0;
     background: transparent;
@@ -462,7 +470,28 @@
 
   .cinder-modal[data-cinder-sheet='docked']
     :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
-    > :not(:last-child) {
+    > :not(:last-child, :has(+ [data-cinder-button-status]:last-child)) {
+    flex: 0 0 auto;
+  }
+
+  /* A button that is loading mounts a status region (`data-cinder-button-status`, a visually hidden
+   * live region) after itself, so the confirmation is not the last child while the region is
+   * there. The region is not an action: the button before it is still the confirmation, and
+   * still fills, so it keeps its width when it starts to load (196px, not 151px). */
+
+  /* The one exception to "a lone action fills the row" (owner decision, 2026-11-21): a ConfirmDialog
+   * whose failure carries its own action (Retry, Refresh preview) leaves Cancel, labelled Close,
+   * the only button of the row. The callout above it holds the action that leads, so Close is
+   * compact at the inline end, not full width where it would outweigh that action. A row that is
+   * lone for another reason (nothing to confirm) still fills. ConfirmDialog marks the row. */
+  .cinder-modal[data-cinder-sheet='docked']
+    .cinder-confirm-dialog__actions[data-cinder-fault-only] {
+    justify-content: flex-end;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked']
+    .cinder-confirm-dialog__actions[data-cinder-fault-only]
+    > * {
     flex: 0 0 auto;
   }
 
@@ -471,7 +500,9 @@
    * buttons are not: a phone button is drawn at its painted height and reaches 44px through the
    * Button's own hit area (`data-cinder-hit-target`), so two of them never take a quarter of the
    * screen. */
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__body .cinder-input.cinder-input {
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__body, .cinder-confirm-dialog__footer)
+    .cinder-input.cinder-input {
     min-height: var(--cinder-touch-target-min);
   }
 

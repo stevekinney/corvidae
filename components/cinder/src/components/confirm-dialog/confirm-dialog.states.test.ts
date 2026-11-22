@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -83,7 +84,7 @@ describe('ConfirmDialog description and options', () => {
     ).toBe('Removed for good.');
   });
 
-  test('options render below the description and above the typed confirmation', () => {
+  test('options render below the description, and the typed confirmation follows them in the footer', () => {
     const { container } = render(ConfirmDialog, {
       props: {
         ...base,
@@ -98,7 +99,8 @@ describe('ConfirmDialog description and options', () => {
     const order = Array.from(body.children).map((child) => child.className);
     expect(order[0]).toContain('cinder-confirm-dialog__description');
     expect(order[1]).toContain('cinder-confirm-dialog__options');
-    expect(order[2]).toContain('cinder-input-field');
+    expect(order).toHaveLength(2);
+    expect(container.querySelector('.cinder-modal__footer .cinder-input-field')).not.toBeNull();
     const checkbox = requiredInstance(
       container.querySelector('[data-testid="runs"]'),
       HTMLInputElement,
@@ -264,7 +266,7 @@ describe('ConfirmDialog busy', () => {
 });
 
 describe('ConfirmDialog failure', () => {
-  test('shows a danger callout with a bold lead inside an alert region', () => {
+  test('shows a danger callout with its title on its own line inside an alert region', () => {
     const { container } = render(ConfirmDialog, {
       props: {
         ...base,
@@ -279,10 +281,137 @@ describe('ConfirmDialog failure', () => {
     expect(region.getAttribute('role')).toBe('alert');
     const callout = requiredInstance(region.querySelector('.cinder-callout'), HTMLElement);
     expect(callout.getAttribute('data-cinder-variant')).toBe('danger');
-    expect(callout.querySelector('strong')?.textContent).toBe('Couldn’t delete the key.');
-    expect(callout.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Couldn’t delete the key. Nothing was removed.',
+    // The title is the Callout's own title, a paragraph apart from the message, so it never runs
+    // into it, and it is the same form as every other notice in a dialog.
+    const title = requiredInstance(callout.querySelector('.cinder-callout__title'), HTMLElement);
+    expect(title.textContent).toBe('Couldn’t delete the key.');
+    expect(callout.querySelector('strong')).toBeNull();
+    expect(title.textContent).not.toContain('Nothing was removed.');
+    expect(callout.textContent).toContain('Nothing was removed.');
+  });
+
+  test('the action starts at the leading edge, under the message', () => {
+    const { container } = render(ConfirmDialog, {
+      props: { ...base, error: 'It failed.', errorAction: { label: 'Retry', onAction: () => {} } },
+    });
+    const callout = requiredInstance(container.querySelector('.cinder-callout'), HTMLElement);
+    expect(callout.classList.contains('cinder-callout--inline-action')).toBe(false);
+    // Start-aligned: a failure's action leads (`stacked` would end it at the trailing edge).
+    expect(callout.classList.contains('cinder-callout--stacked-start-action')).toBe(true);
+    expect(callout.querySelector('button')?.textContent?.trim()).toBe('Retry');
+  });
+
+  test('focus on the confirm button moves to the failure action when a fault takes the button away', async () => {
+    const view = render(ConfirmDialog, {
+      props: { ...base, closeOnConfirm: false, busy: true, busyLabel: 'Deleting…' },
+    });
+    const confirm = confirmButton(view.container);
+    confirm.focus();
+    expect(document.activeElement).toBe(confirm);
+    await view.rerender({
+      busy: false,
+      error: 'Nothing was deleted.',
+      errorAction: { label: 'Refresh preview', onAction: () => {} },
+    });
+    await tick();
+    const action = requiredInstance(
+      view.container.querySelector('.cinder-confirm-dialog__failure button'),
+      HTMLButtonElement,
     );
+    expect(action.textContent?.trim()).toBe('Refresh preview');
+    expect(document.activeElement).toBe(action);
+  });
+
+  test('focus on the confirm button moves to Cancel when the confirm button goes and there is no action', async () => {
+    const view = render(ConfirmDialog, { props: base });
+    confirmButton(view.container).focus();
+    await view.rerender({ confirmVisible: false, cancelLabel: 'Close' });
+    await tick();
+    const buttons = footerButtons(view.container);
+    expect(buttons).toHaveLength(1);
+    expect(document.activeElement).toBe(buttons[0] ?? null);
+  });
+
+  test('focus that is not on the confirm button is left where it is', async () => {
+    const view = render(ConfirmDialog, { props: { ...base, closeOnConfirm: false } });
+    const [cancel] = footerButtons(view.container);
+    if (!cancel) throw new Error('Expected Cancel.');
+    cancel.focus();
+    await view.rerender({
+      error: 'It failed.',
+      errorAction: { label: 'Retry', onAction: () => {} },
+    });
+    await tick();
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  test('the typed confirmation sits in the footer above the buttons it gates, outside the scrolling body', () => {
+    const { container } = render(ConfirmDialog, {
+      props: { ...base, description: 'Deletes the key.', typeToConfirm: 'order-checker' },
+    });
+    const field = requiredInstance(
+      container.querySelector('.cinder-confirm-dialog__typed-confirmation'),
+      HTMLElement,
+    );
+    expect(field.closest('.cinder-modal__body')).toBeNull();
+    expect(field.closest('.cinder-modal__footer')).not.toBeNull();
+    const actions = requiredInstance(
+      container.querySelector('.cinder-confirm-dialog__actions'),
+      HTMLElement,
+    );
+    expect(field.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  test('the confirm button has its status region from the start, so starting to load does not move it', async () => {
+    const view = render(ConfirmDialog, { props: { ...base, closeOnConfirm: false } });
+    const confirm = confirmButton(view.container);
+    const status = confirm.nextElementSibling;
+    expect(status?.hasAttribute('data-cinder-button-status')).toBe(true);
+    await view.rerender({ busy: true });
+    await tick();
+    expect(confirmButton(view.container)).toBe(confirm);
+    expect(confirm.nextElementSibling).toBe(status);
+  });
+
+  test('a dialog with nothing to show in its body renders an empty one, which Modal collapses', () => {
+    const { container } = render(ConfirmDialog, {
+      props: { ...base, error: 'It failed.', errorAction: { label: 'Retry', onAction: () => {} } },
+    });
+    const body = requiredInstance(container.querySelector('.cinder-modal__body'), HTMLElement);
+    // Its template leaves whitespace between blocks, which `:empty` would not forgive, so the rule
+    // is "no element in it".
+    expect(body.children).toHaveLength(0);
+    const css = readFileSync(new URL('./confirm-dialog.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\.cinder-confirm-dialog \.cinder-modal__body:not\(:has\(> \*\)\) \{\s*display: none;/u,
+    );
+  });
+
+  test('a control in options that carries autofocus takes the first focus before Cancel', async () => {
+    const { container } = render(ConfirmDialog, {
+      props: {
+        ...base,
+        confirmEnabled: false,
+        options: html('<input aria-label="Signal name" autofocus />'),
+      },
+    });
+    const dialog = requiredInstance(container.querySelector('dialog'), HTMLDialogElement);
+    const field = requiredInstance(container.querySelector('input'), HTMLInputElement);
+    const [cancel] = footerButtons(container);
+    if (!cancel) throw new Error('Expected a Cancel button.');
+    // Cancel still asks for focus, and the field comes before it in the dialog...
+    expect(cancel.autofocus).toBe(true);
+    expect(field.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    // ...so the first control that asks, the one the native dialog and Modal's own initial focus
+    // pick, is the field.
+    const first = Array.from(dialog.querySelectorAll<HTMLElement>('*')).find(
+      (element) => element.autofocus,
+    );
+    expect(first).toBe(field);
   });
 
   test('the alert region is mounted before the failure and empty without one', async () => {
@@ -352,5 +481,215 @@ describe('ConfirmDialog failure', () => {
   test('a blank error renders no callout', () => {
     const { container } = render(ConfirmDialog, { props: { ...base, error: '   ' } });
     expect(container.querySelector('.cinder-confirm-dialog__failure .cinder-callout')).toBeNull();
+  });
+});
+
+describe('ConfirmDialog pending', () => {
+  function renderPending(extra: Record<string, unknown> = {}) {
+    const onConfirm = mock(() => {});
+    const onCancel = mock(() => {});
+    const view = render(ConfirmDialog, {
+      props: {
+        ...base,
+        description: 'Deletes 47 workflows.',
+        pending: true,
+        pendingLabel: 'Counting the workflows',
+        closeOnConfirm: false,
+        onConfirm,
+        onCancel,
+        ...extra,
+      },
+    });
+    return { ...view, onConfirm, onCancel };
+  }
+
+  test('the description and options regions show a skeleton in place of their content', () => {
+    const { container } = renderPending({ options: html('<p>Kept: running workflows.</p>') });
+    const description = requiredInstance(
+      container.querySelector('.cinder-confirm-dialog__description'),
+      HTMLElement,
+    );
+    const options = requiredInstance(
+      container.querySelector('.cinder-confirm-dialog__options'),
+      HTMLElement,
+    );
+    expect(description.querySelector('.cinder-skeleton-group')).not.toBeNull();
+    expect(options.querySelector('.cinder-skeleton')).not.toBeNull();
+    expect(container.textContent).not.toContain('Deletes 47 workflows.');
+    expect(container.textContent).not.toContain('Kept: running workflows.');
+  });
+
+  test('the wait is announced once as a status', () => {
+    const { container } = renderPending();
+    const status = requiredInstance(
+      container.querySelector('.cinder-confirm-dialog__description [role="status"]'),
+      HTMLElement,
+    );
+    expect(status.textContent).toBe('Counting the workflows');
+  });
+
+  test('the confirm button cannot be pressed', async () => {
+    const { container, onConfirm } = renderPending();
+    const button = confirmButton(container);
+    expect(button.disabled).toBe(true);
+    await fireEvent.click(button);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  test('Cancel stays enabled and focusable, and it dismisses', async () => {
+    const { container, onCancel } = renderPending();
+    const cancel = requiredInstance(footerButtons(container).at(0) ?? null, HTMLButtonElement);
+    expect(cancel.disabled).toBe(false);
+    expect(cancel.getAttribute('aria-disabled')).toBeNull();
+    cancel.focus();
+    expect(document.activeElement).toBe(cancel);
+    await fireEvent.click(cancel);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  test('nothing describes the dialog while it waits, and the description returns with the answer', async () => {
+    const view = renderPending();
+    const dialog = requiredInstance(view.container.querySelector('dialog'), HTMLDialogElement);
+    expect(dialog.hasAttribute('aria-describedby')).toBe(false);
+    await view.rerender({ pending: false });
+    await tick();
+    expect(view.container.querySelector('.cinder-skeleton-group')).toBeNull();
+    expect(
+      view.container.querySelector('p.cinder-confirm-dialog__description')?.textContent,
+    ).toContain('Deletes 47 workflows.');
+    expect(dialog.hasAttribute('aria-describedby')).toBe(true);
+  });
+
+  test('the typed field waits, and what was typed for the old answer is gone with the new one', async () => {
+    const view = renderPending({ pending: false, typeToConfirm: 'purge 47 workflows' });
+    const input = requiredInstance(view.container.querySelector('input'), HTMLInputElement);
+    await fireEvent.input(input, { target: { value: 'purge 47 workflows' } });
+    expect(confirmButton(view.container).disabled).toBe(false);
+
+    await view.rerender({ pending: true });
+    await tick();
+    expect(view.container.querySelector('input')).toBeNull();
+
+    await view.rerender({ pending: false });
+    await tick();
+    const fresh = requiredInstance(view.container.querySelector('input'), HTMLInputElement);
+    expect(fresh.value).toBe('');
+    expect(confirmButton(view.container).disabled).toBe(true);
+  });
+});
+
+describe('ConfirmDialog error action', () => {
+  const failed = {
+    ...base,
+    closeOnConfirm: false,
+    error: 'Nothing was purged. Check the new count before you purge.',
+    errorTitle: 'The matching workflows changed',
+  };
+
+  test('the override renders in the callout in place of the confirm button, and runs its handler', async () => {
+    const onAction = mock(() => {});
+    const onConfirm = mock(() => {});
+    const { container } = render(ConfirmDialog, {
+      props: { ...failed, onConfirm, errorAction: { label: 'Refresh preview', onAction } },
+    });
+    const callout = requiredInstance(
+      container.querySelector('.cinder-confirm-dialog__failure .cinder-callout'),
+      HTMLElement,
+    );
+    const action = requiredInstance(callout.querySelector('button'), HTMLButtonElement);
+    expect(action.textContent?.trim()).toBe('Refresh preview');
+    // The default, the confirm button, is gone: Cancel is the one button of the actions row.
+    expect(container.querySelectorAll('.cinder-confirm-dialog__actions button')).toHaveLength(1);
+    expect(
+      container.querySelector('.cinder-confirm-dialog__actions button')?.textContent?.trim(),
+    ).toBe('Cancel');
+    await fireEvent.click(action);
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  test('without an override the confirm button stays armed and no action is drawn', () => {
+    const { container } = render(ConfirmDialog, { props: failed });
+    expect(container.querySelector('.cinder-callout button')).toBeNull();
+    expect(container.querySelectorAll('.cinder-confirm-dialog__actions button')).toHaveLength(2);
+  });
+
+  test('the override is drawn only while there is a failure to attach it to', async () => {
+    const view = render(ConfirmDialog, {
+      props: { ...base, errorAction: { label: 'Retry', onAction: () => {} } },
+    });
+    const actions = () => view.container.querySelectorAll('.cinder-confirm-dialog__actions button');
+    expect(actions()).toHaveLength(2);
+    await view.rerender({ error: 'It failed.' });
+    await tick();
+    expect(actions()).toHaveLength(1);
+    await view.rerender({ error: undefined });
+    await tick();
+    expect(actions()).toHaveLength(2);
+  });
+
+  test('a fault that carries an action leaves Close compact on a phone, an exception to the lone-action rule (owner, 2026-11-21)', () => {
+    const faultOnly = render(ConfirmDialog, {
+      props: { ...failed, errorAction: { label: 'Refresh preview', onAction: () => {} } },
+    });
+    const row = requiredInstance(
+      faultOnly.container.querySelector('.cinder-confirm-dialog__actions'),
+      HTMLElement,
+    );
+    // Close is the only button of the row, and the action that leads is in the callout above it.
+    expect(row.querySelectorAll('button')).toHaveLength(1);
+    expect(row.hasAttribute('data-cinder-fault-only')).toBe(true);
+
+    // The rule that makes it compact sits in modal.css beside the docked "a lone action fills the
+    // row" it is the exception to, and is covered in modal-sheet.test.ts.
+    cleanup();
+
+    // A failure with no action of its own keeps both buttons, and a row that is lone because there
+    // is nothing to confirm keeps filling: neither is marked.
+    const armed = render(ConfirmDialog, { props: failed });
+    expect(
+      armed.container
+        .querySelector('.cinder-confirm-dialog__actions')
+        ?.hasAttribute('data-cinder-fault-only'),
+    ).toBe(false);
+    cleanup();
+    const nothingToConfirm = render(ConfirmDialog, {
+      props: { ...base, confirmVisible: false, cancelLabel: 'Close' },
+    });
+    expect(
+      nothingToConfirm.container
+        .querySelector('.cinder-confirm-dialog__actions')
+        ?.hasAttribute('data-cinder-fault-only'),
+    ).toBe(false);
+  });
+
+  test('errorTone draws the callout as a warning, and danger by default', () => {
+    const warning = render(ConfirmDialog, { props: { ...failed, errorTone: 'warning' } });
+    expect(
+      warning.container.querySelector('.cinder-callout')?.getAttribute('data-cinder-variant'),
+    ).toBe('warning');
+    cleanup();
+    const danger = render(ConfirmDialog, { props: failed });
+    expect(
+      danger.container.querySelector('.cinder-callout')?.getAttribute('data-cinder-variant'),
+    ).toBe('danger');
+  });
+});
+
+describe('ConfirmDialog confirm enabled and visible', () => {
+  test('confirmEnabled={false} disables the confirm button until it is true', async () => {
+    const view = render(ConfirmDialog, { props: { ...base, confirmEnabled: false } });
+    expect(confirmButton(view.container).disabled).toBe(true);
+    await view.rerender({ confirmEnabled: true });
+    await tick();
+    expect(confirmButton(view.container).disabled).toBe(false);
+  });
+
+  test('confirmVisible={false} leaves Cancel as the one action', () => {
+    const { container } = render(ConfirmDialog, {
+      props: { ...base, confirmVisible: false, cancelLabel: 'Close' },
+    });
+    const labels = footerButtons(container).map((button) => button.textContent?.trim());
+    expect(labels).toEqual(['Close']);
   });
 });
