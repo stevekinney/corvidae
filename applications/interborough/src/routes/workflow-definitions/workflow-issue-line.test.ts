@@ -46,6 +46,20 @@ describe('COR-2432: the line a Bureau issue names (row 65z)', () => {
     expect(problem).toEqual({ line: 6, message: 'Invalid input.' });
   });
 
+  test('matches a path to a JSON key written with escapes', async () => {
+    const escaped = `{
+  "st\\u0065ps": [
+    { "kind": "sleep", "dur\\u0061tion": 15 }
+  ]
+}`;
+    const problem = await documentProblemFor(escaped, async () => ({
+      status: 'invalid',
+      code: 'invalid-document',
+      issues: [{ path: 'steps[0].duration', message: 'invalid duration' }],
+    }));
+    expect(problem).toEqual({ line: 3, message: 'Invalid duration.' });
+  });
+
   test('text with no object at its root names no line', async () => {
     const problem = await documentProblemFor('[1, 2]', async () => ({
       status: 'invalid',

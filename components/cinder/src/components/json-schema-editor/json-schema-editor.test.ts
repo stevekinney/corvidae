@@ -1403,6 +1403,28 @@ describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
     expect(screen.getByRole('button', { name: 'Add a field' })).toBeTruthy();
   });
 
+  test.each([
+    ['a scalar schema', { type: 'string' }],
+    ['a boolean schema', true],
+    ['an ambiguous schema', { properties: { branch: { type: 'string' } } }],
+  ] as const)(
+    'keeps %s in the full editor when fields mode cannot safely edit it',
+    (_label, value) => {
+      const { container } = render(JsonSchemaEditorImplementation, {
+        props: {
+          id: `jse-fields-fallback-${_label}`,
+          defaultSchema: value,
+          variant: 'fields' as const,
+        },
+      });
+
+      const root = requiredInstance(container.querySelector('[data-cinder-jse]'), HTMLElement);
+      expect(root.getAttribute('data-cinder-variant')).toBeNull();
+      expect(screen.getByRole('tablist')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Add a field' })).toBeNull();
+    },
+  );
+
   test('commits a Required change as the object schema with the field required', async () => {
     const changes: string[] = [];
     render(JsonSchemaEditorImplementation, {

@@ -110,22 +110,27 @@ function skipWhitespace(text: string, at: number): number {
   return index;
 }
 
-/** The offset after the string that starts at `at` (its opening quote), and its value. */
+/** The offset after the string that starts at `at` (its opening quote), and its decoded value. */
 function readString(text: string, at: number): { end: number; value: string } {
   let index = at + 1;
-  let value = '';
   while (index < text.length) {
     const character = text.charAt(index);
     if (character === '\\') {
-      value += text.slice(index, index + 2);
       index += 2;
       continue;
     }
-    if (character === '"') return { end: index + 1, value };
-    value += character;
+    if (character === '"') {
+      const end = index + 1;
+      try {
+        return { end, value: JSON.parse(text.slice(at, end)) as string };
+      } catch {
+        // Position finding also walks incomplete JSON while preserving the editor's syntax error.
+        return { end, value: text.slice(at + 1, index) };
+      }
+    }
     index += 1;
   }
-  return { end: index, value };
+  return { end: index, value: text.slice(at + 1) };
 }
 
 /** The offset after the value that starts at `at`. */

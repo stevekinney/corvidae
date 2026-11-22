@@ -126,7 +126,11 @@
   /** The Bureau saved the file and the engine could not follow, so what is on disk is the save. */
   let unapplied = $state(false);
   /** The builder, which takes the person to the line the JSON stops being JSON on. */
-  let builder = $state<{ focusProblem: () => Promise<void> }>();
+  let builder = $state<{
+    focusProblem: () => Promise<void>;
+    hasInvalidSchedule: () => boolean;
+    focusScheduleProblem: () => boolean;
+  }>();
   /** The line the Bureau refused the document at, until the text changes (row 65z). */
   let documentProblem = $state<DocumentProblem | null>(null);
   /** Keep the form locked from the validation request until the write settles. */
@@ -293,6 +297,10 @@
 
   async function submit(): Promise<void> {
     if (base === null || saving || changedOnDisk) return;
+    if (builder?.hasInvalidSchedule() === true) {
+      builder.focusScheduleProblem();
+      return;
+    }
     const parsed = updateDefinitionFromText(text);
     if (!parsed.ok) {
       // The JSON tab marks the line to fix, and the footer says it; Save takes the person there.

@@ -856,6 +856,33 @@ describe('the builder', () => {
     });
   });
 
+  test('does not create the prior valid cadence while Custom cron is invalid, from Create or ⌘Enter, and retries once fixed', async () => {
+    const { container, getByLabelText, getByRole } = open();
+    await ready(container);
+    await openJson(container);
+    await typeInto(container, withName('custom-cron'));
+    await fireEvent.click(builderTab(container));
+    await ready(container);
+    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
+    const minute = getByLabelText('Minute') as HTMLInputElement;
+    await fireEvent.input(minute, { target: { value: '99' } });
+
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(document.activeElement).toBe(minute);
+    shortcuts.handleKey(
+      { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+      { routePattern: '/workflows/new', regions: [] },
+      Date.now(),
+    );
+    await Promise.resolve();
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+
+    await fireEvent.input(minute, { target: { value: '5' } });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(1));
+  });
+
   test('keeps the keys the builder has no control for through its edits', async () => {
     const { container, getByRole } = open();
     await ready(container);

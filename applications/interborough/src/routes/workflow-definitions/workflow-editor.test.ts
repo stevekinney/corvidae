@@ -1019,6 +1019,29 @@ describe('the step builder in the editor', () => {
     expect(when?.closest('.cinder-form-section')?.getAttribute('data-columns')).toBe('1');
   });
 
+  test('does not save the prior valid cadence while Custom cron is invalid, from Save or ⌘Enter, and retries once fixed', async () => {
+    const { container, getByLabelText, getByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
+    const minute = getByLabelText('Minute') as HTMLInputElement;
+    await fireEvent.input(minute, { target: { value: '99' } });
+
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+    expect(document.activeElement).toBe(minute);
+    shortcuts.handleKey(
+      { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+      { routePattern: '/workflows/:workflow/edit', regions: [] },
+      Date.now(),
+    );
+    await Promise.resolve();
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+
+    await fireEvent.input(minute, { target: { value: '5' } });
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.update')).toHaveLength(1));
+  });
+
   test('COR-2432: a file that names its schedule says saving changes that schedule, under its When block (row 65q)', async () => {
     const text = JSON.stringify(
       {

@@ -103,12 +103,15 @@
   const toolbarValidationErrorCount = $derived(view === 'form' ? localValidationErrorCount : 0);
 
   /**
-   * The object schema the fields form edits, or `undefined` when the committed schema is not an
-   * object (a boolean schema, or one that does not load): the whole editor then serves instead.
+   * The schema explicitly declared as an object that the fields form edits, or `undefined` for a
+   * scalar, boolean, or ambiguous schema: the whole editor then serves instead.
    */
   const fieldsSchema = $derived.by(() => {
     const committed = editorState.committedSchema;
-    return typeof committed === 'object' && committed !== null && !Array.isArray(committed)
+    return typeof committed === 'object' &&
+      committed !== null &&
+      !Array.isArray(committed) &&
+      committed.type === 'object'
       ? committed
       : undefined;
   });

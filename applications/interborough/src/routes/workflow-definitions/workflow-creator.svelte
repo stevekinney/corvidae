@@ -60,7 +60,11 @@
   /** The ID the Bureau said a file already has. */
   let takenId = $state<string>();
   /** The builder, which takes the person to the first problem. */
-  let builder = $state<{ focusProblem: () => Promise<void> }>();
+  let builder = $state<{
+    focusProblem: () => Promise<void>;
+    hasInvalidSchedule: () => boolean;
+    focusScheduleProblem: () => boolean;
+  }>();
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
   /**
    * The Bureau found a problem the page can point at (a taken ID). The form is read-only while the
@@ -134,6 +138,10 @@
 
   async function submit(): Promise<void> {
     if (saving) return;
+    if (builder?.hasInvalidSchedule() === true) {
+      builder.focusScheduleProblem();
+      return;
+    }
     const parsed = createDefinitionFromText(text);
     const problems = workflowProblems(text, {
       mode: 'create',

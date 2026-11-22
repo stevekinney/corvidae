@@ -466,7 +466,23 @@
     view?.trigger?.kind === 'schedule' ? scheduleValueOf(view.trigger) : undefined,
   );
 
+  /** The schedule UI may show an uncommitted invalid custom cadence. */
+  let scheduleWhen = $state<{ isInvalid: () => boolean; focusProblem: () => boolean }>();
+
+  /** Whether the visible schedule draft differs from the last cadence written to the workflow text. */
+  export function hasInvalidSchedule(): boolean {
+    return scheduleWhen?.isInvalid() === true;
+  }
+
+  /** Takes Create or Save to the invalid schedule field, when one is visible. */
+  export function focusScheduleProblem(): boolean {
+    return scheduleWhen?.focusProblem() ?? false;
+  }
+
   function changeTriggerKind(kind: string): void {
+    // SegmentedControl does not report a selected option again today, but keeping the draft intact
+    // makes this handler correct for alternate controls and future control behavior too.
+    if (kind === triggerValue) return;
     if (kind === 'schedule' && view?.trigger?.kind !== 'schedule') {
       // A new schedule starts on weekdays at 9:00 AM in the viewer's zone, skips a fire that comes
       // while a run is going, and does not catch up: every field the builder writes (row 65d).
@@ -837,6 +853,7 @@
                    they write is the file's spec, timezone, overlap and catchUp (row 65d). -->
               {@const trigger = view.trigger}
               <ScheduleWhen
+                bind:this={scheduleWhen}
                 value={scheduleValue}
                 onValueChange={(next) => write(setScheduleFields(text, scheduleFieldsOf(next)))}
                 label={copy.scheduleLabel}
