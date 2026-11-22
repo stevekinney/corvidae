@@ -208,7 +208,7 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('Release notes that has never run: the compact empty state with a neutral disc (13b, 63c)', async ({
+    test('Release notes that has never run: the shared first-use empty state (13b, 63c)', async ({
       page,
     }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
@@ -222,6 +222,7 @@ for (const width of WIDTHS) {
       );
       const empty = detail(page).getByRole('group', { name: WORKFLOW_COPY.page.runs.emptyTitle });
       await expect(empty).toBeVisible();
+      await expect(empty).toHaveAttribute('data-cinder-kind', 'first-use');
       await expect(
         detail(page).getByLabel(WORKFLOW_COPY.page.runs.filtersLabel, { exact: true }),
       ).toHaveCount(0);
