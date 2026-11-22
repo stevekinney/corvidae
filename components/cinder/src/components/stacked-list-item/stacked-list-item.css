@@ -714,7 +714,7 @@
      whether its phone state follows the row or the viewport. Menus, glyphs, and explicit phone
      buttons each retain their compact or full-width arrangements. */
   @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--single-action:not(
         .cinder-stacked-list-item--collapsed-actions,
         .cinder-stacked-list-item--trailing-glyph,
         .cinder-stacked-list-item--phone-buttons
@@ -730,7 +730,7 @@
         '. . details details';
     }
 
-    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--single-action:not(
         .cinder-stacked-list-item--collapsed-actions,
         .cinder-stacked-list-item--trailing-glyph,
         .cinder-stacked-list-item--phone-buttons
