@@ -677,7 +677,7 @@ describe('guardrails and spend', () => {
 
       await fireEvent.blur(chat);
       expect(chat).toHaveValue('');
-      expect(chat).not.toHaveAttribute('aria-invalid', 'true');
+      expect(chat.getAttribute('aria-invalid')).not.toBe('true');
       expect(queryByText(AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd))).toBeNull();
       expect(updatesOf(served)).toHaveLength(0);
     } finally {
