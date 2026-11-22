@@ -222,8 +222,8 @@ describe('the identity of every request', () => {
         mimeType: 'text/html;profile=mcp-app',
       },
       { uri: 'ui://inspectors/schedule-editor/v1', mimeType: 'text/html;profile=mcp-app' },
-      { uri: 'ui://inspectors/failure-explanation/v1', mimeType: 'text/html;profile=mcp-app' },
       { uri: 'ui://inspectors/run-timeline/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/failure-explanation/v1', mimeType: 'text/html;profile=mcp-app' },
     ]);
     // The failure explanation opens from the explain tool (COR-2543).
     const explain = (tools as Array<{ name: string; _meta?: unknown }>).find(

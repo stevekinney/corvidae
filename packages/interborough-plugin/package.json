@@ -32,7 +32,6 @@
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "oxlint": "catalog:",
-    "svelte": "catalog:",
     "typescript": "catalog:"
   },
   "sideEffects": false
