@@ -8,8 +8,13 @@ import type { Locator, Page, Route } from '@playwright/test';
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { SHOWCASE_ORDER_REFUND_FILE } from '../../fixtures/showcase-content.ts';
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
-import { captureForDesignReview } from './design-review-capture.ts';
+import {
+  captureForDesignReview,
+  captureForDesignReviewWithPhone,
+  nextFrame,
+} from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { jsonEditor, jsonEditorSource, replaceJsonEditorText } from './json-editor-support.ts';
@@ -95,12 +100,24 @@ async function openBuilder(page: Page, path: string): Promise<Locator> {
 }
 
 async function capture(page: Page, route: string, state: string, tab?: string): Promise<void> {
-  await captureForDesignReview(page, {
+  if (designReviewCaptureDirectory() === undefined) return;
+  const captureState = {
     route,
     state,
     source: SOURCE,
     ...(tab === undefined ? {} : { tab }),
-  });
+  };
+  await captureForDesignReviewWithPhone(page, captureState);
+  const desktop = page.viewportSize();
+  if (desktop === null) throw new Error('A Builder capture requires a fixed viewport.');
+  await page.setViewportSize({ width: 768, height: 900 });
+  await nextFrame(page);
+  try {
+    await captureForDesignReview(page, captureState);
+  } finally {
+    await page.setViewportSize(desktop);
+    await nextFrame(page);
+  }
 }
 
 async function refuseValidation(page: Page): Promise<void> {
@@ -286,6 +303,19 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
       'fields',
     );
     await capture(page, '/workflows/:workflow/edit', 'schedule and schemas');
+    const field = root.getByRole('button', { name: 'branch', exact: true });
+    await field.scrollIntoViewIfNeeded();
+    const bounds = await field.boundingBox();
+    if (bounds === null) throw new Error('The branch field disclosure must be visible.');
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y - 1);
+    await expect(field).toHaveAttribute('aria-expanded', 'true');
+    await field.click();
+    const branchCheckbox = page.getByRole('checkbox', { name: 'branch', exact: true });
+    const hitArea = root.locator('.cinder-checkbox-row').filter({ has: branchCheckbox });
+    await hitArea.click({ position: { x: 1, y: 1 } });
+    await expect(branchCheckbox).not.toBeChecked();
+    await hitArea.click({ position: { x: 1, y: 1 } });
+    await expect(branchCheckbox).toBeChecked();
     await root
       .getByRole('textbox', { name: `${BUILDER.titleLabel} Optional` })
       .fill('Release notes, weekly');
