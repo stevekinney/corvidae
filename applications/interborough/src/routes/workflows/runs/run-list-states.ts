@@ -6,7 +6,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
-import { isNetworkFailure } from '../../../lib/faults.ts';
+import { faultAdvisingRetry, isNetworkFailure } from '../../../lib/faults.ts';
 import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import type { RunFilter } from './run-rows.ts';
 import { STARTED_BY_LABELS, type StartedBy } from './started-by.ts';
@@ -100,10 +100,6 @@ export function runListFailure(reads: readonly RunListRead[]): RunListFailure {
       ? TASK_COPY.list.loadFailed.unreachable
       : TASK_COPY.list.loadFailed.description(status),
     detail: failed.map((read) => `${read.operation}: ${describeError(read.error)}`).join('\n'),
-    // Asking again helps unless every read that failed said it cannot, so a read that did not say
-    // so speaks for the list.
-    fault:
-      errors.find((error) => !(error instanceof HttpClientError) || error.retryable !== false) ??
-      errors[0],
+    fault: faultAdvisingRetry(errors),
   };
 }

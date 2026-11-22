@@ -82,8 +82,6 @@
     {/snippet}
   </ErrorState>
   {#if children}
-    <div class="weft-fault-boundary__details">
-      {@render children()}
-    </div>
+    {@render children()}
   {/if}
 </div>

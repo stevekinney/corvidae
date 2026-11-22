@@ -13,6 +13,7 @@ import {
   canRetryFault,
   classifyFault,
   FAULT_TREATMENT_TITLE,
+  faultAdvisingRetry,
   faultErrorStateAdvice,
   faultTreatment,
   isNetworkFailure,
@@ -477,6 +478,17 @@ describe('the fault-to-view mapping: remediation and Retry', () => {
       expect(advice).not.toHaveProperty('onRetry');
       expect(advice.remediation).toBe('Do the other thing.');
     }
+  });
+
+  test('a screen that reads several things keeps Retry while any failed read could succeed again', () => {
+    const permanent = new HttpClientError(409, 'Changed', { retryable: false });
+    const transient = new HttpClientError(503, 'Unavailable', { retryable: true });
+    const silent = new Error('boom');
+    expect(faultAdvisingRetry([permanent, transient])).toBe(transient);
+    expect(faultAdvisingRetry([null, permanent, silent])).toBe(silent);
+    expect(faultAdvisingRetry([permanent, null])).toBe(permanent);
+    expect(canRetryFault(faultTreatment(faultAdvisingRetry([permanent, null])))).toBe(false);
+    expect(faultAdvisingRetry([null, undefined])).toBeUndefined();
   });
 
   test('offers no Retry where the caller has none, and leaves out an empty remediation', () => {

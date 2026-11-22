@@ -785,18 +785,14 @@
   background: var(--cinder-status-danger-background);
 }
 
-/* What sits under the row lines up with the row's glyph, and keeps the box's inset below. */
-.weft-fault-boundary__details {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-2, 0.5rem);
+/* What sits under the row (the row is the first child) lines up with the row's glyph, and the last
+ * of it keeps the box's inset below. A treatment with nothing to add draws no gap. */
+.weft-fault-boundary > :not(:first-child) {
   margin-inline: var(--cinder-space-4);
-  margin-block-end: var(--cinder-space-3);
 }
 
-/* A treatment with nothing to add under the row draws no gap. */
-.weft-fault-boundary__details:empty {
-  display: none;
+.weft-fault-boundary > :not(:first-child):last-child {
+  margin-block-end: var(--cinder-space-3);
 }
 
 .weft-fault-boundary__note,

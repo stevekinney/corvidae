@@ -355,6 +355,20 @@ export function treatmentErrorStateAdvice(
   };
 }
 
+/**
+ * The error to advise from when one screen reads several things and any of them can fail: the first
+ * that does not say `retryable: false` (so Retry stays while asking again could still help one of
+ * the reads), else the first that failed, else `undefined`. `null` and `undefined` are reads that
+ * did not fail.
+ */
+export function faultAdvisingRetry(errors: readonly unknown[]): unknown {
+  const failed = errors.filter((error) => error !== null && error !== undefined);
+  return (
+    failed.find((error) => !(error instanceof HttpClientError) || error.retryable !== false) ??
+    failed[0]
+  );
+}
+
 /** {@link treatmentErrorStateAdvice} for the error a call rejected with, classified by {@link faultTreatment}. */
 export function faultErrorStateAdvice(error: unknown, onRetry?: () => void): FaultErrorStateAdvice {
   return treatmentErrorStateAdvice(faultTreatment(error), onRetry);
