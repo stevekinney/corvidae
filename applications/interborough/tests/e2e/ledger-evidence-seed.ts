@@ -55,7 +55,7 @@ type LedgerActivity = (input: unknown, context?: ActivityContext) => Promise<unk
 const TEN_MINUTES_MS = 600_000;
 const SEED_WAIT_LIMIT_MS = 20_000;
 const SEED_POLL_INTERVAL_MS = 50;
-const QUEUED_EVIDENCE_QUEUE = 'ledger-queued-evidence';
+const QUEUED_EVIDENCE_QUEUE = 'ledger-unclaimed-evidence';
 
 function scenarioOf(input: unknown): Scenario {
   const scenario =
@@ -172,52 +172,41 @@ async function dispatch(
 }
 
 /**
- * Seeds the ordinary queued ledger witness through one real failed attempt. Its worker lives on a
- * private queue, then leaves before the task's real five-minute retry can be claimed by it.
+ * Seeds the ordinary queued ledger witness on a private queue with no worker. The task remains
+ * durable, available work at attempt one, while the separate ledger fixtures own lease evidence.
  */
 export async function seedQueuedTaskEvidence(
   server: WeftServer,
   operationId: string,
 ): Promise<void> {
-  const worker = ledgerWorker(
-    'ledger-queued-evidence-worker-1',
-    async () => {
-      throw new Error('seeded delayed charge failure');
+  const dispatched = await server.dispatchTask({
+    operationId,
+    workflowId: 'e2e-ledger-workflow',
+    workflowExecutionToken: 'e2e-ledger-token',
+    workflowType: 'order-processing',
+    activityName: 'order-processing.reserveInventory',
+    input: { orderId: 'e2e-ledger-order' },
+    queue: QUEUED_EVIDENCE_QUEUE,
+    priority: 9,
+    headers: { traceparent: '00-e2e-ledger-trace-e2e-span-01' },
+    retryPolicy: {
+      maxAttempts: 3,
+      initialBackoff: '5m',
+      backoffMultiplier: 2,
+      maxBackoff: '10m',
     },
-    { queue: QUEUED_EVIDENCE_QUEUE },
-  );
-  await worker.connect();
-  try {
-    const dispatched = await server.dispatchTask({
-      operationId,
-      workflowId: 'e2e-ledger-workflow',
-      workflowExecutionToken: 'e2e-ledger-token',
-      workflowType: 'order-processing',
-      activityName: 'order-processing.chargeCard',
-      input: { orderId: 'e2e-ledger-order' },
-      queue: QUEUED_EVIDENCE_QUEUE,
-      priority: 9,
-      headers: { traceparent: '00-e2e-ledger-trace-e2e-span-01' },
-      retryPolicy: {
-        maxAttempts: 3,
-        initialBackoff: '5m',
-        backoffMultiplier: 2,
-        maxBackoff: '10m',
-      },
-    });
-    if (!dispatched)
-      throw new Error(`E2E queued ledger evidence dispatch refused for ${operationId}`);
-    await waitFor(`${operationId} to queue after its first failed attempt`, async () => {
-      const detail = await readTaskDetail(operationId);
-      return (
-        detail['state'] === 'queued' &&
-        Array.isArray(detail['attempts']) &&
-        detail['attempts'].length === 1
-      );
-    });
-  } finally {
-    worker[Symbol.dispose]();
-  }
+  });
+  if (!dispatched)
+    throw new Error(`E2E queued ledger evidence dispatch refused for ${operationId}`);
+  await waitFor(`${operationId} to remain queued at its first attempt`, async () => {
+    const detail = await readTaskDetail(operationId);
+    return (
+      detail['state'] === 'queued' &&
+      detail['attempt'] === 1 &&
+      Array.isArray(detail['attempts']) &&
+      detail['attempts'].length === 0
+    );
+  });
 }
 
 const DEPARTED_BUILD_ATTEMPTS = 3;
