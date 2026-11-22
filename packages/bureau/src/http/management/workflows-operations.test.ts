@@ -448,7 +448,7 @@ describe('results', () => {
     expect(runs.items.map((run) => run.id)).toEqual([runId]);
   });
 
-  it('bounds manual-start idempotency keys and binds a replay to its canonical input', async () => {
+  it('bounds manual-start idempotency keys under one owner and workflow, regardless of body', async () => {
     const served = await serve();
     const id = `w${'x'.repeat(63)}`;
     await served.bureau.workflows!.create(id, DEFINITION);
@@ -472,9 +472,8 @@ describe('results', () => {
 
     expect(first.error).toBeUndefined();
     expect(replay.result?.['runId']).toBe(first.result?.['runId']);
-    expect(changed.error).toBeUndefined();
-    expect(changed.result?.['runId']).not.toBe(first.result?.['runId']);
-    expect((await served.bureau.durableEngine()!.list({ type: id })).items).toHaveLength(2);
+    expect(changed.result?.['runId']).toBe(first.result?.['runId']);
+    expect((await served.bureau.durableEngine()!.list({ type: id })).items).toHaveLength(1);
   });
 
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {

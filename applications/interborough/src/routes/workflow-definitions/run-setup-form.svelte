@@ -191,11 +191,9 @@
    * Whether a start is in flight. It is set before the first `await`, because the mutation's own
    * `isPending` turns true a tick after `mutate`, and two asks can arrive in that tick.
    */
-  let sending = false;
-  /** A schedule's freshness read fences its submitted choice before it reaches the mutation. */
-  let checkingScheduleName = false;
+  let sending = $state(false);
   /** Kept after a lost answer, so retrying Start run replays the same durable request. */
-  let manualStart = $state<{ readonly key: string; readonly input: string } | undefined>();
+  const manualStartKeys = new Map<string, string>();
 
   /** The choices the footer's ask was made with, which the start sends whatever changes while the input is checked. */
   type Choice = {
@@ -227,9 +225,10 @@
 
   function manualStartKeyFor(input: unknown): string {
     const snapshot = canonicalJson(input ?? null);
-    if (manualStart?.input === snapshot) return manualStart.key;
+    const existing = manualStartKeys.get(snapshot);
+    if (existing !== undefined) return existing;
     const key = crypto.randomUUID();
-    manualStart = { key, input: snapshot };
+    manualStartKeys.set(snapshot, key);
     return key;
   }
 
@@ -279,6 +278,9 @@
     onError: (error, variables) => {
       const refused = inputIssuesOf(error);
       if (refused !== null) {
+        if (variables.idempotencyKey !== undefined) {
+          manualStartKeys.delete(canonicalJson(variables.input ?? null));
+        }
         inputField?.refuse(refused);
         return;
       }
@@ -297,7 +299,9 @@
         return;
       }
       // A response proves this request did not create a run, so the next press is a new request.
-      if (variables.when === 'now') manualStart = undefined;
+      if (variables.idempotencyKey !== undefined) {
+        manualStartKeys.delete(canonicalJson(variables.input ?? null));
+      }
       // The service answered with a refusal, so nothing was done, and the ask can be made again.
       const title = scheduled ? copy.scheduleFailed : copy.startFailed;
       const closing = scheduled ? copy.nothingCreated : copy.nothingStarted;
@@ -388,7 +392,7 @@
   /** The scope the primary action needs, disabled with its reason when the principal lacks it. */
   const gate = $derived(when === 'schedule' ? scheduleGate : startGate);
   /** Whether a start or a schedule is in flight: the form is read-only, and Cancel is off. */
-  const starting = $derived(run.isPending);
+  const starting = $derived(run.isPending || sending);
   const action = $derived(when === 'schedule' ? copy.scheduleAction : copy.startAction);
   const actionLabel = $derived(
     starting ? (when === 'schedule' ? copy.creatingAction : copy.startingAction) : action,
@@ -411,6 +415,10 @@
   function begin(value: unknown, choice: Choice): void {
     if (sending) return;
     sending = true;
+    if (choice.when === 'schedule') {
+      void beginSchedule($state.snapshot(value), choice);
+      return;
+    }
     run.mutate({
       input: value,
       ...choice,
@@ -418,6 +426,27 @@
         ? { idempotencyKey: manualStartKeyFor(value) }
         : {}),
     });
+  }
+
+  async function beginSchedule(value: unknown, choice: Choice): Promise<void> {
+    try {
+      // The input and schedule fields arrived from the one submitted Choice before this await.
+      const current = await queryClient.fetchQuery({
+        queryKey: ['run-setup-schedule-names', type],
+        queryFn: () => fetchScheduleList(client, {}),
+        staleTime: 0,
+      });
+      if (takenNameOf(choice.name, current.items) !== undefined) {
+        nameError = 'A schedule with this name already exists.';
+        sending = false;
+        await tick();
+        document.getElementById('run-setup-name')?.focus();
+        return;
+      }
+    } catch {
+      // The create remains authoritative when the freshness read cannot answer.
+    }
+    run.mutate({ input: value, ...choice });
   }
 
   /** What is wrong with the schedule's name, or the empty string. */
@@ -428,8 +457,8 @@
   }
 
   /** The footer's ask. The input checks itself, and starts only what this ask submitted. */
-  async function request(): Promise<void> {
-    if (sending || checkingScheduleName || gate.disabled || block !== undefined) return;
+  function request(): void {
+    if (sending || gate.disabled || block !== undefined) return;
     const submittedWhen = when;
     const choice: Choice = {
       when: submittedWhen,
@@ -452,24 +481,6 @@
       if (nameError !== '') {
         document.getElementById('run-setup-name')?.focus();
         return;
-      }
-      // Match New schedule: a fresh read catches a schedule made after this page first loaded.
-      checkingScheduleName = true;
-      try {
-        const current = await queryClient.fetchQuery({
-          queryKey: ['run-setup-schedule-names', type],
-          queryFn: () => fetchScheduleList(client, {}),
-          staleTime: 0,
-        });
-        if (takenNameOf(choice.name, current.items) !== undefined) {
-          nameError = 'A schedule with this name already exists.';
-          document.getElementById('run-setup-name')?.focus();
-          return;
-        }
-      } catch {
-        // The create remains authoritative when the freshness read cannot answer.
-      } finally {
-        checkingScheduleName = false;
       }
     }
     if (noInput) {

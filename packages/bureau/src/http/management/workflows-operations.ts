@@ -46,7 +46,6 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
-import { canonicalJson } from '../../canonical-json.ts';
 import { SIGNAL_NAME_MAXIMUM_LENGTH } from '../../workflow-host.ts';
 import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
@@ -1499,7 +1498,7 @@ const startOutput = z.object({
 });
 
 /**
- * Scope a caller-supplied manual-start key to its authorized owner, workflow, and validated input.
+ * Scope a caller-supplied manual-start key to its authorized owner and workflow.
  * The engine accepts at most 117 UTF-8 bytes, so the namespace is a fixed-size digest instead of
  * concatenating supported owner, workflow, and request-key lengths.
  */
@@ -1507,9 +1506,8 @@ function manualStartIdempotencyKey(
   owner: string,
   workflow: string,
   requestKey: string,
-  input: unknown,
 ): string {
-  return `manual:${sha256HexSync(canonicalJson([owner, workflow, requestKey, input ?? null]))}`;
+  return `manual:${sha256HexSync(JSON.stringify([owner, workflow, requestKey]))}`;
 }
 
 export const workflowsStartOperation = defineOperation<
@@ -1556,7 +1554,6 @@ export const workflowsStartOperation = defineOperation<
                 owner,
                 input.id,
                 input.idempotencyKey,
-                input.input,
               ),
             }),
       });
