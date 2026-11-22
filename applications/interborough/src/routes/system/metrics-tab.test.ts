@@ -63,7 +63,7 @@ describe('MetricsTab', () => {
 
     await fireEvent.click(await findByRole('radio', { name: 'Raw' }));
 
-    expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(await findByText('Couldn’t load the raw metrics')).not.toBeNull();
   });
 
   test('clicking Download in the Raw view saves the Prometheus text as a Blob', async () => {

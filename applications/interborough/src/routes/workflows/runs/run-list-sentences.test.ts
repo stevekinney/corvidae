@@ -112,6 +112,33 @@ describe('runListFailure', () => {
     );
   });
 
+  test('hands the state the error that keeps Retry while any failed read could succeed again', () => {
+    const permanent = new HttpClientError(409, 'Changed', { retryable: false });
+    const transient = new HttpClientError(503, 'Unavailable', { retryable: true });
+    const silent = new Error('boom');
+    // One read says it cannot be retried, another does not: asking again can help the second.
+    expect(
+      runListFailure([
+        { operation: 'bureau.goals.list', error: permanent },
+        { operation: 'bureau.tasks.list', error: transient },
+      ]).fault,
+    ).toBe(transient);
+    expect(
+      runListFailure([
+        { operation: 'bureau.goals.list', error: permanent },
+        { operation: 'bureau.tasks.list', error: silent },
+      ]).fault,
+    ).toBe(silent);
+    // Every failed read says it cannot: the state offers no Retry.
+    expect(
+      runListFailure([
+        { operation: 'bureau.goals.list', error: permanent },
+        { operation: 'bureau.tasks.list', error: null },
+      ]).fault,
+    ).toBe(permanent);
+    expect(runListFailure([{ operation: 'bureau.goals.list', error: null }]).fault).toBeUndefined();
+  });
+
   test('says the server did not answer when no read got an answer at all', () => {
     const failure = runListFailure([
       { operation: 'bureau.tasks.list', error: new ServerUnreachableError() },

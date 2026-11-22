@@ -6,7 +6,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
-import { isNetworkFailure } from '../../../lib/faults.ts';
+import { faultAdvisingRetry, isNetworkFailure } from '../../../lib/faults.ts';
 import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import type { RunFilter } from './run-rows.ts';
 import { STARTED_BY_LABELS, type StartedBy } from './started-by.ts';
@@ -64,6 +64,12 @@ export interface RunListFailure {
   readonly description: string;
   /** The codes and the operations that failed, one per line, for the error-details disclosure. */
   readonly detail: string;
+  /**
+   * The error whose advice the failed state shows, for `faultErrorStateAdvice`: the first failed
+   * read that does not say `retryable: false` (so Retry stays while any read could succeed again),
+   * else the first that failed, else `undefined`.
+   */
+  readonly fault: unknown;
 }
 
 function describeError(error: unknown): string {
@@ -84,9 +90,10 @@ function describeError(error: unknown): string {
  */
 export function runListFailure(reads: readonly RunListRead[]): RunListFailure {
   const failed = reads.filter((read) => read.error !== null && read.error !== undefined);
-  const status = failed
-    .map((read) => read.error)
-    .find((error): error is HttpClientError => error instanceof HttpClientError)?.status;
+  const errors = failed.map((read) => read.error);
+  const status = errors.find(
+    (error): error is HttpClientError => error instanceof HttpClientError,
+  )?.status;
   const unreachable =
     status === undefined &&
     failed.length > 0 &&
@@ -96,5 +103,6 @@ export function runListFailure(reads: readonly RunListRead[]): RunListFailure {
       ? TASK_COPY.list.loadFailed.unreachable
       : TASK_COPY.list.loadFailed.description(status),
     detail: failed.map((read) => `${read.operation}: ${describeError(read.error)}`).join('\n'),
+    fault: faultAdvisingRetry(errors),
   };
 }

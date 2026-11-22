@@ -173,7 +173,11 @@
       <Skeleton height="52px" />
     </div>
   {:else if activeAlertsQuery.isError}
-    <QueryFaultBanner error={activeAlertsQuery.error} onRetry={() => activeAlertsQuery.refetch()} />
+    <QueryFaultBanner
+      error={activeAlertsQuery.error}
+      subject="active alerts"
+      onRetry={() => activeAlertsQuery.refetch()}
+    />
   {:else if activeAlertsQuery.data.items.length === 0}
     <EmptyState
       kind="done"

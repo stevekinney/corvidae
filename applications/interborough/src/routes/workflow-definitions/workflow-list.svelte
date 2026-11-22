@@ -40,6 +40,7 @@
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { getClient } from '../../lib/client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { newChatFromWorkflowsPath } from '../../lib/new-chat-address.ts';
@@ -183,7 +184,7 @@
         description={VIEW_COPY.workflows.error.description}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={() => void catalog.refetch()}
+        {...faultErrorStateAdvice(catalog.error, () => void catalog.refetch())}
       />
     {:else if catalog.isPending}
       <Skeleton variant="list" rows={5} label={VIEW_COPY.workflows.loading.title} />

@@ -97,7 +97,11 @@
           <Skeleton height="6rem" />
         </div>
       {:else if registryQuery.isError}
-        <QueryFaultBanner error={registryQuery.error} onRetry={() => registryQuery.refetch()} />
+        <QueryFaultBanner
+          error={registryQuery.error}
+          subject="the registry"
+          onRetry={() => registryQuery.refetch()}
+        />
       {:else}
         {@const preview = codegenPreviewSource(registryQuery.data)}
         {#if preview}

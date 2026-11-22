@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2560",
+  "branch": "worktree-agent-aa7c89813f4b0485e",
+  "checkedAt": "0211ccfd8df33850adac7b3e6fd83bf5c8d9ef8b",
+  "briefVersion": "5bfc033455b0",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "lib/faults.ts treatmentErrorStateAdvice/faultErrorStateAdvice put the fault's remediation on ErrorState and are spread at every ErrorState whose words come from a classified fault or that has the fault object at its render site (run-related, run-logs, run-detail, checkpoints-tab, timeline-tab, schedule-detail/edit, new-schedule, hook-list/deliveries, goal-list, audit, checks-list, run-list, workers-states, view-frame and the others in the diff), plus app/fault-error-state.svelte under the fault boundary and the three query-fault-banner components. faults.test.ts 'the fault-to-view mapping' asserts the remediation for one fault of each of the seven treatment kinds. Not covered, with no fault object at the site: boot-failure, route-outlet, home activity cards, models-section catalog failure, the stopped and canceled states, the refresh-failed Banners."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "canRetryFault/treatmentErrorStateAdvice give onRetry only when retryable is not false. faults.test.ts: Retry present for retryable true, for a fault with no field, and for a non-wire error; absent for retryable false across every HttpClientError kind. fault-boundary.test.ts, the three query-fault-banner tests and schedules/fault-banner.test.ts assert the button; run-list-sentences.test.ts and faults.test.ts cover screens that read several things (Retry stays while any failed read can be retried). A fault that is not retryable and that Health explains keeps a way forward: Open Health in the row's action region (fault-boundary.test.ts)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "fault-boundary.svelte draws app/fault-error-state.svelte, a Cinder ErrorState row (bordered), with the same remediation and Retry rule. Cinder first: ErrorState gained a warning tone and announce (round 0), then in design round 1 the row's bordered hairline (a quiet 1.5:1 edge from the tone's border token, light-dark mixes computed from the resolved tokens), a medium-weight title on its own line, and tests for the secondary action in both variants. conflict and unreachable are warning, not-found and not-supported neutral, the rest danger, all announced as alerts with announce. fault-boundary.test.ts asserts tone and role per kind, with assertions for remediation under the description and Retry present, absent and defaulted. The page's .weft-fault-boundary box is deleted from foundation.css, as is the reviews.css slot margin; only the details container for notes, field errors and the stack remains. Changed assertions: tones are read from data-cinder-tone on the ErrorState and the role from its body; the tinted fill is gone, so warning shows in the glyph and the hairline; notes sit under the box."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Remediation is rendered only through ErrorState's remediation prop, a paragraph after the description; no site passes it as title. A title with a subject is faultTitle(kind, subject), 'Couldn’t load ___', and never carries a server sentence (system/query-fault-banner.test.ts, fault-boundary.test.ts); the line follows the description in document order."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "NOT VERIFIED by the worker: the capture and the design-review verdict are the coordinator's. In place: tests/e2e/fault-remediation.spec.ts calls captureForDesignReview for 'fault retryable with remediation', 'fault not retryable' and 'fault with no remediation' on /hooks (an ErrorState page state) and /reviews (the shared fault row), and 'fault warning conflict' on /reviews, at 1280 and 375 (the capture repeats a phone at 320 by 640), registered in scripts/design-review-capture.ts and design-review-capture.test.ts. The Cinder browser fixtures (error-state.playwright.ts, remaining-public-mounts.playwright.ts) were not run on this host and have no warning mount. Design round 1 (tmp/chef/charters/cor-2560-design-round-1.md) changed the row: Open Health, titled row, quiet hairline, one title per fault, no internal name; its captures are the coordinator's to re-run. Design round 2 (approved with notes): the row title is semibold with a --cinder-space-1 gap, and the spec adds a 'run hooks row fails' capture on /runs/:run for the run-hooks row."
+    }
+  ]
+}

@@ -51,7 +51,7 @@
     {/snippet}
   </EmptyState>
 {:else if error}
-  <PanelFault {error} {onRetry} />
+  <PanelFault {error} subject="the task ledger" {onRetry} />
 {:else if task}
   <TaskLedgerDetailView {task} {now} {refreshing} {staleHeartbeatAfterMs} />
 {:else}

@@ -292,6 +292,6 @@ describe('WorkflowList', () => {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(await findByText('Couldn’t load workflows')).not.toBeNull();
   });
 });

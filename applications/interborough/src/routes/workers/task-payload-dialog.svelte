@@ -65,7 +65,11 @@
           description="The server no longer holds this task. It may have been cleared or retried."
         />
       {:else if retained.error}
-        <PanelFault error={retained.error} onRetry={() => void retained.refetch()} />
+        <PanelFault
+          error={retained.error}
+          subject="the task payload"
+          onRetry={() => void retained.refetch()}
+        />
       {:else if payload?.kind === 'value'}
         <PayloadInspector value={payload.value} label={copy.payloadLabel} redact={[]} />
       {:else if payload?.kind === 'omitted'}
