@@ -76,16 +76,17 @@ test.describe('nested Collapsible isolation', () => {
 
   const PART_SELECTOR: Record<Part, string> = {
     trigger: ':scope > .cinder-collapsible__trigger',
-    chevron: ':scope > .cinder-collapsible__trigger .cinder-collapsible__chevron',
+    chevron: ':scope > .cinder-collapsible__trigger > .cinder-collapsible__chevron',
     'panel-inner': ':scope > .cinder-collapsible__panel > .cinder-collapsible__panel-inner',
   };
 
-  /** The Collapsible nested in the panel of the case's outer one. */
+  /** The Collapsible nested directly in the panel of the case's outer one. */
   const nested = (page: Page, testId: string, part: Part) =>
     page
       .getByTestId(testId)
-      .locator('.cinder-collapsible .cinder-collapsible')
-      .first()
+      .locator(
+        ':scope > .cinder-collapsible > .cinder-collapsible__panel > .cinder-collapsible__panel-inner > .cinder-collapsible',
+      )
       .locator(PART_SELECTOR[part]);
 
   /** A top-level reference Collapsible, which carries its `data-testid` on its root. */
