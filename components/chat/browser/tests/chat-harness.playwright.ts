@@ -39,6 +39,41 @@ const privateHistoryPrependStressFixture = chatEntry.fixtures?.find(
   (fixture) => fixture.name === 'private-history-prepend-stress',
 );
 
+test.describe('docked questions on a phone', () => {
+  test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
+
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`frames the dock once with unframed radio rows in ${colorScheme} (COR-2452)`, async ({
+      page,
+    }, testInfo) => {
+      await page.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
+      const url = new URL(
+        fixtureRoute('chat'),
+        environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+      );
+      url.searchParams.set('questionDock', '1');
+      await page.goto(url.href);
+      const dock = page.locator('[data-chat-question-dock]');
+      await expect(dock).toBeVisible();
+      const radios = dock.getByRole('radio');
+      await expect(radios).toHaveCount(2);
+      const outlines = await dock.evaluate((element) => ({
+        outer: getComputedStyle(element).borderBlockStartWidth,
+        inner: [...element.querySelectorAll('fieldset, [role="radio"]')].map(
+          (row) => getComputedStyle(row).borderBlockStartWidth,
+        ),
+      }));
+      expect(outlines).toEqual({ outer: '1px', inner: ['0px', '0px', '0px'] });
+      const juniper = dock.getByRole('radio', { name: 'Juniper' });
+      await juniper.click();
+      await expect(juniper).toHaveAttribute('aria-checked', 'true');
+      const screenshot = testInfo.outputPath('question-dock.png');
+      await dock.screenshot({ path: screenshot });
+      await testInfo.attach('question dock', { path: screenshot, contentType: 'image/png' });
+    });
+  }
+});
+
 function themeInitScriptPayload(colorScheme: 'dark' | 'light'): [string, string, string] {
   const baseUrl = environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN;
   return [THEME_STORAGE_KEY, colorScheme, new URL(baseUrl).origin];
@@ -4485,6 +4520,36 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
     }
   });
 });
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`composer field is at least 44px at 320px (${colorScheme})`, async ({
+    browser,
+  }, testInfo) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme,
+      viewport: { width: 320, height: 800 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      const coarsePointer = await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches);
+      expect(coarsePointer).toBe(true);
+      const field = harness.locator('textarea.chat-input-editor');
+      await expect(field).toBeVisible();
+      await expect(field).toBeEditable();
+      await expect(field).toHaveValue('');
+      await expect(field).toHaveAttribute('rows', '1');
+      const { height } = await renderedBox(field, 'Chat composer textarea');
+      await testInfo.attach('composer field size', {
+        body: JSON.stringify({ colorScheme, viewport: page.viewportSize(), coarsePointer, height }),
+        contentType: 'application/json',
+      });
+      expect(height).toBeGreaterThanOrEqual(44);
+    } finally {
+      await dispose();
+    }
+  });
+}
 
 test.describe('chat harness — composer send button hit area (COR-1552)', () => {
   // Send and Stop are labelled secondary buttons. On a coarse pointer their 44px minimum target is

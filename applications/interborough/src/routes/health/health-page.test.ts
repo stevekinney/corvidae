@@ -143,6 +143,22 @@ function storageLineOf(view: { container: HTMLElement }): string {
 }
 
 describe('the frame', () => {
+  test('keeps the storage summary out of the tab order while Storage details remains tabbable', async () => {
+    const view = open();
+    const backend = await view.findByTestId('storage-backend');
+    const details = view.getByRole('button', { name: 'Storage details' });
+    const summary = backend.querySelector<HTMLElement>('.ib-storage-backend__line');
+    if (summary === null) throw new Error('The Health storage summary is missing.');
+    await waitFor(() => expect(summary.textContent).toContain('Running on SQLite'));
+
+    const contents = [summary, ...summary.querySelectorAll<HTMLElement>('*')];
+    expect(
+      contents.filter((element) => element.tabIndex >= 0).map((element) => element.textContent),
+    ).toEqual([]);
+    expect(details).toBeEnabled();
+    expect(details.tabIndex).toBe(0);
+  });
+
   test('is headed Health, names where the installation runs, and has four tabs and no Diagnostics', async () => {
     const view = open();
     const heading = await view.findByRole('heading', { level: 1 });

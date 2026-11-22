@@ -119,6 +119,45 @@ describe('question witnesses', () => {
   });
 });
 
+describe('message recovery witnesses', () => {
+  it('checks the compact image recovery row without an image view in case 34', () => {
+    expect(caseNumbered(34).steps).toEqual([
+      {
+        action: 'expect-text',
+        text: 'receipt.png',
+        scope: 'figure[data-unavailable]:has(svg.message-attachment-unavailable-icon)',
+        exact: true,
+      },
+      {
+        action: 'expect',
+        role: 'button',
+        name: 'Retry loading receipt.png',
+        scope: 'figure[data-unavailable]',
+      },
+      {
+        action: 'expect-absent',
+        selector: '.message-attachments .message-attachment-button',
+      },
+    ]);
+  });
+
+  it("scopes case 44's notice to the missing-source message", () => {
+    expect(caseNumbered(44).steps).toEqual([
+      {
+        action: 'expect-text',
+        text: 'Sources unavailable',
+        scope: ".chat-message-wrapper[data-role='assistant'] .chat-message-line-actions",
+        exact: true,
+      },
+      {
+        action: 'expect-absent',
+        selector:
+          ".chat-input-area [data-testid='chat-missing-source-notice'], .chat-message-wrapper[data-role='user'] [data-testid='chat-missing-source-notice']",
+      },
+    ]);
+  });
+});
+
 describe('approval action focus witness', () => {
   it('captures both case 39 actions on the narrow dark profile without submitting', () => {
     const approval = caseNumbered(39);

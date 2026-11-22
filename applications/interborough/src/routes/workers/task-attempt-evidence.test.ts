@@ -206,6 +206,14 @@ describe('cancellation evidence', () => {
     );
   });
 
+  test('labels a cancelled attempt with American spelling', () => {
+    const history = buildAttemptHistory(
+      [attempt({ attempt: 2, disposition: 'cancelled', dispositionAt: NOW })],
+      2,
+    );
+    expect(history[0]?.dispositionLabel).toBe('Canceled');
+  });
+
   test('a grace-period force settlement of the owning attempt is not acknowledgement', () => {
     const evidence = describeCancellation(
       task({

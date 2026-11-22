@@ -922,7 +922,7 @@
   {
     "id": 34,
     "slug": "broken-image",
-    "title": "An image that fails to load shows the dashed placeholder with its name and Retry, and no zoom.",
+    "title": "An image that fails to load shows a compact inset row with its icon, filename and Retry, with no zoom.",
     "provenance": "issue-named",
     "source": "COR-2279: case 34 loads an invalid same-origin image in a user message at 320 px.",
     "rows": ["X5"],
@@ -933,7 +933,19 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "receipt.png"
+        "text": "receipt.png",
+        "scope": "figure[data-unavailable]:has(svg.message-attachment-unavailable-icon)",
+        "exact": true
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Retry loading receipt.png",
+        "scope": "figure[data-unavailable]"
+      },
+      {
+        "action": "expect-absent",
+        "selector": ".message-attachments .message-attachment-button"
       }
     ],
     "variants": [],
@@ -1188,7 +1200,18 @@
     "rows": ["M4"],
     "scenario": "missing-source",
     "params": {},
-    "steps": [],
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Sources unavailable",
+        "scope": ".chat-message-wrapper[data-role='assistant'] .chat-message-line-actions",
+        "exact": true
+      },
+      {
+        "action": "expect-absent",
+        "selector": ".chat-input-area [data-testid='chat-missing-source-notice'], .chat-message-wrapper[data-role='user'] [data-testid='chat-missing-source-notice']"
+      }
+    ],
     "variants": [],
     "focusSweep": false
   },

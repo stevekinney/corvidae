@@ -18,7 +18,7 @@ const STEP_STATUS: Readonly<Record<WorkflowTimelineStatus, StepStatus>> = {
   running: { label: 'Running', dot: 'pending' },
   completed: { label: 'Succeeded', dot: 'success' },
   failed: { label: 'Failed', dot: 'danger' },
-  cancelled: { label: 'Cancelled', dot: 'neutral' },
+  cancelled: { label: 'Canceled', dot: 'neutral' },
   'timed-out': { label: 'Timed out', dot: 'danger' },
 };
 
