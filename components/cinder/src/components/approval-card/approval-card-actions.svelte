@@ -2,8 +2,9 @@
   import { untrack } from 'svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
-  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
+  // Load JsonEditor first to preserve the order its styles and InlineConfirm's Button styles enter the layer.
   import { default as JsonEditor } from '../json-editor/index.ts';
+  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import { formatEditableArguments, parseJsonText } from './approval-card-state.ts';
