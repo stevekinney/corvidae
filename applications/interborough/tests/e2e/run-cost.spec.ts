@@ -47,13 +47,16 @@ async function reportUsage(page: Page, runId: string, usage: unknown): Promise<v
 /** Opens `/runs` and brings the run's row into view, loading more pages while it is not on this one. */
 async function findRow(page: Page, runId: string) {
   await page.goto('/runs');
+  const rows = page.locator('[data-run]');
   const row = page.locator(`[data-run="${runId}"]`);
   const loadMore = page.getByRole('button', { name: 'Load more' });
+  // The list has rendered once it holds a row; each click then waits for the page it asked for.
+  await expect(rows.first()).toBeVisible();
   for (let pages = 0; pages < 20; pages += 1) {
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    if ((await row.count()) > 0) break;
-    if ((await loadMore.count()) === 0) break;
+    if ((await row.count()) > 0 || (await loadMore.count()) === 0) break;
+    const shown = await rows.count();
     await loadMore.click();
+    await expect.poll(() => rows.count()).toBeGreaterThan(shown);
   }
   await expect(row).toBeVisible();
   return row;

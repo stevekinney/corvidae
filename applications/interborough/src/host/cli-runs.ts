@@ -1,4 +1,3 @@
-import { COST_COPY } from '../app/copy/cost.ts';
 import { formatCost } from '../lib/format/cost.ts';
 import { request, stream, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
@@ -355,8 +354,9 @@ async function getOrInspect(
 const TOKEN_COUNT = new Intl.NumberFormat('en-US');
 
 /**
- * A task as `runs get --kind task` prints it as text: its identifier, status and agent, then its
- * tokens and its cost when the Bureau counted them. A task with no priced request has no cost line,
+ * A task as `runs get --kind task` prints it as text: its identifier, status, agent, times and why
+ * it ended, then its tokens and its cost when the Bureau counted them. `--output json` is the task
+ * whole, as the Bureau answered it. A task with no priced request has no cost line,
  * never `Cost: $0.00`.
  */
 function taskText(task: RecordValue): string {
@@ -368,10 +368,16 @@ function taskText(task: RecordValue): string {
     `Run: ${String(task['id'])}`,
     ...(typeof task['status'] === 'string' ? [`Status: ${task['status']}`] : []),
     ...(typeof task['agentName'] === 'string' ? [`Agent: ${task['agentName']}`] : []),
+    ...(typeof task['createdAt'] === 'string' ? [`Started: ${task['createdAt']}`] : []),
+    ...(typeof task['updatedAt'] === 'string' ? [`Updated: ${task['updatedAt']}`] : []),
+    ...(typeof task['finishReason'] === 'string' ? [`Finish reason: ${task['finishReason']}`] : []),
+    ...(typeof task['statusMessage'] === 'string' && task['statusMessage'] !== ''
+      ? [`Message: ${task['statusMessage']}`]
+      : []),
     ...(typeof totalTokens === 'number' && totalTokens > 0
       ? [`Tokens: ${TOKEN_COUNT.format(totalTokens)}`]
       : []),
-    ...(cost === undefined ? [] : [`${COST_COPY.label}: ${cost}`]),
+    ...(cost === undefined ? [] : [`Cost: ${cost}`]),
   ];
   return lines.join('\n');
 }
