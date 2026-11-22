@@ -264,6 +264,31 @@ describe('Callout neutral variant and action', () => {
     expect(stacked.container.querySelector('.cinder-callout--inline-action')).toBeNull();
   });
 
+  test('a stacked-start action sits under the message like a stacked one, and starts at the leading edge', async () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const { container } = render(Callout, {
+      props: { actionLayout: 'stacked-start', action, children: textSnippet('Upload failed.') },
+    });
+    const callout = container.querySelector('.cinder-callout');
+    expect(callout?.classList.contains('cinder-callout--inline-action')).toBe(false);
+    expect(callout?.classList.contains('cinder-callout--stacked-start-action')).toBe(true);
+    // Under the message, not in the inline body row.
+    expect(container.querySelector('.cinder-callout__body')).toBeNull();
+    expect(
+      container.querySelector('.cinder-callout > .cinder-callout__action button'),
+    ).not.toBeNull();
+
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    const start = declarationsFor(
+      css,
+      '.cinder-callout--stacked-start-action > .cinder-callout__action',
+    );
+    expect(start.get('justify-self')).toBe('start');
+    expect(start.get('justify-content')).toBe('flex-start');
+    // `stacked` keeps ending at the trailing edge for its other consumers.
+    expect(declarationsFor(css, '.cinder-callout__action').get('justify-self')).toBe('end');
+  });
+
   test('a beside action is an inline action that stays beside the message on a phone', async () => {
     const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
     const icon = createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' }));

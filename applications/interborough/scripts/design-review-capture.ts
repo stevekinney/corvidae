@@ -201,6 +201,9 @@ const SHOWCASE_SPECIFICATIONS = [
   // retryable fault with a remediation, one that is not retryable, one with no remediation, and a
   // conflict in the warning tone (COR-2560).
   'tests/e2e/fault-remediation.spec.ts',
+  // The four typed-confirmation dialogs (bulk action, purge, drain, clear dead letter) in each
+  // state, which no page capture sees (COR-2547). `--grep confirm-dialog-states` selects it.
+  'tests/e2e/confirm-dialog-states.spec.ts',
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
   // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
   'tests/panels/schedule-editor-states.spec.ts',

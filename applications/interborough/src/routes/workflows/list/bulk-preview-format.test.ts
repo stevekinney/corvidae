@@ -1,26 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-import { confirmPhrase, confirmPhraseMatches, filterSummaryChip } from './bulk-preview-format.ts';
+import { confirmPhrase, filterSummaryChip } from './bulk-preview-format.ts';
 
 describe('confirmPhrase', () => {
   test('pluralizes for anything other than exactly 1', () => {
     expect(confirmPhrase('cancel', 47)).toBe('cancel 47 workflows');
     expect(confirmPhrase('cancel', 0)).toBe('cancel 0 workflows');
     expect(confirmPhrase('delete', 1)).toBe('delete 1 workflow');
-  });
-});
-
-describe('confirmPhraseMatches', () => {
-  test('matches case-insensitively and trims whitespace', () => {
-    expect(confirmPhraseMatches('cancel 47 workflows', 'cancel 47 workflows')).toBe(true);
-    expect(confirmPhraseMatches('CANCEL 47 WORKFLOWS', 'cancel 47 workflows')).toBe(true);
-    expect(confirmPhraseMatches('  cancel 47 workflows  ', 'cancel 47 workflows')).toBe(true);
-  });
-
-  test('rejects a non-matching or partial phrase', () => {
-    expect(confirmPhraseMatches('cancel 4 workflows', 'cancel 47 workflows')).toBe(false);
-    expect(confirmPhraseMatches('cancel 47 workflow', 'cancel 47 workflows')).toBe(false);
-    expect(confirmPhraseMatches('', 'cancel 47 workflows')).toBe(false);
   });
 });
 
