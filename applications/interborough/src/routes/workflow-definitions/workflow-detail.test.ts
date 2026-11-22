@@ -926,7 +926,8 @@ describe('send signal', () => {
       expect(testId(root, 'workflow-line-last-run')?.textContent).toContain('Never run'),
     );
     await fireEvent.click(await view.findByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
-    expect((await view.findAllByRole('menuitem')).map((item) => item.textContent?.trim())).toEqual([
+    const menuItems = await view.findAllByRole('menuitem');
+    expect(menuItems.map((item) => item.textContent?.trim())).toEqual([
       WORKFLOW_COPY.page.menu.duplicate,
       expect.stringContaining(WORKFLOW_COPY.page.menu.pause),
       WORKFLOW_COPY.page.menu.delete,
