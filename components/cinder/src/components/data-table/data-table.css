@@ -23,6 +23,12 @@
     display: contents;
   }
 
+  /* Table's stacked sort control sits above its rows. DataTable renders both inside the
+     scroll wrapper, where the horizontal flex layout would otherwise put them side by side. */
+  .cinder-data-table.cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card]) {
+    display: block;
+  }
+
   .cinder-data-table[data-cinder-virtualized] {
     block-size: var(--cinder-data-table-height, 24rem);
     overflow: auto;

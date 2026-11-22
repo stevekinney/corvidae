@@ -35,4 +35,18 @@ test('fit DataTable can select and sort without horizontal overflow', async ({ p
   await row.check();
   await expect(row).toBeChecked();
   await expect(fit.getByLabel('Sort by')).toBeVisible();
+  const layout = await fit.locator('.cinder-data-table').evaluate((wrapper) => {
+    const sort = wrapper.querySelector('.cinder-table__stack-sort')!.getBoundingClientRect();
+    const table = wrapper.querySelector('[data-cinder-stack-card]')!.getBoundingClientRect();
+    const bounds = wrapper.getBoundingClientRect();
+    return {
+      sortBottom: sort.bottom,
+      tableTop: table.top,
+      left: table.left - bounds.left,
+      right: bounds.right - table.right,
+    };
+  });
+  expect(layout.tableTop).toBeGreaterThanOrEqual(layout.sortBottom - 1);
+  expect(Math.abs(layout.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(layout.right)).toBeLessThanOrEqual(1);
 });
