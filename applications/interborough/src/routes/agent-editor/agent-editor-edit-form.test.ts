@@ -408,7 +408,7 @@ describe('the delete block (row 41x)', () => {
     expect(block?.textContent).toContain(editCopy.deleteBlock.title);
     expect(block?.textContent).toContain(editCopy.deleteBlock.description('Researcher'));
     // Cancel and Save are the bar's only buttons.
-    expect(container.querySelector('.weft-agent-form__footer')?.contains(button)).toBe(false);
+    expect(container.querySelector('.cinder-form-actions')?.contains(button)).toBe(false);
     await fireEvent.click(button);
     await findByRole('dialog', { name: copy.deleteDialog.title });
     expect(calls.callsTo('bureau.agents.definitions.delete')).toEqual([]);
@@ -426,7 +426,8 @@ describe('the sticky bar (row 41y)', () => {
     );
     expect(getByTestId('agent-save-status').querySelector('svg')).not.toBeNull();
     const form = getByRole('form', { name: copy.formLabel });
-    const bar = form.querySelector('.weft-agent-form__footer') as HTMLElement;
+    const bar = within(form).getByRole('group', { name: 'Form actions' });
+    expect(bar).toHaveClass('cinder-form-actions');
     const labels = within(bar)
       .getAllByRole('button')
       .map((button) => button.textContent?.trim());

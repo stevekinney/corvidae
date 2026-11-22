@@ -14,7 +14,7 @@
  * what it changed: the agent it disabled is enabled, the memory it forgot is kept, and the agents
  * and chats it made are removed.
  */
-import type { APIRequestContext, Page, Route } from '@playwright/test';
+import type { APIRequestContext, Locator, Page, Route } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
@@ -43,6 +43,7 @@ import { createWorkflowFile, removeWorkflow } from './workflow-support.ts';
 const WIDTHS = designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 const SOURCE = 'agents-reviews-design-states.spec.ts';
 const settingsCopy = AGENT_PAGE_COPY.settings;
+const editorCopy = AGENT_EDITOR_COPY;
 
 /** The chats a case started, deleted once it ends, whether it passed or not. */
 const threads: string[] = [];
@@ -700,3 +701,274 @@ for (const width of WIDTHS) {
     });
   });
 }
+
+async function expectSavedSummaryOnOneLine(actions: Locator): Promise<void> {
+  const savedCopy = editorCopy.edit.saved(1);
+  const status = actions.getByTestId('agent-save-status');
+  await expect(status).toHaveText(savedCopy);
+  const textLayout = await status.evaluate((element, copy) => {
+    const text = Array.from(element.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes(copy),
+    );
+    const icon = element.querySelector('svg');
+    if (text === undefined || icon === null) throw new Error('The saved status is incomplete.');
+    const textRange = document.createRange();
+    textRange.selectNodeContents(text);
+    const textBox = textRange.getBoundingClientRect();
+    const iconBox = icon.getBoundingClientRect();
+    return {
+      lines: Array.from(textRange.getClientRects()).filter((rect) => rect.width > 0).length,
+      width: textBox.width,
+      availableWidth: element.getBoundingClientRect().width,
+      iconBesideText:
+        iconBox.right <= textBox.left &&
+        Math.abs((iconBox.top + iconBox.bottom - textBox.top - textBox.bottom) / 2) <= 2,
+    };
+  }, savedCopy);
+  expect(textLayout.lines).toBe(1);
+  expect(textLayout.width).toBeLessThanOrEqual(textLayout.availableWidth);
+  expect(textLayout.iconBesideText).toBe(true);
+}
+
+test.describe('Agent shared FormActions', () => {
+  for (const width of WIDTHS) {
+    test(`captures a saved agent's shared FormActions at ${width} pixels`, async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const id = `e2e-design-shared-actions-${String(width)}`;
+      try {
+        await createAgentFile(request, id, {
+          name: 'Shared actions agent',
+          instructions: 'Answer the question.',
+        });
+        await page.goto(`/agents/${id}/edit`);
+        const actions = page.getByRole('group', { name: 'Form actions' });
+        await expect(actions).toBeVisible();
+        await expectSavedSummaryOnOneLine(actions);
+        await expect(actions.getByRole('switch', { name: editorCopy.a2aLabel })).toBeVisible();
+        await expect(actions.getByText(editorCopy.a2aDescription, { exact: true })).toBeVisible();
+        await expect(actions.getByRole('button')).toHaveText([
+          editorCopy.cancelAction,
+          editorCopy.saveAction,
+        ]);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared FormActions, saved agent',
+          source: SOURCE,
+        });
+      } finally {
+        await removeAgent(request, id);
+      }
+    });
+  }
+
+  for (const width of WIDTHS) {
+    test(`keeps the shared FormActions beside a duplicate refusal at ${width} pixels`, async ({
+      page,
+      pageErrors,
+    }) => {
+      pageErrors.expectEvery({
+        pattern: loggedFailedResponse(409, /\/jsonrpc/),
+        reason: 'the Bureau refuses the identifier that the new agent name generated',
+      });
+      await page.setViewportSize({ width, height: 900 });
+      let attempts = 0;
+      await standIn(page, 'bureau.agents.definitions.create', async (route, call) => {
+        attempts += 1;
+        await route.fulfill({
+          status: 409,
+          json: {
+            jsonrpc: '2.0',
+            id: call.id,
+            error: {
+              code: -32000,
+              message: 'That identifier is taken.',
+              data: {
+                weftCode: 'Conflict',
+                httpStatus: 409,
+                reason: 'agent-file-exists',
+              },
+            },
+          },
+        });
+      });
+      await page.goto('/agents/new');
+      const name = page.getByRole('textbox', { name: editorCopy.nameLabel });
+      await name.fill('Shared refusal');
+      await page
+        .getByRole('textbox', { name: editorCopy.instructionsLabel })
+        .fill('Keep the refused draft visible.');
+      const create = page.getByRole('button', { name: editorCopy.createAction });
+      await create.click();
+      await expect(name).toHaveAttribute('aria-invalid', 'true');
+      await expect(
+        page.getByText(editorCopy.newAgent.nameTaken('Shared refusal'), { exact: true }),
+      ).toBeVisible();
+      await expect(name).toHaveValue('Shared refusal');
+      await expect(
+        page.getByRole('group', { name: 'Form actions' }).getByRole('button'),
+      ).toHaveText([editorCopy.cancelAction, editorCopy.createAction]);
+      expect(attempts).toBe(1);
+      await expect(create).toBeEnabled();
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'shared FormActions, duplicate refusal',
+        source: SOURCE,
+      });
+      await create.click();
+      await expect(name).toBeFocused();
+    });
+  }
+
+  for (const width of WIDTHS) {
+    test(`keeps the shared FormActions visible while saving at ${width} pixels`, async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const id = `e2e-design-shared-actions-held-${String(width)}`;
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let attempts = 0;
+      try {
+        await createAgentFile(request, id, {
+          name: 'Held shared actions',
+          instructions: 'Answer the question.',
+        });
+        await standIn(page, 'bureau.agents.definitions.update', async (route) => {
+          attempts += 1;
+          await held;
+          await changedAnswer(route, () => undefined);
+        });
+        await page.goto(`/agents/${id}/edit`);
+        const description = page.getByRole('textbox', { name: editorCopy.descriptionLabel });
+        await description.fill('Keep this saving state visible.');
+        const save = page.getByRole('button', { name: editorCopy.saveAction });
+        await save.click();
+        await expect(save).toHaveAttribute('data-cinder-loading', '');
+        await expect(page.getByTestId('agent-save-status')).toHaveText(editorCopy.newAgent.saving);
+        await expect(page.getByRole('button', { name: editorCopy.cancelAction })).toBeEnabled();
+        await save.press('Enter');
+        expect(attempts).toBe(1);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'shared FormActions, held save',
+          source: SOURCE,
+        });
+        release();
+        await expect(page).toHaveURL(new RegExp(`/agents/${id}$`));
+        const savedAgent = await readAgent(request, id);
+        expect(savedAgent.definition).toMatchObject({
+          description: 'Keep this saving state visible.',
+        });
+        expect(attempts).toBe(1);
+      } finally {
+        release();
+        await removeAgent(request, id);
+      }
+    });
+  }
+
+  for (const width of [320, 375]) {
+    test.describe(`at ${width} pixels with a coarse pointer`, () => {
+      test.use({ viewport: { width, height: 640 }, hasTouch: true, isMobile: true });
+
+      test('keeps the shared FormActions actions reachable above phone navigation', async ({
+        page,
+      }) => {
+        await page.goto('/agents/new');
+        const actions = page.getByRole('group', { name: 'Form actions' });
+        const instructions = page.getByRole('textbox', { name: editorCopy.instructionsLabel });
+        await instructions.scrollIntoViewIfNeeded();
+        await expect(instructions).toBeInViewport();
+        expect(
+          await instructions.evaluate((field) => {
+            const box = field.getBoundingClientRect();
+            return field.contains(
+              document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+            );
+          }),
+        ).toBe(true);
+        await expect(actions.getByTestId('agent-save-status')).toHaveText(
+          editorCopy.try.notSavedYet,
+        );
+        await expect(actions).toHaveCSS('position', 'sticky');
+        for (const name of [editorCopy.cancelAction, editorCopy.createAction]) {
+          const action = actions.getByRole('button', { name });
+          await action.scrollIntoViewIfNeeded();
+          await expect(action).toBeInViewport();
+          const reachability = await action.evaluate((button) => {
+            const box = button.getBoundingClientRect();
+            const centerX = box.left + box.width / 2;
+            const centerY = box.top + box.height / 2;
+            const halfTouchTarget = 21.5;
+            const touchPoints = [
+              [centerX - halfTouchTarget, centerY],
+              [centerX + halfTouchTarget, centerY],
+              [centerX, centerY - halfTouchTarget],
+              [centerX, centerY + halfTouchTarget],
+            ] as const;
+            return {
+              coarse: matchMedia('(pointer: coarse)').matches,
+              receivesPointer: touchPoints.every(([x, y]) =>
+                button.contains(document.elementFromPoint(x, y)),
+              ),
+            };
+          });
+          expect(reachability.coarse).toBe(true);
+          expect(reachability.receivesPointer).toBe(true);
+        }
+        await captureForDesignReview(page, {
+          route: '/agents/new',
+          state: `shared FormActions, ${width} coarse pointer`,
+          source: SOURCE,
+        });
+        await page.setViewportSize({ width, height: 480 });
+        await expect(actions).toHaveCSS('position', 'static');
+        await captureForDesignReview(page, {
+          route: '/agents/new',
+          state: `shared FormActions, ${width} short viewport`,
+          source: SOURCE,
+        });
+      });
+    });
+  }
+
+  test('keeps the same shared FormActions after Try it opens and closes at 768 pixels', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 768, height: 900 });
+    const id = 'e2e-design-shared-actions-try';
+    try {
+      await createAgentFile(request, id, {
+        name: 'Shared actions trial',
+        instructions: 'Answer the question.',
+      });
+      await page.goto(`/agents/${id}/edit`);
+      const actions = page.getByRole('group', { name: 'Form actions' });
+      await expect(actions).toBeVisible();
+      const description = page.getByRole('textbox', { name: editorCopy.descriptionLabel });
+      await description.fill('Keep this form state while trying the agent.');
+      await page.getByRole('button', { name: editorCopy.try.action }).click();
+      const trial = page.getByRole('dialog', { name: editorCopy.try.title });
+      await expect(trial).toBeVisible();
+      await trial.getByRole('button', { name: editorCopy.try.closeSheet }).click();
+      await expect(trial).toBeHidden();
+      await expect(actions).toBeVisible();
+      await expectSavedSummaryOnOneLine(actions);
+      await expect(description).toHaveValue('Keep this form state while trying the agent.');
+      await captureForDesignReview(page, {
+        route: '/agents/:agent/edit',
+        state: 'shared FormActions, Try it closed at 768',
+        source: SOURCE,
+      });
+    } finally {
+      await removeAgent(request, id);
+    }
+  });
+});

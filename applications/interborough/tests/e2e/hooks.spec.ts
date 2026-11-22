@@ -129,6 +129,93 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
   await checkA11y('hooks — the editor with a delivery');
 });
 
+for (const width of WIDTHS) {
+  test(`/hooks/new: the Check actions use shared FormActions at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks/new', []);
+    const actions = page.getByRole('group', { name: 'Form actions' });
+    await expect(actions).toBeVisible();
+    await expect(actions.getByRole('button')).toHaveText([copy.check.create, copy.check.test]);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'shared FormActions Check',
+      source: SOURCE,
+    });
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`/hooks/new: shared FormActions shows an unsaved test result without writing at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const calls = await openHooks(page, '/hooks/new', [], {
+      'bureau.hooks.create': () => ({}),
+      'bureau.hooks.draft.test': () => ({
+        id: 'draft-test',
+        hookId: null,
+        owner: 'anonymous:local',
+        actionType: 'webhook',
+        kind: 'hook.test',
+        test: true,
+        status: 'delivered',
+        request: null,
+        work: null,
+        attempts: [
+          {
+            number: 1,
+            startedAt: Date.UTC(2026, 10, 2),
+            finishedAt: Date.UTC(2026, 10, 2, 0, 0, 1),
+            outcome: 'response',
+            status: 200,
+            responseExcerpt: null,
+            responseTruncated: null,
+            error: null,
+          },
+        ],
+        maxAttempts: 1,
+        nextAttemptAt: null,
+        createdAt: Date.UTC(2026, 10, 2),
+        updatedAt: Date.UTC(2026, 10, 2),
+      }),
+    });
+    await chooseEvent(page, 'review', 'A review is waiting');
+    await fillWebhook(page, 'https://example.com/hooks', `${PREFIX} unsaved test`);
+    const testEvent = page.getByRole('button', { name: copy.check.test });
+    await testEvent.click();
+    const result = page.getByTestId('hook-test-result');
+    await expect(result).toBeVisible();
+    await expect(result).toContainText(copy.check.testSentUnsaved);
+    expect(calls.filter((call) => call.method === 'bureau.hooks.draft.test')).toHaveLength(1);
+    expect(calls.filter((call) => call.method === 'bureau.hooks.create')).toEqual([]);
+    await captureForDesignReview(page, {
+      route: '/hooks/new',
+      state: 'shared FormActions, unsaved test result',
+      source: SOURCE,
+    });
+  });
+}
+
+test('/hooks/new: shared FormActions puts the empty Event error on the picker', async ({
+  page,
+}) => {
+  const calls = await openHooks(page, '/hooks/new', [], {
+    'bureau.hooks.create': () => ({}),
+  });
+  const event = page.getByRole('combobox', { name: copy.event.label });
+  await page.getByRole('button', { name: copy.check.create }).click();
+  await expect(event).toBeFocused();
+  await expect(page.getByText(copy.event.required, { exact: true })).toBeVisible();
+  expect(calls.filter((call) => call.method === 'bureau.hooks.create')).toEqual([]);
+  await captureForDesignReview(page, {
+    route: '/hooks/new',
+    state: 'shared FormActions, empty Event error',
+    source: SOURCE,
+  });
+});
+
 test('fires for a real event, and shows that delivery beside the test', async ({
   page,
   request,
@@ -1389,7 +1476,7 @@ test('[plugin-hook-testing] /hooks/:hook: while a test runs, Send a test event s
   await expect(test).not.toHaveAttribute('data-cinder-loading', '');
 });
 
-test('[plugin-hook-save-failed] /hooks/:hook: a refused save keeps every value and shows the refusal on the field', async ({
+test('[plugin-hook-save-failed] /hooks/:hook: shared FormActions keeps every value after a refused save and retries', async ({
   page,
   pageErrors,
 }) => {
@@ -1398,7 +1485,7 @@ test('[plugin-hook-save-failed] /hooks/:hook: a refused save keeps every value a
     reason:
       'the test answers the update with the refusal the Bureau gives a configuration it rejects',
   });
-  await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
+  const calls = await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
     'bureau.hooks.update': {
       status: 400,
       message: 'The configuration is refused.',
@@ -1415,7 +1502,8 @@ test('[plugin-hook-save-failed] /hooks/:hook: a refused save keeps every value a
   });
   const action = page.getByTestId('contributed-action');
   await action.getByLabel('Channel').fill('nowhere');
-  await page.getByRole('button', { name: HOOKS_COPY.editor.check.save }).click();
+  const save = page.getByRole('button', { name: HOOKS_COPY.editor.check.save });
+  await save.click();
 
   // R10-22
   const failure = page.getByTestId('hook-failure');
@@ -1423,11 +1511,16 @@ test('[plugin-hook-save-failed] /hooks/:hook: a refused save keeps every value a
   await expect(failure).toContainText(HOOKS_COPY.editor.saveFailedKept);
   await expect(action.getByLabel('Channel')).toHaveValue('nowhere');
   await expect(action).toContainText('That channel is not one this workspace has.');
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toHaveLength(1);
   await captureForDesignReview(page, {
     route: '/hooks/:hook',
     state: 'plugin-hook-save-failed',
     source: SOURCE,
   });
+  await save.click();
+  await expect
+    .poll(() => calls.filter((call) => call.method === 'bureau.hooks.update').length)
+    .toBe(2);
 });
 
 // ─── Receipts and problems (COR-2182) ─────────────────────────────────────────────────────────────
