@@ -11,6 +11,7 @@ import type { ApprovalResolution, MarkdownNodeOverride } from '@lostgradient/cin
 import type { Snippet } from 'svelte';
 
 import type { ChatLabels } from '../chat-labels.ts';
+import type { ChatCitationClaim } from '../chat.types.ts';
 import type {
   ChatMessagePart,
   ImageMessagePart,
@@ -76,6 +77,8 @@ export type ChatMessagePartsRendererProps = {
   approvalLayout?: 'decision' | 'row' | undefined;
   /** Optional override for wide or interactive block nodes inside markdown. */
   markdownNode?: MarkdownNodeOverride | undefined;
+  /** Claims whose Markdown matches this message's only Markdown part. */
+  claimSources?: readonly ChatCitationClaim[] | undefined;
   /**
    * Marks each markdown body as quotable text belonging to this message, so a
    * selection inside it can be quoted. Leave unset for messages that cannot be.

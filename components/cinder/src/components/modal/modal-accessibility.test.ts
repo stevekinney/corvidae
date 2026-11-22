@@ -74,11 +74,17 @@ describe('Modal', () => {
         title: 'Session expired',
         role: 'alertdialog',
         describedById: 'session-description',
-        children: emptySnippet,
+        dismissOnBackdropClick: false,
+        dismissOnEscape: false,
+        closeButtonVisible: false,
+        children: createRawSnippet(() => ({
+          render: () => '<p id="session-description">Sign in again to continue.</p>',
+        })),
       },
     });
     const dialog = container.querySelector('dialog');
     expect(dialog?.getAttribute('role')).toBe('alertdialog');
+    expect(dialog?.getAttribute('aria-describedby')).toBe('session-description');
   });
   test('applies custom class prop to root dialog element', () => {
     const { container } = render(Modal, {
@@ -126,6 +132,31 @@ describe('Modal', () => {
       body.dispatchEvent(new Event('scroll'));
       flushOverflowFadeAnimationFrames();
       expect(body.hasAttribute('data-cinder-overflows')).toBe(false);
+    } finally {
+      cleanupOverflowFade();
+    }
+  });
+  test('body joins the tab order only while its content overflows', () => {
+    const cleanupOverflowFade = installOverflowFadeTestEnvironment();
+    try {
+      const { container } = render(Modal, {
+        props: {
+          open: true,
+          title: 'Test Modal',
+          children: textSnippet('Modal body content'),
+        },
+      });
+      const body = requiredInstance(container.querySelector('.cinder-modal__body'), HTMLElement);
+
+      setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 160, scrollTop: 0 });
+      OverflowFadeResizeObserver.instances[0]?.trigger();
+      flushOverflowFadeAnimationFrames();
+      expect(body.getAttribute('tabindex')).toBe('0');
+
+      setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+      OverflowFadeResizeObserver.instances[0]?.trigger();
+      flushOverflowFadeAnimationFrames();
+      expect(body.getAttribute('tabindex')).toBe('-1');
     } finally {
       cleanupOverflowFade();
     }

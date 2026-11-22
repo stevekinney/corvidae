@@ -116,6 +116,9 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(await view.findByRole('heading', { level: 1, name: 'Release notes' })).not.toBeNull();
     expect(view.queryByText(TASK_COPY.notFound.title)).toBeNull();
     expect(view.queryByText(TASK_COPY.loadFailed.title)).toBeNull();
+    const rail = view.getByRole('complementary');
+    expect(rail.textContent).toContain('Run ID');
+    expect(rail.querySelector('[aria-label="Copy Run ID"]')).not.toBeNull();
   });
 
   /**
@@ -190,7 +193,7 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       engineRun({
         status: 'failed',
         error:
-          'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503)"}',
+          'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests"}',
       }),
     );
   }
@@ -217,8 +220,9 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 3 tries'),
     );
     expect(block.textContent).toContain('Interborough tried 3 times in 3.4 s.');
-    // The engine records no activity text for the step, so no "while …" clause is made up (55b).
-    expect(block.textContent).not.toContain(' while ');
+    expect(block.textContent).toContain(
+      'GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests.',
+    );
   });
 
   test('that failed says where: at step 2 of 4 beside Failed, the failing step’s block, and the version it ran (rows 54y, 14t, 55b, 55d)', async () => {
@@ -241,7 +245,9 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     ).toBeTruthy();
     expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 2 tries');
     expect(block.textContent).toContain('Why it failed');
-    expect(block.textContent).toContain('GitHub did not answer (HTTP 503)');
+    expect(block.textContent).toContain(
+      'GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests.',
+    );
     // What the step said, never the error's JSON (row 55b).
     expect(block.textContent).not.toContain('{');
     // Row 14t: the block says it was not the person's doing, and carries its own actions.

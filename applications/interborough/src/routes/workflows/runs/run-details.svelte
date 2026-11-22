@@ -237,6 +237,11 @@
         definition: agentLabel(agentName, undefined),
       });
     }
+    list.push({
+      id: 'run-id',
+      term: RUN_PAGE_COPY.facts.runId,
+      definition: { type: 'identifier', value: runId },
+    });
     if (schedule !== undefined && scheduleRules.scheduleRow) {
       list.push({
         id: 'schedule',
@@ -294,6 +299,7 @@
         definition: {
           type: 'tags',
           tags: tagsFact.tags,
+          emptyLabel: 'None',
           systemTagCount: tagsFact.systemTagCount,
           ...(tagGate.disabled ? {} : { onAddTag: () => (editingTags = true) }),
         },
