@@ -56,9 +56,9 @@ describe('what the explain read answers (COR-2543)', () => {
       summary: explanation.summary,
       category: 'application',
       causeDetail: 'code UNKNOWN, kind tool',
-      step: 'charge-card (step 2)',
+      step: 'charge-card',
       tries: '3',
-      verdicts: ['sentinel-card stopped the run at step 2', 'pii redacted the step'],
+      verdicts: ['sentinel-card stopped the run', 'pii redacted the step'],
       remediation: explanation.remediation,
     });
   });
@@ -99,11 +99,11 @@ describe('what the explain read answers (COR-2543)', () => {
       })),
     }).verdicts;
     expect(lines).toEqual([
-      'tripwire stopped the run at step 1',
-      'block blocked the step at step 1',
-      'warn warned at step 1',
-      'sanitize sanitized the step at step 1',
-      'redact redacted the step at step 1',
+      'tripwire stopped the run',
+      'block blocked the step',
+      'warn warned',
+      'sanitize sanitized the step',
+      'redact redacted the step',
     ]);
   });
 });

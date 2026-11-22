@@ -106,12 +106,10 @@ test.describe('the failure explanation MCP App', () => {
     await expect(app.getByRole('region', { name: 'Details' })).toContainText(
       'code UNKNOWN, kind tool',
     );
-    await expect(app.getByRole('region', { name: 'Details' })).toContainText(
-      'charge-card (step 2)',
-    );
+    await expect(app.getByRole('region', { name: 'Details' })).toContainText('charge-card');
     await expect(app.getByRole('region', { name: 'Details' })).toContainText('3');
     await expect(app.getByRole('region', { name: 'Guardrails' })).toContainText(
-      'sentinel-card stopped the run at step 2',
+      'sentinel-card stopped the run',
     );
     await expect(app.getByRole('region', { name: 'What to do next' })).toContainText(
       FAILED_FIXTURE_RUN.remediation,

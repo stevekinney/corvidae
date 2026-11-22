@@ -73,7 +73,10 @@ export interface ExplanationModel {
   readonly category: string;
   /** The error's code and kind, as `code UNKNOWN, kind tool`; empty when it has neither. */
   readonly causeDetail: string;
-  /** The step the run failed at: its label and its place in the run (steps count from one here). */
+  /**
+   * The step the run failed at, by its label alone. The Bureau's index counts the engine's own
+   * steps, which is not the number a page gives a step of the file, so none is drawn from it.
+   */
   readonly step: string | null;
   /** How many times the engine tried that step, or `null` when it kept no history. */
   readonly tries: string | null;
@@ -102,13 +105,10 @@ export function buildExplanationModel(explanation: Explanation): ExplanationMode
     ]
       .filter((part) => part !== undefined)
       .join(', '),
-    step: step === null ? null : `${step.label} (step ${String(step.index + 1)})`,
+    step: step === null ? null : step.label,
     tries: explanation.tries === null ? null : String(explanation.tries),
     verdicts: explanation.verdicts.map(
-      (verdict) =>
-        `${verdict.name} ${OUTCOME_WORDS[verdict.outcome]}${
-          verdict.step === null ? '' : ` at step ${String(verdict.step + 1)}`
-        }`,
+      (verdict) => `${verdict.name} ${OUTCOME_WORDS[verdict.outcome]}`,
     ),
     remediation: explanation.remediation,
   };

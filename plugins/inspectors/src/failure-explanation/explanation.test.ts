@@ -38,12 +38,11 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
     expect(part(container, 'cause')?.textContent).toContain('code UNKNOWN, kind tool');
     expect(part(container, 'cause')?.querySelector('.cinder-badge')).not.toBeNull();
     const facts = container.querySelector('dl')?.textContent ?? '';
-    expect(facts).toContain('charge-card (step 2)');
+    expect(facts).toContain('charge-card');
+    expect(facts).not.toContain('step 2');
     expect(facts).toContain('Tries');
     expect(facts).toContain('3');
-    expect(part(container, 'verdicts')?.textContent).toContain(
-      'sentinel-card stopped the run at step 2',
-    );
+    expect(part(container, 'verdicts')?.textContent).toContain('sentinel-card stopped the run');
     expect(part(container, 'remediation')?.textContent).toBe(answer.remediation);
   });
 

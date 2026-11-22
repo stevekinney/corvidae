@@ -106,10 +106,10 @@ async function start(): Promise<void> {
     void read(id);
   };
   // The result that opened the page is its first render: it is the answer for the run it was given,
-  // so a read of that run still in flight is dropped for it.
+  // so a read of that run still in flight is dropped for it. A result the page cannot read is no
+  // answer, and leaves the read it is waiting on to say what it says.
   app.ontoolresult = (result) => {
-    generation += 1;
-    adopt(result);
+    if (adopt(result)) generation += 1;
   };
   // Closing the page drops what is in flight: nothing was written, so nothing is left behind.
   app.onteardown = async () => {
