@@ -21,7 +21,7 @@ import {
 } from '../lib/bureau-notifications.ts';
 import { queryKeys } from '../lib/query.ts';
 import { router } from '../lib/router.svelte.ts';
-import { REVIEW_POLL_MILLISECONDS, bureauReviewsQuery } from '../routes/reviews/reviews-data.ts';
+import { REVIEW_POLL_MILLISECONDS, waitingReviewsQuery } from '../routes/reviews/reviews-data.ts';
 import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
 import { buildNotificationEntries } from './notification-items.ts';
 import { loadChats, loadMissedFires, loadScheduleNames } from './notification-sources.ts';
@@ -43,7 +43,9 @@ export function connectNotificationFeed(
   store: NotificationStore,
   options: NotificationFeedOptions = {},
 ): void {
-  const reviews = bureauReviewsQuery();
+  // Reviews itself and the sidebar already observe this cache. Keep the bell attached there, but
+  // do not give a just-failed arrival a second mount-triggered fetch before the next poll or retry.
+  const reviews = waitingReviewsQuery({ enabled: () => router.pathname !== '/reviews' });
   const bureauLive = useBureauEventsLive();
   // Read in the option getters, so a query goes back to its timer when the feed is lost.
   // The chats follow `session.created`, `session.saved` and `session.deleted`.
@@ -155,7 +157,7 @@ export function connectNotificationFeed(
   $effect(() => {
     store.setActivity(
       buildNotificationEntries({
-        reviews: reviews.data ?? [],
+        reviews: reviews.data?.filter((review) => review.source === 'bureau') ?? [],
         notifications: notifications.data ?? [],
         chats: chats.data ?? new Map(),
         scheduleNames: scheduleNames.data ?? new Map(),

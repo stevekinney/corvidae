@@ -130,7 +130,7 @@ const DISPOSITION_LABEL: Readonly<Record<TaskAttemptDisposition, string>> = {
   requeued: 'Requeued',
   retryExhausted: 'Retry exhausted',
   resolved: 'Resolved',
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
   deadLettered: 'Dead lettered',
 };
 
@@ -344,7 +344,7 @@ export function describeCancellation(task: TaskLedgerDetail): CancellationEviden
       variant: 'warning',
     },
     'cancelled-unacknowledged': {
-      label: 'Cancelled, no worker acknowledgement recorded',
+      label: 'Canceled, no worker acknowledgement recorded',
       variant: 'warning',
     },
   };

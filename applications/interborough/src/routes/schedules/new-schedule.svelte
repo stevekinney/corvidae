@@ -370,7 +370,7 @@
   /** Rejects when `signal` aborts, so a Cancel returns the form even though a request cannot be recalled. */
   function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const stop = (): void => reject(new DOMException('Cancelled', 'AbortError'));
+      const stop = (): void => reject(new DOMException('Canceled', 'AbortError'));
       if (signal.aborted) {
         stop();
         return;

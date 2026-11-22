@@ -750,6 +750,7 @@ describe('a run a schedule started (COR-2424, rows 55i, 55j, 55m)', () => {
 
     const rail = await view.findByRole('complementary');
     await waitFor(() => expect(rail.textContent).toContain(RUN_DETAIL_COPY.schedule));
+    expect(rail.textContent).not.toContain(RUN_PAGE_COPY.facts.tags);
     await waitFor(() =>
       expect(rail.textContent).toContain(
         'This was the schedule’s last run. It has missed 4 occurrences since.',

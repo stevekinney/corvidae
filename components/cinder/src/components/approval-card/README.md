@@ -41,6 +41,8 @@ Presentational human-in-the-loop approval surface for reviewing a tool operation
 
 `layout="row"` is the one approval row used in a chat transcript and beneath a tool call in a step rail. It sits on a neutral raised surface, never a warning fill, and the risk glyph carries the alert.
 
+The optional `decisionReview` snippet adds a review action to the row. It receives the guarded Approve or Deny callback and whether decisions are disabled. That callback submits the same note and approval scope as the row’s buttons.
+
 ```svelte
 <script lang="ts">
   import { ApprovalCard } from '@lostgradient/cinder';
@@ -178,6 +180,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `view` | `"fields"` \| `"json"` | no | `"fields"` | Which view of the arguments the card and the detail page show, Fields or JSON; the row and decision layouts write the input as rows in the open. Bindable, so one switch can govern every payload on a page. Default `fields`. |
 | `why` | `string` | no | — | Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". |
 | `context` | `(opaque)` | no | — | A line of context written above the question, such as "Test chat, this runs for real". Not expressible in JSON Schema; see the component types for the signature. |
+| `decisionReview` | `(opaque)` | no | — | An additional row-layout review control. It shares the row’s note, scope and guarded submit. Not expressible in JSON Schema; see the component types for the signature. |
 | `onAskAgain` | `(opaque)` | no | — | Requests a fresh approval after this one has expired in the decision layout. Not expressible in JSON Schema; see the component types for the signature. |
 | `onResolve` | `(opaque)` | no | — | Called for approve, approve-with-edits, and deny with the complete resolution payload. Not expressible in JSON Schema; see the component types for the signature. |
 

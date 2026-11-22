@@ -381,6 +381,12 @@
   });
 </script>
 
+{#snippet missingSourceActions(context: ChatRowContext)}
+  {#if sourcesByMessageId.get(context.message.id)?.length === 0}
+    <span data-testid="chat-missing-source-notice">Sources unavailable</span>
+  {/if}
+{/snippet}
+
 {#snippet externalApprovalStatus(context: ChatRowContext)}
   {#if context.message.role === 'assistant' && setup.externalApproval}
     <ApprovalCard
@@ -432,6 +438,9 @@
         emptyTitle="Start a conversation"
         emptyDescription="Ask the agent about orders, refunds and the ledger."
         {sourcesByMessageId}
+        {...stressCase?.scenario === 'missing-source'
+          ? { messageActions: missingSourceActions }
+          : {}}
         {...setup.regenerate ? { onRegenerate: () => {} } : {}}
         onRetryConnection={(messageId) => {
           recordTurnAction('retry-now', messageId);
