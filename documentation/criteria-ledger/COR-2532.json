@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2532",
+  "branch": "chef/cor-2532-explain-failure",
+  "checkedAt": "e645b9a1d632c237267bc7a2c2084214614f866b",
+  "briefVersion": "f5788e2b71af",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "tasks-explain-operation.ts: bureau.tasks.explain takes runId and answers {summary, cause:{category,code,kind}, step, tries, verdicts, remediation, nextCommands}. tasks-explain-operation.test.ts reads a failed agent run (model step and tool step) and a failed workflow instance (real durable engine) and asserts the exact key set. Decisions: category for an agent run is classifyAgentRunFailure(finishReason, errorKind) because an agent run ends as a completed engine run (the engine holds no category for it); a workflow instance's is the engine's failureCategory. tries is null when the engine timeline holds no failed entry (an agent run that ended on a failed result), and a count of attempts at the last failed step otherwise. code and kind are null for a workflow instance."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "tasks-explain-operation.test.ts 'AC2': two explain calls for one settled run deep-equal, and the failing provider's call count is unchanged across both; the workflow test repeats the equality. The module run-failure-explanation.ts reads no clock and calls no model."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "run-failure-explanation.ts: summary is one sentence from a clause per category and a clause per error kind over the step label. run-failure-explanation.test.ts 'AC3' covers every category (five plus null) crossed with every kind (seven plus null plus an unknown kind), asserts one sentence naming the step, and that 48 distinct summaries result."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "run-failure-verdicts.ts reads run.tripwire and run.guardrail records from the audit trail (name, kind, outcome, step) for the run and, for a workflow instance, for its step tasks. tasks-explain-operation.test.ts: a real tripwire run lists {sentinel-FORBIDDEN, tripwire, tripwire}, a real validate-mode guardrail that warned before a failing run lists {sentinel-SUSPECT, guardrail, warn}, and a failed workflow instance whose agent step tripped lists the step's tripwire. run-failure-verdicts.test.ts covers ordering, malformed records, paging past 500 records and 100 step tasks, and no trail."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "nextCommands is ['interborough runs get --kind task <id>'] or ['interborough runs get --kind workflow <id>'] (identifier shell-quoted when needed); run-failure-explanation.test.ts 'AC5'. The command exists on main: applications/interborough/src/host/cli-runs.ts getOrInspect handles `runs get` with --kind task|workflow (cli-runs.test.ts 'gets and inspects both kinds'). No runs retry entry, per the criterion."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "tasks-explain-operation.ts runNotFailed: Unprocessable with data.reason run-not-failed (the code and reason bureau.workflows.runs.retry answers for a run that has not failed) and a remediation. tasks-explain-operation.test.ts covers a completed agent run, a running agent run and a completed workflow instance."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "mcpExposable: true and no write effect (destructive false). The wire-golden files (authenticated and local openrpc), the MCP golden snapshot, create-bureau-handler.test.ts and mcp-mount.test.ts (twenty-four tools) list it; wire-golden, mcp-wire-golden, mcp-mount, workspace-privacy and create-bureau-handler tests pass (294 tests across 11 files). packages/bureau/README.md (MCP tool table and prose) and documentation/external-control-plane.md list it. Also registered: operation-map.ts, workspace-conformance and projection inventories, Interborough scope-gate.ts (runs:read) and the regenerated bureau client."
+    }
+  ]
+}
