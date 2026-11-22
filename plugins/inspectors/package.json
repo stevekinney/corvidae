@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/plugin-inspectors",
   "private": true,
-  "description": "An Interborough plugin that contributes the run inspector, pending-review, workflow revision review and schedule editor interface panels, served as ui:// resources.",
+  "description": "An Interborough plugin that contributes the run inspector, pending-review, workflow revision review, schedule editor and run timeline interface panels, served as ui:// resources.",
   "type": "module",
   "exports": {
     ".": "./src/plugin.ts"

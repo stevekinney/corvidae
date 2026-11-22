@@ -5025,7 +5025,7 @@
       }
     },
     {
-      "description": "Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s `label`, `operationType`, `status`, `timestamp` (its start, in epoch milliseconds), `duration` (milliseconds, absent while it runs) and `tries` (how many attempts the engine made at the step, this one included). `runId` is an agent run’s task id or a workflow instance’s id, and `kind` says which. No step’s input or output is returned, only names and timings. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`. A run of more than 1000 entries is cut and `truncated` is true.",
+      "description": "Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s `label`, `operationType`, `status`, `timestamp` (its start, in epoch milliseconds), `duration` (milliseconds, absent while it runs) and `tries` (how many attempts the engine made at the step, this one included). `runId` is an agent run’s task id or a workflow instance’s id, and `kind` says which; `runStatus` says where the run stands (`pending`, `running`, `suspended`, `completed`, `failed`, `cancelled` or `timed-out`), so a reader can tell a step the run has left from one it is still in. No step’s input or output is returned, only names and timings. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`. A run of more than 1000 entries is cut and `truncated` is true.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -5132,6 +5132,19 @@
             "runId": {
               "type": "string"
             },
+            "runStatus": {
+              "description": "Where the run stands as the timeline is read. A run that is `completed`, `failed`, `cancelled` or `timed-out` has finished, so no step of it is still going, whatever its last entry says.",
+              "enum": [
+                "pending",
+                "running",
+                "suspended",
+                "completed",
+                "failed",
+                "cancelled",
+                "timed-out"
+              ],
+              "type": "string"
+            },
             "truncated": {
               "description": "True when the run has more than 1000 entries.",
               "type": "boolean"
@@ -5140,6 +5153,7 @@
           "required": [
             "runId",
             "kind",
+            "runStatus",
             "entries",
             "truncated"
           ],
