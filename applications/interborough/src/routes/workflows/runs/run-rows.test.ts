@@ -5,7 +5,6 @@ import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
 import {
   buildRunRows,
-  FAILED_STEP_LIMIT,
   failedStepName,
   FILTER_LABEL_LIMIT,
   filterLabelOf,
@@ -352,6 +351,9 @@ describe('filterRunRows', () => {
     expect(filterRunRows(rows, { search: 'nothing like it' })).toEqual([]);
   });
 });
+
+/** How many characters of a step name the Bureau compares. */
+const FAILED_STEP_LIMIT = 200;
 
 describe('the failure filters (COR-2535)', () => {
   const rows = buildRunRows({

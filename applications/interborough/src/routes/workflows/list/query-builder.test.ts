@@ -5,14 +5,12 @@ import {
   attributeFiltersToInvocationConditions,
   attributeFiltersToQueryConditionRows,
   createEmptyQueryConditionRow,
-  FAILED_STEP_FIELD,
   invocationConditionsToAttributeFilters,
   invocationConditionsToFailureFilters,
   invocationConditionsToRawPreview,
   QUERY_FAILURE_FIELD_OPTIONS,
   queryConditionRowsToAttributeFilters,
   queryConditionRowsToRawPreview,
-  RETRYING_FIELD,
   type QueryConditionRow,
 } from './query-builder.ts';
 
@@ -23,6 +21,10 @@ function row(
 ): QueryConditionRow {
   return { id: createEmptyQueryConditionRow().id, key, operator, value };
 }
+
+/** The values of the two built-in fields, which no search attribute's name starts with. */
+const FAILED_STEP_FIELD = '@failedStep';
+const RETRYING_FIELD = '@retrying';
 
 describe('the built-in fields, Failed at step and Retrying (COR-2535)', () => {
   const condition = (field: string, operator: string, value: string) => ({

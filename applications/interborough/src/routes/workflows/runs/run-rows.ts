@@ -280,7 +280,7 @@ export type RunFilter = {
 };
 
 /** How many characters of a step name the Bureau compares, and so how many the address keeps. */
-export const FAILED_STEP_LIMIT = 200;
+const FAILED_STEP_LIMIT = 200;
 
 /**
  * A step name cut to what the Bureau compares, never in the middle of a surrogate pair, so the

@@ -190,8 +190,8 @@ export function queryConditionRowsToRawPreview(
  * Weft's list itself (`failedStep`, `retrying`). The `@` in front keeps them apart from a search
  * attribute that has the same name, which no attribute's name starts with.
  */
-export const FAILED_STEP_FIELD = '@failedStep';
-export const RETRYING_FIELD = '@retrying';
+const FAILED_STEP_FIELD = '@failedStep';
+const RETRYING_FIELD = '@retrying';
 
 /** What the two built-in fields hold, as the list's own filter has them. */
 export interface QueryFailureFilters {
