@@ -43,6 +43,8 @@ export const SPECIFICATION_WEIGHTS: Readonly<Record<string, number>> = {
   'chat-states.spec.ts': 40,
   'chat-availability.spec.ts': 40,
   'checks-states.spec.ts': 60,
+  // Fourteen states at four widths each, every one reached from a fresh mount of the panel.
+  'schedule-editor-states.spec.ts': 110,
 };
 
 /** The weight of a specification the table does not list. */

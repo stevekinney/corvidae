@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./run-comparison": "./src/run-comparison.ts",
+    "./schedule-form": "./src/schedule-form.ts",
     "./step-waterfall": "./src/step-waterfall.ts",
     "./testing": "./src/testing/index.ts"
   },

@@ -43,8 +43,6 @@ test.describe('a panel placed on a run’s page', () => {
 
   test('shows the run inspector once it has loaded', async ({ page, request }) => {
     const taskId = await openRun(page, request, 'run-panels-ready');
-    // A run's page mounts every run panel the plugin offers (the run comparison among them), so the
-    // inspector's section is picked by its app.
     const section = page.locator(
       '[data-section="plugin-panel"][data-plugin="inspectors"][data-app="run-inspector"]',
     );
@@ -67,8 +65,6 @@ test.describe('a panel placed on a run’s page', () => {
       await route.continue();
     });
     const taskId = await openRun(page, request, 'run-panels-loading');
-    // A run's page mounts every run panel the plugin offers (the run comparison among them), so the
-    // inspector's section is picked by its app.
     const section = page.locator(
       '[data-section="plugin-panel"][data-plugin="inspectors"][data-app="run-inspector"]',
     );
@@ -106,8 +102,6 @@ test.describe('a panel placed on a run’s page', () => {
       reason: 'the test returns a failed inspector resource to capture the error state',
     });
     const taskId = await openRun(page, request, 'run-panels-failed');
-    // A run's page mounts every run panel the plugin offers (the run comparison among them), so the
-    // inspector's section is picked by its app.
     const section = page.locator(
       '[data-section="plugin-panel"][data-plugin="inspectors"][data-app="run-inspector"]',
     );
