@@ -1,7 +1,8 @@
 /**
  * The browser's view of what needs attention: `bureau.health.attention`, which lists the system
  * problems that need a person now (an alert rule firing, a schedule that missed runs, a hook whose
- * delivery failed, a plugin that did not load, a worker that stopped answering, no model provider connected). Reviews waiting on a
+ * delivery failed, a plugin that did not load, a worker that stopped answering, a run that stalled,
+ * loops or cost more than the spend threshold, no model provider connected). Reviews waiting on a
  * person are never on it: they are Needs you, which the reviews count reads.
  *
  * The sidebar's Health dot reads only how many there are. The notification bell reads the rules
@@ -12,24 +13,15 @@ import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-/**
- * The kinds of run the Bureau lists (a stalled run, a looping run, and a run over the spend
- * threshold) that this build has no row for yet. The Health dot counts them; no row says them.
- */
-type RunAttentionKind = 'run-stalled' | 'run-looping' | 'run-overspending';
-
 /** One problem that needs attention and that this build words, as `bureau.health.attention` lists it. */
 export type AttentionItem =
-  | Exclude<WireAttentionItem, { readonly kind: 'alert' | RunAttentionKind }>
+  | Exclude<WireAttentionItem, { readonly kind: 'alert' }>
   // The metric is a string: a rule a newer Bureau watches still reaches the bell.
   | (Omit<Extract<WireAttentionItem, { readonly kind: 'alert' }>, 'metric'> & {
       readonly metric: string;
     });
 
 type WireAttentionItem = BureauOutput<'bureau.health.attention'>['items'][number];
-
-/** Any item the Bureau lists, including the kinds this build has no row for. */
-type ListedAttentionItem = AttentionItem | Extract<WireAttentionItem, { kind: RunAttentionKind }>;
 
 /** The kinds of item this build words. A Bureau newer than the browser may list one it does not know. */
 const KNOWN_ATTENTION_KINDS: ReadonlySet<string> = new Set([
@@ -39,13 +31,14 @@ const KNOWN_ATTENTION_KINDS: ReadonlySet<string> = new Set([
   'plugin-not-loaded',
   'no-provider',
   'worker-disconnected',
+  'run-stalled',
+  'run-looping',
+  'run-overspending',
 ]);
 
 /** The items of a kind this build knows: a row has to say what to look at, so any other is left out. */
-export function knownAttentionItems(
-  items: readonly ListedAttentionItem[],
-): readonly AttentionItem[] {
-  return items.filter((item): item is AttentionItem => KNOWN_ATTENTION_KINDS.has(item.kind));
+export function knownAttentionItems(items: readonly AttentionItem[]): readonly AttentionItem[] {
+  return items.filter((item) => KNOWN_ATTENTION_KINDS.has(item.kind));
 }
 
 /**

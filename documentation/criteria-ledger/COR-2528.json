@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2528",
+  "branch": "chef/cor-2528-health-run-rows",
+  "checkedAt": "c16d7095351d071e511b0db5a0fcc282736d53af",
+  "briefVersion": "4f7fb514bd2a",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "attention-rows tests unchanged"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "badge baselines for narrow-actions and wrap-meta committed from run 45056739642"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The Needs attention ToggleFacet is menuOnly (run-list.svelte), like retrying and failedStep: the filter is kept in the address and served by the Bureau, and an applied filter shows as a removable chip. The pressed-toggle treatment is main's (dot, no check). run-list.test.ts and run-list-attention.test.ts open the filter from the Filter menu (34 pass); run-attention-states.spec.ts does the same at 1280. runs-states.spec.ts untouched; the browser specs were not run on this host."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "unchanged"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-main",
+      "evidence": "unchanged"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "run-attention-states.spec.ts finds the stalled run through the Filter menu at 1280 and the address at 375"
+    }
+  ]
+}

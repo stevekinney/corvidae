@@ -143,9 +143,19 @@
     flex: 0 1 auto;
   }
 
+  /* A mark of several badges (a run's states) is wider than a word: where it does not fit beside
+   * the title it drops whole to a line under it, so the title keeps the row's width instead of
+   * being crushed to a few letters. A single badge never wraps, as above. */
+  .cinder-stacked-list-item__title-row:has(> .cinder-stacked-list-item__badge > :nth-child(2)) {
+    flex-wrap: wrap;
+    row-gap: var(--cinder-space-1);
+  }
+
+  /* The mark is one badge or several side by side (a run's states): the gap spaces them. */
   .cinder-stacked-list-item__badge {
     display: inline-flex;
     flex: none;
+    gap: var(--cinder-space-1);
     white-space: nowrap;
   }
 
@@ -561,6 +571,27 @@
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__trailing {
     margin-inline-start: var(--cinder-space-3);
     align-self: var(--cinder-stacked-list-item-trailing-align, center);
+  }
+
+  /*
+   * A narrow two-line row (the row's own width, 448px or less) that draws its actions as buttons
+   * gives them a line of their own under the text, at the start of the text's column, instead of
+   * a column beside it that would leave the title and the meta a few words wide. The title then
+   * has the row's width and wraps to its two lines before it is cut. A phone's one menu button
+   * (`--collapsed-actions`), a trailing glyph and the full-width buttons (`--phone-buttons`) are
+   * not this class, and a row's trailing control that is not an action (a switch) stays beside.
+   */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--action-buttons:not(
+        .cinder-stacked-list-item--single-action.cinder-stacked-list-item--status-leading
+      )
+      .cinder-stacked-list-item__trailing {
+      grid-row: 4;
+      grid-column: title / -1;
+      align-self: start;
+      margin-inline-start: 0;
+      margin-block-start: var(--cinder-space-2);
+    }
   }
 
   /* The chat list's exception: the pane is too narrow for a leading column, so line one is the
