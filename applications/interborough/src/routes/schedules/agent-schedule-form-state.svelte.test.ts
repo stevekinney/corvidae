@@ -86,3 +86,16 @@ describe('AgentScheduleFormState description', () => {
     expect(form.isValid).toBe(false);
   });
 });
+
+describe('AgentScheduleFormState and the schedule editor panel (COR-2545)', () => {
+  // What an update sends, and the limit a description is held to, are decided once, in the module
+  // the schedule editor panel imports too, so the two forms cannot disagree about either.
+  test('takes what an update sends and the description limit from the shared schedule form state', async () => {
+    const source = await Bun.file(
+      new URL('./agent-schedule-form-state.svelte.ts', import.meta.url),
+    ).text();
+    expect(source).toContain('@lostgradient/interborough-plugin/schedule-form');
+    expect(source).toContain('scheduleUpdateFields');
+    expect(source).toContain('SCHEDULE_DESCRIPTION_LIMIT');
+  });
+});

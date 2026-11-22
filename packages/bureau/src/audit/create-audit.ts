@@ -121,6 +121,9 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   // COR-2420: a routing decision's `decision.made` record names the supervisor step that asked it;
   // the runs the step started take their ids from it. An id, never content.
   'routingId',
+  // COR-2545: a schedule write made through a host panel names the panel's `ui://` URI, a fixed
+  // identifier the plugin declared, so the log can say the owner changed it from the schedule editor.
+  'panelUri',
 ];
 
 /**
@@ -198,6 +201,7 @@ const SHARED_CONFIGURATION_EVENTS: Readonly<Record<string, string>> = {
   'schedule.created': 'schedule:',
   'schedule.paused': 'schedule:',
   'schedule.resumed': 'schedule:',
+  'schedule.updated': 'schedule:',
   'schedule.cancelled': 'schedule:',
   'settings.changed': 'settings',
   'provider.connected': 'provider:',

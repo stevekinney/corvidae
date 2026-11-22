@@ -1,0 +1,49 @@
+{
+  "issue": "COR-2523",
+  "branch": "chef/cli-faults-and-dry-run",
+  "checkedAt": "158f64d897ff36bf260c091fcf2a53a2b283e248",
+  "briefVersion": "66e4eabc2637",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "cli-destructive.test.ts: each listed command plus memory forget and api sends dryRun true and changes nothing; api refuses an operation whose input has no dryRun (exit 2)"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "previews for providers disconnect, tool-sources remove, plugins disable, schedules pause read the target, print wouldSend and previewedBy cli, send nothing. DECISION: the CLI has no dedicated not-found exit code, so a missing target exits 1 (as a 404 read does); coordinator may overrule"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "the seven irreversible commands prompt on a terminal, refuse with exit 2 off a terminal or with --no-input, and change nothing; tested per command"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "the five unconfirmed commands run with non-terminal input and no --yes (cli-destructive.test.ts)"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "dry-run json prints the server answer unchanged; runs cancel sends dryRun true to bureau.tasks.cancel and weft.workflows.cancel"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "reviews no longer declares --yes; test asserts --yes is a usage error"
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "cli-destructive.test.ts enumerates CLI_OPERATION_MAPPINGS against the Bureau and Weft catalogs; seen to fail when plugins lost dry-run; also asserts scenarios cover every table entry"
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "README Previewing and confirming destructive commands section lists both flags and the confirming commands"
+    }
+  ]
+}

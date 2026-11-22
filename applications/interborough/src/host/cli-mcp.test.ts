@@ -56,7 +56,7 @@ describe('interborough mcp', () => {
     });
     expect(result.exitCode).toBe(0);
     const envelope = JSON.parse(result.stdout) as { schemaVersion: number; data: unknown };
-    expect(envelope.schemaVersion).toBe(1);
+    expect(envelope.schemaVersion).toBe(2);
     expect(envelope.data).toEqual(
       JSON.parse(JSON.stringify(mcpConnection('http://127.0.0.1:4310'))),
     );

@@ -29,9 +29,9 @@ A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.t
 
 - `mergeable`: GitHub's mergeability stayed `UNKNOWN`; launch it again shortly.
 - `issue`: merged, but a Linear write failed for the named issue; repair it with `bun scripts/chef/linear.ts comment <ID> --file <md>` or `bun scripts/chef/linear.ts state <ID> Done`, and do not relaunch.
-- A delivery removes its worktree, or prints `worktree kept: <why>`, logs the head in `tmp/chef/delivered-heads.log`, sweeps; close batches with `worktree.ts stale --remove`.
+- A delivery removes its worktree or prints `worktree kept: <why>`; close batches with `worktree.ts stale --remove`.
 
-A red `main` is a warning line in the report (`mainHealthWarning` in the JSON), never a refusal.
+A red `main` is a warning (`mainHealthWarning`), never a refusal. A moved base needs no new evidence run; only a `conflict` refuses it.
 
 ## Triaging a failed gate
 

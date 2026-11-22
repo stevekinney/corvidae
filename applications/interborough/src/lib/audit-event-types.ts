@@ -28,6 +28,7 @@ export const AUDIT_EVENT_KINDS: ReadonlyMap<string, AuditEventKind> = new Map<
   ['run.error', 'other'],
   ['schedule.fired', 'started'],
   ['schedule.created', 'other'],
+  ['schedule.updated', 'edited'],
   ['schedule.paused', 'edited'],
   ['schedule.resumed', 'edited'],
   ['schedule.cancelled', 'deleted'],
