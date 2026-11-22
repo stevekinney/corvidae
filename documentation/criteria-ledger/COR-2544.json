@@ -1,7 +1,7 @@
 {
   "issue": "COR-2544",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "2708e61e1b35e5ba5d8244a4d3e3ca4a28f6a6c9",
+  "checkedAt": "5aa4b9252cdc5e0d12e1394a958d2bf47691e564",
   "briefVersion": "bdf0e93b22ae",
   "status": "READY",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs, refined by the design review of #1219: a card mounts only when it has something to say. run-panel-scope.ts holds the rules; run-panels.test.ts and run-detail-engine-runs.test.ts test each mount: a fork gets the run comparison and neither the run inspector nor the schedule editor; a workflow instance that is not a fork gets none of the three; an agent run gets the run inspector and the schedule editor and no comparison; a panel with no rule (the run timeline among them) shows on every run, and the Inspector spec asserts per panel (data-app) so the timeline never changes a count. Each panel is given { runId, runKind: 'workflow' } on a workflow run and { taskId } on an agent run. The host's run panel frame has no duplicate card title and no 'From the plugin' line (region named by aria-label)."
+      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs, refined by the design review of #1219: a card mounts only when it has something to say. run-panel-scope.ts holds the rules; run-panels.test.ts and run-detail-engine-runs.test.ts test each mount: a fork gets the run comparison and neither the run inspector nor the schedule editor; a workflow instance that is not a fork gets none of the three; an agent run gets the run inspector and the schedule editor and no comparison; a panel with no rule (the run timeline among them) shows on every run, the run placement's when: 'failed' (#1225) and the scope table are one mounting rule in run-panels.svelte, both required (run-panels-failed-only.test.ts: a failed fork shows the comparison and the failure explanation, a fork that did not fail only the comparison, an agent run never the comparison), and the Inspector spec asserts per panel (data-app) so the timeline never changes a count. Each panel is given { runId, runKind: 'workflow' } on a workflow run and { taskId } on an agent run. The host's run panel frame has no duplicate card title and no 'From the plugin' line (region named by aria-label)."
     },
     {
       "id": "AC4",
