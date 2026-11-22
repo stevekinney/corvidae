@@ -16,6 +16,7 @@
  * editor, which can edit any value.
  */
 import { A2A_COPY } from '../../app/copy/a2a.ts';
+import { COST_COPY } from '../../app/copy/cost.ts';
 import { DATA_RETENTION_COPY } from '../../app/copy/settings.ts';
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
@@ -156,6 +157,7 @@ export const SETTING_GROUPS = [
   { id: 'logs', label: 'Logs' },
   { id: 'sessionInput', label: 'Session input' },
   { id: 'children', label: 'Children' },
+  { id: 'runs', label: 'Runs' },
   { id: 'engine', label: 'Workflows' },
   { id: 'durability', label: 'Durability' },
   { id: 'a2a', label: 'Agent2Agent' },
@@ -188,6 +190,7 @@ export const DURATION_SETTINGS: Readonly<
 /** The word after a number field's value, for the settings that count something (`4 runs`). */
 export const SETTING_UNITS: Readonly<Record<string, string>> = {
   'engine.maxConcurrentRuns': 'runs',
+  'runs.spendThresholdUsd': COST_COPY.threshold.unit,
 };
 
 /** The one setting the Allowed models section holds, and so the General section does not. */
@@ -273,6 +276,7 @@ const SETTING_LABELS: Readonly<Record<string, string>> = {
   'a2a.enabled': A2A_COPY.enabled.label,
   'a2a.agents': A2A_COPY.agents.label,
   'a2a.push.enabled': A2A_COPY.pushNotifications.label,
+  'runs.spendThresholdUsd': COST_COPY.threshold.label,
   ...DATA_RETENTION_COPY.labels,
 };
 
