@@ -79,9 +79,11 @@ export type TaskView = Omit<
    */
   readonly usage?: BureauOutput<'bureau.tasks.get'>['usage'] | undefined;
   /**
-   * What asks for attention on a task that has not ended (COR-2526): `stalled` for a run that is
-   * alive but making no progress outside a declared wait, `looping` for a run whose toolbox
-   * reported a loop. Absent from a Bureau that does not report it, which reads as none.
+   * What asks for attention on a task (COR-2526): `stalled` for a run that is alive but making no
+   * progress outside a declared wait, `looping` for a run whose toolbox reported a loop, both only
+   * while the task has not ended; and `overspending` (COR-2527) for a run a step found over the
+   * workspace's spend threshold, which stays after the run settles. Absent from a Bureau that does
+   * not report it, which reads as none.
    */
   readonly attention?: BureauOutput<'bureau.tasks.get'>['attention'] | undefined;
   /** The instant (ISO 8601) the Bureau saw the run stall, while `attention` holds `stalled`. */

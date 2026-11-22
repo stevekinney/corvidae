@@ -317,6 +317,26 @@ describe('StackedListItem metaLines', () => {
     ).toBe(false);
   });
 
+  test('a row with a wrapping line two and a detail line keeps both, the detail in its own grid row below', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        status: textSnippet('Running'),
+        title: textSnippet('Run'),
+        meta: textSnippet(retrying),
+        metaLines: 2,
+        detail: textSnippet('$0.42'),
+      },
+    });
+    const meta = container.querySelector('.cinder-stacked-list-item__meta');
+    const detail = container.querySelector('.cinder-stacked-list-item__detail');
+    expect(meta?.getAttribute('data-cinder-meta-lines')).toBe('2');
+    expect(detail?.textContent).toContain('$0.42');
+    // The detail line has its own `details` grid row, so a second line of line two pushes it down
+    // instead of sharing a row with it.
+    expect(stylesheet).toMatch(/__detail\s*\{[^}]*grid-row:\s*details/);
+    expect(meta?.closest('.cinder-stacked-list-item__line-two')).not.toBe(detail);
+  });
+
   test('the wrap is two clamped lines on a phone: by the row width, or by the window for a viewport row', () => {
     const block =
       /@container cinder-stacked-list-item \(max-width: 639\.98px\) \{\s*\.cinder-stacked-list-item--lines:not\(\[data-cinder-phone-width='viewport'\]\)\s*\.cinder-stacked-list-item__meta\[data-cinder-meta-lines='2'\] \{([^}]*)\}/.exec(

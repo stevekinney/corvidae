@@ -57,6 +57,13 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
     reads: 'literal',
   },
   {
+    // COR-2527: read after each step of a run, and when a run settles, by the run bookkeeping.
+    name: 'run spend threshold',
+    module: 'bureau-seams/run-bookkeeping.ts',
+    keys: ['runs.spendThresholdUsd'],
+    reads: 'literal',
+  },
+  {
     name: 'compaction summarizer',
     module: 'models/create-models.ts',
     keys: ['context.summarizerModel'],
