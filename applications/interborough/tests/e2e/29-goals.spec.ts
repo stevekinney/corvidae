@@ -12,6 +12,7 @@ import type { Page } from '@playwright/test';
 
 import { GOALS_COPY } from '../../src/app/copy/goals.ts';
 import { expect, test } from './fixtures.ts';
+import { pressChord } from './shortcut-support.ts';
 import { bureauCall } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -66,12 +67,11 @@ test('opens from the sidebar and from g then l, and lists the goal in the status
     'Done',
   );
 
-  // Press the shortcut once the departure view is ready. Chat can still be opening a transcript
-  // after its list heading renders, holding browser input longer than the chord window.
+  // The chord is typed at the times a person presses it, so a page still painting cannot spend the
+  // chord window between its two keys (`shortcut-support.ts`).
   await page.goto('/agents');
   await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
-  await page.keyboard.press('g');
-  await page.keyboard.press('l');
+  await pressChord(page, 'l');
   await expect(page).toHaveURL(/\/goals$/);
 });
 

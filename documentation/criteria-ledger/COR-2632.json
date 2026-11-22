@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2632",
+  "branch": "chef/e2e-shared-failures",
+  "checkedAt": "7755f966244bc6313b871197c7df165cf156c23a",
+  "briefVersion": "f99bf9985e6a",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "8d9aa0930c names it: scheduledRun's wait for triage-inbox's 8:00 fire (Oct 23, Oct 24). Weft counts an occurrence its poll reaches more than poll+1 s late as missed, and the running offset clock passed that grace during an event-loop stall, so no run started. CI logs started 4 and 5 seed hosts (Oct 23, Oct 24 last) against 14 on a pass."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "fireScheduleAt holds the clock at the fire so the step settles; every step is told to onStep and printed by e2e-server as 'showcase: <step>', and a failing step rejects with 'The sample world's step \"<name>\" failed: ...' (seed slow test). Boundary: a future hang still cannot exit before Playwright's 120 s window (hang guard unchanged by decision); the log names its step instead."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "sample-world-host.slow.test.ts moves the offset clock's real clock 2.5 s past the fire before the poll: running clock misses the fire (the hang), held clock starts it; with the hold removed the second test waited out the 120 s guard. Full seed with a 2.5 s stall injected hung on 'Oct 23' before the fix and settled after; 00-showcase.spec.ts 89 passed on the fixed server."
+    }
+  ]
+}
