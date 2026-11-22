@@ -165,6 +165,8 @@
   }
 
   function handleMouseLeave() {
+    // A touch tap can synthesize mouseleave while the trigger keeps focus.
+    if (anchorElement?.contains(document.activeElement)) return;
     hide();
   }
 

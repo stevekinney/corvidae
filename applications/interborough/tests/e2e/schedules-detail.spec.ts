@@ -207,6 +207,14 @@ test.describe('the workflow-version explanation on a coarse phone', () => {
       await expect(page.getByRole('tooltip')).toHaveText(
         'Scheduled runs start on the latest version of the workflow. A run that is already going keeps the version it started on.',
       );
+      await captureForDesignReview(page, {
+        route: '/schedules/:schedule',
+        state: 'workflow version help after touch',
+        source: SOURCE,
+      });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await expect(info).toBeFocused();
     });
   }
 });
