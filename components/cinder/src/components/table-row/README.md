@@ -13,6 +13,7 @@
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-table__row`. |
+| `current` | `boolean` | no | — | Marks the current row. The consumer is responsible for marking only one row current per table. |
 | `selected` | `boolean` | no | — | Whether the row's selection checkbox is checked. Required in selectable tables alongside `onSelectedChange` and `selectionLabel`. |
 | `selectionDisabled` | `boolean` | no | — | When true, renders a disabled selection checkbox for this row, preventing selection while keeping the alignment cell. |
 | `selectionLabel` | `string` | no | — | Accessible name for the disabled selection checkbox. Provide a localised string to override the English default ("Selection not allowed for this row"). The library cannot localise on the consumer's behalf, so this is the seam for non-English applications or custom phrasing. |

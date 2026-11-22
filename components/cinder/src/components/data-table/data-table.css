@@ -67,18 +67,6 @@
     cursor: pointer;
   }
 
-  .cinder-data-table .cinder-table__row[data-cinder-open],
-  .cinder-data-table .cinder-table__row[data-cinder-open]:hover {
-    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
-  }
-
-  @media (forced-colors: active) {
-    .cinder-data-table .cinder-table__row[data-cinder-open] {
-      outline: 1px solid Highlight;
-      outline-offset: -1px;
-    }
-  }
-
   /* A monospace column holds identifiers, keys and paths: data, in the regular weight even when it
    * is the row header, which the browser would otherwise set bold. */
   .cinder-data-table [data-cinder-monospace] {
