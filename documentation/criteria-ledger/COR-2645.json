@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2645",
+  "branch": "chef/cor-2645-affected-cinder-tests",
+  "checkedAt": "1580f73c165294e05af0c7d073b4fa652a3140a9",
+  "briefVersion": "bca17a054d1d",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "scripts/computed-path-tests.ts holds the shared rule list; selectTests (affected-tests-selection.ts) and computeEvidencePlan (chef/verification-plan.ts) both call computedPathTests. A change under components/cinder/ selects Cinder's top-level src/*.test.ts, including api-contract.test.ts. Focused checks exit 0."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "scripts/affected-tests.test.ts 'a change to only data-list.types.ts selects api-contract.test.ts'; written first, failed with the rule disabled (2 fail), passes with it."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Traced the files read by 177 candidate tests, compared with the import-graph closure (59 tests with unreached reads), then confirmed 19 with selectTests on sampled changed files; all 19 are in computedPathRules and named in the commit message. Not searched: tests using mkdtemp or writes, glob or directory scanners that read another workspace and do not call a read function themselves, reads through helpers in imported library source, and the 12 tests whose trace was empty or failed."
+    }
+  ]
+}

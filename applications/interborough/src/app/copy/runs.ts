@@ -88,11 +88,6 @@ export const RUN_CHECKPOINTS_COPY = {
   modeLabel: 'Open the checkpoint as',
   replay: 'Replay',
   fork: 'Fork',
-  divergenceLabel: 'Divergence from the forked run',
-  divergenceNote:
-    'Diverged steps are highlighted. Both runs are identical up to the fork, so they differ only at or after it.',
-  nothingToCompareTitle: 'Nothing to compare',
-  nothingToCompareDescription: 'Neither run has any steps yet.',
   replayLockedTitle: 'Replay unavailable',
   replayNotice: (step: number): string =>
     `This is a replay of step ${String(step)}. It is read-only and does not change the live run.`,
@@ -104,6 +99,101 @@ export const RUN_CHECKPOINTS_COPY = {
     'Not known. The original record is gone, it predates revision tracking, or the ID has been reused by a different run.',
   compacted: (sequence: number): string =>
     `Earlier events before sequence ${String(sequence)} were removed by retention.`,
+} as const;
+
+/**
+ * The words for a fork compared with the run it came from: the action that opens the comparison,
+ * the steps the two runs share, and what differs in a step the fork ran again.
+ */
+export const RUN_COMPARISON_COPY = {
+  /** How a run is named beside its workflow: when it started, not its id. `ago` is `formatRelativeTime`'s. */
+  startedAgo: (ago: string): string => `started ${ago}`,
+  /** A source's revision as the Lineage row says it: the revision itself is in the tooltip, in full. */
+  pinnedRevision: 'Pinned revision',
+  action: 'Compare with source',
+  actionHide: 'Hide comparison',
+  heading: 'Compared with the source run',
+  /** What the comparison's error state says failed to load, in the one "Couldn’t load …" pattern every screen uses. */
+  loadFailedSubject: 'the comparison',
+  intro: (forkPoint: number): string =>
+    `Forked from checkpoint step ${String(forkPoint)}. The steps before it keep the source’s results; the rest ran again.`,
+  sharedSummary: (count: number): string =>
+    count === 1 ? '1 step the same as the source' : `${String(count)} steps the same as the source`,
+  sharedNote: 'The fork kept the source’s result for these steps and did not run them again.',
+  stepsLabel: 'Steps the fork ran again',
+  detailRegionLabel: 'Step differences',
+  stepsHeading: 'Steps after the fork point',
+  noStepsTitle: 'Nothing to compare',
+  noStepsDescription: 'Neither run has any steps after the fork point yet.',
+  stepTitle: (index: number, label: string): string => `Step ${String(index + 1)}, ${label}`,
+  /**
+   * One word, `Same`, for a step the fork kept from the source and for one it ran again with the
+   * same result: nothing differs in either. The run comparison panel uses the same words.
+   */
+  kinds: {
+    shared: 'Same',
+    changed: 'Changed',
+    unchanged: 'Same',
+    'source-only': 'Only in the source',
+    'fork-only': 'Only in the fork',
+  },
+  fields: {
+    operation: 'operation',
+    label: 'name',
+    status: 'status',
+    input: 'input',
+    output: 'output',
+  },
+  changedFields: (fields: readonly string[]): string => `Differs in ${fields.join(', ')}`,
+  chooseTitle: 'Select a step',
+  chooseDescription: 'Choose a step to read what differs between the source and the fork.',
+  detailLabel: (index: number): string => `Step ${String(index + 1)} differences`,
+  statusChange: (source: string, fork: string): string =>
+    `${source} in the source, ${fork} in the fork`,
+  operationChange: (source: string, fork: string): string =>
+    `${source} in the source, ${fork} in the fork`,
+  inputHeading: 'Input',
+  outputHeading: 'Output',
+  diffLabel: (heading: string, index: number): string =>
+    `${heading} differences, step ${String(index + 1)}`,
+  sameBothSides: (heading: string): string =>
+    `The ${heading.toLowerCase()} is the same in both runs.`,
+  missingSource: (heading: string): string =>
+    `The source has not recorded an ${heading.toLowerCase()} for this step.`,
+  missingFork: (heading: string): string =>
+    `The fork has not recorded an ${heading.toLowerCase()} for this step.`,
+  onlyInSource: 'The fork has not reached this step.',
+  onlyInFork: 'The source never reached this step.',
+} as const;
+
+/** The words in the fork dialog for what a fork will do, read from the server's dry run before it is confirmed. */
+export const RUN_FORK_PREVIEW_COPY = {
+  heading: 'What this fork will do',
+  loading: 'Reading what the fork would do',
+  failedTitle: 'The fork could not be previewed',
+  keptHeading: (count: number): string => `Kept, not run again (${String(count)})`,
+  rerunHeading: (count: number): string => `Run again (${String(count)})`,
+  keptNote: 'These steps keep their results.',
+  rerunNote: 'These steps run again from the fork point.',
+  noSteps: 'No steps',
+  step: (index: number, label: string): string => `Step ${String(index + 1)}, ${label}`,
+  /**
+   * The warning when the dry run says the fork would run on another revision. It names no revision:
+   * the run's own page holds it, and a hash in a sentence is not something a person reads. It is the
+   * dialog's one statement of the revision, so the "Retains…" line is not shown beside it.
+   */
+  revisionWouldChangeTitle: 'Runs on a different revision',
+  revisionWouldChange: (chosen: boolean): string =>
+    chosen
+      ? 'The fork would run on the revision you chose, not the source run’s own.'
+      : 'The fork would run on a different revision than the source run.',
+  refusedTitle: 'Revision unavailable',
+  /** The dialog's note under the choices: what making a fork does. */
+  linked: 'A new run is created and linked to this one.',
+  /** The start of the line after a fork is made: followed by its workflow's name, a link to the run. */
+  forkedAs: 'Forked as',
+  /** The end of that line: a run made a moment ago, so its start time is now. */
+  startedJustNow: 'started just now',
 } as const;
 
 /** The words for the lines a run logged, in a step and under the run's Details. */
@@ -143,8 +233,6 @@ export const RUN_PAGE_COPY = {
   inputPayload: 'Input payload',
   resultPayload: 'Result payload',
   activityHeading: 'Activity',
-  /** Names the plugin a panel on the run page comes from. */
-  panelFromPlugin: (plugin: string) => `From the ${plugin} plugin`,
   eventsHeading: 'Events',
   eventsLockedTitle: 'Events are locked',
   checkpointsHeading: 'Checkpoints',
@@ -414,9 +502,9 @@ export const RUN_DETAIL_COPY = {
       runAgain: 'Run again',
       openStep: (at: number): string => `Open step ${String(at)}`,
       errorDetails: 'Show the error details',
+      /** The Tries row of the explanation when the history says how long the tries took (row 55b). */
+      triesIn: (tries: string, took: string): string => `${tries}, ${took} in all`,
     },
-    /** The sentence under the reason: where to look when it keeps failing, with Health as a link. */
-    checkHealth: { before: 'If it keeps failing, check ', link: 'Health', after: '.' },
     /** The Version row: which version the run ran, and where it stands against the current one. */
     versionCurrent: (version: string): string => `${version}, current version`,
     versionOlder: (version: string): string => `${version}, older version`,

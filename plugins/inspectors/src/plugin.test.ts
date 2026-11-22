@@ -1,4 +1,4 @@
-import { HOST_PANEL_OPERATIONS } from '@lostgradient/bureau';
+import { createBureauCatalogSnapshot, HOST_PANEL_OPERATIONS } from '@lostgradient/bureau';
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import { describe, expect, it } from 'bun:test';
@@ -6,7 +6,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import inspectors, {
+  failureExplanation,
   pendingReview,
+  runComparison,
   runInspector,
   runTimeline,
   scheduleEditor,
@@ -25,6 +27,8 @@ describe('the inspectors plugin', () => {
         { plugin: 'inspectors', version: '1.0.1', app: workflowRevisionReview },
         { plugin: 'inspectors', version: '1.0.1', app: scheduleEditor },
         { plugin: 'inspectors', version: '1.0.1', app: runTimeline },
+        { plugin: 'inspectors', version: '1.0.1', app: failureExplanation },
+        { plugin: 'inspectors', version: '1.0.1', app: runComparison },
       ]);
     } finally {
       await host.dispose();
@@ -34,6 +38,44 @@ describe('the inspectors plugin', () => {
     expect(workflowRevisionReview.uri).toBe('ui://inspectors/workflow-revision-review/v1');
     expect(scheduleEditor.uri).toBe('ui://inspectors/schedule-editor/v1');
     expect(runTimeline.uri).toBe('ui://inspectors/run-timeline/v1');
+    expect(runComparison.uri).toBe('ui://inspectors/run-comparison/v1');
+  });
+
+  it('declares the run comparison’s run-page placement and opens it from the compare tool (COR-2544)', () => {
+    expect(runComparison.placements).toEqual([{ kind: 'run' }]);
+    expect(runComparison.opensFromTool).toBe('bureau.runs.compare');
+    expect(runComparison.allowedTools).toEqual(['bureau.runs.compare']);
+    expect(runComparison.hostOnlyTools).toBeUndefined();
+  });
+
+  it('keeps the failure explanation’s URI (COR-2543)', () => {
+    // The URI is a one-way door (COR-2543): clients that opened the panel by it keep opening it.
+    expect(failureExplanation.uri).toBe('ui://inspectors/failure-explanation/v1');
+  });
+
+  it('opens the failure explanation from the explain tool and places it on a run’s page, calling no other tool (COR-2543)', () => {
+    expect(failureExplanation.opensFromTool).toBe('bureau.tasks.explain');
+    // Coordinator, 2026-11-22: shown only for failed runs, and opened in Chat by the agent tool that
+    // explains a run.
+    expect(failureExplanation.placements).toEqual([
+      { kind: 'run', when: 'failed' },
+      { kind: 'chat-tool', agentTool: 'bureau:tasks-explain' },
+    ]);
+    // AC4: the one tool it calls is the explain read, and it is no write: nothing is host-only.
+    expect(failureExplanation.allowedTools).toEqual(['bureau.tasks.explain']);
+    expect(failureExplanation.hostOnlyTools).toBeUndefined();
+    // No other panel claims the tool, so the Bureau links it to this page alone.
+    for (const other of [runInspector, pendingReview, workflowRevisionReview, scheduleEditor]) {
+      expect(other.opensFromTool).not.toBe('bureau.tasks.explain');
+    }
+  });
+
+  it('keeps the explain read a read, so the panel adds no write (COR-2543)', () => {
+    const explain = createBureauCatalogSnapshot().operations.find(
+      (operation) => operation.name === 'bureau.tasks.explain',
+    );
+    expect(explain).toMatchObject({ destructive: false });
+    expect(failureExplanation.allowedTools.every((tool) => tool === explain?.name)).toBe(true);
   });
 
   it('links each panel to the tool a client runs to open it, one it may call', () => {
@@ -95,6 +137,8 @@ describe('the inspectors plugin', () => {
       [workflowRevisionReview, 'workflow-revision'],
       [scheduleEditor, 'schedule-editor'],
       [runTimeline, 'run-timeline'],
+      [failureExplanation, 'failure-explanation'],
+      [runComparison, 'run-comparison'],
     ] as const) {
       const named = new Set<string>();
       // The page's script and its components (`.svelte`): a tool a component calls is listed too.
@@ -140,14 +184,16 @@ describe('the inspectors plugin', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('holds a row for the schedule editor in the panel tables of both READMEs (COR-2545)', async () => {
+  it('holds a row for the schedule editor and the failure explanation in the panel tables of both READMEs (COR-2545, COR-2543)', async () => {
     const root = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
     for (const readme of ['plugins/inspectors/README.md', 'packages/bureau/README.md']) {
       const text = await Bun.file(join(root, readme)).text();
-      const rows = text
-        .split('\n')
-        .filter((line) => line.startsWith('|') && line.includes(scheduleEditor.uri));
-      expect(rows, readme).toHaveLength(1);
+      for (const panel of [scheduleEditor, failureExplanation]) {
+        const rows = text
+          .split('\n')
+          .filter((line) => line.startsWith('|') && line.includes(panel.uri));
+        expect([readme, panel.name, rows.length]).toEqual([readme, panel.name, 1]);
+      }
     }
   });
 
@@ -158,6 +204,8 @@ describe('the inspectors plugin', () => {
       workflowRevisionReview,
       scheduleEditor,
       runTimeline,
+      failureExplanation,
+      runComparison,
     ]) {
       expect(await Bun.file(app.entry).exists()).toBe(true);
     }

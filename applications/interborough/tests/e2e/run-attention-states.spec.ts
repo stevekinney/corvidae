@@ -396,11 +396,11 @@ test.describe('/runs: badges and the Needs attention chip (COR-2528)', () => {
         await expect(rowOf(world.runs.done)).toBeVisible();
         await page.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) }).click();
         await expect(page).toHaveURL(/[?&]attention=1(&|$)/);
-        // The pressed chip carries one mark, its check, and no dot beside it.
+        // The pressed chip carries one mark, its dot (the check is left out of a filter toggle).
         const chip = page.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) });
         await expect(chip).toHaveAttribute('aria-pressed', 'true');
-        await expect(chip.locator('.cinder-chip__check')).toHaveCount(1);
-        await expect(chip.locator('.cinder-filter-bar__dot')).toHaveCount(0);
+        await expect(chip.locator('.cinder-filter-bar__dot')).toHaveCount(1);
+        await expect(chip.locator('.cinder-chip__check')).toBeHidden();
       }
 
       await expect(rowOf(world.runs.done)).toBeVisible();

@@ -87,6 +87,11 @@ export const TASK_COPY = {
     engineRunLocked: 'Only someone who can see workflow runs can open this',
     /** How long a run has waited on a person, at the end of line two. */
     waitingFor: (duration: string): string => `waiting ${duration}`,
+    /**
+     * The step a running run is on a second or later try of, and which try that is (COR-2535),
+     * before how long it has been going: "retrying charge-card, try 3".
+     */
+    retrying: (step: string, attempt: number): string => `retrying ${step}, try ${String(attempt)}`,
     /** How long a run has been going, at the end of line two. */
     runningFor: (duration: string): string => `running ${duration}`,
     /** Which attempt of a goal a run is. */
@@ -157,12 +162,17 @@ export const TASK_COPY = {
       startedBy: (origin: string): string => `started by ${origin}`,
       /** After "runs": the words typed in Search runs. */
       matching: (words: string): string => `matching “${words}”`,
+      /** After "runs": the step they failed at (COR-2535). */
+      failedStep: (step: string): string => `that failed at ${step}`,
+      /** After "runs": that they are retrying a step now (COR-2535). */
+      retrying: 'retrying a step',
       /** The filters a person can change, as they read in "Try another agent or origin." */
       filters: {
         status: 'status',
         agent: 'agent',
         origin: 'origin',
         workflow: 'workflow',
+        failedStep: 'step',
         search: 'search',
       },
       /** After "runs": the workflow they ran, from its name ("Release notes"). */
@@ -181,6 +191,13 @@ export const TASK_COPY = {
   statusLabel: 'Status',
   startedByLabel: 'Started by',
   workflowLabel: 'Workflow',
+  /** The filter on the step a run failed at (COR-2535), and the field the person types a name in. */
+  failedStepLabel: 'Failed at step',
+  failedStepPlaceholder: 'Any step',
+  /** The filter on the runs retrying a step now (COR-2535). */
+  retryingLabel: 'Retrying',
+  /** The value the applied Retrying chip carries: "Retrying: Yes". */
+  retryingOn: 'Yes',
   loading: 'Loading runs',
   loadFailed: {
     title: 'The runs could not be loaded',

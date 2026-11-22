@@ -3,6 +3,7 @@ import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugi
 import {
   BASE_STYLES,
   PENDING_REVIEW_STYLES,
+  RUN_COMPARISON_STYLES,
   RUN_TIMELINE_STYLES,
   SCHEDULE_EDITOR_STYLES,
   WORKFLOW_REVISION_STYLES,
@@ -118,17 +119,77 @@ export const scheduleEditor: PluginPanel = {
 };
 
 /**
- * Five interface panels, the run inspector, pending-review list, workflow revision review, schedule
- * editor and run timeline. Each is a page the host builds from a browser entry at startup and serves
- * as a `ui://` resource.
+ * The failure explanation (COR-2543): why one failed run failed, in the Bureau's own words from
+ * what it stored about the run and nothing else: the summary, the cause, the step, how often it was
+ * tried, the guardrails that fired and what to do next. A client opens it from the explain tool,
+ * which hands the page its result, Chat opens it inline when an agent calls its own `tasks-explain`
+ * tool, and the page of a run that failed mounts it with the run's `taskId`, which the
+ * page reads through the same tool. That read is the only call it makes, and it is a read, so the
+ * panel has nothing a model or a person could change through it. A run that did not fail is the
+ * Bureau's refusal, whose message and remediation the page shows. `allowedTools` lists every tool the
+ * page calls, which a test keeps true.
+ */
+export const failureExplanation: PluginPanel = {
+  name: 'failure-explanation',
+  title: 'Failure explanation',
+  description: 'Why one failed run failed, from what the Bureau stored about it.',
+  uri: 'ui://inspectors/failure-explanation/v1',
+  entry: new URL('./failure-explanation/app.ts', import.meta.url),
+  // The shared styles, whose page width cap this panel inherits; Cinder's parts draw the rest.
+  styles: BASE_STYLES,
+  allowedTools: ['bureau.tasks.explain'],
+  // Coordinator, 2026-11-22: shown only for failed runs. A run's page mounts it for a run that
+  // failed and for no other; Chat opens it over the result of the agent tool that explains a run.
+  placements: [
+    { kind: 'run', when: 'failed' },
+    { kind: 'chat-tool', agentTool: 'bureau:tasks-explain' },
+  ],
+  opensFromTool: 'bureau.tasks.explain',
+};
+
+/**
+ * The run comparison: a forked workflow run beside the run it was forked from, with the steps the
+ * two share and the input and output differences of each step the fork ran again. A client opens it
+ * from `bureau.runs.compare`, the tool the page is linked to and the only one it calls. It declares a
+ * `run` placement, and the Interborough run page mounts it on a workflow instance that is a fork,
+ * giving it `{ runId, runKind: 'workflow' }` (owner decision, 2026-11-22, refined by the design
+ * review of #1219: a card is mounted only when it has something to say about the run). A client
+ * that opens it on a run that is not a fork gets the server's message, shown as written.
+ * `allowedTools` lists every tool the page calls, which a test keeps true.
+ */
+export const runComparison: PluginPanel = {
+  name: 'run-comparison',
+  title: 'Run comparison',
+  description: 'A forked workflow run beside its source: shared steps and payload differences.',
+  uri: 'ui://inspectors/run-comparison/v1',
+  entry: new URL('./run-comparison/app.ts', import.meta.url),
+  styles: RUN_COMPARISON_STYLES,
+  allowedTools: ['bureau.runs.compare'],
+  placements: [{ kind: 'run' }],
+  opensFromTool: 'bureau.runs.compare',
+};
+
+/**
+ * Seven interface panels, the run inspector, pending-review list, workflow revision review,
+ * schedule editor, run timeline, failure explanation and run comparison. Each is a page the host
+ * builds from a browser entry
+ * at startup and serves as a `ui://` resource.
  */
 export default definePlugin({
   name: 'inspectors',
   title: 'Inspectors',
   version: '1.0.1',
   description:
-    'Adds the run inspector, the pending-review list, the workflow revision review, the schedule editor and the run timeline as interface panels over the run, review, workflow and schedule tools.',
+    'Adds the run inspector, the pending-review list, the workflow revision review, the schedule editor, the run timeline, the failure explanation and the run comparison as interface panels over the run, review, workflow and schedule tools.',
   setup: () => ({
-    panels: [runInspector, pendingReview, workflowRevisionReview, scheduleEditor, runTimeline],
+    panels: [
+      runInspector,
+      pendingReview,
+      workflowRevisionReview,
+      scheduleEditor,
+      runTimeline,
+      failureExplanation,
+      runComparison,
+    ],
   }),
 });

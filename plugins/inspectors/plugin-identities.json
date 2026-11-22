@@ -10,9 +10,21 @@
     },
     {
       "kind": "panel",
+      "id": "inspectors:failure-explanation",
+      "version": "1.0.1",
+      "schema": "sha256:b88501c82407d9ec86b97e902dbc8a2637b61ea51450dc0aeaf92b84446c7893"
+    },
+    {
+      "kind": "panel",
       "id": "inspectors:pending-review",
       "version": "1.0.1",
       "schema": "sha256:5c2158263a82973eba08b2a376c393ce14548bfedf504935d75b6d840b2eb964"
+    },
+    {
+      "kind": "panel",
+      "id": "inspectors:run-comparison",
+      "version": "1.0.1",
+      "schema": "sha256:bba91bcbe00efa13996896e62571d46e77cd5103e9fc95001767d71144d59f75"
     },
     {
       "kind": "panel",

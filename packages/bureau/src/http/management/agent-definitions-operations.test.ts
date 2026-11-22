@@ -1139,6 +1139,7 @@ describe('bureau.agents.catalog', () => {
       expect.objectContaining({ name: 'bureau:child-runs-wait', source: 'bureau' }),
       expect.objectContaining({ name: 'bureau:discover-agents', source: 'bureau' }),
       expect.objectContaining({ name: 'bureau:runs-timeline', source: 'bureau' }),
+      expect.objectContaining({ name: 'bureau:tasks-explain', source: 'bureau' }),
       expect.objectContaining({
         name: 'lookup-order',
         description: 'Looks an order up',

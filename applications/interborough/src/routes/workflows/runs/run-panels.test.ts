@@ -19,7 +19,7 @@ import {
   test,
 } from 'bun:test';
 
-import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import {
@@ -29,6 +29,8 @@ import {
 } from '../../../lib/bureau-world.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
+import { panelHasSomethingToSay } from './run-panel-scope.ts';
+import RunPanelsHarness from './run-panels.test-harness.svelte';
 
 type FrameMessage = { jsonrpc?: string; id?: number; method?: string; result?: unknown } & Record<
   string,
@@ -44,6 +46,8 @@ let restoreHost: (() => void) | undefined;
 let toolCalls: { name: string; arguments: unknown }[] = [];
 let hostRequests: string[] = [];
 let panelsListed = true;
+/** Panels the host lists beside the fixture's own, for the tests of which kind of run each is mounted on. */
+let extraPanels: readonly unknown[] = [];
 let framePayloads: FrameMessage[] = [];
 const frameWindows = new WeakMap<object, { postMessage: (message: FrameMessage) => void }>();
 const originalContentWindow = Object.getOwnPropertyDescriptor(
@@ -100,6 +104,7 @@ function hostAnswer(path: string, init: RequestInit | undefined): Response | und
           opensFromTool: 'bureau.tasks.inspect',
           placements: [{ kind: 'chat-tool', agentTool: 'bureau:legacy' }],
         },
+        ...extraPanels,
       ],
     });
   }
@@ -244,15 +249,19 @@ async function panelFrame(view: ReturnType<typeof openRun>): Promise<HTMLIFrameE
 }
 
 describe('the run inspector on a run’s page', () => {
-  test('renders in a frame sandboxed to allow-scripts, labelled with its plugin', async () => {
+  test('renders in a frame sandboxed to allow-scripts, in a region named for the panel, with no card title or plugin line', async () => {
     const view = openRun();
     const frame = await panelFrame(view);
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
     expect(frame.getAttribute('srcdoc')).toContain(PAGE_HTML);
     const panel = view.container.querySelector('[data-section="plugin-panel"]') as HTMLElement;
     expect(panel.dataset['plugin']).toBe('inspectors');
-    expect(panel.textContent).toContain('Run inspector');
-    expect(panel.textContent).toContain(RUN_PAGE_COPY.panelFromPlugin('inspectors'));
+    // The panel draws its own heading, so the host adds neither a title nor a "From the … plugin"
+    // line; the region keeps the panel's name for a screen reader.
+    expect(panel.getAttribute('aria-label')).toBe('Run inspector');
+    expect(panel.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
+    expect(panel.textContent).toBe('');
+    expect(view.container.textContent).not.toContain('plugin');
   });
 
   test('shows every panel with a run placement, ordered by plugin name and then declaration order', async () => {
@@ -271,9 +280,11 @@ describe('the run inspector on a run’s page', () => {
       'inspectors',
       'zebra',
     ]);
-    expect(
-      sections.map((section) => section.querySelector('h2')?.firstChild?.textContent?.trim()),
-    ).toEqual(['Run inspector', 'Run notes', 'Zebra summary']);
+    expect(sections.map((section) => section.getAttribute('aria-label'))).toEqual([
+      'Run inspector',
+      'Run notes',
+      'Zebra summary',
+    ]);
     // Each section names its own app, so two panels of one plugin can be told apart.
     expect(new Set(sections.map((section) => section.dataset['app'])).size).toBe(3);
     expect(sections[0]?.dataset['app']).toBe('run-inspector');
@@ -339,6 +350,163 @@ describe('the run inspector on a run’s page', () => {
     });
     await waitFor(() => expect(responseTo(8)).toBeDefined());
     expect(responseTo(8)?.result).toMatchObject({ isError: true });
+  });
+});
+
+/** Mounts the panels for a run the test names, on a host that answers only the panel routes. */
+function openPanels(run: { taskId: string } | { workflowId: string; fork: boolean }) {
+  const original = globalThis.fetch;
+  globalThis.fetch = Object.assign(
+    (input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(
+        hostAnswer(pathOf(input), init) ?? new Response('Not found', { status: 404 }),
+      ),
+    { preconnect: original.preconnect },
+  );
+  restoreHost = () => {
+    globalThis.fetch = original;
+  };
+  return render(RunPanelsHarness, { props: run } as never);
+}
+
+/** The arguments each panel's frame is sent as its tool input, once every frame has initialized. */
+async function toolInputsOf(
+  view: ReturnType<typeof openPanels>,
+  count: number,
+): Promise<unknown[]> {
+  await waitFor(() =>
+    expect(view.container.querySelectorAll('[data-section="plugin-panel"] iframe')).toHaveLength(
+      count,
+    ),
+  );
+  for (const frame of view.container.querySelectorAll<HTMLIFrameElement>(
+    '[data-section="plugin-panel"] iframe',
+  )) {
+    await initialize(frame.contentWindow as object);
+  }
+  const inputs = () =>
+    framePayloads.filter((message) => message.method === 'ui/notifications/tool-input');
+  await waitFor(() => expect(inputs()).toHaveLength(count));
+  return inputs().map((message) => (message['params'] as { arguments: unknown }).arguments);
+}
+
+/** The two inspectors panels whose mounting depends on the kind of run, listed beside the fixture's. */
+const SCOPED_PANELS = [
+  {
+    plugin: 'inspectors',
+    app: 'schedule-editor',
+    title: 'Schedule editor',
+    uri: 'ui://inspectors/schedule-editor/v1',
+    placements: [{ kind: 'page', path: 'schedules' }, { kind: 'run' }],
+  },
+  {
+    plugin: 'inspectors',
+    app: 'run-comparison',
+    title: 'Run comparison',
+    uri: 'ui://inspectors/run-comparison/v1',
+    opensFromTool: 'bureau.runs.compare',
+    placements: [{ kind: 'run' }],
+  },
+];
+
+/** The `data-app` of every panel the page mounted for the run, once the host's list has landed. */
+async function mountedApps(
+  view: ReturnType<typeof openPanels>,
+  expectedCount: number,
+): Promise<string[]> {
+  await waitFor(() =>
+    expect(view.container.querySelectorAll('[data-section="plugin-panel"]')).toHaveLength(
+      expectedCount,
+    ),
+  );
+  return [...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]')].map(
+    (section) => section.dataset['app'] ?? '',
+  );
+}
+
+describe('the panels on a workflow instance’s run page (COR-2544, owner 2026-11-22)', () => {
+  test('mounts the panels that have something to say about an instance, each sent the engine’s run and no task', async () => {
+    const view = openPanels({ workflowId: 'wf-fork-1', fork: false });
+    const inputs = await toolInputsOf(view, 2);
+    // The run inspector reads an agent task, and a workflow instance has none: it is not mounted.
+    expect(inputs).toEqual([
+      { runId: 'wf-fork-1', runKind: 'workflow' },
+      { runId: 'wf-fork-1', runKind: 'workflow' },
+    ]);
+    const sections = [
+      ...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]'),
+    ];
+    expect(sections.map((section) => section.dataset['app'])).toEqual(['run-notes', 'summary']);
+  });
+
+  test('sends an agent run its task, as it always was', async () => {
+    const view = openPanels({ taskId: 'run-1' });
+    expect(await toolInputsOf(view, 3)).toEqual([
+      { taskId: 'run-1' },
+      { taskId: 'run-1' },
+      { taskId: 'run-1' },
+    ]);
+  });
+});
+
+describe('which panels have something to say about a run', () => {
+  beforeEach(() => {
+    extraPanels = SCOPED_PANELS;
+  });
+  afterEach(() => {
+    extraPanels = [];
+  });
+
+  test('a fork gets the run comparison, and neither the run inspector nor the schedule editor', async () => {
+    const view = openPanels({ workflowId: 'wf-fork-1', fork: true });
+    // Plugin by name, then the order the host lists a plugin's panels in.
+    expect(await mountedApps(view, 3)).toEqual(['run-notes', 'run-comparison', 'summary']);
+    // The comparison is sent the fork's own run, to compare with its source.
+    const comparison = view.container.querySelector<HTMLIFrameElement>(
+      '[data-section="plugin-panel"][data-app="run-comparison"] iframe',
+    );
+    expect(comparison).not.toBeNull();
+    await initialize(comparison?.contentWindow as object);
+    await waitFor(() =>
+      expect(
+        framePayloads.find((m) => m.method === 'ui/notifications/tool-input')?.['params'],
+      ).toEqual({
+        arguments: { runId: 'wf-fork-1', runKind: 'workflow' },
+      }),
+    );
+  });
+
+  test('a workflow instance that is not a fork gets no comparison, no run inspector and no schedule editor', async () => {
+    const view = openPanels({ workflowId: 'wf-plain-1', fork: false });
+    const apps = await mountedApps(view, 2);
+    expect(apps).toEqual(['run-notes', 'summary']);
+    expect(apps).not.toContain('run-comparison');
+    expect(apps).not.toContain('run-inspector');
+    // The schedule editor lists every schedule and cannot narrow them to this run's workflow.
+    expect(apps).not.toContain('schedule-editor');
+  });
+
+  test('an agent run gets the run inspector and the schedule editor, and no comparison', async () => {
+    const view = openPanels({ taskId: 'run-1' });
+    const apps = await mountedApps(view, 4);
+    expect(apps).toEqual(['run-inspector', 'run-notes', 'schedule-editor', 'summary']);
+    expect(apps).not.toContain('run-comparison');
+  });
+});
+
+describe('the mounting rules, as data', () => {
+  test('say what each inspectors panel has to say, and leave a panel with no rule on every run', () => {
+    const task = { kind: 'task' } as const;
+    const fork = { kind: 'workflow', fork: true } as const;
+    const plain = { kind: 'workflow', fork: false } as const;
+    const table = (plugin: string, app: string) =>
+      [task, plain, fork].map((run) => panelHasSomethingToSay(plugin, app, run));
+    expect(table('inspectors', 'run-inspector')).toEqual([true, false, false]);
+    expect(table('inspectors', 'schedule-editor')).toEqual([true, false, false]);
+    expect(table('inspectors', 'run-comparison')).toEqual([false, false, true]);
+    // A third party's panel, and a name that only looks like an inherited key, have no rule.
+    expect(table('zebra', 'summary')).toEqual([true, true, true]);
+    expect(table('inspectors', 'constructor')).toEqual([true, true, true]);
   });
 });
 

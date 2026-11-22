@@ -109,7 +109,8 @@ const SPECIFICATIONS = {
  * editor and its deliveries: a plugin hook, a default hook, a withdrawn one, the secret field, a
  * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
  * state of its board (`hooks-states.spec.ts`), and a fault's remediation and Retry on the Hooks
- * list's failed state (`fault-remediation.spec.ts`).
+ * list's failed state (`fault-remediation.spec.ts`), and the Run page of a failed run that says why
+ * it failed in the Bureau's words (`run-failure-explanation.spec.ts`).
  */
 /**
  * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
@@ -174,8 +175,15 @@ const SHOWCASE_SPECIFICATIONS = [
   // The Runs list and the run page in the states the sample world does not hold, and the run page
   // in each state it does (COR-2423, COR-2424).
   'tests/e2e/runs-states.spec.ts',
+  // The Retrying and Failed at step filters on the Runs list, and in the workflow list's query builder (COR-2535).
+  'tests/e2e/runs-failure-filters.spec.ts',
   'tests/e2e/run-page-states.spec.ts',
   'tests/e2e/run-page-live-states.spec.ts',
+  // A failed instance's section on the Run page, which says why it failed in the Bureau's words
+  // (COR-2533).
+  'tests/e2e/run-failure-explanation.spec.ts',
+  // Chat opening the failure explanation panel inline, over the result of an agent's explain call.
+  'tests/e2e/failure-explanation-chat.spec.ts',
   // What a run cost: a reply's details, the run page's rail, the Runs list's Cost column, a goal's
   // row and the spend threshold in Settings (COR-2525, COR-2527).
   'tests/e2e/run-cost-states.spec.ts',
@@ -213,6 +221,15 @@ const SHOWCASE_SPECIFICATIONS = [
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
   // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
   'tests/panels/schedule-editor-states.spec.ts',
+  // A fork's comparison with its source, the fork dialog's preview, and the run panels on a
+  // workflow run's page (COR-2538). `--grep fork-comparison-states` selects it.
+  'tests/e2e/fork-comparison-states.spec.ts',
+  // The run comparison panel in a frame, in each state it draws (COR-2544). `--grep run-comparison-states`
+  // selects it.
+  'tests/panels/run-comparison-states.spec.ts',
+  // The failure explanation panel, in the same kind of frame, in each state it draws (COR-2543).
+  // `--grep failure-explanation-states` selects it.
+  'tests/panels/failure-explanation-states.spec.ts',
   // The run timeline panel in each state it draws, likewise a frame no page capture sees (COR-2542).
   'tests/panels/run-timeline-states.spec.ts',
 ] as const;

@@ -5186,7 +5186,236 @@
       }
     },
     {
-      "description": "Returns why one failed run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time. `runId` is an agent run’s task id or a workflow instance’s id. `summary` is one sentence naming the step and the cause, built from the failure category (`application`, `timeout`, `cancellation`, `resource`, `system`, or `null` when nothing classifies the failure: a workflow instance’s is the engine’s, an agent run’s is read from its finish reason and its error’s kind) and the error’s kind. `cause` is the category, the error’s `code` and its `kind` (an agent run’s; `null` for a workflow instance). `step` is the step the run failed at (its index and label), `tries` how many times the engine tried that step (`null` when its history records no failed attempt, as for an agent run that ended on a failed result), `verdicts` each guardrail that fired in the run (its `name`, whether it halted the run as a `tripwire` or let it go on as a `guardrail`, and its `outcome`; a workflow instance’s own steps included), `remediation` what to do next, and `nextCommands` `interborough` command lines that read the run. It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`; a workflow instance whose run state or timeline the Bureau cannot read, because it has no durable engine, is `UnsupportedCapability` (`durable-engine`), never `run-not-failed`. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`.",
+      "description": "Takes the id of a workflow run made by forking another and returns the run it was forked from (`sourceRunId`), the `forkPoint` (the source checkpoint step the fork started from) and the two runs aligned by durable step: each step's `index`, whether it is `shared` (before the fork point, so both sides are the source's entry) and, for `source` and `fork`, the `operationType`, `label`, `status`, `input` and `output` the engine summarizes, with payload fields redacted as the timeline read redacts them. A side is absent when that run has no entry for the step. Pages by step: `limit` (100 by default, at most 1000) and `nextCursor`. The fork and its source are each read with the access `bureau.workflows.runs.get` asks; a run the caller may not read, a source the caller may not read, a run that is no instance of a workflow file, and a run that does not exist are all `NotFound`. A run that is not a fork is `Unprocessable`, and its message says what to do.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.runs.compare",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "forkPoint": {
+              "description": "The source checkpoint step the fork started from.",
+              "type": "number"
+            },
+            "nextCursor": {
+              "description": "Pass as `cursor` for the next page; absent on the last.",
+              "type": "string"
+            },
+            "runId": {
+              "description": "The fork that was compared.",
+              "type": "string"
+            },
+            "sourceRunId": {
+              "description": "The run the fork was made from.",
+              "type": "string"
+            },
+            "steps": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "fork": {
+                    "additionalProperties": false,
+                    "description": "The fork’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  },
+                  "index": {
+                    "description": "The durable step index both sides share.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "shared": {
+                    "description": "True before the fork point: the fork kept the source’s result, on both sides.",
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "description": "The source run’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "index",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "runId",
+            "sourceRunId",
+            "forkPoint",
+            "steps"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Compare a forked workflow run with its source, step by step",
+      "tags": [
+        {
+          "name": "Runs"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "runId": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns why one failed run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time. `runId` is an agent run’s task id or a workflow instance’s id. `summary` is one sentence naming the step and the cause, built from the failure category (`application`, `timeout`, `cancellation`, `resource`, `system`, or `null` when nothing classifies the failure: a workflow instance’s is the engine’s, an agent run’s is read from its finish reason and its error’s kind) and the error’s kind. `cause` is the category, the error’s `code` and its `kind` (an agent run’s; `null` for a workflow instance). `step` is the step the run failed at (its index and label), `tries` how many times the engine tried that step (`null` when its history records no failed attempt, as for an agent run that ended on a failed result), `verdicts` each guardrail that fired in the run (its `name`, whether it halted the run as a `tripwire` or let it go on as a `guardrail`, and its `outcome`; a workflow instance’s own steps included), `remediation` what to do next, and `nextCommands` `interborough` command lines for the run (`runs get`, and `runs retry` for a failed workflow instance `bureau.workflows.runs.retry` would run again for the caller). It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`; a workflow instance whose run state or timeline the Bureau cannot read, because it has no durable engine, is `UnsupportedCapability` (`durable-engine`), never `run-not-failed`. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -5274,7 +5503,7 @@
               "type": "object"
             },
             "nextCommands": {
-              "description": "`interborough` command lines that read the run, each one a command the CLI has.",
+              "description": "`interborough` command lines for the run, each one a command the CLI has: `runs get` always, and `runs retry` for a failed workflow instance that `bureau.workflows.runs.retry` would run again for the caller.",
               "items": {
                 "type": "string"
               },
@@ -23018,7 +23247,7 @@
       }
     },
     {
-      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
+      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at, and is that step when left out. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -23066,9 +23295,9 @@
         },
         {
           "name": "step",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.",
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer"
@@ -23134,15 +23363,14 @@
             "type": "string"
           },
           "step": {
-            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.",
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "runId",
-          "step"
+          "runId"
         ],
         "type": "object"
       }

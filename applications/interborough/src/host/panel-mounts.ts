@@ -163,7 +163,7 @@ function servedPlacement(placement: PluginPanelPlacement): PluginPanelPlacement 
             }),
       };
     case 'run':
-      return { kind: 'run' };
+      return placement.when === 'failed' ? { kind: 'run', when: 'failed' } : { kind: 'run' };
     case 'chat-tool':
       return { kind: 'chat-tool', agentTool: placement.agentTool };
   }

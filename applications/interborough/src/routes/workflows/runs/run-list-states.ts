@@ -37,6 +37,8 @@ export function runNoMatchDescription(filter: RunFilter, agent: string | undefin
     ...(filter.attention === undefined ? [] : [RUN_ATTENTION_COPY.noMatchClause]),
     ...(filter.startedBy === undefined ? [] : [copy.startedBy(startedByPhrase(filter.startedBy))]),
     ...(filter.workflow === undefined ? [] : [copy.workflow(workflowTypeName(filter.workflow))]),
+    ...(filter.retrying === undefined ? [] : [copy.retrying]),
+    ...(filter.failedStep === undefined ? [] : [copy.failedStep(filter.failedStep)]),
     ...(filter.search === undefined ? [] : [copy.matching(filter.search)]),
   ];
   const changeable = [
@@ -44,6 +46,7 @@ export function runNoMatchDescription(filter: RunFilter, agent: string | undefin
     ...(filter.agent === undefined ? [] : [copy.filters.agent]),
     ...(filter.startedBy === undefined ? [] : [copy.filters.origin]),
     ...(filter.workflow === undefined ? [] : [copy.filters.workflow]),
+    ...(filter.failedStep === undefined ? [] : [copy.filters.failedStep]),
     ...(filter.search === undefined ? [] : [copy.filters.search]),
   ];
   return `${clauses.join(' ')}. ${copy.tryAnother(changeable)}`;

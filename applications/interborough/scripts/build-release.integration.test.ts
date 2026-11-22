@@ -795,6 +795,8 @@ describe('release arguments', () => {
       'workflow-revision-review',
       'schedule-editor',
       'run-timeline',
+      'failure-explanation',
+      'run-comparison',
     ]);
     // Names are unique across the workspace, so a prebuilt page is named by its panel alone.
     const names = panels.map(({ app }) => app.name);

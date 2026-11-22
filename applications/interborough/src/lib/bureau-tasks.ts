@@ -158,6 +158,17 @@ export type TaskFilter = {
    */
   readonly attention?: TaskAttention;
   /**
+   * Only the tasks that failed at the step with this label (COR-2531, `failure.step.label`): a
+   * tool's name, `model` for a model step, or a workflow run's failed step. The Bureau compares the
+   * first 200 characters and refuses a value past 1,000.
+   */
+  readonly failedStep?: string;
+  /**
+   * `true` lists only the tasks with a step on a second or later try (COR-2531, `retrying` on the
+   * task); `false` only the tasks with none.
+   */
+  readonly retrying?: boolean;
+  /**
    * `false` lists only the tasks that have records (COR-2424): the schedule tick's runs and the
    * instances of workflow files, which the engine holds, are left out so a reader of the newest
    * tasks (the chat list, the command palette) is not given its slots to them.
@@ -403,6 +414,26 @@ export type TaskHooks = TaskInspection['hooks'];
 export async function inspectTaskHooks(taskId: string, options?: Options): Promise<TaskHooks> {
   const answer = await bureauClient['bureau.tasks.inspect']({ taskId }, options);
   return answer.hooks;
+}
+
+/**
+ * Why a failed run failed, from what the Bureau stored about it (`bureau.tasks.explain`, COR-2533):
+ * a sentence, the cause, the step, how often it was tried, the guardrails that fired, what to do
+ * next and the commands that read it. The browser words none of it: the Run page shows this answer,
+ * and so do the CLI and the failure explanation panel.
+ */
+export type RunFailureExplanation = BureauOutput<'bureau.tasks.explain'>;
+
+/**
+ * The explanation of the failed run `runId`, an agent run's task or an instance of a workflow file.
+ * A run that did not fail is an `Unprocessable` fault with a message and a remediation, and a run the
+ * caller may not read is a not-found fault.
+ */
+export async function explainRunFailure(
+  runId: string,
+  options?: Options,
+): Promise<RunFailureExplanation> {
+  return bureauClient['bureau.tasks.explain']({ runId }, options);
 }
 
 /**

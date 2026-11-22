@@ -274,6 +274,21 @@
     background: var(--cinder-text-muted);
   }
 
+  /* A pressed toggle is quiet: the tone's tint with its quiet border, and the dot as the one
+   * leading mark. The chip's own pressed recipe (a solid status fill and a check) is the loudest
+   * thing in a row of tinted chips, and the dot already says it is on, so the check is left out.
+   * The extra classes outrank the chip's pressed rules. */
+  .cinder-filter-bar .cinder-chip.cinder-filter-bar__toggle[aria-pressed='true'] {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+    border-color: var(--cinder-status-warning-border);
+    box-shadow: none;
+  }
+
+  .cinder-filter-bar .cinder-filter-bar__toggle[aria-pressed='true'] .cinder-chip__check {
+    display: none;
+  }
+
   /* ----------------------------------------
    * Choice popover: a titled list of rows with counts
    * ---------------------------------------- */

@@ -126,6 +126,7 @@
   tooltip={row.title}
   metaTooltip={lineTwo}
   {...attention.length === 0 ? {} : { badge: attentionBadges }}
+  metaLines={2}
   {...cost === undefined ? {} : phone ? { detail: costCell } : { trailing: costCell }}
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
