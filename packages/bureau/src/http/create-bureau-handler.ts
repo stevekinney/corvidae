@@ -83,6 +83,7 @@ import {
   createPrunedCommandLedger,
 } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
+import { readRunVerdicts } from '../run-failure-verdicts.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import { type BureauA2AMountOptions, createBureauA2AMount } from './a2a-mount.ts';
 import { type BureauMcpOptions, createBureauMcpMount } from './mcp-mount.ts';
@@ -264,6 +265,10 @@ import {
   runsTimelineOperation,
 } from './management/runs-timeline-operation.ts';
 import {
+  type BureauTasksExplainOperationHost,
+  tasksExplainOperation,
+} from './management/tasks-explain-operation.ts';
+import {
   type BureauEventsCatalogOperationHost,
   eventsCatalogOperation,
 } from './management/events-catalog-operation.ts';
@@ -436,6 +441,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
   BureauRunsTimelineOperationHost &
+  BureauTasksExplainOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
@@ -863,6 +869,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksGetOperation,
   tasksInspectOperation,
   runsTimelineOperation,
+  tasksExplainOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -1358,6 +1365,25 @@ export function buildBureauHandlerHost(
     inspect: (id, options) => bureau.tasks.inspect(id, options),
     // The engine's own timeline of a run, read by `bureau.runs.timeline` after it has authorized.
     runTimeline: async (runId) => bureau.durableEngine()?.getTimeline(runId),
+    // What `bureau.tasks.explain` reads of a run it has authorized: the engine's state of it, and the
+    // guardrails the audit trail holds for it (and, for a workflow instance, for its steps).
+    runState: async (runId) => {
+      const state = await bureau.durableEngine()?.get(runId);
+      return state === null || state === undefined
+        ? undefined
+        : {
+            status: state.status,
+            failureCategory: state.failureCategory,
+            errorCode: state.errorCode,
+            failedStep: state.failedStep,
+          };
+    },
+    runVerdicts: (runId, kind) =>
+      readRunVerdicts(
+        { trail: bureau.internals.auditTrail, tasks: bureau.internals.taskRegistry },
+        runId,
+        kind,
+      ),
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),

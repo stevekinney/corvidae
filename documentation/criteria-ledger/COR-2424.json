@@ -1,0 +1,124 @@
+{
+  "issue": "COR-2424",
+  "branch": "codex/cor-2424-run-detail",
+  "checkedAt": "86d7a4a0f4529ec3c13a674a90f90b8ab9667a64",
+  "briefVersion": "74480f9a8f8a",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-main",
+      "evidence": "Existing run-page coverage."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-main",
+      "evidence": "Existing phone run-page coverage."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Failure context regression preserves the recorded causal message."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-main",
+      "evidence": "Existing payload card coverage."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-main",
+      "evidence": "Existing run detail coverage."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-main",
+      "evidence": "Existing header-action coverage."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-main",
+      "evidence": "Existing provider-blocked coverage."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-main",
+      "evidence": "Existing operator disclosure coverage."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "Details rail always includes Run ID as a Cinder identifier with Copy Run ID."
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-main",
+      "evidence": "Existing live-instance coverage."
+    },
+    {
+      "id": "AC11",
+      "status": "met-on-branch",
+      "evidence": "Live-instance fixture supplies one visible input field and an empty editable Tags row."
+    },
+    {
+      "id": "AC12",
+      "status": "met-on-main",
+      "evidence": "Existing failed-run coverage."
+    },
+    {
+      "id": "AC13",
+      "status": "met-on-main",
+      "evidence": "Existing retry-action coverage."
+    },
+    {
+      "id": "AC14",
+      "status": "met-on-branch",
+      "evidence": "Stored causal activity appears in the 3-try unit and capture fixture."
+    },
+    {
+      "id": "AC15",
+      "status": "met-on-main",
+      "evidence": "Existing input-output coverage."
+    },
+    {
+      "id": "AC16",
+      "status": "met-on-branch",
+      "evidence": "Run ID is present for workflow-file instances."
+    },
+    {
+      "id": "AC17",
+      "status": "met-on-main",
+      "evidence": "Existing goal-attempt coverage."
+    },
+    {
+      "id": "AC18",
+      "status": "met-on-branch",
+      "evidence": "Run ID is now a shared rail fact for goal attempts."
+    },
+    {
+      "id": "AC19",
+      "status": "met-on-main",
+      "evidence": "Existing schedule-run coverage."
+    },
+    {
+      "id": "AC20",
+      "status": "met-on-main",
+      "evidence": "Existing schedule action coverage."
+    },
+    {
+      "id": "AC21",
+      "status": "met-on-branch",
+      "evidence": "Run ID is now a shared rail fact for schedule runs."
+    },
+    {
+      "id": "AC22",
+      "status": "met-on-main",
+      "evidence": "Existing signal-wait coverage."
+    },
+    {
+      "id": "AC23",
+      "status": "met-on-branch",
+      "evidence": "Focused checks passed; browser capture is dispatched in run 44972745054."
+    }
+  ]
+}

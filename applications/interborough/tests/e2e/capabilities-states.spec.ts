@@ -812,3 +812,38 @@ test.describe('/capabilities tool page, on a dark system', () => {
     expect(mismatches.wrong).toEqual([]);
   });
 });
+
+test.describe('/capabilities skill instruction touch target', () => {
+  test.use({ hasTouch: true });
+
+  test('Show all receives a tap below its painted edge (31n)', async ({ page }) => {
+    await answerOperation(page, 'bureau.skills.list', RELEASE_NOTES_SKILLS);
+    await answerOperation(page, 'bureau.skills.get', RELEASE_NOTES_INSTRUCTIONS);
+    await open(page, 375, '/capabilities?tab=skills&skill=built-in%2Frelease-notes');
+    const toggle = page.getByTestId('skill-instructions-toggle');
+    await toggle.scrollIntoViewIfNeeded();
+    const target = await toggle.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const extension = Number.parseFloat(getComputedStyle(button, '::before').bottom);
+      return {
+        x: box.left + box.width / 2,
+        y: box.bottom - extension - 1,
+        extension,
+      };
+    });
+    expect(target.extension).toBeLessThan(-1);
+    await page.touchscreen.tap(target.x, target.y);
+    expect(await toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+});
+
+test('/capabilities tool and source details use a reading column on a wide display', async ({
+  page,
+}) => {
+  await githubIs(page, 'failed', 'The source could not be reached.');
+  await open(page, 1920, '/capabilities?tool=github__create_issue');
+  const readingWidth = (node: Element) => getComputedStyle(node).maxInlineSize;
+  expect(await page.getByTestId('tool-detail').evaluate(readingWidth)).toBe('760px');
+  await page.goto('/capabilities?tab=sources&source=github');
+  expect(await page.getByTestId('source-detail').evaluate(readingWidth)).toBe('760px');
+});

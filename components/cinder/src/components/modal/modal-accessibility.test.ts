@@ -74,11 +74,17 @@ describe('Modal', () => {
         title: 'Session expired',
         role: 'alertdialog',
         describedById: 'session-description',
-        children: emptySnippet,
+        dismissOnBackdropClick: false,
+        dismissOnEscape: false,
+        closeButtonVisible: false,
+        children: createRawSnippet(() => ({
+          render: () => '<p id="session-description">Sign in again to continue.</p>',
+        })),
       },
     });
     const dialog = container.querySelector('dialog');
     expect(dialog?.getAttribute('role')).toBe('alertdialog');
+    expect(dialog?.getAttribute('aria-describedby')).toBe('session-description');
   });
   test('applies custom class prop to root dialog element', () => {
     const { container } = render(Modal, {

@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2519",
+  "branch": "chef/cli-faults-and-dry-run",
+  "checkedAt": "158f64d897ff36bf260c091fcf2a53a2b283e248",
+  "briefVersion": "f33976930702",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "cli-client-errors.test.ts: json and jsonl print error.code = server FaultCode, exitCode, server retryable, remediation when sent; golden server-fault.json"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "cli-client-errors.test.ts lists all 8 local CLI_ codes and reaches each, including a refused connection with the real fetch"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "text stderr is message then a Try: line only with a remediation (cli-client-errors.test.ts)"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "cli-client.test.ts passes unchanged in its exit assertions; schemaVersion literal only"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "CLI_SCHEMA_VERSION 1 to 2; golden files server-fault.json and local-error.json; installed-release script and its tests moved to 2/3"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "applications/interborough/README.md Command errors section"
+    }
+  ]
+}

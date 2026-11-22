@@ -175,8 +175,10 @@ test.describe('an open chat on the sample world', () => {
     const boxes = await readBoxes(page, {
       sheet,
       copy: sheet.getByRole('button', { name: 'Copy session ID' }),
+      composer: page.locator('.chat-input-area'),
     });
-    expect(boxes.sheet.y + boxes.sheet.height).toBeCloseTo(812, 0);
+    expect(boxes.composer.y).toBeLessThan(812);
+    expect(boxes.sheet.y + boxes.sheet.height).toBeCloseTo(boxes.composer.y, 0);
     expect(boxes.copy.x).toBeGreaterThanOrEqual(boxes.sheet.x);
     expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(boxes.sheet.x + boxes.sheet.width);
     expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(375);

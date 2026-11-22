@@ -150,7 +150,19 @@ describe('the Tags row of a run the engine holds (rows 54j, 55d)', () => {
     const view = mount(id);
 
     await waitFor(() => expect(fact(view, 'Tags')).toBeDefined());
+    expect(fact(view, 'Tags')).toContain('None');
     expect(view.queryByRole('button', { name: 'Add a tag' })).toBeNull();
+  });
+
+  test('says None and offers Add a tag for an empty editable run, without a tag chip', async () => {
+    const id = 'wf-detail-tags-empty';
+    routeRun(id, { tags: [] });
+
+    const view = mount(id, principalWith('workflows:read', 'workflows:write', 'tags:write'));
+
+    await waitFor(() => expect(fact(view, 'Tags')).toContain('None'));
+    expect(view.getByRole('button', { name: 'Add a tag' })).not.toBeNull();
+    expect(view.container.querySelectorAll('.cinder-description-list__tag')).toHaveLength(0);
   });
 });
 
