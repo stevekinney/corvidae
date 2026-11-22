@@ -219,8 +219,11 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
 
     await openFilterMenuOn(page, 'Failed at step');
     await failedStepField(page).click();
-    await failedStepField(page).fill('c');
-    // The steps the listed runs failed at that hold the typed letter.
+    // "ch" is in charge-card and not in send-receipt: the suggestions are the steps the listed runs
+    // failed at that hold the typed text anywhere in them, so a single "c" (which send-receipt
+    // holds too, in "receipt") would offer both.
+    await failedStepField(page).fill('ch');
+    // The steps the listed runs failed at that hold the typed text.
     await expect(page.getByRole('option', { name: 'charge-card', exact: true })).toBeVisible();
     await expect(page.getByRole('option', { name: 'send-receipt', exact: true })).toHaveCount(0);
     await captureForDesignReview(page, {
