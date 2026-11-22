@@ -1,24 +1,24 @@
 {
   "issue": "COR-2543",
   "branch": "worktree-agent-adad48645b85a67de",
-  "checkedAt": "54437f3b95a36bd273ff84efd98d026bbbbf5e96",
+  "checkedAt": "65a8e63f5ce3e3c8d2ceffe57c91810a02d34041",
   "briefVersion": "68c6387c8a66",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "plugins/inspectors/src/failure-explanation (app.ts, model.ts, explanation.svelte, view.svelte.ts) is the panel ui://inspectors/failure-explanation/v1, registered in plugin.ts. It renders the summary, the cause (a badge with code and kind), the step by its label, the tries, the guardrails and the remediation. model.test.ts and explanation.test.ts read each part; panel-inspectors.slow.test.ts builds the page."
+      "evidence": "plugins/inspectors/src/failure-explanation (app.ts, model.ts, explanation.svelte, view.svelte.ts) is the panel ui://inspectors/failure-explanation/v1, registered in plugin.ts. It renders the summary, the cause (a badge with code and kind), the step by its label, the tries, the guardrails and the remediation, and reads a result as an object or as the JSON text Chat hands a panel. model.test.ts and explanation.test.ts read each part; panel-inspectors.slow.test.ts builds the page."
     },
     {
       "id": "AC2",
-      "status": "needs-decision",
-      "evidence": "Done: a run placement (the run's page mounts it with the run's taskId, which the panel reads through the explain tool) and opensFromTool bureau.tasks.explain (an MCP Apps client that runs the explain tool gets the panel with the result; host.test.ts asserts the tool's _meta and the resource). Open: Interborough's own Chat opens a panel only from a chat-tool placement, which names an agent tool the Bureau holds (compose-plugins.ts refuses any other), and no agent tool wraps bureau.tasks.explain, so this application's Chat does not open it. A run placement mounts on every task run's page, so a run that did not fail shows the Bureau's refusal there (AC3); the placement contract has no 'failed only' condition. Recommendation: file the agent tool (bureau:tasks-explain) as its own change if Chat must open it, and leave the placement as it is."
+      "status": "met-on-branch",
+      "evidence": "Opens from the explain tool (opensFromTool bureau.tasks.explain; host.test.ts asserts its _meta and the resource) and in Chat: the new agent tool bureau:tasks-explain (tasks-explain-tool.ts, on every Bureau with or without a workflow directory, over the same read as the operation, run-failure-read.ts) has a chat-tool placement, which compose-plugins.ts accepts (compose-plugins.test.ts). The tool answers only for a run the calling run's owner owns, and in a workspace that owner must be a current non-service member (mayRunUseSharedConfiguration); anything else is not-found. tasks-explain-tool.test.ts: an agent reads its owner's failed agent run and failed workflow instance, another owner and a missing run are not-found, a run that did not fail is not-failed, and no provider text reaches the answer. Placed on the run's page for a failed run only (Coordinator, 2026-11-22: shown only for failed runs): the run placement takes when: 'failed' (interborough-plugin contributions.ts, compose-plugins.ts refuses any other value, panel-mounts.ts and host-panels.ts carry it, run-panels.svelte mounts a panel with it only when the run's status is failed; run-panels-failed-only.test.ts mounts it for a failed run and not for another). The panel keeps its own message state for a direct call (AC3). #1213 had not landed on origin/main; it also touches create-bureau.ts, compose-plugins.ts, the bureau-plugin tests and the tool-catalog tests, so a merge of both keeps both tools."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "A run that did not fail is the Bureau's Unprocessable fault, an MCP error result whose structured content holds message and remediation; refusalOf reads them and the page shows both. model.test.ts and explanation.test.ts cover it; tests/panels/failure-explanation.spec.ts shows it for a read and for an opening result (not run locally)."
+      "evidence": "A run that did not fail is the Bureau's Unprocessable fault, an MCP error result whose structured content holds message and remediation; refusalOf reads them and the page shows both. model.test.ts and explanation.test.ts cover it; tests/panels/failure-explanation.spec.ts shows it for a read and for an opening result (not run locally). In Chat the agent tool answers not-failed and Chat opens no panel over it."
     },
     {
       "id": "AC4",
@@ -28,7 +28,7 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "plugin-identities.json holds inspectors:failure-explanation (check-plugin-identities.ts --write; lint:root's guard passes); plugins/inspectors/README.md and packages/bureau/README.md each list the panel in their panel table (plugin.test.ts asserts one row each). tests/panels/failure-explanation.spec.ts renders the panel for a failed fixture run and calls only the explain read; written and registered, NOT RUN on this host (the browser suites run on GitHub)."
+      "evidence": "plugin-identities.json holds inspectors:failure-explanation (regenerated after the placements changed; lint:root's guard passes); plugins/inspectors/README.md and packages/bureau/README.md each list the panel in their panel table (plugin.test.ts asserts one row each). tests/panels/failure-explanation.spec.ts renders the panel for a failed fixture run and calls only the explain read; written and registered, NOT RUN on this host (the browser suites run on GitHub)."
     }
   ]
 }
