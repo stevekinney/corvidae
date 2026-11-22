@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2538",
+  "branch": "worktree-agent-a1e66e5258d991376",
+  "checkedAt": "df56cb99290de2ef2fc6607c8ca1e0974ca29974",
+  "briefVersion": "a01825d1cece",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "lineage-panel.svelte offers Compare with source on every run with forkedFrom and reads weft.workflows.compare for the run's own id alone, with no session state; lineage-panel.test.ts 'a fork opens its comparison from its own id alone' and 'a run that is not a fork has no compare action' pass (focused-checks exit 0). The reload and new-session path is tests/e2e/fork-comparison.spec.ts, written and not run on this host."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "fork-comparison-data.ts fetchForkComparison reads weft.workflows.compare and follows nextCursor (fork-comparison.test.ts); divergence.ts, divergence-view.svelte, run-step-timeline-selection.ts and their tests are deleted, so the browser aligns nothing; the Checkpoints tab shows the same server comparison after a fork. focused-checks exit 0."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "fork-comparison.test.ts 'selecting a changed step shows its output difference in the diff viewer' reads the JsonDiffViewer group 'Output differences, step 2' and the changed id 1 -> 2; non-JSON summaries are read as text (parseSummary, tested in packages/interborough-plugin run-comparison.test.ts)."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "fork-comparison.test.ts 'shows the shared steps collapsed and the steps the fork ran again': the shared step is absent until the '1 step shared with the source' disclosure opens; fork-comparison.spec.ts asserts aria-expanded false and no [data-shared-step] before it is opened (spec not run here)."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict with Create fork disabled, nothing asked for a non-number or without workflows:write. The server answer for this fixture is pinned by tests/fixture-seed.test.ts against a real engine."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "tests/e2e/fork-comparison.spec.ts forks the seeded fork-comparison run from the first checkpoint row, reloads on the fork, opens the comparison from the lineage panel and reads the changed ticket in the diff viewer. NOT RUN: browser suites are barred on this host; the premise (a fork of fixtures/fork-comparison.ts answers a different ticket, and the first checkpoint row keeps one step and reruns one) is proven on a real engine by tests/fixture-seed.test.ts. targeted-run.ts is dispatched once for the batch after the push."
+    }
+  ]
+}

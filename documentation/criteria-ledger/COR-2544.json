@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2544",
+  "branch": "worktree-agent-a1e66e5258d991376",
+  "checkedAt": "df56cb99290de2ef2fc6607c8ca1e0974ca29974",
+  "briefVersion": "bdf0e93b22ae",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 10 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, and answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated; operation-map, workspace-privacy, create-bureau-handler, mcp-mount and wire-golden tests pass."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "ui://inspectors/run-comparison/v1 (plugins/inspectors/src/run-comparison): comparison.test.ts opens a differing step of a fork and reads the changed value 1 -> 2 in JsonDiffViewer (DOM test, passes). tests/panels/run-comparison.spec.ts is the Playwright version of the same read and is written, NOT RUN on this host (browser suites barred); targeted-run.ts is dispatched after the push."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Open decision on where the placement mounts, see the report's decisions: a run's page mounts run panels only for a run with a task."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "comparison.test.ts shows the server's message as written for a refused run and model.test.ts reads a Bureau fault's message from structuredContent; the panel's spec 'shows the server's message for a run that is not a fork' is written and NOT RUN on this host."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "bun scripts/check-plugin-identities.ts passes inside lint:root (exit 0) with inspectors:run-comparison in plugin-identities.json; plugins/inspectors/README.md and packages/bureau/README.md each hold a row for ui://inspectors/run-comparison/v1."
+    }
+  ]
+}
