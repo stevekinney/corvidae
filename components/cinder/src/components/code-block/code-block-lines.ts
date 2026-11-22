@@ -148,7 +148,7 @@ function breaksAfter(text: string, index: number): boolean {
  * The places are after `/`, `.`, `:`, `-` and a closing `"`; whitespace needs none. The pieces
  * joined are exactly `text`: nothing is added to the text that is shown and copied.
  */
-export function breakPoints(text: string): string[] {
+function breakPoints(text: string): string[] {
   const pieces: string[] = [];
   let start = 0;
   for (let index = 0; index < text.length - 1; index += 1) {

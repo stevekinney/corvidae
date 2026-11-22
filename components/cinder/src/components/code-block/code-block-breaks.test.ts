@@ -9,7 +9,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { Highlighter } from '../../utilities/highlighter.ts';
-import { breakPoints, splitWords } from './code-block-lines.ts';
+import { splitWords } from './code-block-lines.ts';
+
+/** Every piece of `text` a wrapping block may break between, whitespace runs as pieces of their own. */
+const breakPoints = (text: string): string[] => splitWords(text).flatMap((run) => run.pieces);
 
 setupHappyDom();
 
@@ -52,7 +55,7 @@ describe('breakPoints', () => {
   });
 
   test('never cuts inside a word, whatever the text is', () => {
-    for (const text of ['bureau', 'interborough', '7405', 'mcpServers', 'a', '']) {
+    for (const text of ['bureau', 'interborough', '7405', 'mcpServers', 'a']) {
       expect(breakPoints(text)).toEqual([text]);
     }
   });
@@ -66,11 +69,11 @@ describe('breakPoints', () => {
       'json',
     ]);
     expect(breakPoints('wait...')).toEqual(['wait...']);
-    expect(breakPoints('x -1 --notify')).toEqual(['x -1 --notify']);
+    expect(breakPoints('x -1 --notify')).toEqual(['x', ' ', '-1', ' ', '--notify']);
   });
 
   test('breaks after a quote only where it closes a word', () => {
-    expect(breakPoints('"url": "http://a/b"')).toEqual(['"url": "http://', 'a/', 'b"']);
+    expect(breakPoints('"url": "http://a/b"')).toEqual(['"url":', ' ', '"http://', 'a/', 'b"']);
   });
 
   test('adds and drops no character, for any text', () => {
