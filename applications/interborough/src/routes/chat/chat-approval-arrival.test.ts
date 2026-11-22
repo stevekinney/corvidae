@@ -62,7 +62,7 @@ const PARKED = [
   },
 ];
 
-function serve(attach: () => Response, answers: Array<unknown> = []) {
+function serve(attach: () => Response | Promise<Response>, answers: Array<unknown> = []) {
   const served = bureau(
     {
       'bureau.contexts.get': () => CONTEXT,
@@ -136,7 +136,7 @@ describe('a chat that opens on an approval', () => {
     const { container } = mount();
     const opener = document.createElement('a');
     opener.href = '/chats/session-1';
-    opener.dataset.chat = 'session-1';
+    opener.dataset['chat'] = 'session-1';
     document.body.append(opener);
     try {
       opener.focus();
