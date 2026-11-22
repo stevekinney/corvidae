@@ -20,7 +20,8 @@
  */
 import type { Locator, Page } from '@playwright/test';
 
-import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -222,6 +223,58 @@ test.describe('/reviews: a conflict is drawn in the warning tone', () => {
         source: SOURCE,
       });
       await checkA11y(`/reviews failed, a conflict in the warning tone, ${width}px`);
+    });
+  }
+});
+
+// The Run hooks section of a run's page draws its failed read as a Cinder `ErrorState` row (the
+// title above its sentence, Try again at the end), the row COR-2560's restack changed. The
+// specification of that section (`run-hooks-states.spec.ts`) is not in the capture, so this is where
+// the row is seen: the host answers the run's inspection with a 500 and everything else is its own.
+test.describe('/runs/:run (run hooks failing): the row under a run’s hooks', () => {
+  test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
+
+  let waitingRun = '';
+  test.beforeAll(async () => {
+    waitingRun = (await readSampleWorldRecords(E2E_SHOWCASE_URL)).runs.waiting;
+  });
+
+  for (const width of WIDTHS) {
+    test(`/runs/:run (run hooks failing): the read that failed is a titled row with Try again, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+      pageErrors,
+    }) => {
+      pageErrors.expectEvery({
+        pattern: loggedFailedResponse(500, BUREAU_LOGGED),
+        reason: 'the test answers the run’s inspection with a 500',
+      });
+      await page.route(BUREAU_CALLS, async (route) => {
+        const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+        if (body.method !== 'bureau.tasks.inspect') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: 500, json: { error: 'The server answered.' } });
+      });
+      await page.clock.setFixedTime(SAMPLE_NOW);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/runs/${encodeURIComponent(waitingRun)}`);
+      await expect(page.locator('main [data-run-header]')).toBeVisible();
+
+      const section = page.locator('main [data-section="run-hooks"]');
+      await expect(
+        section.getByRole('heading', { name: 'Couldn’t load this run’s hooks.' }),
+      ).toBeVisible();
+      await expect(section).toContainText('The rest of the run is shown.');
+      await expect(section.getByRole('button', { name: 'Try again' })).toBeVisible();
+
+      await captureForDesignReview(page, {
+        route: '/runs/:run (run hooks failing)',
+        state: 'run hooks row fails',
+        source: SOURCE,
+      });
+      await checkA11y(`/runs/:run, the run hooks row failing, ${width}px`);
     });
   }
 });

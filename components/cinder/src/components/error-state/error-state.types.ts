@@ -114,7 +114,7 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
-   * the title (medium weight, on its own line), the description and remediation under it, and
+   * the title (semibold, on its own line), the description and remediation under it, and
    * the actions (a secondary retry button with no refresh glyph unless `retryIcon` is given, and
    * any `secondaryAction`) at the end, for the failure of one card among others that are live;
    * the actions drop under the words on a phone.
@@ -216,7 +216,7 @@ export interface ErrorStateSchemaProps {
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
-   * the title (medium weight, on its own line), the description and remediation under it, and
+   * the title (semibold, on its own line), the description and remediation under it, and
    * the actions (a secondary retry button with no refresh glyph unless `retryIcon` is given, and
    * any `secondaryAction`) at the end, for the failure of one card among others that are live;
    * the actions drop under the words on a phone.

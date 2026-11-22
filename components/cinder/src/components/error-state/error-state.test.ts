@@ -581,20 +581,21 @@ describe('ErrorState row variant', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
 
     const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
-    // The title is the row's heading, on a line of its own above the description, in the flat
-    // variant's medium weight (COR-2560: it ran on into the sentence as "Conflict The server…").
+    // The title is the row's heading, on a line of its own above the description, in the centred
+    // page title's semibold weight with a small gap under it: the title and the sentence are one
+    // size, so weight and the gap carry the hierarchy (COR-2560: it ran on into the sentence as
+    // "Conflict The server…", and at medium weight read as an equal of the line under it).
     expect(css).toMatch(
       /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-description \{\s*display: block;/,
     );
     // The row's own title rule (the combined rule above sets the description's normal weight).
     expect(css).toMatch(
-      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title \{\s*font-weight: var\(--cinder-font-medium\);/,
+      /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title \{\s*margin-block-end: var\(--cinder-space-1\);\s*font-weight: var\(--cinder-font-semibold\);/,
     );
-    const flatTitle = declarationsFor(
-      css,
-      ".cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-title",
+    // The same weight the centred page title uses.
+    expect(declarationsFor(css, '.cinder-error-state-title').get('font-weight')).toBe(
+      'var(--cinder-font-semibold)',
     );
-    expect(flatTitle.get('font-weight')).toBe('var(--cinder-font-medium)');
     // A grouped list row's insets, so the retry ends on the same edge as a list row's button
     // (COR-2329: it ended 8px short).
     const body = declarationsFor(

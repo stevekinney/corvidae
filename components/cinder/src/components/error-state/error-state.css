@@ -318,10 +318,12 @@
     color: inherit;
   }
 
-  /* The title is the row's heading: the flat variant's medium weight, on a line of its own, so it
-   * never runs on into the sentence under it. */
+  /* The title is the row's heading: the centred page title's semibold weight (the title and the
+   * sentence under it are one size, so weight and a small gap carry the hierarchy), on a line of
+   * its own, so it never runs on into the sentence under it. */
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title {
-    font-weight: var(--cinder-font-medium);
+    margin-block-end: var(--cinder-space-1);
+    font-weight: var(--cinder-font-semibold);
   }
 
   /* A bordered row is a quiet hairline in its tone's border token, never the centred box's grey

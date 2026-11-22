@@ -199,7 +199,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/hooks-states.spec.ts',
   // A fault's remediation and Retry on the Hooks list's failed state and the Reviews fault row: a
   // retryable fault with a remediation, one that is not retryable, one with no remediation, and a
-  // conflict in the warning tone (COR-2560).
+  // conflict in the warning tone, and the failed row under a run's hooks (COR-2560).
   'tests/e2e/fault-remediation.spec.ts',
   // The four typed-confirmation dialogs (bulk action, purge, drain, clear dead letter) in each
   // state, which no page capture sees (COR-2547). `--grep confirm-dialog-states` selects it.
