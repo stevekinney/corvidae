@@ -407,7 +407,9 @@ for (const width of WIDTHS) {
         page.getByRole('heading', { level: 1, name: WORKFLOW_COPY.page.notFound.title }),
       ).toBeVisible();
       await expect(
-        page.getByRole('link', { name: 'Back to Workflows', exact: true }),
+        page
+          .getByRole('group', { name: WORKFLOW_COPY.page.notFound.title, exact: true })
+          .getByRole('link', { name: 'Back to Workflows', exact: true }),
       ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',
