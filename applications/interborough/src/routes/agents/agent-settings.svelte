@@ -203,6 +203,7 @@
   let models = $state<string[]>([]);
   let effort = $state<Effort | ''>('');
   let stepLimit = $state('');
+  let stepLimitInputText: string | undefined;
   let instructions = $state('');
   /** Set by a submit: from then on the step limit says at its field why it cannot be saved. */
   let attempted = $state(false);
@@ -216,9 +217,7 @@
 
   const stepLimitInput: Attachment<HTMLInputElement> = (input) => {
     const update = () => {
-      const text = input.value;
-      if (text.trim() !== '' && Number.isFinite(Number(text.trim()))) return;
-      stepLimit = text;
+      stepLimitInputText = input.value;
     };
     input.addEventListener('input', update);
     return () => input.removeEventListener('input', update);
@@ -232,7 +231,10 @@
   }
 
   function acceptStepLimit(value: number | null): void {
-    if (value !== null || stepLimit.trim() === '') stepLimit = value === null ? '' : String(value);
+    const rawText = stepLimitInputText ?? stepLimit;
+    stepLimitInputText = undefined;
+    stepLimit =
+      value === null && rawText.trim() !== '' ? rawText : value === null ? '' : String(value);
   }
 
   function fill(next: SettingsForm, at: string | null): void {

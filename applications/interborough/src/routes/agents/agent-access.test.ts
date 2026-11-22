@@ -7,6 +7,7 @@
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
@@ -615,6 +616,37 @@ describe('guardrails and spend', () => {
       expectedHash: 'hash-1',
       definition: { limits: { cost: { run: 0.0007, chat: 0.0006, warn: [0.5] } } },
     });
+  });
+
+  test('commits a German decimal amount after its separator is typed without writing an interim value', async () => {
+    const originalLanguage = Object.getOwnPropertyDescriptor(navigator, 'language');
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+    try {
+      landAt('/agents/researcher/access');
+      const served = serve(
+        { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+        detailWith({ limits: { steps: null, cost: { run: 7, chat: 7 }, tools: null } }),
+      );
+      const { findByLabelText } = mount();
+
+      const chat = await findByLabelText(copy.spendLabel);
+      await fireEvent.input(chat, { target: { value: '0,' } });
+      await tick();
+      expect(chat).toHaveValue('0,');
+      expect(updatesOf(served)).toHaveLength(0);
+
+      await fireEvent.input(chat, { target: { value: '0,5' } });
+      await fireEvent.blur(chat);
+
+      await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+      expect(updatesOf(served)[0]?.params).toMatchObject({
+        expectedHash: 'hash-1',
+        definition: { limits: { cost: { run: 7, chat: 0.5 } } },
+      });
+    } finally {
+      if (originalLanguage === undefined) delete (navigator as { language?: string }).language;
+      else Object.defineProperty(navigator, 'language', originalLanguage);
+    }
   });
 
   test('saves an independent run limit without changing the chat limit or warnings', async () => {

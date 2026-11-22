@@ -46,7 +46,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
-  import { SvelteSet } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
   import {
     CONNECTION_MAX_ATTEMPTS,
@@ -112,6 +112,7 @@
 
   const copy = AGENT_PAGE_COPY.access;
   const spendFormat: Intl.NumberFormatOptions = { maximumSignificantDigits: 21 };
+  const spendInputText = new SvelteMap<'chat' | 'run', string>();
   const queryClient = useQueryClient();
   const connection = getConnection();
   const toasts = hasToastHost();
@@ -315,15 +316,11 @@
     });
   }
 
-  /** Preserves the editor's exact text so the existing application validation can judge it. */
+  /** Keeps the editor's exact text until NumberInput has judged it on blur. */
   function spendInput(field: 'chat' | 'run'): Attachment<HTMLInputElement> {
     return (input) => {
       const update = () => {
-        if (form === undefined) return;
-        const text = input.value;
-        if (text.trim() !== '' && Number.isFinite(Number(text.trim()))) return;
-        if (field === 'chat') form.spendPerChat = text;
-        else form.spendPerRun = text;
+        spendInputText.set(field, input.value);
       };
       input.addEventListener('input', update);
       return () => input.removeEventListener('input', update);
@@ -336,10 +333,12 @@
     value: number | null,
   ): void {
     const text = field === 'chat' ? state.spendPerChat : state.spendPerRun;
-    if (value !== null || text.trim() === '') {
-      if (field === 'chat') state.spendPerChat = value === null ? '' : String(value);
-      else state.spendPerRun = value === null ? '' : String(value);
-    }
+    const rawText = spendInputText.get(field) ?? text;
+    spendInputText.delete(field);
+    const next =
+      value === null && rawText.trim() !== '' ? rawText : value === null ? '' : String(value);
+    if (field === 'chat') state.spendPerChat = next;
+    else state.spendPerRun = next;
     commitSpend(state, field);
   }
 
