@@ -5649,6 +5649,228 @@
       }
     },
     {
+      "description": "Returns `explanation`: the longer explanation of why one failed agent run failed that a model wrote when it was asked (`bureau.tasks.explanation.generate`), with its `text`, the `model` that wrote it (`<provider>/<model>`), when it was written (`generatedAt`) and what it cost (`costUsd`, in US dollars, `null` when unpriced), or `null` when none has been written. It calls no model, so reading it again costs nothing. It is a read of the task, with the access `bureau.tasks.get` asks; an instance of a workflow file has no task to keep one on and answers `null`, and any run the caller may not read, or that does not exist, is `NotFound`. It is not on MCP.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        }
+      ],
+      "name": "bureau.tasks.explanation.get",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed agent run: its task id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "explanation": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "costUsd": {
+                      "description": "What writing it cost in US dollars, priced from the model catalog; `null` when the model has no price or reported no usage, never `0`. The run’s own `usage.costUsd` does not include it.",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "generatedAt": {
+                      "description": "When it was written.",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                      "type": "string"
+                    },
+                    "model": {
+                      "description": "The model that wrote it, as `<provider>/<model>`.",
+                      "type": "string"
+                    },
+                    "text": {
+                      "description": "What the model wrote, as plain text.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "model",
+                    "generatedAt",
+                    "costUsd"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The stored explanation, or `null` when no model has been asked about this run."
+            }
+          },
+          "required": [
+            "explanation"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read the explanation a model wrote of a failed run",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the failed agent run: its task id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Asks the Bureau’s configured decision model to explain why one failed agent run failed, at more length than `bureau.tasks.explain`, stores the text on the task, and returns it as `explanation` with the `model` that wrote it (`<provider>/<model>`), `generatedAt` and `costUsd` (US dollars priced from the model catalog, `null` when unpriced). It replaces any explanation the task held, and each call asks the model again; `bureau.tasks.explanation.get` reads what is stored without a call. The model is sent the stored-facts explanation and, for each step, its name, status, error message and guardrail verdicts, and never a tool argument, a tool result or a message. The cost is the explanation’s own and is not added to the run’s `usage`. It spends a model’s tokens, so it asks what `bureau.tasks.cancel` asks of the caller (the owner of the run, or `bureau.tasks:write` with `bureau.tasks:read`). A run that did not fail is `Unprocessable` with `data.reason` `run-not-failed`; an instance of a workflow file is `Unprocessable` with `run-has-no-task`; a run whose record changed while the model wrote (its chat’s content purged, or its failure replaced by the run’s real end) is `Unprocessable` with `run-changed` and nothing is stored; with no provider connected the call is `UnsupportedCapability` (`generate`) with a `remediation` that says to connect one; a run the caller may not use is `NotFound`. It is not on MCP.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.tasks.explanation.generate",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed agent run: its task id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "explanation": {
+              "additionalProperties": false,
+              "properties": {
+                "costUsd": {
+                  "description": "What writing it cost in US dollars, priced from the model catalog; `null` when the model has no price or reported no usage, never `0`. The run’s own `usage.costUsd` does not include it.",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "generatedAt": {
+                  "description": "When it was written.",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                },
+                "model": {
+                  "description": "The model that wrote it, as `<provider>/<model>`.",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "What the model wrote, as plain text.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text",
+                "model",
+                "generatedAt",
+                "costUsd"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "explanation"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Ask a model to explain a failed run at more length",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the failed agent run: its task id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the run the cancel would stop (1 while the task is in progress, 0 once it has finished or when it belongs to a goal or a workflow instance, whose cancel is `rejected`), and a task the real call would not find is `NotFound` as well.",
       "errors": [
         {

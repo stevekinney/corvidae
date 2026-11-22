@@ -158,6 +158,16 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [['bureau.tasks.explain', 'owner']],
   },
   {
+    testFile: 'management/tasks-model-explanation-operation.test.ts',
+    inputFixture:
+      'An owned failed agent run whose error message holds private text, explained by a model',
+    sentinel: 'PRIVATE-MODEL-EXPLANATION-2f7d',
+    operations: [
+      ['bureau.tasks.explanation.get', 'owner'],
+      ['bureau.tasks.explanation.generate', 'owner'],
+    ],
+  },
+  {
     testFile: 'workspace-context-privacy.test.ts',
     inputFixture: 'Independent owned context per actor and mutation',
     sentinel: 'PRIVATE-CONTEXT-HISTORY-b0ca',

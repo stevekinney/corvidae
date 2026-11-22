@@ -73,6 +73,12 @@ import {
   type TaskFailureView,
   type TaskRetrying,
 } from './task-failure';
+import {
+  isTaskModelExplanation,
+  modelExplanationFenceOf,
+  type ModelExplanationFence,
+  type TaskModelExplanation,
+} from './task-model-explanation';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import {
   isStoredTaskOrigin,
@@ -373,6 +379,14 @@ export interface TaskRecord {
    * settled, and in a record written before it was kept.
    */
   readonly retrying?: TaskRetrying | undefined;
+  /**
+   * COR-2534 — the longer explanation of why the run failed that a model wrote when the owner asked
+   * for it, kept so reopening the page costs nothing. Only a failed task holds one, and writing a
+   * new one replaces it. It is dropped with the settlement's text when a chat's content is purged,
+   * because it was written from the failure's message. Absent for a task nobody asked a model about,
+   * and in a record written before it was kept.
+   */
+  readonly modelExplanation?: TaskModelExplanation | undefined;
 }
 
 /**
@@ -762,6 +776,21 @@ export interface TaskRegistry {
    * does not count as a change of the record: it moves no `revision`.
    */
   recordUsage(taskId: string, usage: TaskUsage): Promise<void>;
+  /**
+   * COR-2534 — stores the text a model wrote about why a task failed, replacing the one it held. It
+   * writes only a task that has failed, and does not count as a change of the record: it moves no
+   * `revision` and leaves the run's `usage` as it was. The write is fenced on `fence`, the identity
+   * of the failure the model was asked about (`modelExplanationFenceOf`, read before the model was
+   * called): the model call takes time, and a purge of the chat's content, or the real end of a run
+   * inferred `owner-lost`, can land in it. Resolves `stored` when the explanation is stored, and
+   * `stale` when it is not: no record, a task that has not failed, or a record that changed since
+   * the fence was read. A stale explanation is never stored.
+   */
+  recordModelExplanation(
+    taskId: string,
+    explanation: TaskModelExplanation,
+    fence: ModelExplanationFence,
+  ): Promise<'stored' | 'stale'>;
   /**
    * COR-2526 — records that the Bureau saw a task's run stall (`stalledAt`, an ISO 8601 instant on
    * the Bureau's clock), or that it no longer does (`null`). It writes only a task that has a record
@@ -1239,6 +1268,8 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['overspending'] === undefined || isTaskOverspending(value['overspending'])) &&
     (value['failure'] === undefined || isTaskFailure(value['failure'])) &&
     (value['retrying'] === undefined || isTaskRetrying(value['retrying'])) &&
+    (value['modelExplanation'] === undefined ||
+      isTaskModelExplanation(value['modelExplanation'])) &&
     (value['workflow'] === undefined || isStoredTaskWorkflow(value['workflow'])) &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
@@ -2005,7 +2036,22 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const { answer: _ignored, usage, failure, ...rest } = settlement;
     // COR-2526: an ended task is neither stalled nor looping, so the settlement drops both. COR-2531:
     // nor is it retrying, and a failure the record held belongs to the settlement it replaces.
-    const { attention: _ended, retrying: _stopped, failure: held, ...kept } = record;
+    const {
+      attention: _ended,
+      retrying: _stopped,
+      failure: held,
+      modelExplanation: heldExplanation,
+      ...kept
+    } = record;
+    // COR-2534: a model's explanation is of the failure it was written for. A later writer of the
+    // same failed settlement (the catalog hook) leaves it; a settlement that replaces the failure
+    // with another end, such as the real end of a run that was inferred `owner-lost`, drops it.
+    const keptExplanation =
+      rest.status === 'failed' &&
+      record.settled?.status === 'failed' &&
+      record.settled.finishReason === rest.finishReason
+        ? heldExplanation
+        : undefined;
     // COR-2531: the failure the settlement carries, else the one an earlier writer of a failed
     // settlement left (the later writer, such as the catalog hook, knows none of it). A settlement
     // that is not a failure, such as the real end that replaces an `owner-lost` inference, has none.
@@ -2016,6 +2062,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       // settlement; a settlement that carries none (another process's) leaves the figure standing.
       ...(usage === undefined ? {} : { usage }),
       ...(keptFailure === undefined ? {} : { failure: keptFailure }),
+      ...(keptExplanation === undefined ? {} : { modelExplanation: keptExplanation }),
       settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
     };
   }
@@ -2218,6 +2265,28 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           true,
         );
       });
+    },
+
+    async recordModelExplanation(taskId, explanation, fence) {
+      let stored = false;
+      await update(
+        taskId,
+        (record) => {
+          // Re-judged on every compare-and-swap attempt: only the attempt that commits counts. The
+          // record must still be the failure the model was asked about: a purge or a replacing end
+          // changes its revision, and a message a purge emptied is no longer what was read.
+          const now = modelExplanationFenceOf(record);
+          stored =
+            now !== undefined &&
+            now.revision === fence.revision &&
+            now.settledAt === fence.settledAt &&
+            now.finishReason === fence.finishReason &&
+            now.message === fence.message;
+          return stored ? { ...record, modelExplanation: { ...explanation } } : undefined;
+        },
+        false,
+      );
+      return stored ? 'stored' : 'stale';
     },
 
     recordStall(taskId, stalledAt) {
@@ -2547,17 +2616,20 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         // A task that has not settled is still being written to: its text is not dropped.
         if (settled === undefined) return undefined;
         // A chat's own tasks have their history emptied with the context (COR-1481); a delegated
-        // child's task is a context of its own, so it is emptied here.
+        // child's task is a context of its own, so it is emptied here. A model's explanation was
+        // written from the failure's message, so it goes with it (COR-2534).
         if (
           settled.message === null &&
           settled.answer === undefined &&
-          current.history.length === 0
+          current.history.length === 0 &&
+          current.modelExplanation === undefined
         ) {
           return undefined;
         }
         changed = true;
+        const { modelExplanation: _dropped, ...kept } = current;
         return {
-          ...current,
+          ...kept,
           history: [],
           settled: {
             at: settled.at,

@@ -191,6 +191,8 @@ export const CLI_OPERATION_MAPPINGS = Object.freeze({
     'bureau.tasks.inspect',
     'bureau.tasks.cancel',
     'bureau.tasks.explain',
+    'bureau.tasks.explanation.get',
+    'bureau.tasks.explanation.generate',
     'bureau.workflows.runs.list',
     'bureau.workflows.runs.get',
     'bureau.workflows.runs.retry',
@@ -495,6 +497,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'wait',
     'step',
     'status',
+    'model',
     'dry-run',
   ],
   events: [
@@ -720,7 +723,7 @@ const helpText: Record<string, string> = {
   chat: 'Usage: interborough chat --agent <name> [message]\n\n  --message-file <path>  Read one message from a file',
   chats: 'Usage: interborough chats <list|get|send|fork|rename|delete|configure> [options]',
   reviews: 'Usage: interborough reviews <list|get|approve|reject> [options]',
-  runs: 'Usage: interborough runs <list|get|inspect|explain|retry|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  explain <id>         Why a failed run failed, from what Bureau stored (either kind of run)\n  retry <id>           Run a failed workflow run again from the step it failed at; --step N names it\n  --output jsonl       Emit one typed watch record per line',
+  runs: 'Usage: interborough runs <list|get|inspect|explain|retry|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  explain <id>         Why a failed run failed, from what Bureau stored (either kind of run)\n  explain <id> --model  Ask a model to explain a failed agent run at more length; it spends tokens and is stored on the run\n  retry <id>           Run a failed workflow run again from the step it failed at; --step N names it\n  --output jsonl       Emit one typed watch record per line',
   events:
     'Usage: interborough events watch [options]\n\n  --kind task|workflow  Required for watch',
   audit: 'Usage: interborough audit list [options]',
@@ -809,7 +812,9 @@ function isBooleanOption(command: string, option: string): boolean {
     ['all', 'help', 'no-input', 'yes', 'dry-run', 'overwrite', 'secret-stdin', 'no-open'].includes(
       option,
     ) ||
-    ((option === 'wait' || option === 'include-runs') && command === 'workflows')
+    ((option === 'wait' || option === 'include-runs') && command === 'workflows') ||
+    // `runs explain --model` asks a model to write the explanation; elsewhere `--model` names one.
+    (option === 'model' && command === 'runs')
   );
 }
 
@@ -1572,6 +1577,10 @@ export async function executeCli(
             'set',
           ].includes(parsed.arguments[0] ?? '')) ||
         (parsed.command === 'runs' && ['cancel', 'retry'].includes(parsed.arguments[0] ?? '')) ||
+        // `explain --model` writes the task's record and spends tokens (COR-2534).
+        (parsed.command === 'runs' &&
+          parsed.arguments[0] === 'explain' &&
+          parsed.options.get('model') === true) ||
         (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
           [
             'create',

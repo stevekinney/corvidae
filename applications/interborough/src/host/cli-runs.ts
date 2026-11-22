@@ -456,10 +456,31 @@ function explanationText(explanation: RecordValue): string {
 }
 
 /**
+ * What a model wrote about a failed run, as the lines a person reads: the text, then which model
+ * wrote it, when, and what it cost (COR-2534). A model with no price has no cost line, never
+ * `Cost: $0.00`.
+ */
+function modelExplanationText(explanation: RecordValue): string {
+  const words = (value: unknown): string => (typeof value === 'string' ? value : '');
+  const costUsd = explanation['costUsd'];
+  const cost = formatCost(typeof costUsd === 'number' ? costUsd : null);
+  return [
+    words(explanation['text']),
+    '',
+    `Written by ${words(explanation['model'])} at ${words(explanation['generatedAt'])}`,
+    ...(cost === undefined ? [] : [`Cost of this explanation: ${cost}`]),
+  ].join('\n');
+}
+
+/**
  * Why a run failed, from what Bureau stored: `bureau.tasks.explain`, which takes either kind of run
  * by its identifier, so no `--kind` is needed. A run that did not fail is the server's
  * `Unprocessable` fault with its message and remediation, which is a misuse of the command, so it
  * exits with the usage status (2) and says what the server said (COR-2533).
+ *
+ * With `--model`, a model writes the longer explanation of a failed agent run instead
+ * (`bureau.tasks.explanation.generate`): it spends tokens, stores the text on the task, and prints it
+ * with the model's name and what it cost (COR-2534).
  */
 async function explain(
   target: CliTarget,
@@ -468,6 +489,20 @@ async function explain(
 ): Promise<CliCommandResult> {
   const rawId = identifier(parsed);
   try {
+    if (parsed.options.get('model') === true) {
+      const response = await rpc(
+        target,
+        parsed,
+        dependencies,
+        'bureau.tasks.explanation.generate',
+        {
+          runId: rawId,
+        },
+      );
+      const written = record(record(response.data)?.['explanation']);
+      if (written === undefined || parsed.output !== 'text') return response;
+      return { ...response, data: modelExplanationText(written) };
+    }
     const response = await rpc(target, parsed, dependencies, 'bureau.tasks.explain', {
       runId: rawId,
     });
@@ -477,6 +512,18 @@ async function explain(
   } catch (error) {
     if (error instanceof Error && Reflect.get(error, 'faultCode') === 'Unprocessable')
       throw Object.assign(error, { usage: true });
+    // `--model` writes the task's record and spends tokens, so a failure the CLI cannot read is an
+    // unknown outcome (exit 7); a fault that guarantees nothing ran (no provider connected, for
+    // one) is a plain refusal (exit 1), as for `runs retry`.
+    if (
+      parsed.options.get('model') === true &&
+      error instanceof Error &&
+      faultRefusedBeforeAnyEffect(error)
+    ) {
+      const status: unknown = Reflect.get(error, 'status');
+      if (status !== 401 && status !== 403 && status !== 409)
+        throw Object.assign(error, { exitCode: 1 });
+    }
     throw error;
   }
 }

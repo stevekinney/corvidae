@@ -125,8 +125,11 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
           remediation: 'Explain a run only after it has failed.',
         },
       },
-      'Why this run failed',
+      'Run explanation',
     );
+    // The page is not headed as the explanation of a failure: the run did not fail.
+    expect(container.querySelector('h1')?.textContent).toBe('Run explanation');
+    expect(container.textContent).not.toContain('Why this run failed');
     // The component's sentence, from the reason: no run identifier, no quoted status.
     expect(shared(container, 'summary')?.textContent).toBe(
       'This run didn’t fail, so there’s nothing to explain.',
@@ -140,9 +143,7 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
     expect(shared(container, 'summary')?.getAttribute('data-cinder-variant')).toBe('body');
     // The live region says the heading, never the message the page already shows: the words are
     // there once to a person who reads them and once to one who hears them.
-    expect(container.querySelector('[role="status"]')?.textContent?.trim()).toBe(
-      'Why this run failed',
-    );
+    expect(container.querySelector('[role="status"]')?.textContent?.trim()).toBe('Run explanation');
     expect(container.querySelector('[role="status"]')?.textContent).not.toContain(message);
   });
 
@@ -151,6 +152,8 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
       kind: 'refused',
       refusal: { reason: null, message: 'Not found', remediation: null },
     });
+    // Only a run that did not fail drops the heading; any other refusal keeps it.
+    expect(container.querySelector('h1')?.textContent).toBe('Why this run failed');
     // A refusal of any other reason is the Bureau's own message.
     expect(shared(container, 'summary')?.textContent).toBe('Not found');
     expect(shared(container, 'remediation')).toBeNull();
