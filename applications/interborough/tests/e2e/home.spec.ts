@@ -1238,19 +1238,16 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
 });
 
 test.describe('Home on a tablet (05s)', () => {
-  test('keeps the 76px rail, the full top bar, the Spotlight and the buttons trailing their rows', async ({
+  test('keeps the tablet menu, full search, Spotlight and the buttons trailing their rows', async ({
     page,
     checkA11y,
   }) => {
     await openHome(page, 768);
-    const rail = page.locator('aside.weft-shell-sidebar');
-    expect(Math.round((await rail.boundingBox())!.width)).toBe(76);
+    await expect(page.locator('aside.weft-shell-sidebar')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open navigation' })).toBeVisible();
     await expect(
       page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
     ).toContainText('⌘K');
-    await expect(
-      page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
-    ).toContainText('2');
     await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
       '2 need you',
     );

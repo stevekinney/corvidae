@@ -2,7 +2,7 @@
  * The sidebar (design rows 03a to 03m, 04a to 04c, 05r, 07h, 07k): the product's name as text, Home
  * on its own, then Work, Build and System with Settings last; Reviews carrying the reviews waiting
  * on the person, Health a dot that follows what needs attention; New chat as its primary action; and
- * the three forms it takes, the column, the 76px rail with its overlay, and the drawer.
+ * its desktop column and its smaller-screen drawer.
  */
 import { HttpClient } from '@lostgradient/weft';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
@@ -164,12 +164,12 @@ function matchMediaWhere(matching: (query: string) => boolean): void {
 
 /** A viewport at least 1200px wide, where the sidebar stays in the page. */
 function onDesktop(): void {
-  matchMediaWhere((query) => query.includes('min-width: 1200px'));
+  matchMediaWhere(() => false);
 }
 
-/** A tablet: from 700px to 1199px, so the 76px rail. */
+/** The drawer is available on a tablet without the phone tabs. */
 function onTablet(): void {
-  matchMediaWhere(() => false);
+  matchMediaWhere((query) => query === '(max-width: 1199.98px)');
 }
 
 /** A phone, under 700px: the drawer behind the tab bar. */
@@ -487,66 +487,23 @@ describe('the sidebar', () => {
 });
 
 describe('the sidebar on a tablet (04a)', () => {
-  test('is the 76px rail whatever the preference says, and the preference is left alone', () => {
+  test('reserves no inline column and opens the full destination list in the drawer', async () => {
     onTablet();
     stubEngine();
     landAt('/chats');
     const navigation = navigationState();
-    const { container } = mount({ navigation });
-    expect(navigation.mode).toBe('rail');
-    expect(container.querySelector('.weft-shell-sidebar--rail')).not.toBeNull();
-    expect(container.querySelector('.weft-shell-sidebar--collapsed')).not.toBeNull();
-    expect(container.querySelector('.weft-shell-sidebar-slot')?.getAttribute('data-mode')).toBe(
-      'rail',
-    );
-    // The rail draws a label under every icon (COR-2315), which is Cinder's `railLabels`.
-    expect(container.querySelector('aside')?.hasAttribute('data-cinder-rail-labels')).toBe(true);
-  });
+    const { container, findByRole, getByRole, queryByRole } = mount({ navigation });
+    expect(container.querySelector('aside')).toBeNull();
+    expect(queryByRole('dialog')).toBeNull();
+    expect(navigation.showPhoneTabs).toBe(false);
+    navigation.drawerOpen = true;
+    const dialog = await findByRole('dialog', { name: 'Interborough' });
+    expect(Array.from(dialog.querySelectorAll('nav a')).map(labelOf)).toEqual(ROW_LABELS);
 
-  test('draws the labelled rail only on a tablet, not on the folded column of a desktop', () => {
-    onDesktop();
-    stubEngine();
-    window.localStorage.setItem('interborough-sidebar-collapsed', 'true');
-    landAt('/chats');
-    const { container } = mount();
-    expect(container.querySelector('.weft-shell-sidebar--collapsed')).not.toBeNull();
-    expect(container.querySelector('aside')?.hasAttribute('data-cinder-rail-labels')).toBe(false);
-  });
-
-  test('expanding opens the full sidebar as an overlay that closes on navigation', async () => {
-    onTablet();
-    stubEngine();
-    landAt('/chats');
-    const navigation = navigationState();
-    const { getByRole, container } = mount({ navigation });
-    await fireEvent.click(getByRole('button', { name: 'Expand sidebar' }));
-    expect(container.querySelector('.weft-shell-sidebar--overlay')).not.toBeNull();
-    expect(container.querySelector('.weft-shell-sidebar--collapsed')).toBeNull();
-    expect(container.querySelector('.weft-shell-sidebar-scrim')).not.toBeNull();
-    // Opening the overlay never writes the person's own preference.
-    expect(window.localStorage.getItem('interborough-sidebar-collapsed')).toBeNull();
-
-    await fireEvent.click(getByRole('link', { name: /^Runs/ }));
+    await fireEvent.click(getByRole('link', { name: 'Runs' }));
     expect(router.pathname).toBe('/runs');
-    expect(container.querySelector('.weft-shell-sidebar--overlay')).toBeNull();
-    expect(container.querySelector('.weft-shell-sidebar--collapsed')).not.toBeNull();
-  });
-
-  test('Escape and the scrim close the overlay', async () => {
-    onTablet();
-    stubEngine();
-    landAt('/chats');
-    const navigation = navigationState();
-    const { getByRole, container } = mount({ navigation });
-    await fireEvent.click(getByRole('button', { name: 'Expand sidebar' }));
-    await fireEvent.keyDown(window, { key: 'Escape' });
-    expect(container.querySelector('.weft-shell-sidebar--overlay')).toBeNull();
-
-    await fireEvent.click(getByRole('button', { name: 'Expand sidebar' }));
-    const scrim = container.querySelector('.weft-shell-sidebar-scrim');
-    expect(scrim).not.toBeNull();
-    await fireEvent.click(scrim!);
-    expect(container.querySelector('.weft-shell-sidebar--overlay')).toBeNull();
+    expect(navigation.drawerOpen).toBe(false);
+    expect(window.localStorage.getItem('interborough-sidebar-collapsed')).toBeNull();
   });
 });
 
@@ -580,7 +537,7 @@ describe('the sidebar as a drawer (04a, 04c, 05r, 07h, 07k)', () => {
     await waitFor(() =>
       expect(getByRole('link', { name: 'Health, 3 need attention' })).not.toBeNull(),
     );
-    // The rail’s collapse button belongs to the column and the rail, not to the drawer.
+    // The drawer has its own heading and dismiss control.
     expect(dialog.querySelector('.weft-shell-sidebar__brand')).toBeNull();
   });
 

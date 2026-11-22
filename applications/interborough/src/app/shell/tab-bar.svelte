@@ -35,7 +35,7 @@
   }
 </script>
 
-{#if shell?.mode === 'drawer'}
+{#if shell?.showPhoneTabs}
   <NavigationBar placement="bottom" label={NAVIGATION_COPY.tabBar} class="weft-shell-tab-bar">
     {#snippet items({ variant })}
       {#each tabs as destination (destination.path)}
