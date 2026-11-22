@@ -10,6 +10,7 @@ import { Window } from 'happy-dom';
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import type { Principal } from '../../../lib/scopes.svelte.ts';
@@ -116,6 +117,52 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(await view.findByRole('heading', { level: 1, name: 'Release notes' })).not.toBeNull();
     expect(view.queryByText(TASK_COPY.notFound.title)).toBeNull();
     expect(view.queryByText(TASK_COPY.loadFailed.title)).toBeNull();
+  });
+
+  test('mounts the run panels on its Inspector tab, which a run with no task used to go without (owner, 2026-11-22)', async () => {
+    fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
+    fetchScript.routeUrl('/host/panels', {
+      apps: [
+        {
+          plugin: 'inspectors',
+          app: 'run-inspector',
+          title: 'Run inspector',
+          uri: 'ui://inspectors/run-inspector/v1',
+          placements: [{ kind: 'run' }],
+        },
+        {
+          plugin: 'inspectors',
+          app: 'run-comparison',
+          title: 'Run comparison',
+          uri: 'ui://inspectors/run-comparison/v1',
+          opensFromTool: 'bureau.runs.compare',
+          placements: [{ kind: 'run' }],
+        },
+        {
+          plugin: 'inspectors',
+          app: 'pending-review',
+          title: 'Pending reviews',
+          uri: 'ui://inspectors/pending-review/v1',
+          placements: [],
+        },
+      ],
+    });
+    fetchScript.routeUrl('/host/plugins/', { html: '<div id="root"></div>', ui: {} });
+    routeEngine('instance-panels', engineRun({}));
+
+    const view = mount('instance-panels');
+    const trigger = await view.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+    if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+    const tab = await view.findByRole('tab', { name: RUN_DETAIL_COPY.howItRan.tabs.inspector });
+    if (tab.getAttribute('aria-selected') !== 'true') await fireEvent.click(tab);
+
+    await waitFor(() =>
+      expect(
+        [...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]')].map(
+          (section) => section.dataset['app'],
+        ),
+      ).toEqual(['run-inspector', 'run-comparison']),
+    );
   });
 
   /**

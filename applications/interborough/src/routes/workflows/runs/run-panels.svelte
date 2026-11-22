@@ -16,12 +16,26 @@
   import { getPanels, loadPluginApp, pluginToolCaller } from '../../../lib/host-panels.ts';
   import { queryKeys } from '../../../lib/query.ts';
 
-  interface RunPanelsProps {
-    /** The Bureau task the panels show. */
-    taskId: string;
-  }
+  /**
+   * The run the panels show: a Bureau task (an agent run), or a run only the workflow engine holds
+   * (a workflow instance, a fork among them), which has no task. Exactly one is given.
+   */
+  type RunPanelsProps =
+    { taskId: string; workflowId?: never } | { workflowId: string; taskId?: never };
 
-  let { taskId }: RunPanelsProps = $props();
+  let { taskId, workflowId }: RunPanelsProps = $props();
+
+  /**
+   * What each run placement passes its panel (COR-2544, owner decision 2026-11-22): an agent run is
+   * `{ taskId }`, as it always was; a workflow instance is `{ runId, runKind: 'workflow' }`, with no
+   * `taskId`, so a panel that reads a task is never handed an id that names none, and one that reads
+   * a workflow run (the run comparison) reads `runId`.
+   */
+  const run = $derived(
+    workflowId === undefined
+      ? { key: `task:${String(taskId)}`, input: { taskId } }
+      : { key: `workflow:${workflowId}`, input: { runId: workflowId, runKind: 'workflow' } },
+  );
 
   const apps = createQuery(
     () => ({
@@ -54,13 +68,13 @@
     data-plugin={panel.plugin}
     data-app={panel.app}
   >
-    {#key taskId}
+    {#key run.key}
       <McpApp
         resourceUri={panel.uri}
         title={panel.title}
         {loadResource}
         {onToolCall}
-        toolInput={{ arguments: { taskId } }}
+        toolInput={{ arguments: run.input }}
       />
     {/key}
   </Section>

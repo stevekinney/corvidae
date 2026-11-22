@@ -4,7 +4,8 @@
  * so the host's authorization decides every call. It holds no credential and reaches no origin.
  *
  * The run to compare comes from the tool input: `runId` when a client opens the page from the compare
- * tool, `taskId` when a run's page mounts it, which names every run panel's run that way. The
+ * tool or a workflow instance's page mounts it, `taskId` when an agent run's page does (which names
+ * every run panel's run that way, and is never a fork). The
  * server pages the comparison by step, so the page follows `nextCursor` until the last page and
  * shows one whole comparison. A refusal (a run that is not a fork, a source the caller may not
  * read) is the server's message, shown as it was written.

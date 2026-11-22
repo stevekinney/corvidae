@@ -101,9 +101,10 @@ export const scheduleEditor: PluginPanel = {
  * The run comparison: a forked workflow run beside the run it was forked from, with the steps the
  * two share and the input and output differences of each step the fork ran again. A client opens it
  * from `bureau.runs.compare`, the tool the page is linked to and the only one it calls. It declares a
- * `run` placement, so a run's page mounts it wherever that page mounts its run panels, and a run
- * that is not a fork shows the server's message. The page mounts them for a run that has a task
- * (an agent run), which is never a fork, and not yet for a workflow instance, which is.
+ * `run` placement, so a run's page mounts it with its run panels: an agent run's page gives it the
+ * run's `taskId` (an agent run is never a fork, so it shows the server's message), and a workflow
+ * instance's page gives it `{ runId, runKind: 'workflow' }` (owner decision, 2026-11-22), which is
+ * where a fork's comparison is. A run that is not a fork shows the server's message.
  * `allowedTools` lists every tool the page calls, which a test keeps true.
  */
 export const runComparison: PluginPanel = {

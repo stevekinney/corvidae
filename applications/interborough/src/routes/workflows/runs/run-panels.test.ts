@@ -29,6 +29,7 @@ import {
 } from '../../../lib/bureau-world.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
+import RunPanelsHarness from './run-panels.test-harness.svelte';
 
 type FrameMessage = { jsonrpc?: string; id?: number; method?: string; result?: unknown } & Record<
   string,
@@ -339,6 +340,67 @@ describe('the run inspector on a run’s page', () => {
     });
     await waitFor(() => expect(responseTo(8)).toBeDefined());
     expect(responseTo(8)?.result).toMatchObject({ isError: true });
+  });
+});
+
+/** Mounts the panels for a run the test names, on a host that answers only the panel routes. */
+function openPanels(run: { taskId: string } | { workflowId: string }) {
+  const original = globalThis.fetch;
+  globalThis.fetch = Object.assign(
+    (input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(
+        hostAnswer(pathOf(input), init) ?? new Response('Not found', { status: 404 }),
+      ),
+    { preconnect: original.preconnect },
+  );
+  restoreHost = () => {
+    globalThis.fetch = original;
+  };
+  return render(RunPanelsHarness, { props: run } as never);
+}
+
+/** The arguments each panel's frame is sent as its tool input, once every frame has initialized. */
+async function toolInputsOf(view: ReturnType<typeof openPanels>): Promise<unknown[]> {
+  await waitFor(() =>
+    expect(view.container.querySelectorAll('[data-section="plugin-panel"] iframe')).toHaveLength(3),
+  );
+  for (const frame of view.container.querySelectorAll<HTMLIFrameElement>(
+    '[data-section="plugin-panel"] iframe',
+  )) {
+    await initialize(frame.contentWindow as object);
+  }
+  const inputs = () =>
+    framePayloads.filter((message) => message.method === 'ui/notifications/tool-input');
+  await waitFor(() => expect(inputs()).toHaveLength(3));
+  return inputs().map((message) => (message['params'] as { arguments: unknown }).arguments);
+}
+
+describe('the panels on a workflow instance’s run page (COR-2544, owner 2026-11-22)', () => {
+  test('mounts every run panel for an instance, each sent the engine’s run and no task', async () => {
+    const view = openPanels({ workflowId: 'wf-fork-1' });
+    const inputs = await toolInputsOf(view);
+    expect(inputs).toEqual([
+      { runId: 'wf-fork-1', runKind: 'workflow' },
+      { runId: 'wf-fork-1', runKind: 'workflow' },
+      { runId: 'wf-fork-1', runKind: 'workflow' },
+    ]);
+    const sections = [
+      ...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]'),
+    ];
+    expect(sections.map((section) => section.dataset['app'])).toEqual([
+      'run-inspector',
+      'run-notes',
+      'summary',
+    ]);
+  });
+
+  test('sends an agent run its task, as it always was', async () => {
+    const view = openPanels({ taskId: 'run-1' });
+    expect(await toolInputsOf(view)).toEqual([
+      { taskId: 'run-1' },
+      { taskId: 'run-1' },
+      { taskId: 'run-1' },
+    ]);
   });
 });
 

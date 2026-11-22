@@ -385,3 +385,102 @@ test.describe('fork-comparison-states: the fork dialog’s preview', () => {
     expect(fork.id).not.toBe('');
   });
 });
+
+/**
+ * The run panels on a workflow run's page (owner decision, 2026-11-22: run-page panels mount on
+ * workflow runs). The seeded runs are the engine's own, with no Bureau task: the run inspector says
+ * it has no task to inspect, the schedule editor lists the schedules, and the comparison card reads
+ * `bureau.runs.compare`, which the Bureau serves for an instance of a workflow file and answers
+ * with its own message for a run it does not hold as one. A fork of a workflow file is not in the
+ * seeded world (the Bureau's engine cannot fork under its default lease, COR-2635), so the card
+ * with a comparison is answered at the panel route's edge, in the shape the Bureau serves.
+ */
+test.describe('fork-comparison-states: the run panels on a workflow run’s page', () => {
+  const PANEL_TITLES = ['Run inspector', 'Schedule editor', 'Run comparison'] as const;
+
+  /** `bureau.runs.compare` as the Bureau answers a fork of a workflow file. */
+  function bureauComparisonOf(forkId: string) {
+    const { steps, forkPoint } = comparisonOf(forkId);
+    return { runId: forkId, sourceRunId: FORK_COMPARISON_RUN_ID, forkPoint, steps };
+  }
+
+  async function openPanels(page: Page, runId: string): Promise<void> {
+    await page.goto(`/runs/${encodeURIComponent(runId)}`);
+    await openHowItRan(page);
+    await page.getByRole('tab', { name: 'Inspector' }).click();
+    for (const title of PANEL_TITLES) {
+      await expect(page.locator(`iframe[title="${title}"]`)).toBeVisible();
+    }
+  }
+
+  async function capturePanels(page: Page, state: string, ready: () => Promise<void>) {
+    await ready();
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      tab: 'Inspector',
+      state,
+      source: SOURCE,
+      ready,
+    });
+  }
+
+  test('a fork’s page: the comparison card, with the comparison', async ({ page, request }) => {
+    const forkId = await makeFork(request);
+    await page.route('**/host/plugins/inspectors/apps/run-comparison/tool-calls', async (route) => {
+      const comparison = bureauComparisonOf(forkId);
+      await route.fulfill({
+        json: {
+          content: [{ type: 'text', text: JSON.stringify(comparison) }],
+          structuredContent: comparison,
+        },
+      });
+    });
+    await openPanels(page, forkId);
+    const card = page.frameLocator('iframe[title="Run comparison"]');
+    await capturePanels(page, 'workflow run page, comparison card with a comparison', async () => {
+      await expect(card.locator('[data-compared-step="2"]')).toHaveAttribute(
+        'data-kind',
+        'changed',
+      );
+      await expect(
+        card.getByRole('button', { name: '2 steps shared with the source' }),
+      ).toBeVisible();
+    });
+  });
+
+  test('a fork’s page: the comparison card, with the Bureau’s own message', async ({
+    page,
+    request,
+  }) => {
+    const forkId = await makeFork(request);
+    await openPanels(page, forkId);
+    const card = page.frameLocator('iframe[title="Run comparison"]');
+    await capturePanels(
+      page,
+      'workflow run page, comparison card with the server’s message',
+      async () => {
+        await expect(card.locator('[data-comparison-message]')).toBeVisible();
+        await expect(card.locator('[data-compared-step]')).toHaveCount(0);
+      },
+    );
+  });
+
+  test('a workflow run’s page: the run inspector and the schedule editor cards', async ({
+    page,
+  }) => {
+    await openPanels(page, FORK_COMPARISON_RUN_ID);
+    const inspector = page.frameLocator('iframe[title="Run inspector"]');
+    const editor = page.frameLocator('iframe[title="Schedule editor"]');
+    await capturePanels(
+      page,
+      'workflow run page, run inspector and schedule editor cards',
+      async () => {
+        await expect(inspector.locator('[data-inspector-notice]')).toContainText(
+          'has no agent task to inspect',
+        );
+        await expect(inspector.getByRole('button', { name: 'Abort run' })).toHaveCount(0);
+        await expect(editor.getByRole('button', { name: 'New schedule' })).toBeVisible();
+      },
+    );
+  });
+});

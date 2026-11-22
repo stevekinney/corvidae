@@ -1003,6 +1003,9 @@
                 builtIn={isBuiltInWorkflow(task.data.workflow?.type ?? '')}
               />
               <RunPanels taskId={task.data.id} />
+            {:else if notFound && workflow !== undefined}
+              <!-- A run only the engine holds has no task: its panels are given the engine's run. -->
+              <RunPanels workflowId={workflow.id} />
             {/if}
             {#if workflow !== undefined && !readOnlyRun}<RunChange {engine} {workflow} />{/if}
           {/snippet}
