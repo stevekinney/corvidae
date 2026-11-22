@@ -124,7 +124,7 @@ describe('CheckpointsTab', () => {
 
   test('forking a checkpoint shows the success link and the new fork compared with this run, from the server', async () => {
     const compared: string[] = [];
-    const { getByText, getByRole } = render(CheckpointsTabHarness, {
+    const { getByText, getByRole, queryByText } = render(CheckpointsTabHarness, {
       props: {
         client: {
           ...baseClient(),
@@ -153,9 +153,16 @@ describe('CheckpointsTab', () => {
     await waitFor(() => expect(getByText('Target step')).not.toBeNull());
     await confirmFork(getByRole);
 
+    // The fork is named by its workflow, never by its id, and its link carries the id.
     await waitFor(() => {
-      expect(getByText('wf-forked-1')).not.toBeNull();
+      expect(getByText(/^Forked as/)).not.toBeNull();
     });
+    expect(
+      getByText(/^Forked as/)
+        .querySelector('a')
+        ?.getAttribute('href'),
+    ).toContain('wf-forked-1');
+    expect(queryByText('wf-forked-1')).toBeNull();
     await waitFor(() => {
       expect(getByText('Compared with the source run')).not.toBeNull();
     });
