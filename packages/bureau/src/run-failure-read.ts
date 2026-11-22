@@ -46,10 +46,7 @@ export type RunToExplain =
   { readonly kind: 'agent'; readonly task: TaskView } | { readonly kind: 'workflow' };
 
 /** The explanation as plain, mutable data: nothing of the stored facts is shared with the caller. */
-export type PlainRunFailureExplanation = Omit<
-  RunFailureExplanation,
-  'verdicts' | 'nextCommands'
-> & {
+type PlainRunFailureExplanation = Omit<RunFailureExplanation, 'verdicts' | 'nextCommands'> & {
   verdicts: RunVerdict[];
   nextCommands: string[];
 };
