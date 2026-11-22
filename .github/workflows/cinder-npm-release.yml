@@ -91,7 +91,6 @@ jobs:
               bun packages/markdown/scripts/pack-release.ts --version "$VERSION" --outdir "$output" > "$output/receipt.json"
               ;;
             cinder|editor)
-              bunx turbo run types metadata --filter="@lostgradient/$PACKAGE" --concurrency=1
               bun scripts/pack-cinder-release.ts --package "$PACKAGE" --version "$VERSION" --markdown-version "$MARKDOWN_VERSION" --cinder-version "$CINDER_VERSION" --outdir "$output" > "$output/receipt.json"
               ;;
             cinder-mcp)

@@ -10,6 +10,7 @@ import cinderManifest from '../components/cinder/package.json';
 import editorManifest from '../components/editor/package.json';
 import repositoryManifest from '../package.json';
 import { sveltePlugin } from '../testing/testing/src/svelte-plugin.ts';
+import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
 import publishedSurfaces from './published-exports.json';
 
 const repositoryRoot = resolve(import.meta.dir, '..');
@@ -203,6 +204,17 @@ if (!isCinder) {
       peerDependencies.set(dependency, dependencyVersion);
     }
   }
+}
+
+const cinderWorkspace = join(repositoryRoot, 'components/cinder');
+ensureCinderGenerated({
+  generate: (cwd) =>
+    Bun.spawnSync(['bun', 'run', 'metadata'], { cwd, stdout: 2, stderr: 'inherit' }).exitCode,
+});
+await $`bun run types 1>&2`.cwd(cinderWorkspace);
+if (!isCinder) {
+  await $`bun run metadata 1>&2`.cwd(workspaceRoot);
+  await $`bun run types 1>&2`.cwd(workspaceRoot);
 }
 
 const metadata = metadataSchema.parse(
