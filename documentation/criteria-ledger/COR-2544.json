@@ -1,24 +1,24 @@
 {
   "issue": "COR-2544",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "5cb6726fdad5668e4e84ab2abe3968128618f361",
+  "checkedAt": "568402512fbb08795f2f469e14257b8bfd3f15c8",
   "briefVersion": "bdf0e93b22ae",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated."
+      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated. Unchanged by design round 1."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "ui://inspectors/run-comparison/v1 (plugins/inspectors/src/run-comparison): comparison.test.ts opens a differing step of a fork and reads the changed value 1 -> 2 in JsonDiffViewer (DOM test, passes). tests/panels/run-comparison.spec.ts is the Playwright version of the same read and is written, NOT RUN on this host (browser suites barred). The design-review states are tests/panels/run-comparison-states.spec.ts (also not run here)."
+      "evidence": "ui://inspectors/run-comparison/v1 (plugins/inspectors/src/run-comparison): comparison.test.ts opens a differing step of a fork and reads the changed value 1 -> 2 in JsonDiffViewer (DOM test, passes). Design round 1: the steps are Cinder's ListDetail over SelectableRow (open row aria-current, 'Differs in' as the row's description, kind Badge in meta), the detail under the list under the shared 40rem page cap, one word Same for a kept and an unchanged step, no run id in the title. tests/panels/run-comparison.spec.ts is the Playwright version of the same read and is written, NOT RUN on this host (browser suites barred). The design-review states are tests/panels/run-comparison-states.spec.ts, captured at 1280, 375 and the helper's 320 and 1920 (also not run here)."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs. run-detail.svelte mounts RunPanels for a run with no task but an engine run, giving every run panel { runId, runKind: 'workflow' } and no taskId (an agent run still gets { taskId }); run-panels.test.ts and run-detail-engine-runs.test.ts mount every run panel on a workflow instance and read the input each frame is sent. The run inspector says a workflow run has no task to inspect (inspector.test.ts), the schedule editor shows its list, and the comparison reads runId."
+      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs, refined by the design review of #1219: a card mounts only when it has something to say. run-panel-scope.ts holds the rules; run-panels.test.ts and run-detail-engine-runs.test.ts test each mount: a fork gets the run comparison and neither the run inspector nor the schedule editor; a workflow instance that is not a fork gets none of the three; an agent run gets the run inspector and the schedule editor and no comparison; a panel with no rule shows on every run. Each panel is given { runId, runKind: 'workflow' } on a workflow run and { taskId } on an agent run. The host's run panel frame has no duplicate card title and no 'From the plugin' line (region named by aria-label)."
     },
     {
       "id": "AC4",
@@ -28,7 +28,7 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "bun scripts/check-plugin-identities.ts passes inside lint:root (exit 0) with inspectors:run-comparison in plugin-identities.json; plugins/inspectors/README.md and packages/bureau/README.md each hold a row for ui://inspectors/run-comparison/v1."
+      "evidence": "bun scripts/check-plugin-identities.ts passes inside lint:root (exit 0) with inspectors:run-comparison and inspectors:run-timeline in plugin-identities.json; plugins/inspectors/README.md and packages/bureau/README.md each hold a row for ui://inspectors/run-comparison/v1."
     }
   ]
 }
