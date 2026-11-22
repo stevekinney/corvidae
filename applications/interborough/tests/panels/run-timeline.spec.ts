@@ -166,7 +166,8 @@ test.describe('the run timeline MCP App', () => {
     await expect(
       app.getByRole('heading', { name: 'This run has taken no steps yet' }),
     ).toBeVisible();
-    await expect(app.getByRole('heading', { name: 'Steps' })).toHaveCount(0);
+    // `exact`: a name matches as a substring otherwise, and "no steps yet" holds "steps".
+    await expect(app.getByRole('heading', { name: 'Steps', exact: true })).toHaveCount(0);
     await page.evaluate(() => {
       window.referenceHost.handlers['bureau.runs.timeline'] = () => ({
         runId: 'run-1',

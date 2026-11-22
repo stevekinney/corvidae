@@ -280,7 +280,8 @@ test.describe('run-timeline-states: reading a run', () => {
       await expect(
         app.getByRole('heading', { name: 'This run has taken no steps yet' }),
       ).toBeVisible();
-      await expect(app.getByRole('heading', { name: 'Steps' })).toHaveCount(0);
+      // `exact`: a name matches as a substring otherwise, and "no steps yet" holds "steps".
+      await expect(app.getByRole('heading', { name: 'Steps', exact: true })).toHaveCount(0);
       await expect(app.getByRole('list', { name: /Steps of the run/ })).toHaveCount(0);
     };
     await ready();
