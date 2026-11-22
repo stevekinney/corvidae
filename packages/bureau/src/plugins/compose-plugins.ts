@@ -64,6 +64,7 @@ import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../bureau-types/options';
 import { RUN_TIMELINE_TOOL_NAME } from '../run-timeline-tool';
+import { TASKS_EXPLAIN_TOOL_NAME } from '../tasks-explain-tool';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
 import {
   createVersionedCatalog,
@@ -340,11 +341,12 @@ function checkPlacement(
   if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
     throw refusal(`a placement that is not an object (${JSON.stringify(entry) ?? String(entry)})`);
   }
-  const { kind, path, sidebar, agentTool } = entry as {
+  const { kind, path, sidebar, agentTool, when } = entry as {
     kind?: unknown;
     path?: unknown;
     sidebar?: unknown;
     agentTool?: unknown;
+    when?: unknown;
   };
   if (kind === 'page') {
     if (typeof path !== 'string' || !PANEL_PAGE_PATH_PATTERN.test(path)) {
@@ -373,13 +375,22 @@ function checkPlacement(
       agentTools !== undefined &&
       !Object.hasOwn(agentTools, agentTool) &&
       !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`) &&
-      agentTool !== `bureau:${RUN_TIMELINE_TOOL_NAME}`
+      agentTool !== `bureau:${RUN_TIMELINE_TOOL_NAME}` &&
+      agentTool !== `bureau:${TASKS_EXPLAIN_TOOL_NAME}`
     ) {
       throw new TypeError(
         `setup returned the panel "${app.name}" opened from unknown agent tool "${agentTool}".`,
       );
     }
-  } else if (kind !== 'run') {
+  } else if (kind === 'run') {
+    // Only a condition the run's page can read: a value it would read as "every run" by accident
+    // is refused, so a plugin that means "failed" never shows its panel on every page.
+    if (when !== undefined && when !== 'failed') {
+      throw refusal(
+        `a run placement with the condition ${JSON.stringify(when) ?? typeof when}, which is not "failed"`,
+      );
+    }
+  } else {
     throw refusal(
       `a placement of kind ${JSON.stringify(kind)}, which is not page, run or chat-tool`,
     );

@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2543",
+  "branch": "worktree-agent-adad48645b85a67de",
+  "checkedAt": "6304b3a1817d5b5203cc2e7864afa3257b9a38c4",
+  "briefVersion": "68c6387c8a66",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "plugins/inspectors/src/failure-explanation (app.ts, model.ts, explanation.svelte, view.svelte.ts) is the panel ui://inspectors/failure-explanation/v1, registered in plugin.ts. It renders the summary, the cause (a badge with code and kind), the step by its label, the tries, the guardrails and the remediation, and reads a result as an object or as the JSON text Chat hands a panel. model.test.ts and explanation.test.ts read each part; panel-inspectors.slow.test.ts builds the page. Design round 1: the panel draws the answer with the same shared component, announces through Cinder VisuallyHidden role=status (the refused state announces its heading), inherits the BASE_STYLES width cap, shows no internal names; the Cinder DescriptionList two-column variant has no start inset, a label column of at most 10rem and a phone gap of space-1; origin/main (#1213) merged with both panels and tools kept; capture states added for the Chat inline panel and the Run page after the link. Full CI on a2784b8ba1 failed cinder-generated-consumers: @lostgradient/bureau#test reached Cinder through @lostgradient/interborough-plugin once that package took a Cinder devDependency for the shared component. Fixed by moving the shared model and component to the new workspace packages/failure-explanation (@lostgradient/failure-explanation); the plugin authoring package is back to its base manifest, and turbo.json is unchanged. Round 2 (head 9ceee3698d): the shared component moved from the withdrawn packages/failure-explanation workspace (which the workspace rule refuses: a packages/* library exports no .svelte) to plugins/inspectors/src/failure-explanation/failure-explanation.svelte, exported as @lostgradient/plugin-inspectors/failure-explanation.svelte, with the words in @lostgradient/interborough-plugin/failure-explanation (no Cinder). The refusal for a run that did not fail is drawn by the component in its own sentence and the same Stack and body Text, from data.reason; the Bureau message carries no run id, status or quote; the cause is plain text on the label edge, not a Badge. The Run page keeps the duration of the tries in the Tries row (\"3, 3.4 s in all\"); the specs that asserted the dropped page-worded sentence and the error message now assert the Tries row and that the message is not shown. Round 3 (head 991b7e33b4): a workflow instance mounts only the panels placed when: failed (run-panels.svelte; run-panels-failed-only.test.ts covers the failure explanation alone on a failed instance and nothing on a running one, with the schedule editor and timeline listed), and a retry whose instance reactivated before its resume failed on the version is a plain error (EngineFailure), never the version-unavailable refusal (workflow-run-retry.test.ts, workflows-operations.test.ts), so runs retry exits 7 for it."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Opens from the explain tool (opensFromTool bureau.tasks.explain; host.test.ts asserts its _meta and the resource) and in Chat: the new agent tool bureau:tasks-explain (tasks-explain-tool.ts, on every Bureau with or without a workflow directory, over the same read as the operation, run-failure-read.ts) has a chat-tool placement, which compose-plugins.ts accepts (compose-plugins.test.ts). The tool answers only for a run the calling run's owner owns, and in a workspace that owner must be a current non-service member (mayRunUseSharedConfiguration); anything else is not-found. tasks-explain-tool.test.ts: an agent reads its owner's failed agent run and failed workflow instance, another owner and a missing run are not-found, a run that did not fail is not-failed, and no provider text reaches the answer. Placed on the run's page for a failed run only (Coordinator, 2026-11-22: shown only for failed runs): the run placement takes when: 'failed' (interborough-plugin contributions.ts, compose-plugins.ts refuses any other value, panel-mounts.ts and host-panels.ts carry it, run-panels.svelte mounts a panel with it only when the run's status is failed; run-panels-failed-only.test.ts mounts it for a failed run and not for another). The failed-only mounting covers a failed workflow instance too, outside the task guard, given { runId, runKind: 'workflow' } (run-panels.svelte; run-detail-engine-runs.test.ts), in the shape #1219 uses. The panel keeps its own message state for a direct call (AC3). #1213 had not landed on origin/main; it also touches create-bureau.ts, compose-plugins.ts, the bureau-plugin tests and the tool-catalog tests, so a merge of both keeps both tools."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "A run that did not fail is the Bureau's Unprocessable fault, an MCP error result whose structured content holds message and remediation; refusalOf reads them and the page shows both. model.test.ts and explanation.test.ts cover it; tests/panels/failure-explanation.spec.ts shows it for a read and for an opening result (not run locally). In Chat the agent tool answers not-failed and Chat opens no panel over it."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "allowedTools is exactly ['bureau.tasks.explain'], and plugin.test.ts scans every non-test file of the panel's folder for bureau.<x>.<y> names and requires that list; no host-only tool. The page makes one call, bureau.tasks.explain, and none is a write."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "plugin-identities.json holds inspectors:failure-explanation (regenerated after the placements changed; lint:root's guard passes); plugins/inspectors/README.md and packages/bureau/README.md each list the panel in their panel table (plugin.test.ts asserts one row each). tests/panels/failure-explanation.spec.ts renders the panel for a failed fixture run and calls only the explain read; written and registered, NOT RUN on this host (the browser suites run on GitHub)."
+    }
+  ]
+}

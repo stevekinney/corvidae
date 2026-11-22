@@ -30,6 +30,7 @@ import { ownerRpc, type Served, serveWorkflows } from './workflows-fixtures.test
 import { bureauWorkflowsOperations } from './workflows-operations.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { MemoryStorage } from '@lostgradient/storage';
+import { WorkflowRevisionUnavailableError } from '@lostgradient/weft';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -124,6 +125,29 @@ describe('the operations list', () => {
       destructive: true,
       transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
     });
+  });
+
+  it('answers a retry that reactivated the run and then failed on its version as EngineFailure, never as a refusal', async () => {
+    const served = await serve();
+    await seed(served);
+    const runId = await failedDigestRun(served);
+    const engine = served.bureau.durableEngine()!;
+    const retryFailed = engine.retryFailed.bind(engine);
+    engine.retryFailed = async (id) => {
+      await retryFailed(id);
+      throw new WorkflowRevisionUnavailableError('digest', 'v1', 'not-installed');
+    };
+    const response = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.retry',
+      { runId, step: 1 },
+      'workflows-writer-key',
+    );
+    // `Unprocessable` says nothing changed, and the run is running again: a caller that read it so
+    // would send the retry a second time.
+    expect(response.result).toBeUndefined();
+    expect(response.error?.data?.['weftCode']).toBe('EngineFailure');
+    expect(response.error?.data?.['weftCode']).not.toBe('Unprocessable');
   });
 
   it('allows a writer-only API key to cancel, while read-only and foreign keys cannot', async () => {

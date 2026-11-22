@@ -92,6 +92,8 @@
       (filter.tags && filter.tags.length > 0) ||
       filter.idPrefix ||
       (filter.attributes && filter.attributes.length > 0) ||
+      filter.failedStep !== undefined ||
+      filter.retrying !== undefined ||
       filter.createdAt ||
       filter.updatedAt,
     ),
@@ -205,13 +207,26 @@
   // Seeded once from the initial URL (`untrack` makes that explicit); the
   // user's own open/close toggle afterward should not snap shut just
   // because a later edit changes `filter.attributes.length`.
-  let queryBuilderOpen = $state(untrack(() => (filter.attributes?.length ?? 0) > 0));
+  // The conditions it holds are the search attributes and the two built-in fields (COR-2535).
+  const conditionCount = $derived(
+    (filter.attributes?.length ?? 0) +
+      (filter.failedStep === undefined ? 0 : 1) +
+      (filter.retrying === undefined ? 0 : 1),
+  );
+  let queryBuilderOpen = $state(untrack(() => conditionCount > 0));
   const knownAttributeKeys = $derived(Array.from(new Set(rows.flatMap((row) => row.tags ?? []))));
 
-  function onAttributesChange(nextAttributes: AttributeFilter[]): void {
+  function onAttributesChange(
+    nextAttributes: AttributeFilter[],
+    failure: { readonly failedStep?: string; readonly retrying?: boolean },
+  ): void {
     const next: WorkflowListQuery = { ...filter };
     if (nextAttributes.length > 0) next.attributes = nextAttributes;
     else delete next.attributes;
+    if (failure.failedStep === undefined) delete next.failedStep;
+    else next.failedStep = failure.failedStep;
+    if (failure.retrying === undefined) delete next.retrying;
+    else next.retrying = failure.retrying;
     navigateToFilter(next, true);
   }
 
@@ -314,12 +329,14 @@
       onFilterChange={(next) => navigateToFilter(next, true)}
       {queryBuilderOpen}
       onQueryBuilderOpenChange={(open) => (queryBuilderOpen = open)}
-      activeConditionCount={filter.attributes?.length ?? 0}
+      activeConditionCount={conditionCount}
     />
 
     {#if queryBuilderOpen}
       <QueryBuilder
         attributes={filter.attributes ?? []}
+        failedStep={filter.failedStep}
+        retrying={filter.retrying}
         {onAttributesChange}
         {knownAttributeKeys}
       />
@@ -393,7 +410,7 @@
       <EmptyState
         kind="filtered"
         title="No workflows match"
-        description="No results for the current filter set. Try widening the status or date range."
+        description="No results for the current filter set. Try widening the status or date range, or the step and retrying filters."
         onClearFilters={clearFilters}
       />
     {:else}

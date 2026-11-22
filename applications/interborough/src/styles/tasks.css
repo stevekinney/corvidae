@@ -247,6 +247,19 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* Why a failed run failed (COR-2533): the shared explanation, then the engine's stack behind its
+ * disclosure, a Cinder gap apart. */
+.ib-run-explanation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-run-explanation__fallback {
+  margin: 0;
+}
+
 /* An entry still to come reads quieter than what has happened. */
 .ib-run-happened__entry[data-state='pending'] .ib-run-happened__title {
   color: var(--cinder-text-muted);

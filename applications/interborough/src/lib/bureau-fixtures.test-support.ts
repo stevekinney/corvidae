@@ -6,7 +6,7 @@ import type { CheckRow } from './bureau-checks.ts';
 import type { ChatContext, ContextDetail } from './bureau-client.ts';
 import type { Goal } from './bureau-goals.ts';
 import type { BureauHumanWait, BureauToolApproval } from './bureau-reviews.ts';
-import type { TaskView } from './bureau-tasks.ts';
+import type { RunFailureExplanation, TaskView } from './bureau-tasks.ts';
 
 export function taskFixture(overrides: Partial<TaskView> = {}): TaskView {
   return {
@@ -154,6 +154,30 @@ export function goalAttemptFixture(
     usage: { steps: 1, tokens: 0, costUsd: null },
     ...overrides,
   };
+}
+
+/**
+ * A failed run's explanation as `bureau.tasks.explain` answers it (COR-2533), with every part
+ * stored: a sentence, a cause, a step, tries, a guardrail and a remediation. For the tests that read
+ * the Run page's failure section and Chat's link to it.
+ */
+export const FAILED_RUN_EXPLANATION: RunFailureExplanation = {
+  summary:
+    'The step "charge-card" failed because the code it ran raised an error while running a tool.',
+  cause: { category: 'application', code: 'UNKNOWN', kind: 'tool' },
+  step: { index: 1, label: 'charge-card' },
+  tries: 3,
+  verdicts: [{ name: 'sentinel-card', kind: 'tripwire', outcome: 'tripwire', step: 1 }],
+  remediation:
+    'Read the run’s failure message, fix the input or the code the step ran, and start the run again. A guardrail halted this run. Review the guardrail listed above before starting it again.',
+  nextCommands: ['interborough runs get --kind task run-1'],
+};
+
+/** The answer for `bureau.tasks.explain`, for a stub of the Bureau. */
+export function explainAnswers(
+  explanation: RunFailureExplanation = FAILED_RUN_EXPLANATION,
+): Record<string, () => unknown> {
+  return { 'bureau.tasks.explain': () => explanation };
 }
 
 /** One check result as `bureau.checks.list` shows it: a goal's verdict, unless a test says otherwise. */

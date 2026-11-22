@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 import type { FailureCategory } from '@lostgradient/weft';
 
-import { failureCategoryExplanation, failureCategoryLabel } from './failure-category.ts';
+import * as failureCategory from './failure-category.ts';
+import { failureCategoryLabel, failureCategoryTone } from './failure-category.ts';
 
 const ALL_CATEGORIES: readonly FailureCategory[] = [
   'application',
@@ -12,26 +15,30 @@ const ALL_CATEGORIES: readonly FailureCategory[] = [
   'system',
 ];
 
-describe('failureCategoryExplanation', () => {
-  test('every taxonomy category has a non-empty explanation', () => {
-    for (const category of ALL_CATEGORIES) {
-      expect(failureCategoryExplanation(category).length).toBeGreaterThan(0);
-    }
+describe('the failure category module (COR-2533)', () => {
+  test('AC2: exports only the badge’s label and tone, so the browser words no explanation', () => {
+    expect(Object.keys(failureCategory).toSorted()).toEqual([
+      'failureCategoryLabel',
+      'failureCategoryTone',
+    ]);
   });
 
-  test('null (uncategorized failure) has its own explanation', () => {
-    expect(failureCategoryExplanation(null)).toBe('This failure could not be classified.');
-  });
-
-  test('undefined (never failed) returns empty string', () => {
-    expect(failureCategoryExplanation(undefined)).toBe('');
-  });
-
-  test('explanations are distinct per category', () => {
-    const explanations = new Set(
-      ALL_CATEGORIES.map((category) => failureCategoryExplanation(category)),
+  test('AC2: its documentation names only files that exist', async () => {
+    const path = join(import.meta.dir, 'failure-category.ts');
+    const source = await Bun.file(path).text();
+    const documentation = source.slice(0, source.indexOf('*/'));
+    const named = [...documentation.matchAll(/`([\w./-]+\.(?:svelte|ts))`/gu)].map(
+      (match) => match[1]!,
     );
-    expect(explanations.size).toBe(ALL_CATEGORIES.length);
+    // The module names the component that draws the explanation, so a rename cannot orphan it.
+    expect(named).toContain('run-failure-explanation.svelte');
+    const folders = [dirname(path), join(dirname(path), '..', 'runs')];
+    for (const file of named) {
+      expect(
+        folders.some((folder) => existsSync(join(folder, file))),
+        `${file} is named in the module documentation and does not exist`,
+      ).toBe(true);
+    }
   });
 });
 
@@ -48,5 +55,22 @@ describe('failureCategoryLabel', () => {
 
   test('undefined renders as empty string', () => {
     expect(failureCategoryLabel(undefined)).toBe('');
+  });
+});
+
+describe('failureCategoryTone', () => {
+  test('reads a cancellation quietly, a limit as a warning, and a fault as danger', () => {
+    expect(failureCategoryTone('cancellation')).toBe('neutral');
+    expect(failureCategoryTone('timeout')).toBe('warning');
+    expect(failureCategoryTone('resource')).toBe('warning');
+    expect(failureCategoryTone('application')).toBe('danger');
+    expect(failureCategoryTone('system')).toBe('danger');
+  });
+
+  test('a failure nothing classifies is danger, and every category has a tone', () => {
+    expect(failureCategoryTone(null)).toBe('danger');
+    for (const category of ALL_CATEGORIES) {
+      expect(failureCategoryTone(category)).toMatch(/^(neutral|warning|danger)$/u);
+    }
   });
 });

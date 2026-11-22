@@ -172,7 +172,17 @@ export type RunRow = {
    * is the engine's, so it opens for a caller who may read the engine (`workflows:read`).
    */
   readonly engineRun?: boolean;
+  /**
+   * The step a failed run failed at (COR-2531): a tool's name, `model`, or a workflow's failed
+   * step. `null` for a run that did not fail, and for one a goal's attempt stands for.
+   */
+  readonly failedStep?: string | null;
+  /** The step a running run is on a second or later try of, and which try that is (COR-2531). */
+  readonly retrying?: RunRetrying | null;
 };
+
+/** The step a run is retrying, and the try it is on: 2 or later. */
+type RunRetrying = { readonly label: string; readonly attempt: number };
 
 /** The workflow types a task record is made for; every other type is a run only the engine holds. */
 const RECORDED_TASK_WORKFLOWS: readonly string[] = ['agentRun', 'goalRun'];
@@ -263,9 +273,46 @@ export type RunFilter = {
   readonly startedBy?: StartedBy;
   /** The workflow type the runs ran on (COR-2423): `agentRun`, `goalRun`, `scheduleTick`, or a workflow file's identifier. */
   readonly workflow?: string;
+  /**
+   * The step the run failed at (COR-2535): a tool's name, `model`, or a workflow's failed step. It
+   * is sent to `bureau.tasks.list`, which compares the first {@link FAILED_STEP_LIMIT} characters,
+   * so the address never holds more.
+   */
+  readonly failedStep?: string;
+  /** Only the runs with a step on a second or later try right now (COR-2535). */
+  readonly retrying?: true;
   /** Words the title, the agent or the summary must hold, whatever their case. */
   readonly search?: string;
 };
+
+/** How many characters of a step name the Bureau compares, and so how many the address keeps. */
+const FAILED_STEP_LIMIT = 200;
+
+/**
+ * A step name cut to what the Bureau compares, never in the middle of a surrogate pair, so the
+ * address, the request and the rows agree on one name.
+ */
+export function failedStepName(text: string): string {
+  const name = text.trim();
+  if (name.length <= FAILED_STEP_LIMIT) return name;
+  const cut = name.slice(0, FAILED_STEP_LIMIT);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
+/**
+ * What the Bureau is asked of a filter (`bureau.tasks.list`): only the two filters it applies, the
+ * rest being applied here. The Runs list reads every page of the result.
+ */
+export function serverRunFilter(filter: RunFilter): {
+  readonly failedStep?: string;
+  readonly retrying?: boolean;
+} {
+  return {
+    ...(filter.failedStep === undefined ? {} : { failedStep: filter.failedStep }),
+    ...(filter.retrying === undefined ? {} : { retrying: filter.retrying }),
+  };
+}
 
 function waitSummary(task: TaskView): string {
   const wait = task.openWaits[0];
@@ -519,6 +566,8 @@ function taskRow(
       null,
     dueAt: task.status === 'working' && !Number.isNaN(wake) ? wake : null,
     engineRun: isEngineRunTask(task),
+    failedStep: task.failure?.step?.label ?? null,
+    retrying: task.retrying ?? null,
   };
 }
 
@@ -612,6 +661,13 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     checkNotMet: false,
     // No task is the instance, only its steps are: the engine holds the run a person started.
     engineRun: true,
+    // The instance fails where its failed step did, and retries what one of its steps retries.
+    failedStep:
+      status === 'failed'
+        ? (steps.find((step) => step.status === 'failed' && step.failedStep != null)?.failedStep ??
+          null)
+        : null,
+    retrying: steps.find((step) => step.retrying != null)?.retrying ?? null,
   };
 }
 
@@ -722,6 +778,8 @@ export function filterRunRows(
       (filter.agent === undefined || row.agentName === filter.agent) &&
       (filter.startedBy === undefined || row.origin.kind === filter.startedBy) &&
       (filter.workflow === undefined || row.workflowType === filter.workflow) &&
+      (filter.failedStep === undefined || row.failedStep === filter.failedStep) &&
+      (filter.retrying === undefined || row.retrying != null) &&
       (filter.search === undefined || matchesSearch(row, filter.search, agentLabelOf)),
   );
 }
@@ -753,12 +811,15 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
   const agent = search.get('agent')?.trim();
   const startedBy = STARTED_BY_KINDS.find((kind) => kind === search.get('startedBy'));
   const workflow = search.get('workflow')?.trim();
+  const failedStep = failedStepName(search.get('failedStep') ?? '');
   const words = search.get('q')?.trim();
   return {
     ...(status === undefined ? {} : { status }),
     ...(agent === undefined || agent === '' ? {} : { agent }),
     ...(startedBy === undefined ? {} : { startedBy }),
     ...(workflow === undefined || workflow === '' ? {} : { workflow }),
+    ...(failedStep === '' ? {} : { failedStep }),
+    ...(search.get('retrying') === 'true' ? { retrying: true as const } : {}),
     ...(words === undefined || words === '' ? {} : { search: words }),
   };
 }
@@ -770,6 +831,8 @@ export function serializeRunFilter(filter: RunFilter): string {
   if (filter.agent !== undefined) params.set('agent', filter.agent);
   if (filter.startedBy !== undefined) params.set('startedBy', filter.startedBy);
   if (filter.workflow !== undefined) params.set('workflow', filter.workflow);
+  if (filter.failedStep !== undefined) params.set('failedStep', filter.failedStep);
+  if (filter.retrying !== undefined) params.set('retrying', 'true');
   if (filter.search !== undefined) params.set('q', filter.search);
   return params.toString();
 }
@@ -977,6 +1040,10 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       } else {
         if (steps !== null && steps !== undefined && reached !== null) {
           parts.push(copy.stepOf(reached, steps.total));
+        }
+        // The step it is on a second or later try of, and which try: "retrying charge-card, try 3".
+        if (row.retrying != null) {
+          parts.push(copy.retrying(row.retrying.label, row.retrying.attempt));
         }
         parts.push(copy.runningFor(durationWords(context.now - row.startedAt)));
       }
