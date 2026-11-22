@@ -460,8 +460,15 @@
   }
 
   .weft-agent-form__status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
     margin: 0;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
+  }
+
+  .weft-agent-form__status :global(svg) {
+    flex: none;
   }
 </style>

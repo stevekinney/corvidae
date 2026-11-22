@@ -524,17 +524,24 @@ async function expectSavedSummaryOnOneLine(actions: Locator): Promise<void> {
     const text = Array.from(element.childNodes).find(
       (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes(copy),
     );
-    if (text === undefined) throw new Error('The saved status has no text node.');
+    const icon = element.querySelector('svg');
+    if (text === undefined || icon === null) throw new Error('The saved status is incomplete.');
     const textRange = document.createRange();
     textRange.selectNodeContents(text);
+    const textBox = textRange.getBoundingClientRect();
+    const iconBox = icon.getBoundingClientRect();
     return {
       lines: Array.from(textRange.getClientRects()).filter((rect) => rect.width > 0).length,
-      width: textRange.getBoundingClientRect().width,
+      width: textBox.width,
       availableWidth: element.getBoundingClientRect().width,
+      iconBesideText:
+        iconBox.right <= textBox.left &&
+        Math.abs((iconBox.top + iconBox.bottom - textBox.top - textBox.bottom) / 2) <= 2,
     };
   }, savedCopy);
   expect(textLayout.lines).toBe(1);
   expect(textLayout.width).toBeLessThanOrEqual(textLayout.availableWidth);
+  expect(textLayout.iconBesideText).toBe(true);
 }
 
 test.describe('Agent shared FormActions', () => {
