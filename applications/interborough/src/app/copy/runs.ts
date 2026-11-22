@@ -88,11 +88,6 @@ export const RUN_CHECKPOINTS_COPY = {
   modeLabel: 'Open the checkpoint as',
   replay: 'Replay',
   fork: 'Fork',
-  divergenceLabel: 'Divergence from the forked run',
-  divergenceNote:
-    'Diverged steps are highlighted. Both runs are identical up to the fork, so they differ only at or after it.',
-  nothingToCompareTitle: 'Nothing to compare',
-  nothingToCompareDescription: 'Neither run has any steps yet.',
   replayLockedTitle: 'Replay unavailable',
   replayNotice: (step: number): string =>
     `This is a replay of step ${String(step)}. It is read-only and does not change the live run.`,
@@ -104,6 +99,80 @@ export const RUN_CHECKPOINTS_COPY = {
     'Not known. The original record is gone, it predates revision tracking, or the ID has been reused by a different run.',
   compacted: (sequence: number): string =>
     `Earlier events before sequence ${String(sequence)} were removed by retention.`,
+} as const;
+
+/**
+ * The words for a fork compared with the run it came from: the action that opens the comparison,
+ * the steps the two runs share, and what differs in a step the fork ran again.
+ */
+export const RUN_COMPARISON_COPY = {
+  action: 'Compare with source',
+  actionHide: 'Hide comparison',
+  heading: 'Compared with the source run',
+  loadFailedTitle: 'The comparison could not be read',
+  intro: (forkPoint: number): string =>
+    `Forked from checkpoint step ${String(forkPoint)}. The steps before it keep the source’s results; the rest ran again.`,
+  sharedSummary: (count: number): string =>
+    count === 1 ? '1 step shared with the source' : `${String(count)} steps shared with the source`,
+  sharedNote: 'The fork kept the source’s result for these steps and did not run them again.',
+  stepsLabel: 'Steps the fork ran again',
+  stepsHeading: 'Steps after the fork point',
+  noStepsTitle: 'Nothing to compare',
+  noStepsDescription: 'Neither run has any steps after the fork point yet.',
+  stepTitle: (index: number, label: string): string => `Step ${String(index + 1)}, ${label}`,
+  kinds: {
+    shared: 'Shared',
+    changed: 'Changed',
+    unchanged: 'Same',
+    'source-only': 'Only in the source',
+    'fork-only': 'Only in the fork',
+  },
+  fields: {
+    operation: 'operation',
+    label: 'name',
+    status: 'status',
+    input: 'input',
+    output: 'output',
+  },
+  changedFields: (fields: readonly string[]): string => `Differs in ${fields.join(', ')}`,
+  chooseTitle: 'Select a step',
+  chooseDescription: 'Choose a step to read what differs between the source and the fork.',
+  detailLabel: (index: number): string => `Step ${String(index + 1)} differences`,
+  statusChange: (source: string, fork: string): string =>
+    `${source} in the source, ${fork} in the fork`,
+  operationChange: (source: string, fork: string): string =>
+    `${source} in the source, ${fork} in the fork`,
+  inputHeading: 'Input',
+  outputHeading: 'Output',
+  diffLabel: (heading: string, index: number): string =>
+    `${heading} differences, step ${String(index + 1)}`,
+  sameBothSides: (heading: string): string =>
+    `The ${heading.toLowerCase()} is the same in both runs.`,
+  missingSource: (heading: string): string =>
+    `The source has not recorded an ${heading.toLowerCase()} for this step.`,
+  missingFork: (heading: string): string =>
+    `The fork has not recorded an ${heading.toLowerCase()} for this step.`,
+  onlyInSource: 'The fork has not reached this step.',
+  onlyInFork: 'The source never reached this step.',
+} as const;
+
+/** The words in the fork dialog for what a fork will do, read from the server's dry run before it is confirmed. */
+export const RUN_FORK_PREVIEW_COPY = {
+  heading: 'What this fork will do',
+  loading: 'Reading what the fork would do',
+  failedTitle: 'The fork could not be previewed',
+  keptHeading: (count: number): string => `Kept, not run again (${String(count)})`,
+  rerunHeading: (count: number): string => `Run again (${String(count)})`,
+  keptNote: 'These steps keep their results.',
+  rerunNote: 'These steps run again from the fork point.',
+  noSteps: 'No steps',
+  step: (index: number, label: string): string => `Step ${String(index + 1)}, ${label}`,
+  revisionWouldChange: (
+    sourceRevision: string | undefined,
+    forkRevision: string | undefined,
+  ): string =>
+    `The fork would run on ${forkRevision ?? 'a different revision'}, not the source’s ${sourceRevision ?? 'revision'}.`,
+  revisionKept: 'The fork would run on the same revision as the source.',
 } as const;
 
 /** The words for the lines a run logged, in a step and under the run's Details. */

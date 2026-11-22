@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
    * Checkpoints tab (plan T3.3, §9.2): `GET …/checkpoints` list, select a
-   * checkpoint → Replay (read-only) view + Fork dialog, and a "Compare
-   * divergence" link once a fork has been created from this session.
+   * checkpoint → Replay (read-only) view + Fork dialog, and the fork's
+   * comparison with this run (`fork-comparison.svelte`) right after a fork
+   * is made. Any fork is compared from its own run page's Lineage panel.
    *
    * ## `client.operations[...]` is JSON-RPC-only
    *
@@ -36,10 +37,11 @@
   import type { HttpClient } from '@lostgradient/weft';
 
   import { RETRY_LABEL } from '../../../../app/copy/views.ts';
-  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy/runs.ts';
+  import { RUN_CHECKPOINTS_COPY, RUN_COMPARISON_COPY } from '../../../../app/copy/runs.ts';
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../../../lib/faults.ts';
   import { formatBytes, formatRelativeTime } from '../../../../lib/format/index.ts';
-  import DivergenceView from './divergence-view.svelte';
+  import ForkComparison from './fork-comparison.svelte';
+  import type { ForkComparisonClient, ForkPreviewClient } from './fork-comparison-data.ts';
   import {
     checkpointsListQueryKey,
     listCheckpoints,
@@ -53,8 +55,10 @@
 
   interface CheckpointsTabProps {
     readonly client: CheckpointsOperationsClient &
-      Pick<HttpClient, 'replayTo' | 'getTimeline'> &
+      Pick<HttpClient, 'replayTo'> &
       ForkClient &
+      ForkPreviewClient &
+      ForkComparisonClient &
       ForkSourceClient &
       WorkflowRevisionListClient;
     readonly workflowId: string;
@@ -163,9 +167,9 @@
     {#if forkedWorkflowId !== null}
       <div class="weft-checkpoints-tab__divergence">
         <div class="weft-checkpoints-tab__divergence-label">
-          {RUN_CHECKPOINTS_COPY.divergenceLabel}
+          {RUN_COMPARISON_COPY.heading}
         </div>
-        <DivergenceView {client} originalWorkflowId={workflowId} {forkedWorkflowId} />
+        <ForkComparison {client} workflowId={forkedWorkflowId} />
       </div>
     {/if}
   {/if}

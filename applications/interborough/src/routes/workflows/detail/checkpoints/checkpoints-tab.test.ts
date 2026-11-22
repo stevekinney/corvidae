@@ -7,6 +7,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';
 import CheckpointsTabHarness from './checkpoints-tab.test-harness.svelte';
+import { confirmFork } from './fork-comparison.test-support.ts';
 
 function allScopesPrincipal(): Principal {
   return { scopes: AUTHORIZATION_SCOPES, unauthenticatedAccess: null };
@@ -36,7 +37,6 @@ function baseClient(
     },
     replayTo: async (): Promise<WorkflowReplay | null> => null,
     fork: async () => ({ id: 'wf-forked-1' }),
-    getTimeline: async () => [],
   };
 }
 
@@ -122,10 +122,25 @@ describe('CheckpointsTab', () => {
     expect(notice?.textContent).toContain('This is a replay of step 3');
   });
 
-  test('forking a checkpoint shows the success link and reveals the divergence view', async () => {
+  test('forking a checkpoint shows the success link and the new fork compared with this run, from the server', async () => {
+    const compared: string[] = [];
     const { getByText, getByRole } = render(CheckpointsTabHarness, {
       props: {
-        client: baseClient(),
+        client: {
+          ...baseClient(),
+          operations: {
+            ...baseClient().operations,
+            'weft.workflows.compare': async (input: { workflowId: string }) => {
+              compared.push(input.workflowId);
+              return {
+                workflowId: input.workflowId,
+                sourceWorkflowId: 'wf-1',
+                forkPoint: 3,
+                steps: [],
+              };
+            },
+          },
+        },
         workflowId: 'wf-1',
         principal: allScopesPrincipal(),
         queryClient: newQueryClient(),
@@ -136,14 +151,15 @@ describe('CheckpointsTab', () => {
     await fireEvent.click(getByText('step 3'));
     await fireEvent.click(getByRole('radio', { name: 'Fork' }));
     await waitFor(() => expect(getByText('Target step')).not.toBeNull());
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
 
     await waitFor(() => {
       expect(getByText('wf-forked-1')).not.toBeNull();
     });
     await waitFor(() => {
-      expect(getByText('Divergence from the forked run')).not.toBeNull();
+      expect(getByText('Compared with the source run')).not.toBeNull();
     });
+    await waitFor(() => expect(compared).toEqual(['wf-forked-1']));
   });
 
   test('the default fork path sends only {fromStep} — no revision — to client.fork (WFT-117)', async () => {
@@ -171,7 +187,7 @@ describe('CheckpointsTab', () => {
     await fireEvent.click(getByText('step 3'));
     await fireEvent.click(getByRole('radio', { name: 'Fork' }));
     await waitFor(() => expect(getByText('Target step')).not.toBeNull());
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
 
     await waitFor(() => {
       expect(forkCalls).toEqual([{ fromStep: 3 }]);

@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import type {
@@ -8,6 +8,7 @@ import type {
   WorkflowSummary,
 } from '@lostgradient/weft';
 
+import { forkOperations } from './checkpoints/fork-comparison.test-support.ts';
 import LineagePanelHarness from './lineage-panel.test-harness.svelte';
 
 function workflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
@@ -36,6 +37,7 @@ function baseClient(
     get?: (id: string) => Promise<WorkflowState | null>;
     list?: () => Promise<PaginatedResult<WorkflowSummary>>;
     scheduleProvenance?: () => Promise<WorkflowScheduleProvenance | null>;
+    compare?: ReturnType<typeof forkOperations>['weft.workflows.compare'];
   } = {},
 ) {
   return {
@@ -44,6 +46,9 @@ function baseClient(
     operations: {
       'weft.workflows.active.get': async (_input: { name: string }) => null,
       'weft.workflows.scheduleprovenance.get': overrides.scheduleProvenance ?? noProvenance,
+      'weft.workflows.compare': forkOperations({ compare: overrides.compare })[
+        'weft.workflows.compare'
+      ],
     },
   };
 }
@@ -128,5 +133,76 @@ describe('LineagePanel', () => {
     await waitFor(() => {
       expect(getByText('Revision unavailable')).not.toBeNull();
     });
+  });
+});
+
+describe('LineagePanel compare with source (COR-2538)', () => {
+  const comparison = (input: { workflowId: string }) => ({
+    workflowId: input.workflowId,
+    sourceWorkflowId: 'wf_source',
+    forkPoint: 12,
+    steps: [
+      {
+        index: 11,
+        shared: false,
+        source: {
+          operationType: 'activity',
+          label: 'issueTicket',
+          status: 'completed' as const,
+          input: '{}',
+          output: '{"ticket":1}',
+        },
+        fork: {
+          operationType: 'activity',
+          label: 'issueTicket',
+          status: 'completed' as const,
+          input: '{}',
+          output: '{"ticket":2}',
+        },
+      },
+    ],
+  });
+
+  test('a run that is not a fork has no compare action', async () => {
+    const { queryByRole, container } = render(LineagePanelHarness, {
+      props: { client: baseClient(), workflow: workflow() },
+    });
+    await waitFor(() => expect(container.querySelector('[data-section="lineage"]')).toBeNull());
+    expect(queryByRole('button', { name: 'Compare with source' })).toBeNull();
+  });
+
+  test('a fork opens its comparison from its own id alone, as it would after a reload', async () => {
+    const asked: string[] = [];
+    const { getByRole, getByText, container } = render(LineagePanelHarness, {
+      props: {
+        client: baseClient({
+          compare: async (input) => {
+            asked.push(input.workflowId);
+            return comparison(input);
+          },
+        }),
+        workflow: workflow({ id: 'wf_fork', forkedFrom: { workflowId: 'wf_source', step: 12 } }),
+      },
+    });
+
+    // Nothing is asked until the owner opens the comparison.
+    await waitFor(() =>
+      expect(getByRole('button', { name: 'Compare with source' })).not.toBeNull(),
+    );
+    expect(asked).toEqual([]);
+
+    await fireEvent.click(getByRole('button', { name: 'Compare with source' }));
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-compared-step="11"]')).not.toBeNull(),
+    );
+    expect(asked).toEqual(['wf_fork']);
+    expect(getByText(/Forked from checkpoint step 12/)).not.toBeNull();
+    expect(getByRole('button', { name: 'Hide comparison' }).getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+
+    await fireEvent.click(getByRole('button', { name: 'Hide comparison' }));
+    expect(container.querySelector('[data-section="fork-comparison"]')).toBeNull();
   });
 });

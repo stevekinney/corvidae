@@ -5,6 +5,7 @@ import { HttpClientError } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';
+import { confirmFork, forkOperations, previewAnswer } from './fork-comparison.test-support.ts';
 import ForkDialogHarness from './fork-dialog.test-harness.svelte';
 
 function allScopesPrincipal(): Principal {
@@ -369,10 +370,230 @@ describe('ForkDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
     const input = getByRole('textbox', { name: 'Revision ID' });
     await fireEvent.input(input, { target: { value: 'order-processing-rev-explicit' } });
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
 
     await waitFor(() => {
       expect(forkCalls).toEqual([{ fromStep: 3, revision: 'order-processing-rev-explicit' }]);
     });
+  });
+});
+
+describe('ForkDialog fork preview (COR-2538)', () => {
+  type PreviewInput = {
+    workflowId: string;
+    fromStep?: unknown;
+    revision?: string;
+    dryRun?: boolean;
+  };
+
+  function previewClient(
+    answer: (input: PreviewInput) => Promise<ReturnType<typeof previewAnswer>>,
+    calls: PreviewInput[],
+  ) {
+    const client = baseClient();
+    return {
+      ...client,
+      operations: {
+        ...client.operations,
+        ...forkOperations({
+          fork: async (input) => {
+            calls.push(input);
+            return answer(input);
+          },
+        }),
+      },
+    };
+  }
+
+  function props(client: ReturnType<typeof previewClient>, principal = allScopesPrincipal()) {
+    return {
+      client,
+      workflowId: 'wf-1',
+      initialStep: 3,
+      workflowType: 'order-processing',
+      sourceRevision: 'order-processing-rev-current',
+      principal,
+      queryClient: newQueryClient(),
+    };
+  }
+
+  test('shows the kept and re-run steps the server answered, and enables Create fork only once it has', async () => {
+    const held = Promise.withResolvers<ReturnType<typeof previewAnswer>>();
+    const calls: PreviewInput[] = [];
+    const { getByRole, getByText, container } = render(ForkDialogHarness, {
+      props: props(previewClient(() => held.promise, calls)),
+    });
+
+    expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(true);
+    await waitFor(() => expect(calls).toEqual([{ workflowId: 'wf-1', fromStep: 3, dryRun: true }]));
+    expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(true);
+
+    held.resolve(
+      previewAnswer({
+        keptSteps: [
+          { index: 0, operationType: 'activity', label: 'reserveStock', status: 'completed' },
+          { index: 1, operationType: 'activity', label: 'chargeCard', status: 'completed' },
+        ],
+        rerunSteps: [
+          { index: 2, operationType: 'activity', label: 'issueTicket', status: 'completed' },
+        ],
+      }),
+    );
+
+    await waitFor(() => expect(getByText('Kept, not run again (2)')).not.toBeNull());
+    expect(getByText('Run again (1)')).not.toBeNull();
+    expect(
+      [...container.querySelectorAll('[data-fork-preview-kept] li')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(['Step 1, reserveStock', 'Step 2, chargeCard']);
+    expect(
+      [...container.querySelectorAll('[data-fork-preview-rerun] li')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(['Step 3, issueTicket']);
+    await waitFor(() =>
+      expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(false),
+    );
+  });
+
+  test('asks again when the step changes, and does not offer the old answer for the new step', async () => {
+    const calls: PreviewInput[] = [];
+    const second = Promise.withResolvers<ReturnType<typeof previewAnswer>>();
+    const { getByRole, getByLabelText, getByText, queryByText } = render(ForkDialogHarness, {
+      props: props(
+        previewClient(
+          (input) =>
+            input.fromStep === 1
+              ? second.promise
+              : Promise.resolve(
+                  previewAnswer({
+                    keptSteps: [],
+                    rerunSteps: [
+                      {
+                        index: 0,
+                        operationType: 'activity',
+                        label: 'reserveStock',
+                        status: 'completed',
+                      },
+                    ],
+                  }),
+                ),
+          calls,
+        ),
+      ),
+    });
+
+    await waitFor(() => expect(getByText('Run again (1)')).not.toBeNull());
+
+    await fireEvent.input(getByLabelText('Target step'), { target: { value: '1' } });
+
+    await waitFor(() => expect(calls.map((call) => call.fromStep)).toEqual([3, 1]));
+    // The answer for step 3 is gone while step 1's is pending, so Create fork cannot confirm it.
+    expect(queryByText('Run again (1)')).toBeNull();
+    expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(true);
+
+    second.resolve(
+      previewAnswer({
+        forkPoint: 1,
+        keptSteps: [],
+        rerunSteps: [
+          { index: 0, operationType: 'activity', label: 'reserveStock', status: 'completed' },
+          { index: 1, operationType: 'activity', label: 'issueTicket', status: 'completed' },
+        ],
+      }),
+    );
+    await waitFor(() => expect(getByText('Run again (2)')).not.toBeNull());
+    await waitFor(() =>
+      expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(false),
+    );
+  });
+
+  test('asks again with the revision the operator typed', async () => {
+    const calls: PreviewInput[] = [];
+    const { getByRole } = render(ForkDialogHarness, {
+      props: props(
+        previewClient(async () => previewAnswer({ revisionWouldChange: true }), calls),
+        deniedPrincipal(),
+      ),
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
+    await fireEvent.input(getByRole('textbox', { name: 'Revision ID' }), {
+      target: { value: 'order-processing-rev-explicit' },
+    });
+
+    await waitFor(() =>
+      expect(calls.at(-1)).toEqual({
+        workflowId: 'wf-1',
+        fromStep: 3,
+        revision: 'order-processing-rev-explicit',
+        dryRun: true,
+      }),
+    );
+  });
+
+  test('says when the fork would run on a different revision', async () => {
+    const calls: PreviewInput[] = [];
+    const { getByText } = render(ForkDialogHarness, {
+      props: props(
+        previewClient(
+          async () =>
+            previewAnswer({
+              revisionWouldChange: true,
+              sourceRevision: 'rev-source',
+              forkRevision: 'rev-fork',
+            }),
+          calls,
+        ),
+      ),
+    });
+
+    await waitFor(() =>
+      expect(
+        getByText('The fork would run on rev-fork, not the source’s rev-source.'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('a refused preview shows the revision conflict and leaves Create fork disabled', async () => {
+    const calls: PreviewInput[] = [];
+    const { getByRole, getByText } = render(ForkDialogHarness, {
+      props: props(
+        previewClient(async () => {
+          throw new HttpClientError(409, 'revision not registered', {
+            faultCode: 'Conflict',
+            weftCode: 'WorkflowRevisionUnavailableError',
+          });
+        }, calls),
+      ),
+    });
+
+    await waitFor(() => expect(getByText('Revision unavailable')).not.toBeNull());
+    expect(getByText(/revision not registered/)).not.toBeNull();
+    expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  test('asks nothing for a step that is not a number, and for a principal that may not fork', async () => {
+    const calls: PreviewInput[] = [];
+    const { getByLabelText } = render(ForkDialogHarness, {
+      props: props(previewClient(async () => previewAnswer(), calls)),
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await fireEvent.input(getByLabelText('Target step'), { target: { value: 'abc' } });
+    expect(calls).toHaveLength(1);
+
+    const readOnly: PreviewInput[] = [];
+    render(ForkDialogHarness, {
+      props: props(
+        previewClient(async () => previewAnswer(), readOnly),
+        {
+          scopes: ['workflows:read'],
+          unauthenticatedAccess: null,
+        },
+      ),
+    });
+    expect(readOnly).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import { Engine } from '@lostgradient/weft';
 
+import { FORK_COMPARISON_RUN_ID } from '../fixtures/fork-comparison-ids.ts';
 import { seed, workflows } from '../fixtures/workflows.ts';
 
 /** One seeded engine for the file: seeding runs every fixture, which takes a second or so. */
@@ -70,5 +71,22 @@ describe('seed', () => {
     expect(sweep).toBeDefined();
     const state = await engine.get(sweep!.id);
     expect(state).toMatchObject({ status: 'completed', result: { finalValue: 220 } });
+  });
+
+  it('seeds a run whose fork from the last checkpoint answers a different ticket than the source (COR-2538)', async () => {
+    const fork = await engine.fork(FORK_COMPARISON_RUN_ID);
+    await fork.result();
+
+    const comparison = await engine.compare(fork.id);
+
+    expect(comparison.sourceWorkflowId).toBe(FORK_COMPARISON_RUN_ID);
+    const shared = comparison.steps.find((step) => step.index === 0);
+    const reran = comparison.steps.find((step) => step.index === 1);
+    expect(shared).toMatchObject({ shared: true });
+    expect(reran?.shared).toBe(false);
+    // The fork ran `issueTicket` again, so the next ticket number is in its output and not the source's.
+    expect(reran?.source?.output).not.toBe(reran?.fork?.output);
+    expect(reran?.source?.output).toContain('"ticket"');
+    expect(reran?.fork?.output).toContain('"ticket"');
   });
 });

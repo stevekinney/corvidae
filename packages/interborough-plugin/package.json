@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./run-comparison": "./src/run-comparison.ts",
     "./step-waterfall": "./src/step-waterfall.ts",
     "./testing": "./src/testing/index.ts"
   },

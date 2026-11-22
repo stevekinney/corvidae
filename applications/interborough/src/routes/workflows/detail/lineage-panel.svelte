@@ -122,12 +122,12 @@
    * "best-effort" and names the exact gap, so an operator reading it is
    * not told a stronger guarantee than the data can support.
    */
-  import { Badge, CopyButton, Section, Skeleton, Tooltip } from '@lostgradient/cinder';
+  import { Badge, Button, CopyButton, Section, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { ArrowRight, CalendarClock, GitFork } from '@lucide/svelte';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
+  import { RUN_COMPARISON_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
@@ -136,6 +136,8 @@
     FRESH_START_REVISION_HEDGE,
     type WorkflowActiveRevisionClient,
   } from '../../../lib/workflow-revision.ts';
+  import ForkComparison from './checkpoints/fork-comparison.svelte';
+  import type { ForkComparisonClient } from './checkpoints/fork-comparison-data.ts';
   import { workflowStatusBadge } from '../list/workflow-status-badge.ts';
   import WorkflowStatusIcon from '../list/workflow-status-icon.svelte';
   import { getScheduleProvenance, scheduleProvenanceQueryKey } from './workflow-observability.ts';
@@ -143,7 +145,8 @@
   interface LineagePanelProps {
     readonly client: Pick<HttpClient, 'get'> & {
       readonly operations: Pick<HttpClient['operations'], 'weft.workflows.scheduleprovenance.get'> &
-        WorkflowActiveRevisionClient['operations'];
+        WorkflowActiveRevisionClient['operations'] &
+        ForkComparisonClient['operations'];
     };
     readonly workflow: WorkflowState;
   }
@@ -172,6 +175,10 @@
   }));
 
   const thisRunBadge = $derived(workflowStatusBadge(workflow.status));
+
+  // The comparison needs only this run's id and the server's answer, so it opens the same way after
+  // a reload and in a new browser session as it does right after the fork.
+  let comparisonOpen = $state(false);
 
   function goToWorkflow(id: string): void {
     router.navigate(workflowDetailPath(id));
@@ -307,7 +314,20 @@
             {/if}
           {/if}
           <span class="weft-lineage-panel__meta">at step {forkedFrom.step}</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            label={comparisonOpen ? RUN_COMPARISON_COPY.actionHide : RUN_COMPARISON_COPY.action}
+            aria-expanded={comparisonOpen}
+            aria-controls={`fork-comparison-${workflow.id}`}
+            onclick={() => (comparisonOpen = !comparisonOpen)}
+          />
         </div>
+        {#if comparisonOpen}
+          <div id={`fork-comparison-${workflow.id}`} class="weft-lineage-panel__comparison">
+            <ForkComparison {client} workflowId={workflow.id} />
+          </div>
+        {/if}
       {/if}
     </div>
   </Section>

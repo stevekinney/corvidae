@@ -74,6 +74,7 @@
   import { createMutation, createQuery } from '@tanstack/svelte-query';
   import { ChevronDown, ChevronRight, GitFork } from '@lucide/svelte';
 
+  import { RUN_FORK_PREVIEW_COPY } from '../../../../app/copy/runs.ts';
   import { faultTreatment } from '../../../../lib/faults.ts';
   import { formatRelativeTime, truncateId } from '../../../../lib/format/index.ts';
   import { queryKeys } from '../../../../lib/query.ts';
@@ -82,6 +83,12 @@
   import { EAGER_REVISION_HEDGE } from '../../../../lib/workflow-revision.ts';
   import { router, workflowDetailPath } from '../../../../lib/router.svelte.ts';
   import type { ForkClient, ForkSourceClient } from './checkpoints-data.ts';
+  import {
+    fetchForkPreview,
+    forkPreviewQueryKey,
+    type ForkPreviewClient,
+    type ForkPreviewRequest,
+  } from './fork-comparison-data.ts';
   import {
     forkConflictGuidance,
     isForkRevisionConflict,
@@ -92,7 +99,7 @@
   } from './fork-revision-picker.ts';
 
   interface ForkDialogProps {
-    readonly client: ForkClient & ForkSourceClient & WorkflowRevisionListClient;
+    readonly client: ForkClient & ForkSourceClient & ForkPreviewClient & WorkflowRevisionListClient;
     readonly workflowId: string;
     /** Pre-fills the target step from whichever checkpoint the operator selected. */
     readonly initialStep: number;
@@ -100,7 +107,7 @@
     readonly workflowType: string;
     /** The source run's own persisted `WorkflowState.revision` — `undefined` for a legacy (pre-revision-pinning) record. What a default fork (no explicit opt-in) retains. */
     readonly sourceRevision: string | undefined;
-    /** Fired with the new run's id right after a successful fork, so the Checkpoints tab can offer the divergence view. */
+    /** Fired with the new run's id right after a successful fork, so the Checkpoints tab can show its comparison with this run. */
     readonly onForked?: (forkedWorkflowId: string) => void;
   }
 
@@ -258,6 +265,40 @@
   });
 
   /**
+   * What the server's dry run is asked (COR-2538): the step and the revision the operator has chosen
+   * right now. It is `null` until the step parses and the principal may fork, so nothing is asked
+   * for a step that is not one. The query key carries both, so a change of step or of revision asks
+   * again and the previous answer is never shown for the new choice; `gcTime: 0` keeps an answer
+   * from an earlier visit from standing in for a fresh one.
+   */
+  const previewRequest = $derived<ForkPreviewRequest | null>(
+    parsedStep === null || writeGate.disabled
+      ? null
+      : {
+          fromStep: parsedStep,
+          revision: selection.mode === 'explicit' ? selection.revision : undefined,
+        },
+  );
+
+  const previewQuery = createQuery(() => ({
+    queryKey: forkPreviewQueryKey(workflowId, previewRequest ?? { fromStep: -1 }),
+    queryFn: () =>
+      previewRequest === null
+        ? Promise.reject(new TypeError('The fork preview was asked for without a step'))
+        : fetchForkPreview(client, workflowId, previewRequest),
+    enabled: previewRequest !== null,
+    gcTime: 0,
+  }));
+
+  /** The preview answers the choice on screen: confirming before it does would fork blind. */
+  const previewReady = $derived(
+    previewRequest !== null && previewQuery.isSuccess && !previewQuery.isFetching,
+  );
+  const previewConflict = $derived(
+    previewQuery.isError ? isForkRevisionConflict(previewQuery.error) : false,
+  );
+
+  /**
    * The mutation's input carries `selection` alongside `fromStep` (Codex
    * review, PR #978, round 3) — NOT just `fromStep` with `selection` closed
    * over live. `forkMutation.variables` freezes whatever was passed to the
@@ -278,7 +319,7 @@
   }));
 
   function submit(): void {
-    if (parsedStep === null) return;
+    if (parsedStep === null || !previewReady) return;
     forkMutation.mutate({ fromStep: parsedStep, selection });
   }
 
@@ -382,6 +423,77 @@
     </div>
   {/if}
 
+  {#if previewRequest !== null}
+    <div class="weft-fork-dialog__preview" data-fork-preview aria-busy={previewQuery.isFetching}>
+      {#if previewQuery.isPending}
+        <Skeleton height="4rem" />
+        <span class="weft-fork-dialog__note" role="status">{RUN_FORK_PREVIEW_COPY.loading}</span>
+      {:else if previewQuery.isError}
+        {#if previewConflict}
+          <div class="weft-fork-dialog__conflict" role="alert">
+            <Badge variant="warning">Revision unavailable</Badge>
+            <p>
+              {previewQuery.error instanceof Error
+                ? previewQuery.error.message
+                : 'The requested revision could not be resolved.'}
+              {forkConflictGuidance(selection)}
+            </p>
+          </div>
+        {:else}
+          <p class="weft-fork-dialog__error" role="alert">
+            {RUN_FORK_PREVIEW_COPY.failedTitle}.
+            {previewQuery.error instanceof Error ? previewQuery.error.message : ''}
+          </p>
+        {/if}
+      {:else if previewQuery.data}
+        {@const preview = previewQuery.data}
+        <div class="weft-fork-dialog__preview-heading">{RUN_FORK_PREVIEW_COPY.heading}</div>
+        <div class="weft-fork-dialog__preview-lists">
+          <section aria-label={RUN_FORK_PREVIEW_COPY.keptHeading(preview.keptSteps.length)}>
+            <div class="weft-fork-dialog__preview-label">
+              {RUN_FORK_PREVIEW_COPY.keptHeading(preview.keptSteps.length)}
+            </div>
+            <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.keptNote}</p>
+            {#if preview.keptSteps.length === 0}
+              <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.noSteps}</p>
+            {:else}
+              <ul data-fork-preview-kept>
+                {#each preview.keptSteps as step (step.index)}
+                  <li>{RUN_FORK_PREVIEW_COPY.step(step.index, step.label)}</li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
+          <section aria-label={RUN_FORK_PREVIEW_COPY.rerunHeading(preview.rerunSteps.length)}>
+            <div class="weft-fork-dialog__preview-label">
+              {RUN_FORK_PREVIEW_COPY.rerunHeading(preview.rerunSteps.length)}
+            </div>
+            <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.rerunNote}</p>
+            {#if preview.rerunSteps.length === 0}
+              <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.noSteps}</p>
+            {:else}
+              <ul data-fork-preview-rerun>
+                {#each preview.rerunSteps as step (step.index)}
+                  <li>{RUN_FORK_PREVIEW_COPY.step(step.index, step.label)}</li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
+        </div>
+        <p class="weft-fork-dialog__note">
+          {preview.revisionWouldChange
+            ? RUN_FORK_PREVIEW_COPY.revisionWouldChange(
+                preview.sourceRevision === undefined
+                  ? undefined
+                  : truncateId(preview.sourceRevision),
+                preview.forkRevision === undefined ? undefined : truncateId(preview.forkRevision),
+              )
+            : RUN_FORK_PREVIEW_COPY.revisionKept}
+        </p>
+      {/if}
+    </div>
+  {/if}
+
   <p class="weft-fork-dialog__note">
     A new workflow is created, linked via <code>forkedFrom</code>.
   </p>
@@ -422,7 +534,10 @@
         fullWidth
         label={forkMutation.isPending ? 'Forking…' : 'Create fork'}
         loading={forkMutation.isPending}
-        disabled={writeGate.disabled || parsedStep === null || forkMutation.isPending}
+        disabled={writeGate.disabled ||
+          parsedStep === null ||
+          !previewReady ||
+          forkMutation.isPending}
         onclick={submit}
       >
         {#snippet leadingIcon()}
@@ -458,6 +573,38 @@
     background: var(--cinder-surface);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
+  }
+
+  .weft-fork-dialog__preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-2);
+    background: var(--cinder-surface);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+  }
+
+  .weft-fork-dialog__preview-heading,
+  .weft-fork-dialog__preview-label {
+    font-size: var(--cinder-text-xs);
+    font-weight: 600;
+  }
+
+  .weft-fork-dialog__preview-lists {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--cinder-space-3);
+  }
+
+  .weft-fork-dialog__preview ul {
+    margin: 0;
+    padding-inline-start: var(--cinder-space-4);
+    max-height: 12rem;
+    overflow-y: auto;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-2xs);
+    overflow-wrap: anywhere;
   }
 
   .weft-fork-dialog__note {

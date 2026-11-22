@@ -1,10 +1,7 @@
 /**
- * Fork revision selection (WFT-117), colocated with `divergence.ts` (same
- * "pure logic module, tested via `checkpoints-tab.test.ts`'s harness, no
- * dedicated per-component test file" precedent doesn't apply here — this
- * one DOES get its own `fork-dialog.test.ts`, since `fork-dialog.svelte`
- * owns real submission/conflict-handling behavior beyond markup, unlike
- * `divergence-view.svelte`'s pure rendering).
+ * Fork revision selection (WFT-117): the pure logic `fork-dialog.svelte`
+ * reads, tested through `fork-dialog.test.ts`, since the dialog owns real
+ * submission and conflict-handling behavior beyond markup.
  *
  * `ForkOptions.revision` (`@lostgradient/weft`) is an explicit, validated
  * opt-in: omitted (the default), a fork resolves and persists the SOURCE

@@ -7,8 +7,9 @@
  * shows "Retains rev X" → open the "Fork a different revision" picker →
  * pick the fixture's deliberately-never-eagerly-registered candidate
  * (`fixtures/workflow-revisions.ts`'s `ORDER_PROCESSING_CANDIDATE_REVISION`)
- * → submit → a REAL rejected `WorkflowRevisionUnavailableError` Conflict
- * renders the picker's own framing (mirrors `07-activate-workflow-revision.
+ * → the dialog's dry run (COR-2538) is REALLY refused with a
+ * `WorkflowRevisionUnavailableError` Conflict, which renders the picker's own
+ * framing and leaves Create fork disabled (mirrors `07-activate-workflow-revision.
  * spec.ts`'s real-refusal pattern, not a mocked one). A separate schedule
  * made on the new schedule page (which has no revision policy of its own, so it follows the
  * active revision) opens on its own detail page.
@@ -84,16 +85,17 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   // The refusal is a 409, which Chromium logs as a console error; the test causes it on purpose.
   pageErrors.expect({
     pattern: loggedFailedResponse(409, /\/v1\/workflows\/[^/]+\/fork/),
-    reason: 'the test forks a revision the server refuses, and the server answers 409',
+    reason: 'the test previews a fork on a revision the server refuses, and the server answers 409',
   });
-  await page.getByRole('button', { name: 'Create fork' }).click();
 
-  // A real rejected fork — `WorkflowRevisionUnavailableError` — never a
-  // mocked one. `07-activate-workflow-revision.spec.ts` establishes the
-  // same real-refusal pattern for the System route's Activate flow.
+  // The fork dialog asks the server what the fork would do before Create fork can be pressed
+  // (COR-2538), so the real rejected fork — `WorkflowRevisionUnavailableError` — is the dry run's
+  // refusal, never a mocked one, and the button stays disabled. `07-activate-workflow-revision.spec.ts`
+  // establishes the same real-refusal pattern for the System route's Activate flow.
   const conflictBanner = page.getByRole('alert').filter({ hasText: 'Revision unavailable' });
   await expect(conflictBanner).toBeVisible();
   await expect(conflictBanner.getByText(/Pick a different revision/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create fork' })).toBeDisabled();
   await checkA11y('workflow detail — checkpoints, Fork panel (rejected revision conflict)');
 
   // Second half: a schedule made on the new schedule page follows the active revision (its form

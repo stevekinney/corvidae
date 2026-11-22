@@ -6,6 +6,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 
 import { queryKeys } from '../../../../lib/query.ts';
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';
+import { confirmFork } from './fork-comparison.test-support.ts';
 import ForkDialogHarness from './fork-dialog.test-harness.svelte';
 
 function allScopesPrincipal(): Principal {
@@ -74,7 +75,7 @@ describe('additional coverage', () => {
       },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
 
     await waitFor(() => {
       expect(getByText('Revision unavailable')).not.toBeNull();
@@ -114,7 +115,7 @@ describe('additional coverage', () => {
       },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
     await waitFor(() => {
       expect(getByText(/pick one that is currently installed/)).not.toBeNull();
     });
@@ -154,7 +155,7 @@ describe('additional coverage', () => {
     await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
     const input = getByRole('textbox', { name: 'Revision ID' });
     await fireEvent.input(input, { target: { value: 'order-processing-rev-missing' } });
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
 
     await waitFor(() => {
       expect(getByText('Revision unavailable')).not.toBeNull();
@@ -183,7 +184,7 @@ describe('additional coverage', () => {
       },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
 
     await waitFor(() => {
       expect(getByText('internal engine failure')).not.toBeNull();
@@ -238,7 +239,7 @@ describe('additional coverage', () => {
     await queryClient.refetchQueries({ queryKey: queryKeys.catalog.revisions('order-processing') });
     const input = await findByRole('textbox', { name: 'Revision ID' });
     await fireEvent.input(input, { target: { value: 'order-processing-rev-b' } });
-    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+    await confirmFork(getByRole);
 
     await waitFor(() => {
       expect(forkCalls).toEqual([{ fromStep: 3, revision: 'order-processing-rev-b' }]);
