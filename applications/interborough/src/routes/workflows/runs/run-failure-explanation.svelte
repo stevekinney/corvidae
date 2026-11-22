@@ -19,6 +19,8 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
 
+  import { Plug } from '@lucide/svelte';
+
   import { CHAT_COPY } from '../../../app/copy/chat.ts';
   import FaultErrorState from '../../../app/fault-error-state.svelte';
   import { RUN_DETAIL_COPY, RUN_EXPLAIN_FURTHER_COPY } from '../../../app/copy/runs.ts';
@@ -205,11 +207,15 @@
           variant="row"
           tone="neutral"
           bordered={framed}
-          title={connect.title}
+          measure
+          title={furtherCopy.noProvider}
           description=""
           headingLevel={3}
           data-explanation="no-provider"
         >
+          {#snippet icon()}
+            <Plug />
+          {/snippet}
           {#snippet secondaryAction()}
             <Button
               variant="secondary"

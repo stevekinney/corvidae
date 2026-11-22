@@ -20,6 +20,12 @@
     padding-inline: var(--cinder-space-6);
   }
 
+  /* An opt-in readable width: the state stops at about 70 characters, so a row in a wide column
+   * keeps its action beside its title. Off by default. */
+  .cinder-error-state[data-cinder-measure] {
+    max-inline-size: 70ch;
+  }
+
   /* A bordered state draws its own box, as the empty state does, for a body with no container,
    * and pads itself the way the empty state does, so the two read as one family when the box is
    * not in a region of known height. */
@@ -361,8 +367,9 @@
   }
 
   .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='neutral'] {
-    /* Nothing failed, so the box is the page's structural hairline, not a fourth border weight. */
-    --_cinder-error-state-edge: var(--cinder-border);
+    /* Nothing failed, so the box is the quietest hairline the page draws, the weight its list rows
+       use, not a fourth border weight. */
+    --_cinder-error-state-edge: var(--cinder-border-muted);
   }
 
   /* The next step is not part of the sentence: it takes its own line under it, in the same type. */

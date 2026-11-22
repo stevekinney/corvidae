@@ -181,7 +181,9 @@ for (const width of WIDTHS) {
       await openFailedRun(page, request, pageErrors);
 
       const state = page.locator('[data-explanation="no-provider"]');
-      await expect(state.getByRole('heading', { name: 'Connect a provider first' })).toBeVisible();
+      await expect(
+        state.getByRole('heading', { name: 'No model provider connected' }),
+      ).toBeVisible();
       await expect(state.getByRole('link', { name: 'Connect a provider' })).toHaveAttribute(
         'href',
         /\/settings\/models$/,

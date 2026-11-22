@@ -134,11 +134,17 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state. On the
    * centred layout it is a panel; on the `'row'` variant it is a quiet hairline around the one line,
-   * in the danger or warning tone's border token, or in the structural border for the neutral tone,
+   * in the danger or warning tone's border token, or in the muted border for the neutral tone,
    * where nothing failed; the `'flat'` variant has no box.
    * @default false
    */
   bordered?: boolean;
+  /**
+   * Holds the state to a readable width (70 characters), so a row in a wide column keeps its action
+   * near its title instead of at the far edge. Off by default, so no existing state moves.
+   * @default false
+   */
+  measure?: boolean;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 };
@@ -236,11 +242,17 @@ export interface ErrorStateSchemaProps {
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state. On the
    * centred layout it is a panel; on the `'row'` variant it is a quiet hairline around the one line,
-   * in the danger or warning tone's border token, or in the structural border for the neutral tone,
+   * in the danger or warning tone's border token, or in the muted border for the neutral tone,
    * where nothing failed; the `'flat'` variant has no box.
    * @default false
    */
   bordered?: boolean;
+  /**
+   * Holds the state to a readable width (70 characters), so a row in a wide column keeps its action
+   * near its title instead of at the far edge. Off by default, so no existing state moves.
+   * @default false
+   */
+  measure?: boolean;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 }

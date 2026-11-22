@@ -323,7 +323,12 @@ describe('a failed agent run’s longer explanation, written by a model on reque
       return found as HTMLElement;
     });
     // One title, in Chat's words, and no second sentence saying it again.
-    expect(state.querySelector('h3')?.textContent).toBe('Connect a provider first');
+    expect(state.querySelector('h3')?.textContent).toBe('No model provider connected');
+    // A plug, not Cinder's default neutral glyph, which is a magnifying glass, and a held width.
+    expect(state.querySelector('.cinder-error-state-glyph svg')?.getAttribute('class')).toContain(
+      'lucide-plug',
+    );
+    expect(state.closest('.cinder-error-state')?.hasAttribute('data-cinder-measure')).toBe(true);
     expect(state.querySelectorAll('p')).toHaveLength(0);
     const link = getByRole('link', { name: 'Connect a provider' });
     expect(link.getAttribute('href')).toContain('/settings/models');

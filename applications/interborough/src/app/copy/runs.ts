@@ -65,6 +65,8 @@ export const RUN_EXPLAIN_FURTHER_COPY = {
   again: 'Explain again',
   /** The action's help, shown before the first explanation: what the model reads, in one sentence. */
   note: 'A model reads the explanation above and each step’s name, status and error message, never what a tool took in or gave back.',
+  /** The row's title while no provider is connected; its action, "Connect a provider", is Chat's. */
+  noProvider: 'No model provider connected',
   /** The heading over what the model wrote. */
   heading: 'Longer explanation',
   /** Which model wrote it, and when: `when` is a phrase such as "today at 4:00 AM". */
