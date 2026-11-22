@@ -340,6 +340,15 @@ describe('cadenceSentence', () => {
     );
   });
 
+  test('COR-2432 (row 65q): one weekday reads as the builder names it, the weekday kept whole', () => {
+    expect(cadenceSentence({ cron: '0 11 * * 5', timeZone: 'America/Chicago' })).toBe(
+      'every Friday at 11:00 AM Central time',
+    );
+    expect(cadenceSentence({ cron: '0 11 * * 2,4', timeZone: 'America/Chicago' })).toBe(
+      'on Tuesday and Thursday at 11:00 AM Central time',
+    );
+  });
+
   test('leaves the zone off when asked, for a schedule that is only mentioned', () => {
     expect(cadenceSentence(DAILY, { zone: false })).toBe('every day at 9:00 AM');
   });

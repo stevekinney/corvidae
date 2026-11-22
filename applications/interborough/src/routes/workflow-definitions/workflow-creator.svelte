@@ -17,10 +17,11 @@
    */
   import { Button, ConfirmDialog, PageHeader } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import {
@@ -28,10 +29,12 @@
     createWorkflowFile,
     isApplyFailure,
     isIdentifierTaken,
+    validateWorkflowDefinition,
   } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import WorkflowBuilder from './workflow-builder.svelte';
   import { workflowProblems } from './workflow-builder-problems.ts';
+  import { documentProblemFor, type DocumentProblem } from './workflow-issue-line.ts';
 
   const copy = WORKFLOW_COPY;
   const creator = copy.creator;
@@ -64,6 +67,10 @@
    * save is in flight, and a read-only form cannot take focus, so the focus waits for the answer.
    */
   let focusAfterSave = $state(false);
+  /** The line the Bureau refused the document at, until the text changes (row 65z). */
+  let documentProblem = $state<DocumentProblem | null>(null);
+  /** The Bureau's checks are being asked before Create, so a second press waits for them. */
+  let checking = $state(false);
 
   // Leaving with what was typed asks first; an untouched form leaves at once.
   const leaveGuard = new LeaveGuard(() => text !== TEMPLATE);
@@ -120,8 +127,8 @@
     untrack(() => void builder?.focusProblem());
   });
 
-  function submit(): void {
-    if (save.isPending) return;
+  async function submit(): Promise<void> {
+    if (save.isPending || checking) return;
     const parsed = createDefinitionFromText(text);
     const problems = workflowProblems(text, {
       mode: 'create',
@@ -129,6 +136,23 @@
     });
     if (!parsed.ok || problems.length > 0) {
       checked = true;
+      void builder?.focusProblem();
+      return;
+    }
+    // The Bureau's own checks first, so a document it refuses is marked at its line on the JSON
+    // tab rather than said as a failure (row 65z). A check that cannot be made leaves it to Create.
+    const asked = text;
+    checking = true;
+    const problem = await documentProblemFor(asked, () =>
+      validateWorkflowDefinition({ id: parsed.id, definition: parsed.definition }),
+    ).finally(() => {
+      checking = false;
+    });
+    if (text !== asked) return;
+    if (problem !== undefined) {
+      documentProblem = problem;
+      checked = true;
+      await tick();
       void builder?.focusProblem();
       return;
     }
@@ -143,7 +167,10 @@
       label: creator.saveAction,
       group: copy.builder.shortcutGroup,
       scope: { route: '/workflows/new' },
-      handler: () => submit(),
+      // Below 640 pixels the builder is read-only, so the shortcut creates nothing there either.
+      handler: () => {
+        if (!phoneViewport.current) void submit();
+      },
     }),
   );
 
@@ -165,26 +192,28 @@
       {...takenId === undefined ? {} : { takenId }}
       saving={save.isPending}
       {failure}
+      {documentProblem}
       jsonId="workflow-creator-text"
       jsonLabel={creator.textLabel}
       jsonDescription={creator.textDescription}
       backHref="/workflows"
       onTextChange={(next) => {
         text = next;
+        documentProblem = null;
       }}
     >
-      {#snippet actions()}
-        <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
+      {#snippet actions(readOnly: boolean)}
+        <Button variant="secondary" size="sm" disabled={save.isPending || checking} onclick={cancel}
           >{creator.cancelAction}</Button
         >
         <Button
           data-changes
           type="button"
-          onclick={() => submit()}
+          onclick={() => void submit()}
           variant="primary"
           size="sm"
-          disabled={save.isPending}
-          >{save.isPending ? creator.creatingAction : creator.saveAction}</Button
+          disabled={save.isPending || checking || readOnly}
+          >{save.isPending || checking ? creator.creatingAction : creator.saveAction}</Button
         >
       {/snippet}
     </WorkflowBuilder>

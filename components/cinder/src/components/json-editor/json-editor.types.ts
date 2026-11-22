@@ -78,6 +78,8 @@ export type JsonEditorProps = Omit<
   validFeedbackVisible?: boolean;
   /** Replaces the "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status. */
   statusLabel?: string;
+  invalidStatusLabel?: string;
+  parserStopVisible?: boolean;
   /** Problems the caller found at specific lines of a document that parses. Each line is marked and shows its message under it. */
   diagnostics?: readonly JsonEditorDiagnostic[];
   /** The sample that shows muted, after "e.g.", while the editor is empty, such as `{ "timeoutSeconds": 300 }`. Defaults to `{ "key": "value" }`. A `placeholder` replaces the whole text. */

@@ -172,6 +172,32 @@ export const REPEATS_OPTIONS: readonly { value: ScheduleRepeats; label: string }
 ];
 
 /**
+ * The Custom days choice's label for `days`: a weekly schedule on one weekday names it, "Every
+ * Friday"; no day, or several, keep "Custom days".
+ */
+export function customDaysLabel(days: readonly number[]): string {
+  const chosen = WEEKDAYS.filter((day) => days.some((value) => value % 7 === day.value));
+  const [only] = chosen;
+  return chosen.length === 1 && only !== undefined ? `Every ${only.long}` : 'Custom days';
+}
+
+/**
+ * The Repeats choices as the field lists them: while Custom days is the choice, its label names a
+ * single weekday ({@link customDaysLabel}); any other choice leaves it "Custom days", so a person
+ * looking for several days finds it by that name.
+ */
+export function repeatsOptionsFor(draft: {
+  readonly repeats: ScheduleRepeats;
+  readonly days: readonly number[];
+}): readonly { value: ScheduleRepeats; label: string }[] {
+  if (draft.repeats !== 'custom-days') return REPEATS_OPTIONS;
+  const label = customDaysLabel(draft.days);
+  return REPEATS_OPTIONS.map((option) =>
+    option.value === 'custom-days' ? { ...option, label } : option,
+  );
+}
+
+/**
  * Everything the fields hold, whichever Repeats choice is showing, so that switching choices keeps
  * what the person already chose. `time` is `HH:MM` on a 24-hour clock; `days` are cron
  * day-of-week numbers (0 = Sunday).
@@ -574,7 +600,8 @@ export type ScheduleFieldSummary = {
  */
 export function describeScheduleFields(value: ScheduleValue): ScheduleFieldSummary[] {
   const draft = draftFromValue(value);
-  const repeats = REPEATS_OPTIONS.find((option) => option.value === draft.repeats)?.label ?? '';
+  const repeats =
+    repeatsOptionsFor(draft).find((option) => option.value === draft.repeats)?.label ?? '';
   const rows: ScheduleFieldSummary[] = [{ label: 'Repeats', value: repeats }];
   switch (draft.repeats) {
     case 'interval':
@@ -587,7 +614,8 @@ export function describeScheduleFields(value: ScheduleValue): ScheduleFieldSumma
       rows.push({ label: 'Cron expression', value: draft.cron, code: true });
       break;
     case 'custom-days':
-      rows.push({ label: 'Days', value: listDays(draft.days) });
+      // One weekday is named by Repeats itself ("Every Friday"); several are listed under Days.
+      if (repeats === 'Custom days') rows.push({ label: 'Days', value: listDays(draft.days) });
       rows.push({ label: 'At', value: formatClockTime(draft.time) });
       break;
     case 'monthly':

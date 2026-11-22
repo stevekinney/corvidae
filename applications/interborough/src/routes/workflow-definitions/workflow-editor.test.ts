@@ -896,17 +896,212 @@ describe('the step builder in the editor', () => {
     expect(idLine?.textContent).toContain(WORKFLOW_COPY.builder.idFixed);
     expect(idLine?.querySelector('input, button')).toBeNull();
 
-    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
-      target: { value: '3h' },
+    // A schedule the builder can draw is its When block, not a field to type a spec in (row 65q).
+    expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull();
+    expect(container.querySelector('#workflow-builder-trigger-field')).toBeNull();
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Writes the digest.' },
     });
     await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
     const call = stub?.callsTo('bureau.workflows.update')[0];
     expect(call?.params['expectedHash']).toBe('hash-1');
     const definition = call?.params['definition'] as Record<string, unknown>;
-    expect(definition['trigger']).toEqual({ kind: 'schedule', spec: '3h' });
+    expect(definition['trigger']).toEqual({ kind: 'schedule', spec: '0 6 * * *' });
+    expect(definition['description']).toBe('Writes the digest.');
     expect(definition['agent']).toBe('writer');
     expect(definition).not.toHaveProperty('name');
+  });
+
+  test('correction round one: a schedule the When block shows but has not passed on refuses Save and goes to the field; fixed, it saves the spec on screen', async () => {
+    const { container, getByRole, getByLabelText } = open('/workflows/digest/edit');
+    await builderReady(container);
+    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
+    const minute = getByLabelText('Minute') as HTMLInputElement;
+    await fireEvent.input(minute, { target: { value: '75' } });
+    await waitFor(() => expect(minute.getAttribute('aria-invalid')).toBe('true'));
+
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    await waitFor(() => expect(document.activeElement === minute).toBe(true));
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/digest/edit');
+
+    await fireEvent.input(minute, { target: { value: '30' } });
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+    const definition = stub?.callsTo('bureau.workflows.update')[0]?.params['definition'] as {
+      trigger: Record<string, unknown>;
+    };
+    expect(definition.trigger['spec']).toBe('30 6 * * *');
+  });
+
+  test('correction round one: Discard while the Bureau checks the draft writes nothing and leaves', async () => {
+    const { container, getByRole, findByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    let answer: (value: unknown) => void = () => {};
+    stub?.on(
+      'bureau.workflows.validate',
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Changed.' },
+    });
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.validate')).toHaveLength(1));
+    // The check is in flight: Save is busy and Cancel is off, so the form cannot be pressed again.
+    expect((getByRole('button', { name: EDITOR.savingAction }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((getByRole('button', { name: EDITOR.cancelAction }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    // The person leaves by a link (the breadcrumb, say), which asks first, and discards.
+    router.navigate('/workflows/digest');
+    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.builder.discard.title });
+    const discard = [...dialog.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === WORKFLOW_COPY.builder.discard.confirm,
+    );
+    await fireEvent.click(discard as HTMLElement);
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+
+    answer({ status: 'ok', id: 'digest', hash: 'hash-1' });
+    // The answer reaches the page's continuation, which has been told the press is over: a write
+    // that must not happen gets its chance.
+    await quietFor(200);
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/digest');
+  });
+
+  test('COR-2432: a save the host cannot write names the file and why, nothing saved, Save the retry (row 65w)', async () => {
+    const { container, getByRole } = open('/workflows/digest/edit', {
+      files: [readyFile('digest', { title: 'Release notes' })],
+    });
+    await builderReady(container);
+    stub?.on('bureau.workflows.update', () => {
+      throw workflowFaults.writeFailed('digest.json');
+    });
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Changed.' },
+    });
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    const body = await waitFor(() => {
+      const found = container.querySelector('.weft-workflow-builder__alert-body');
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    expect(container.querySelector('.weft-workflow-builder__alert-title')?.textContent).toBe(
+      EDITOR.saveFailed('Release notes'),
+    );
+    expect(body.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      `${WORKFLOW_COPY.builder.writeFailed('digest.json', 'permission-denied')} ${WORKFLOW_COPY.creator.nothingSaved}`,
+    );
+    expect(field(container, 'workflow-builder-description').value).toBe('Changed.');
+    expect(router.pathname).toBe('/workflows/digest/edit');
+    expect(getByRole('button', { name: EDITOR.saveAction })).toBeTruthy();
+  });
+
+  test('design correction: Input and Output are the fields table alone, in one column (row 65s)', async () => {
+    const text = JSON.stringify(
+      {
+        name: 'digest',
+        trigger: { kind: 'manual' },
+        inputSchema: {
+          type: 'object',
+          required: ['branch'],
+          properties: { branch: { type: 'string', description: 'The branch to release from.' } },
+        },
+        steps: [{ kind: 'sleep', duration: '1m' }],
+      },
+      null,
+      2,
+    );
+    const { container } = open('/workflows/digest/edit', {
+      files: [readyFile('digest', { text })],
+    });
+    await builderReady(container);
+    const editor = container.querySelector('#workflow-builder-inputSchema');
+    expect(editor?.getAttribute('data-cinder-variant')).toBe('fields');
+    expect(editor?.querySelector('[role="tablist"]')).toBeNull();
+    expect(editor?.textContent).not.toContain('Required fields not yet defined');
+    const section = editor?.closest('.cinder-form-section');
+    expect(section?.getAttribute('data-columns')).toBe('1');
+  });
+
+  test('design correction: Starts is one column, so the When block sits under the choices (rows 65d, 65q)', async () => {
+    const { container } = open('/workflows/digest/edit');
+    await builderReady(container);
+    const when = container.querySelector('[data-testid="schedule-when"]');
+    expect(when?.closest('.cinder-form-section')?.getAttribute('data-columns')).toBe('1');
+  });
+
+  test('COR-2432: a file that names its schedule says saving changes that schedule, under its When block (row 65q)', async () => {
+    const text = JSON.stringify(
+      {
+        name: 'digest',
+        title: 'Release notes',
+        trigger: {
+          kind: 'schedule',
+          name: 'Release notes digest',
+          spec: '0 11 * * 5',
+          timezone: 'America/Chicago',
+          overlap: 'skip',
+          catchUp: false,
+        },
+        steps: [{ kind: 'sleep', duration: '1m' }],
+      },
+      null,
+      2,
+    );
+    const { container } = open('/workflows/digest/edit', {
+      files: [readyFile('digest', { text })],
+    });
+    await builderReady(container);
+    expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid="workflow-builder-schedule-note"]')
+        ?.textContent?.trim(),
+    ).toBe(WORKFLOW_COPY.builder.scheduleDefinedNote('Release notes digest'));
+  });
+
+  test('COR-2432: Cancel on a changed form asks to discard, Keep editing stays, and an untouched form leaves at once (row 66h)', async () => {
+    const DISCARD = WORKFLOW_COPY.builder.discard;
+    const untouched = open('/workflows/digest/edit');
+    await builderReady(untouched.container);
+    await fireEvent.click(untouched.getByRole('button', { name: EDITOR.cancelAction }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+    expect(untouched.queryByRole('dialog', { name: DISCARD.title })).toBeNull();
+    cleanup();
+    stub?.restore();
+
+    const { container, getByRole, findByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    await fireEvent.input(field(container, 'workflow-builder-title'), {
+      target: { value: 'Changed' },
+    });
+    await fireEvent.click(getByRole('button', { name: EDITOR.cancelAction }));
+    const dialog = await findByRole('dialog', { name: DISCARD.title });
+    expect(dialog.textContent).toContain(DISCARD.description);
+    expect(router.pathname).toBe('/workflows/digest/edit');
+    const keep = [...dialog.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === DISCARD.keep,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(keep ?? null));
+    await fireEvent.click(keep as HTMLElement);
+    expect(router.pathname).toBe('/workflows/digest/edit');
+    expect(field(container, 'workflow-builder-title').value).toBe('Changed');
+
+    await fireEvent.click(getByRole('button', { name: EDITOR.cancelAction }));
+    const again = await findByRole('dialog', { name: DISCARD.title });
+    const discard = [...again.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === DISCARD.confirm,
+    );
+    await fireEvent.click(discard as HTMLElement);
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
   });
 
   test('keeps the draft in the builder when the file changed underneath it', async () => {
@@ -916,12 +1111,12 @@ describe('the step builder in the editor', () => {
     if (file === undefined) throw new Error('The file is missing.');
     file.hash = 'hash-by-hand';
 
-    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
-      target: { value: '4h' },
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Mine.' },
     });
     await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
     await findByRole('button', { name: EDITOR.changedOnDisk.reload });
-    expect(field(container, 'workflow-builder-trigger-field').value).toBe('4h');
+    expect(field(container, 'workflow-builder-description').value).toBe('Mine.');
     expect(stub?.file('digest')?.hash).toBe('hash-by-hand');
   });
 
