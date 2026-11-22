@@ -19,10 +19,11 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  */
 
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
-import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { projectRunTimeline, RUN_TIMELINE_ENTRY_LIMIT } from '../../run-timeline.ts';
+import type { TaskView } from '../../task-registry.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
@@ -94,6 +95,53 @@ function noWorkflowDirectory(): OperationFault {
   };
 }
 
+/** A run the caller may read: an agent run with its task, or an instance of a workflow file. */
+export type ReadableRun =
+  { readonly kind: 'agent'; readonly task: TaskView } | { readonly kind: 'workflow' };
+
+/**
+ * The run `runId` names, once the caller is let in to it: an agent run is read as
+ * `bureau.tasks.get` reads it, and a workflow instance as `bureau.workflows.runs.get` reads it.
+ * A run the caller may not read, a run that is neither kind and one that does not exist are all
+ * `NotFound`, so the engine is read for nobody this refused. Shared by the operations that read
+ * one run by either kind of id.
+ */
+export async function readableRun(
+  host: BureauTasksOperationHost & BureauWorkflowsOperationHost,
+  principal: Principal,
+  runId: string,
+): Promise<ReadableRun> {
+  // An agent run is a task with a record; an id the registry holds is read as a task, and the
+  // caller who may not read it is not then offered the workflow reading of the same id.
+  const task = await host.tasks.get(runId);
+  if (task !== undefined) {
+    if (!(await mayAccessTask(host, principal, runId, 'bureau.tasks:read'))) {
+      throw resourceNotFound('run', runId);
+    }
+    return { kind: 'agent', task };
+  }
+  if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
+    throw resourceNotFound('run', runId);
+  }
+  if (
+    principal.method !== 'unauthenticated' &&
+    principal.workspace !== undefined &&
+    !host.ownership.mayAccess({
+      principal,
+      resourceOwner: await host.ownership.runOwner(runId),
+      operatorScope: 'bureau.workflows:read',
+    })
+  ) {
+    throw resourceNotFound('run', runId);
+  }
+  if (host.workflows === undefined) throw noWorkflowDirectory();
+  // `getRun` is the one reading of "an instance of a workflow file"; anything else is no run here.
+  if ((await host.workflows.getRun(runId)) === undefined) {
+    throw resourceNotFound('run', runId);
+  }
+  return { kind: 'workflow' };
+}
+
 export const runsTimelineOperation = defineOperation<
   typeof timelineInput,
   typeof timelineOutput,
@@ -115,37 +163,7 @@ export const runsTimelineOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { runId } = input;
-    // An agent run is a task with a record; an id the registry holds is read as a task, and the
-    // caller who may not read it is not then offered the workflow reading of the same id.
-    const task = await host.tasks.get(runId);
-    let kind: 'agent' | 'workflow';
-    if (task !== undefined) {
-      if (!(await mayAccessTask(host, principal, runId, 'bureau.tasks:read'))) {
-        throw resourceNotFound('run', runId);
-      }
-      kind = 'agent';
-    } else {
-      if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
-        throw resourceNotFound('run', runId);
-      }
-      if (
-        principal.method !== 'unauthenticated' &&
-        principal.workspace !== undefined &&
-        !host.ownership.mayAccess({
-          principal,
-          resourceOwner: await host.ownership.runOwner(runId),
-          operatorScope: 'bureau.workflows:read',
-        })
-      ) {
-        throw resourceNotFound('run', runId);
-      }
-      if (host.workflows === undefined) throw noWorkflowDirectory();
-      // `getRun` is the one reading of "an instance of a workflow file"; anything else is no run here.
-      if ((await host.workflows.getRun(runId)) === undefined) {
-        throw resourceNotFound('run', runId);
-      }
-      kind = 'workflow';
-    }
+    const { kind } = await readableRun(host, principal, runId);
     const entries = await host.runTimeline(runId);
     if (entries === undefined) throw unsupported();
     const timeline = projectRunTimeline(entries);
