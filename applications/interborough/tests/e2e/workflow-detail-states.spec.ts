@@ -38,7 +38,7 @@ async function rewriteOperation(
   method: string,
   rewrite: (result: JsonRecord, params: JsonRecord) => JsonRecord,
 ): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       params?: JsonRecord;
