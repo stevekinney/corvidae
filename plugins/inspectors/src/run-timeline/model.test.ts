@@ -24,11 +24,7 @@ const entry = (overrides: Partial<TimelineEntry> & { step: number }): TimelineEn
   ...overrides,
 });
 
-const timeline = (
-  entries: TimelineEntry[],
-  truncated = false,
-  runStatus: string | undefined = undefined,
-): Timeline => ({
+const timeline = (entries: TimelineEntry[], truncated = false, runStatus?: string): Timeline => ({
   runId: 'run-1',
   kind: 'workflow',
   runStatus,
