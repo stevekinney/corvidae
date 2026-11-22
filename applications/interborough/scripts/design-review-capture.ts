@@ -207,6 +207,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
   // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
   'tests/panels/schedule-editor-states.spec.ts',
+  // The run timeline panel in each state it draws, likewise a frame no page capture sees (COR-2542).
+  'tests/panels/run-timeline-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';
