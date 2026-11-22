@@ -171,7 +171,8 @@ describe('a list that failed', () => {
         scopes: AUTHORIZATION_SCOPES,
       },
     } as never);
-    await findByText('The Bureau broke.');
+    // The stub says "Bureau"; the page reads "the server".
+    await findByText('The server broke.');
     failing = false;
     await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(rows(container).length).toBe(1));

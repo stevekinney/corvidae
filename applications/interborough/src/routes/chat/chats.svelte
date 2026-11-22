@@ -58,6 +58,7 @@
   import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getContext, listAgents, listContexts } from '../../lib/bureau-client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
@@ -539,7 +540,7 @@
       headingLevel={3}
       title={CHAT_COPY.list.failedTitle}
       description={CHAT_COPY.list.failedDescription}
-      onRetry={() => void shownList.refetch()}
+      {...faultErrorStateAdvice(shownList.error, () => void shownList.refetch())}
     />
   {:else if listState === 'first-use' && isNew}
     <!-- The first chat is being started beside it: the new chat's pane is the one thing to say

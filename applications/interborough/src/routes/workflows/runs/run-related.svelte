@@ -12,7 +12,7 @@
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { RUN_DETAIL_COPY, RUN_RELATED_COPY } from '../../../app/copy/runs.ts';
   import { createActiveRevisionComparisons } from '../../../lib/active-revision-comparisons.svelte.ts';
-  import { faultTreatment } from '../../../lib/faults.ts';
+  import { faultErrorStateAdvice, faultTreatment } from '../../../lib/faults.ts';
   import RelatedRunLink from './related-run-link.svelte';
   import {
     fetchRelatedRuns,
@@ -137,7 +137,7 @@
       description={faultTreatment(related.error).message}
       headingLevel={3}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void related.refetch()}
+      {...faultErrorStateAdvice(related.error, () => void related.refetch())}
     />
   {:else if !hasRelatedRuns(related.data)}
     {#if hasExtra && extra !== undefined}

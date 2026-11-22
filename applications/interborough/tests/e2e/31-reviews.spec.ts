@@ -836,7 +836,7 @@ test.describe('/reviews: a Bureau that fails', () => {
       }
       await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
       await expect(
-        page.getByRole('alert').filter({ hasText: 'Something went wrong' }),
+        page.getByRole('alert').filter({ hasText: 'Couldn’t load reviews' }),
       ).toBeVisible();
       await expect(page.getByText('Nothing waiting on you')).toHaveCount(0);
       await expect.poll(() => counts.resolved).toBeGreaterThanOrEqual(1);

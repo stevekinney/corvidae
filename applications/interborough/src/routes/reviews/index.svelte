@@ -289,7 +289,7 @@
   {/if}
 
   {#each faults as fault, index (index)}
-    <QueryFaultBanner error={fault.error} onRetry={fault.retry} />
+    <QueryFaultBanner error={fault.error} subject="reviews" onRetry={fault.retry} />
   {/each}
 
   <!-- The segments stay through every state, so the page never loses its place while a list is read,

@@ -748,7 +748,7 @@ describe('TaskLedgerPanel — query states', () => {
         now: NOW,
       },
     });
-    expect(getByText('Something went wrong')).not.toBeNull();
+    expect(getByText('Couldn’t load the task ledger')).not.toBeNull();
     expect(getByText('Internal server error')).not.toBeNull();
   });
 
