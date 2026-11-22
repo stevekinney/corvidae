@@ -138,6 +138,33 @@ export type DeploymentOperationTypes = {
             readonly workerId: string;
             readonly workerName: string | null;
           }
+        | {
+            readonly agentName: string | null;
+            readonly area:
+              'storage' | 'schedules' | 'providers' | 'hooks' | 'plugins' | 'workers' | 'runs';
+            readonly at: number;
+            readonly kind: 'run-stalled';
+            readonly runId: string;
+          }
+        | {
+            readonly agentName: string | null;
+            readonly area:
+              'storage' | 'schedules' | 'providers' | 'hooks' | 'plugins' | 'workers' | 'runs';
+            readonly at: number;
+            readonly kind: 'run-looping';
+            readonly runId: string;
+          }
+        | {
+            readonly agentName: string | null;
+            readonly area:
+              'storage' | 'schedules' | 'providers' | 'hooks' | 'plugins' | 'workers' | 'runs';
+            readonly at: number;
+            readonly costUsd: number | null;
+            readonly kind: 'run-overspending';
+            readonly runId: string;
+            readonly settledAt: number | null;
+            readonly thresholdUsd: number;
+          }
       >;
     };
     readonly faults: 'Forbidden';

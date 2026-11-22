@@ -1004,7 +1004,7 @@
       }
     },
     {
-      "description": "Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.",
+      "description": "Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). A run that is alive but making no progress (`run-stalled`), a run whose toolbox reported a loop (`run-looping`) and a run that cost more than the `runs.spendThresholdUsd` setting (`run-overspending`, listed while it runs and for seven days after it settles) each name their run; none of them stops it. `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1462,6 +1462,174 @@
                       "queue",
                       "waiting",
                       "failedForGood"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When the Bureau saw the run stall, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "run-stalled",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that stalled.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When the first loop was reported, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "run-looping",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that is looping.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When a step found the run over the spend threshold, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "description": "What the run has cost so far, or in total once it settled, in US dollars.",
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "kind": {
+                        "const": "run-overspending",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that cost more than the threshold.",
+                        "type": "string"
+                      },
+                      "settledAt": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "When the run settled, in epoch milliseconds, or `null` while it runs."
+                      },
+                      "thresholdUsd": {
+                        "description": "The spend threshold in force when the step found the run over, in US dollars.",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName",
+                      "costUsd",
+                      "thresholdUsd",
+                      "settledAt"
                     ],
                     "type": "object"
                   }
@@ -1977,10 +2145,11 @@
           "name": "attention",
           "required": false,
           "schema": {
-            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop, `overspending` for a run a step found over the spend threshold (it stays after the run settles). A task that has ended lists neither of the first two, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
             "enum": [
               "stalled",
-              "looping"
+              "looping",
+              "overspending"
             ],
             "type": "string"
           }
@@ -2154,7 +2323,8 @@
                     "items": {
                       "enum": [
                         "stalled",
-                        "looping"
+                        "looping",
+                        "overspending"
                       ],
                       "type": "string"
                     },
@@ -2812,10 +2982,11 @@
             "type": "string"
           },
           "attention": {
-            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop, `overspending` for a run a step found over the spend threshold (it stays after the run settles). A task that has ended lists neither of the first two, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
             "enum": [
               "stalled",
-              "looping"
+              "looping",
+              "overspending"
             ],
             "type": "string"
           },
@@ -2961,7 +3132,8 @@
               "items": {
                 "enum": [
                   "stalled",
-                  "looping"
+                  "looping",
+                  "overspending"
                 ],
                 "type": "string"
               },
@@ -4174,7 +4346,8 @@
                   "items": {
                     "enum": [
                       "stalled",
-                      "looping"
+                      "looping",
+                      "overspending"
                     ],
                     "type": "string"
                   },
@@ -5434,7 +5607,8 @@
                       "items": {
                         "enum": [
                           "stalled",
-                          "looping"
+                          "looping",
+                          "overspending"
                         ],
                         "type": "string"
                       },
@@ -23803,6 +23977,7 @@
                       "budget.threshold",
                       "run.stalled",
                       "run.looping",
+                      "run.overspending",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -23907,6 +24082,7 @@
                         "budget.threshold",
                         "run.stalled",
                         "run.looping",
+                        "run.overspending",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",
@@ -24069,6 +24245,7 @@
                       "budget.threshold",
                       "run.stalled",
                       "run.looping",
+                      "run.overspending",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -24173,6 +24350,7 @@
                         "budget.threshold",
                         "run.stalled",
                         "run.looping",
+                        "run.overspending",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",

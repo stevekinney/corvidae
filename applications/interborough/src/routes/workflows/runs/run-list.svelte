@@ -52,6 +52,7 @@
   import { listAllTasks } from '../../../lib/bureau-tasks.ts';
   import { followLinks } from '../../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
+  import { phoneViewport } from '../../../lib/phone-viewport.svelte.ts';
   import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { queryKeys } from '../../../lib/query.ts';
@@ -211,6 +212,13 @@
   const zone = viewerTimeZone();
   let now = $state(Date.now());
   const going = $derived(rows.some((row) => isRunRowRunning(row, now)));
+  // The Cost column (COR-2525): above a phone the trailing track is one width in every row, with a
+  // cost or without, as wide as the widest figure ("At least $1,204.50"), so the times before it end
+  // at one edge, and a cost sits on the first line's baseline. A phone's row has no column: its cost
+  // is the line under line two (`run-list-row.svelte`).
+  const costColumn = $derived(
+    phoneViewport.current ? {} : { trailingTrack: '9rem', trailingAlign: 'baseline' as const },
+  );
   $effect(() => {
     const period = going ? RUNNING_CLOCK_MILLISECONDS : HOME_CLOCK_MILLISECONDS;
     // poll-reason: clock
@@ -526,6 +534,7 @@
             key={(entry: RunListEntry) => entry.key}
             aria-label={TASK_COPY.list.rowsLabel}
             groupBy={(entry: RunListEntry) => runDayGroup(entry.at, now, zone)}
+            {...costColumn}
           >
             {#snippet children(entry: RunListEntry)}
               {#if entry.kind === 'run'}

@@ -198,14 +198,52 @@ export interface TaskUsage {
 }
 
 /**
- * COR-2526 — what asks for a person's attention on a task that has not ended: `stalled` while
- * Operative assesses its run as alive but making no progress outside a declared wait, and `looping`
- * once its toolbox has reported a loop (a warning or a block) until the run settles.
+ * COR-2526 — what asks for a person's attention on a task: `stalled` while Operative assesses its
+ * run as alive but making no progress outside a declared wait, and `looping` once its toolbox has
+ * reported a loop (a warning or a block) until the run settles. COR-2527 — `overspending` once a
+ * step found the run's cost over the workspace's spend threshold, which stays after the run settles:
+ * it is a fact about what the run cost, not a state the run is in.
  */
-export type TaskAttention = 'stalled' | 'looping';
+export type TaskAttention = 'stalled' | 'looping' | 'overspending';
 
 /** Every {@link TaskAttention}, in the order a view lists them. */
-export const TASK_ATTENTION_KINDS: readonly TaskAttention[] = ['stalled', 'looping'];
+export const TASK_ATTENTION_KINDS: readonly TaskAttention[] = [
+  'stalled',
+  'looping',
+  'overspending',
+];
+
+/**
+ * COR-2527 — the instant (ISO 8601, on the Bureau's clock) a step found a run's cost over the spend
+ * threshold, and the threshold in force then, in US dollars. A later change of the setting never
+ * rewrites it: the mark records what was true when the run crossed.
+ */
+interface TaskOverspending {
+  readonly since: string;
+  readonly thresholdUsd: number;
+}
+
+/**
+ * COR-2527 — one task that asks for attention, as {@link TaskRegistry.attentionRuns} reads it for
+ * the attention feed: the task's view of it, and the instants its records hold.
+ */
+export interface TaskAttentionRun {
+  readonly taskId: string;
+  readonly agentName: string | null;
+  readonly status: TaskState;
+  /** Which kinds ask for attention now; never empty. */
+  readonly attention: readonly TaskAttention[];
+  /** When the run stalled, while `attention` holds `stalled`. */
+  readonly stalledSince: string | null;
+  /** When the run's toolbox first reported a loop, while `attention` holds `looping`. */
+  readonly loopingSince: string | null;
+  /** The mark a step wrote when the run crossed the spend threshold. */
+  readonly overspending: TaskOverspending | null;
+  /** What the run cost so far, or in total once it ended; `null` when no request was priced. */
+  readonly costUsd: number | null;
+  /** When the run settled, or `null` while it has not. */
+  readonly settledAt: string | null;
+}
 
 /**
  * COR-2526 — the attention kinds a record holds, each with the wall-clock instant (ISO 8601, on the
@@ -314,6 +352,13 @@ export interface TaskRecord {
    * hold the run reads it. Absent when neither holds, and in a record written before it was kept.
    */
   readonly attention?: StoredTaskAttention | undefined;
+  /**
+   * COR-2527 — the mark a step wrote when it found the run's cost over the spend threshold. It is
+   * written once and kept: the settlement, a cancel and an owner-lost sweep leave it, and a later
+   * change of the setting does not touch it. Absent when no step found the run over, and in a
+   * record written before it was kept.
+   */
+  readonly overspending?: TaskOverspending | undefined;
   /**
    * COR-2531 — why the run failed, kept on the record, not in `settled`: written in the same
    * compare-and-swap as the settlement and left standing by a later writer of the settlement that
@@ -436,8 +481,10 @@ export interface TaskView {
    * COR-2526 — what asks for attention: `stalled` while the run is alive but making no progress
    * outside a declared wait (Operative's own `alive-but-stalled` assessment, which the Bureau
    * stores and applies no threshold to), and `looping` once the run's toolbox reported a loop.
-   * Always empty for a task that has ended, so a settled task is never listed as stuck; `stalled`
-   * is empty too while a person is asked something, which is a wait and not a stall.
+   * Neither of those is listed for a task that has ended, so a settled task is never listed as
+   * stuck; `stalled` is empty too while a person is asked something, which is a wait and not a
+   * stall. COR-2527 — `overspending` is the exception: once a step found the run's cost over the
+   * spend threshold it stays, running or settled, because the cost does not go away.
    */
   readonly attention: readonly TaskAttention[];
   /** COR-2526 — the instant the Bureau saw the run stall, while `attention` holds `stalled`; else `null`. */
@@ -731,6 +778,19 @@ export interface TaskRegistry {
    * report changes nothing.
    */
   recordLooping(taskId: string, at: string): Promise<boolean>;
+  /**
+   * COR-2527 — records that a step found a run's cost over the spend threshold. Unlike a stall or a
+   * loop it is written to a task that has settled too, because a run's last step can be judged
+   * after its settlement landed. It is the run's holder's write, applies in the order it was asked
+   * for the task, does not count as a change of the record, and resolves `true` only the first
+   * time: a task is `overspending` from then on, and a repeated report changes nothing.
+   */
+  recordOverspending(taskId: string, overspending: TaskOverspending): Promise<boolean>;
+  /**
+   * COR-2527 — every task that asks for attention now (`stalled`, `looping` or `overspending`), for
+   * the attention feed. The tasks of a tried agent are left out, as a listing leaves them out.
+   */
+  attentionRuns(): Promise<readonly TaskAttentionRun[]>;
   /**
    * COR-2531 — records the step the task's run is on a second or later try of, or that none is
    * (`null`). It writes only a task that has a record and has not settled (the settlement drops it),
@@ -1151,6 +1211,15 @@ function isStoredTaskAttention(value: unknown): boolean {
   );
 }
 
+function isTaskOverspending(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isTimestamp(value['since']) &&
+    typeof value['thresholdUsd'] === 'number' &&
+    Number.isFinite(value['thresholdUsd'])
+  );
+}
+
 /** Whether a stored value is a task record in every field a reader depends on. */
 function isTaskRecord(value: unknown): value is TaskRecord {
   return (
@@ -1167,6 +1236,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['pendingWakeup'] === undefined || isPendingWakeup(value['pendingWakeup'])) &&
     (value['usage'] === undefined || isTaskUsage(value['usage'])) &&
     (value['attention'] === undefined || isStoredTaskAttention(value['attention'])) &&
+    (value['overspending'] === undefined || isTaskOverspending(value['overspending'])) &&
     (value['failure'] === undefined || isTaskFailure(value['failure'])) &&
     (value['retrying'] === undefined || isTaskRetrying(value['retrying'])) &&
     (value['workflow'] === undefined || isStoredTaskWorkflow(value['workflow'])) &&
@@ -1417,6 +1487,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const attention: TaskAttention[] = [
       ...(stalledSince === null ? [] : (['stalled'] as const)),
       ...(open && record.attention?.loopingSince !== undefined ? (['looping'] as const) : []),
+      // COR-2527 — a cost over the threshold stays after the run ends.
+      ...(record.overspending === undefined ? [] : (['overspending'] as const)),
     ];
     // COR-2531 — a step on its second or later try shows only while the task runs, and why a task
     // failed only once it has: a settled task is never retrying, and a running one has not failed.
@@ -2193,6 +2265,52 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         );
         return committed && changed;
       });
+    },
+
+    recordOverspending(taskId, overspending) {
+      return queueLiveWrite(taskId, async () => {
+        let changed = false;
+        const committed = await update(
+          taskId,
+          (record) => {
+            // Re-judged on every compare-and-swap attempt: only the attempt that commits counts.
+            // A task that has settled is marked too: the settlement can land before the run's last
+            // step is judged, and the cost it carries is the run's own.
+            changed = false;
+            if (record.overspending !== undefined) return undefined;
+            changed = true;
+            return { ...record, overspending };
+          },
+          false,
+          undefined,
+          true,
+        );
+        return committed && changed;
+      });
+    },
+
+    async attentionRuns() {
+      const grouped = reviewsByRun(host.pendingReviews());
+      const runs: TaskAttentionRun[] = [];
+      for (const record of await allRecords()) {
+        if (isTryAgentName(record.agentName ?? '')) continue;
+        const view = viewOf(record, grouped.get(record.taskId));
+        if (view.attention.length === 0) continue;
+        runs.push({
+          taskId: record.taskId,
+          agentName: record.agentName,
+          status: view.status,
+          attention: view.attention,
+          stalledSince: view.stalledSince,
+          loopingSince: view.attention.includes('looping')
+            ? (record.attention?.loopingSince ?? null)
+            : null,
+          overspending: record.overspending ?? null,
+          costUsd: record.usage?.costUsd ?? null,
+          settledAt: record.settled?.at ?? null,
+        });
+      }
+      return runs;
     },
 
     recordRetrying(taskId, retrying) {
