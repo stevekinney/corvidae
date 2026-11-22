@@ -42,11 +42,17 @@ test('a narrow row keeps a trailing glyph beside the body and drops a trailing c
   expect(control.trailing!.top).toBeGreaterThanOrEqual(control.body!.bottom - 1);
 });
 
-for (const phoneWidth of ['row', 'viewport'] as const) {
-  test(`a narrow ${phoneWidth}-width line row keeps its action below the real text grid`, async ({
+for (const { phoneWidth, viewport } of [
+  { phoneWidth: 'row', viewport: 320 },
+  { phoneWidth: 'viewport', viewport: 320 },
+  // The viewport-width form must also use the narrow row grid in a desktop viewport: its 20rem
+  // container—not the viewport—still needs a safe action row.
+  { phoneWidth: 'viewport', viewport: 1280 },
+] as const) {
+  test(`a narrow ${phoneWidth}-width line row keeps its action below the real text grid at ${String(viewport)}px`, async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 320, height: 800 });
+    await page.setViewportSize({ width: viewport, height: 800 });
     await page.goto(fixtureRoute('stacked-list-item', { fixtureName: 'narrow-trailing' }), {
       waitUntil: 'load',
     });
@@ -65,15 +71,18 @@ for (const phoneWidth of ['row', 'viewport'] as const) {
         title: box('.cinder-stacked-list-item__title'),
         line: box('.cinder-stacked-list-item__line-two'),
         trailing: box('.cinder-stacked-list-item__trailing'),
+        overflows: element.scrollWidth > element.clientWidth,
       };
     });
     expect(read.title).not.toBeNull();
     expect(read.line).not.toBeNull();
     expect(read.trailing).not.toBeNull();
-    // The flattened body has no box of its own. Its title and line remain in the declared grid,
-    // and the single compact action occupies a following row instead of stealing their width.
+    // The flattened body has no box of its own. Its title and wrapped line remain in the declared
+    // grid, and the single compact action occupies a following row instead of stealing their width.
     expect(read.title!.width).toBeGreaterThan(0);
     expect(read.line!.width).toBeGreaterThan(0);
+    expect(read.title!.bottom).toBeLessThanOrEqual(read.line!.top + 1);
     expect(read.trailing!.top).toBeGreaterThanOrEqual(read.line!.bottom - 1);
+    expect(read.overflows).toBe(false);
   });
 }

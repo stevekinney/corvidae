@@ -37,10 +37,15 @@
   <div data-testid="lines-control">
     <DataList items={rows} key={(row) => row.id}>
       {#snippet children()}
-        <StackedListItem actions={[{ label: 'Connect provider', href: '#provider' }]} lines>
+        <StackedListItem
+          actions={[{ label: 'Connect provider', href: '#provider' }]}
+          lines
+          wrapMeta
+        >
           {#snippet leading()}<span aria-hidden="true">!</span>{/snippet}
           {#snippet title()}Connect a provider before the next run{/snippet}
-          {#snippet meta()}Scheduled runs cannot start until a provider is connected.{/snippet}
+          {#snippet meta()}Scheduled runs cannot start until a provider with the required
+            credentials is connected to this workspace.{/snippet}
         </StackedListItem>
       {/snippet}
     </DataList>
@@ -52,10 +57,12 @@
           actions={[{ label: 'Connect provider', href: '#provider' }]}
           lines
           phoneWidth="viewport"
+          wrapMeta
         >
           {#snippet leading()}<span aria-hidden="true">!</span>{/snippet}
           {#snippet title()}Connect a provider before the next run{/snippet}
-          {#snippet meta()}Scheduled runs cannot start until a provider is connected.{/snippet}
+          {#snippet meta()}Scheduled runs cannot start until a provider with the required
+            credentials is connected to this workspace.{/snippet}
         </StackedListItem>
       {/snippet}
     </DataList>
