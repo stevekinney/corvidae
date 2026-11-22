@@ -104,7 +104,7 @@ async function capture(page: Page, route: string, state: string, tab?: string): 
 }
 
 async function refuseValidation(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
@@ -125,7 +125,7 @@ async function refuseValidation(page: Page): Promise<void> {
 }
 
 async function answerUnwritable(page: Page, method: string, file: string): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+  await page.route('**/jsonrpc', async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
       method?: string;
       id?: unknown;
