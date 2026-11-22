@@ -200,7 +200,7 @@ describe('StackedListItem on a phone', () => {
     );
 
     const ordinaryLineActionMatch =
-      /@container cinder-stacked-list-item \(max-width: 448px\) \{[\s\S]*?\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--has-trailing:not\([\s\S]*?\)\.cinder-stacked-list-item--status-leading\s*> \.cinder-stacked-list-item__layout\s*\{([^}]*)\}/.exec(
+      /@container cinder-stacked-list-item \(max-width: 448px\) \{[\s\S]*?\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--single-action:not\([\s\S]*?\)\.cinder-stacked-list-item--status-leading\s*> \.cinder-stacked-list-item__layout\s*\{([^}]*)\}/.exec(
         stylesheet,
       ) ?? [];
     const [ordinaryLineActionSelector = '', ordinaryLineAction = ''] = ordinaryLineActionMatch;
@@ -217,6 +217,51 @@ describe('StackedListItem on a phone', () => {
     ]) {
       expect(ordinaryLineActionSelector).toContain(exception);
     }
+    cleanup();
+    setPhone(false);
+  });
+
+  test('below 448 only a single data action takes the trailing row, not an arbitrary trailing control', () => {
+    setPhone(true);
+    const action = render(StackedListItem, {
+      props: {
+        lines: true,
+        leading: textSnippet('warning'),
+        title: textSnippet('Connect a provider'),
+        meta: textSnippet('A provider is required.'),
+        actions: [{ label: 'Connect provider', href: '/settings/providers' }],
+      },
+    });
+    const actionRow = action.container.querySelector('.cinder-stacked-list-item');
+    expect(actionRow?.classList.contains('cinder-stacked-list-item--single-action')).toBe(true);
+    cleanup();
+
+    const control = render(StackedListItem, {
+      props: {
+        lines: true,
+        title: textSnippet('Post settled runs'),
+        meta: textSnippet('Slack'),
+        trailing: textSnippet('On'),
+      },
+    });
+    const controlRow = control.container.querySelector('.cinder-stacked-list-item');
+    expect(controlRow?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(true);
+    expect(controlRow?.classList.contains('cinder-stacked-list-item--single-action')).toBe(false);
+    cleanup();
+
+    const mixed = render(StackedListItem, {
+      props: {
+        lines: true,
+        title: textSnippet('Post settled runs'),
+        trailing: textSnippet('On'),
+        actions: [{ label: 'Connect provider', href: '/settings/providers' }],
+      },
+    });
+    expect(
+      mixed.container
+        .querySelector('.cinder-stacked-list-item')
+        ?.classList.contains('cinder-stacked-list-item--single-action'),
+    ).toBe(false);
     cleanup();
     setPhone(false);
   });
