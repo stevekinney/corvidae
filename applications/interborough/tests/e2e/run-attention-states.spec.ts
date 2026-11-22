@@ -394,13 +394,22 @@ test.describe('/runs: badges and the Needs attention chip (COR-2528)', () => {
       const rowOf = (runId: string) => page.locator(`main li[data-run="${runId}"]`);
       if (width > 640) {
         await expect(rowOf(world.runs.done)).toBeVisible();
-        await page.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) }).click();
+        // The filter lives in the Filter menu, never in the row: a tablet row has no room for it.
+        const bar = page.getByRole('search', { name: 'Filter runs' });
+        await expect(
+          bar.getByRole('button', { name: new RegExp(`^${RUN_ATTENTION_COPY.filter}`) }),
+        ).toHaveCount(0);
+        await bar.getByRole('button', { name: 'Filter', exact: true }).click();
+        await page
+          .locator('.cinder-filter-bar__menu-row')
+          .filter({ hasText: RUN_ATTENTION_COPY.filter })
+          .click();
+        await page.locator('.cinder-filter-bar__menu input[type="checkbox"]').click();
         await expect(page).toHaveURL(/[?&]attention=1(&|$)/);
-        // The pressed chip carries one mark, its dot (the check is left out of a filter toggle).
-        const chip = page.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) });
-        await expect(chip).toHaveAttribute('aria-pressed', 'true');
-        await expect(chip.locator('.cinder-filter-bar__dot')).toHaveCount(1);
-        await expect(chip.locator('.cinder-chip__check')).toBeHidden();
+        // While it is on, the row shows it as a removable chip.
+        await expect(
+          bar.getByRole('button', { name: `Remove filter: ${RUN_ATTENTION_COPY.filter}: On` }),
+        ).toBeVisible();
       }
 
       await expect(rowOf(world.runs.done)).toBeVisible();

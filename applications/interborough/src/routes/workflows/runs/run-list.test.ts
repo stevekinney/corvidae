@@ -265,12 +265,7 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
     const view = open('/runs', { tasks: failures });
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
     const bar = view.getByRole('search', { name: TASK_COPY.filtersLabel });
-    // The one toggle in the row is Needs attention (COR-2528), never the retrying filter.
-    expect(
-      [...bar.querySelectorAll('.cinder-filter-bar__toggle')].map((toggle) =>
-        toggle.textContent.trim(),
-      ),
-    ).toEqual([expect.stringContaining(RUN_ATTENTION_COPY.filter)]);
+    expect(bar.querySelector('.cinder-filter-bar__toggle')).toBeNull();
     expect(bar.querySelector('input[role="combobox"]')).toBeNull();
     expect(bar.querySelectorAll('.cinder-filter-bar__menu-button')).toHaveLength(1);
     expect(view.getByRole('radio', { name: /^All\s*,\s*6$/ })).not.toBeNull();
@@ -281,7 +276,11 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
     const rows = [...document.querySelectorAll('.cinder-filter-bar__menu-label')].map(
       (label) => label.textContent,
     );
-    expect(rows).toEqual([TASK_COPY.retryingLabel, TASK_COPY.failedStepLabel]);
+    expect(rows).toEqual([
+      RUN_ATTENTION_COPY.filter,
+      TASK_COPY.retryingLabel,
+      TASK_COPY.failedStepLabel,
+    ]);
   });
 
   test('while one is on, the row shows it as a chip named with its value, and the chip removes it', async () => {

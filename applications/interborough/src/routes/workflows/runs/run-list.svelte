@@ -371,6 +371,10 @@
       key: 'attention',
       label: RUN_ATTENTION_COPY.filter,
       tone: 'warning',
+      // In the Filter menu, never in the row (as the retrying filter): a tablet row holds the
+      // segments and the applied chips, and the row's folding (row 52x) stays what it was. While
+      // it is on, the row shows it as a removable chip.
+      menuOnly: true,
       ...(loading ? {} : { count: attentionCount }),
     },
     {

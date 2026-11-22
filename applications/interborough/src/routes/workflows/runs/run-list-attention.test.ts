@@ -7,6 +7,7 @@
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
@@ -80,6 +81,30 @@ function open(path: string) {
 const rowIds = (container: HTMLElement) =>
   [...container.querySelectorAll('[data-run]')].map((row) => row.getAttribute('data-run') ?? '');
 
+/** Opens the bar's Filter menu on its Needs attention row, and returns the row. */
+async function openAttentionRow(view: ReturnType<typeof open>): Promise<HTMLElement> {
+  if (document.querySelector('.cinder-filter-bar__menu') === null) {
+    await fireEvent.click(view.getByRole('button', { name: 'Filter' }));
+    flushSync();
+  }
+  const row = [
+    ...document.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__menu-row'),
+  ].find((candidate) => candidate.textContent?.includes(RUN_ATTENTION_COPY.filter));
+  if (row === undefined) throw new Error('The Filter menu has no Needs attention row.');
+  if (row.getAttribute('aria-expanded') !== 'true') await fireEvent.click(row);
+  flushSync();
+  return row;
+}
+
+/** The open Filter menu's checkbox: the menu is a popover outside the page's tree. */
+function menuCheckbox(): HTMLInputElement {
+  const found = document.querySelector<HTMLInputElement>(
+    '.cinder-filter-bar__menu input[type="checkbox"]',
+  );
+  if (found === null) throw new Error('The Filter menu holds no checkbox.');
+  return found;
+}
+
 /** The badges a row draws, in the order it draws them. */
 function badgesOf(container: HTMLElement, runId: string): string[] {
   return [...container.querySelectorAll(`[data-run="${runId}"] [data-attention]`)].map((badge) =>
@@ -116,9 +141,13 @@ describe('the Needs attention chip', () => {
     const view = open('/runs');
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(4));
 
-    const chip = view.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) });
-    expect(chip.textContent).toContain('3');
-    await fireEvent.click(chip);
+    // The filter is in the Filter menu, never in the row, and its row counts the runs.
+    expect(view.queryByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) })).toBeNull();
+    await openAttentionRow(view);
+    expect(document.querySelector('.cinder-filter-bar__menu')?.textContent).toContain(
+      `${RUN_ATTENTION_COPY.filter} 3`,
+    );
+    await fireEvent.click(menuCheckbox());
 
     await waitFor(() => expect(router.search.get('attention')).toBe('1'));
     await waitFor(() =>
@@ -173,10 +202,10 @@ describe('the Needs attention chip', () => {
       expect(rowIds(view.container).toSorted()).toEqual(['run-both', 'run-stalled']),
     );
 
-    // The chip is a toggle: pressed while the filter is on, and pressing it again removes it.
-    const chip = view.getByRole('button', { name: new RegExp(RUN_ATTENTION_COPY.filter) });
-    expect(chip.getAttribute('aria-pressed')).toBe('true');
-    await fireEvent.click(chip);
+    // While the filter is on the row shows it as a removable chip, and removing it takes it out.
+    await fireEvent.click(
+      view.getByRole('button', { name: `Remove filter: ${RUN_ATTENTION_COPY.filter}: On` }),
+    );
     await waitFor(() => expect(router.search.get('attention')).toBeNull());
     // The status stays chosen: the runs that are running, with or without a state.
     expect(router.search.get('status')).toBe('running');
