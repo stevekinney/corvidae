@@ -187,6 +187,8 @@ export type ApprovalCardCallbacks = {
   onResolve?: (resolution: ApprovalResolution) => void;
   /** Requests a fresh approval after this one has expired in the decision layout. */
   onAskAgain?: () => void;
+  /** An additional row-layout review control. It shares the row’s note, scope and guarded submit. */
+  decisionReview?: Snippet<[(decision: 'approve' | 'deny') => void, disabled: boolean]>;
 };
 
 /** Props for the ApprovalCard component. */

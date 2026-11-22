@@ -1138,7 +1138,7 @@ describe('children.cancel', () => {
 
     expect(outcome).toMatchObject({
       outcome: 'requested',
-      child: { status: 'aborted', outcome: { reason: 'Cancelled via Bureau' } },
+      child: { status: 'aborted', outcome: { reason: 'Canceled via Bureau' } },
     });
   });
 

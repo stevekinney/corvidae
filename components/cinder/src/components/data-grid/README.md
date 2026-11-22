@@ -255,17 +255,30 @@ Opt in with `zoomControls` to render a row count, a visible column count, and zo
 
 ```svelte
 <script lang="ts">
-  import { DataGrid, parseDelimitedText } from '@lostgradient/cinder';
+  import { DataGrid, parseDelimitedText, type DataGridColumnDef } from '@lostgradient/cinder';
 
   const csv = `id,customer,status\nORD-1001,Ada Lovelace,Packed\nORD-1002,Grace Hopper,Shipped\n`;
   const { columns, rows: parsedRows } = parseDelimitedText(csv, { delimiter: ',' });
 
-  // Parsed rows have no built-in stable identity, so derive one — here, an
-  // index — before handing them to DataGrid's `getRowId`.
-  const rows = parsedRows.map((row, index) => ({ ...row, __rowIndex: String(index) }));
+  type ImportedOrder = {
+    id: string;
+    customer: string;
+    status: string;
+    rowIdentity: string;
+  };
+
+  const rows: ImportedOrder[] = (parsedRows as Omit<ImportedOrder, 'rowIdentity'>[]).map(
+    (order, index) => ({ ...order, rowIdentity: String(index) }),
+  );
+  const importedColumns = columns as DataGridColumnDef<ImportedOrder>[];
 </script>
 
-<DataGrid {rows} {columns} getRowId={(row) => row.__rowIndex} aria-label="Imported orders" />
+<DataGrid
+  {rows}
+  columns={importedColumns}
+  getRowId={(row: ImportedOrder) => row.rowIdentity}
+  aria-label="Imported orders"
+/>
 ```
 
 - **Delimiter is explicit.** `delimiter` is required and used exactly as given — `parseDelimitedText` never guesses a delimiter from the input. Pass `','` for CSV or `'\t'` for TSV.

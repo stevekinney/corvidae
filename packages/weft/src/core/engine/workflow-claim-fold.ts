@@ -2,7 +2,8 @@
  * Shared "fold `acquire` into an enabling write" helper for ADR 0002's
  * CLAIM-ACQUIRING entry points this stage owns: workflow start
  * (`lifecycle/start-commit.ts` — the create batch), delayed-start timer fire
- * (`operations-time.ts`), and bulk retry reactivation (`bulk-operations.ts`).
+ * (`operations-time.ts`), bulk retry reactivation (`bulk-operations.ts`), and
+ * fork's create batch (`lifecycle/fork-build-binding.ts`, COR-2635).
  * Scheduled runs and child-workflow launches funnel through `startWorkflow`
  * (`lifecycle/start.ts`) and inherit the fold from there — see
  * [ADR 0002 § Entry point classification](../../../documentation/contributing/architecture-decisions/0002-multiengine-per-workflow-ownership.md#entry-point-classification),

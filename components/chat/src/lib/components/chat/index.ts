@@ -23,6 +23,7 @@ export type { ChatLabels } from './chat-labels.ts';
 export type {
   ChatAnnounceLevel,
   ChatCapabilities,
+  ChatCitationClaim,
   ChatProps,
   ChatRowContext,
   ChatRowOverride,

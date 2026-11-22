@@ -413,13 +413,27 @@ describe('DescriptionList formatted values', () => {
     expect(container.querySelector('dd button')).toBeNull();
   });
 
-  test('offers Add a tag when a callback is given and calls it', async () => {
+  test('offers an empty label and Add a tag when a callback is given and calls it', async () => {
     const onAddTag = mock(() => {});
-    const { getByRole } = render(DescriptionList, {
-      items: [{ term: 'Tags', definition: { type: 'tags', tags: [], onAddTag } }],
+    const { container, getByRole } = render(DescriptionList, {
+      items: [
+        { term: 'Tags', definition: { type: 'tags', tags: [], emptyLabel: 'None', onAddTag } },
+      ],
     });
+    expect(container.querySelector('.cinder-description-list__empty')?.textContent).toBe('None');
+    expect(container.querySelectorAll('.cinder-description-list__tag')).toHaveLength(0);
     await fireEvent.click(getByRole('button', { name: 'Add a tag' }));
     expect(onAddTag).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps the default add-only empty state quiet until a caller opts into an empty label', () => {
+    const { container } = render(DescriptionList, {
+      props: {
+        items: [{ term: 'Tags', definition: { type: 'tags', tags: [], onAddTag: () => {} } }],
+      },
+    });
+    expect(container.querySelector('.cinder-description-list__empty')).toBeNull();
+    expect(container.querySelector('button')?.textContent).toContain('Add a tag');
   });
 
   test('singularises one system tag and says No tags for an empty read-only list', () => {
