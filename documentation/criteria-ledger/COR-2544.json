@@ -1,24 +1,24 @@
 {
   "issue": "COR-2544",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "9621dec0e372ee907d7f945ed36c07a3e64a4516",
+  "checkedAt": "65380f594e15af62a6d81a4815a12a62b16cd11b",
   "briefVersion": "bdf0e93b22ae",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated; the five test files above pass."
+      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "ui://inspectors/run-comparison/v1 (plugins/inspectors/src/run-comparison): comparison.test.ts opens a differing step of a fork and reads the changed value 1 -> 2 in JsonDiffViewer (DOM test, passes). tests/panels/run-comparison.spec.ts is the Playwright version of the same read and is written, NOT RUN on this host (browser suites barred); targeted-run.ts is dispatched after the push."
+      "evidence": "ui://inspectors/run-comparison/v1 (plugins/inspectors/src/run-comparison): comparison.test.ts opens a differing step of a fork and reads the changed value 1 -> 2 in JsonDiffViewer (DOM test, passes). tests/panels/run-comparison.spec.ts is the Playwright version of the same read and is written, NOT RUN on this host (browser suites barred). The design-review states are tests/panels/run-comparison-states.spec.ts (also not run here)."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Open decision on where the placement mounts, see the report's decisions: a run's page mounts run panels only for a run with a task."
+      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs. run-detail.svelte mounts RunPanels for a run with no task but an engine run, giving every run panel { runId, runKind: 'workflow' } and no taskId (an agent run still gets { taskId }); run-panels.test.ts and run-detail-engine-runs.test.ts mount every run panel on a workflow instance and read the input each frame is sent. The run inspector says a workflow run has no task to inspect (inspector.test.ts), the schedule editor shows its list, and the comparison reads runId."
     },
     {
       "id": "AC4",

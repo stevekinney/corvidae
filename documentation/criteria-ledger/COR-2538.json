@@ -1,19 +1,19 @@
 {
   "issue": "COR-2538",
   "branch": "worktree-agent-a1e66e5258d991376",
-  "checkedAt": "9621dec0e372ee907d7f945ed36c07a3e64a4516",
+  "checkedAt": "65380f594e15af62a6d81a4815a12a62b16cd11b",
   "briefVersion": "a01825d1cece",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "lineage-panel.svelte offers Compare with source on every run with forkedFrom and reads weft.workflows.compare for the run's own id alone, with no session state; lineage-panel.test.ts 'a fork opens its comparison from its own id alone' and 'a run that is not a fork has no compare action' pass (focused-checks exit 0). The reload and new-session path is tests/e2e/fork-comparison.spec.ts, written and not run on this host."
+      "evidence": "lineage-panel.svelte offers Compare with source on every run with forkedFrom and reads weft.workflows.compare for the run's own id alone, with no session state; lineage-panel.test.ts 'a fork opens its comparison from its own id alone' and 'a run that is not a fork has no compare action' pass. The reload and new-session path is tests/e2e/fork-comparison.spec.ts, written and not run on this host. Owner, 2026-11-22: run-page panels mount on workflow runs (a fork's run page also shows the run comparison card; see COR-2544)."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "fork-comparison-data.ts fetchForkComparison reads weft.workflows.compare and follows nextCursor (fork-comparison.test.ts); divergence.ts, divergence-view.svelte, run-step-timeline-selection.ts and their tests are deleted, so the browser aligns nothing; the Checkpoints tab shows the same server comparison after a fork. focused-checks exit 0."
+      "evidence": "fork-comparison-data.ts fetchForkComparison reads weft.workflows.compare and follows nextCursor (fork-comparison.test.ts); divergence.ts, divergence-view.svelte, run-step-timeline-selection.ts and their tests are deleted, so the browser aligns nothing; the Checkpoints tab shows the same server comparison after a fork."
     },
     {
       "id": "AC3",
@@ -28,12 +28,12 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict with Create fork disabled, nothing asked for a non-number or without workflows:write. tests/fixture-seed.test.ts pins on a real engine that the dry run for the fork spec's candidate revision is refused with WorkflowRevisionUnavailableError reason 'not-registered' (the reason isForkRevisionConflict reads from the JSON-RPC fault), and that the newest checkpoint keeps one step and reruns one."
+      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict with Create fork disabled, nothing asked for a non-number or without workflows:write. tests/fixture-seed.test.ts pins on a real engine that the dry run for the fork spec's candidate revision is refused with WorkflowRevisionUnavailableError reason 'not-registered', and that the newest checkpoint keeps one step and reruns one."
     },
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "tests/e2e/fork-comparison.spec.ts forks the seeded fork-comparison run from the first checkpoint row, reloads on the fork, opens the comparison from the lineage panel and reads the changed ticket in the diff viewer. NOT RUN: browser suites are barred on this host; the premise (a fork of fixtures/fork-comparison.ts answers a different ticket, and the first checkpoint row keeps one step and reruns one) is proven on a real engine by tests/fixture-seed.test.ts. targeted-run.ts is dispatched once for the batch after the push."
+      "evidence": "tests/e2e/fork-comparison.spec.ts forks the seeded fork-comparison run from the first checkpoint row, reloads on the fork, opens the comparison from the lineage panel and reads the changed ticket in the diff viewer. NOT RUN: browser suites are barred on this host; the premise is proven on a real engine by tests/fixture-seed.test.ts. The design-review capture states are in tests/e2e/fork-comparison-states.spec.ts (also not run here)."
     }
   ]
 }
