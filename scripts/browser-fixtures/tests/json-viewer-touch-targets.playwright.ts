@@ -31,9 +31,14 @@ test('coarse JsonViewer disclosures are disjoint targets and activate only their
     const root = fixture.getByRole('button', { name: 'object, 2 items', exact: true });
     const alpha = fixture.getByRole('button', { name: 'alpha: object, 1 item', exact: true });
     const beta = fixture.getByRole('button', { name: 'beta: object, 1 item', exact: true });
-    const nested = fixture
-      .getByRole('treeitem', { name: 'alpha: object, 1 item', exact: true })
-      .getByRole('button', { name: 'nested: object, 1 item', exact: true });
+    const rootItem = fixture.getByRole('treeitem', { name: 'object, 2 items', exact: true });
+    const alphaItem = fixture.getByRole('treeitem', { name: 'alpha: object, 1 item', exact: true });
+    const betaItem = fixture.getByRole('treeitem', { name: 'beta: object, 1 item', exact: true });
+    const nestedItem = alphaItem.getByRole('treeitem', {
+      name: 'nested: object, 1 item',
+      exact: true,
+    });
+    const nested = nestedItem.getByRole('button', { name: 'nested: object, 1 item', exact: true });
     await expect(nested).toBeVisible();
     expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
 
@@ -44,6 +49,20 @@ test('coarse JsonViewer disclosures are disjoint targets and activate only their
       expect(box).not.toBeNull();
       expect(box!.width).toBeGreaterThanOrEqual(TOUCH_TARGET);
       expect(box!.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
+    }
+    for (const button of [root, alpha, nested, beta]) {
+      const edgeOwners = await button.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const centerX = box.left + box.width / 2;
+        const centerY = box.top + box.height / 2;
+        return [
+          [centerX, box.top + 1],
+          [centerX, box.bottom - 1],
+          [box.left + 1, centerY],
+          [box.right - 1, centerY],
+        ].map(([x, y]) => element.contains(document.elementFromPoint(x, y)));
+      });
+      expect(edgeOwners).toEqual([true, true, true, true]);
     }
     for (let first = 0; first < boxes.length; first += 1) {
       for (let second = first + 1; second < boxes.length; second += 1) {
@@ -58,14 +77,20 @@ test('coarse JsonViewer disclosures are disjoint targets and activate only their
       }
     }
 
-    await nested.click();
-    await expect(nested).toHaveAttribute('aria-expanded', 'true');
-    await expect(alpha).toHaveAttribute('aria-expanded', 'true');
-    await expect(beta).toHaveAttribute('aria-expanded', 'true');
-    await beta.click();
-    await expect(beta).toHaveAttribute('aria-expanded', 'false');
-    await expect(alpha).toHaveAttribute('aria-expanded', 'true');
-    await expect(root).toHaveAttribute('aria-expanded', 'true');
+    // Tap the nested button's bottom-edge padding. The state belongs to the owning treeitem, not
+    // its activation button; sibling and parent branches must remain open.
+    const nestedBox = boxes[2]!;
+    await page.touchscreen.tap(
+      nestedBox.x + nestedBox.width / 2,
+      nestedBox.y + nestedBox.height - 2,
+    );
+    await expect(nestedItem).toHaveAttribute('aria-expanded', 'true');
+    await expect(alphaItem).toHaveAttribute('aria-expanded', 'true');
+    await expect(betaItem).toHaveAttribute('aria-expanded', 'true');
+    await beta.tap();
+    await expect(betaItem).toHaveAttribute('aria-expanded', 'false');
+    await expect(alphaItem).toHaveAttribute('aria-expanded', 'true');
+    await expect(rootItem).toHaveAttribute('aria-expanded', 'true');
   } finally {
     await close();
   }
