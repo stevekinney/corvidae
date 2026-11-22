@@ -149,14 +149,6 @@
     font-size: var(--cinder-text-sm);
   }
 
-  .weft-workflow-revisions__reasons {
-    margin: 0;
-    padding-inline-start: var(--cinder-space-5);
-    color: var(--cinder-text-secondary);
-    font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
-  }
-
   .weft-workflow-revisions__footnote {
     margin: 0;
     color: var(--cinder-text-muted);
