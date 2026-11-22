@@ -123,6 +123,11 @@ export const OPERATION_MAP = {
     exempt:
       'composed from the task registry, the workflow runtime’s run read, and the durable engine’s fork comparison',
   },
+  'bureau.tasks.explain': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, the durable engine’s state and timeline, and the audit trail’s guardrail records',
+  },
   'bureau.tasks.events': { workspaceClass: 'private-owned', member: 'tasks.events' },
   'bureau.tasks.respond': { workspaceClass: 'private-owned', member: 'tasks.respond' },
 

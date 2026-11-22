@@ -26,7 +26,7 @@ import {
   explain,
   explainJson,
   planInvocations,
-  touchesIsolatedTest,
+  shouldRunIsolatedTests,
 } from './affected-tests.ts';
 
 const root = join(import.meta.dir, '..');
@@ -645,9 +645,14 @@ describe('invocation plan and manifest', () => {
   });
 
   test('a changed slow or integration test is the one reason the quick tier runs them', () => {
-    expect(touchesIsolatedTest(['packages/alpha/src/extra.ts'])).toBe(false);
-    expect(touchesIsolatedTest(['packages/alpha/src/run.integration.test.ts'])).toBe(true);
-    expect(touchesIsolatedTest(['scripts/tool.slow.test.ts'])).toBe(true);
+    expect(shouldRunIsolatedTests(['packages/alpha/src/extra.ts'])).toBe(false);
+    expect(shouldRunIsolatedTests(['packages/alpha/src/run.integration.test.ts'])).toBe(true);
+    expect(shouldRunIsolatedTests(['scripts/tool.slow.test.ts'])).toBe(true);
+    expect(shouldRunIsolatedTests(['scripts/tool.slow.test.ts'], false)).toBe(false);
+    expect(shouldRunIsolatedTests(['packages/alpha/src/run.integration.test.ts'], false)).toBe(
+      false,
+    );
+    expect(shouldRunIsolatedTests(['packages/alpha/src/extra.ts'], true)).toBe(true);
   });
 
   test('with the isolated lanes, they follow the fast lanes, serially', () => {

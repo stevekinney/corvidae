@@ -670,6 +670,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.skills.list',
         'bureau.tasks.cancel',
         'bureau.tasks.events',
+        'bureau.tasks.explain',
         'bureau.tasks.get',
         'bureau.tasks.inspect',
         'bureau.tasks.list',
