@@ -369,6 +369,9 @@ const showcaseStartup = trackStartupPromise(
   seedSampleWorld(join(scratch, 'showcase-home', '.interborough'), {
     host: { port: E2E_SHOWCASE_PORT, buildDirectory },
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
+    // Each step of the story is a phase of its own, so a seed that never settles leaves the step
+    // it stopped on as the last showcase line of the startup log (COR-2632).
+    onStep: (step) => reportStartupPhase(`showcase: ${step}`),
   }).then(({ host: started }) => {
     startupCleanup.push(() => started.close());
     reportStartupPhase('showcase-ready');
