@@ -1,29 +1,29 @@
 {
   "issue": "COR-2548",
   "branch": "chef/cor-2548-settings-mcp-follow-up",
-  "checkedAt": "bbca73513281f39eda7b45908591cc8c86aaa937",
+  "checkedAt": "04ad9a6e7a23a36ff7ddd9e6c6bd525e195c7047",
   "briefVersion": "2fb3bb285c65",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "CodeBlock wrap puts a word with slash, dot, colon or hyphen in one inline-block box with a wbr after each part (code-block-lines.ts splitWords and allowBreaksAtPunctuation, code-block.svelte, code-block.css .cinder-code-block__word). code-block-breaks.test.ts passes (12 tests). Chromium spec scripts/browser-fixtures/tests/code-block-breaks.playwright.ts (320 and 375, light and dark, plain and highlighted) is written but not run on this host, so its fails-before-the-fix claim is unverified; code-block-rail.playwright.ts was adapted and also not run."
+      "evidence": "CodeBlock wrap breaks a long URL only at a slash, dot, colon or hyphen: a word with those is one inline-block box with a wbr after each part. code-block-breaks.test.ts passes and the Chromium spec code-block-breaks.playwright.ts passes (run narrowly this round, 645 specs passed). The design review confirmed AC1 met."
     },
     {
       "id": "AC2",
       "status": "met-on-main",
-      "evidence": "The workflow Code tab already shows workflows/<id>.json (workflowRelativePath, 106ca0b75d) and the Health header already says Running on SQLite (owner 2026-11-19); the round-3 captures at 3d5f7d0c41 predate both. Added tests: workflow-detail-tabs.test.ts (Code tab, absolute /tmp host directory) and workers/index-visible-paths.test.ts (open worker page, /tmp database path); both pass."
+      "evidence": "The workflow Code tab shows workflows/<id>.json (106ca0b75d) and the Health header says Running on SQLite (owner 2026-11-19); tests added in workflow-detail-tabs.test.ts and workers/index-visible-paths.test.ts pass."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "/settings/mcp has no empty state (mcp-body.svelte always shows the endpoint and two code blocks), so rule-empty-state is not applicable on that page. A2A ready already captures its Recent calls EmptyState; api-reference.spec.ts gains states workflow-sources-empty and operations-empty. captureForDesignReview repeats every 1280 capture at 1920 (0fe72e906b), covering rule-wide-widths for all three pages. Capture specs are not run on this host; the design-reviewer verdicts are the coordinator's."
+      "evidence": "/settings/mcp has no empty state, so rule-empty-state does not apply there. api-reference.spec.ts captures workflow-sources-empty and operations-empty; round 1 changed Operations so a server that lists none shows only the EmptyState with 'The server lists no operations.' and no group select or count (operationsEmptiness in api-operations.ts; operations-panel.svelte); the in-this-group copy and select stay for a chosen group with none. Tested in api-operations.test.ts (both cases) and api-reference-page.test.ts (none case). 1920 repeats cover rule-wide-widths."
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "COR-2445 (03b7ffcfee) replaced the worker id CopyableValue with a CopyButton beside the name. health-workers-states.spec.ts gains the capture state long-name: a worker name longer than the heading in the drawer on a phone (375 and the 320 repeat), asserting the name wraps to more than one row and the Copy button stays inside the pane without page overflow. Not run on this host; the design review judges the capture."
+      "evidence": "Capture state long-name in health-workers-states.spec.ts at 375 (and 320), now also at 1280 (and 1920). Round 1: .ib-worker-detail__title-row is flex-wrap nowrap, the name flex 0 1 auto with min-inline-size 0, the Copy button flex none, so the button stays beside the name on its first row; the spec asserts the button is beside the name, on its first row, inside the pane. No Cinder component pairs a title with a trailing action that holds beside a wrapped title (SectionHeading and PageHeader move actions to their own row), so the row is drawn locally."
     }
   ]
 }
