@@ -41,10 +41,12 @@ import {
  */
 
 import { type WorkflowCompatibilityReason } from '@lostgradient/weft';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
+import { canonicalJson } from '../../canonical-json.ts';
 import { SIGNAL_NAME_MAXIMUM_LENGTH } from '../../workflow-host.ts';
 import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
@@ -1496,6 +1498,20 @@ const startOutput = z.object({
   workflowVersion: z.string().describe('The revision the instance runs.'),
 });
 
+/**
+ * Scope a caller-supplied manual-start key to its authorized owner, workflow, and validated input.
+ * The engine accepts at most 117 UTF-8 bytes, so the namespace is a fixed-size digest instead of
+ * concatenating supported owner, workflow, and request-key lengths.
+ */
+function manualStartIdempotencyKey(
+  owner: string,
+  workflow: string,
+  requestKey: string,
+  input: unknown,
+): string {
+  return `manual:${sha256HexSync(canonicalJson([owner, workflow, requestKey, input ?? null]))}`;
+}
+
 export const workflowsStartOperation = defineOperation<
   typeof startInput,
   typeof startOutput,
@@ -1535,7 +1551,14 @@ export const workflowsStartOperation = defineOperation<
         surface: input.surface,
         ...(input.idempotencyKey === undefined
           ? {}
-          : { idempotencyKey: `manual:${owner}:${input.id}:${input.idempotencyKey}` }),
+          : {
+              idempotencyKey: manualStartIdempotencyKey(
+                owner,
+                input.id,
+                input.idempotencyKey,
+                input.input,
+              ),
+            }),
       });
     } catch (error) {
       if (error instanceof WorkflowInputInvalidError) {

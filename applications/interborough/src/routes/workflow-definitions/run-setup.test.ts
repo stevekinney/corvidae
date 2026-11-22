@@ -568,6 +568,26 @@ describe('a start whose answer is lost', () => {
     expect(requests[1]?.['idempotencyKey']).toBe(requests[0]?.['idempotencyKey']);
   });
 
+  test('uses a new idempotency key after a lost answer when the validated input changes', async () => {
+    const { container, findByText } = open('/workflows/digest/run');
+    const requests: Array<Record<string, unknown>> = [];
+    stub?.on('bureau.workflows.start', (params) => {
+      requests.push({ ...params });
+      if (requests.length === 1) throw new TypeError('Failed to fetch');
+      return { runId: 'run-new-input', workflow: 'digest', workflowVersion: 'version-1' };
+    });
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'weather');
+    await fireEvent.click(primary(root));
+    expect(await findByText(COPY.startMaybe)).not.toBeNull();
+    await fireEvent.input(field(root, 'Topic'), { target: { value: 'storms' } });
+    await fireEvent.click(primary(root));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest/runs/run-new-input'));
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.['idempotencyKey']).not.toBe(requests[0]?.['idempotencyKey']);
+  });
+
   test('reuses one idempotency key when Start run retries a code workflow after a lost answer', async () => {
     const { container, findByText } = open('/workflows/order-processing/run');
     const requests: Array<Record<string, unknown>> = [];

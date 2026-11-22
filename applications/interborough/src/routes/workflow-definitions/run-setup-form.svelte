@@ -192,8 +192,10 @@
    * `isPending` turns true a tick after `mutate`, and two asks can arrive in that tick.
    */
   let sending = false;
+  /** A schedule's freshness read fences its submitted choice before it reaches the mutation. */
+  let checkingScheduleName = false;
   /** Kept after a lost answer, so retrying Start run replays the same durable request. */
-  let manualStartKey = $state<string | undefined>();
+  let manualStart = $state<{ readonly key: string; readonly input: string } | undefined>();
 
   /** The choices the footer's ask was made with, which the start sends whatever changes while the input is checked. */
   type Choice = {
@@ -208,6 +210,28 @@
   type Outcome =
     | { readonly kind: 'run'; readonly runId: string }
     | { readonly kind: 'schedule'; readonly id: string };
+
+  function canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+    if (typeof value === 'object' && value !== null) {
+      const members = Object.keys(value as Record<string, unknown>)
+        .toSorted()
+        .flatMap((key) => {
+          const member = (value as Record<string, unknown>)[key];
+          return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
+        });
+      return `{${members.join(',')}}`;
+    }
+    return JSON.stringify(value) ?? 'null';
+  }
+
+  function manualStartKeyFor(input: unknown): string {
+    const snapshot = canonicalJson(input ?? null);
+    if (manualStart?.input === snapshot) return manualStart.key;
+    const key = crypto.randomUUID();
+    manualStart = { key, input: snapshot };
+    return key;
+  }
 
   const run = createMutation(() => ({
     mutationFn: async (variables: Choice & { readonly input: unknown }): Promise<Outcome> => {
@@ -260,9 +284,8 @@
       }
       const scheduled = variables.when === 'schedule';
       if (isNetworkFailure(error)) {
-        // The request may have reached the Bureau before the answer was lost, and a start carries no
-        // key that would make a second ask the same one, so a second ask could create a second run:
-        // say it may have happened, and where to look, never that nothing started.
+        // The request may have reached the Bureau before the answer was lost. An exact retry retains
+        // its key, but a changed input is intentionally a new request, so say it may have happened.
         failure = {
           title: scheduled ? copy.scheduleMaybe : copy.startMaybe,
           message: copy.lostDescription,
@@ -274,7 +297,7 @@
         return;
       }
       // A response proves this request did not create a run, so the next press is a new request.
-      if (variables.when === 'now') manualStartKey = undefined;
+      if (variables.when === 'now') manualStart = undefined;
       // The service answered with a refusal, so nothing was done, and the ask can be made again.
       const title = scheduled ? copy.scheduleFailed : copy.startFailed;
       const closing = scheduled ? copy.nothingCreated : copy.nothingStarted;
@@ -388,7 +411,13 @@
   function begin(value: unknown, choice: Choice): void {
     if (sending) return;
     sending = true;
-    run.mutate({ input: value, ...choice });
+    run.mutate({
+      input: value,
+      ...choice,
+      ...(choice.when === 'now' && (kind === 'file' || kind === 'code')
+        ? { idempotencyKey: manualStartKeyFor(value) }
+        : {}),
+    });
   }
 
   /** What is wrong with the schedule's name, or the empty string. */
@@ -400,8 +429,17 @@
 
   /** The footer's ask. The input checks itself, and starts only what this ask submitted. */
   async function request(): Promise<void> {
-    if (sending || gate.disabled || block !== undefined) return;
-    if (when === 'schedule') {
+    if (sending || checkingScheduleName || gate.disabled || block !== undefined) return;
+    const submittedWhen = when;
+    const choice: Choice = {
+      when: submittedWhen,
+      cadence: $state.snapshot(cadence),
+      name,
+      overlap,
+      catchUp,
+      idempotencyKey: undefined,
+    };
+    if (submittedWhen === 'schedule') {
       if (whenBlock?.isInvalid() === true) {
         failure = {
           title: copy.scheduleFailed,
@@ -410,39 +448,30 @@
         };
         return;
       }
-      nameError = nameProblem(name);
+      nameError = nameProblem(choice.name);
       if (nameError !== '') {
         document.getElementById('run-setup-name')?.focus();
         return;
       }
       // Match New schedule: a fresh read catches a schedule made after this page first loaded.
+      checkingScheduleName = true;
       try {
         const current = await queryClient.fetchQuery({
           queryKey: ['run-setup-schedule-names', type],
           queryFn: () => fetchScheduleList(client, {}),
           staleTime: 0,
         });
-        if (takenNameOf(name, current.items) !== undefined) {
+        if (takenNameOf(choice.name, current.items) !== undefined) {
           nameError = 'A schedule with this name already exists.';
           document.getElementById('run-setup-name')?.focus();
           return;
         }
       } catch {
         // The create remains authoritative when the freshness read cannot answer.
+      } finally {
+        checkingScheduleName = false;
       }
     }
-    // The mutation reads the schedule after its first `await`, so it gets a copy the builder cannot change.
-    const choice: Choice = {
-      when,
-      cadence: $state.snapshot(cadence),
-      name,
-      overlap,
-      catchUp,
-      idempotencyKey:
-        when === 'now' && (kind === 'file' || kind === 'code')
-          ? (manualStartKey ??= crypto.randomUUID())
-          : undefined,
-    };
     if (noInput) {
       begin(undefined, choice);
       return;
