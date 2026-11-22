@@ -1059,9 +1059,11 @@ describe('the hook editor', () => {
     expect(actions?.querySelectorAll('a')).toHaveLength(1);
     expect(actions?.textContent?.trim()).toBe(HOOKS_COPY.editor.webhook.seePayload);
     // The result sits directly under the buttons, and Save hook is first.
-    const buttons = view.getByRole('button', { name: HOOKS_COPY.editor.check.test }).parentElement;
-    expect(buttons?.firstElementChild?.textContent).toContain(HOOKS_COPY.editor.check.save);
-    expect(buttons?.nextElementSibling).toBe(result);
+    const formActions = view.getByRole('group', { name: 'Form actions' });
+    expect(within(formActions).getAllByRole('button')[0]?.textContent?.trim()).toBe(
+      HOOKS_COPY.editor.check.save,
+    );
+    expect(formActions.nextElementSibling === result).toBe(true);
     await within(deliveries).findByText(HOOKS_COPY.editor.deliveries.testEvent);
     await waitFor(() => expect(deliveries.textContent).toContain('Delivered, 200 OK'));
   });
@@ -1511,8 +1513,8 @@ describe('the steps of a saved hook', () => {
     const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
     const sentence = await view.findByTestId('hook-sentence');
     expect(sentence.textContent).toBe('When a review is waiting, send a webhook to example.com.');
-    const save = view.getByRole('button', { name: HOOKS_COPY.editor.check.save });
-    expect(sentence.nextElementSibling).toBe(save.parentElement);
+    const formActions = view.getByRole('group', { name: 'Form actions' });
+    expect(sentence.nextElementSibling === formActions).toBe(true);
   });
 
   test('on a phone When and Then are one-line summaries that open to their fields', async () => {
