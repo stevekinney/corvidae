@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2642",
+  "branch": "chef/e2e-shared-failures",
+  "checkedAt": "6b4a46d3f3f95ca1e70dc2562707029c21f90e73",
+  "briefVersion": "5ad9895123b9",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "04c4099ad6 names the cause: a transient committing state the spec raced (CI snapshot of run 45019753264 shard 1 shows the dialog already at 'Done Retried 1 of 1 workflow'); copy and structure unchanged."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "05-bulk-retry-confirm.spec.ts holds the retryfailed commit at the JSON-RPC transport while it checks the committing state, then lets it through to the host."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "--repeat-each=20 locally in Chromium: 20 passed (tmp/chef/scratch/COR-2642-44b28a17/repeat20.log). The full CI run is dispatched by targeted-run.ts on the pushed head and not waited on."
+    }
+  ]
+}
