@@ -160,7 +160,8 @@ test.describe('the list', () => {
     await page.setViewportSize({ width: 375, height: 900 });
     await page.goto('/workflows');
 
-    await page.getByRole('button', { name: 'Filter' }).click();
+    const filter = page.getByRole('button', { name: 'Filter', exact: true });
+    await filter.click();
     const menu = page.locator('.cinder-filter-bar__menu');
     await menu.getByRole('button', { name: 'Search' }).click();
     const search = menu.getByRole('searchbox', { name: WORKFLOW_COPY.list.searchLabel });
@@ -177,7 +178,6 @@ test.describe('the list', () => {
     await expect(
       page.getByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title }),
     ).toBeVisible();
-    const filter = page.getByRole('button', { name: 'Filter' });
     const filterDialog = page.getByRole('dialog', { name: 'Filter' });
     await filterDialog.getByRole('button', { name: 'Close drawer' }).click();
     await expect(filterDialog).toBeHidden();
