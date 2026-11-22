@@ -8,6 +8,7 @@
 import {
   failureExplanation,
   pendingReview,
+  runComparison,
   runInspector,
   runTimeline,
   scheduleEditor,
@@ -24,6 +25,7 @@ describe.each([
   ['the schedule editor', scheduleEditor],
   ['the failure explanation', failureExplanation],
   ['the run timeline', runTimeline],
+  ['the run comparison', runComparison],
 ])('%s', (_name, panel) => {
   test('builds into one self-contained page whose styles follow the host theme', async () => {
     const { html, contentDigest } = await buildPanelPage({

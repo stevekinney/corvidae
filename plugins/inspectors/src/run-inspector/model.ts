@@ -9,6 +9,13 @@
 const PROGRESS_SOURCES: ReadonlySet<string> = new Set(['tool-progress', 'provider-io']);
 
 /** What `bureau.tasks.inspect` answers. Mirrors the operation's output; unknown fields are ignored. */
+/**
+ * What the page says when a run's page opens it on a workflow instance: the run inspector reads a
+ * Bureau task, and an instance of a workflow has none, so there is nothing for it to inspect.
+ */
+export const WORKFLOW_RUN_NOTICE =
+  'The run inspector shows an agent run: its liveness, the children it owns and its progress. This run is a workflow run and has no agent task to inspect; its steps are on this page, under Steps.';
+
 export type Inspection = {
   readonly schemaVersion: string;
   readonly taskId: string;

@@ -141,6 +141,9 @@ describe('reading what the host answered', () => {
   it('takes the run from either argument the page is opened with', () => {
     expect(runIdOf({ runId: 'a' })).toBe('a');
     expect(runIdOf({ taskId: 'b' })).toBe('b');
+    // A workflow instance's run page opens every run panel with `{ runId, runKind: 'workflow' }`
+    // and no `taskId`: the timeline reads the run from `runId`, and calls the timeline for it.
+    expect(runIdOf({ runId: 'wf-fork-1', runKind: 'workflow' })).toBe('wf-fork-1');
     expect(runIdOf({ runId: '' })).toBeUndefined();
     expect(runIdOf({ runId: 3 })).toBeUndefined();
     expect(runIdOf(undefined)).toBeUndefined();

@@ -21,6 +21,21 @@ export const PENDING_REVIEW_STYLES = `${BASE_STYLES}
 `;
 
 /**
+ * The run comparison's styles: the shared ones plus its shared-step list, its detail and the diff in
+ * it. The step list and its divider are Cinder's `ListDetail`. The shared `.panel-page` width cap
+ * keeps the panel narrower than `ListDetail`'s stacking width, so the detail sits under the list
+ * and the page simply grows: no inner scroll and no frame height to give it.
+ */
+export const RUN_COMPARISON_STYLES = `${BASE_STYLES}
+.comparison-note{margin:0;font-size:var(--cinder-text-xs);color:var(--cinder-text-subtle)}
+.comparison-shared{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--cinder-space-1)}
+.comparison-shared li{display:flex;align-items:center;gap:var(--cinder-space-2);padding:var(--cinder-space-1) var(--cinder-space-2);font-size:var(--cinder-text-xs)}
+.comparison-mono{font-family:var(--cinder-font-mono);font-size:var(--cinder-text-xs);overflow-wrap:anywhere}
+.comparison-detail{min-width:0;display:flex;flex-direction:column;gap:var(--cinder-space-3)}
+.comparison-payload{display:flex;flex-direction:column;gap:var(--cinder-space-2)}
+`;
+
+/**
  * The run timeline's styles: the shared ones plus its step rows and waterfall tracks. A track is as
  * wide as the run, so the rows read as one chart; a bar's color says the step's status, and the
  * words beside it say the same, so color is never the only signal.
