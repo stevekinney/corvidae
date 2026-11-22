@@ -35,7 +35,9 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .cinder-collapsible[data-cinder-expanded] .cinder-collapsible__trigger {
+  /* State and variant rules select through child combinators, so a Collapsible's own attributes
+   * never reach a Collapsible nested in its panel (COR-2634). */
+  .cinder-collapsible[data-cinder-expanded] > .cinder-collapsible__trigger {
     border-end-start-radius: 0;
     border-end-end-radius: 0;
   }
@@ -89,21 +91,28 @@
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .cinder-collapsible[data-cinder-expanded] .cinder-collapsible__chevron {
+  .cinder-collapsible[data-cinder-expanded]
+    > .cinder-collapsible__trigger
+    > .cinder-collapsible__chevron {
     transform: rotate(180deg);
   }
 
   /* A chevron before the label points right and turns down as the disclosure opens. */
-  .cinder-collapsible[data-cinder-chevron='start'] .cinder-collapsible__chevron {
+  .cinder-collapsible[data-cinder-chevron='start']
+    > .cinder-collapsible__trigger
+    > .cinder-collapsible__chevron {
     transform: rotate(-90deg);
   }
 
   .cinder-collapsible[data-cinder-chevron='start'][data-cinder-expanded]
-    .cinder-collapsible__chevron {
+    > .cinder-collapsible__trigger
+    > .cinder-collapsible__chevron {
     transform: rotate(0deg);
   }
 
-  .cinder-collapsible[data-cinder-disabled] .cinder-collapsible__chevron {
+  .cinder-collapsible[data-cinder-disabled]
+    > .cinder-collapsible__trigger
+    > .cinder-collapsible__chevron {
     color: var(--cinder-text-disabled);
   }
 
@@ -132,7 +141,7 @@
     border-radius: 0;
   }
 
-  .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__trigger {
+  .cinder-collapsible[data-cinder-variant='flat'] > .cinder-collapsible__trigger {
     padding: var(--cinder-space-2) 0;
     background: transparent;
     border-radius: 0;
@@ -140,28 +149,32 @@
 
   @media (hover: hover) {
     .cinder-collapsible[data-cinder-variant='flat']
-      .cinder-collapsible__trigger:hover:not(:disabled) {
+      > .cinder-collapsible__trigger:hover:not(:disabled) {
       background: transparent;
     }
 
     .cinder-collapsible[data-cinder-variant='flat']
-      .cinder-collapsible__trigger:hover:not(:disabled)
-      .cinder-collapsible__chevron {
+      > .cinder-collapsible__trigger:hover:not(:disabled)
+      > .cinder-collapsible__chevron {
       color: var(--cinder-text-default);
     }
   }
 
   .cinder-collapsible[data-cinder-variant='flat']
-    .cinder-collapsible__trigger:active:not(:disabled) {
+    > .cinder-collapsible__trigger:active:not(:disabled) {
     background: transparent;
   }
 
   /* A flat disclosure heads a section of a flat page, so its label reads as a heading. */
-  .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__label {
+  .cinder-collapsible[data-cinder-variant='flat']
+    > .cinder-collapsible__trigger
+    > .cinder-collapsible__label {
     font-weight: var(--cinder-font-semibold);
   }
 
-  .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__panel-inner {
+  .cinder-collapsible[data-cinder-variant='flat']
+    > .cinder-collapsible__panel
+    > .cinder-collapsible__panel-inner {
     padding: var(--cinder-space-2) 0 var(--cinder-space-3);
     background: transparent;
     border-radius: 0;

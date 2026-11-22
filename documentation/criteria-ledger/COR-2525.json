@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2525",
+  "branch": "worktree-agent-aa62e88121694f7eb",
+  "checkedAt": "726422dc8e6c906db14fcb9c66d22fd52b4cd07c",
+  "briefVersion": "23258028fc43",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "applications/interborough/src/routes/chat/reply-details-cost.test.ts mounts reply-details.svelte with a RUN_FINISHED usage carrying costUsd 0.1234 and reads Cost $0.12 beside the tokens; run-wiring-usage.test.ts and reply-details.test.ts cover usageOfTerminal and replyDetailsOf."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "src/routes/workflows/runs/run-detail-cost.test.ts opens /runs/run-1 and reads the rail's Tokens (1,500) and Cost ($0.12) facts (run-details.svelte)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "src/lib/format/cost.test.ts covers attemptsCost for the three cases (sum, partial marked 'At least $x', none); goal-rows.test.ts and goal-list-row.test.ts read it on a goal's row. INTERPRETATION: the Runs list holds no goal row (each goal attempt is its own run row, carrying its own cost), so the sum is shown on the Goals list's goal row; an instance of a workflow file on the Runs list sums its steps the same way (run-list-cost.test.ts). The coordinator should confirm this reading."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "No cost value, never $0.00, in reply details (reply-details-cost.test.ts), the Run page (run-detail-cost.test.ts), the Runs list row (run-list-cost.test.ts), a goal's row (goal-list-row.test.ts) and the CLI text (cli-runs.test.ts)."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "src/lib/format/cost.test.ts: formatCost gives '< $0.01' under one cent (0.004, 0.009999, 1e-7) and two decimals otherwise ($0.01, $0.10, $0.12, $2.00, $1,204.50)."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "src/host/cli-runs.test.ts 'AC6': runs get --kind task --output text prints 'Cost: $0.12' and 'Tokens: 1,234'; --output json carries data.usage.costUsd 0.1234. A task with no cost prints no Cost line."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "tests/e2e/run-cost.spec.ts is written (Run page rail and Runs list row for a finished sample-world run, with and without a cost; usage supplied by rewriting bureau.tasks.get and bureau.tasks.list for that run) but NOT RUN: browser suites are barred on this host. It runs in CI through targeted-run.ts."
+    }
+  ]
+}

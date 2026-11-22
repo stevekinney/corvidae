@@ -114,6 +114,35 @@ describe('usageOfTerminal', () => {
     ).toEqual({ inputTokens: 0, outputTokens: 4 });
   });
 
+  test('reads the run’s cost beside its tokens (COR-2525), and none from a run the Bureau did not price', () => {
+    expect(
+      usageOfTerminal({
+        type: 'RUN_FINISHED',
+        usage: [{ inputTokens: 1, outputTokens: 2, totalTokens: 3, costUsd: 0.25 }],
+      }),
+    ).toEqual({ inputTokens: 1, outputTokens: 2, totalTokens: 3, costUsd: 0.25 });
+    expect(
+      usageOfTerminal({
+        type: 'RUN_FINISHED',
+        usage: [{ inputTokens: 1, outputTokens: 2, totalTokens: 3, costUsd: null }],
+      }),
+    ).toEqual({ inputTokens: 1, outputTokens: 2, totalTokens: 3 });
+    // A cost that is not a finite, non-negative number is no cost.
+    expect(
+      usageOfTerminal({
+        type: 'RUN_FINISHED',
+        usage: [{ totalTokens: 3, costUsd: -1 }, { costUsd: Number.NaN }, { costUsd: '0.1' }],
+      }),
+    ).toEqual({ totalTokens: 3 });
+    // Counts of zero and a cost: the cost alone is the usage.
+    expect(
+      usageOfTerminal({
+        type: 'RUN_FINISHED',
+        usage: [{ inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0.5 }],
+      }),
+    ).toEqual({ costUsd: 0.5 });
+  });
+
   test('merges the entries in order, the later count winning', () => {
     expect(
       usageOfTerminal({

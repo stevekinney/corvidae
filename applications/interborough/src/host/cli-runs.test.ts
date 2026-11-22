@@ -92,6 +92,59 @@ describe('CLI run control', () => {
     expect(JSON.parse(result.stdout).data.id).toBe('workflow:same-id');
   });
 
+  // spawn-free: injected fetch replaces the management process for the task's usage.
+  test('AC6: prints a task’s tokens and cost as text, and `usage.costUsd` in the JSON', async () => {
+    const task = {
+      id: 'run-1',
+      status: 'completed',
+      agentName: 'helper',
+      usage: { promptTokens: 1000, completionTokens: 234, totalTokens: 1234, costUsd: 0.1234 },
+    };
+    const fetch = async (_input: unknown, init?: RequestInit) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '') as {
+        method: string;
+      };
+      return jsonRpc(body.method, task);
+    };
+
+    const text = await executeCli(['runs', 'get', '--kind', 'task', 'run-1', '--output', 'text'], {
+      fetch,
+    });
+    expect(text.exitCode).toBe(0);
+    expect(text.stdout).toContain('Cost: $0.12');
+    expect(text.stdout).toContain('Tokens: 1,234');
+    expect(text.stdout).toContain('task:run-1');
+
+    const json = await executeCli(['runs', 'get', '--kind', 'task', 'run-1', '--output', 'json'], {
+      fetch,
+    });
+    expect(json.exitCode).toBe(0);
+    expect(JSON.parse(json.stdout).data.usage.costUsd).toBe(0.1234);
+  });
+
+  // spawn-free: injected fetch replaces the management process for the task's usage.
+  test('AC4: prints no cost line for a task with none, never `$0.00`', async () => {
+    for (const usage of [
+      { promptTokens: 10, completionTokens: 10, totalTokens: 20, costUsd: null },
+      null,
+    ]) {
+      const result = await executeCli(
+        ['runs', 'get', '--kind', 'task', 'run-1', '--output', 'text'],
+        {
+          fetch: async (_input, init) => {
+            const body = JSON.parse(typeof init?.body === 'string' ? init.body : '') as {
+              method: string;
+            };
+            return jsonRpc(body.method, { id: 'run-1', status: 'completed', usage });
+          },
+        },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('Cost');
+      expect(result.stdout).not.toContain('$');
+    }
+  });
+
   // spawn-free: an injected readable stream is the deterministic management event source.
   test('watches incrementally, forwards cursors, deduplicates replay, reports gaps, and stops once', async () => {
     let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
