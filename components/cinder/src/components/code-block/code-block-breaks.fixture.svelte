@@ -18,7 +18,11 @@
       const tokens = line.match(/"[^"]*"|\s+|[^\s"]+/g) ?? [];
       const spans = tokens.map(
         (token) =>
-          `<span style="color:${token.startsWith('"') ? '#032f62' : '#24292e'}">${token}</span>`,
+          `<span style="${
+            token.startsWith('"')
+              ? '--shiki-light:#032f62;--shiki-dark:#9ecbff'
+              : '--shiki-light:#24292e;--shiki-dark:#e1e4e8'
+          }">${token}</span>`,
       );
       return `<span class="line">${spans.join('')}</span>`;
     });
