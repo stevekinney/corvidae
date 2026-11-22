@@ -1245,6 +1245,18 @@ describe('a task record with a malformed field', () => {
     ['a pending wakeup that is not an object', { pendingWakeup: 'soon' }],
     ['a pending wakeup without a time', { pendingWakeup: {} }],
     ['a pending wakeup with a time that is not a number', { pendingWakeup: { wakeAt: null } }],
+    ['a model explanation with no text', { modelExplanation: { model: 'a/b', costUsd: null } }],
+    [
+      'a model explanation with a cost that is not a number',
+      {
+        modelExplanation: {
+          text: 't',
+          model: 'a/b',
+          generatedAt: '2026-09-01T00:00:00.000Z',
+          costUsd: 'free',
+        },
+      },
+    ],
   ];
 
   it.each(MALFORMED)(
@@ -2323,6 +2335,87 @@ describe('attention: stalled and looping (COR-2526)', () => {
     await kv.set(key, JSON.stringify({ ...stored, attention: { stalledSince: 'not a time' } }));
     expect(await registry.get('run-1')).toBeUndefined();
     expect(diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe('a model’s explanation of a failed task (COR-2534)', () => {
+  const EXPLANATION = {
+    text: 'The card was declined.',
+    model: 'anthropic/claude-haiku-5-5',
+    generatedAt: '2026-10-18T02:00:00.000Z',
+    costUsd: 0.002,
+  };
+  const USAGE = { promptTokens: 10, completionTokens: 5, totalTokens: 15, costUsd: 0.5 };
+  const settle = (status: 'failed' | 'completed') => ({
+    at: '2026-10-18T01:00:00.000Z',
+    status,
+    finishReason: status === 'failed' ? 'error' : 'stop-condition',
+    message: status === 'failed' ? 'the card was declined' : null,
+    usage: USAGE,
+  });
+
+  it('is kept on a failed task, replaced by the next, and leaves the run’s usage and revision as they were', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    const before = await registry.record('run-1');
+
+    expect(await registry.recordModelExplanation('run-1', EXPLANATION)).toBe(true);
+    const stored = await registry.record('run-1');
+    expect(stored?.modelExplanation).toEqual(EXPLANATION);
+    expect(stored?.usage).toEqual(USAGE);
+    expect(stored?.revision).toBe(before?.revision);
+
+    const second = { ...EXPLANATION, text: 'Again.', costUsd: null };
+    expect(await registry.recordModelExplanation('run-1', second)).toBe(true);
+    expect((await registry.record('run-1'))?.modelExplanation).toEqual(second);
+    // The view the operations serve carries none of it: it is read from the record alone.
+    expect(JSON.stringify(await registry.get('run-1'))).not.toContain('Again.');
+  });
+
+  it('writes nothing for a task that did not fail, is still going, or does not exist', async () => {
+    const { registry } = build();
+    await admit(registry, 'done');
+    await registry.recordSettled('done', settle('completed'));
+    await admit(registry, 'going');
+
+    expect(await registry.recordModelExplanation('done', EXPLANATION)).toBe(false);
+    expect(await registry.recordModelExplanation('going', EXPLANATION)).toBe(false);
+    expect(await registry.recordModelExplanation('nope', EXPLANATION)).toBe(false);
+    expect((await registry.record('done'))?.modelExplanation).toBeUndefined();
+    expect((await registry.record('going'))?.modelExplanation).toBeUndefined();
+  });
+
+  it('stays through a later writer of the same failure, and goes when the run’s real end replaces the failure it explained', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    await registry.recordModelExplanation('run-1', EXPLANATION);
+    // The catalog hook writes the same failure again, with the answer.
+    await registry.recordSettled('run-1', { ...settle('failed'), message: 'later' });
+    expect((await registry.record('run-1'))?.modelExplanation).toEqual(EXPLANATION);
+
+    // An owner-lost inference is replaced by the owner's real end: the explanation was of a failure
+    // that did not happen.
+    await admit(registry, 'run-2');
+    await registry.recordSettled('run-2', {
+      ...settle('failed'),
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+    });
+    await registry.recordModelExplanation('run-2', EXPLANATION);
+    await registry.recordSettled('run-2', settle('completed'));
+    expect((await registry.record('run-2'))?.modelExplanation).toBeUndefined();
+  });
+
+  it('is dropped with the settlement’s text when a chat’s content is purged', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    await registry.recordModelExplanation('run-1', EXPLANATION);
+
+    expect(await registry.redactSettlement('run-1')).toBe(true);
+    expect((await registry.record('run-1'))?.modelExplanation).toBeUndefined();
+    expect(await registry.redactSettlement('run-1')).toBe(false);
   });
 });
 

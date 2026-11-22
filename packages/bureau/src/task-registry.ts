@@ -2023,7 +2023,22 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const { answer: _ignored, usage, failure, ...rest } = settlement;
     // COR-2526: an ended task is neither stalled nor looping, so the settlement drops both. COR-2531:
     // nor is it retrying, and a failure the record held belongs to the settlement it replaces.
-    const { attention: _ended, retrying: _stopped, failure: held, ...kept } = record;
+    const {
+      attention: _ended,
+      retrying: _stopped,
+      failure: held,
+      modelExplanation: heldExplanation,
+      ...kept
+    } = record;
+    // COR-2534: a model's explanation is of the failure it was written for. A later writer of the
+    // same failed settlement (the catalog hook) leaves it; a settlement that replaces the failure
+    // with another end, such as the real end of a run that was inferred `owner-lost`, drops it.
+    const keptExplanation =
+      rest.status === 'failed' &&
+      record.settled?.status === 'failed' &&
+      record.settled.finishReason === rest.finishReason
+        ? heldExplanation
+        : undefined;
     // COR-2531: the failure the settlement carries, else the one an earlier writer of a failed
     // settlement left (the later writer, such as the catalog hook, knows none of it). A settlement
     // that is not a failure, such as the real end that replaces an `owner-lost` inference, has none.
@@ -2034,6 +2049,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       // settlement; a settlement that carries none (another process's) leaves the figure standing.
       ...(usage === undefined ? {} : { usage }),
       ...(keptFailure === undefined ? {} : { failure: keptFailure }),
+      ...(keptExplanation === undefined ? {} : { modelExplanation: keptExplanation }),
       settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
     };
   }

@@ -24,6 +24,8 @@ import {
   rpc,
   type RpcBody,
 } from './management-fixtures.test-support.ts';
+import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
+import { serveWorkflows } from './workflows-fixtures.test-support.ts';
 import {
   tasksExplanationGenerateOperation,
   tasksExplanationGetOperation,
@@ -267,6 +269,49 @@ describe('bureau.tasks.explanation.generate', () => {
     expect(
       JSON.stringify(await opened.bureau.internals.taskRegistry.history(taskId)),
     ).not.toContain('GENERATED-TEXT-6a1f');
+  });
+});
+
+describe('bureau.tasks.explanation for an instance of a workflow file', () => {
+  it('has no task to keep an explanation on: nothing stored on read, and a fault on generate', async () => {
+    const served = await serveWorkflows(cleanups, {
+      agents: {
+        writer: createAgent({
+          name: 'writer',
+          generate: async () => {
+            throw new Error('the writer is down');
+          },
+        }),
+      },
+    });
+    await served.bureau.workflows!.create('digest', {
+      agent: 'writer',
+      trigger: FAST_SCHEDULE,
+      steps: [AGENT_STEP],
+    });
+    await served.bureau.durableEngine()!.start('digest', null, { id: 'failed-digest' });
+    await waitUntil(
+      async () => (await served.bureau.workflows!.getRun('failed-digest'))?.status === 'failed',
+      { message: 'the instance failed' },
+    );
+
+    const read = await rpc(
+      served.keyed,
+      'bureau.tasks.explanation.get',
+      { runId: 'failed-digest' },
+      'operator-key',
+    );
+    const generated = await rpc(
+      served.keyed,
+      'bureau.tasks.explanation.generate',
+      { runId: 'failed-digest' },
+      'operator-key',
+    );
+
+    expect(read.result).toEqual({ explanation: null });
+    expect(generated.result).toBeUndefined();
+    expect(generated.error?.data).toMatchObject({ reason: 'run-has-no-task' });
+    expect(String(generated.error?.data?.['remediation'])).toContain('runs explain');
   });
 });
 
