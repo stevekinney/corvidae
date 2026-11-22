@@ -183,6 +183,7 @@
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/module-scope-scenario.test-support.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
