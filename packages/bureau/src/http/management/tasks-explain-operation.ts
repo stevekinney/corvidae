@@ -96,7 +96,7 @@ const explainOutput = z.object({
 });
 
 /** The fault for a run that did not fail: nothing to explain. */
-function runNotFailed(): OperationFault {
+export function runNotFailed(): OperationFault {
   return {
     code: 'Unprocessable',
     message: 'This run has not failed, so there is no failure to explain',

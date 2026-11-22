@@ -269,6 +269,11 @@ import {
   tasksExplainOperation,
 } from './management/tasks-explain-operation.ts';
 import {
+  type BureauTasksModelExplanationOperationHost,
+  tasksExplanationGenerateOperation,
+  tasksExplanationGetOperation,
+} from './management/tasks-model-explanation-operation.ts';
+import {
   type BureauEventsCatalogOperationHost,
   eventsCatalogOperation,
 } from './management/events-catalog-operation.ts';
@@ -442,6 +447,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTasksInspectOperationHost &
   BureauRunsTimelineOperationHost &
   BureauTasksExplainOperationHost &
+  BureauTasksModelExplanationOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
@@ -870,6 +876,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksInspectOperation,
   runsTimelineOperation,
   tasksExplainOperation,
+  tasksExplanationGetOperation,
+  tasksExplanationGenerateOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -1384,6 +1392,15 @@ export function buildBureauHandlerHost(
         runId,
         kind,
       ),
+    // COR-2534: where a model's longer explanation of a failed run is kept and dated, and the
+    // catalog that prices the model that wrote it. `decisions` is the Bureau's configured model.
+    modelExplanations: {
+      record: (taskId) => bureau.internals.taskRegistry.record(taskId),
+      recordModelExplanation: (taskId, explanation) =>
+        bureau.internals.taskRegistry.recordModelExplanation(taskId, explanation),
+      now: () => bureau.runtimeServices.clock.nowISO(),
+    },
+    catalog: () => bureau.models.catalog().descriptors,
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),
