@@ -2,7 +2,7 @@ import { $, type BunPlugin } from 'bun';
 import { existsSync } from 'node:fs';
 import { copyFile, cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import ts from 'typescript';
 import { z } from 'zod';
