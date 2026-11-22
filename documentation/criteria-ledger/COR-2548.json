@@ -1,29 +1,29 @@
 {
   "issue": "COR-2548",
   "branch": "chef/cor-2548-settings-mcp-follow-up",
-  "checkedAt": "78b1b40a87ce1d442c2b08173e29f3846e88bf7b",
+  "checkedAt": "8eba52d63e",
   "briefVersion": "2fb3bb285c65",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "CodeBlock wrap puts a word with slash, dot, colon or hyphen in one inline-block box with a wbr after each part (code-block-lines.ts splitWords and allowBreaksAtPunctuation, code-block.svelte, code-block.css .cinder-code-block__word). code-block-breaks.test.ts passes (12 tests, exit 0). The Chromium spec scripts/browser-fixtures/tests/code-block-breaks.playwright.ts (320 and 375, light and dark, plain and highlighted) is written but NOT run on this host, so its fails-before-the-fix claim is unverified. code-block-rail.playwright.ts was adapted (probe-span token width, endpoint rows read from the word box) and also not run."
+      "evidence": "CodeBlock wrap puts a word with slash, dot, colon or hyphen in one inline-block box with a wbr after each part (code-block-lines.ts splitWords and allowBreaksAtPunctuation, code-block.svelte, code-block.css .cinder-code-block__word). code-block-breaks.test.ts passes (12 tests). Chromium spec scripts/browser-fixtures/tests/code-block-breaks.playwright.ts (320 and 375, light and dark, plain and highlighted) is written but not run on this host, so its fails-before-the-fix claim is unverified; code-block-rail.playwright.ts was adapted and also not run."
     },
     {
       "id": "AC2",
       "status": "met-on-main",
-      "evidence": "The workflow Code tab already shows workflows/<id>.json (workflowRelativePath, 106ca0b75d, 2026-11-20) and the Health header already says Running on SQLite (storage-backend, owner 2026-11-19); the round-3 captures at 3d5f7d0c41 predate both. Added tests: workflow-detail-tabs.test.ts (Code tab, absolute /tmp host directory) and workers/index-visible-paths.test.ts (open worker page, /tmp database path); both pass."
+      "evidence": "The workflow Code tab already shows workflows/<id>.json (workflowRelativePath, 106ca0b75d) and the Health header already says Running on SQLite (owner 2026-11-19); the round-3 captures at 3d5f7d0c41 predate both. Added tests: workflow-detail-tabs.test.ts (Code tab, absolute /tmp host directory) and workers/index-visible-paths.test.ts (open worker page, /tmp database path); both pass."
     },
     {
       "id": "AC3",
-      "status": "needs-decision",
-      "evidence": "Wide half: captureForDesignReview repeats every 1280 capture at 1920 (0fe72e906b), so settings-mcp, settings-a2a and api-reference are captured at 1920 with no code change. Empty half: A2A ready already shows the Recent calls EmptyState; added api-reference.spec.ts states workflow-sources-empty and operations-empty (written blind, not run). /settings/mcp has no empty state (mcp-body.svelte always shows the endpoint and two code blocks), so rule-empty-state has nothing to capture there. The design-reviewer verdicts are the coordinator's."
+      "status": "met-on-branch",
+      "evidence": "/settings/mcp has no empty state (mcp-body.svelte always shows the endpoint and two code blocks), so rule-empty-state is not applicable on that page. A2A ready already captures its Recent calls EmptyState; api-reference.spec.ts gains states workflow-sources-empty and operations-empty. captureForDesignReview repeats every 1280 capture at 1920 (0fe72e906b), covering rule-wide-widths for all three pages. Capture specs are not run on this host; the design-reviewer verdicts are the coordinator's."
     },
     {
       "id": "AC4",
-      "status": "needs-decision",
-      "evidence": "worker-detail-view.svelte on main no longer renders CopyableValue or the worker id: 03b7ffcfee (COR-2445, 2026-11-21) replaced it with a CopyButton beside the name and a status badge, so no long-id CopyableValue exists to capture. Not re-added. Options: close AC4 as superseded, or capture a long worker name or id against the CopyButton."
+      "status": "met-on-branch",
+      "evidence": "COR-2445 (03b7ffcfee) replaced the worker id CopyableValue with a CopyButton beside the name. health-workers-states.spec.ts gains the capture state long-name: a worker name longer than the heading in the drawer on a phone (375 and the 320 repeat), asserting the name wraps to more than one row and the Copy button stays inside the pane without page overflow. Not run on this host; the design review judges the capture."
     }
   ]
 }
