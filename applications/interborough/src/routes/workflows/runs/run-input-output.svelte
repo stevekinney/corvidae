@@ -264,7 +264,7 @@
          completed engine run that carries a failed result, so its engine state is not `failed`. -->
     <Section
       title={RUN_DETAIL_COPY.instance.whyItFailed}
-      description={bureauFailure === '' ? undefined : bureauFailure}
+      {...bureauFailure === '' ? {} : { description: bureauFailure }}
       data-run-failure
     >
       <RunFailureExplanation runId={task.id} />

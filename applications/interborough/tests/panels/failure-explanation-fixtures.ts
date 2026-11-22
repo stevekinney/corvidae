@@ -42,7 +42,7 @@ export const NOT_FAILED_FAULT = {
     remediation:
       'Explain a run only after it has failed; read the run to see its status, and wait for a run that is still going to settle.',
   },
-} as const;
+};
 
 /** An explanation as the host answers the tool: the text of the result, and its structured content. */
 export function explained(explanation: object): {
