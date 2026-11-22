@@ -377,13 +377,13 @@ describe('CLI run control', () => {
         },
       });
     // The server refused or found the call malformed, so nothing ran: exit 1, authorization 3, conflict 4.
-    const refusals: Array<[string, number, number]> = [
+    const refusals = [
       ['InvalidParams', 400, 1],
       ['NotFound', 404, 1],
       ['Unprocessable', 422, 1],
       ['Forbidden', 403, 3],
       ['Conflict', 409, 4],
-    ];
+    ] as const;
     for (const [weftCode, httpStatus, exitCode] of refusals) {
       const result = await executeCli(['runs', 'retry', 'w1'], {
         fetch: fault(weftCode, httpStatus),
