@@ -177,15 +177,21 @@ test.describe('the list', () => {
     await expect(
       page.getByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title }),
     ).toBeVisible();
+    const filter = page.getByRole('button', { name: 'Filter' });
+    await page.keyboard.press('Escape');
+    await expect(filter).toBeFocused();
+
     await page.getByRole('button', { name: WORKFLOW_COPY.list.clearAction }).click();
     await expect(row(page, 'e2e-searchable-workflow')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Filter' })).toBeFocused();
-    await page.getByRole('button', { name: 'Filter' }).click();
+    await expect(filter).toBeFocused();
+    await filter.click();
     const reopenedMenu = page.locator('.cinder-filter-bar__menu');
-    await reopenedMenu.getByRole('button', { name: 'Search' }).click();
-    await expect(reopenedMenu.getByRole('searchbox', { name: WORKFLOW_COPY.list.searchLabel })).toHaveValue(
-      '',
-    );
+    const reopenedSearch = reopenedMenu.getByRole('button', { name: 'Search' });
+    if ((await reopenedSearch.getAttribute('aria-expanded')) !== 'true')
+      await reopenedSearch.click();
+    await expect(
+      reopenedMenu.getByRole('searchbox', { name: WORKFLOW_COPY.list.searchLabel }),
+    ).toHaveValue('');
     await checkA11y('workflow search at 375px');
   });
 

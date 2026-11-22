@@ -161,10 +161,18 @@
     search = '';
     segment = 'all';
     await tick();
-    // The narrow search lives in FilterBar's portalled popover. Clicking this page-level clear
-    // action dismisses that popover before this update, so Cinder restores focus to Filter. The
-    // wide search stays in this local bar and remains the useful focus destination.
-    filterBar?.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+    const localSearch = filterBar?.querySelector<HTMLInputElement>('input[type="search"]');
+    if (localSearch) {
+      localSearch.focus();
+      return;
+    }
+    // The narrow and medium searches live in portalled popovers. Once a page-level Clear filters
+    // button disappears, put focus on FilterBar's persistent local trigger instead.
+    filterBar
+      ?.querySelector<HTMLButtonElement>(
+        '.cinder-filter-bar__menu-button, .cinder-filter-bar__search-button',
+      )
+      ?.focus();
   }
 
   function go(event: MouseEvent, path: string): void {
