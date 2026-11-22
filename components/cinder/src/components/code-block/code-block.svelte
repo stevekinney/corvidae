@@ -11,6 +11,7 @@
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
   import { IDENTIFIER_ACRONYMS } from '../../utilities/humanize-identifier.ts';
+  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
   import {
     allowBreaksAtPunctuation,
@@ -46,6 +47,15 @@
 
   const noopScrollFadeAttachment: Attachment<HTMLElement> = () => {};
   const viewportScrollFadeAttachment = overflowFadeEdges('inline');
+  const reserveFloatingMeta = useResizeObserver((entries) => {
+    const meta = entries.at(-1)?.target;
+    const codeBlock = meta?.parentElement;
+    if (!(meta instanceof HTMLElement) || !(codeBlock instanceof HTMLElement)) return;
+    codeBlock.style.setProperty(
+      '--_cinder-code-block-float-meta-width',
+      `${Math.ceil(meta.getBoundingClientRect().width)}px`,
+    );
+  });
 
   // CodeBlock imports no highlighter of its own. It highlights with its
   // `highlighter` prop, else with the one an ancestor published through
@@ -239,7 +249,7 @@
   aria-busy={streaming ? 'true' : undefined}
 >
   {#if metaVisible}
-    <div class="cinder-code-block__meta">
+    <div class="cinder-code-block__meta" {@attach floatingMeta ? reserveFloatingMeta : undefined}>
       {#if language && languageLabelVisible}
         <span class="cinder-code-block__language">{language}</span>
       {/if}

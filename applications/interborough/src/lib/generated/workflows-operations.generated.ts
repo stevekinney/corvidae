@@ -57,6 +57,11 @@ export type WorkflowsOperationTypes = {
     };
     readonly faults: 'Forbidden' | 'InvalidParams' | 'UnsupportedCapability';
   };
+  'bureau.workflows.concurrency': {
+    readonly input: {};
+    readonly output: { readonly max: number; readonly running: number };
+    readonly faults: 'Forbidden' | 'UnsupportedCapability';
+  };
   'bureau.workflows.create': {
     readonly input: {
       readonly definition: SharedAgentDescriptionInputSch_bae5d7e6;
@@ -414,6 +419,7 @@ export type WorkflowsOperationTypes = {
   'bureau.workflows.start': {
     readonly input: {
       readonly id: string;
+      readonly idempotencyKey?: string;
       readonly input?: unknown;
       readonly surface?: 'web' | 'palette' | 'api';
     };

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { createAgent } from '@lostgradient/operative';
 import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
+import { WORKSPACE_CROSS_PRODUCERS } from '../workspace-projection-schema.test-support.ts';
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
 import { watchPlugin } from '../../testing/watch-plugin.test-support.ts';
 import { waitForCondition } from '../../test';
@@ -37,6 +38,7 @@ const cases = [
   ['bureau.workflows.revisions', 'shared'],
   ['bureau.workflows.history', 'shared'],
   ['bureau.workflows.impact', 'shared'],
+  ['bureau.workflows.concurrency', 'shared'],
   ['bureau.workflows.start', 'shared'],
   ['bureau.workflows.signal', 'shared'],
   ['bureau.workflows.runs.list', 'private-list'],
@@ -77,15 +79,14 @@ for (const [operation, access] of cases) {
       runId,
     });
     expect(ownerRun.text).toContain('PRIVATE-WORKFLOW-INPUT-d24a');
-    if (
-      (access === 'shared' && operation !== 'bureau.workflows.signal') ||
-      access === 'administrator'
-    )
+    if (WORKSPACE_CROSS_PRODUCERS.has(operation))
       witnesses.confirmPrivateSource(operation, ownerRun);
     const input: Record<string, unknown> =
       operation === 'bureau.workflows.list'
         ? { includeRuns: true }
-        : operation === 'bureau.workflows.runs.list' || operation === 'bureau.workflows.catalog'
+        : operation === 'bureau.workflows.runs.list' ||
+            operation === 'bureau.workflows.catalog' ||
+            operation === 'bureau.workflows.concurrency'
           ? {}
           : [
                 'bureau.workflows.runs.get',
@@ -168,6 +169,11 @@ for (const [operation, access] of cases) {
       }
       if (operation === 'bureau.workflows.impact')
         expect(result.body?.result?.['inFlight']).toBeNull();
+      if (operation === 'bureau.workflows.concurrency')
+        expect(result.body?.result).toEqual({
+          max: expect.any(Number),
+          running: expect.any(Number),
+        });
       if (access === 'private-list' && actor !== 'owner')
         expect(result.body?.result?.['runs']).toEqual([]);
       if (operation === 'bureau.workflows.revisions' && actor !== 'owner')

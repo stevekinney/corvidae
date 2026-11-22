@@ -39,6 +39,6 @@
     </p>
   {/if}
   {#if resolution?.answerDigest !== undefined}
-    <p class="ib-review-pane__note">{REVIEWS_COPY.answerRecorded}</p>
+    <p class="ib-review-detail__note">{REVIEWS_COPY.answerRecorded}</p>
   {/if}
 </div>

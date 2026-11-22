@@ -356,7 +356,16 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     ).toBeVisible();
   },
   '/health/runs': async (page) => {
-    await expect(page.locator('.cinder-badge__label', { hasText: LONG_TAG }).first()).toBeVisible();
+    const table = page.locator('table.weft-workflows-table');
+    const tag = table.locator('.cinder-badge__label', { hasText: LONG_TAG }).first();
+    await expect(tag).toBeAttached();
+    // The long tag still seeds the desktop overflow check. Stacked rows deliberately omit detail.
+    await expect
+      .poll(async () => {
+        const stacked = (await table.getAttribute('data-cinder-stacked')) !== null;
+        return (await tag.isVisible()) === !stacked;
+      })
+      .toBe(true);
   },
   // The test delivery's line opens to the tries, each of which got no answer from the address.
   '/hooks/:hook': async (page) => {
@@ -552,8 +561,9 @@ let variantAddresses: Readonly<Record<string, string>>;
 
 /**
  * The routes that print the waiting review. A tool approval stops waiting a few minutes after it is
- * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes; each
- * asks for a fresh one first when it is.
+ * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes. Each
+ * viewport therefore reads the pending list and rebinds the deep link to this thread's current
+ * review before it opens the route.
  */
 const NEEDS_WAITING_REVIEW = new Set([
   '/reviews',
@@ -562,12 +572,16 @@ const NEEDS_WAITING_REVIEW = new Set([
 ]);
 
 async function ensureWaitingReview(request: APIRequestContext): Promise<void> {
-  const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+  const listed = (await bureauCall(request, 'bureau.reviews.list', { status: 'pending' })) as {
     reviews: { id: string; sessionId?: string }[];
   };
-  if (listed.reviews.some((review) => review.sessionId === REVIEW_THREAD)) return;
-  const waitingReview = await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE);
-  seed = { ...seed, review: `bureau:${waitingReview}` };
+  const current = listed.reviews.find((review) => review.sessionId === REVIEW_THREAD);
+  const review = current ?? {
+    id: await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE),
+    sessionId: REVIEW_THREAD,
+  };
+  if (seed.review === `bureau:${review.id}`) return;
+  seed = { ...seed, review: `bureau:${review.id}` };
   addresses = responsiveAddresses(seed);
   variantAddresses = responsiveVariants(seed);
 }
@@ -960,8 +974,8 @@ for (const route of routes) {
 
   if (owner === undefined) {
     test(`${route.pattern} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
-      if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
       for (const width of WIDTHS) {
+        if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
         expect(
           await problemsAt(page, route.pattern, width),
           `${route.pattern} at ${width}px`,
@@ -1135,10 +1149,10 @@ for (const width of [320, 375]) {
   });
 }
 
-test('the engine workflow table keeps its table layout and header at 320 pixels', async ({
+test('the scoped engine workflow table keeps its table layout and header at 320 pixels', async ({
   page,
 }) => {
-  await settle(page, '/health/runs', 320);
+  await settle(page, '/workflows/:workflow/runs', 320);
   const table = page.locator('table.weft-workflows-table');
   await expect(table).toBeVisible();
   expect(await table.evaluate((element) => getComputedStyle(element).display)).toBe('table');
@@ -1150,8 +1164,8 @@ test('the engine workflow table keeps its table layout and header at 320 pixels'
 const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));
 for (const variant of VARIANTS) {
   test(`${variant} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
-    if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
     for (const width of WIDTHS) {
+      if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
       expect(await problemsAt(page, variant, width), `${variant} at ${width}px`).toEqual([]);
     }
   });

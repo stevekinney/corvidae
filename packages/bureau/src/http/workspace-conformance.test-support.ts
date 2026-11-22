@@ -249,6 +249,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.workflows.revisions', 'shared'],
       ['bureau.workflows.history', 'shared'],
       ['bureau.workflows.impact', 'shared'],
+      ['bureau.workflows.concurrency', 'shared'],
       ['bureau.workflows.runs.list', 'owner-collection'],
       ['bureau.workflows.runs.get', 'owner'],
       ['bureau.workflows.runs.cancel', 'owner'],

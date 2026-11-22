@@ -224,7 +224,10 @@
             : {
                 reviewId: review.id,
                 tone: 'danger',
-                title: REVIEWS_COPY.decisionFailed,
+                title:
+                  review.kind === 'tool-approval'
+                    ? REVIEWS_COPY.approvalFailed[decision === 'approve' ? 'approve' : 'deny']
+                    : REVIEWS_COPY.decisionFailed,
                 message: faultTreatment(error).message,
               };
         },

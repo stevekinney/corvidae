@@ -11,9 +11,15 @@ const KEYS: readonly string[] = SETTING_KEYS;
 const none = () => false;
 
 describe('generalSections', () => {
-  test('draws Tools, Runs, Memory and Storage, and leaves out what other sections hold', () => {
+  test('draws Tools, Runs, Memory, Storage and Advanced, and leaves out what other sections hold', () => {
     const sections = generalSections(KEYS, none, false);
-    expect(sections.map((section) => section.id)).toEqual(['tools', 'runs', 'memory', 'storage']);
+    expect(sections.map((section) => section.id)).toEqual([
+      'tools',
+      'runs',
+      'memory',
+      'storage',
+      'advanced',
+    ]);
     const shown = sections.flatMap((section) => section.keys);
     expect(shown.filter((key) => key.startsWith('retention.'))).toEqual([]);
     expect(shown.filter((key) => key.startsWith('decisions.'))).toEqual([]);
@@ -22,20 +28,25 @@ describe('generalSections', () => {
     expect(sections[0]?.keys).toEqual(['tools.humanInput', 'tools.wakeup']);
   });
 
-  test('lists the undrawn tool setting under Runs, after the designed rows', () => {
-    const runs = generalSections(KEYS, none, false).find((section) => section.id === 'runs');
-    const keys = runs?.keys ?? [];
-    expect(keys).toContain('tools.decide');
-    expect(keys.indexOf('tools.decide')).toBeGreaterThan(keys.indexOf('engine.maxConcurrentRuns'));
+  test('keeps the two designed run settings visible and puts undrawn settings in Advanced', () => {
+    const sections = generalSections(KEYS, none, false);
+    const runs = sections.find((section) => section.id === 'runs');
+    const advanced = sections.find((section) => section.id === 'advanced');
+    expect(runs?.keys).toEqual(['engine.workflowClaimRenewInterval', 'engine.maxConcurrentRuns']);
+    expect(advanced?.keys).toContain('tools.decide');
+    expect(advanced?.keys).toContain('engine.history');
   });
 
-  test('puts every engine setting under Runs, the claim interval first, then the run limit', () => {
-    const runs = generalSections(KEYS, none, false).find((section) => section.id === 'runs');
-    expect(runs?.keys.slice(0, 2)).toEqual([
-      'engine.workflowClaimRenewInterval',
-      'engine.maxConcurrentRuns',
-    ]);
-    expect(runs?.keys.filter((key) => key.startsWith('engine.')).length).toBeGreaterThan(2);
+  test('puts a new unmatched General key in Advanced and omits an empty disclosure', () => {
+    const withExtra = generalSections([...KEYS, 'future.setting'], none, false);
+    expect(withExtra.find((section) => section.id === 'advanced')?.keys).toContain(
+      'future.setting',
+    );
+    expect(
+      generalSections(['tools.humanInput', 'engine.maxConcurrentRuns'], none, false).find(
+        (section) => section.id === 'advanced',
+      ),
+    ).toBeUndefined();
   });
 
   test('holds every memory setting under Memory, after Runs, and none of them under Runs (EM6-01)', () => {
@@ -51,15 +62,21 @@ describe('generalSections', () => {
   test('moves what the deployment locks into the Remote deployment card in remote mode', () => {
     const locked = (key: string) => key === 'engine.maxConcurrentRuns' || key === 'durable';
     const sections = generalSections(KEYS, locked, true);
-    expect(sections.map((section) => section.id)).toEqual(['tools', 'runs', 'memory', 'remote']);
+    expect(sections.map((section) => section.id)).toEqual([
+      'tools',
+      'runs',
+      'memory',
+      'remote',
+      'advanced',
+    ]);
     const remote = sections.find((section) => section.id === 'remote');
     expect([...(remote?.keys ?? [])].sort()).toEqual(['durable', 'engine.maxConcurrentRuns']);
     const runs = sections.find((section) => section.id === 'runs');
     expect(runs?.keys).not.toContain('durable');
   });
 
-  test('keeps a locked setting in its section on a local host', () => {
+  test('keeps a locked advanced setting in its local disclosure', () => {
     const sections = generalSections(KEYS, (key) => key === 'durable', false);
-    expect(sections.find((section) => section.id === 'runs')?.keys).toContain('durable');
+    expect(sections.find((section) => section.id === 'advanced')?.keys).toContain('durable');
   });
 });

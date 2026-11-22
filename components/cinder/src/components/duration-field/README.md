@@ -37,6 +37,7 @@ By default the number reports when the field is left or Enter is pressed. Set `c
 | `integer` | `boolean` | no | `false` | Rounds the stored milliseconds to whole numbers, for a schema of type `integer`. |
 | `label` | `string` | no | — | Visible label. Omit inside a FormField or SettingRow, which supplies the label. |
 | `name` | `string` | no | — | Form field name for the number as typed (in the shown unit). |
+| `placeholder` | `string` | no | — | Text shown while the duration is empty. |
 | `required` | `boolean` | no | — | Marks the field required. |
 | `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale, for the number and the unit: `sm` 28px, `md` 32px, `lg` 40px. |
 | `unit` | `string` | no | — | The unit the number is shown in, by its `value`. Starts as the largest unit that shows the value as a whole number, and follows the person's choice. Bindable. |
