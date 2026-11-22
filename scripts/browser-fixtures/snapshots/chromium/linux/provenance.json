@@ -9,7 +9,7 @@
   "suiteExitCode": 0,
   "componentRenders": {
     "approval-card": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
       "suiteExitCode": 0
     },
     "autocomplete": {
@@ -53,15 +53,27 @@
       "suiteExitCode": 0
     },
     "copy-button": {
-      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
+      "suiteExitCode": 0
+    },
+    "copyable-value": {
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
+      "suiteExitCode": 0
+    },
+    "data-table": {
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
       "suiteExitCode": 0
     },
     "description-list": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
       "suiteExitCode": 0
     },
     "form-field": {
       "renderedSourceSha": "dff1b871e1bb8ae4e81fdb83abcb7fc22fbaabe7",
+      "suiteExitCode": 0
+    },
+    "inspector": {
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
       "suiteExitCode": 0
     },
     "multi-select": {
@@ -76,6 +88,10 @@
       "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
       "suiteExitCode": 0
     },
+    "payload-inspector": {
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
+      "suiteExitCode": 0
+    },
     "schema-form": {
       "renderedSourceSha": "2c1dd08e6818d3f33badb9148af72c4e85aa60a5",
       "suiteExitCode": 0
@@ -88,12 +104,20 @@
       "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
       "suiteExitCode": 0
     },
+    "spotlight": {
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
+      "suiteExitCode": 0
+    },
     "stacked-list-item": {
       "renderedSourceSha": "b89a8de7628a80a3e4eccc96c941761633368743",
       "suiteExitCode": 0
     },
     "surface": {
       "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "suiteExitCode": 0
+    },
+    "table": {
+      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
       "suiteExitCode": 0
     }
   }
