@@ -561,8 +561,9 @@ let variantAddresses: Readonly<Record<string, string>>;
 
 /**
  * The routes that print the waiting review. A tool approval stops waiting a few minutes after it is
- * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes; each
- * asks for a fresh one first when it is.
+ * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes. Each
+ * viewport therefore reads the pending list and rebinds the deep link to this thread's current
+ * review before it opens the route.
  */
 const NEEDS_WAITING_REVIEW = new Set([
   '/reviews',
@@ -571,12 +572,16 @@ const NEEDS_WAITING_REVIEW = new Set([
 ]);
 
 async function ensureWaitingReview(request: APIRequestContext): Promise<void> {
-  const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+  const listed = (await bureauCall(request, 'bureau.reviews.list', { status: 'pending' })) as {
     reviews: { id: string; sessionId?: string }[];
   };
-  if (listed.reviews.some((review) => review.sessionId === REVIEW_THREAD)) return;
-  const waitingReview = await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE);
-  seed = { ...seed, review: `bureau:${waitingReview}` };
+  const current = listed.reviews.find((review) => review.sessionId === REVIEW_THREAD);
+  const review = current ?? {
+    id: await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE),
+    sessionId: REVIEW_THREAD,
+  };
+  if (seed.review === `bureau:${review.id}`) return;
+  seed = { ...seed, review: `bureau:${review.id}` };
   addresses = responsiveAddresses(seed);
   variantAddresses = responsiveVariants(seed);
 }
@@ -969,8 +974,8 @@ for (const route of routes) {
 
   if (owner === undefined) {
     test(`${route.pattern} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
-      if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
       for (const width of WIDTHS) {
+        if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
         expect(
           await problemsAt(page, route.pattern, width),
           `${route.pattern} at ${width}px`,
@@ -1159,8 +1164,8 @@ test('the scoped engine workflow table keeps its table layout and header at 320 
 const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));
 for (const variant of VARIANTS) {
   test(`${variant} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
-    if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
     for (const width of WIDTHS) {
+      if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
       expect(await problemsAt(page, variant, width), `${variant} at ${width}px`).toEqual([]);
     }
   });
