@@ -103,56 +103,58 @@ test.describe('nested Collapsible isolation', () => {
     await load(page);
   });
 
-  type AtRest = { testId: string; part: Part; property: string; referenceId: string };
+  async function expectMatchingStyles(
+    page: Page,
+    testId: string,
+    referenceId: string,
+    part: Part,
+    properties: readonly string[],
+  ) {
+    const actual = nested(page, testId, part);
+    const expected = reference(page, referenceId, part);
+    for (const property of properties) {
+      await expect
+        .soft(actual, `${testId}: ${part} ${property}`)
+        .toHaveCSS(property, await read(expected, property));
+    }
+  }
 
-  const atRest: AtRest[] = [
-    {
-      testId: 'collapsible-nested-closed',
-      part: 'chevron',
-      property: 'transform',
-      referenceId: 'collapsible-reference-flat-closed',
-    },
-    {
-      testId: 'collapsible-nested-disabled-outer',
-      part: 'chevron',
-      property: 'color',
-      referenceId: 'collapsible-reference-flat-closed',
-    },
-    {
-      testId: 'collapsible-nested-start',
-      part: 'chevron',
-      property: 'transform',
-      referenceId: 'collapsible-reference-flat-start-closed',
-    },
-    ...(['border-end-start-radius', 'border-end-end-radius'] as const).map((property) => ({
-      testId: 'collapsible-nested-framed-closed',
-      part: 'trigger' as const,
-      property,
-      referenceId: 'collapsible-reference-default-closed',
-    })),
-    ...(
-      [
-        ['trigger', 'padding-top'],
-        ['trigger', 'background-color'],
-        ['trigger', 'border-start-start-radius'],
-        ['panel-inner', 'padding-top'],
-        ['panel-inner', 'background-color'],
-        ['panel-inner', 'border-end-start-radius'],
-      ] as const
-    ).map(([part, property]) => ({
-      testId: 'collapsible-nested-framed-in-flat',
-      part,
-      property,
-      referenceId: 'collapsible-reference-default-open',
-    })),
-  ];
-
-  for (const { testId, part, property, referenceId } of atRest) {
-    test(`${testId}: ${part} ${property}, at rest`, async ({ page }) => {
-      const expected = await read(reference(page, referenceId, part), property);
-      await expect(nested(page, testId, part)).toHaveCSS(property, expected);
+  for (const [testId, referenceId, property] of [
+    ['collapsible-nested-closed', 'collapsible-reference-flat-closed', 'transform'],
+    ['collapsible-nested-disabled-outer', 'collapsible-reference-flat-closed', 'color'],
+    ['collapsible-nested-start', 'collapsible-reference-flat-start-closed', 'transform'],
+  ] as const) {
+    test(`${testId}: chevron ${property}, at rest`, async ({ page }) => {
+      await expectMatchingStyles(page, testId, referenceId, 'chevron', [property]);
     });
   }
+
+  test('closed framed trigger keeps both bottom corners', async ({ page }) => {
+    await expectMatchingStyles(
+      page,
+      'collapsible-nested-framed-closed',
+      'collapsible-reference-default-closed',
+      'trigger',
+      ['border-end-start-radius', 'border-end-end-radius'],
+    );
+  });
+
+  test('framed trigger and panel keep their resting styles inside a flat Collapsible', async ({
+    page,
+  }) => {
+    const testId = 'collapsible-nested-framed-in-flat';
+    const referenceId = 'collapsible-reference-default-open';
+    await expectMatchingStyles(page, testId, referenceId, 'trigger', [
+      'padding-top',
+      'background-color',
+      'border-start-start-radius',
+    ]);
+    await expectMatchingStyles(page, testId, referenceId, 'panel-inner', [
+      'padding-top',
+      'background-color',
+      'border-end-start-radius',
+    ]);
+  });
 
   test('collapsible-nested-closed: chevron transform, after opening', async ({ page }) => {
     const expected = await read(
@@ -170,23 +172,18 @@ test.describe('nested Collapsible isolation', () => {
     );
   });
 
-  for (const [part, property] of [
-    ['trigger', 'background-color'],
-    ['chevron', 'color'],
-  ] as const) {
-    test(`collapsible-nested-framed-in-flat: ${part} ${property}, hovered`, async ({ page }) => {
-      await reference(page, 'collapsible-reference-default-open', 'trigger').hover();
-      const expected = await read(
-        reference(page, 'collapsible-reference-default-open', part),
-        property,
-      );
-      await nested(page, 'collapsible-nested-framed-in-flat', 'trigger').hover();
-      await expect(nested(page, 'collapsible-nested-framed-in-flat', part)).toHaveCSS(
-        property,
-        expected,
-      );
-    });
-  }
+  test('framed trigger and chevron keep their hover colors inside a flat Collapsible', async ({
+    page,
+  }) => {
+    const testId = 'collapsible-nested-framed-in-flat';
+    const referenceId = 'collapsible-reference-default-open';
+    await reference(page, referenceId, 'trigger').hover();
+    const background = await read(reference(page, referenceId, 'trigger'), 'background-color');
+    const color = await read(reference(page, referenceId, 'chevron'), 'color');
+    await nested(page, testId, 'trigger').hover();
+    await expect.soft(nested(page, testId, 'trigger')).toHaveCSS('background-color', background);
+    await expect.soft(nested(page, testId, 'chevron')).toHaveCSS('color', color);
+  });
 
   test('collapsible-nested-framed-in-flat: trigger background-color, pressed', async ({ page }) => {
     // Releasing the mouse toggles a trigger, so each side is read while held, on a fresh page.
