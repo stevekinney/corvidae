@@ -1,7 +1,7 @@
 {
   "issue": "COR-2560",
   "branch": "worktree-agent-aa7c89813f4b0485e",
-  "checkedAt": "c075ec13e5e1a29bc7ca5b42b14facf396e15c56",
+  "checkedAt": "0211ccfd8df33850adac7b3e6fd83bf5c8d9ef8b",
   "briefVersion": "5bfc033455b0",
   "status": "READY",
   "criteria": [
@@ -28,7 +28,7 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "NOT VERIFIED by the worker: the capture and the design-review verdict are the coordinator's. In place: tests/e2e/fault-remediation.spec.ts calls captureForDesignReview for 'fault retryable with remediation', 'fault not retryable' and 'fault with no remediation' on /hooks (an ErrorState page state) and /reviews (the shared fault row), and 'fault warning conflict' on /reviews, at 1280 and 375 (the capture repeats a phone at 320 by 640), registered in scripts/design-review-capture.ts and design-review-capture.test.ts. The Cinder browser fixtures (error-state.playwright.ts, remaining-public-mounts.playwright.ts) were not run on this host and have no warning mount. Design round 1 (tmp/chef/charters/cor-2560-design-round-1.md) changed the row: Open Health, titled row, quiet hairline, one title per fault, no internal name; its captures are the coordinator's to re-run."
+      "evidence": "NOT VERIFIED by the worker: the capture and the design-review verdict are the coordinator's. In place: tests/e2e/fault-remediation.spec.ts calls captureForDesignReview for 'fault retryable with remediation', 'fault not retryable' and 'fault with no remediation' on /hooks (an ErrorState page state) and /reviews (the shared fault row), and 'fault warning conflict' on /reviews, at 1280 and 375 (the capture repeats a phone at 320 by 640), registered in scripts/design-review-capture.ts and design-review-capture.test.ts. The Cinder browser fixtures (error-state.playwright.ts, remaining-public-mounts.playwright.ts) were not run on this host and have no warning mount. Design round 1 (tmp/chef/charters/cor-2560-design-round-1.md) changed the row: Open Health, titled row, quiet hairline, one title per fault, no internal name; its captures are the coordinator's to re-run. Design round 2 (approved with notes): the row title is semibold with a --cinder-space-1 gap, and the spec adds a 'run hooks row fails' capture on /runs/:run for the run-hooks row."
     }
   ]
 }
