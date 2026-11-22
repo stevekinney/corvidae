@@ -448,6 +448,7 @@ describe('bureau.agents.catalog', () => {
       'bureau:child-runs-list',
       'bureau:child-runs-wait',
       'bureau:discover-agents',
+      'bureau:runs-timeline',
       'issue-refund',
       'lookup-order',
       'settings-get',
