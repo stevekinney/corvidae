@@ -1,14 +1,13 @@
 import { activity, Engine, workflow, type WorkflowTimelineEntry } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import {
-  projectRunTimeline,
-  RUN_TIMELINE_ENTRY_LIMIT,
-  runStatusOfTask,
-  serveRunTimeline,
-} from './run-timeline.ts';
+import { RUN_TIMELINE_ENTRY_LIMIT, runStatusOfTask, serveRunTimeline } from './run-timeline.ts';
 
 const SECRET = 'PRIVATE-STEP-PAYLOAD-5e90';
+
+/** What the run's steps are served as, whatever the run's kind and status. */
+const projectRunTimeline = (entries: readonly WorkflowTimelineEntry[]) =>
+  serveRunTimeline('agent', 'completed', entries);
 
 function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry {
   return {

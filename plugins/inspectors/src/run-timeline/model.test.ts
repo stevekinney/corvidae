@@ -4,13 +4,15 @@ import { describe, expect, it } from 'bun:test';
 import {
   buildTimelineModel,
   describeChange,
-  readTimeline,
   runIdOf,
   timelineOfResult,
   type Timeline,
 } from './model.ts';
 
 type TimelineEntry = Timeline['entries'][number];
+
+/** The timeline a host answered, read the way a tool result is read. */
+const readTimeline = (value: unknown) => timelineOfResult({ structuredContent: value });
 
 const entry = (overrides: Partial<TimelineEntry> & { step: number }): TimelineEntry => ({
   label: `step-${String(overrides.step)}`,

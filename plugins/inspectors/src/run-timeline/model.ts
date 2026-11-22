@@ -76,7 +76,7 @@ function readEntry(value: unknown): TimelineEntry | undefined {
  * cannot read refuses the whole answer: a waterfall with a step missing would mislead more than
  * one that says it could not be read.
  */
-export function readTimeline(value: unknown): Timeline | undefined {
+function readTimeline(value: unknown): Timeline | undefined {
   if (!isRecord(value) || !Array.isArray(value['entries'])) return undefined;
   const { runId, kind, runStatus, truncated } = value;
   if (typeof runId !== 'string') return undefined;

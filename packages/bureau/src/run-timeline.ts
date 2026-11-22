@@ -37,17 +37,13 @@ export interface RunTimelineEntry {
   readonly tries: number;
 }
 
-/** A run's timeline as served, and whether the engine held more entries than were returned. */
-export interface RunTimeline {
-  readonly entries: readonly RunTimelineEntry[];
-  readonly truncated: boolean;
-}
-
 /**
  * The served timeline of `entries`, in the engine's order and at most {@link RUN_TIMELINE_ENTRY_LIMIT}
  * long. `tries` is counted over all of the engine's entries, so a cut never lowers it.
  */
-export function projectRunTimeline(entries: readonly WorkflowTimelineEntry[]): RunTimeline {
+function projectRunTimeline(
+  entries: readonly WorkflowTimelineEntry[],
+): Pick<ServedRunTimeline, 'entries' | 'truncated'> {
   const attempts = new Map<string, number>();
   const identityOf = (entry: WorkflowTimelineEntry): string | undefined =>
     entry.stepIndex === undefined ? undefined : `${String(entry.stepIndex)}:${entry.operationType}`;
@@ -110,7 +106,11 @@ export function runStatusOfTask(
 }
 
 /** A run's timeline as `bureau.runs.timeline` and the `runs-timeline` agent tool serve it. */
-export interface ServedRunTimeline extends RunTimeline {
+export interface ServedRunTimeline {
+  /** The steps, in the order the run took them. */
+  readonly entries: readonly RunTimelineEntry[];
+  /** Whether the engine held more entries than were returned. */
+  readonly truncated: boolean;
   /** Which kind of run the id named. */
   readonly kind: 'agent' | 'workflow';
   /** Where the run stands as the timeline is read. */
