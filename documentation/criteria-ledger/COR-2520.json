@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2520",
+  "branch": "worktree-agent-adee41fbafb0fefd1",
+  "checkedAt": "a32f5336ac4814c208e33332d89ccce1f11805d8",
+  "briefVersion": "b63b5a7cedba",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "workflow-faults.test.ts: every workflow action (get, ls, start, signal, cancel, cancel --dry-run) and schedule failure under --json prints {ok:false,error:{code,message,retryable,remediation?}}; code is the server data.weftCode (cli-fault.ts faultFromWireError); CLI-found failures use Unavailable, Unauthorized, Forbidden, MethodNotFound, InvalidParams, NotFound."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "renderFault prints the message then a Try: line when remediation is present; exit codes unchanged (workflow-mutations, workflow-lifecycle, schedule tests pass unchanged; workflow-faults.test.ts asserts exit 2 plus Try line, and no Try line when absent)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "tool-faults.test.ts: the seven built-in tools and workflow tools return isError:true, structuredContent {code,message,retryable,remediation?} and the message as text; verified through the SDK server with an in-process client (mcp/server.ts forwards structuredContent)."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/src/cli/__fixtures__/workflow-get-not-found.golden.json pins the JSON error of weft workflow get --json for a missing workflow, asserted in workflow-faults.test.ts."
+    }
+  ]
+}

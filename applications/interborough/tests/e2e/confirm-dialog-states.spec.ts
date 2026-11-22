@@ -12,16 +12,18 @@
  * the deployments and their builds); what a person cannot cause on demand is answered at the
  * JSON-RPC transport, as the other state specifications do: a dry run held in flight, a commit held
  * in flight, a refused commit, a stale confirmation token, a routing pointer that names the build
- * being drained, a dead letter. Nothing is committed: every bulk operation and every drain is
- * answered here, and the held ones are released when a test ends. The capture runs only when
- * `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` is set; an ordinary run reaches each state and checks it
- * is the one named.
+ * being drained, a dead letter. Nothing is committed: every bulk operation is answered here, no
+ * test presses a drain's confirm button, and the requests a test holds are answered when it ends
+ * (`afterEach`), because a request still paused when the page's routes are dropped is let through
+ * to the host. The capture runs only when `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` is set; an ordinary
+ * run reaches each state and checks it is the one named.
  *
- * The drain dialog's worker target is not drawn: the Workers page confirms a worker's drain with
- * its own dialog (`worker-confirmations.svelte`) and opens `DrainDialog` only for a deployment and
- * a build.
+ * The drain dialog's worker target and its busy state are not drawn: the Workers page confirms a
+ * worker's drain with its own dialog (`worker-confirmations.svelte`) and opens `DrainDialog` only
+ * for a deployment and a build, and both pages close it the moment the drain is confirmed, so
+ * `submitting` is never seen in it.
  */
-import type { Locator, Page } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -92,7 +94,7 @@ async function answerJsonRpc(
   page: Page,
   answer: (call: RpcCall) => Promise<Answer> | Answer,
 ): Promise<void> {
-  await page.route('**/jsonrpc', async (route) => {
+  const respond = async (route: Route): Promise<void> => {
     const parsed: unknown = JSON.parse(route.request().postData() ?? '{}');
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       await route.fallback();
@@ -129,12 +131,40 @@ async function answerJsonRpc(
       const json = (await response.json()) as { result?: unknown };
       await route.fulfill({ response, json: { ...json, result: decided.patch(json.result) } });
     }
+  };
+  await page.route('**/jsonrpc', async (route) => {
+    const work = respond(route);
+    answering.add(work);
+    try {
+      await work;
+    } finally {
+      answering.delete(work);
+    }
   });
 }
+
+/**
+ * Every request a test holds, and every handler still answering one. A request that is paused when
+ * the page's routes are removed is let through to the host: a held drain would then drain the
+ * real fleet worker, and every later specification would read a worker that stopped (COR-2547). So
+ * no test ends with a request held: `afterEach` answers each one, with the stubbed answer, and
+ * waits until the answers are sent, before the fixtures drop the routes.
+ */
+const holds: Held[] = [];
+const answering = new Set<Promise<void>>();
+
+test.afterEach(async () => {
+  for (const held of holds.splice(0)) held.release();
+  await Promise.allSettled(answering);
+});
 
 /** Requests the test holds in flight; releasing them answers each with what it was waiting for. */
 class Held {
   private readonly waiting: (() => void)[] = [];
+
+  constructor() {
+    holds.push(this);
+  }
 
   /** Waits until `release`. */
   wait(): Promise<void> {
@@ -499,7 +529,11 @@ async function openBuildDrain(
     return routingNaming(routing.current, routing.ramping);
   });
   await page.goto('/health/workers?tab=deployments');
-  const deployment = page.getByRole('region', { name: E2E_LEDGER_DEPLOYMENT_NAME, exact: true });
+  // The deployment is drawn twice when a worker of it is open (its own technical details, and the
+  // Deployments tab), so the tab's panel is what this looks in.
+  const deployment = page
+    .getByRole('tabpanel', { name: 'Deployments' })
+    .getByRole('region', { name: E2E_LEDGER_DEPLOYMENT_NAME, exact: true });
   await expect(deployment).toBeVisible();
   await deployment
     .getByRole('row')
@@ -524,13 +558,10 @@ test.describe('confirm-dialog-states: the drain dialog', () => {
     await captureDialog(page, DRAIN, 'deployment');
   });
 
-  test('deployment, with a reason, while the drain is in flight', async ({ page }) => {
-    const held = new Held();
-    await answerJsonRpc(page, async (call) => {
-      if (call.method !== 'weft.worker.deployments.drain') return undefined;
-      await held.wait();
-      return { result: {} };
-    });
+  // The dialog's busy state is not drawn: the Workers page and the deployments panel close it the
+  // moment the drain is confirmed (`handleDrainConfirm`, `confirmDrain`), so `submitting` is never
+  // seen in it. Nothing here presses the confirm button, so no drain is ever sent.
+  test('deployment, with a reason typed', async ({ page }) => {
     await page.goto(`/health/workers?worker=${E2E_FLEET_WORKER_ID}&tab=queues`);
     await page
       .getByTestId('worker-technical-details')
@@ -539,13 +570,10 @@ test.describe('confirm-dialog-states: the drain dialog', () => {
     const dialog = page.getByRole('dialog', { name: 'Drain deployment' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('textbox', { name: 'Reason' }).fill('rolling deploy #4791');
-    await dialog.getByRole('button', { name: 'Drain deployment' }).click();
-    await expect(dialog.getByRole('button', { name: 'Drain deployment' })).toHaveAttribute(
-      'aria-busy',
-      'true',
+    await expect(dialog.getByRole('textbox', { name: 'Reason' })).toHaveValue(
+      'rolling deploy #4791',
     );
-    await captureDialog(page, DRAIN, 'busy');
-    held.release();
+    await captureDialog(page, DRAIN, 'deployment-with-reason');
   });
 
   test('build, which routing does not name', async ({ page }) => {

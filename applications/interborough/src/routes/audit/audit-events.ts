@@ -299,6 +299,7 @@ function wordingOf(
     case 'schedule.missed':
     case 'schedule.fired':
     case 'schedule.created':
+    case 'schedule.updated':
     case 'schedule.paused':
     case 'schedule.resumed':
     case 'schedule.cancelled': {
@@ -311,11 +312,13 @@ function wordingOf(
             ? copy.scheduleRan
             : record.type === 'schedule.created'
               ? copy.createdSchedule
-              : record.type === 'schedule.paused'
-                ? copy.pausedSchedule
-                : record.type === 'schedule.resumed'
-                  ? copy.resumedSchedule
-                  : copy.canceledSchedule;
+              : record.type === 'schedule.updated'
+                ? copy.updatedSchedule
+                : record.type === 'schedule.paused'
+                  ? copy.pausedSchedule
+                  : record.type === 'schedule.resumed'
+                    ? copy.resumedSchedule
+                    : copy.canceledSchedule;
       return { action, target: name };
     }
     case 'tool.settled': {

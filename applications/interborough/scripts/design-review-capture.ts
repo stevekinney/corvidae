@@ -196,6 +196,9 @@ const SHOWCASE_SPECIFICATIONS = [
   // The four typed-confirmation dialogs (bulk action, purge, drain, clear dead letter) in each
   // state, which no page capture sees (COR-2547). `--grep confirm-dialog-states` selects it.
   'tests/e2e/confirm-dialog-states.spec.ts',
+  // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
+  // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
+  'tests/panels/schedule-editor-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';
