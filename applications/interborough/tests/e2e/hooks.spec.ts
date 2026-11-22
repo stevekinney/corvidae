@@ -17,6 +17,7 @@ import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
+import { pressChord } from './shortcut-support.ts';
 import { bureauCall } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 import { textLines } from './text-lines.ts';
@@ -303,12 +304,11 @@ test('opens from the sidebar and from g then k', async ({ page }) => {
   await expect(page).toHaveURL(/\/hooks$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
 
-  // Press the shortcut once the departure view is ready. Chat can still be opening a transcript
-  // after its list heading renders, holding browser input longer than the chord window.
+  // The chord is typed at the times a person presses it, so a page still painting cannot spend the
+  // chord window between its two keys (`shortcut-support.ts`).
   await page.goto('/agents');
   await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
-  await page.keyboard.press('g');
-  await page.keyboard.press('k');
+  await pressChord(page, 'k');
   await expect(page).toHaveURL(/\/hooks$/);
 });
 
