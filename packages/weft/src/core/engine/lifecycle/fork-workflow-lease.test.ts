@@ -61,17 +61,16 @@ const parked = workflow({ name: 'fork-lease-parked' })
 
 const workflows = { [twoSteps.name]: twoSteps, [parked.name]: parked };
 
-function leaseEngine(storage: Storage, extra: Partial<Parameters<typeof Engine.create>[0]> = {}) {
-  return Engine.create({
-    storage,
-    workflows,
-    ownership: 'workflow-lease',
-    workflowClaimTtl: '1m',
-    workflowClaimRenewInterval: '5s',
-    // No renewal tick, so the holder bytes a test compares change only through a write it makes.
-    backgroundTasks: 'manual',
-    ...extra,
-  });
+const leaseOptions = {
+  ownership: 'workflow-lease',
+  workflowClaimTtl: '1m',
+  workflowClaimRenewInterval: '5s',
+  // No renewal tick, so the holder bytes a test compares change only through a write it makes.
+  backgroundTasks: 'manual',
+} as const;
+
+function leaseEngine(storage: Storage) {
+  return Engine.create({ storage, workflows, ...leaseOptions });
 }
 
 /** Collect every `WeftWorkflowClaimLostWarning` emitted while `body` runs. */
@@ -185,7 +184,8 @@ describe('engine.fork under ownership: workflow-lease (COR-2635)', () => {
     const revisionV1 = await revisionFor(type, definitionV1);
     const revisionV2 = await revisionFor(type, definitionV2);
 
-    await using engine = await leaseEngine(storage);
+    // No code-registered workflows: the type is served by the two registered sources alone.
+    await using engine = await Engine.create({ storage, ...leaseOptions });
     engine.registerSource(
       workflowSource(
         { name: type, location: './v1.ts', exportName: 'v1', revision: revisionV1 },
