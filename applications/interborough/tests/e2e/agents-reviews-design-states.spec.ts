@@ -560,7 +560,7 @@ test.describe('Agent shared FormActions', () => {
         await page.goto(`/agents/${id}/edit`);
         const actions = page.getByRole('group', { name: 'Form actions' });
         await expect(actions).toBeVisible();
-        if (width >= 768) await expectSavedSummaryOnOneLine(actions);
+        await expectSavedSummaryOnOneLine(actions);
         await expect(actions.getByRole('switch', { name: editorCopy.a2aLabel })).toBeVisible();
         await expect(actions.getByText(editorCopy.a2aDescription, { exact: true })).toBeVisible();
         await expect(actions.getByRole('button')).toHaveText([
