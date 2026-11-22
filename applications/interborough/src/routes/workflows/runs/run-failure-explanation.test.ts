@@ -6,9 +6,17 @@
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import {
+  explainAnswers,
+  FAILED_RUN_EXPLANATION,
+} from '../../../lib/bureau-fixtures.test-support.ts';
 import { bureau } from '../../chat/pages.test-support.ts';
-import Harness from './run-failure-explanation.test-harness.svelte';
-import { explainAnswers, FAILED_RUN_EXPLANATION } from './run-failure-explanation.test-support.ts';
+import QueryPage from '../../chat/query-page.test-harness.svelte';
+import RunFailureExplanation from './run-failure-explanation.svelte';
+
+/** The section below a query client, as the Run page shows it. */
+const show = (pageProps: Record<string, unknown>) =>
+  render(QueryPage, { props: { page: RunFailureExplanation, pageProps } } as never);
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -24,9 +32,7 @@ describe('a failed run’s explanation', () => {
   test('AC1: reads the summary, the cause, the step, the tries, the guardrails and the remediation', async () => {
     const stub = bureau(explainAnswers());
     restore = stub.restore;
-    const { container, findByText } = render(Harness, {
-      props: { runId: 'run-1', category: 'application' },
-    });
+    const { container, findByText } = show({ runId: 'run-1', category: 'application' });
 
     await findByText(FAILED_RUN_EXPLANATION.summary);
     expect(stub.calls).toEqual([{ method: 'bureau.tasks.explain', params: { runId: 'run-1' } }]);
@@ -55,7 +61,7 @@ describe('a failed run’s explanation', () => {
 
   test('AC1: carries the anchor Chat links to, and a name for the region', async () => {
     restore = bureau(explainAnswers()).restore;
-    const { container, findByText } = render(Harness, { props: { runId: 'run-1' } });
+    const { container, findByText } = show({ runId: 'run-1' });
     await findByText(FAILED_RUN_EXPLANATION.summary);
     const region = container.querySelector('[data-run-explanation]');
     expect(region?.id).toBe('failure-explanation');
@@ -65,7 +71,7 @@ describe('a failed run’s explanation', () => {
   test('AC1: puts the stack behind a disclosure, and leaves it out when there is none', async () => {
     restore = bureau(explainAnswers()).restore;
     const stack = 'Error: boom\n    at doThing (file.ts:1:1)';
-    const withStack = render(Harness, { props: { runId: 'run-1', errorStack: stack } });
+    const withStack = show({ runId: 'run-1', errorStack: stack });
     await withStack.findByText(FAILED_RUN_EXPLANATION.summary);
     // Cinder's Collapsible toggles through a transition happy-dom cannot drive: the trigger is the
     // disclosure, and the stack is never in the open text of the section.
@@ -75,7 +81,7 @@ describe('a failed run’s explanation', () => {
     expect(part(withStack.container, 'remediation')?.textContent).not.toContain('doThing');
     withStack.unmount();
 
-    const without = render(Harness, { props: { runId: 'run-1' } });
+    const without = show({ runId: 'run-1' });
     await without.findByText(FAILED_RUN_EXPLANATION.summary);
     expect(without.queryByRole('button', { name: 'Show the error details' })).toBeNull();
   });
@@ -90,9 +96,7 @@ describe('a failed run’s explanation', () => {
         verdicts: [],
       }),
     ).restore;
-    const { container, findByText } = render(Harness, {
-      props: { runId: 'run-1', category: 'application' },
-    });
+    const { container, findByText } = show({ runId: 'run-1', category: 'application' });
     await findByText(FAILED_RUN_EXPLANATION.summary);
     const badge = part(container, 'cause')?.querySelector('.cinder-badge');
     expect(badge?.textContent?.trim()).toBe('timeout');
@@ -107,7 +111,7 @@ describe('a failed run’s explanation', () => {
   test('shows the engine’s category as a badge and invents nothing when the Bureau cannot explain', async () => {
     const stub = bureau({}, () => new Response('{}', { status: 404 }));
     restore = stub.restore;
-    const { container } = render(Harness, { props: { runId: 'run-1', category: 'system' } });
+    const { container } = show({ runId: 'run-1', category: 'system' });
     await waitFor(() =>
       expect(container.querySelector('[data-run-failure-category]')?.textContent?.trim()).toBe(
         'system',
@@ -121,7 +125,7 @@ describe('a failed run’s explanation', () => {
     restore = bureau({
       'bureau.tasks.explain': () => new Promise(() => undefined),
     }).restore;
-    const { container } = render(Harness, { props: { runId: 'run-1' } });
+    const { container } = show({ runId: 'run-1' });
     expect(container.querySelector('[data-explanation]')).toBeNull();
     expect(container.querySelector('.cinder-badge')).toBeNull();
   });

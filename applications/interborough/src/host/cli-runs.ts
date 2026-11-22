@@ -384,9 +384,10 @@ async function cancel(
 
 /** A run's explanation as the lines a person reads: the sentence, then each fact, then what to do. */
 function explanationText(explanation: RecordValue): string {
+  const words = (value: unknown): string => (typeof value === 'string' ? value : '');
   const cause = record(explanation['cause']) ?? {};
   const step = record(explanation['step']);
-  const lines = [String(explanation['summary'] ?? '')];
+  const lines = [words(explanation['summary'])];
   const category = cause['category'];
   lines.push(`Cause: ${typeof category === 'string' ? category : 'not classified'}`);
   for (const [label, key] of [
@@ -395,17 +396,18 @@ function explanationText(explanation: RecordValue): string {
   ] as const) {
     if (typeof cause[key] === 'string') lines.push(`${label}: ${cause[key]}`);
   }
-  if (step !== undefined) lines.push(`Step: ${String(step['index'])} ${String(step['label'])}`);
+  if (step !== undefined && typeof step['index'] === 'number')
+    lines.push(`Step: ${step['index']} ${words(step['label'])}`);
   if (typeof explanation['tries'] === 'number') lines.push(`Tries: ${explanation['tries']}`);
   const verdicts = Array.isArray(explanation['verdicts']) ? explanation['verdicts'] : [];
   for (const verdict of verdicts.map(record)) {
     if (verdict === undefined) continue;
     const at = typeof verdict['step'] === 'number' ? ` at step ${verdict['step']}` : '';
-    lines.push(`Guardrail: ${String(verdict['name'])} (${String(verdict['outcome'])})${at}`);
+    lines.push(`Guardrail: ${words(verdict['name'])} (${words(verdict['outcome'])})${at}`);
   }
-  lines.push(`Next: ${String(explanation['remediation'] ?? '')}`);
+  lines.push(`Next: ${words(explanation['remediation'])}`);
   const commands = Array.isArray(explanation['nextCommands']) ? explanation['nextCommands'] : [];
-  for (const command of commands) lines.push(`  ${String(command)}`);
+  for (const command of commands) lines.push(`  ${words(command)}`);
   return lines.join('\n');
 }
 
@@ -467,7 +469,7 @@ async function retry(
   }
   return {
     ...response,
-    data: { kind: 'workflow', ...(record(response.data) ?? {}), id: qualified('workflow', rawId) },
+    data: { kind: 'workflow', ...record(response.data), id: qualified('workflow', rawId) },
   };
 }
 

@@ -332,7 +332,8 @@ describe('CLI run control', () => {
       ['runs', 'retry', 'w1', '--step', '0'],
       ['runs', 'retry'],
     ]) {
-      expect([refused, (await executeCli(refused, { fetch })).exitCode]).toEqual([refused, 2]);
+      const result = await executeCli(refused, { fetch });
+      expect([refused, result.exitCode]).toEqual([refused, 2]);
     }
     // Retry has no preview, so a request for one is refused rather than sent.
     expect(parseCliArguments(['runs', 'retry', 'w1', '--dry-run'])).toMatchObject({ exitCode: 2 });

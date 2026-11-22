@@ -60,18 +60,28 @@ async function fixtureHost(): Promise<{ served: Served; dependencies: CliClientD
   };
 }
 
+/** The status the Bureau holds of the instance `runId` of the `digest` workflow. */
+async function instanceStatus(served: Served, runId: string): Promise<string | undefined> {
+  const run = await served.bureau.workflows!.getRun(runId);
+  return run?.status;
+}
+
 async function failedInstance(served: Served, runId: string): Promise<void> {
   await served.bureau.durableEngine()!.start('digest', null, { id: runId });
-  await waitUntil(async () => (await served.bureau.workflows!.getRun(runId))?.status === 'failed', {
+  await waitUntil(async () => (await instanceStatus(served, runId)) === 'failed', {
     message: `workflow run ${runId} failed`,
   });
 }
 
 async function failedTask(served: Served): Promise<string> {
   const handle = await served.bureau.tasks.start('writer', 'go');
-  await waitUntil(async () => (await served.bureau.tasks.get(handle.id))?.status === 'failed', {
-    message: `task ${handle.id} failed`,
-  });
+  await waitUntil(
+    async () => {
+      const task = await served.bureau.tasks.get(handle.id);
+      return task?.status === 'failed';
+    },
+    { message: `task ${handle.id} failed` },
+  );
   await served.bureau.internals.taskRegistry.flush();
   return handle.id;
 }
@@ -138,10 +148,9 @@ describe('interborough runs explain', () => {
     const { served, dependencies } = await fixtureHost();
     control.writerDown = false;
     await served.bureau.durableEngine()!.start('digest', null, { id: 'ok-digest' });
-    await waitUntil(
-      async () => (await served.bureau.workflows!.getRun('ok-digest'))?.status === 'completed',
-      { message: 'the digest completes' },
-    );
+    await waitUntil(async () => (await instanceStatus(served, 'ok-digest')) === 'completed', {
+      message: 'the digest completes',
+    });
 
     const text = await executeCli(['runs', 'explain', 'ok-digest'], dependencies);
     expect(text.exitCode).toBe(2);
@@ -192,10 +201,9 @@ describe('interborough runs retry', () => {
       runId: 'retried-digest',
       step: 1,
     });
-    await waitUntil(
-      async () => (await served.bureau.workflows!.getRun('retried-digest'))?.status === 'completed',
-      { message: 'the retried run completes' },
-    );
+    await waitUntil(async () => (await instanceStatus(served, 'retried-digest')) === 'completed', {
+      message: 'the retried run completes',
+    });
   });
 
   // spawn-free: the CLI runs in this process against a real Bureau handler.
@@ -209,7 +217,7 @@ describe('interborough runs retry', () => {
     );
     expect(wrong.exitCode).toBe(1);
     expect(wrong.stderr).toContain('no step 2');
-    expect((await served.bureau.workflows!.getRun('stepped-digest'))?.status).toBe('failed');
+    expect(await instanceStatus(served, 'stepped-digest')).toBe('failed');
 
     control.writerDown = false;
     const right = await executeCli(
@@ -226,10 +234,9 @@ describe('interborough runs retry', () => {
     expect(task.exitCode).toBe(2);
     control.writerDown = false;
     await served.bureau.durableEngine()!.start('digest', null, { id: 'fine-digest' });
-    await waitUntil(
-      async () => (await served.bureau.workflows!.getRun('fine-digest'))?.status === 'completed',
-      { message: 'the digest completes' },
-    );
+    await waitUntil(async () => (await instanceStatus(served, 'fine-digest')) === 'completed', {
+      message: 'the digest completes',
+    });
     const completed = await executeCli(['runs', 'retry', 'fine-digest'], dependencies);
     expect(completed.exitCode).toBe(1);
     expect(completed.stderr).toContain('not failed');
@@ -259,10 +266,9 @@ describe('the commands an explanation returns', () => {
       const result = await executeCli(argumentsOf(line), dependencies);
       expect([line, result.exitCode, result.stderr]).toEqual([line, 0, '']);
     }
-    await waitUntil(
-      async () => (await served.bureau.workflows!.getRun('listed-digest'))?.status === 'completed',
-      { message: 'the retried run completes' },
-    );
+    await waitUntil(async () => (await instanceStatus(served, 'listed-digest')) === 'completed', {
+      message: 'the retried run completes',
+    });
   });
 
   // spawn-free: the CLI runs in this process against a real Bureau handler.

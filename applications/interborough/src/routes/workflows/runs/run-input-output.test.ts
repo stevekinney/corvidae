@@ -11,10 +11,14 @@ import type { WorkflowState } from '@lostgradient/weft';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
-import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
+import {
+  contextDetailFixture,
+  explainAnswers,
+  FAILED_RUN_EXPLANATION,
+  taskFixture,
+} from '../../../lib/bureau-fixtures.test-support.ts';
 import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
 import { bureau, landAt } from '../../chat/pages.test-support.ts';
-import { explainAnswers, FAILED_RUN_EXPLANATION } from './run-failure-explanation.test-support.ts';
 import Harness from './run-input-output.test-harness.svelte';
 import { payloadViewPreference } from './run-payload-view.svelte.ts';
 
