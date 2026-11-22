@@ -170,6 +170,8 @@ export type DataTableProps<Row extends DataTableRow = DataTableRow> = Omit<
    * @default "640px"
    */
   stackBelow?: string | false;
+  /** Fit the table to its container and use flat rows when it stacks. Defaults to false. */
+  fit?: boolean;
   /**
    * Draws the content of every body cell, in place of the plain value, for cells that hold more
    * than text: a checkbox, a select, a name with its identifier beneath. Render
@@ -255,4 +257,4 @@ export type DataTableProps<Row extends DataTableRow = DataTableRow> = Omit<
    * `<table>` itself, target `.cinder-data-table table` from this class.
    */
   class?: string;
-};
+} & ({ fit?: false } | { fit: true; resizable?: false; virtualized?: false });

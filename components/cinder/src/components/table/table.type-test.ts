@@ -10,6 +10,8 @@
  */
 import type { Component } from 'svelte';
 
+import type { DataTableProps } from '../data-table/data-table.types.ts';
+
 import TableBody from '../table-body/table-body.svelte';
 import TableCell from '../table-cell/table-cell.svelte';
 import TableHeaderCell from '../table-header-cell/table-header-cell.svelte';
@@ -30,3 +32,12 @@ void cell;
 void header;
 void headerCell;
 void row;
+
+// DataTable preserves the compositional Table layout constraints on its public props.
+const data = { columns: [], rows: [] };
+const fit: DataTableProps = { ...data, fit: true, selectable: 'multiple' };
+// @ts-expect-error Fit layout cannot resize columns.
+const resizableFit: DataTableProps = { ...data, fit: true, resizable: true };
+// @ts-expect-error Fit layout cannot virtualize rows.
+const virtualizedFit: DataTableProps = { ...data, fit: true, virtualized: true };
+void [fit, resizableFit, virtualizedFit];

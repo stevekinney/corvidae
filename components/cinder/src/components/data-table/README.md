@@ -61,6 +61,7 @@ Pass `onRowOpen` and `openRowId` to make each row open a detail pane. Rows take 
 | `caption` | `string` | no | — | Visual caption rendered as a `<caption>` element above the table. |
 | `class` | `string` | no | — | Additional class names merged onto DataTable's root wrapper element (the `<div class="cinder-data-table">` that contains the table). To style the `<table>` itself, target `.cinder-data-table table` from this class. |
 | `density` | `"comfortable"` \| `"condensed"` \| `"spacious"` | no | — | Vertical padding density for header and body cells. Defaults to `'comfortable'`. |
+| `fit` | `boolean` | no | — | Fit the table to its container and use flat rows when it stacks. Defaults to false. |
 | `height` | `string` | no | — | CSS block-size for the virtualized native scroll container. Defaults to `"24rem"` when `virtualized` is true. |
 | `openRowId` | `string` \| `null` | no | — | Id of the open row, the one a detail pane shows. It is marked `aria-current` and drawn highlighted. Ids are the ones `getRowId` returns. |
 | `overscan` | `number` | no | — | Extra body rows rendered before and after the visible virtualized window. Defaults to 5. |
