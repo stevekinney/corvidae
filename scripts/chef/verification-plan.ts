@@ -4,6 +4,7 @@ import {
   reachesPlaygroundDeployment,
   readWorkspaces,
 } from '../../applications/playground/scripts/ignore-build.ts';
+import { computedPathTests } from '../computed-path-tests.ts';
 
 export const assignmentVersion = 1 as const;
 
@@ -336,7 +337,6 @@ const COMPONENT_DIRECTORIES = [
   /^scripts\/browser-fixtures\/src\/fixtures\/([\w-]+)\.svelte$/,
 ];
 
-const CINDER = 'components/cinder/';
 const CINDER_SOURCE = 'components/cinder/src/';
 const FIXTURE_TESTS = 'scripts/browser-fixtures/tests/';
 const E2E_DIRECTORY = 'applications/interborough/tests/e2e/';
@@ -604,13 +604,10 @@ function unitTestsFor(changed: readonly string[], context: EvidenceContext): Pla
     for (const test of selection.tests)
       if (runsUnderBunTest(test)) target.paths.add(strip(selection.directory, test));
   }
-  // The import graph misses `api-contract.test.ts`, which reads component files by a computed path.
-  if (changed.some((path) => path.startsWith(CINDER))) {
-    const target = lane('components/cinder');
-    for (const path of context.paths)
-      if (/^components\/cinder\/src\/[^/]+\.test\.ts$/.test(path) && runsUnderBunTest(path))
-        target.paths.add(strip('components/cinder', path));
-  }
+  // The import graph misses tests that read workspace files by a computed path, such as Cinder's
+  // `api-contract.test.ts`; `scripts/computed-path-tests.ts` lists them for both planners.
+  for (const { path, workspace } of computedPathTests(changed, context.paths))
+    if (runsUnderBunTest(path)) lane(workspace).paths.add(strip(workspace, path));
   return [...byWorkspace]
     .filter(([, { paths, full }]) => paths.size > 0 || full)
     .map(([workspace, { paths, full }]) => ({ workspace, paths: [...paths].toSorted(), full }))
