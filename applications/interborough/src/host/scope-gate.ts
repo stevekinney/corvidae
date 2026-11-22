@@ -47,6 +47,10 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.runs.compare', 'runs:read'],
   // COR-2532: why a run failed, from what is stored about it: identifiers and guardrail names only.
   ['bureau.tasks.explain', 'runs:read'],
+  // COR-2534: a model's longer explanation of a failed run: reading what is stored is a read of the
+  // run, and writing one spends tokens and changes the task's record, so it is a write.
+  ['bureau.tasks.explanation.get', 'runs:read'],
+  ['bureau.tasks.explanation.generate', 'runs:write'],
   // COR-2113: every check result links to the run or goal it judged, so the list is a read of runs.
   ['bureau.checks.list', 'runs:read'],
   ['bureau.workflows.start', 'runs:write'],

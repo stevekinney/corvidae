@@ -437,6 +437,39 @@ export async function explainRunFailure(
 }
 
 /**
+ * The longer explanation of a failed agent run that a model wrote when the owner asked
+ * (`bureau.tasks.explanation.generate`, COR-2534): the text, the model that wrote it
+ * (`<provider>/<model>`), when, and what it cost, which is its own and not part of the run's usage.
+ */
+export type ModelExplanation = BureauOutput<'bureau.tasks.explanation.generate'>['explanation'];
+
+/**
+ * The explanation a model wrote of the failed agent run `runId`, or `null` when nobody asked one.
+ * It calls no model, so reading it again costs nothing.
+ */
+export async function readModelExplanation(
+  runId: string,
+  options?: Options,
+): Promise<ModelExplanation | null> {
+  const answer = await bureauClient['bureau.tasks.explanation.get']({ runId }, options);
+  return answer.explanation;
+}
+
+/**
+ * Asks the Bureau's model to explain the failed agent run `runId` at more length, and stores the
+ * text on the task, replacing the one it held. It spends a model's tokens, so it is called only
+ * when the person asks. With no provider connected it is a fault whose remediation says to connect
+ * one.
+ */
+export async function generateModelExplanation(
+  runId: string,
+  options?: Options,
+): Promise<ModelExplanation> {
+  const answer = await bureauClient['bureau.tasks.explanation.generate']({ runId }, options);
+  return answer.explanation;
+}
+
+/**
  * The Bureau's answer to a cancellation: the task, the receipt, and the task's view when the
  * Bureau sends it.
  */

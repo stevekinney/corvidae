@@ -9,7 +9,7 @@
    * read the host did not answer says so.
    */
   import { Text, VisuallyHidden } from '@lostgradient/cinder';
-  import { FAILURE_EXPLANATION_LABELS } from '@lostgradient/interborough-plugin/failure-explanation';
+  import { failureExplanationHeading } from '@lostgradient/interborough-plugin/failure-explanation';
 
   import FailureExplanation from './failure-explanation.svelte';
   import type { ExplanationView } from './view.svelte.ts';
@@ -17,6 +17,10 @@
   let { view }: { view: ExplanationView } = $props();
 
   const state = $derived(view.state);
+  // A run that did not fail has no failure to explain, so its page is not headed "Why this run failed".
+  const heading = $derived(
+    failureExplanationHeading(state.kind === 'refused' ? state.refusal.reason : undefined),
+  );
 </script>
 
 <VisuallyHidden role="status" aria-live="polite" id="explanation-status">
@@ -24,7 +28,7 @@
 </VisuallyHidden>
 
 <main aria-labelledby="explanation-title" class="panel-page" data-state={state.kind}>
-  <Text as="h1" variant="h3" id="explanation-title">{FAILURE_EXPLANATION_LABELS.region}</Text>
+  <Text as="h1" variant="h3" id="explanation-title">{heading}</Text>
 
   {#if state.kind === 'explained'}
     <FailureExplanation model={state.model} />

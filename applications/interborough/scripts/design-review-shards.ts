@@ -49,6 +49,8 @@ export const SPECIFICATION_WEIGHTS: Readonly<Record<string, number>> = {
   'schedule-editor-states.spec.ts': 110,
   // Six states at four widths each, every one reached from a fresh mount of the panel.
   'failure-explanation-states.spec.ts': 50,
+  // Three states at four widths each, every one from a fresh failed run of the failing agent.
+  'run-explain-further.spec.ts': 45,
   // Ten states at four widths each, one panel mount apiece.
   'run-timeline-states.spec.ts': 80,
 };

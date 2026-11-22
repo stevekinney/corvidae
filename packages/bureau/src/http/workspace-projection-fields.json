@@ -2482,6 +2482,20 @@
     "$.verdicts[].outcome",
     "$.verdicts[].step"
   ],
+  "output:bureau.tasks.explanation.generate": [
+    "$.explanation",
+    "$.explanation.costUsd",
+    "$.explanation.generatedAt",
+    "$.explanation.model",
+    "$.explanation.text"
+  ],
+  "output:bureau.tasks.explanation.get": [
+    "$.explanation",
+    "$.explanation|anyOf[0].costUsd",
+    "$.explanation|anyOf[0].generatedAt",
+    "$.explanation|anyOf[0].model",
+    "$.explanation|anyOf[0].text"
+  ],
   "output:bureau.tasks.get": [
     "$.actor",
     "$.agentName",

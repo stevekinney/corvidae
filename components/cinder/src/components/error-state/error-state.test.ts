@@ -522,6 +522,48 @@ describe('ErrorState neutral tone', () => {
     expect(neutral.get('background')).toBe('var(--cinder-surface-inset)');
   });
 
+  test('a bordered neutral row draws its box in the muted border a list row uses, not a status weight', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const neutral = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='neutral']",
+    );
+    expect(neutral.get('--_cinder-error-state-edge')).toBe('var(--cinder-border-muted)');
+  });
+
+  test('measure holds a state to a readable width, and is off by default', async () => {
+    const plain = render(ErrorState, {
+      props: { title: 'Gone', description: '', variant: 'row', tone: 'neutral' },
+    });
+    expect(
+      plain.container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-measure'),
+    ).toBe(false);
+    plain.unmount();
+
+    const measured = render(ErrorState, {
+      props: { title: 'Gone', description: '', variant: 'row', tone: 'neutral', measure: true },
+    });
+    expect(
+      measured.container.querySelector('.cinder-error-state')?.hasAttribute('data-cinder-measure'),
+    ).toBe(true);
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    expect(
+      declarationsFor(css, '.cinder-error-state[data-cinder-measure]').get('max-inline-size'),
+    ).toBe('70ch');
+    // The default state sets no width of its own beyond filling its column.
+    expect(declarationsFor(css, '.cinder-error-state').get('max-inline-size')).toBeUndefined();
+  });
+
+  test('a row’s glyph sits on the title’s first line, not the middle of its lines', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const glyph = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-glyph",
+    );
+    expect(glyph.get('align-self')).toBe('flex-start');
+    expect(glyph.get('margin-block-start')).toContain('1lh');
+  });
+
   test('announce raises a neutral state to an alert', () => {
     const { container, queryByRole } = render(ErrorState, {
       props: { title: 'Gone', description: 'Deleted.', tone: 'neutral', announce: true },
@@ -737,7 +779,8 @@ describe('ErrorState bordered', () => {
     for (const [tone, token] of [
       ['danger', '--cinder-status-danger-border'],
       ['warning', '--cinder-status-warning-border'],
-      ['neutral', '--cinder-status-neutral-border'],
+      // Nothing failed, so a neutral row is drawn in the muted hairline list rows use (COR-2534).
+      ['neutral', '--cinder-border-muted'],
     ] as const) {
       const { container } = render(ErrorState, {
         props: { title: 'Failed.', description: 'Nope.', variant: 'row', bordered: true, tone },

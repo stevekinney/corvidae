@@ -4,6 +4,7 @@ import {
   buildExplanationModel,
   failureCategoryLabel,
   failureCategoryTone,
+  failureExplanationHeading,
   refusalSentence,
   type Explanation,
 } from './failure-explanation.ts';
@@ -91,6 +92,10 @@ describe('the words of a run’s explanation (COR-2543)', () => {
     const message = 'This run has not failed, so there is no failure to explain';
     const sentence = refusalSentence({ reason: 'run-not-failed', message, remediation: null });
     expect(sentence).toBe('This run didn’t fail, so there’s nothing to explain.');
+    // Its heading does not claim a failure, and every other state's does.
+    expect(failureExplanationHeading('run-not-failed')).toBe('Run explanation');
+    expect(failureExplanationHeading(null)).toBe('Why this run failed');
+    expect(failureExplanationHeading(undefined)).toBe('Why this run failed');
     // No run identifier, no quoted status.
     expect(sentence).not.toMatch(/["“”]|run-\d/);
     expect(refusalSentence({ reason: null, message: 'Not found', remediation: null })).toBe(

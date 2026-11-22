@@ -356,6 +356,72 @@ describe('CLI run control', () => {
     expect(JSON.parse(json.stdout).data).toEqual(explanation);
   });
 
+  // spawn-free: injected fetch replaces the management process for the model's explanation call.
+  test('COR-2534 AC6: `runs explain --model` asks a model and prints what it wrote, with its name and cost', async () => {
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const explanation = {
+      text: 'The card network declined the charge.\n\nCheck the card on file.',
+      model: 'anthropic/claude-haiku-5-5',
+      generatedAt: '2026-11-21T10:00:00.000Z',
+      costUsd: 0.0123,
+    };
+    const fetch: NonNullable<Parameters<typeof executeCli>[1]>['fetch'] = async (_input, init) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '') as {
+        method: string;
+        params: Record<string, unknown>;
+      };
+      calls.push(body);
+      return jsonRpc(body.method, { explanation });
+    };
+    const text = await executeCli(['runs', 'explain', 'task:run-1', '--model'], { fetch });
+    const json = await executeCli(['runs', 'explain', 'run-1', '--model', '--output', 'json'], {
+      fetch,
+    });
+
+    // Only the model call: the stored-facts read is not made, and no run kind is needed.
+    expect(calls).toMatchObject([
+      { method: 'bureau.tasks.explanation.generate', params: { runId: 'run-1' } },
+      { method: 'bureau.tasks.explanation.generate', params: { runId: 'run-1' } },
+    ]);
+    expect(text.exitCode).toBe(0);
+    expect(text.stdout.split('\n')).toEqual([
+      'The card network declined the charge.',
+      '',
+      'Check the card on file.',
+      '',
+      'Written by anthropic/claude-haiku-5-5 at 2026-11-21T10:00:00.000Z',
+      'Cost of this explanation: $0.01',
+    ]);
+    expect(JSON.parse(json.stdout).data).toEqual({ explanation });
+  });
+
+  // spawn-free: injected fetch replaces the management process; the server answers no provider.
+  test('COR-2534 AC4: with no provider connected, `--model` is a refusal that says to connect one', async () => {
+    const result = await executeCli(['runs', 'explain', 'run-1', '--model'], {
+      fetch: async () =>
+        Response.json({
+          jsonrpc: '2.0',
+          id: 'x',
+          error: {
+            code: -32000,
+            message: 'No model is connected to write the explanation',
+            data: {
+              weftCode: 'UnsupportedCapability',
+              httpStatus: 501,
+              remediation: 'Connect a provider in Settings, under Models.',
+            },
+          },
+        }),
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('No model is connected');
+    expect(result.stderr).toContain('Connect a provider');
+    // `--model` is a flag of `runs` that takes no value.
+    expect(parseCliArguments(['runs', 'explain', 'run-1', '--model=x'])).toMatchObject({
+      exitCode: 2,
+    });
+  });
+
   // spawn-free: injected fetch replaces the management process for the retry call.
   test('COR-2533: retries a workflow instance, naming the step only when asked', async () => {
     const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
