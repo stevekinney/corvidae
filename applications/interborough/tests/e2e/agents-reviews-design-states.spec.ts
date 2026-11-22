@@ -732,7 +732,7 @@ async function expectSavedSummaryOnOneLine(actions: Locator): Promise<void> {
 
 test.describe('Agent shared FormActions', () => {
   for (const width of WIDTHS) {
-    test(`captures a saved agent's shared FormActions at ${width} pixels`, async ({
+    test(`/agents/:agent/edit captures a saved agent's shared FormActions at ${width} pixels`, async ({
       page,
       request,
     }) => {
@@ -765,7 +765,7 @@ test.describe('Agent shared FormActions', () => {
   }
 
   for (const width of WIDTHS) {
-    test(`keeps the shared FormActions beside a duplicate refusal at ${width} pixels`, async ({
+    test(`/agents/new keeps the shared FormActions beside a duplicate refusal at ${width} pixels`, async ({
       page,
       pageErrors,
     }) => {
@@ -823,7 +823,7 @@ test.describe('Agent shared FormActions', () => {
   }
 
   for (const width of WIDTHS) {
-    test(`keeps the shared FormActions visible while saving at ${width} pixels`, async ({
+    test(`/agents/:agent/edit keeps the shared FormActions visible while saving at ${width} pixels`, async ({
       page,
       request,
     }) => {
@@ -877,7 +877,7 @@ test.describe('Agent shared FormActions', () => {
     test.describe(`at ${width} pixels with a coarse pointer`, () => {
       test.use({ viewport: { width, height: 640 }, hasTouch: true, isMobile: true });
 
-      test('keeps the shared FormActions actions reachable above phone navigation', async ({
+      test('/agents/new keeps the shared FormActions actions reachable above phone navigation', async ({
         page,
       }) => {
         await page.goto('/agents/new');
@@ -938,7 +938,7 @@ test.describe('Agent shared FormActions', () => {
     });
   }
 
-  test('keeps the same shared FormActions after Try it opens and closes at 768 pixels', async ({
+  test('/agents/:agent/edit keeps the same shared FormActions after Try it opens and closes at 768 pixels', async ({
     page,
     request,
   }) => {
