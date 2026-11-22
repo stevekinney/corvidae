@@ -448,6 +448,34 @@ describe('results', () => {
     expect(runs.items.map((run) => run.id)).toEqual([runId]);
   });
 
+  it('bounds manual-start idempotency keys under one owner and workflow, regardless of body', async () => {
+    const served = await serve();
+    const id = `w${'x'.repeat(63)}`;
+    await served.bureau.workflows!.create(id, DEFINITION);
+    const idempotencyKey = 'r'.repeat(200);
+
+    const first = await ownerRpc(served.owner, 'bureau.workflows.start', {
+      id,
+      idempotencyKey,
+      input: { alpha: 1, beta: 2 },
+    });
+    const replay = await ownerRpc(served.owner, 'bureau.workflows.start', {
+      id,
+      idempotencyKey,
+      input: { beta: 2, alpha: 1 },
+    });
+    const changed = await ownerRpc(served.owner, 'bureau.workflows.start', {
+      id,
+      idempotencyKey,
+      input: { alpha: 3, beta: 2 },
+    });
+
+    expect(first.error).toBeUndefined();
+    expect(replay.result?.['runId']).toBe(first.result?.['runId']);
+    expect(changed.result?.['runId']).toBe(first.result?.['runId']);
+    expect((await served.bureau.durableEngine()!.list({ type: id })).items).toHaveLength(1);
+  });
+
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
     const binding = workspaceAdministratorDirectory();
     const runtime = createManualRuntimeServices();

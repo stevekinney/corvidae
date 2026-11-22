@@ -568,6 +568,35 @@ describe('a start whose answer is lost', () => {
     expect(requests[1]?.['idempotencyKey']).toBe(requests[0]?.['idempotencyKey']);
   });
 
+  test('uses a new idempotency key after a lost answer when the validated input changes', async () => {
+    const { container, findByText } = open('/workflows/digest/run');
+    const requests: Array<Record<string, unknown>> = [];
+    stub?.on('bureau.workflows.start', (params) => {
+      requests.push({ ...params });
+      if (requests.length <= 2) throw new TypeError('Failed to fetch');
+      return { runId: 'run-new-input', workflow: 'digest', workflowVersion: 'version-1' };
+    });
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'weather');
+    await fireEvent.click(primary(root));
+    expect(await findByText(COPY.startMaybe)).not.toBeNull();
+    await fireEvent.input(field(root, 'Topic'), { target: { value: 'storms' } });
+    await fireEvent.click(primary(root));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(await findByText(COPY.startMaybe)).not.toBeNull();
+    await fireEvent.input(field(root, 'Topic'), { target: { value: 'weather' } });
+    await fireEvent.click(primary(root));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest/runs/run-new-input'));
+
+    expect(requests.map((request) => request['input'])).toEqual([
+      { topic: 'weather' },
+      { topic: 'storms' },
+      { topic: 'weather' },
+    ]);
+    expect(requests[1]?.['idempotencyKey']).not.toBe(requests[0]?.['idempotencyKey']);
+    expect(requests[2]?.['idempotencyKey']).toBe(requests[0]?.['idempotencyKey']);
+  });
+
   test('reuses one idempotency key when Start run retries a code workflow after a lost answer', async () => {
     const { container, findByText } = open('/workflows/order-processing/run');
     const requests: Array<Record<string, unknown>> = [];
@@ -844,6 +873,50 @@ describe('on a schedule', () => {
     await fireEvent.click(primary(root));
     await waitFor(() => expect(root.querySelector('[aria-invalid="true"]')).toBeTruthy());
     expect(stub?.callsTo('POST /schedules')).toEqual([]);
+  });
+
+  test('keeps a submitted schedule choice and input through a deferred name lookup', async () => {
+    const held = Promise.withResolvers<void>();
+    let lookupStarted = false;
+    const { container } = open(
+      '/workflows/order-processing/run',
+      {},
+      AUTHORIZATION_SCOPES,
+      (queryClient) => {
+        const fetchQuery = queryClient.fetchQuery.bind(queryClient);
+        queryClient.fetchQuery = (options) => {
+          if (options.queryKey[0] !== 'run-setup-schedule-names') return fetchQuery(options);
+          lookupStarted = true;
+          return held.promise.then(() => fetchQuery(options));
+        };
+      },
+    );
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'refund');
+    await chooseSchedule(root);
+
+    try {
+      await fireEvent.click(primary(root));
+      await waitFor(() => expect(lookupStarted).toBe(true));
+      expect(primary(root).disabled).toBe(true);
+      expect(root.querySelector('[data-testid="run-setup-fields"]')?.hasAttribute('inert')).toBe(
+        true,
+      );
+      expect(stub?.callsTo('POST /schedules')).toEqual([]);
+      await fireEvent.input(field(root, 'Topic'), { target: { value: 'changed' } });
+      const now = root.querySelector<HTMLInputElement>('input[type="radio"][value="now"]');
+      if (now === null) throw new Error('The Now option is missing');
+      await fireEvent.click(now);
+      await fireEvent.click(primary(root));
+    } finally {
+      held.resolve();
+    }
+
+    await waitFor(() => expect(stub?.callsTo('POST /schedules')).toHaveLength(1));
+    expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({
+      input: { topic: 'refund' },
+    });
+    expect(stub?.world.engineStarts).toEqual([]);
   });
 
   test('refuses to create a schedule while a custom cron field on screen is out of range', async () => {
