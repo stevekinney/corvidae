@@ -1,7 +1,7 @@
 {
   "issue": "COR-2528",
   "branch": "chef/cor-2528-health-run-rows",
-  "checkedAt": "4363444dade3c3f677805ce6577d0f53abb28b58",
+  "checkedAt": "5c510f22ba41f3ed7f65b9b8c127aede2c52f82d",
   "briefVersion": "4f7fb514bd2a",
   "status": "READY",
   "criteria": [
@@ -33,7 +33,7 @@
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "tests/e2e/run-attention-states.spec.ts: a stalled run is found through Health's Needs attention (row opens /runs/<id>, the page shows the stalled note) and through the Runs list's Needs attention chip (asserts the page asked the Bureau for stalled, looping and overspending, and lists the settled overspending run and the three-state run). Authored but not run on this host; CI run recorded in the return."
+      "evidence": "tests/e2e/run-attention-states.spec.ts: a stalled run is found through Health's Needs attention (row opens /runs/<id>, the page shows the stalled note) and through the Runs list's Needs attention chip (asserts the page asked the Bureau for stalled, looping and overspending, and lists the settled overspending run and the three-state run). Run in Chromium on this host at the owner's coordinator's request (12 of 12 passed, light); CI run recorded in the return."
     }
   ]
 }
