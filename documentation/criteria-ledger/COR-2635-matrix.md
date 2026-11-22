@@ -1,0 +1,44 @@
+# COR-2635 outcome matrix: `engine.fork` under `ownership: 'workflow-lease'`
+
+The fork path creates a workflow id nothing has claimed. This matrix records how that path takes, uses and releases the fork id's claim and its epoch, the durable result of each interleaving, and the test that pins it. Test paths are relative to `packages/weft/src/core/engine/` unless stated otherwise; `lifecycle/fork-workflow-lease.test.ts` is abbreviated to `fork-workflow-lease`.
+
+## Root cause
+
+`fork()` (`lifecycle/transition.ts`) committed the fork's create batch through `commitForkWrite` and then `commitFencedEngineWrite(internals, <fork id>, ...)`. Under `workflow-lease` a non-null workflow id routes to `fencedCommitForWorkflow` (`fenced-write.ts`), which fences the write on `wf-owner-epoch:<fork id>` at the epoch this engine's `WorkflowClaimRegistry` tracks for that id. The id was minted by `crypto.randomUUID()` a few lines earlier and nothing ever acquired it, so `currentEpochBytes(<fork id>)` was `null` and `haltWorkflowClaim` ran before any storage call. It emitted `WeftWorkflowClaimLostWarning` and threw `EngineDeposedError`. Its "another engine now holds it at a newer epoch" wording is that function's fixed text; no other engine was involved, and no fork record or claim was written. `start()`, delayed-start fire and bulk retry avoid this by folding the claim's `acquire` into their enabling write (`workflow-claim-fold.ts`); fork was the one creating entry point that did not.
+
+## The claim's lifecycle after the fix
+
+- **Take:** `commitForkWrite` (`lifecycle/fork-build-binding.ts`) calls `prepareWorkflowClaimFold(<fork id>)`, which reads `wf-owner-epoch:<fork id>` (absent for a fresh id) and builds the acquire fragment: conditions "holder absent" and "epoch equals what was read", plus operations that write epoch `n + 1` and this engine's holder. The fragment joins the fork's own conditions (the catalog entry bytes and the inherited build's removal tombstone being absent) and operations (`wf:`, checkpoint, visibility, attributes, headers and the build stamp) in one `storageConditionalBatch`. The fork's first write is therefore fenced by the acquire itself.
+- **Record:** only once that batch commits does `recordFoldedAcquire` install the epoch in the registry. `launchWorkflowFromCheckpoint` then starts the run, and the execution attempt captures that epoch.
+- **Use:** every later write for the fork (checkpoints, signals, the terminal write) goes through `commitFencedEngineWrite(<fork id>)` and is fenced on `wf-owner-epoch:<fork id>` equal to that epoch. Renewal keeps the holder alive.
+- **Release:** the terminal write releases the holder, and the epoch record stays. If the launch fails after the commit, `releaseUnlaunchedForkClaim` releases the claim at the exact epoch held, unless the run is already executing here.
+- **Unchanged modes:** under `none` and `lease`, and on a `workflow-lease` engine with no registry, no fold applies. The commit is fenced exactly as before: on the lease epoch under `lease`, unfenced under `none`, and it fails closed with no registry.
+
+## Interleavings
+
+| Interleaving | What happens | Durable result | Pinned by |
+| --- | --- | --- | --- |
+| No other engine, fork of a settled run | The fold's conditions hold, the batch commits, the run executes under epoch 1 and completes | Fork `completed`; `wf-owner-epoch:<fork id>` present; no holder; no claim-lost warning | `fork-workflow-lease`: "forks a settled run, acquires the fork id in its create batch, and releases it at the end" |
+| No other engine, fork with `revision` | As above, with the fork pinned to the requested installed revision | Fork `completed` with `revision` set to the target and the target revision's result; no holder | `fork-workflow-lease`: "forks onto another installed revision and reads the result that revision returns" |
+| Another engine holds the source workflow's lease (source parked, still running) | The fork reads the source's state, checkpoint, headers and catalog entry, and writes only keys of the fork id. No condition or write names the source's `wf-owner-epoch` or `wf-owner-holder` | Fork runs under the forking engine's claim; the source's epoch and holder bytes are identical before and after; the holder is not deposed, and its next fenced writes on the source commit; no claim-lost warning on either engine | `fork-workflow-lease`: "forks a run another engine holds without touching that engine's claim or deposing it" |
+| Another engine claims the fork id between the fold's read and the commit | The holder-absent and epoch conditions fail, so the batch writes nothing. `claimConflict` is true, so the fork throws `WorkflowClaimUnavailableError`, not `EngineDeposedError`, and the registry records nothing | Only the other engine's holder exists for that id; no `wf:` record and no checkpoint for it. Unreachable in practice, because the id is a fresh UUID | `fork-workflow-lease`: "writes nothing when another engine claims the fork id between the fork's read and its commit" |
+| The catalog entry is removed under the commit (a `removeWorkflowRevision()` race) | The fork's own catalog condition loses while the fold's conditions hold, so the loss is reported as `WorkflowRevisionUnavailableError` | No fork record, no holder, nothing tracked | `fork-workflow-lease`: "still reports a catalog entry removed under the commit as the revision race, not a claim loss" |
+| The forking engine crashes between creating the fork and claiming it | No such window: creating and claiming are one atomic batch. A crash before the commit leaves nothing; a crash after leaves both | Before the commit: nothing. After the commit: fork `running`, holder of the crashed engine. When its TTL lapses, any `workflow-lease` engine's reclaim pass takes it at the next epoch and replays from the fork's checkpoint | By construction (one batch). Reclaiming an expired holder: `ownership-bootstrap.test.ts`, "reclaims an expired stranded claim and skips a still-live one, via renewalTask.runOnce()" |
+| The launch fails in process after the commit | `releaseUnlaunchedForkClaim` releases the claim at the exact epoch, because nothing executes the run | Fork `running`, epoch present, no holder, so the next reclaim pass drives it; nothing tracked locally | `fork-workflow-lease`: "gives the fork id's claim back when the launch fails after the create batch committed" |
+| `ownership: 'lease'` and `'none'` | Unchanged: no fold; fenced on the lease epoch under `lease`, unfenced under `none` | As before the change | `lease-deposition.test.ts`, `lifecycle/fork-revision-catalog-race.test.ts`, `lifecycle/fork-checkpoint-cas-baseline.test.ts`, `../__tests__/workflow-fork.test.ts`, `fork-compare.test.ts`, `deployment-build-binding-guard.test.ts` |
+| Bureau's default posture | A fork through `bureau.durableEngine()` with no ownership override | Fork `completed`; `wf-owner-epoch:<fork id>` present; no holder | `packages/bureau/src/http/management/workflow-run-fork.test.ts` |
+
+## Other entry points that create a workflow on a caller's behalf
+
+| Entry point | Where the claim is taken | Same defect |
+| --- | --- | --- |
+| `engine.start`, `engine.prepare`, idempotent start | Folded into the create batch: `persistStartBatch` in `lifecycle/start-commit.ts` | No |
+| `startOrSignal` create | `lifecycle/start-or-signal-create.ts`, through `startWorkflow` and so `buildAndCommitStartBatch` | No |
+| Child workflows (`ctx.startChild`) | `createChildWorkflowOperationCallbacks` in `callback-creators-bundles.ts`, through `startWorkflow` | No |
+| Scheduled and triggered runs | `schedule-run.ts`, through `callbacks.startWorkflow` | No |
+| Delayed start (`startAt`, `startAfter`) | The create batch is deliberately claim-less; the timer fire folds the acquire (`delayed-start-commit.ts`) | No |
+| `retryFailed` and `retryFailedAll` (same id) | Folded into the reactivation batch (`commitFailedWorkflowReactivation` in `bulk-operations-retry.ts`); the checkpoint-absent fallback restarts through `startWorkflow` | No |
+| `engine.fork`, with or without `revision` or `fromStep` | Before: none (the defect). After: folded into the create batch (`lifecycle/fork-build-binding.ts`) | Fixed here |
+| Reset or retry-as-new | No such entry point exists: the engine has no public reset, continue-as-new or retry-as-new operation (`resetWorkflow` in the worker strategies clears in-memory state only) | Not applicable |
+
+Every other `commitFencedEngineWrite` call site with a non-null workflow id writes to a workflow that already exists, whose claim was taken by one of the rows above, by the standalone acquire before resume (`lifecycle/standalone-claim-acquire.ts`), or by a reclaim.
