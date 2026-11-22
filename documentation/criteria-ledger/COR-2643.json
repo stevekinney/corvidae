@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2643",
+  "branch": "chef/cor-2643-targeted-unit-lane",
+  "checkedAt": "6666d09f2e771132f441b7ed650c7d221a8314ad",
+  "briefVersion": "70c63168b1e8",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Job 137210197430 (host lane): targeted-checks.yml ran `bun test --conditions browser --conditions svelte` on src/host paths; under `browser` Prettier resolves to prettier/standalone.mjs, which has no resolveConfig, so bureau-client-generation.test.ts failed to load (918 pass, 1 fail, 1 error); reproduced locally with and without the conditions. Job 137210197473 (UI lane): UNIT_PATHS held 30 Playwright specs (tests/e2e and tests/panels) because verification-plan.ts unitTestsFor took every file the import graph marks as a test, `.spec.ts` included; bunfig.ui.toml ignores tests/e2e/** but not tests/panels/**, so the 7 panel specs ran under bun and threw 'did not expect test.beforeAll()' (356 pass, 7 fail, 38 files = 31 + 7). No unit test imports a spec: the brief's guess was wrong, the spec paths were named on the command line. The AggregateError: happy-dom's XMLHttpRequest, copied onto globalThis by tests/setup.ts, made Playwright's bundled source-map-support (loaded by playwright.config.ts via tests/playwright-config.test.ts, and by design-review-render-boards.ts) take the process for a browser; the first stack it formatted did a synchronous XHR that happy-dom ran as a real http request to http://localhost/<path>/playwright/lib/index.js in a child bun, refused, and that child printed the AggregateError on stderr (exit stays 0). design-review-render-boards.test.ts uses a local Bun.serve; it only shared the process. Reproduced by bisecting (render-boards + shards, playwright-config + interface-lint) and traced to SyncFetch.send from XMLHttpRequest#sendSync."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "applications/interborough/scripts/playwright-spec-boundary.test.ts scans the real import specifiers (Bun.Transpiler.scanImports, so type-only imports are skipped) of every *.test.ts in src, scripts, tests and fixtures, transitively, and fails on any .spec file reached; it has a synthetic-graph control. scripts/chef/verification-plan.ts also never selects a .spec file as a unit test (verification-plan.test.ts). Passed in focused checks."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "design-review-render-boards.test.ts already served boards from a local Bun.serve on 127.0.0.1 and fetched with Bun.fetch; the stray request was happy-dom's synchronous XHR (see AC1). tests/setup.ts now withholds happy-dom's XMLHttpRequest from globalThis, and tests/dom-preload.test.ts asserts it. Locally, render-boards + shards and playwright-config + interface-lint printed the AggregateError before the change and 0 after."
+    },
+    {
+      "id": "AC4",
+      "status": "needs-decision",
+      "evidence": "Not verified on a run: this branch changes scripts, a workflow and a test preload, not an end-to-end spec, so its targeted run cannot show a spec-only branch passing. Replay of the spec-only change (evidence-plan.ts --changed-from, applications/interborough/tests/e2e/confirm-dialog-states.spec.ts): Interborough unit lane was 140 files with 30 .spec files before, 111 with 0 after; the host lane now runs with no export conditions (pinned by dispatch-concurrency-workflow.test.ts). A targeted run on a spec-only branch after this merges is the verification."
+    }
+  ]
+}

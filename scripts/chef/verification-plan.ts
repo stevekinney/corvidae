@@ -344,6 +344,17 @@ const INTERBOROUGH_ROUTES = 'applications/interborough/src/routes/';
 const ROUTES_FILE = 'applications/interborough/src/app/routes.ts';
 const FIXTURE_SPEC_PATH = /^scripts\/browser-fixtures\/tests\/[\w.-]+\.playwright\.ts$/;
 const ISOLATED = /\.(?:slow|integration)\.test\.ts$/;
+/**
+ * A Playwright specification. Every `*.spec.*` file in the repository is one (Interborough's
+ * `tests/e2e` and `tests/panels`, the browser fixtures' `smoke.spec.ts`), and Playwright's `test`
+ * calls throw under `bun test` ("did not expect test.beforeAll() to be called here"), so the unit
+ * lanes of a dispatch never name one: the import graph selects it as a test file, but the e2e
+ * lanes run it.
+ */
+const PLAYWRIGHT_SPEC = /\.spec\.[cm]?[jt]sx?$/;
+/** Whether a selected test file can run under `bun test`: not a specification, not isolated. */
+const runsUnderBunTest = (path: string): boolean =>
+  !PLAYWRIGHT_SPEC.test(path) && !ISOLATED.test(path);
 const TEST_FILE = /\.(?:test|test-support|spec|playwright|bench)\.[cm]?[jt]sx?$/;
 const SOURCE_TEST_ID = /data-testid=(?:\{\s*)?["'`]([\w:.-]+)["'`]/g;
 
@@ -591,13 +602,13 @@ function unitTestsFor(changed: readonly string[], context: EvidenceContext): Pla
     const target = lane(selection.directory);
     if (selection.mode === 'full') target.full = true;
     for (const test of selection.tests)
-      if (!ISOLATED.test(test)) target.paths.add(strip(selection.directory, test));
+      if (runsUnderBunTest(test)) target.paths.add(strip(selection.directory, test));
   }
   // The import graph misses `api-contract.test.ts`, which reads component files by a computed path.
   if (changed.some((path) => path.startsWith(CINDER))) {
     const target = lane('components/cinder');
     for (const path of context.paths)
-      if (/^components\/cinder\/src\/[^/]+\.test\.ts$/.test(path) && !ISOLATED.test(path))
+      if (/^components\/cinder\/src\/[^/]+\.test\.ts$/.test(path) && runsUnderBunTest(path))
         target.paths.add(strip('components/cinder', path));
   }
   return [...byWorkspace]
