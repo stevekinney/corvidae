@@ -297,11 +297,9 @@
       </div>
     {/if}
   {/if}
-  {#if runs.isError || everyRun.length > 0}
-    <p class="ib-workflow-runs__all">
-      <a href={router.href(runsPath)} onclick={(event) => go(event, runsPath)}
-        >{WORKFLOW_COPY.runsAction}</a
-      >
-    </p>
-  {/if}
+  <p class="ib-workflow-runs__all">
+    <a href={router.href(runsPath)} onclick={(event) => go(event, runsPath)}
+      >{WORKFLOW_COPY.runsAction}</a
+    >
+  </p>
 </section>

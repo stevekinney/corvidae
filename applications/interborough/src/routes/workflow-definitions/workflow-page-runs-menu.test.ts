@@ -167,16 +167,13 @@ describe('the Runs tab', () => {
     expect(segment(view, 'Running', 0)).not.toBeNull();
   });
 
-  test('keeps the bar, every count at 0, over the compact empty state, whose hint names Start run', async () => {
+  test('keeps the empty state in the Runs tab, with a Start run hint and no filters', async () => {
     const view = open('/workflows/digest', { runs: [] });
     const root = await ready(view.container);
     await openTab(root, TABS.runs);
     const runs = testId(root, 'workflow-recent-runs') as HTMLElement;
     await waitFor(() => expect(runs.textContent).toContain(WORKFLOW_COPY.page.runs.emptyTitle));
-    for (const word of ['All', 'Waiting on you', 'Running', 'Done', 'Failed', 'Canceled']) {
-      expect(segment(view, word, 0)).not.toBeNull();
-    }
-    expect(view.getByRole('button', { name: TASK_COPY.startedByLabel })).not.toBeNull();
+    expect(view.queryByLabelText(WORKFLOW_COPY.page.runs.filtersLabel)).toBeNull();
     // The empty state sits in the tab, under the header and the tabs, and is not the whole page.
     expect(runs.querySelector('.cinder-empty-state')).not.toBeNull();
     expect(root.querySelector('h1')).not.toBeNull();
