@@ -41,6 +41,22 @@ interface AuditRequest {
   read: Read;
 }
 
+/** The limited route evidence a failed export assertion retains for its retry diagnosis. */
+interface ExportRouteWitness {
+  limit: unknown;
+  hasCursor: boolean;
+  classified: Read;
+  reply: 'fallback' | 'hold' | 'fail' | 'result';
+  completion: 'pending' | 'fulfilled' | 'aborted';
+}
+
+function replyKind(reply: unknown): ExportRouteWitness['reply'] {
+  if (reply === undefined) return 'fallback';
+  if (reply === 'hold') return 'hold';
+  if (reply === 'fail') return 'fail';
+  return 'result';
+}
+
 /**
  * Answers the Bureau's reads of the log. `answer` gets the kind of read and returns what to reply
  * with (a result, `'hold'` to leave it unanswered until `release`, `'fail'` for a 500), or
@@ -50,6 +66,7 @@ async function answerAudit(
   page: Page,
   answer: (read: Read) => unknown,
   gate?: Promise<void>,
+  exportWitness?: ExportRouteWitness[],
 ): Promise<void> {
   await page.route('**/jsonrpc', async (route: Route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as {
@@ -63,15 +80,38 @@ async function answerAudit(
     }
     const request: AuditRequest = { id: body.id, read: readOf(body.params ?? {}) };
     const reply = await answer(request.read);
+    const witness =
+      request.read === 'export' && exportWitness !== undefined
+        ? {
+            limit: body.params?.['limit'] ?? null,
+            hasCursor: Object.hasOwn(body.params ?? {}, 'cursor'),
+            classified: request.read,
+            reply: replyKind(reply),
+            completion: 'pending' as const,
+          }
+        : undefined;
+    if (witness !== undefined) exportWitness.push(witness);
     if (reply === undefined) {
       await route.fallback();
     } else if (reply === 'hold') {
       await gate;
       await route.fallback();
     } else if (reply === 'fail') {
-      await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
+      try {
+        await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
+        if (witness !== undefined) witness.completion = 'fulfilled';
+      } catch (error) {
+        if (witness !== undefined) witness.completion = 'aborted';
+        throw error;
+      }
     } else {
-      await route.fulfill({ json: { jsonrpc: '2.0', id: request.id, result: reply } });
+      try {
+        await route.fulfill({ json: { jsonrpc: '2.0', id: request.id, result: reply } });
+        if (witness !== undefined) witness.completion = 'fulfilled';
+      } catch (error) {
+        if (witness !== undefined) witness.completion = 'aborted';
+        throw error;
+      }
     }
   });
 }
@@ -414,55 +454,69 @@ test.describe('Health › Audit log export and loading states', () => {
       page,
       pageErrors,
       checkA11y,
-    }) => {
+    }, testInfo) => {
       pageErrors.expectEvery({
         pattern: loggedFailedResponse(500, LOGGED),
         reason: 'the test answers the export’s reads with a 500',
       });
       let failing = true;
-      await answerAudit(page, (read) => (failing && read === 'export' ? 'fail' : undefined));
+      const exportWitness: ExportRouteWitness[] = [];
+      await answerAudit(
+        page,
+        (read) => (failing && read === 'export' ? 'fail' : undefined),
+        undefined,
+        exportWitness,
+      );
       await open(page, width);
       const main = page.locator('main');
       await expect(rows(page).first()).toBeVisible();
 
       await main.getByRole('button', { name: 'Export' }).click();
 
-      // 83e
-      const alert = main.locator('.cinder-alert[data-cinder-variant="danger"]');
-      await expect(alert).toContainText(
-        'Couldn’t export. The server stopped while writing the file. Your filters are unchanged; nothing was downloaded.',
-      );
-      await expect(alert.locator('strong')).toHaveText('Couldn’t export.');
-      const again = alert.getByRole('button', { name: 'Export again' });
-      await expect(again).toBeVisible();
-      if (width >= 1280) {
-        // At the alert's right edge, not under its words.
-        const alertBox = await alert.boundingBox();
-        const againBox = await again.boundingBox();
-        const textBox = await alert.locator('.cinder-alert__content').boundingBox();
-        expect((againBox?.x ?? 0) + (againBox?.width ?? 0)).toBeLessThanOrEqual(
-          (alertBox?.x ?? 0) + (alertBox?.width ?? 0),
+      try {
+        // 83e
+        const alert = main.locator('.cinder-alert[data-cinder-variant="danger"]');
+        await expect(alert).toContainText(
+          'Couldn’t export. The server stopped while writing the file. Your filters are unchanged; nothing was downloaded.',
         );
-        expect(againBox?.x ?? 0).toBeGreaterThanOrEqual(
-          (textBox?.x ?? 0) + (textBox?.width ?? 0) - 1,
+        await expect(alert.locator('strong')).toHaveText('Couldn’t export.');
+        const again = alert.getByRole('button', { name: 'Export again' });
+        await expect(again).toBeVisible();
+        if (width >= 1280) {
+          // At the alert's right edge, not under its words.
+          const alertBox = await alert.boundingBox();
+          const againBox = await again.boundingBox();
+          const textBox = await alert.locator('.cinder-alert__content').boundingBox();
+          expect((againBox?.x ?? 0) + (againBox?.width ?? 0)).toBeLessThanOrEqual(
+            (alertBox?.x ?? 0) + (alertBox?.width ?? 0),
+          );
+          expect(againBox?.x ?? 0).toBeGreaterThanOrEqual(
+            (textBox?.x ?? 0) + (textBox?.width ?? 0) - 1,
+          );
+        }
+        // Export stays available as the retry, and the filters are as they were.
+        await expect(main.getByRole('button', { name: 'Export', exact: true })).not.toHaveAttribute(
+          'aria-disabled',
+          'true',
         );
-      }
-      // Export stays available as the retry, and the filters are as they were.
-      await expect(main.getByRole('button', { name: 'Export', exact: true })).not.toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-      await expect(main.getByLabel('Period', { exact: true })).toHaveValue('7d');
-      await captureForDesignReview(page, {
-        route: '/health/audit',
-        state: 'export-failed',
-        source: SOURCE,
-      });
-      await checkA11y(`health audit, a failed export at ${width}px`);
+        await expect(main.getByLabel('Period', { exact: true })).toHaveValue('7d');
+        await captureForDesignReview(page, {
+          route: '/health/audit',
+          state: 'export-failed',
+          source: SOURCE,
+        });
+        await checkA11y(`health audit, a failed export at ${width}px`);
 
-      failing = false;
-      await again.click();
-      await expect(alert).toHaveCount(0);
+        failing = false;
+        await again.click();
+        await expect(alert).toHaveCount(0);
+      } catch (error) {
+        await testInfo.attach('health-audit-export-route-witness.json', {
+          body: JSON.stringify(exportWitness),
+          contentType: 'application/json',
+        });
+        throw error;
+      }
     });
   }
 
