@@ -122,6 +122,25 @@ async function choose(id: string): Promise<void> {
   await fireEvent.click(field(id));
 }
 
+/** Picks the source type in Source's descriptive card choices. */
+async function chooseKind(kind: 'mcp' | 'openapi'): Promise<void> {
+  const source = field('connect-kind');
+  const choice = [...source.querySelectorAll<HTMLElement>('[role="radio"]')].find((radio) =>
+    radio.textContent?.trim().startsWith(copy.kind[kind]),
+  );
+  if (choice === undefined) throw new Error(`no source choice ${kind}`);
+  await fireEvent.click(choice);
+}
+
+/** Picks URL or file in the OpenAPI document segmented control. */
+async function chooseSpecification(specification: 'url' | 'file'): Promise<void> {
+  const segment = field('connect-specification').querySelector<HTMLElement>(
+    `[data-cinder-segment-value="${specification}"]`,
+  );
+  if (segment === null) throw new Error(`no specification segment ${specification}`);
+  await fireEvent.click(segment);
+}
+
 /** The button whose text is `label`. */
 function buttonLabelled(label: string, within: ParentNode = document.body): HTMLElement {
   const found = [...within.querySelectorAll<HTMLElement>('button')].find(
@@ -477,8 +496,8 @@ describe('an OpenAPI spec', () => {
 
   /** Chooses the OpenAPI file `name` for the page to read. */
   async function upload(name: string): Promise<void> {
-    await choose('connect-kind-openapi');
-    await choose('connect-specification-file');
+    await chooseKind('openapi');
+    await chooseSpecification('file');
     Object.defineProperty(field('connect-file'), 'files', {
       value: [new File(['openapi: 3.1.0'], name, { type: 'application/yaml' })],
       configurable: true,
@@ -595,7 +614,7 @@ describe('an OpenAPI spec', () => {
   test('says it is fetching a spec from its address, with a Cancel that stops it (row 34s)', async () => {
     const { host, findByTestId } = await openPage();
     const reading = hold('POST', '/host/openapi-inspection');
-    await choose('connect-kind-openapi');
+    await chooseKind('openapi');
     await type('connect-specification-address', 'https://api.example.com/openapi.json');
 
     await fireEvent.change(field('connect-specification-address'));
