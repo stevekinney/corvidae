@@ -1,7 +1,7 @@
 {
   "issue": "COR-2548",
   "branch": "chef/cor-2548-settings-mcp-follow-up",
-  "checkedAt": "04ad9a6e7a23a36ff7ddd9e6c6bd525e195c7047",
+  "checkedAt": "649ffad625d3464a6a762d872cc47a811404447f",
   "briefVersion": "2fb3bb285c65",
   "status": "READY",
   "criteria": [
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "Capture state long-name in health-workers-states.spec.ts at 375 (and 320), now also at 1280 (and 1920). Round 1: .ib-worker-detail__title-row is flex-wrap nowrap, the name flex 0 1 auto with min-inline-size 0, the Copy button flex none, so the button stays beside the name on its first row; the spec asserts the button is beside the name, on its first row, inside the pane. No Cinder component pairs a title with a trailing action that holds beside a wrapped title (SectionHeading and PageHeader move actions to their own row), so the row is drawn locally."
+      "evidence": "Capture state long-name in health-workers-states.spec.ts at 375 (and 320), now also at 1280 (and 1920). Round 2 cause: CopyButton renders a tooltip wrapper span and a live-region div beside the button, so the row's flex items were the wrapper (shrunk to 13.7px while the 34px button overflowed it, edge at 363 against the pane's right edge 343) and the sr-only div; flex none on the button's class never reached the wrapper. The button now sits in its own .ib-worker-detail__copy box with flex none; the spec passes alone. Round 1: .ib-worker-detail__title-row is flex-wrap nowrap, the name flex 0 1 auto with min-inline-size 0, the Copy button flex none, so the button stays beside the name on its first row; the spec asserts the button is beside the name, on its first row, inside the pane. No Cinder component pairs a title with a trailing action that holds beside a wrapped title (SectionHeading and PageHeader move actions to their own row), so the row is drawn locally."
     }
   ]
 }
