@@ -435,12 +435,12 @@ for (const width of WIDTHS) {
     // Access: the spend limit saves when the field is left.
     const access = AGENT_PAGE_COPY.access;
     await page.goto(`/agents/${encodeURIComponent(ECHO)}/access`);
-    const spend = page.getByLabel(access.spendLabel);
+    const spend = page.getByRole('spinbutton', { name: access.spendLabel });
     await expect(spend).toBeEnabled();
     await refuse(page, 'bureau.agents.overrides.update', STALE);
     await spend.fill('4');
     await spend.press('Tab');
-    await expect(page.locator('[data-failed="spend"]')).toBeVisible();
+    await expect(page.locator('[data-failed="spend-chat"]')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/agents/:agent/access (a plugin’s code agent)',
       state: 'stale write',
