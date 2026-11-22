@@ -197,6 +197,8 @@ describe('the identity of every request', () => {
       'bureau.agents.list',
       'bureau.workflows.list',
       'bureau.tasks.get',
+      // The failure explanation's one read (COR-2543).
+      'bureau.tasks.explain',
       'bureau.runs.timeline',
     ]);
     const visibilities = Object.fromEntries(
@@ -222,8 +224,16 @@ describe('the identity of every request', () => {
       },
       { uri: 'ui://inspectors/schedule-editor/v1', mimeType: 'text/html;profile=mcp-app' },
       { uri: 'ui://inspectors/run-timeline/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/failure-explanation/v1', mimeType: 'text/html;profile=mcp-app' },
       { uri: 'ui://inspectors/run-comparison/v1', mimeType: 'text/html;profile=mcp-app' },
     ]);
+    // The failure explanation opens from the explain tool (COR-2543).
+    const explain = (tools as Array<{ name: string; _meta?: unknown }>).find(
+      (tool) => tool.name === 'bureau.tasks.explain',
+    );
+    expect(explain?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://inspectors/failure-explanation/v1' },
+    });
     // The pending-review app opens from the existing `bureau.reviews.list`; it adds no tool name.
     const reviewList = tools.find((tool) => tool.name === 'bureau.reviews.list') as {
       _meta?: unknown;

@@ -802,6 +802,7 @@
      failed. A failed instance draws it above Input and output, any other after it. -->
 {#snippet instanceHappened(entries: NonNullable<typeof instanceEntryList>, startedAt: number)}
   <RunInstanceHappened
+    runId={initialRunId}
     {entries}
     {startedAt}
     progress={failureProgress}
@@ -1017,10 +1018,16 @@
                 waitingForSignals={workflow?.waitingForSignals}
                 builtIn={isBuiltInWorkflow(task.data.workflow?.type ?? '')}
               />
-              <RunPanels taskId={task.data.id} />
+              <RunPanels taskId={task.data.id} failed={task.data.status === 'failed'} />
             {:else if notFound && workflow !== undefined}
-              <!-- A run only the engine holds has no task: its panels are given the engine's run. -->
-              <RunPanels workflowId={workflow.id} fork={workflow.forkedFrom !== undefined} />
+              <!-- A run only the engine holds has no task: its panels are given the engine's run. One
+                   placed `when: 'failed'` shows only when the run failed (COR-2543), and each panel
+                   only when it has something to say about it, such as the comparison on a fork. -->
+              <RunPanels
+                workflowId={workflow.id}
+                fork={workflow.forkedFrom !== undefined}
+                failed={instanceFailed}
+              />
             {/if}
             {#if workflow !== undefined && !readOnlyRun}<RunChange {engine} {workflow} />{/if}
           {/snippet}

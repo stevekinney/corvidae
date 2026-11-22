@@ -19,13 +19,20 @@
   /**
    * The run the panels show: a Bureau task (an agent run), or a run only the workflow engine holds
    * (a workflow instance, a fork among them), which has no task. Exactly one is given. A workflow
-   * instance also says whether it is a fork, which decides whether the comparison has anything to say.
+   * instance also says whether it is a fork, which decides whether the comparison has anything to
+   * say. `failed` is whether the run failed.
+   *
+   * One rule mounts a panel, from two parts that both must hold: the panel has a `run` placement
+   * that is on (no `when`, or `when: 'failed'` and the run failed, COR-2543, so a run that did not
+   * fail shows no card with nothing to say), and the host's scope table says the panel has something
+   * to say about this kind of run (`run-panel-scope.ts`, COR-2544).
    */
-  type RunPanelsProps =
+  type RunPanelsProps = (
     | { taskId: string; workflowId?: never; fork?: never }
-    | { workflowId: string; fork: boolean; taskId?: never };
+    | { workflowId: string; fork: boolean; taskId?: never }
+  ) & { failed?: boolean };
 
-  let { taskId, workflowId, fork }: RunPanelsProps = $props();
+  let { taskId, workflowId, fork, failed = false }: RunPanelsProps = $props();
 
   /** What the page knows about the run, for the panels' mounting rules (`run-panel-scope.ts`). */
   const runScope = $derived<RunPanelRun>(
@@ -57,8 +64,15 @@
   // composition keeps every app's `ui://` URI unique across plugins, so the URI keys the list.
   const panels = $derived(
     (apps.data ?? [])
-      .filter((candidate) => candidate.placements.some((placement) => placement.kind === 'run'))
-      // A card is mounted only when it has something to say about this run.
+      // A run placement that is on: no `when`, or `when: 'failed'` and the run failed.
+      .filter((candidate) =>
+        candidate.placements.some(
+          (placement) =>
+            placement.kind === 'run' &&
+            (placement.when === undefined || (placement.when === 'failed' && failed)),
+        ),
+      )
+      // A card is mounted only when it has something to say about this kind of run.
       .filter((candidate) => panelHasSomethingToSay(candidate.plugin, candidate.app, runScope))
       .toSorted((left, right) =>
         left.plugin < right.plugin ? -1 : left.plugin > right.plugin ? 1 : 0,

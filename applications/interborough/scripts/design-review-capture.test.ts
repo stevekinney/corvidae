@@ -126,6 +126,8 @@ describe('parseArguments', () => {
       'tests/e2e/runs-states.spec.ts',
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/run-failure-explanation.spec.ts',
+      'tests/e2e/failure-explanation-chat.spec.ts',
       'tests/e2e/run-cost-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/checks-states.spec.ts',
@@ -143,6 +145,7 @@ describe('parseArguments', () => {
       'tests/panels/schedule-editor-states.spec.ts',
       'tests/e2e/fork-comparison-states.spec.ts',
       'tests/panels/run-comparison-states.spec.ts',
+      'tests/panels/failure-explanation-states.spec.ts',
       'tests/panels/run-timeline-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
@@ -215,6 +218,8 @@ describe('parseArguments', () => {
       'tests/e2e/runs-states.spec.ts',
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/run-failure-explanation.spec.ts',
+      'tests/e2e/failure-explanation-chat.spec.ts',
       'tests/e2e/run-cost-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/checks-states.spec.ts',
@@ -231,6 +236,7 @@ describe('parseArguments', () => {
       'tests/panels/schedule-editor-states.spec.ts',
       'tests/e2e/fork-comparison-states.spec.ts',
       'tests/panels/run-comparison-states.spec.ts',
+      'tests/panels/failure-explanation-states.spec.ts',
       'tests/panels/run-timeline-states.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
@@ -288,6 +294,8 @@ describe('parseArguments', () => {
       'tests/e2e/runs-states.spec.ts',
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/run-failure-explanation.spec.ts',
+      'tests/e2e/failure-explanation-chat.spec.ts',
       'tests/e2e/run-cost-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/checks-states.spec.ts',
@@ -304,6 +312,7 @@ describe('parseArguments', () => {
       'tests/panels/schedule-editor-states.spec.ts',
       'tests/e2e/fork-comparison-states.spec.ts',
       'tests/panels/run-comparison-states.spec.ts',
+      'tests/panels/failure-explanation-states.spec.ts',
       'tests/panels/run-timeline-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);

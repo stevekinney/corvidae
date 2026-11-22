@@ -502,9 +502,9 @@ export const RUN_DETAIL_COPY = {
       runAgain: 'Run again',
       openStep: (at: number): string => `Open step ${String(at)}`,
       errorDetails: 'Show the error details',
+      /** The Tries row of the explanation when the history says how long the tries took (row 55b). */
+      triesIn: (tries: string, took: string): string => `${tries}, ${took} in all`,
     },
-    /** The sentence under the reason: where to look when it keeps failing, with Health as a link. */
-    checkHealth: { before: 'If it keeps failing, check ', link: 'Health', after: '.' },
     /** The Version row: which version the run ran, and where it stands against the current one. */
     versionCurrent: (version: string): string => `${version}, current version`,
     versionOlder: (version: string): string => `${version}, older version`,

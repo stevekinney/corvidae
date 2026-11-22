@@ -315,4 +315,145 @@ describe('CLI run control', () => {
     expect(params).toEqual({ runId: 'run-1', type: 'run.finished', limit: 2 });
     expect(JSON.parse(result.stdout).data.records[0].detail).toEqual({ safe: true });
   });
+
+  // spawn-free: injected fetch replaces the management process for the explanation call.
+  test('COR-2533: explains either kind of run by its identifier, with no kind', async () => {
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const explanation = {
+      summary: 'The step "model" failed because the code it ran raised an error.',
+      cause: { category: 'application', code: 'UNKNOWN', kind: 'generate' },
+      step: { index: 0, label: 'model' },
+      tries: null,
+      verdicts: [{ name: 'sentinel', kind: 'tripwire', outcome: 'tripwire', step: 0 }],
+      remediation: 'Read the run’s failure message.',
+      nextCommands: ['interborough runs get --kind task run-1'],
+    };
+    const fetch: NonNullable<Parameters<typeof executeCli>[1]>['fetch'] = async (_input, init) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '') as {
+        method: string;
+        params: Record<string, unknown>;
+      };
+      calls.push(body);
+      return jsonRpc(body.method, explanation);
+    };
+    const text = await executeCli(['runs', 'explain', 'task:run-1'], { fetch });
+    const json = await executeCli(['runs', 'explain', 'run-1', '--output', 'json'], { fetch });
+    expect(calls).toMatchObject([
+      { method: 'bureau.tasks.explain', params: { runId: 'run-1' } },
+      { method: 'bureau.tasks.explain', params: { runId: 'run-1' } },
+    ]);
+    expect(text.exitCode).toBe(0);
+    expect(text.stdout.split('\n')).toEqual([
+      explanation.summary,
+      'Cause: application',
+      'Code: UNKNOWN',
+      'Kind: generate',
+      'Step: 0 model',
+      'Guardrail: sentinel (tripwire) at step 0',
+      'Next: Read the run’s failure message.',
+      '  interborough runs get --kind task run-1',
+    ]);
+    expect(JSON.parse(json.stdout).data).toEqual(explanation);
+  });
+
+  // spawn-free: injected fetch replaces the management process for the retry call.
+  test('COR-2533: retries a workflow instance, naming the step only when asked', async () => {
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const fetch: NonNullable<Parameters<typeof executeCli>[1]>['fetch'] = async (_input, init) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '') as {
+        method: string;
+        params: Record<string, unknown>;
+      };
+      calls.push(body);
+      return jsonRpc(body.method, {
+        runId: 'w1',
+        step: 2,
+        workflowVersion: 'v1',
+        retryId: null,
+      });
+    };
+    const bare = await executeCli(['runs', 'retry', 'w1', '--output', 'json'], { fetch });
+    const stepped = await executeCli(['runs', 'retry', 'workflow:w1', '--step', '2'], { fetch });
+    expect(calls.map((call) => [call.method, call.params])).toEqual([
+      ['bureau.workflows.runs.retry', { runId: 'w1' }],
+      ['bureau.workflows.runs.retry', { runId: 'w1', step: 2 }],
+    ]);
+    expect(JSON.parse(bare.stdout).data).toMatchObject({ kind: 'workflow', id: 'workflow:w1' });
+    expect(stepped.exitCode).toBe(0);
+    for (const refused of [
+      ['runs', 'retry', 'w1', '--kind', 'task'],
+      ['runs', 'retry', 'w1', '--step', '0'],
+      ['runs', 'retry'],
+    ]) {
+      const result = await executeCli(refused, { fetch });
+      expect([refused, result.exitCode]).toEqual([refused, 2]);
+    }
+    // Retry has no preview, so a request for one is refused rather than sent.
+    expect(parseCliArguments(['runs', 'retry', 'w1', '--dry-run'])).toMatchObject({ exitCode: 2 });
+    expect(calls).toHaveLength(2);
+  });
+
+  // spawn-free: injected fetch replaces the management process for a retry no one answered.
+  test('COR-2533: a retry nothing answered is an unknown outcome, a refusal is not', async () => {
+    const unanswered = await executeCli(['runs', 'retry', 'w1'], {
+      fetch: async () => {
+        throw new TypeError('connection refused');
+      },
+    });
+    expect(unanswered.exitCode).toBe(7);
+    const refused = await executeCli(['runs', 'retry', 'w1'], {
+      fetch: async () =>
+        Response.json({
+          jsonrpc: '2.0',
+          id: 'x',
+          error: {
+            code: -32000,
+            message: 'Run "w1" is running, not failed.',
+            data: { weftCode: 'Unprocessable', httpStatus: 422 },
+          },
+        }),
+    });
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr).toContain('not failed');
+  });
+
+  // spawn-free: injected fetch replaces the management process; the server answers a fault.
+  test('COR-2533: a fault that can come after the retry committed stays an unknown outcome', async () => {
+    const fault = (weftCode: string, httpStatus: number) => async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 'x',
+        error: {
+          code: -32000,
+          message: `The server said ${weftCode}.`,
+          data: { weftCode, httpStatus },
+        },
+      });
+    // The server refused or found the call malformed, so nothing ran: exit 1, authorization 3, conflict 4.
+    const refusals = [
+      ['InvalidParams', 400, 1],
+      ['NotFound', 404, 1],
+      ['Unprocessable', 422, 1],
+      ['Forbidden', 403, 3],
+      ['Conflict', 409, 4],
+    ] as const;
+    for (const [weftCode, httpStatus, exitCode] of refusals) {
+      const result = await executeCli(['runs', 'retry', 'w1'], {
+        fetch: fault(weftCode, httpStatus),
+      });
+      expect([weftCode, result.exitCode]).toEqual([weftCode, exitCode]);
+    }
+    // The retry may have run when the server failed after it, say writing its receipt.
+    for (const [weftCode, httpStatus] of [
+      ['EngineFailure', 500],
+      ['Unavailable', 503],
+      ['Timeout', 504],
+    ] as const) {
+      const result = await executeCli(['runs', 'retry', 'w1', '--output', 'json'], {
+        fetch: fault(weftCode, httpStatus),
+      });
+      expect([weftCode, result.exitCode]).toEqual([weftCode, 7]);
+      expect(JSON.parse(result.stdout).error).toMatchObject({ exitCode: 7, code: weftCode });
+    }
+  });
 });

@@ -281,6 +281,7 @@ describe('a panel build that never finishes (COR-2219)', () => {
       apps: { plugin: string; app: string }[];
     };
     expect(apps.apps.map(({ app }) => app).toSorted()).toEqual([
+      'failure-explanation',
       'pending-review',
       'run-comparison',
       'run-timeline',
