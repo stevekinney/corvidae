@@ -15,7 +15,7 @@ describe('cancelResultSummary', () => {
       { cancelled: 45, failed: 2, errors: [{ id: 'wf-1', error: 'boom' }] },
       47,
     );
-    expect(summary.headline).toBe('Cancelled 45 of 47 workflows');
+    expect(summary.headline).toBe('Canceled 45 of 47 workflows');
     expect(summary.errors).toEqual([{ id: 'wf-1', error: 'boom' }]);
     expect(summary.note).toBeUndefined();
   });

@@ -2048,7 +2048,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   async function cancelUnrecoverable(unrecoverable: readonly Unrecoverable[]): Promise<void> {
     for (const entry of unrecoverable) {
       for (const runId of entry.runIds) {
-        const reason = `Cancelled at startup because it cannot resume: ${entry.reason}.`;
+        const reason = `Canceled at startup because it cannot resume: ${entry.reason}.`;
         try {
           await snapshots.recordCancellation({
             schemaVersion: 1,
@@ -2062,7 +2062,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           await engine.cancel(runId);
           if (entry.pin !== undefined) options.onPinnedUnavailable?.(pinnedIdOf(entry.pin), runId);
           options.diagnose(
-            `Cancelled instance "${runId}" of workflow "${entry.id}": ${entry.reason}.`,
+            `Canceled instance "${runId}" of workflow "${entry.id}": ${entry.reason}.`,
             undefined,
           );
         } catch (error) {
