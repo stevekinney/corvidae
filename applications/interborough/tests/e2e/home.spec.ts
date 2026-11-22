@@ -794,7 +794,6 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     expect(await animation()).not.toBe('none');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await captureForDesignReviewWithPhone(page, { route: '/', state: 'loading', source: SOURCE });
     // COR-2329: the Spotlight's and the count's placeholders were taller than the text they stand
     // for, so every section moved up about 7px when the data arrived. Measured while the clock is
     // still stopped, before the slow-load line can appear above the placeholders.
@@ -807,6 +806,9 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
         ].map(async (locator) => (await locator.boundingBox())!.y),
       );
     const topsWhileLoading = await sectionTops();
+    // Captures resize the viewport for their phone/full-height screenshots, so sample the loading
+    // geometry before that observer-only work changes the shell's scroll position.
+    await captureForDesignReviewWithPhone(page, { route: '/', state: 'loading', source: SOURCE });
     // The page settles its paint on animation frames, which a stopped clock never delivers.
     await page.clock.resume();
     await checkA11y('Home loading');
