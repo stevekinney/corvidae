@@ -10,6 +10,7 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
+import ChatPage from './chat-page.test-harness.svelte';
 import { bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -97,6 +98,63 @@ const mount = () =>
   } as never);
 
 describe('a chat that opens on an approval', () => {
+  test('keeps focus on an explicit topbar control when the joined approval arrives late', async () => {
+    let releaseAttach: (response: Response) => void = () => {
+      throw new Error('The chat did not begin attaching.');
+    };
+    serve(
+      () =>
+        new Promise<Response>((resolve) => {
+          releaseAttach = resolve;
+        }),
+    );
+    landAt('/chats/session-1');
+    const { container, findByRole } = render(ChatPage, {
+      props: { sessionId: 'session-1', title: 'Refund', agentName: 'assistant' },
+    });
+
+    const search = await findByRole('button', { name: /^Search everything/ });
+    search.focus();
+    expect(document.activeElement).toBe(search);
+    releaseAttach(sse(PARKED));
+
+    await waitFor(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
+    expect(document.activeElement).toBe(search);
+  });
+
+  test('moves focus from the matching chat opener to its joined approval', async () => {
+    let releaseAttach: (response: Response) => void = () => {
+      throw new Error('The chat did not begin attaching.');
+    };
+    serve(
+      () =>
+        new Promise<Response>((resolve) => {
+          releaseAttach = resolve;
+        }),
+    );
+    landAt('/chats/session-1');
+    const { container } = mount();
+    const opener = document.createElement('a');
+    opener.href = '/chats/session-1';
+    opener.dataset.chat = 'session-1';
+    document.body.append(opener);
+    try {
+      opener.focus();
+      expect(document.activeElement).toBe(opener);
+      releaseAttach(sse(PARKED));
+
+      const approval = await waitFor(() => {
+        const found = container.querySelector<HTMLElement>('[data-approval-decision]');
+        if (found === null) throw new Error('The approval did not render.');
+        if (document.activeElement !== found) throw new Error('The approval has not taken focus.');
+        return found;
+      });
+      expect(document.activeElement).toBe(approval);
+    } finally {
+      opener.remove();
+    }
+  });
+
   test('scrolls the approval into view and focuses it, without answering it', async () => {
     const scrolled: Element[] = [];
     const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (
