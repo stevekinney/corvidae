@@ -354,9 +354,18 @@ test.describe('/runs: badges and the Needs attention chip (COR-2528)', () => {
         looping: badges.nth(1),
         overspending: badges.nth(2),
       });
-      expect(boxes.title.width).toBeGreaterThan(40);
+      // The title's text is whole, cut by nothing: the box is as wide as the word needs, which for
+      // a title as short as "Run" is only a few pixels, so what is asserted is the cut, not a width.
+      const cut = await row
+        .locator('.cinder-stacked-list-item__title')
+        .evaluate((title) => title.scrollWidth > title.clientWidth);
+      expect(cut).toBe(false);
       for (const badge of [boxes.stalled, boxes.looping, boxes.overspending]) {
         expect(badge.x + badge.width).toBeLessThanOrEqual(boxes.frame.x + boxes.frame.width + 1);
+        // No badge overlaps the title: it is beside it or under it.
+        const beside = badge.x >= boxes.title.x + boxes.title.width - 1;
+        const under = badge.y >= boxes.title.y + boxes.title.height - 1;
+        expect(beside || under).toBe(true);
       }
       await captureForDesignReview(page, {
         route: '/runs',
