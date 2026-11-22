@@ -2424,6 +2424,24 @@
     "$|anyOf[1].taskId"
   ],
   "output:bureau.tasks.events": ["$.cursor", "$.subscriptionId"],
+  "output:bureau.tasks.explain": [
+    "$.cause",
+    "$.cause.category",
+    "$.cause.code",
+    "$.cause.kind",
+    "$.nextCommands",
+    "$.remediation",
+    "$.step",
+    "$.step|anyOf[0].index",
+    "$.step|anyOf[0].label",
+    "$.summary",
+    "$.tries",
+    "$.verdicts",
+    "$.verdicts[].kind",
+    "$.verdicts[].name",
+    "$.verdicts[].outcome",
+    "$.verdicts[].step"
+  ],
   "output:bureau.tasks.get": [
     "$.actor",
     "$.agentName",
