@@ -543,6 +543,52 @@ test.describe('a tool approval', () => {
   });
 });
 
+test.describe('a phone tool approval', () => {
+  test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('shared Reviews approval detail shows full Fields values and keeps the actions docked on a phone', async ({
+    page,
+    request,
+  }) => {
+    await withAlwaysRefundMode(request, async () => {
+      await waitingRefund(page, request, 'reviews-phone-approval', REFUND_APPROVAL);
+      const pane = paneOf(page);
+      const input = pane.getByRole('group', { name: 'Input', exact: true });
+      const reason = input.getByText('Arrived damaged', { exact: true });
+      const inputBounds = await input.boundingBox();
+      const reasonBounds = await reason.boundingBox();
+      if (inputBounds === null || reasonBounds === null) {
+        throw new Error('The reason and its Fields container must be rendered');
+      }
+      expect
+        .soft(reasonBounds.x + reasonBounds.width)
+        .toBeLessThanOrEqual(inputBounds.x + inputBounds.width);
+
+      const actions = pane.getByRole('group', { name: 'Approval actions' });
+      const targets = await actions.evaluate((group) => {
+        const buttons = Array.from(group.querySelectorAll('button'));
+        return buttons.map((button) => {
+          const { x, y, width, height } = button.getBoundingClientRect();
+          const center = document.elementFromPoint(x + width / 2, y + height / 2);
+          return { width, height, reachable: center !== null && button.contains(center) };
+        });
+      });
+      expect(targets).toHaveLength(2);
+      const [deny, approve] = targets;
+      if (deny === undefined || approve === undefined) throw new Error('Both actions are required');
+      expect.soft(Math.abs(deny.width - approve.width)).toBeLessThanOrEqual(1);
+      expect.soft(deny.height).toBeGreaterThanOrEqual(44);
+      expect.soft(approve.height).toBeGreaterThanOrEqual(44);
+      expect.soft(deny.reachable && approve.reachable).toBe(true);
+
+      const note = pane.getByRole('textbox', { name: 'Note (optional)', exact: true });
+      await note.scrollIntoViewIfNeeded();
+      await expect(note).toBeInViewport();
+      await expect(actions).toBeInViewport();
+    });
+  });
+});
+
 test.describe('a decision made in the inbox', () => {
   test('reaches the chat tab that started the run, which was never reloaded', async ({
     page,
