@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   BASE_STYLES,
   PENDING_REVIEW_STYLES,
+  RUN_COMPARISON_STYLES,
   RUN_TIMELINE_STYLES,
   SCHEDULE_EDITOR_STYLES,
   WORKFLOW_REVISION_STYLES,
@@ -15,6 +16,7 @@ describe('inspector styles', () => {
     ['base', BASE_STYLES],
     ['pending review', PENDING_REVIEW_STYLES],
     ['workflow revision', WORKFLOW_REVISION_STYLES],
+    ['run comparison', RUN_COMPARISON_STYLES],
     ['run timeline', RUN_TIMELINE_STYLES],
     ['schedule editor', SCHEDULE_EDITOR_STYLES],
   ])('the %s styles fade no disabled control', (_name, styles) => {
@@ -29,6 +31,7 @@ describe('inspector styles', () => {
     for (const styles of [
       PENDING_REVIEW_STYLES,
       WORKFLOW_REVISION_STYLES,
+      RUN_COMPARISON_STYLES,
       RUN_TIMELINE_STYLES,
       SCHEDULE_EDITOR_STYLES,
     ]) {

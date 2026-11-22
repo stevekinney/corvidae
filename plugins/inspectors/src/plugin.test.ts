@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import inspectors, {
   failureExplanation,
   pendingReview,
+  runComparison,
   runInspector,
   runTimeline,
   scheduleEditor,
@@ -27,6 +28,7 @@ describe('the inspectors plugin', () => {
         { plugin: 'inspectors', version: '1.0.1', app: scheduleEditor },
         { plugin: 'inspectors', version: '1.0.1', app: runTimeline },
         { plugin: 'inspectors', version: '1.0.1', app: failureExplanation },
+        { plugin: 'inspectors', version: '1.0.1', app: runComparison },
       ]);
     } finally {
       await host.dispose();
@@ -36,6 +38,17 @@ describe('the inspectors plugin', () => {
     expect(workflowRevisionReview.uri).toBe('ui://inspectors/workflow-revision-review/v1');
     expect(scheduleEditor.uri).toBe('ui://inspectors/schedule-editor/v1');
     expect(runTimeline.uri).toBe('ui://inspectors/run-timeline/v1');
+    expect(runComparison.uri).toBe('ui://inspectors/run-comparison/v1');
+  });
+
+  it('declares the run comparison’s run-page placement and opens it from the compare tool (COR-2544)', () => {
+    expect(runComparison.placements).toEqual([{ kind: 'run' }]);
+    expect(runComparison.opensFromTool).toBe('bureau.runs.compare');
+    expect(runComparison.allowedTools).toEqual(['bureau.runs.compare']);
+    expect(runComparison.hostOnlyTools).toBeUndefined();
+  });
+
+  it('keeps the failure explanation’s URI (COR-2543)', () => {
     // The URI is a one-way door (COR-2543): clients that opened the panel by it keep opening it.
     expect(failureExplanation.uri).toBe('ui://inspectors/failure-explanation/v1');
   });
@@ -125,6 +138,7 @@ describe('the inspectors plugin', () => {
       [scheduleEditor, 'schedule-editor'],
       [runTimeline, 'run-timeline'],
       [failureExplanation, 'failure-explanation'],
+      [runComparison, 'run-comparison'],
     ] as const) {
       const named = new Set<string>();
       // The page's script and its components (`.svelte`): a tool a component calls is listed too.
@@ -191,6 +205,7 @@ describe('the inspectors plugin', () => {
       scheduleEditor,
       runTimeline,
       failureExplanation,
+      runComparison,
     ]) {
       expect(await Bun.file(app.entry).exists()).toBe(true);
     }

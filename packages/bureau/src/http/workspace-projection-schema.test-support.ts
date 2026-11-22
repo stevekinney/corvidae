@@ -269,6 +269,7 @@ export const WORKSPACE_PROJECTION_CONFORMANCE = (() => {
                     'bureau.tasks.list',
                     'bureau.tasks.cancel',
                     'bureau.tasks.inspect',
+                    'bureau.runs.compare',
                     'bureau.tasks.respond',
                     // A model's explanation is written from the failed run's own error message.
                     'bureau.tasks.explanation.get',

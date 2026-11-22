@@ -194,6 +194,7 @@ describe('the identity of every request', () => {
       'bureau.reviews.resolve',
       'bureau.workflows.get',
       'bureau.workflows.update',
+      'bureau.runs.compare',
       // The schedule editor's reads (COR-2545); its writes are host-only and never listed here.
       'bureau.schedules.list',
       'bureau.schedules.get',
@@ -228,6 +229,7 @@ describe('the identity of every request', () => {
       { uri: 'ui://inspectors/schedule-editor/v1', mimeType: 'text/html;profile=mcp-app' },
       { uri: 'ui://inspectors/run-timeline/v1', mimeType: 'text/html;profile=mcp-app' },
       { uri: 'ui://inspectors/failure-explanation/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/run-comparison/v1', mimeType: 'text/html;profile=mcp-app' },
     ]);
     // The failure explanation opens from the explain tool (COR-2543).
     const explain = (tools as Array<{ name: string; _meta?: unknown }>).find(

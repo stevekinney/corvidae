@@ -779,6 +779,13 @@ export type SharedIdRevisionStatus_e86a595b = {
   readonly status: 'active' | 'paused' | 'cancelled';
 };
 export type SharedIndexLabel_b9e5acc3 = { readonly index: number; readonly label: string };
+export type SharedInputLabelOperationType_dfed1127 = {
+  readonly input: string;
+  readonly label: string;
+  readonly operationType: string;
+  readonly output?: string;
+  readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
+};
 export type SharedInputTypeWorkflowId_2b929ea1 = {
   readonly input: 'payload' | 'event';
   readonly type: 'start-workflow';

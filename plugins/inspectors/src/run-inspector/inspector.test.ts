@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { tick } from 'svelte';
 
 import Inspector from './inspector.svelte';
-import { buildInspectorModel, type Inspection } from './model.ts';
+import { buildInspectorModel, type Inspection, WORKFLOW_RUN_NOTICE } from './model.ts';
 import { createInspectorView } from './view.svelte.ts';
 
 const inspection: Inspection = {
@@ -129,6 +129,20 @@ describe('the run inspector page, drawn with Cinder (COR-2218)', () => {
     expect(container.textContent).toContain(
       'Gap: events from c1 are no longer retained; the stream resumes at c9.',
     );
+  });
+
+  it('says in its own words that a workflow run has no task to inspect, and offers no abort', async () => {
+    const view = createInspectorView();
+    const { container, queryByRole } = render(Inspector, {
+      props: { view, onAbort: () => undefined },
+    });
+    view.notice = WORKFLOW_RUN_NOTICE;
+    await tick();
+    expect(container.querySelector('[data-inspector-notice]')?.textContent).toBe(
+      WORKFLOW_RUN_NOTICE,
+    );
+    expect(container.querySelector('h1')?.textContent).toBe('Run inspector');
+    expect(queryByRole('button', { name: 'Abort run' })).toBeNull();
   });
 
   it('draws nothing but the live region before the first read', () => {

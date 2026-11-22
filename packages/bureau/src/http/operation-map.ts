@@ -118,6 +118,11 @@ export const OPERATION_MAP = {
     exempt:
       'composed from the task registry, the workflow runtime’s run read, and the durable engine’s timeline',
   },
+  'bureau.runs.compare': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, and the durable engine’s fork comparison',
+  },
   'bureau.tasks.explain': {
     workspaceClass: 'private-owned',
     exempt:

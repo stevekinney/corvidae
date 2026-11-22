@@ -1,10 +1,7 @@
 /**
- * Fork revision selection (WFT-117), colocated with `divergence.ts` (same
- * "pure logic module, tested via `checkpoints-tab.test.ts`'s harness, no
- * dedicated per-component test file" precedent doesn't apply here — this
- * one DOES get its own `fork-dialog.test.ts`, since `fork-dialog.svelte`
- * owns real submission/conflict-handling behavior beyond markup, unlike
- * `divergence-view.svelte`'s pure rendering).
+ * Fork revision selection (WFT-117): the pure logic `fork-dialog.svelte`
+ * reads, tested through `fork-dialog.test.ts`, since the dialog owns real
+ * submission and conflict-handling behavior beyond markup.
  *
  * `ForkOptions.revision` (`@lostgradient/weft`) is an explicit, validated
  * opt-in: omitted (the default), a fork resolves and persists the SOURCE
@@ -18,7 +15,7 @@
  * the default."
  */
 import type { ForkOptions } from '@lostgradient/weft';
-import { isWeftFault } from '@lostgradient/weft';
+import { HttpClientError, isWeftFault } from '@lostgradient/weft';
 
 export type ForkRevisionSelection =
   { readonly mode: 'source' } | { readonly mode: 'explicit'; readonly revision: string };
@@ -42,8 +39,24 @@ export function resolveForkOptions(
  * opt-in can actually cause.
  */
 export function isForkRevisionConflict(error: unknown): boolean {
-  return isWeftFault(error, 'WorkflowRevisionUnavailableError');
+  if (isWeftFault(error, 'WorkflowRevisionUnavailableError')) return true;
+  // The fork's dry run goes over JSON-RPC (COR-2538), whose fault carries the coarse `Conflict` and
+  // never the fine-grained `weftCode`, but keeps the fault's own `reason`. These three are the reasons
+  // of this error and of nothing else a fork answers: its other conflicts give their message.
+  return (
+    error instanceof HttpClientError &&
+    error.faultCode === 'Conflict' &&
+    typeof error.data?.['reason'] === 'string' &&
+    REVISION_UNAVAILABLE_REASONS.has(error.data['reason'])
+  );
 }
+
+/** Why a revision is unavailable (`WorkflowRevisionUnavailableError.reason`). */
+const REVISION_UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
+  'not-registered',
+  'legacy-ambiguous',
+  'not-installed',
+]);
 
 /**
  * The recovery sentence shown alongside a `WorkflowRevisionUnavailableError`
@@ -58,9 +71,11 @@ export function isForkRevisionConflict(error: unknown): boolean {
  * case toward the explicit picker instead.
  */
 export function forkConflictGuidance(selection: ForkRevisionSelection): string {
+  // Said in the person's words, never the engine's ("registered in this process"): the revision
+  // is not loaded, so the fork cannot run on it.
   return selection.mode === 'explicit'
-    ? 'Pick a different revision, or use the source revision instead.'
-    : 'This run’s own revision could not be resolved on this process. Use “Fork a different revision” and pick one that is currently installed.';
+    ? 'That revision isn’t loaded, so the fork can’t run on it. Pick a different revision, or use the source revision instead.'
+    : 'This run’s own revision isn’t loaded, so the fork can’t run on it. Use “Fork a different revision” and pick one that is currently installed.';
 }
 
 /** One installed revision, as the fork dialog's revision picker needs it — a narrow projection of `WorkflowRevisionRecord` (`@lostgradient/weft`). */

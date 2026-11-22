@@ -222,6 +222,12 @@ const SHOWCASE_SPECIFICATIONS = [
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
   // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
   'tests/panels/schedule-editor-states.spec.ts',
+  // A fork's comparison with its source, the fork dialog's preview, and the run panels on a
+  // workflow run's page (COR-2538). `--grep fork-comparison-states` selects it.
+  'tests/e2e/fork-comparison-states.spec.ts',
+  // The run comparison panel in a frame, in each state it draws (COR-2544). `--grep run-comparison-states`
+  // selects it.
+  'tests/panels/run-comparison-states.spec.ts',
   // The failure explanation panel, in the same kind of frame, in each state it draws (COR-2543).
   // `--grep failure-explanation-states` selects it.
   'tests/panels/failure-explanation-states.spec.ts',
