@@ -696,11 +696,16 @@ test('a worker name longer than the heading wraps and keeps its Copy button insi
         })(),
       ).size,
       inside: box.left >= pane.left && box.right <= pane.right,
+      // The button sits to the right of the name, level with its first row, never on a row below it.
+      besideTheName: box.left >= heading.getBoundingClientRect().right - 1,
+      onTheFirstRow: box.top < heading.getBoundingClientRect().top + box.height,
       pageFits: document.documentElement.scrollWidth <= innerWidth,
     };
   });
   expect(fits.rows).toBeGreaterThan(1);
   expect(fits.inside).toBe(true);
+  expect(fits.besideTheName).toBe(true);
+  expect(fits.onTheFirstRow).toBe(true);
   expect(fits.pageFits).toBe(true);
   await captureForDesignReview(page, {
     route: '/health/workers',
@@ -708,6 +713,17 @@ test('a worker name longer than the heading wraps and keeps its Copy button insi
     source: SOURCE,
   });
   await checkA11y('workers—a long worker name on a phone');
+
+  // The same name beside the list at 1280 pixels, which the capture repeats at 1920.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(detail(page)).toBeVisible();
+  await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText(name);
+  await expect(copy).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/health/workers',
+    state: 'long-name',
+    source: SOURCE,
+  });
 });
 
 test('a worker whose drain has finished reads Stopped, with Forget as its only action', async ({

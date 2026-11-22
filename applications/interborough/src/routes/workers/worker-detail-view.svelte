@@ -125,7 +125,12 @@
     <div class="ib-worker-detail__identity">
       <div class="ib-worker-detail__title-row">
         <h2 class="ib-worker-detail__name">{worker.name ?? copy.unnamed}</h2>
-        <CopyButton value={worker.id} label={copy.copyLabel} copiedLabel={copy.copied} />
+        <CopyButton
+          class="ib-worker-detail__copy"
+          value={worker.id}
+          label={copy.copyLabel}
+          copiedLabel={copy.copied}
+        />
       </div>
       <p class="ib-worker-detail__status">
         <Badge variant={badgeVariant[status]} size="sm">{status}</Badge>
@@ -172,19 +177,30 @@
     flex: 1 1 16rem;
   }
 
+  /* The Copy button stays beside the name, on the name's first row, however many rows a long name
+   * takes (COR-2548): the row never wraps, the name shrinks and wraps inside its own box, and the
+   * button keeps its size. No Cinder component pairs a title with a trailing action that holds
+   * beside a wrapped title (`SectionHeading` and `PageHeader` move their actions to a row of their
+   * own when narrow), so the pairing is drawn here. */
   .ib-worker-detail__title-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: baseline;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
+    gap: var(--cinder-space-3);
     min-width: 0;
   }
 
   .ib-worker-detail__name {
+    flex: 0 1 auto;
+    min-inline-size: 0;
     margin: 0;
     font-size: var(--cinder-text-xl);
     font-weight: 600;
     overflow-wrap: anywhere;
+  }
+
+  .ib-worker-detail__title-row :global(.ib-worker-detail__copy) {
+    flex: none;
   }
 
   .ib-worker-detail__version {

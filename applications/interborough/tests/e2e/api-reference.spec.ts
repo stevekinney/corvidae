@@ -228,7 +228,7 @@ test('Workflow sources with no workflow file is the one EmptyState and nothing e
   await captureAtEveryWidth(page, 'workflow-sources-empty', 'Workflow sources');
 });
 
-test('Operations with none listed is the one EmptyState, under the group select and its count', async ({
+test('Operations with none listed is the one EmptyState alone, with no group select or count', async ({
   page,
 }) => {
   await page.route('**/api/openapi.json', async (route) => {
@@ -241,10 +241,10 @@ test('Operations with none listed is the one EmptyState, under the group select 
 
   const panel = page.getByTestId('api-operations');
   await expect(panel).toContainText(API_REFERENCE_COPY.operations.empty.title);
-  await expect(panel).toContainText(API_REFERENCE_COPY.operations.empty.description);
-  await expect(page.getByTestId('api-operations-count')).toHaveText(
-    API_REFERENCE_COPY.operations.count(0),
-  );
+  await expect(panel).toContainText(API_REFERENCE_COPY.operations.empty.none);
+  // The state stands alone: no group select or count over a list with nothing in it.
+  await expect(page.getByTestId('api-operations-count')).toHaveCount(0);
+  await expect(panel.getByRole('combobox', { name: 'Group' })).toHaveCount(0);
   await expect(panel.getByRole('table')).toHaveCount(0);
   await captureAtEveryWidth(page, 'operations-empty', 'Operations');
 });

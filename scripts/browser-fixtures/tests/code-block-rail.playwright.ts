@@ -131,6 +131,16 @@ async function readText(page: Page, testId: string, options: { fitToken?: number
         buttonLeft: box.left,
         railLeft: meta.getBoundingClientRect().left,
         rowRights: ordered.map(([, right]) => right),
+        // Where a row of text may end: the line's own edge less its padding. A later row's glyphs
+        // stop short of it wherever a word moves down whole, so the edge is read, not the glyphs.
+        textEdge: (() => {
+          const line = host.querySelector('.cinder-code-block__line');
+          if (!(line instanceof HTMLElement)) throw new Error('No line.');
+          return (
+            line.getBoundingClientRect().right -
+            Number.parseFloat(getComputedStyle(line).paddingInlineEnd)
+          );
+        })(),
         endpointRows,
         endpointRowsWithoutRail,
         scrolls: viewport.scrollWidth > viewport.clientWidth,
@@ -177,7 +187,7 @@ for (const width of [320, 375]) {
     expect(reading.underButton).toBe(0);
     // A later row runs past the rail's left edge: the rail is not reserved down the whole block.
     // The button's own box sits inside the rail, so it is not the edge a row would stop at.
-    expect(Math.max(...reading.rowRights.slice(1))).toBeGreaterThan(reading.railLeft);
+    expect(reading.textEdge).toBeGreaterThan(reading.railLeft);
     expect(reading.scrolls).toBe(false);
     // The rail never breaks the endpoint inside a word (…/bur | eau/mcp): it sits on as many rows
     // as it would with no rail, which is one wherever a row after the first, indented by the hang,
