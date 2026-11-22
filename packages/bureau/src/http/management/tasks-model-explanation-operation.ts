@@ -92,7 +92,7 @@ function runHasNoTask(): OperationFault {
 }
 
 /** What a caller is told when no provider is connected to write the explanation. */
-export const CONNECT_PROVIDER_REMEDIATION =
+const CONNECT_PROVIDER_REMEDIATION =
   'Connect a provider in Settings, under Models, so a model can write the explanation; the stored explanation of the failure still reads without one.';
 
 /** The fault a failed model call is answered with: the model cannot be reached, answered badly, or is not allowed. */
@@ -204,9 +204,3 @@ export const tasksExplanationGenerateOperation = defineOperation<
     return { explanation };
   },
 });
-
-/** The operations of the `bureau.tasks.explanation` namespace. */
-export const bureauTasksExplanationOperations = [
-  tasksExplanationGetOperation,
-  tasksExplanationGenerateOperation,
-] as const;

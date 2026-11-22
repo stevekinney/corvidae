@@ -47,6 +47,9 @@ type ModelAnswer = 'written' | 'no provider';
  * the host.
  */
 async function answerModelCalls(page: Page, answer: ModelAnswer): Promise<void> {
+  // What the task keeps: nothing until `generate` has written it, as the Bureau does, so a read
+  // after the click (a refetch) shows the text and never blanks it.
+  let stored: typeof MODEL_EXPLANATION | null = null;
   await page.route(BUREAU_CALLS, async (route: Route) => {
     const body = route.request().postData() ?? '';
     const method = /"method":"(bureau\.tasks\.explanation\.[a-z]+)"/.exec(body)?.[1];
@@ -56,10 +59,11 @@ async function answerModelCalls(page: Page, answer: ModelAnswer): Promise<void> 
     }
     const { id } = JSON.parse(body) as { id: unknown };
     if (method === 'bureau.tasks.explanation.get') {
-      await route.fulfill({ json: { jsonrpc: '2.0', id, result: { explanation: null } } });
+      await route.fulfill({ json: { jsonrpc: '2.0', id, result: { explanation: stored } } });
       return;
     }
     if (answer === 'written') {
+      stored = MODEL_EXPLANATION;
       await route.fulfill({
         json: { jsonrpc: '2.0', id, result: { explanation: MODEL_EXPLANATION } },
       });
@@ -73,9 +77,12 @@ async function answerModelCalls(page: Page, answer: ModelAnswer): Promise<void> 
         error: {
           code: -32000,
           message: 'No model is connected to write the explanation',
+          // The fields a Bureau's `UnsupportedCapability` carries on the wire (`faultToJsonRpcError`).
           data: {
-            httpStatus: 501,
             capability: 'generate',
+            weftCode: 'UnsupportedCapability',
+            httpStatus: 501,
+            retryable: false,
             remediation: CONNECT_A_PROVIDER,
           },
         },

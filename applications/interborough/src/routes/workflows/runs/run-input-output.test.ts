@@ -231,6 +231,51 @@ describe('a workflow’s input and output', () => {
     expect(container.querySelectorAll('#failure-explanation')).toHaveLength(1);
   });
 
+  test('COR-2534: a failed agent run’s page offers "Explain further" and, asked, shows what a model wrote under its name, with the stored explanation still there', async () => {
+    restore?.();
+    const stub = bureau({
+      ...explainAnswers(),
+      'bureau.tasks.explanation.get': () => ({ explanation: null }),
+      'bureau.tasks.explanation.generate': () => ({
+        explanation: {
+          text: 'The provider dropped the connection mid-answer.',
+          model: 'anthropic/claude-haiku-5-5',
+          generatedAt: '2026-11-21T10:00:00.000Z',
+          costUsd: 0.002,
+        },
+      }),
+    });
+    restore = stub.restore;
+    const { container, findByRole, findByText } = render(Harness, {
+      props: { task: taskFixture({ id: 'run-1', status: 'failed', statusMessage: 'dropped' }) },
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+
+    await fireEvent.click(await findByRole('button', { name: 'Explain further' }));
+
+    await findByText('The provider dropped the connection mid-answer.');
+    expect(container.querySelector('[data-explanation="model-name"]')?.textContent).toContain(
+      'anthropic/claude-haiku-5-5',
+    );
+    expect(container.querySelector('[data-explanation="summary"]')?.textContent).toBe(
+      FAILED_RUN_EXPLANATION.summary,
+    );
+    expect(stub.calls.map((call) => call.method)).toContain('bureau.tasks.explanation.generate');
+  });
+
+  test('COR-2534: a failed instance of a workflow file has no task to keep it on, so it offers no action', async () => {
+    restore?.();
+    const stub = bureau(explainAnswers());
+    restore = stub.restore;
+    const { container, findByText, queryByRole } = render(Harness, {
+      props: { workflow: workflow({ status: 'failed', failureCategory: 'application' }) },
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    expect(queryByRole('button', { name: 'Explain further' })).toBeNull();
+    expect(container.querySelector('[data-explanation="further"]')).toBeNull();
+    expect(stub.calls.map((call) => call.method)).not.toContain('bureau.tasks.explanation.get');
+  });
+
   test('COR-2533: a failed run with no message still explains itself', async () => {
     restore?.();
     restore = bureau(explainAnswers()).restore;

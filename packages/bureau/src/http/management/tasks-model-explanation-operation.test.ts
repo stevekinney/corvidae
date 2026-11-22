@@ -8,6 +8,7 @@ import {
   createAgent,
   createMockGenerate,
   type GenerateFunction,
+  type InputDetector,
   stopWhen,
 } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -116,12 +117,50 @@ async function open(
   return opened;
 }
 
+/**
+ * Everything a model was handed, whatever its shape, as one string; a structure that refers to
+ * itself is read once.
+ */
+function serialized(calls: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(calls, (_key, value: unknown) => {
+    if (typeof value !== 'object' || value === null) return value;
+    if (seen.has(value)) return undefined;
+    seen.add(value);
+    return value;
+  });
+}
+
+/** A task's status, or `undefined` for one the Bureau does not hold. */
+async function statusOf(opened: OpenedBureau, taskId: string): Promise<string | undefined> {
+  const task = await opened.bureau.tasks.get(taskId);
+  return task?.status;
+}
+
+/** What the task's record holds of a model's explanation. */
+async function storedExplanation(opened: OpenedBureau, taskId: string) {
+  const record = await opened.bureau.internals.taskRegistry.record(taskId);
+  return record?.modelExplanation;
+}
+
+/** What a task says it has used and cost: the run's own, never the explanation's. */
+async function usageOf(opened: OpenedBureau, taskId: string) {
+  const task = await opened.bureau.tasks.get(taskId);
+  return task?.usage;
+}
+
+/** The text of the explanation an operation answered. */
+function textOf(response: RpcBody): string | undefined {
+  return (response.result as { explanation: { text: string } | null } | undefined)?.explanation
+    ?.text;
+}
+
 /** Starts the failing agent as alice and waits until its task has failed. */
 async function failedTask(opened: OpenedBureau): Promise<string> {
   const handle = await opened.bureau.tasks.start('charger', `charge it ${MESSAGE_MARKER}`, {
     principal: OWNER.alice,
   });
-  await waitUntil(async () => (await opened.bureau.tasks.get(handle.id))?.status === 'failed', {
+  await waitUntil(async () => (await statusOf(opened, handle.id)) === 'failed', {
     message: `task ${handle.id} failed`,
   });
   await opened.bureau.internals.taskRegistry.flush();
@@ -142,7 +181,7 @@ describe('bureau.tasks.explanation.generate', () => {
     const response = await generate(opened, taskId);
 
     expect(response.error).toBeUndefined();
-    const stored = (await opened.bureau.internals.taskRegistry.record(taskId))?.modelExplanation;
+    const stored = await storedExplanation(opened, taskId);
     expect(stored).toBeDefined();
     expect(response.result).toEqual({ explanation: stored });
     expect(stored?.text).toBe('The card was declined by the network.');
@@ -174,14 +213,7 @@ describe('bureau.tasks.explanation.generate', () => {
 
     expect(response.error).toBeUndefined();
     expect(replies.callCount).toBe(1);
-    // Everything the model was handed, whatever its shape; a structure that refers to itself is read once.
-    const seen = new WeakSet<object>();
-    const request = JSON.stringify(replies.calls, (_key, value: unknown) => {
-      if (typeof value !== 'object' || value === null) return value;
-      if (seen.has(value)) return undefined;
-      seen.add(value);
-      return value;
-    });
+    const request = serialized(replies.calls);
     expect(request).toContain('charge-card');
     expect(request).toContain(ERROR_TEXT);
     // The step the run failed at, with its status (the context is JSON inside the request's JSON).
@@ -193,11 +225,50 @@ describe('bureau.tasks.explanation.generate', () => {
     expect(request).toContain('untrusted text');
   });
 
+  it('AC2: names the guardrail that halted the run, and its outcome, without the text it flagged', async () => {
+    const replies = modelReplies(['A guardrail stopped it.']);
+    const detector: InputDetector = {
+      name: 'sentinel-card',
+      detect: async (input) =>
+        input.includes('FORBIDDEN-WORD')
+          ? { triggered: true, category: 'prompt-injection', confidence: 0.9 }
+          : { triggered: false, category: 'prompt-injection', confidence: 0 },
+    };
+    const opened = await openBureau({
+      agents: {
+        guarded: createAgent({
+          name: 'guarded',
+          generate: async () => ({ content: 'fine', toolCalls: [] }),
+          stopWhen: stopWhen.noToolCalls(),
+          guardrails: { mode: 'tripwire', input: { detectors: [detector] } },
+        }),
+      },
+      bureauOptions: { models: { generate: () => replies } },
+    });
+    cleanups.push(() => opened.dispose());
+    const handle = await opened.bureau.tasks.start('guarded', 'this is FORBIDDEN-WORD', {
+      principal: OWNER.alice,
+    });
+    await waitUntil(async () => (await statusOf(opened, handle.id)) === 'failed', {
+      message: 'the guarded run failed',
+    });
+    await opened.bureau.internals.taskRegistry.flush();
+
+    const response = await generate(opened, handle.id);
+
+    expect(response.error).toBeUndefined();
+    const request = serialized(replies.calls);
+    expect(request).toContain('sentinel-card');
+    expect(request).toContain('tripwire');
+    expect(request).not.toContain('FORBIDDEN-WORD');
+  });
+
   it('AC3: a stored explanation reads again without a model call, and generating again replaces it', async () => {
     const replies = modelReplies(['First explanation.', 'Second explanation.']);
     const opened = await open({ generate: replies });
     const taskId = await failedTask(opened);
-    expect((await read(opened, taskId)).result).toEqual({ explanation: null });
+    const empty = await read(opened, taskId);
+    expect(empty.result).toEqual({ explanation: null });
 
     const first = await generate(opened, taskId);
     const readOnce = await read(opened, taskId);
@@ -209,12 +280,9 @@ describe('bureau.tasks.explanation.generate', () => {
 
     const second = await generate(opened, taskId);
     expect(replies.callCount).toBe(2);
-    expect((second.result as { explanation: { text: string } }).explanation.text).toBe(
-      'Second explanation.',
-    );
-    expect(
-      ((await read(opened, taskId)).result as { explanation: { text: string } }).explanation.text,
-    ).toBe('Second explanation.');
+    expect(textOf(second)).toBe('Second explanation.');
+    const readAfter = await read(opened, taskId);
+    expect(textOf(readAfter)).toBe('Second explanation.');
     expect(replies.callCount).toBe(2);
   });
 
@@ -227,15 +295,13 @@ describe('bureau.tasks.explanation.generate', () => {
     expect(response.result).toBeUndefined();
     expect(response.error?.data).toMatchObject({ capability: 'generate' });
     expect(String(response.error?.data?.['remediation'])).toContain('Connect a provider');
-    expect(
-      (await opened.bureau.internals.taskRegistry.record(taskId))?.modelExplanation,
-    ).toBeUndefined();
+    expect(await storedExplanation(opened, taskId)).toBeUndefined();
   });
 
   it('AC7: the cost is the explanation’s own and the run’s usage.costUsd is unchanged', async () => {
     const opened = await open();
     const taskId = await failedTask(opened);
-    const before = (await opened.bureau.tasks.get(taskId))?.usage;
+    const before = await usageOf(opened, taskId);
 
     const response = await generate(opened, taskId);
 
@@ -243,9 +309,12 @@ describe('bureau.tasks.explanation.generate', () => {
     const explanation = (response.result as { explanation: { costUsd: number | null } })
       .explanation;
     expect(explanation.costUsd).toBeGreaterThan(0);
-    const after = (await opened.bureau.tasks.get(taskId))?.usage;
-    expect(after).toEqual(before ?? null);
+    const after = await usageOf(opened, taskId);
+    expect(after).toEqual(before);
     expect(after?.costUsd ?? null).toBe(before?.costUsd ?? null);
+    // The explanation's cost is kept on the explanation, apart from the run's.
+    const kept = await storedExplanation(opened, taskId);
+    expect(kept?.costUsd).toBe(explanation.costUsd);
   });
 
   it('AC8: neither operation is on MCP', () => {
@@ -291,7 +360,10 @@ describe('bureau.tasks.explanation for an instance of a workflow file', () => {
     });
     await served.bureau.durableEngine()!.start('digest', null, { id: 'failed-digest' });
     await waitUntil(
-      async () => (await served.bureau.workflows!.getRun('failed-digest'))?.status === 'failed',
+      async () => {
+        const run = await served.bureau.workflows!.getRun('failed-digest');
+        return run?.status === 'failed';
+      },
       { message: 'the instance failed' },
     );
 
@@ -324,10 +396,9 @@ describe('bureau.tasks.explanation access and refusals', () => {
     });
     cleanups.push(() => opened.dispose());
     const handle = await opened.bureau.tasks.start('default', 'go', { principal: OWNER.alice });
-    await waitUntil(
-      async () => (await opened.bureau.tasks.get(handle.id))?.status === 'completed',
-      { message: 'completed' },
-    );
+    await waitUntil(async () => (await statusOf(opened, handle.id)) === 'completed', {
+      message: 'completed',
+    });
 
     const response = await generate(opened, handle.id);
 

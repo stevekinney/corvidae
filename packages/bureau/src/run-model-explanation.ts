@@ -99,17 +99,13 @@ export function explanationRequestSteps(input: {
   const { explanation, entries } = input;
   const message = input.errorMessage === null ? '' : clip(input.errorMessage, MESSAGE_LIMIT);
   const failedAt = explanation.step;
-  const steps: ExplanationRequestStep[] = (entries ?? []).map((entry) => {
-    const guardrails = guardrailsAt(
-      explanation.verdicts,
-      (verdict) => verdict.step !== null && verdict.step === entry.stepIndex,
-    );
-    return {
-      name: clip(entry.operationLabel, NAME_LIMIT),
-      status: entry.status,
-      ...(guardrails === undefined ? {} : { guardrails }),
-    };
-  });
+  // A verdict's step counts the run's own steps and an engine entry's counts its checkpoints, so no
+  // entry but the one the run failed at is matched to a verdict by number; every verdict is also
+  // listed, with its step, beside the steps.
+  const steps: ExplanationRequestStep[] = (entries ?? []).map((entry) => ({
+    name: clip(entry.operationLabel, NAME_LIMIT),
+    status: entry.status,
+  }));
   const failedLabel = failedAt === null ? undefined : clip(failedAt.label, NAME_LIMIT);
   const lastFailed = steps.findLastIndex(
     (step) => step.status === 'failed' || step.status === 'timed-out',
@@ -123,9 +119,7 @@ export function explanationRequestSteps(input: {
     steps[lastFailed] = {
       ...merged,
       ...(message === '' ? {} : { errorMessage: message }),
-      ...(merged.guardrails === undefined && atFailure !== undefined
-        ? { guardrails: atFailure }
-        : {}),
+      ...(atFailure === undefined ? {} : { guardrails: atFailure }),
     };
   } else if (failedLabel !== undefined || message !== '') {
     steps.push({

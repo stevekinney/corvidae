@@ -45,7 +45,7 @@ function entry(
 }
 
 describe('the steps a request names', () => {
-  it('are the engine’s entries by name and status, with the error message and guardrails on the step that failed', () => {
+  it('are the engine’s entries by name and status, with the error message and the guardrails at the failure on the step that failed', () => {
     const steps = explanationRequestSteps({
       explanation: EXPLANATION,
       errorMessage: 'the card network refused\nthe charge',
@@ -58,11 +58,8 @@ describe('the steps a request names', () => {
 
     expect(steps).toEqual([
       { name: 'model', status: 'completed' },
-      {
-        name: 'lookup-customer',
-        status: 'completed',
-        guardrails: [{ name: 'pii', outcome: 'redact' }],
-      },
+      // Not matched by number to the verdict at step 1: the numbers count different things.
+      { name: 'lookup-customer', status: 'completed' },
       {
         name: 'charge-card',
         status: 'failed',

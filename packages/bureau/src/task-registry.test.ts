@@ -2368,7 +2368,7 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
 
     const second = { ...EXPLANATION, text: 'Again.', costUsd: null };
     expect(await registry.recordModelExplanation('run-1', second)).toBe(true);
-    expect((await registry.record('run-1'))?.modelExplanation).toEqual(second);
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toEqual(second);
     // The view the operations serve carries none of it: it is read from the record alone.
     expect(JSON.stringify(await registry.get('run-1'))).not.toContain('Again.');
   });
@@ -2382,8 +2382,8 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     expect(await registry.recordModelExplanation('done', EXPLANATION)).toBe(false);
     expect(await registry.recordModelExplanation('going', EXPLANATION)).toBe(false);
     expect(await registry.recordModelExplanation('nope', EXPLANATION)).toBe(false);
-    expect((await registry.record('done'))?.modelExplanation).toBeUndefined();
-    expect((await registry.record('going'))?.modelExplanation).toBeUndefined();
+    expect(await recordField(registry, 'done', 'modelExplanation')).toBeUndefined();
+    expect(await recordField(registry, 'going', 'modelExplanation')).toBeUndefined();
   });
 
   it('stays through a later writer of the same failure, and goes when the run’s real end replaces the failure it explained', async () => {
@@ -2393,7 +2393,7 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     await registry.recordModelExplanation('run-1', EXPLANATION);
     // The catalog hook writes the same failure again, with the answer.
     await registry.recordSettled('run-1', { ...settle('failed'), message: 'later' });
-    expect((await registry.record('run-1'))?.modelExplanation).toEqual(EXPLANATION);
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toEqual(EXPLANATION);
 
     // An owner-lost inference is replaced by the owner's real end: the explanation was of a failure
     // that did not happen.
@@ -2404,7 +2404,7 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     });
     await registry.recordModelExplanation('run-2', EXPLANATION);
     await registry.recordSettled('run-2', settle('completed'));
-    expect((await registry.record('run-2'))?.modelExplanation).toBeUndefined();
+    expect(await recordField(registry, 'run-2', 'modelExplanation')).toBeUndefined();
   });
 
   it('is dropped with the settlement’s text when a chat’s content is purged', async () => {
@@ -2414,7 +2414,7 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     await registry.recordModelExplanation('run-1', EXPLANATION);
 
     expect(await registry.redactSettlement('run-1')).toBe(true);
-    expect((await registry.record('run-1'))?.modelExplanation).toBeUndefined();
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
     expect(await registry.redactSettlement('run-1')).toBe(false);
   });
 });
