@@ -18,6 +18,9 @@ test('a narrow two-line row puts its action under the text, and several badges d
   await page.getByTestId('actions-no-leading').evaluate((element) => {
     element.removeAttribute('hidden');
   });
+  await page.getByTestId('status-inline-actions').evaluate((element) => {
+    element.removeAttribute('hidden');
+  });
   await page.locator('[data-testid="actions"] .cinder-button').waitFor({ state: 'visible' });
   const read = await page.evaluate(() => {
     const box = (root: Element | null, selector: string) => {
@@ -31,6 +34,15 @@ test('a narrow two-line row puts its action under the text, and several badges d
       document.querySelector('[data-testid="actions-no-leading"]'),
     ];
     const badges = document.querySelector('[data-testid="badges"]');
+    const statusInlineActions = [
+      ...document.querySelectorAll('[data-testid="status-inline-actions"] [data-variant]'),
+    ].map((variant) => ({
+      row: box(variant, '.cinder-stacked-list-item'),
+      title: box(variant, '.cinder-stacked-list-item__title'),
+      lineTwo: box(variant, '.cinder-stacked-list-item__line-two'),
+      meta: box(variant, '.cinder-stacked-list-item__meta'),
+      button: box(variant, '.cinder-stacked-list-item__trailing'),
+    }));
     const lines = [...(badges?.querySelectorAll('[data-badge]') ?? [])].map((badge) => {
       const { top, bottom, right } = badge.getBoundingClientRect();
       return { top, bottom, right };
@@ -55,6 +67,18 @@ test('a narrow two-line row puts its action under the text, and several badges d
     expect(Math.abs(action.button!.left - action.title!.left)).toBeLessThanOrEqual(1);
     // The title keeps most of the row: with the button beside it, it would have had half.
     expect(action.title!.width).toBeGreaterThan(action.row!.right - action.row!.left - 120);
+  }
+
+  // Inline status is real line-two content. With the action in the dedicated third row, both
+  // track variants keep it in bounds and keep the action aligned under their actual title.
+  expect(read.statusInlineActions).toHaveLength(2);
+  for (const action of read.statusInlineActions) {
+    expect(action.lineTwo!.left).toBeLessThanOrEqual(action.title!.left + 1);
+    expect(action.lineTwo!.right).toBeLessThanOrEqual(action.row!.right + 1);
+    expect(action.lineTwo!.width).toBeGreaterThanOrEqual(action.title!.width - 1);
+    expect(action.meta!.right).toBeLessThanOrEqual(action.lineTwo!.right + 1);
+    expect(action.button!.top).toBeGreaterThanOrEqual(action.lineTwo!.bottom - 1);
+    expect(Math.abs(action.button!.left - action.title!.left)).toBeLessThanOrEqual(1);
   }
 
   // Three badges: none past the row, and they sit under the title, side by side on one line.
