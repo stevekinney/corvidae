@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2535",
+  "branch": "chef/cor-2535-failure-filters",
+  "checkedAt": "8d11a584f21b6f015f06a6be2a669d1d13a9dc52",
+  "briefVersion": "f0dd227b4205",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "run-list.svelte: a Retrying toggle facet and a Failed at step field (run-failed-step.svelte, Cinder Autocomplete); run-rows.ts parseRunFilter and serializeRunFilter keep retrying=true and failedStep in the address; serverRunFilter sends both to listAllTasks, so bureau.tasks.list. run-list.test.ts (26 pass) reads the outgoing request params; run-rows.test.ts covers the address."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The field suggests the step labels in the listed runs (failure.step.label), read from a second status=failed read while a server filter narrows the list, and takes any typed name, committed on Enter or on choosing a suggestion, never per keystroke. run-list.test.ts: suggestions, choose, typed Enter, emptying removes the filter."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "RunRow.retrying from task.retrying (and folded from a workflow instance's steps); runLineTwo says 'retrying <step>, try <n>' before the running time. run-rows-list.test.ts and run-list.test.ts assert 'retrying charge-card, try 3'."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "query-builder.ts/.svelte offer Failed at step and Retrying as built-in fields (@failedStep, @retrying, kept apart from a search attribute of the same name); filters.ts serializes and parses failed_step and retrying; workflow-list.svelte sends them to client.list (Weft's buildWorkflowListSearchParams), counts them, opens the builder on them; bulk-list-filter.ts forwards both to the bulk wire (Weft's bulk filter schema takes them). query-builder.test.ts, query-builder-ui.test.ts, filters.test.ts, bulk-list-filter.test.ts and workflow-list.test.ts (request URL carries failed_step and retrying) pass."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Both filters are kept with every other filter in parseRunFilter/serializeRunFilter and applied together in filterRunRows; an address carrying them restores the list. run-rows.test.ts 'both combine with every other filter', run-list.test.ts 'an address carrying both, with the other filters, restores the filtered list' and 'both are kept when another filter changes'."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "tests/e2e/runs-failure-filters.spec.ts filters fixture runs by Retrying, by Failed at step (chosen and typed), and by both with the status filter, reads the outgoing bureau.tasks.list params, restores on reload, and opens the engine's list with failed_step and retrying in the query builder. Written and collected (check-playwright-collection, lint:root exit 0); not executed on this host (browser suites are not run here), so it is implemented, not verified by a run: it needs the CI dispatch."
+    }
+  ]
+}
