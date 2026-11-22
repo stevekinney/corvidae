@@ -303,7 +303,7 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
       'fields',
     );
     await capture(page, '/workflows/:workflow/edit', 'schedule and schemas');
-    const field = root.getByRole('button', { name: 'branch', exact: true });
+    const field = root.getByRole('button', { name: /^(Expand|Collapse) branch property$/ });
     await field.scrollIntoViewIfNeeded();
     const bounds = await field.boundingBox();
     if (bounds === null) throw new Error('The branch field disclosure must be visible.');
