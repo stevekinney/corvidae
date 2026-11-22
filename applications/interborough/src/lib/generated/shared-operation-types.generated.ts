@@ -172,7 +172,7 @@ export type SharedActorAgentNameAttention_30e4f494 = {
   readonly failure: {
     readonly errorCode: string | null;
     readonly errorKind: string | null;
-    readonly step: { readonly index: number; readonly label: string } | null;
+    readonly step: SharedIndexLabel_b9e5acc3 | null;
     readonly toolCall: { readonly callId: string; readonly name: string } | null;
   } | null;
   readonly finishReason: string | null;
@@ -772,6 +772,7 @@ export type SharedIdRevisionStatus_e86a595b = {
   readonly revision: number;
   readonly status: 'active' | 'paused' | 'cancelled';
 };
+export type SharedIndexLabel_b9e5acc3 = { readonly index: number; readonly label: string };
 export type SharedInputTypeWorkflowId_2b929ea1 = {
   readonly input: 'payload' | 'event';
   readonly type: 'start-workflow';

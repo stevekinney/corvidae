@@ -2,6 +2,7 @@
 import type {
   SharedActorAgentNameAttention_30e4f494,
   SharedDryRunEffectsTarget_b07628bd,
+  SharedIndexLabel_b9e5acc3,
 } from './shared-operation-types.generated.ts';
 export type TasksOperationTypes = {
   'bureau.tasks.cancel': {
@@ -27,6 +28,29 @@ export type TasksOperationTypes = {
           readonly taskId: string;
         };
     readonly faults: 'InvalidParams' | 'NotFound';
+  };
+  'bureau.tasks.explain': {
+    readonly input: { readonly runId: string };
+    readonly output: {
+      readonly cause: {
+        readonly category:
+          'application' | 'timeout' | 'cancellation' | 'resource' | 'system' | null;
+        readonly code: string | null;
+        readonly kind: string | null;
+      };
+      readonly nextCommands: ReadonlyArray<string>;
+      readonly remediation: string;
+      readonly step: SharedIndexLabel_b9e5acc3 | null;
+      readonly summary: string;
+      readonly tries: number | null;
+      readonly verdicts: ReadonlyArray<{
+        readonly kind: 'guardrail' | 'tripwire';
+        readonly name: string;
+        readonly outcome: 'tripwire' | 'block' | 'warn' | 'sanitize' | 'redact';
+        readonly step: number | null;
+      }>;
+    };
+    readonly faults: 'InvalidParams' | 'NotFound' | 'Unprocessable' | 'UnsupportedCapability';
   };
   'bureau.tasks.get': {
     readonly input: { readonly taskId: string };

@@ -43,14 +43,41 @@ export interface RunTimeline {
   readonly truncated: boolean;
 }
 
+/** What the engine's attempts at one step share: its index and its kind, or `undefined` for neither. */
+function identityOf(entry: WorkflowTimelineEntry): string | undefined {
+  return entry.stepIndex === undefined
+    ? undefined
+    : `${String(entry.stepIndex)}:${entry.operationType}`;
+}
+
+/** How many entries of `entries` are attempts at the step `entry` belongs to; `1` when it has no index. */
+function attemptsAt(
+  entries: readonly WorkflowTimelineEntry[],
+  entry: WorkflowTimelineEntry,
+): number {
+  const identity = identityOf(entry);
+  if (identity === undefined) return 1;
+  return entries.filter((candidate) => identityOf(candidate) === identity).length;
+}
+
+/**
+ * How many times the engine tried the step a run failed at (COR-2532): the attempts at the step of
+ * the run's last failed or timed-out entry, counted as {@link RunTimelineEntry.tries} counts them.
+ * `null` when no entry failed, as for a run whose engine history was not kept.
+ */
+export function failedStepTries(entries: readonly WorkflowTimelineEntry[]): number | null {
+  const failed = entries.findLast(
+    (entry) => entry.status === 'failed' || entry.status === 'timed-out',
+  );
+  return failed === undefined ? null : attemptsAt(entries, failed);
+}
+
 /**
  * The served timeline of `entries`, in the engine's order and at most {@link RUN_TIMELINE_ENTRY_LIMIT}
  * long. `tries` is counted over all of the engine's entries, so a cut never lowers it.
  */
 export function projectRunTimeline(entries: readonly WorkflowTimelineEntry[]): RunTimeline {
   const attempts = new Map<string, number>();
-  const identityOf = (entry: WorkflowTimelineEntry): string | undefined =>
-    entry.stepIndex === undefined ? undefined : `${String(entry.stepIndex)}:${entry.operationType}`;
   for (const entry of entries) {
     const identity = identityOf(entry);
     if (identity !== undefined) attempts.set(identity, (attempts.get(identity) ?? 0) + 1);

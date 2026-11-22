@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import { request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
+import { isDryRun } from './cli-destructive.ts';
 import { executeRuns } from './cli-runs.ts';
 
 type RecordValue = Record<string, unknown>;
@@ -123,6 +124,7 @@ async function agentCommand(
     return rpc(target, parsed, dependencies, 'bureau.agents.definitions.delete', {
       id: identifier(parsed),
       expectedHash: expectedHash(parsed),
+      ...(isDryRun(parsed) ? { dryRun: true } : {}),
     });
   if (action === 'versions') {
     const subcommand = parsed.arguments[1] ?? 'list';
