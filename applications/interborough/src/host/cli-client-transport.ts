@@ -38,6 +38,14 @@ function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): 
   return Object.assign(new Error(message), properties);
 }
 
+/**
+ * A `fetch` that rejects with a `TypeError` never reached a server that answered (a refused or reset
+ * connection, a name that does not resolve): tag it, so the failure reports `CLI_CONNECTION_FAILED`.
+ */
+function markConnectionFailure(error: unknown): unknown {
+  return error instanceof TypeError ? Object.assign(error, { connectionFailed: true }) : error;
+}
+
 function isMutation(method: string | undefined): boolean {
   return method === 'POST' || method === 'PUT' || method === 'DELETE' || method === 'PATCH';
 }
@@ -125,8 +133,7 @@ export async function request(
     } catch (error) {
       if (mutating && error instanceof DOMException && error.name === 'AbortError')
         throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
-      if (error instanceof TypeError) throw Object.assign(error, { connectionFailed: true });
-      throw error;
+      throw markConnectionFailure(error);
     }
     const text = await response.text();
     let body: unknown;
@@ -221,7 +228,7 @@ export async function requestBytes(
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError')
       throw makeCliFailure('The asset download was interrupted.', { exitCode: 6 });
-    throw error;
+    throw markConnectionFailure(error);
   } finally {
     clearTimeout(timer);
   }
@@ -255,7 +262,7 @@ export async function stream(
     } catch (error) {
       if (init.method === 'POST' && error instanceof DOMException && error.name === 'AbortError')
         throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
-      throw error;
+      throw markConnectionFailure(error);
     }
     if (!response.ok) {
       clearTimeout(timer);

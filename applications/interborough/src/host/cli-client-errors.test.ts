@@ -263,6 +263,26 @@ describe('Interborough command client failures', () => {
     expect([...seen].toSorted()).toEqual(Object.values(CLI_LOCAL_ERROR_CODES).toSorted());
   });
 
+  // spawn-free: the real fetch meets a loopback port nothing listens on.
+  test('a refused connection from the real fetch reports CLI_CONNECTION_FAILED', async () => {
+    const listener = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') });
+    const { port } = listener;
+    await listener.stop(true);
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-errors-'));
+    const result = await executeCli(
+      ['status', '--url', `http://127.0.0.1:${port}`, '--output', 'json'],
+      {
+        preferencesPath: join(directory, 'preferences.json'),
+      },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(errorOf(result.stdout)).toMatchObject({
+      code: CLI_LOCAL_ERROR_CODES.connectionFailed,
+      exitCode: 1,
+      retryable: true,
+    });
+  });
+
   // spawn-free: no command runs.
   test('the envelope version is the one the golden files pin', async () => {
     expect(CLI_SCHEMA_VERSION).toBe(2);
