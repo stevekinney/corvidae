@@ -126,13 +126,16 @@ async function readOneLineMetadataRail(page: Page, testId: string) {
     ) {
       throw new Error('No one-line code block metadata rail.');
     }
-    const codeRange = document.createRange();
-    codeRange.selectNodeContents(code);
-    const lineTops = new Set(
-      [...codeRange.getClientRects()]
-        .filter((rect) => rect.width > 0 && rect.height > 0)
-        .map((rect) => Math.round(rect.top)),
-    );
+    const lineTops = new Set<number>();
+    const textNodes = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+    for (let node = textNodes.nextNode(); node !== null; node = textNodes.nextNode()) {
+      if (!(node instanceof Text) || node.data.trim() === '') continue;
+      const textRange = document.createRange();
+      textRange.selectNodeContents(node);
+      for (const rect of textRange.getClientRects()) {
+        if (rect.width > 0 && rect.height > 0) lineTops.add(Math.round(rect.top));
+      }
+    }
     const rootBox = root.getBoundingClientRect();
     const metadataBox = metadata.getBoundingClientRect();
     const viewportBox = viewport.getBoundingClientRect();
