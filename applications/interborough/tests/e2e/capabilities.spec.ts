@@ -12,6 +12,7 @@ import type { Page } from '@playwright/test';
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { readCatalog } from './agent-support.ts';
 import { expect, test } from './fixtures.ts';
+import { pressChord } from './shortcut-support.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -191,8 +192,7 @@ test('G P opens the page, and the sidebar marks it current', async ({ page }) =>
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/agents');
   await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible();
-  await page.keyboard.press('g');
-  await page.keyboard.press('p');
+  await pressChord(page, 'p');
   await expect(page).toHaveURL(/\/capabilities(\?tool=[^&]+)?$/);
   await expect(
     page

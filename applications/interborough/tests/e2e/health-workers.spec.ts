@@ -20,6 +20,7 @@ import {
   E2E_PREVIOUS_BUILD_ID,
 } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { pressChord } from './shortcut-support.ts';
 
 function row(page: Page, workerId: string) {
   return page.locator(`[data-worker-row="${workerId}"]`);
@@ -37,8 +38,7 @@ test('g then o opens Workers from anywhere, though the sidebar does not list it'
   await expect(
     page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Workers/ }),
   ).toHaveCount(0);
-  await page.keyboard.press('g');
-  await page.keyboard.press('o');
+  await pressChord(page, 'o');
   await expect(page).toHaveURL(/\/health\/workers(\?worker=[^&]+)?$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
 

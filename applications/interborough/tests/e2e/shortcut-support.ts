@@ -26,6 +26,19 @@ export interface ChordKeyboard {
 /** The time between the two keys of a chord a person types quickly. */
 const QUICK_CHORD_MILLISECONDS = 50;
 
+/**
+ * Presses `g`, then `letter`, once, as {@link ChordKeyboard.press} does, on a session opened for it
+ * and closed after.
+ */
+export async function pressChord(page: Page, letter: string): Promise<void> {
+  const keyboard = await chordKeyboard(page);
+  try {
+    await keyboard.press(letter);
+  } finally {
+    await keyboard.detach();
+  }
+}
+
 /** A keyboard for `page` that types `g` chords at the times it sets (see the module). */
 export async function chordKeyboard(page: Page): Promise<ChordKeyboard> {
   const session: CDPSession = await page.context().newCDPSession(page);
@@ -34,9 +47,10 @@ export async function chordKeyboard(page: Page): Promise<ChordKeyboard> {
   return {
     async press(letter, intervalMilliseconds = QUICK_CHORD_MILLISECONDS) {
       // Chromium delivers trusted key events at the input times they carry, in milliseconds since
-      // the epoch here and seconds on the wire. A chord starts at the page's present.
-      const now = await page.evaluate(() => performance.timeOrigin + performance.now());
-      const start = Math.max(now, nextKeyTime);
+      // the epoch here and seconds on the wire. A chord starts at the present on this machine's
+      // clock, which the browser shares, never the page's: a spec may fix the page's clock
+      // (`page.clock.setFixedTime`), and a key stamped at a fixed time weeks off never arrives.
+      const start = Math.max(Date.now(), nextKeyTime);
       for (const [index, key] of ['g', letter].entries()) {
         const capital = key.toUpperCase();
         const event = {
