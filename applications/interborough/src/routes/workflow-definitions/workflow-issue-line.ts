@@ -122,11 +122,12 @@ function readString(text: string, at: number): { end: number; value: string } {
     if (character === '"') {
       const end = index + 1;
       try {
-        return { end, value: JSON.parse(text.slice(at, end)) as string };
+        const decoded: unknown = JSON.parse(text.slice(at, end));
+        if (typeof decoded === 'string') return { end, value: decoded };
       } catch {
         // Position finding also walks incomplete JSON while preserving the editor's syntax error.
-        return { end, value: text.slice(at + 1, index) };
       }
+      return { end, value: text.slice(at + 1, index) };
     }
     index += 1;
   }
