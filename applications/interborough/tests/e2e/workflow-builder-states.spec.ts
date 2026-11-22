@@ -181,7 +181,10 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     );
     await expect.poll(() => jsonEditorSource(editor)).toBe(SHOWCASE_ORDER_REFUND_FILE.text);
     await expect(root.getByRole('button', { name: 'Format', exact: true })).toBeDisabled();
-    await expect(root.locator('.cinder-json-editor__status')).toContainText(BUILDER.json.invalid);
+    await expect(root.getByRole('button', { name: 'Invalid JSON' })).toBeVisible();
+    await expect(root).toContainText(
+      'Missing comma at the end of this line. The parser stopped at line 12.',
+    );
     await expect(root.getByTestId('workflow-builder-summary')).toHaveText(BUILDER.json.fixLine(11));
     await expect(tabs(root).getByRole('tab', { name: BUILDER.builderTab })).toBeDisabled();
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
@@ -200,7 +203,7 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     await capture(page, '/workflows/new', 'a schedule, every field', 'json');
     await openTab(tabs(root), BUILDER.builderTab);
     await expect(root.getByTestId('schedule-when')).toBeVisible();
-    await expect(root.getByLabel(BUILDER.titleLabel, { exact: true })).toHaveValue(
+    await expect(root.getByRole('textbox', { name: `${BUILDER.titleLabel} Optional` })).toHaveValue(
       'Morning briefing',
     );
     await capture(page, '/workflows/new', 'on a schedule, the When block');
@@ -213,7 +216,8 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
       await jsonEditor(root, WORKFLOW_COPY.creator.textLabel),
       invalidMorningBriefing,
     );
-    await expect(root.locator('.cinder-json-editor__status')).toContainText(BUILDER.json.invalid);
+    await expect(root.getByRole('button', { name: 'Invalid JSON' })).toBeVisible();
+    await expect(root).toContainText('Missing comma at the end of this line.');
     await expect(tabs(root).getByRole('tab', { name: BUILDER.builderTab })).toBeDisabled();
     await expect(root.getByRole('button', { name: 'Format', exact: true })).toBeDisabled();
     await expect(root.getByTestId('workflow-builder-summary')).toHaveText(BUILDER.json.fixLine(8));
@@ -282,7 +286,9 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
       'fields',
     );
     await capture(page, '/workflows/:workflow/edit', 'schedule and schemas');
-    await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('Release notes, weekly');
+    await root
+      .getByRole('textbox', { name: `${BUILDER.titleLabel} Optional` })
+      .fill('Release notes, weekly');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root).toContainText(WORKFLOW_COPY.creator.nothingSaved);
     await capture(page, '/workflows/:workflow/edit', 'save failed');
