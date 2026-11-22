@@ -1,0 +1,49 @@
+{
+  "issue": "COR-2533",
+  "branch": "worktree-agent-adad48645b85a67de",
+  "checkedAt": "54437f3b95a36bd273ff84efd98d026bbbbf5e96",
+  "briefVersion": "a3d6c9079ae0",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "run-failure-explanation.svelte renders bureau.tasks.explain (summary, cause badge with code and kind, step, tries, guardrails, remediation) with the stack behind a Collapsible, used at both failure sites: run-instance-happened.svelte (an instance) and run-input-output.svelte (an engine run that failed, and any failed agent run, whether or not the engine also holds it as a completed run). run-failure-explanation.test.ts reads each part for a failed fixture run; run-input-output.test.ts covers the task-only, task plus completed engine state, and no-message cases; run-detail-engine-runs.test.ts reads the summary and remediation in the failed instance's block on the page."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "failure-category.ts exports failureCategoryLabel and failureCategoryTone and nothing else; its documentation names run-failure-explanation.svelte, which exists. failure-category.test.ts asserts the export list and that every file the comment names exists."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "chat-conversation.svelte draws a Why it failed link (Cinder Link, data-chat-note-link) in the action slot of every failed stop line, to failureExplanationPath(runId) (/runs/<id>#failure-explanation, the id of the section). chat-conversation-stopped.test.ts reads the link's href for the failed run and checks the failed attempt keeps it after Retry; event-notes.test.ts and router.svelte.test.ts cover stoppedRunIdOf and the path. chat-states.spec.ts asserts it in the failed-partway state (not run locally)."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "cli-runs.ts runs explain <id> (no --kind) prints the explanation as lines of text and, with --output json, the operation's own result in the envelope. cli-runs.integration.test.ts explains a failed workflow instance and a failed agent run against a real Bureau and handler in both forms; cli-runs.test.ts covers the call and the text lines."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "A run that did not fail is the server's Unprocessable fault: cli-runs.ts marks it a usage error, so the server's message goes to stderr with its Try: remediation and the exit code is 2; with --output json the error envelope carries code Unprocessable, the message and the remediation. cli-runs.integration.test.ts asserts both forms against the real Bureau."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "cli-runs.ts runs retry <id> [--step N] calls bureau.workflows.runs.retry; it is workflow-only (--kind task is a usage error), has no --dry-run (the parser refuses it), and a fault the server answered is exit 1 while a request nothing answered is exit 7. To keep the command to <id>, the operation's step is now optional and defaults to the step the instance failed at (workflow-run-retry.ts, workflow-runtime.ts, the operation, wire goldens, generated client, docs). cli-runs.integration.test.ts retries a failed fixture instance and it completes; cli-runs.test.ts and workflow-run-retry.test.ts cover the call, the optional step and the refusals."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "bureau.tasks.explain adds interborough runs retry <id> to nextCommands for a failed workflow instance the retry accepts for the caller: BureauWorkflows.retryableStep reuses the retry's own checks (checkRetryStep and the version snapshot check, now retryDocumentOf, which registers nothing), and retryableStepFor applies the retry operation's own access (retryScopeOf and mayManageRun, shared with the operation). Tests: run-failure-explanation.test.ts, tasks-explain-operation.test.ts (the command is offered to a writer and not to a reader; the retried run completes), workflow-run-retry.test.ts (retryableStep), and cli-runs.integration.test.ts runs every returned command line against the fixture host, the retry last."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "tests/e2e/run-failure-explanation.spec.ts reads the summary on the Run page of the sample world's failed Release notes run (and the failure-explanation anchor), at 1280 and 375, and captures the state 'failed run explained'. Written and registered in scripts/design-review-capture.ts and design-review-capture.test.ts; NOT RUN on this host (the browser suites run on GitHub)."
+    }
+  ]
+}
