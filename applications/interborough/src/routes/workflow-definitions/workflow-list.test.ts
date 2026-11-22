@@ -423,7 +423,9 @@ describe('the segments of the list', () => {
     await fireEvent.input(search, { target: { value: 'missing' } });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title });
     await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.list.clearAction }));
-    await waitFor(() => expect(names(container)).toEqual(['broken', 'flaky', 'digest', 'order-processing']));
+    await waitFor(() =>
+      expect(names(container)).toEqual(['broken', 'flaky', 'digest', 'order-processing']),
+    );
     expect(search).toHaveValue('');
     expect(search).toHaveFocus();
   });
