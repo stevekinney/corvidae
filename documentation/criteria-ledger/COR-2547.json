@@ -1,0 +1,59 @@
+{
+  "issue": "COR-2547",
+  "branch": "worktree-agent-a90c799d2ed4fb4a6",
+  "checkedAt": "fb96eefc4f3f0ecb03c1c144464a38034c8f02cd",
+  "briefVersion": "a0f718df2a68",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "ConfirmDialog pending + pendingLabel; confirm-dialog.states.test.ts 'ConfirmDialog pending' asserts the skeleton in both regions, the announced status, the disabled confirm, and Cancel enabled and focusable (passes in focused-checks)."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "ConfirmDialog errorAction {label, onAction} (+ errorTone); confirm-dialog.states.test.ts 'ConfirmDialog error action' asserts the action renders in the callout in place of the confirm button and calls its handler."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "confirm-dialog/README.md sections for pending, errorAction and confirmEnabled/confirmVisible, each with an example; examples.json entries pending and error-action; playground gallery files pending.example.svelte and error-action.example.svelte; declared-examples.test.ts now lists confirm-dialog; generate-component-artifacts.ts --check OK."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "bulk-action-dialog.svelte is the one flow on ConfirmDialog; bulk-purge-dialog.svelte is a thin wrapper that supplies the lead through description (lead snippet) and the id sample and kept note through options (details snippet); no <style> and no weft-bulk-dialog in either file; bulk-action-dialog.test.ts, bulk-action-dialog.additional.test.ts and bulk-purge-dialog.test.ts pass. Assertions changed: the two queryByRole('alert') toBeNull checks now require the always-mounted alert region to be empty (ConfirmDialog keeps it mounted by design), and the test that read the deleted <style> block now asserts the file has no styles and that the sample, chip and notes are ConfirmDialog options. Design round 1: the purge lists at most five ids (PURGE_SAMPLE_SHOWN) and the committing, stale and nothing-matches wording is shared (src/app/copy/bulk-dialog.ts)."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Reading, not literal: clear-dead-letter-dialog.svelte was already ConfirmDialog typeToConfirm on main (unchanged, tests pass). drain-dialog.svelte is now ConfirmDialog WITHOUT typeToConfirm: draining is reversible and drain-dialog.test.ts clicks Drain with nothing typed, so a typed gate and 'tests unchanged' cannot both hold; the reason field and the routing warning are its options. drain-dialog.test.ts passes unchanged."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "grep -l Modal over the four files prints nothing (exit 1)."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Purge stale state keeps its Conflict-only branching and Refresh preview in the callout; since design round 1 (B5) its words are the one shared stale notice (src/app/copy/bulk-dialog.ts), so the COR-2521 sentence \"Nothing was purged. Check the new count before you purge.\" became \"Nothing was changed. Check the new count before you confirm.\" and the purge tests assert the new words."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "NOT VERIFIED by the worker, recorded as implemented only: the report schema has no pending status and a READY report cannot hold not-met. The capture specification tests/e2e/confirm-dialog-states.spec.ts (24 states, captured at 1280/1920 and 375/320) is wired into scripts/design-review-capture.ts; the capture run and the design-review verdict are the coordinator's step and have not been run on this host. Design round 2 (owner, 2026-11-21): a lone Close beside a failure action is compact on a phone (modal.css exception marked by data-cinder-fault-only), with a Cinder test, README and a11y notes. Design round 3 (round 2 charter): callout stacked-start action, focus kept after a fault, typed field in the footer, busy confirm keeps its width, our own fault titles, a dry-run fault keeps its purpose and filter. CI round 1 fix: the capture spec no longer lets a held request reach the host (afterEach answers holds), scopes the deployment region to its tab panel, and drops the unreachable drain busy state."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "bulk-action-dialog.states.test.ts 'every fault is one callout with its re-run action in the same slot': for a failed dry run, a stale preview and a failed commit in a bulk action, and a stale preview, a failed commit and a failed dry run in a purge, asserts exactly one .cinder-callout, the right tone (danger or warning), the re-run button inside it, and no separate footer re-run button."
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-branch",
+      "evidence": "bulk-action-dialog.states.test.ts 'the footer is present in every phase' asserts one .cinder-modal__footer with its Cancel or Close through params, loading, preview, committing, result and fault."
+    }
+  ]
+}

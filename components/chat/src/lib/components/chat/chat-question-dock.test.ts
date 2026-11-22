@@ -230,7 +230,7 @@ describe('a docked question', () => {
     );
   });
 
-  test('leaves its radios the height and rest border Cinder gives them', async () => {
+  test('frames the dock once and leaves the nested radio rows unframed', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
@@ -239,7 +239,12 @@ describe('a docked question', () => {
     expect(source).toContain('max-block-size: min(100%, 80dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
-    expect(source).toContain('--cinder-border-muted');
+    expect(source).toMatch(
+      /\.chat-question-dock\s*\{[^}]*border: 1px solid var\(--cinder-border-muted\);/,
+    );
+    expect(source).toMatch(
+      /\.chat-question-dock-body :global\(\.cinder-choice-grid-item\[data-cinder-variant='card'\]\)\s*\{[^}]*border: 0;/,
+    );
     expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
     expect(source).toContain('overflow-y: auto;');
     expect(source).toContain('@media (any-pointer: coarse)');

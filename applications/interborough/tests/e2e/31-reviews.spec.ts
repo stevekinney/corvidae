@@ -11,6 +11,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
 import {
   approveReview,
@@ -359,7 +360,7 @@ test.describe('a decision made in the inbox', () => {
   });
 });
 
-test.describe('a question a run asks', () => {
+test.describe('/reviews: a question a run asks', () => {
   test('is answered in the inbox in the shape it asks for, and the run goes on', async ({
     page,
     request,
@@ -377,6 +378,19 @@ test.describe('a question a run asks', () => {
     );
     await expect(paneOf(page)).toContainText('The agent continues as soon as you answer.');
     await checkA11y('a question in the inbox');
+    const originalViewport = page.viewportSize();
+    if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(paneOf(page).getByLabel('Your answer')).toBeVisible();
+      await expect(paneOf(page).getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'pending human question',
+        source: '31-reviews.spec.ts',
+      });
+    }
+    await page.setViewportSize(originalViewport);
     await paneOf(page).getByLabel('Your answer').fill('staging');
     await paneOf(page).getByRole('button', { name: 'Send', exact: true }).click();
 
@@ -477,43 +491,65 @@ test.describe('a scheduled run’s human wait', () => {
   });
 });
 
-test.describe('a Bureau that fails', () => {
-  test('says so with a banner on a page that is up, and does not claim nothing is waiting', async ({
-    page,
-    checkA11y,
-    pageErrors,
-  }) => {
-    // Each read of the review list the page makes on arrival fails once; none retries, and the
-    // feed's catch-up is held. The view's probe and the notification feed read the Bureau's own
-    // list once each, the Done tab once, and the merged waiting list once for the navigation's
-    // count. The count is not exact: the page draws its own loading and mounts beside the probe
-    // (row 26a), so whether its own query shares that read in flight or makes one more follows
-    // the order the network answers in (5 or 6 seen). It is bounded, so a page that kept asking
-    // after a failure would still fail the test.
-    pageErrors.expect({
-      pattern: loggedFailedResponse(500, /\/jsonrpc/),
-      reason:
-        'the test answers each read of the Bureau’s review list the page makes on arrival with a 500',
-      count: 5,
-      atMost: 8,
-    });
-    // The feed's catch-up would ask the lists again while the page is open, so it is held.
-    await holdBureauFeed(page);
-    await page.route('**/jsonrpc', async (route) => {
-      if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
+test.describe('/reviews: a Bureau that fails', () => {
+  for (const delivery of ['immediate', 'held'] as const) {
+    test(`renders the Reviews failure with exactly two pending reads (${delivery})`, async ({
+      page,
+      checkA11y,
+      pageErrors,
+    }) => {
+      const time = Date.parse('2026-11-10T15:00:00Z');
+      await page.clock.install({ time: time - 1_000 });
+      await page.clock.pauseAt(time);
+      await holdBureauFeed(page);
+      const release = Promise.withResolvers<void>();
+      const counts = { waiting: 0, resolved: 0 };
+      pageErrors.expect({
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
+        reason: 'the two pending reads and the independent resolved read receive a 500',
+        count: 3,
+      });
+      await page.route('**/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as {
+          method?: string;
+          params?: { status?: string };
+        };
+        if (call.method !== 'bureau.reviews.list') return route.fallback();
+        if (call.params?.status === 'resolved') counts.resolved += 1;
+        else if (call.params?.status === undefined || call.params.status === 'pending') {
+          counts.waiting += 1;
+        } else return route.fallback();
+        if (delivery === 'held') await release.promise;
         await route.fulfill({ status: 500, json: { error: 'The Bureau broke.' } });
-        return;
+      });
+
+      try {
+        await page.goto('/reviews');
+        if (delivery === 'held') {
+          await expect(page.getByRole('heading', { level: 1, name: 'Reviews' })).toBeVisible();
+          await expect.poll(() => counts.waiting).toBeGreaterThanOrEqual(2);
+        }
+      } finally {
+        release.resolve();
       }
-      await route.fallback();
+      await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
+      await expect(
+        page.getByRole('alert').filter({ hasText: 'Something went wrong' }),
+      ).toBeVisible();
+      await expect(page.getByText('Nothing waiting on you')).toHaveCount(0);
+      await expect.poll(() => counts.resolved).toBeGreaterThanOrEqual(1);
+      expect(counts).toEqual({ waiting: 2, resolved: 1 });
+      // The fake clock stops animation frames; resume only after the exact read assertion so the
+      // accessibility and capture helpers can observe a painted frame without driving a poll.
+      await page.clock.resume();
+      await checkA11y(`the inbox with the Bureau failing (${delivery})`);
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: `waiting list failed, ${delivery} response`,
+        source: '31-reviews.spec.ts',
+      });
     });
-
-    await page.goto('/reviews');
-
-    await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
-    await expect(page.getByRole('alert').filter({ hasText: 'Something went wrong' })).toBeVisible();
-    await expect(page.getByText('Nothing waiting on you')).toHaveCount(0);
-    await checkA11y('the inbox with the Bureau failing');
-  });
+  }
 });
 
 /** What is waiting, as the two services say it: the Bureau's reviews and the engine's pending ones. */

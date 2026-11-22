@@ -27,7 +27,7 @@
   import { finalizerStatusPresentation } from '../workflow-status.ts';
 
   interface FinalizerStripProps {
-    /** The workflow's base terminal status — only `cancelled`/`timed-out` ever carry finalizer work; used for wording ("Cancelled" vs "Timed out"). */
+    /** The workflow's base terminal status — only `cancelled`/`timed-out` ever carry finalizer work; used for wording ("Canceled" vs "Timed out"). */
     readonly baseStatus: WorkflowStatus;
     /** `weft.workflows.finalizer.get` result. `undefined` while loading, `null` when nothing was recorded — both render nothing. */
     readonly status: WorkflowFinalizerStatus | null | undefined;

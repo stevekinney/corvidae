@@ -40,7 +40,7 @@ export const STATE_LABELS = {
   approved_with_edits: 'Approved with edits',
   denied: 'Denied',
   expired: 'Expired',
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
   unavailable: 'Unavailable',
 } as const satisfies Record<ApprovalState, string>;
 
@@ -141,7 +141,7 @@ export function inputRepeatsShownFacts(
 /** The title of a decided approval that never got a decision: "Expired before a decision: …". */
 export const UNDECIDED_PREFIX: Partial<Record<ApprovalState, string>> = {
   expired: 'Expired before a decision',
-  cancelled: 'Cancelled before a decision',
+  cancelled: 'Canceled before a decision',
 };
 
 const HOUR_SECONDS = 3_600;

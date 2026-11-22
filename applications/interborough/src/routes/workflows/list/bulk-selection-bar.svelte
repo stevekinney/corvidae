@@ -48,6 +48,7 @@
   import BulkActionDialog from './bulk-action-dialog.svelte';
   import { BULK_FILTER_UNSCOPED_REASON, isBulkOperationScoped } from './bulk-filter-scope.ts';
   import { toBulkListFilterInput } from './bulk-list-filter.ts';
+  import { filterSummaryChip } from './bulk-preview-format.ts';
   import {
     commitBulkCancel,
     commitBulkDelete,
@@ -103,6 +104,8 @@
 
   const filterScoped = $derived(isBulkOperationScoped(filter));
   const bulkFilter = $derived(toBulkListFilterInput(filter));
+  /** The filter in words, known before any dry run, for a dialog whose count failed. */
+  const filterChip = $derived(filterSummaryChip(bulkFilter));
 
   const actionsDisabledReason = $derived(
     adminGate.disabled
@@ -165,7 +168,14 @@
 </script>
 
 {#snippet signalParamsForm()}
-  <Input id="bulk-signal-name" label="Signal name" bind:value={signalName} placeholder="addItem" />
+  <!-- The form is filled in before anything can be confirmed, so its first field takes the first focus, not Cancel. -->
+  <Input
+    id="bulk-signal-name"
+    label="Signal name"
+    bind:value={signalName}
+    placeholder="addItem"
+    autofocus
+  />
   <Textarea
     id="bulk-signal-payload"
     label="Payload"
@@ -180,6 +190,7 @@
 
 {#snippet tagsParamsForm()}
   <Select
+    autofocus
     id="bulk-tags-operation"
     label="Operation"
     bind:value={tagsOperation}
@@ -273,6 +284,7 @@
   <BulkActionDialog
     title="Bulk cancel"
     verb="cancel"
+    {filterChip}
     runDryRun={() => dryRunBulkCancel(client, bulkFilter)}
     runCommit={async (token, matched) =>
       cancelResultSummary(await commitBulkCancel(client, bulkFilter, token), matched)}
@@ -283,6 +295,7 @@
   <BulkActionDialog
     title="Bulk retry failed"
     verb="retry"
+    {filterChip}
     destructive={false}
     runDryRun={() => dryRunBulkRetryFailed(client, bulkFilter)}
     runCommit={async (token, matched) =>
@@ -295,6 +308,7 @@
   <BulkActionDialog
     title="Bulk delete"
     verb="delete"
+    {filterChip}
     runDryRun={() => dryRunBulkDelete(client, bulkFilter)}
     runCommit={async (token, matched) =>
       deleteResultSummary(await commitBulkDelete(client, bulkFilter, token), matched)}
@@ -305,6 +319,7 @@
   <BulkActionDialog
     title="Bulk signal"
     verb="signal"
+    {filterChip}
     destructive={false}
     parameters={signalParamsForm}
     parametersValid={signalParamsValid}
@@ -332,6 +347,7 @@
 {:else if activeAction === 'tags'}
   <BulkActionDialog
     title="Bulk mutate tags"
+    {filterChip}
     verb={tagsOperation === 'add' ? 'add tags to' : 'remove tags from'}
     destructive={false}
     parameters={tagsParamsForm}
@@ -348,6 +364,7 @@
   />
 {:else if activeAction === 'purge'}
   <BulkPurgeDialog
+    {filterChip}
     runDryRun={() => dryRunPurge(client, bulkFilter)}
     runPurge={async (token) => purgeResultSummary(await commitPurge(client, bulkFilter, token))}
     onClose={closeDialog}
