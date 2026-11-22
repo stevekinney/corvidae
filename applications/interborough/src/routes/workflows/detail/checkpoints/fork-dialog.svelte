@@ -79,7 +79,7 @@
 
   import { RUN_FORK_PREVIEW_COPY } from '../../../../app/copy/runs.ts';
   import { faultTreatment } from '../../../../lib/faults.ts';
-  import { formatRelativeTime, truncateId } from '../../../../lib/format/index.ts';
+  import { formatRelativeTime } from '../../../../lib/format/index.ts';
   import { queryKeys } from '../../../../lib/query.ts';
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';
   import WorkerInheritanceNote from '../../../../lib/worker-inheritance-note.svelte';
