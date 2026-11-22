@@ -583,6 +583,40 @@ describe('guardrails and spend', () => {
     expect(runLimit.getAttribute('role')).toBe('spinbutton');
   });
 
+  test('leaves precise stored spend limits untouched until a deliberate edit', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({
+        limits: { steps: null, cost: { run: 0.0005, chat: 0.0006, warn: [0.5] }, tools: null },
+      }),
+    );
+    const { findByLabelText } = mount();
+
+    const chat = await findByLabelText(copy.spendLabel);
+    const run = await findByLabelText(copy.spendRunLabel);
+    expect(chat).toHaveValue('0.0006');
+    expect(run).toHaveValue('0.0005');
+
+    await fireEvent.focus(chat);
+    await fireEvent.blur(chat);
+    await fireEvent.focus(run);
+    await fireEvent.blur(run);
+
+    expect(updatesOf(served)).toHaveLength(0);
+    expect(chat).toHaveValue('0.0006');
+    expect(run).toHaveValue('0.0005');
+
+    await fireEvent.input(run, { target: { value: '0.0007' } });
+    await fireEvent.blur(run);
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params).toMatchObject({
+      expectedHash: 'hash-1',
+      definition: { limits: { cost: { run: 0.0007, chat: 0.0006, warn: [0.5] } } },
+    });
+  });
+
   test('saves an independent run limit without changing the chat limit or warnings', async () => {
     landAt('/agents/researcher/access');
     const served = serve(

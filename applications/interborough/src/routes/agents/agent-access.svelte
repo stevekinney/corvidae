@@ -111,6 +111,7 @@
   let { id, detail, pluginTitle = '', unavailable = false, overrides }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.access;
+  const spendFormat: Intl.NumberFormatOptions = { maximumSignificantDigits: 21 };
   const queryClient = useQueryClient();
   const connection = getConnection();
   const toasts = hasToastHost();
@@ -567,6 +568,7 @@
         description={copy.spendNote}
         placeholder={copy.spendPlaceholder}
         value={numericValue(state.spendPerChat)}
+        format={spendFormat}
         error={spendError}
         disabled={!state.editable}
         readonly={connection.unreachable}
@@ -583,6 +585,7 @@
         id="access-spend-per-run"
         label={copy.spendRunLabel}
         value={numericValue(state.spendPerRun)}
+        format={spendFormat}
         error={spendRunError}
         disabled={!state.editable}
         readonly={connection.unreachable}
