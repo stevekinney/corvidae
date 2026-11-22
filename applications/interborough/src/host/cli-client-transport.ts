@@ -103,6 +103,8 @@ export async function request(
   init?: RequestInit,
 ): Promise<CliCommandResult> {
   assertManagementBoundary(target, path);
+  // A dry run changes nothing, so a request that fails leaves no outcome unknown.
+  const mutating = isMutation(init?.method) && parsed.options.get('dry-run') !== true;
   const controller = new AbortController();
   dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   // poll-reason: timer
@@ -121,7 +123,7 @@ export async function request(
         signal: controller.signal,
       });
     } catch (error) {
-      if (isMutation(init?.method) && error instanceof DOMException && error.name === 'AbortError')
+      if (mutating && error instanceof DOMException && error.name === 'AbortError')
         throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
       if (error instanceof TypeError) throw Object.assign(error, { connectionFailed: true });
       throw error;
@@ -140,7 +142,7 @@ export async function request(
         );
       throw makeCliFailure(
         'The host returned malformed JSON.',
-        init?.method === 'POST' ? { exitCode: 7 } : {},
+        init?.method === 'POST' && mutating ? { exitCode: 7 } : {},
       );
     }
     if (!response.ok)
@@ -172,7 +174,7 @@ export async function request(
     }
     return { data: body };
   } catch (error) {
-    if (isMutation(init?.method) && error instanceof DOMException && error.name === 'AbortError')
+    if (mutating && error instanceof DOMException && error.name === 'AbortError')
       throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
     throw error;
   } finally {

@@ -35,6 +35,14 @@ Every JSON envelope carries `schemaVersion`, which is `2` (COR-2519). A failed c
 
 Two golden files, `src/host/__fixtures__/cli-error-golden/server-fault.json` and `local-error.json`, pin the JSON error for one server fault and one local error.
 
+### Previewing and confirming destructive commands
+
+Every command that cancels, pauses, disables, removes or deletes something takes `--dry-run`, which prints what it would change and changes nothing, and the ones that cannot be undone also ask first. `--yes` answers that question. `src/host/cli-destructive.ts` lists the commands, and `cli-destructive.test.ts` fails when a command is mapped to a destructive operation that the list lacks.
+
+- **`--dry-run`**: for a Bureau operation (`runs cancel`, `chats cancel`, `chats delete`, `agents delete`, `goals cancel`, `hooks delete`, `memory forget`) the CLI sends `dryRun: true` to the operation it already calls (`bureau.tasks.cancel` for an agent run, `weft.workflows.cancel` for a workflow run; `chats cancel` goes through `bureau.tasks.cancel` too, as its route does) and prints the server's answer unchanged, so `--dry-run --output json` is the server's `{ dryRun: true, target, effects }` in the usual envelope. `api call <operation> --dry-run` sets `dryRun: true` on the input, over one the input carries, and refuses an operation whose input has no `dryRun` (exit 2). `providers disconnect`, `tool-sources remove` and `plugins disable` change host routes, and Bureau has no dry run for `schedules pause`, so for these four the CLI reads the target and prints the change it would send: `{ dryRun: true, previewedBy: "cli", target, current, wouldSend }`, with a note saying the CLI made the preview. A target that is not there exits 1, as a read of an absent target does. A dry run needs no `--yes`, and a failure of one never reports an unknown mutation outcome (exit 7).
+- **Confirmation**: `chats delete`, `agents delete`, `hooks delete`, `memory forget`, `tool-sources remove`, `providers disconnect` and `api call` on an operation the catalog marks destructive ask on a terminal (`<what>? This cannot be undone. [y/N]`, default no; a no exits 1 and changes nothing) and refuse when input is not a terminal or `--no-input` is given, with the usage exit status (2) and a message naming `--yes`. **A script that called one of these without `--yes` now fails until it passes it**; `memory forget` and `api call` used to exit 5 here.
+- **No confirmation**: `runs cancel`, `chats cancel`, `goals cancel`, `schedules pause` and `plugins disable` run as before, because they are safety stops or reversible. `reviews` no longer declares `--yes`, which it never read.
+
 ## Running it
 
 Run every command from the repository root.

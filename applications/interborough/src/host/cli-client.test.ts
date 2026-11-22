@@ -83,7 +83,7 @@ describe('Interborough command client', () => {
         params: { id: 'demo', definition: { title: 'sample' }, expectedHash: 'hash' },
       },
       {
-        arguments: ['agents', 'delete', 'demo', '--expected-revision', 'hash'],
+        arguments: ['agents', 'delete', 'demo', '--expected-revision', 'hash', '--yes'],
         method: 'bureau.agents.definitions.delete',
         params: { id: 'demo', expectedHash: 'hash' },
       },
@@ -191,7 +191,7 @@ describe('Interborough command client', () => {
     const invalid = [
       ['agents', 'get'],
       ['agents', 'list', '--limit', '-1'],
-      ['agents', 'delete', 'demo'],
+      ['agents', 'delete', 'demo', '--yes'],
       ['agents', 'versions', 'restore', 'demo', '0', '--if-revision', 'hash'],
       ['agents', 'try', '--file', '-'],
       ['agents', 'create', 'demo'],

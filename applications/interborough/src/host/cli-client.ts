@@ -10,6 +10,13 @@ import { readPreferences } from './cli-client-preferences.ts';
 import { request, type CliTarget } from './cli-client-transport.ts';
 import { executeConfiguration } from './cli-configuration.ts';
 import { executeDefinitions } from './cli-definitions.ts';
+import {
+  CLI_DESTRUCTIVE_ACTIONS,
+  confirmIrreversible,
+  gateDestructiveAction,
+  isDestructiveAction,
+  isDryRun,
+} from './cli-destructive.ts';
 import { executeMcp } from './cli-mcp.ts';
 import { executeMemory } from './cli-memory.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
@@ -166,6 +173,7 @@ export const CLI_OPERATION_MAPPINGS = Object.freeze({
   ],
   chats: [
     'POST /bureau/ag-ui/runs/:run/cancel',
+    'bureau.tasks.cancel',
     'bureau.contexts.list',
     'bureau.contexts.get',
     'bureau.contexts.input',
@@ -310,6 +318,7 @@ const optionNames = new Set([
   'url',
   'workspace',
   'yes',
+  'dry-run',
   'agent',
   'message-file',
   'message',
@@ -400,6 +409,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'input-file',
     'limit',
     'yes',
+    'dry-run',
   ],
   chat: [
     'help',
@@ -440,6 +450,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'provider',
     'run',
     'task-id',
+    'yes',
+    'dry-run',
   ],
   reviews: [
     'help',
@@ -452,7 +464,6 @@ const commandOptions: Record<string, readonly string[]> = {
     'review-id',
     'round',
     'reason',
-    'yes',
   ],
   runs: [
     'GET /bureau/v1/subscriptions/bureau.tasks.events',
@@ -482,6 +493,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'wait',
     'step',
     'status',
+    'dry-run',
   ],
   events: [
     'help',
@@ -528,6 +540,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'revision',
     'message',
+    'yes',
+    'dry-run',
   ],
   workflows: [
     'help',
@@ -565,6 +579,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'limit',
     'offset',
     'yes',
+    'dry-run',
   ],
   assets: [
     'GET /bureau/assets/:asset/content',
@@ -594,6 +609,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'occurrence',
     'limit',
     'offset',
+    'dry-run',
   ],
   goals: [
     'help',
@@ -608,6 +624,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'limit',
     'offset',
+    'dry-run',
   ],
   hooks: [
     'help',
@@ -622,6 +639,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'secret-output',
     'limit',
+    'yes',
+    'dry-run',
   ],
   providers: [
     'help',
@@ -637,6 +656,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'secret-file',
     'secret-stdin',
+    'yes',
+    'dry-run',
   ],
   models: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
   tools: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
@@ -653,6 +674,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'file',
     'expected-revision',
     'no-open',
+    'yes',
+    'dry-run',
   ],
   plugins: [
     'help',
@@ -663,6 +686,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'timeout',
     'workspace',
     'expected-revision',
+    'dry-run',
   ],
   skills: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
   settings: [
@@ -780,7 +804,9 @@ const optionValueSyntax: Record<string, string> = {
 
 function isBooleanOption(command: string, option: string): boolean {
   return (
-    ['all', 'help', 'no-input', 'yes', 'overwrite', 'secret-stdin', 'no-open'].includes(option) ||
+    ['all', 'help', 'no-input', 'yes', 'dry-run', 'overwrite', 'secret-stdin', 'no-open'].includes(
+      option,
+    ) ||
     ((option === 'wait' || option === 'include-runs') && command === 'workflows')
   );
 }
@@ -904,6 +930,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Whether an operation's input schema is an object with a `dryRun` property. */
+function inputTakesDryRun(inputSchema: unknown): boolean {
+  const properties = isRecord(inputSchema) ? inputSchema['properties'] : undefined;
+  return isRecord(properties) && Object.hasOwn(properties, 'dryRun');
+}
+
 function parse(arguments_: readonly string[]): Parsed | CliResult {
   const [command = '', ...rest] = arguments_;
   if (!(command in commandOptions)) return usage(`Unknown command: ${command || '<missing>'}`);
@@ -953,6 +985,10 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     return usage('JSONL output is only supported for streams.');
   if (outputValue === 'jsonl' && command === 'api' && values.get('help') !== true)
     return usage('JSONL output is only supported for streaming API calls.');
+  if (values.get('dry-run') === true && !isDestructiveAction(command, positional[0]))
+    return usage(
+      `Option --dry-run applies only to: ${Object.keys(CLI_DESTRUCTIVE_ACTIONS).join(', ')}.`,
+    );
   const timeoutValue = values.get('timeout');
   const timeout = timeoutValue === undefined ? 30_000 : Number(timeoutValue);
   if (!Number.isInteger(timeout) || timeout <= 0)
@@ -1172,6 +1208,7 @@ async function execute(
     );
   const resolved = await resolveTarget(parsed, dependencies);
   if ('exitCode' in resolved) return targetResolutionFailure(resolved);
+  await gateDestructiveAction(parsed, dependencies);
   if (parsed.command === 'open') {
     await (
       dependencies.open ??
@@ -1359,10 +1396,18 @@ async function execute(
           `Operation is not a supported unary JSON-RPC operation: ${parsed.arguments[1]}.`,
           { usage: true },
         );
-      if (operation.destructive && parsed.options.get('yes') !== true)
+      // `--dry-run` sets `dryRun: true` on the input, over one the input carries, so it needs an
+      // operation whose input takes one; a dry run changes nothing, so it needs no confirmation.
+      if (isDryRun(parsed) && !inputTakesDryRun(operation.inputSchema))
         throw makeCliFailure(
-          `Operation ${parsed.arguments[1]} is destructive; pass --yes to confirm.`,
-          { exitCode: 5 },
+          `api: ${parsed.arguments[1]} does not support --dry-run: its input has no dryRun field.`,
+          { usage: true },
+        );
+      if (operation.destructive && !isDryRun(parsed))
+        await confirmIrreversible(
+          parsed,
+          dependencies,
+          `${CLI_DESTRUCTIVE_ACTIONS['api call']!.subject} ${parsed.arguments[1]} (destructive)`,
         );
       const input = inputFile ?? inputOption;
       const inputText =
@@ -1379,6 +1424,7 @@ async function execute(
       } catch {
         throw makeCliFailure('Input must contain valid JSON.', { usage: true });
       }
+      if (isDryRun(parsed)) params = isRecord(params) ? { ...params, dryRun: true } : params;
       const response = await request(resolved, '/jsonrpc', parsed, dependencies, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -1502,39 +1548,41 @@ export async function executeCli(
     const status =
       isRecord(error) && typeof error['status'] === 'number' ? error['status'] : undefined;
     const usageError = isRecord(error) && error['usage'] === true;
+    // A dry run changes nothing, so a failure of one never leaves a mutation's outcome unknown.
     const mutation =
-      parsed.command === 'restart' ||
-      (parsed.command === 'memory' &&
-        ['remember', 'correct', 'forget'].includes(parsed.arguments[0] ?? '')) ||
-      (parsed.command === 'assets' && parsed.arguments[0] === 'upload') ||
-      (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
-      (['providers', 'tool-sources', 'plugins', 'settings'].includes(parsed.command) &&
-        [
-          'connect',
-          'disconnect',
-          'add',
-          'update',
-          'probe',
-          'authorize',
-          'remove',
-          'enable',
-          'disable',
-          'set',
-        ].includes(parsed.arguments[0] ?? '')) ||
-      (parsed.command === 'runs' && parsed.arguments[0] === 'cancel') ||
-      (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
-        [
-          'create',
-          'update',
-          'pause',
-          'resume',
-          'run',
-          'skip-next',
-          'cancel',
-          'replace-secret',
-          'delete',
-          'test',
-        ].includes(parsed.arguments[0] ?? ''));
+      !isDryRun(parsed) &&
+      (parsed.command === 'restart' ||
+        (parsed.command === 'memory' &&
+          ['remember', 'correct', 'forget'].includes(parsed.arguments[0] ?? '')) ||
+        (parsed.command === 'assets' && parsed.arguments[0] === 'upload') ||
+        (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
+        (['providers', 'tool-sources', 'plugins', 'settings'].includes(parsed.command) &&
+          [
+            'connect',
+            'disconnect',
+            'add',
+            'update',
+            'probe',
+            'authorize',
+            'remove',
+            'enable',
+            'disable',
+            'set',
+          ].includes(parsed.arguments[0] ?? '')) ||
+        (parsed.command === 'runs' && parsed.arguments[0] === 'cancel') ||
+        (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
+          [
+            'create',
+            'update',
+            'pause',
+            'resume',
+            'run',
+            'skip-next',
+            'cancel',
+            'replace-secret',
+            'delete',
+            'test',
+          ].includes(parsed.arguments[0] ?? '')));
     const exitCode: Exclude<CliExitCode, 0> = dependencies.signal?.aborted
       ? 130
       : isRecord(error) && isCliFailureExitCode(error['exitCode'])
