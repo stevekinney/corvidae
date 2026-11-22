@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2646",
+  "branch": "chef/cor-2646-tooltip-position",
+  "checkedAt": "56d4d146784e515cf6af0aae5b5d398fa6e02e3a",
+  "briefVersion": "4c787d72e0c8",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Commit 76f3a6a863 names the cause: ToolCallRail's `{@attach trackRow(call.id)}` returned a new closure on every evaluation, so each rebuild of the calls (Interborough rebuilds them on its 100ms clock tick) re-ran the attachment, cleared and re-set the row in the Tooltip's triggerRef, hid an open tooltip, cancelled the pending show and restarted the 100ms delay. None of the issue's three suggested causes: positioning was never reached. A browser trace of the spec before the fix showed rebinds of the focused row, `clear100` of the pending show and `visible=null` after the tooltip had opened; after the fix the trace shows one show, no rebind, no clear and no hide."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Fixed in Cinder's ToolCallRail (one stable attachment per call id), not in Tooltip: the Tooltip resets only when its triggerRef really passes through null, which the rail caused. tool-call-rail.test.ts gains 'a focused row keeps its description and open tooltip when the calls are rebuilt with the same ids' and 'a focused row shows its tooltip while the calls are rebuilt faster than the show delay'; both fail before the fix (2 fail) and pass after it (42 pass, 0 fail)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "chat-regeneration-expiry.spec.ts -g 'expired approval' --repeat-each=20 in Chromium, with a fresh server: 40 passed, 0 failed (20 desktop, 20 coarse phone), 30.4 minutes, exit 0. The failure is intermittent, and the spec also passed 2 of 2 times before the fix, so the repeat shows no regression; the cause is shown by the before and after traces."
+    }
+  ]
+}
