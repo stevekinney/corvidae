@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2559",
+  "branch": "chef/cor-2559-error-state-remediation",
+  "checkedAt": "147166b87344a297ed1554badf3549040efdafe0",
+  "briefVersion": "7eae35fe427a",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "remediation?: string prop, own p.cinder-error-state-remediation after the description, description's type tokens; error-state.test.ts 'ErrorState remediation' asserts text and order (default, flat, row)"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "test 'renders no remediation element without the prop or with an empty one'; markup is guarded by {#if remediation}"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "element sits inside the role=alert/group body named by aria-labelledby (test asserts containment); error-state.a11y.md states it"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "README examples with and without onRetry; playground examples with-remediation and remediation-not-retryable; error-state.examples.json entries; component examples check passed in lint"
+    }
+  ]
+}
