@@ -35,12 +35,12 @@
 </script>
 
 <div class="fixture" data-testid="tool-call-rail-targets">
-  <ToolCallRail {calls} bind:selectedId onSelect={(id) => (selectedId = id)} />
+  <ToolCallRail {calls} {selectedId} onSelect={(id) => (selectedId = id)} />
 </div>
 
 <style>
   .fixture {
-    inline-size: 20rem;
+    inline-size: calc(4 * var(--cinder-space-20));
     max-inline-size: 100%;
     padding: var(--cinder-space-4);
   }

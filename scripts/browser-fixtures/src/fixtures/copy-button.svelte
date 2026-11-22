@@ -23,7 +23,7 @@
 
   .action-row {
     display: flex;
-    block-size: 2rem;
+    block-size: var(--cinder-space-8);
     margin-block-start: var(--cinder-space-4);
   }
 </style>
