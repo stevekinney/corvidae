@@ -299,6 +299,30 @@ describe('evidence plan: a Cinder prop diff', () => {
     ]);
   });
 
+  test('a computed-path rule of another workspace adds its tests to that workspace lane', () => {
+    const settingOwners = 'packages/bureau/src/settings/setting-owners.test.ts';
+    const plan = computeEvidencePlan(
+      ['packages/bureau/src/create-bureau.ts'],
+      standIn({
+        files: { [settingOwners]: '', 'packages/bureau/src/a.test.ts': '' },
+        selected: [
+          {
+            directory: 'packages/bureau',
+            mode: 'partial',
+            tests: ['packages/bureau/src/a.test.ts'],
+          },
+        ],
+      }),
+    );
+    expect(plan.unit_tests).toEqual([
+      {
+        workspace: 'packages/bureau',
+        full: false,
+        paths: ['src/a.test.ts', 'src/settings/setting-owners.test.ts'],
+      },
+    ]);
+  });
+
   test('slow and integration tests are never listed as unit tests', () => {
     const plan = computeEvidencePlan(
       ['packages/bureau/src/a.ts'],
