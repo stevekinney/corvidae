@@ -18,6 +18,7 @@ import type { Locator, Page } from '@playwright/test';
 import { fixtureEntry } from './layout-fixture.ts';
 
 const phone = { name: 'mobile', width: 390, height: 844 } as const satisfies Viewport;
+const narrowTouchPhone = { name: 'mobile', width: 320, height: 844 } as const satisfies Viewport;
 const drawerEntry = fixtureEntry('drawer');
 const modalEntry = fixtureEntry('modal');
 
@@ -290,5 +291,58 @@ test.describe('Modal as a bottom sheet', () => {
 
     await close.hover();
     await expect(page.getByRole('tooltip')).toHaveText('Close (Esc)');
+  });
+
+  test('on a 320px coarse-pointer phone, the close target reaches 44px inside the docked panel in both themes', async ({
+    componentPage,
+  }) => {
+    for (const theme of ['light', 'dark'] as const) {
+      const page = await componentPage.open({
+        entry: modalEntry,
+        theme,
+        viewport: narrowTouchPhone,
+        fixtureName: 'sheet',
+        hasTouch: true,
+      });
+      const dialog = page.locator('dialog[data-cinder-sheet="docked"]');
+      const close = page.getByRole('button', { name: 'Close', exact: true });
+      await expect(dialog).toBeVisible();
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+
+      const target = await close.evaluate((element) => {
+        const panel = element.closest('.cinder-modal__panel');
+        if (panel === null) throw new Error('The close button has no modal panel.');
+        const face = element.getBoundingClientRect();
+        const panelBox = panel.getBoundingClientRect();
+        const hitAt = (x: number, y: number) => element.contains(document.elementFromPoint(x, y));
+        return {
+          width: face.width,
+          height: face.height,
+          pseudoWidth: Number.parseFloat(getComputedStyle(element, '::before').width),
+          pseudoHeight: Number.parseFloat(getComputedStyle(element, '::before').height),
+          staysInsidePanel: face.right + 4 <= panelBox.right && face.top - 4 >= panelBox.top,
+          leftEdge: hitAt(face.left - 3, face.top + face.height / 2),
+          rightEdge: hitAt(face.right + 3, face.top + face.height / 2),
+          topEdge: hitAt(face.left + face.width / 2, face.top - 3),
+          bottomEdge: hitAt(face.left + face.width / 2, face.bottom + 3),
+        };
+      });
+      expect(target.width).toBeCloseTo(36, 0);
+      expect(target.height).toBeCloseTo(36, 0);
+      expect(target.pseudoWidth).toBeCloseTo(44, 0);
+      expect(target.pseudoHeight).toBeCloseTo(44, 0);
+      expect(target.staysInsidePanel).toBe(true);
+      expect([target.leftEdge, target.rightEdge, target.topEdge, target.bottomEdge]).toEqual([
+        true,
+        true,
+        true,
+        true,
+      ]);
+
+      const face = await close.boundingBox();
+      if (face === null) throw new Error('The close button has no layout box.');
+      await page.mouse.click(face.x - 3, face.y + face.height / 2);
+      await expect(dialog).not.toBeVisible();
+    }
   });
 });

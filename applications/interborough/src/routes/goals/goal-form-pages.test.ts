@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { GOALS_COPY } from '../../app/copy/goals.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import { goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {
@@ -126,6 +127,8 @@ type Options = {
   hostProviders?: readonly { name: string; hasKey: boolean; connected?: boolean }[];
   /** The checks the Bureau lists, which are {@link VALIDATORS} unless said. */
   validators?: readonly Record<string, unknown>[];
+  /** A custom checks query, used to exercise recovery without replacing the draft. */
+  listValidators?: BureauHandler;
 };
 
 function open(path: string, options: Options = {}) {
@@ -133,7 +136,8 @@ function open(path: string, options: Options = {}) {
   stub = installBureauStub(
     {
       'bureau.agents.list': () => ({ agents: AGENTS }),
-      'bureau.validators.list': () => ({ validators: options.validators ?? VALIDATORS }),
+      'bureau.validators.list':
+        options.listValidators ?? (() => ({ validators: options.validators ?? VALIDATORS })),
       'bureau.goals.list': () => ({ goals, nextOffset: null }),
       'bureau.goals.get': (params) => {
         const found = goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
@@ -575,6 +579,30 @@ describe('Start again', () => {
     const page = await filledPage(view, copy.title, 'assistant');
     expect((page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement).value).toBe('');
     expect(shownChoice(view.container, CHECK_ID)).toBe(CHECK_LABEL);
+  });
+});
+
+describe('a failed checks catalog', () => {
+  test('retries its query without discarding the new goal draft', async () => {
+    let reads = 0;
+    const view = open('/goals/new', {
+      listValidators: () => {
+        reads += 1;
+        if (reads === 1) throw new StubFault('EngineFailure', 500, 'It broke.');
+        return { validators: VALIDATORS };
+      },
+    });
+
+    const page = within(view.container);
+    const prompt = (await page.findByLabelText(copy.promptLabel)) as HTMLTextAreaElement;
+    await fireEvent.input(prompt, { target: { value: 'Keep this draft.' } });
+    await page.findByRole('heading', { level: 2, name: copy.checkLabel });
+
+    await fireEvent.click(page.getByRole('button', { name: RETRY_LABEL }));
+
+    await waitFor(() => expect(reads).toBe(2));
+    await waitFor(() => expect(shownChoice(view.container, CHECK_ID)).toBe(CHECK_LABEL));
+    expect(prompt.value).toBe('Keep this draft.');
   });
 });
 

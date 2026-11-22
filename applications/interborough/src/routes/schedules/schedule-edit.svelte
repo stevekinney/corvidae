@@ -15,11 +15,12 @@
   import { Alert, Button, ErrorState, PageHeader, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
   import { kindOf } from '../../lib/schedule-kinds.ts';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import FaultBanner from './fault-banner.svelte';
@@ -27,6 +28,7 @@
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
   import type { EditTarget } from './schedule-edit-model.ts';
+  import { scheduleName } from './schedule-presentation.ts';
   import { fetchScheduleDetail, scheduleDetailQueryKey } from './schedule-queries.ts';
 
   interface Props {
@@ -49,6 +51,12 @@
       ? undefined
       : kindOf(detail.data, overlay.data),
   );
+
+  usePageLabel(() => ({
+    path: scheduleDetailPath(id),
+    label:
+      detail.data?.id === id && kind !== undefined ? scheduleName(detail.data, kind) : undefined,
+  }));
 
   /** The schedule the form was opened on, which a refetch does not replace. */
   let opened = $state<EditTarget>();

@@ -655,6 +655,36 @@
     }
   }
 
+  /* The ordinary 448px trailing rule comes before the two-line phone grid above. Keep a single
+     action under the body at that documented narrow width instead of letting the later status grid
+     squeeze its text; a collapsed menu, decorative glyph, or explicit phone buttons has its own
+     compact arrangement. */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      )
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        'body'
+        'trailing';
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      )
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns: auto 1fr;
+      grid-template-areas:
+        'leading body'
+        'trailing trailing';
+    }
+  }
+
   /* The phone form by the window (`phoneWidth="viewport"`): the rules of the container queries
      above, for a row the script marks as a phone while the viewport is below 640px. A
      list that fills the page's content column follows the window, so a tablet whose navigation
@@ -688,6 +718,17 @@
     min-inline-size: max-content;
     min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
     padding-inline-end: 0;
+  }
+
+  /* A viewport-width phone row gives the status its full word. Its timestamp must then reflow at
+     large text rather than widening the list past the viewport; the run list uses a time snippet,
+     so this belongs on the time cell rather than only on the text-value form below. */
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--group
+    )
+    .cinder-stacked-list-item__time {
+    text-align: end;
+    white-space: normal;
   }
 
   .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
@@ -1045,6 +1086,20 @@
   }
 
   @media (any-pointer: coarse) {
+    /* The disclosure's painted word stays compact in a run/schedule row. Its hit region reaches
+       44px outside normal layout, like the compact actions menu below, so it neither widens nor
+       makes the row taller. */
+    .cinder-stacked-list-item__disclosure {
+      min-block-size: 0;
+    }
+
+    .cinder-stacked-list-item__disclosure::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
     .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger::before {
       content: '';
       position: absolute;
