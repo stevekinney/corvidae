@@ -1,7 +1,7 @@
 {
   "issue": "COR-2535",
   "branch": "chef/cor-2535-failure-filters",
-  "checkedAt": "7f58f79fed351af282826a7588aecfbe4d2b6374",
+  "checkedAt": "59531f7623b5b6fcda9018ee0e3750cf18a11a8e",
   "briefVersion": "f0dd227b4205",
   "status": "READY",
   "criteria": [
