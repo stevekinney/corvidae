@@ -5,29 +5,12 @@
    * module doc is explicit that query errors never reach `<FaultBoundary>`
    * (it only catches render-phase exceptions) and that route components
    * "render the SAME six-treatment FaultDisplay banner inline" themselves —
-   * this component is that banner for the System tabs, sharing
-   * `fault-boundary.svelte`'s classes (`.weft-fault-boundary*`, already
-   * global via `src/styles/foundation.css`) rather than duplicating the CSS.
+   * this component is that banner for the System tabs, drawn by the same
+   * `fault-error-state.svelte` (a Cinder `ErrorState`) the boundary uses, so it shows the
+   * fault's remediation and offers Retry only when the fault can be retried.
    */
-  import { Badge, Button } from '@lostgradient/cinder';
-
-  import { RETRY_LABEL } from '../../app/copy/views.ts';
-  import {
-    CircleSlash,
-    CircleX,
-    GitPullRequestClosed,
-    Lock,
-    SearchX,
-    ServerCrash,
-    WifiOff,
-    type LucideIcon,
-  } from '@lucide/svelte';
-
-  import {
-    FAULT_TREATMENT_TITLE,
-    faultTreatment,
-    type FaultTreatmentKind,
-  } from '../../lib/faults.ts';
+  import FaultErrorState from '../../app/fault-error-state.svelte';
+  import { faultTreatment } from '../../lib/faults.ts';
 
   interface Props {
     error: unknown;
@@ -36,45 +19,14 @@
 
   let { error, onRetry }: Props = $props();
 
-  const FAULT_ICON: Readonly<Record<FaultTreatmentKind, LucideIcon>> = {
-    'not-found': SearchX,
-    conflict: GitPullRequestClosed,
-    invalid: CircleX,
-    unauthorized: Lock,
-    'not-supported': CircleSlash,
-    internal: ServerCrash,
-    unreachable: WifiOff,
-  };
-
-  const FAULT_TONE: Readonly<Record<FaultTreatmentKind, 'neutral' | 'warning' | 'danger'>> = {
-    'not-found': 'neutral',
-    conflict: 'warning',
-    invalid: 'danger',
-    unauthorized: 'danger',
-    'not-supported': 'neutral',
-    internal: 'danger',
-    unreachable: 'warning',
-  };
-
   const treatment = $derived(faultTreatment(error));
-  const Icon = $derived(FAULT_ICON[treatment.kind]);
-  const tone = $derived(FAULT_TONE[treatment.kind]);
 </script>
 
-<div class="weft-fault-boundary" data-tone={tone} role="alert">
-  <div class="weft-fault-boundary__banner">
-    <Icon aria-hidden="true" size={16} class="weft-fault-boundary__icon" />
-    <Badge variant={tone}>{FAULT_TREATMENT_TITLE[treatment.kind]}</Badge>
-    <p class="weft-fault-boundary__message">{treatment.message}</p>
-    {#if onRetry}
-      <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={onRetry} />
-    {/if}
-  </div>
-
+<FaultErrorState {treatment} {onRetry}>
   {#if treatment.kind === 'internal' && treatment.tryViaJsonRpc}
     <p class="weft-fault-boundary__note">
       The REST API hides internal error detail on this response — the same request over JSON-RPC
       returns the full fault.
     </p>
   {/if}
-</div>
+</FaultErrorState>

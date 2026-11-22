@@ -21,7 +21,7 @@ describe('QueryFaultBanner', () => {
 
     expect(getByText('Not found')).not.toBeNull();
     expect(getByText('Workflow wf_missing not found.')).not.toBeNull();
-    expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
+    expect(container.querySelector('[data-cinder-tone="neutral"]')).not.toBeNull();
   });
 
   test('renders the unauthorized treatment with a danger tone', async () => {
@@ -29,7 +29,38 @@ describe('QueryFaultBanner', () => {
     const { container, getByText } = render(QueryFaultBanner, { props: { error } });
 
     expect(getByText('Not authorized')).not.toBeNull();
-    expect(container.querySelector('[data-tone="danger"]')).not.toBeNull();
+    expect(container.querySelector('[data-cinder-tone="danger"]')).not.toBeNull();
+  });
+
+  test('shows the remediation as a line under the message, and Retry when the fault is retryable', async () => {
+    const error = new HttpClientError(503, 'The server is restarting.', {
+      retryable: true,
+      remediation: 'Wait a moment, then read it again.',
+    });
+    const { container, getByRole, getByText } = render(QueryFaultBanner, {
+      props: { error, onRetry: () => {} },
+    });
+
+    expect(getByText('Wait a moment, then read it again.').className).toContain(
+      'cinder-error-state-remediation',
+    );
+    expect(container.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
+      'Something went wrong',
+    );
+    expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+  });
+
+  test('offers no Retry for a fault that is not retryable', async () => {
+    const error = new HttpClientError(409, 'The workflow changed.', {
+      retryable: false,
+      remediation: 'Read the workflow again, then send the new revision.',
+    });
+    const { getByText, queryByRole } = render(QueryFaultBanner, {
+      props: { error, onRetry: () => {} },
+    });
+
+    expect(getByText('Read the workflow again, then send the new revision.')).not.toBeNull();
+    expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
   });
 
   test('shows a Retry button and calls onRetry when clicked', async () => {

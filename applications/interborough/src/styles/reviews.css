@@ -283,47 +283,9 @@
   margin: 0;
 }
 
+/* The Reviews lists' fault row (`src/routes/reviews/query-fault-banner.svelte`) keeps its inset. */
 .weft-query-fault {
-  display: flex;
-  align-items: center;
-  gap: var(--cinder-space-2-5, 10px);
   margin: 16px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-raised);
-  flex-wrap: wrap;
-}
-
-.weft-query-fault[data-tone='warning'] {
-  border-color: var(--cinder-status-warning-border);
-  background: var(--cinder-status-warning-background);
-}
-
-.weft-query-fault[data-tone='danger'] {
-  border-color: var(--cinder-status-danger-border);
-  background: var(--cinder-status-danger-background);
-}
-
-.weft-query-fault__icon {
-  flex: none;
-  color: var(--cinder-text-subtle);
-}
-
-.weft-query-fault[data-tone='warning'] .weft-query-fault__icon {
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-query-fault[data-tone='danger'] .weft-query-fault__icon {
-  color: var(--cinder-status-danger-text);
-}
-
-.weft-query-fault__message {
-  flex: 1 1 auto;
-  min-width: 160px;
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-default);
 }
 
 .weft-review-artifact-sections {

@@ -324,6 +324,42 @@ export function faultTreatment(error: unknown): FaultTreatment {
   return classifyFault(error) ?? UNKNOWN_FAULT_TREATMENT;
 }
 
+/**
+ * What a fault adds to a Cinder `ErrorState`, for every screen that shows a classified fault: the
+ * fault's `remediation` as its own line under the description (never the title), and `onRetry` only
+ * when asking again can help, which is every fault except one that says `retryable: false`. A
+ * fault that carries no advice, such as a network failure or one from an older server, keeps Retry.
+ * Keys that do not apply are absent, so the result spreads onto `ErrorState` under
+ * `exactOptionalPropertyTypes`.
+ */
+export interface FaultErrorStateAdvice {
+  readonly remediation?: string;
+  readonly onRetry?: () => void;
+}
+
+/** Whether Retry can help with `treatment`: `false` only when the server said repeating the call cannot succeed. */
+export function canRetryFault(treatment: FaultAdvice): boolean {
+  return treatment.retryable !== false;
+}
+
+/** The {@link FaultErrorStateAdvice} of a classified fault, given what Retry does when it is offered (none: a state with no Retry). */
+export function treatmentErrorStateAdvice(
+  treatment: FaultAdvice,
+  onRetry?: () => void,
+): FaultErrorStateAdvice {
+  return {
+    ...(treatment.remediation === undefined || treatment.remediation === ''
+      ? {}
+      : { remediation: treatment.remediation }),
+    ...(onRetry === undefined || !canRetryFault(treatment) ? {} : { onRetry }),
+  };
+}
+
+/** {@link treatmentErrorStateAdvice} for the error a call rejected with, classified by {@link faultTreatment}. */
+export function faultErrorStateAdvice(error: unknown, onRetry?: () => void): FaultErrorStateAdvice {
+  return treatmentErrorStateAdvice(faultTreatment(error), onRetry);
+}
+
 /** Sentence-case heading for each treatment kind (plan §10.10 copy voice), shared by every surface presenting a `FaultTreatment`. */
 export const FAULT_TREATMENT_TITLE: Readonly<Record<FaultTreatmentKind, string>> = {
   'not-found': 'Not found',

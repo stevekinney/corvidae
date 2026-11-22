@@ -63,7 +63,7 @@
   import { createAgentSchedule, updateAgentSchedule } from '../../lib/bureau-schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { defaultAgentQuery } from '../../lib/default-agent.ts';
-  import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
+  import { faultErrorStateAdvice, faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
@@ -898,7 +898,7 @@
             description={faultTreatment(resolution.error).message}
             headingLevel={3}
             retryLabel={RETRY_LABEL}
-            onRetry={() => void resolution.refetch()}
+            {...faultErrorStateAdvice(resolution.error, () => void resolution.refetch())}
           />
         {:else if unavailable}
           <SectionHeading level={2} title={copy.inputHeading} />

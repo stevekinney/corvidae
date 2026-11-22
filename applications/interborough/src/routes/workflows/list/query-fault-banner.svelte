@@ -9,26 +9,12 @@
    * in this track (list/aggregate/start) that reads a query error, kept
    * intentionally simpler than `<FaultBoundary>`'s render-error version (no
    * collapsible stack trace — a query error is always either a wire fault
-   * or a plain network failure, never a caught local rendering bug).
+   * or a plain network failure, never a caught local rendering bug). It is drawn by
+   * `fault-error-state.svelte`, so it shows the fault's remediation and offers Retry only when
+   * the fault can be retried.
    */
-  import { Badge, Button } from '@lostgradient/cinder';
-
-  import { RETRY_LABEL } from '../../../app/copy/views.ts';
-  import {
-    CircleSlash,
-    CircleX,
-    GitPullRequestClosed,
-    Lock,
-    SearchX,
-    ServerCrash,
-    WifiOff,
-  } from '@lucide/svelte';
-
-  import {
-    FAULT_TREATMENT_TITLE,
-    faultTreatment,
-    type FaultTreatmentKind,
-  } from '../../../lib/faults.ts';
+  import FaultErrorState from '../../../app/fault-error-state.svelte';
+  import { faultTreatment } from '../../../lib/faults.ts';
 
   interface QueryFaultBannerProps {
     error: unknown;
@@ -38,34 +24,6 @@
   let { error, onRetry }: QueryFaultBannerProps = $props();
 
   const treatment = $derived(faultTreatment(error));
-
-  const FAULT_ICON = {
-    'not-found': SearchX,
-    conflict: GitPullRequestClosed,
-    invalid: CircleX,
-    unauthorized: Lock,
-    'not-supported': CircleSlash,
-    internal: ServerCrash,
-    unreachable: WifiOff,
-  } as const satisfies Record<FaultTreatmentKind, unknown>;
-
-  const FAULT_TONE = {
-    'not-found': 'neutral',
-    conflict: 'warning',
-    invalid: 'danger',
-    unauthorized: 'danger',
-    'not-supported': 'neutral',
-    internal: 'danger',
-    unreachable: 'warning',
-  } as const satisfies Record<FaultTreatmentKind, 'neutral' | 'warning' | 'danger'>;
-
-  const Icon = $derived(FAULT_ICON[treatment.kind]);
-  const tone = $derived(FAULT_TONE[treatment.kind]);
 </script>
 
-<div class="weft-query-fault" data-tone={tone} role="alert">
-  <Icon aria-hidden="true" size={16} class="weft-query-fault__icon" />
-  <Badge variant={tone}>{FAULT_TREATMENT_TITLE[treatment.kind]}</Badge>
-  <p class="weft-query-fault__message">{treatment.message}</p>
-  <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={onRetry} />
-</div>
+<FaultErrorState {treatment} {onRetry} />

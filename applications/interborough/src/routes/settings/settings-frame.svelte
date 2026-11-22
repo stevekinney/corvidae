@@ -31,6 +31,7 @@
     type SettingsSchema,
     type SettingsSnapshot,
   } from '../../lib/bureau-settings.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import SettingsSectionNav from './settings-section-nav.svelte';
   import { SettingsFollower } from './settings-follower.ts';
@@ -202,7 +203,7 @@
           description={VIEW_COPY.settings.error.description}
           headingLevel={2}
           retryLabel={RETRY_LABEL}
-          onRetry={tryAgain}
+          {...faultErrorStateAdvice(schema.error ?? snapshot.error, tryAgain)}
         />
       {:else if phase === 'canceled'}
         <div data-testid="settings-canceled">

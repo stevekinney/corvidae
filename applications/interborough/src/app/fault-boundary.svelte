@@ -6,8 +6,9 @@
    *
    * One `FaultDisplay`-style banner for all six treatments (design reference:
    * `design/Weft Patterns.dc.html` "Fault / error banner, six fault codes"),
-   * matched here with Cinder `Badge` + `@lucide/svelte` icons + Cinder tokens
-   * rather than hand-rolled color values. `Internal` additionally shows a
+   * drawn by `fault-error-state.svelte` on a Cinder `ErrorState`, which also shows the
+   * fault's `remediation` and offers Retry only when the fault is not `retryable: false`.
+   * `Internal` additionally shows a
    * collapsible stack trace when the caught error is NOT an `HttpClientError`
    * (i.e. a rendering bug the boundary caught directly, never a wire fault) —
    * matching the design reference's "Collapsible stack trace" panel next to
@@ -25,29 +26,13 @@
   import { keyedByOccurrence } from '../lib/list-keys.ts';
   import type { Snippet } from 'svelte';
 
-  import { Badge, Button, Collapsible } from '@lostgradient/cinder';
-  import type { LucideIcon } from '@lucide/svelte';
-  import {
-    CircleSlash,
-    CircleX,
-    GitPullRequestClosed,
-    Lock,
-    SearchX,
-    ServerCrash,
-    WifiOff,
-  } from '@lucide/svelte';
+  import { Collapsible } from '@lostgradient/cinder';
 
   import { HttpClientError } from '@lostgradient/weft';
 
-  import { RETRY_LABEL } from './copy/views.ts';
+  import FaultErrorState from './fault-error-state.svelte';
 
-  import {
-    classifyFault,
-    FAULT_TREATMENT_TITLE,
-    UNKNOWN_FAULT_TREATMENT,
-    type FaultTreatment,
-    type FaultTreatmentKind,
-  } from '../lib/faults.ts';
+  import { classifyFault, UNKNOWN_FAULT_TREATMENT, type FaultTreatment } from '../lib/faults.ts';
 
   interface FaultBoundaryProps {
     /** The content that may fail. */
@@ -74,31 +59,6 @@
   function errorName(error: unknown): string {
     return error instanceof Error ? error.name : 'Error';
   }
-
-  /**
-   * Icon per treatment kind, matching the design reference's fault-banner
-   * icons verbatim.
-   */
-  const FAULT_ICON: Readonly<Record<FaultTreatmentKind, LucideIcon>> = {
-    'not-found': SearchX,
-    conflict: GitPullRequestClosed,
-    invalid: CircleX,
-    unauthorized: Lock,
-    'not-supported': CircleSlash,
-    internal: ServerCrash,
-    unreachable: WifiOff,
-  };
-
-  /** Visual tone per treatment kind — drives both the banner's background/border and the `Badge` variant. `not-found`/`not-supported` are neutral (a missing/unsupported resource, not a failure); the rest are warning/danger per the design reference. */
-  const FAULT_TONE: Readonly<Record<FaultTreatmentKind, 'neutral' | 'warning' | 'danger'>> = {
-    'not-found': 'neutral',
-    conflict: 'warning',
-    invalid: 'danger',
-    unauthorized: 'danger',
-    'not-supported': 'neutral',
-    internal: 'danger',
-    unreachable: 'warning',
-  };
 </script>
 
 <svelte:boundary onerror={(error: unknown) => reportFault(error)}>
@@ -106,18 +66,9 @@
 
   {#snippet failed(error: unknown, reset: () => void)}
     {@const treatment = classifyFault(error) ?? UNKNOWN_FAULT_TREATMENT}
-    {@const Icon = FAULT_ICON[treatment.kind]}
-    {@const tone = FAULT_TONE[treatment.kind]}
     {@const stack = treatment.kind === 'internal' ? stackTraceOf(error) : undefined}
-    <div class="weft-fault-boundary" data-tone={tone} role="alert">
-      <div class="weft-fault-boundary__banner">
-        <Icon aria-hidden="true" size={16} class="weft-fault-boundary__icon" />
-        <Badge variant={tone}>{FAULT_TREATMENT_TITLE[treatment.kind]}</Badge>
-        <p class="weft-fault-boundary__message">{treatment.message}</p>
-        <!-- The app's one word for asking again, as every banner and error says it (COR-2489). -->
-        <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={reset} />
-      </div>
-
+    <!-- Retry is the app's one word for asking again (COR-2489), offered only when the fault can be retried (COR-2560). -->
+    <FaultErrorState {treatment} onRetry={reset}>
       {#if treatment.kind === 'conflict' && treatment.isSpentIdempotencyKey}
         <p class="weft-fault-boundary__note">
           This idempotency key has already been used and its run was purged — start with a new key.
@@ -144,11 +95,12 @@
           <pre class="weft-fault-boundary__stack">{stack}</pre>
         </Collapsible>
       {/if}
-    </div>
+    </FaultErrorState>
   {/snippet}
 </svelte:boundary>
 
-<!-- Styles: `.weft-fault-boundary*` rules live in src/styles/foundation.css
-     (plain global) because src/routes/system/query-fault-banner.svelte
-     renders the same treatment markup — a scoped <style> block here would
-     never reach it. -->
+<!-- Styles: the `.weft-fault-boundary*` layout rules for what sits under the row (note, field
+     errors, stack) live in src/styles/foundation.css (plain global) because
+     `fault-error-state.svelte` draws the wrapper and
+     src/routes/system/query-fault-banner.svelte fills it with the same notes — a scoped <style>
+     block here would never reach them. -->

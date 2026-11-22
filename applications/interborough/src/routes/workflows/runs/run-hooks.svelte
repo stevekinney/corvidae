@@ -36,7 +36,7 @@
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { listAgents } from '../../../lib/bureau-client.ts';
   import { inspectTaskHooks, type TaskView } from '../../../lib/bureau-tasks.ts';
-  import { classifyFault } from '../../../lib/faults.ts';
+  import { classifyFault, faultErrorStateAdvice } from '../../../lib/faults.ts';
   import { clockTime, viewerTimeZone } from '../../../lib/format/clock.ts';
   import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { queryKeys } from '../../../lib/query.ts';
@@ -178,7 +178,7 @@
       headingLevel={3}
       retryLabel={RETRY_LABEL}
       retryVariant="secondary"
-      onRetry={() => void hooks.refetch()}
+      {...faultErrorStateAdvice(hooks.error, () => void hooks.refetch())}
     />
   </Section>
 {:else if view === undefined}

@@ -108,7 +108,8 @@ const SPECIFICATIONS = {
  * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`), and the hook
  * editor and its deliveries: a plugin hook, a default hook, a withdrawn one, the secret field, a
  * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
- * state of its board (`hooks-states.spec.ts`).
+ * state of its board (`hooks-states.spec.ts`), and a fault's remediation and Retry on the Hooks
+ * list's failed state (`fault-remediation.spec.ts`).
  */
 /**
  * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
@@ -193,6 +194,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/agents-reviews-design-states.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
+  // A fault's remediation and Retry on the Hooks list's failed state: a retryable fault with a
+  // remediation, one that is not retryable, and one with no remediation (COR-2560).
+  'tests/e2e/fault-remediation.spec.ts',
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
   // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
   'tests/panels/schedule-editor-states.spec.ts',

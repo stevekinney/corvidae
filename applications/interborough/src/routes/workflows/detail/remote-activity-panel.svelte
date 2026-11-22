@@ -15,7 +15,11 @@
   import { createQuery } from '@tanstack/svelte-query';
   import Lock from '@lucide/svelte/icons/lock';
 
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../../lib/faults.ts';
+  import {
+    FAULT_TREATMENT_TITLE,
+    faultTreatment,
+    treatmentErrorStateAdvice,
+  } from '../../../lib/faults.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { isForbidden, scopeReason } from '../../../lib/scopes.svelte.ts';
@@ -85,6 +89,7 @@
       title={FAULT_TREATMENT_TITLE[treatment.kind]}
       description={treatment.message}
       headingLevel={4}
+      {...treatmentErrorStateAdvice(treatment)}
     />
   {:else if task !== undefined && state !== undefined}
     <div class="weft-remote-task__state">
