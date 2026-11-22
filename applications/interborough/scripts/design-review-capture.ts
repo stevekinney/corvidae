@@ -135,6 +135,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/health-overview.spec.ts',
   'tests/e2e/health-states.spec.ts',
   'tests/e2e/health-workers-states.spec.ts',
+  'tests/e2e/06-explore-task-ledger.spec.ts',
   'tests/e2e/health-storage.spec.ts',
   'tests/e2e/health-audit.spec.ts',
   'tests/e2e/health-audit-states.spec.ts',
@@ -163,6 +164,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
+  'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
   // An archived chat, the Archived chats row and view, and a refused archive.
@@ -191,6 +193,7 @@ const SHOWCASE_SPECIFICATIONS = [
   // deleted, Restore, skills and reference documents; Reviews loading, resolved elsewhere, a
   // workflow review, Denied and a Done list longer than a page (COR-2429, COR-2426).
   'tests/e2e/agents-reviews-design-states.spec.ts',
+  'tests/e2e/31-reviews.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each

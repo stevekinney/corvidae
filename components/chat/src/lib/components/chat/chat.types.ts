@@ -96,6 +96,16 @@ export type ChatRowContext = {
  */
 export type ChatRowOverride = Snippet<[context: ChatRowContext, renderDefault: Snippet]>;
 
+/** One self-contained Markdown block with the sources for its claim. */
+export type ChatCitationClaim = {
+  /** Stable among this message’s blocks, even if two claims have the same words. */
+  readonly id: string;
+  /** The exact Markdown for this block, including its original boundary whitespace. */
+  readonly markdown: string;
+  /** Sources to show beside this block. Empty for text between cited claims. */
+  readonly sources: readonly CitationSource[];
+};
+
 /**
  * Feature-capability flags for the Chat component. Grouped here so consumers
  * pass a single object instead of six scattered boolean props.
@@ -315,6 +325,12 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   readReceipts?: Map<string, ReadReceipt> | undefined;
   /** The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link. */
   sourcesByMessageId?: ReadonlyMap<string, readonly CitationSource[]> | undefined;
+  /**
+   * Citations for ordered Markdown blocks, keyed by assistant message ID. The blocks must
+   * reproduce the message's displayed text exactly. Chat falls back to `sourcesByMessageId`
+   * when the mapping is absent or stale. Claim citations are presentation-only.
+   */
+  claimSourcesByMessageId?: ReadonlyMap<string, readonly ChatCitationClaim[]> | undefined;
   /**
    * Optional command/transport boundary around `conversation`. Its methods take
    * precedence over the matching callback props (e.g. `sendMessage` over

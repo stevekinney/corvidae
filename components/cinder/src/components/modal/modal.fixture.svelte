@@ -23,6 +23,13 @@
   let overlayOpen = $state(untrack(() => anchoredOverlay));
   let triggerRef: HTMLButtonElement | null = $state(null);
   let overlayTriggerRef: HTMLButtonElement | null = $state(null);
+  // This scenario stays out of the default fixture so its snapshots and assertions remain stable.
+  const keyboardScroll =
+    new URLSearchParams(globalThis.location.search).get('keyboardScroll') === '1';
+  const keyboardScrollParagraphs = Array.from(
+    { length: 48 },
+    (_, index) => `Keyboard-scroll body paragraph ${index + 1}.`,
+  );
 </script>
 
 <div class="modal-fixture">
@@ -32,10 +39,16 @@
 
   {#if describedById}
     <Modal bind:open={modalOpen} {title} {triggerRef} {describedById} {sheetBelow}>
-      <p id={describedById}>
-        This dialog includes a description so aria-describedby can be captured in the visual
-        fixture.
-      </p>
+      {#if keyboardScroll}
+        {#each keyboardScrollParagraphs as paragraph (paragraph)}
+          <p>{paragraph}</p>
+        {/each}
+      {:else}
+        <p id={describedById}>
+          This dialog includes a description so aria-describedby can be captured in the visual
+          fixture.
+        </p>
+      {/if}
 
       {#snippet footer()}
         {#if anchoredOverlay}
@@ -71,7 +84,13 @@
     </Modal>
   {:else}
     <Modal bind:open={modalOpen} {title} {triggerRef} {sheetBelow}>
-      <p>This dialog body is supplied by the host fixture.</p>
+      {#if keyboardScroll}
+        {#each keyboardScrollParagraphs as paragraph (paragraph)}
+          <p>{paragraph}</p>
+        {/each}
+      {:else}
+        <p>This dialog body is supplied by the host fixture.</p>
+      {/if}
 
       {#snippet footer()}
         {#if anchoredOverlay}

@@ -519,8 +519,14 @@
   }
 
   .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
+    border: 0;
     padding-block: var(--cinder-space-2);
     gap: var(--cinder-space-2);
+  }
+
+  .chat-question-dock-body
+    :global(.cinder-choice-grid-item[data-cinder-variant='card']:not([data-cinder-selected])) {
+    background: transparent;
   }
 
   .chat-question-dock-body

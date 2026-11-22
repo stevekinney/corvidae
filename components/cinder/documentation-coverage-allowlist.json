@@ -119,7 +119,6 @@
     ". DropdownPlacement",
     ". DropdownSeparatorProps",
     ". DropdownTriggerProps",
-    ". EmptyStateProps",
     ". ErrorStateProps",
     ". FeedBoundaryProps",
     ". FeedEventProps",
