@@ -31,6 +31,17 @@
       {/snippet}
     </DataList>
   </div>
+  <div data-testid="actions-no-leading" hidden>
+    <DataList items={rows} key={(row) => row.id}>
+      {#snippet children()}
+        <StackedListItem lines wrapMeta actions={[{ label: 'View run', href: '#run' }]}>
+          {#snippet title()}Tool runner has cost $12.35, over the spend threshold{/snippet}
+          {#snippet meta()}Found over the threshold at Nov 2, 10:46 AM. The run finished at Nov 2,
+            10:47 AM.{/snippet}
+        </StackedListItem>
+      {/snippet}
+    </DataList>
+  </div>
   <div data-testid="badges">
     <DataList items={rows} key={(row) => row.id}>
       {#snippet children()}

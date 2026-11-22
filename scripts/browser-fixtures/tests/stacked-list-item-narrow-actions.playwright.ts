@@ -15,6 +15,9 @@ test('a narrow two-line row puts its action under the text, and several badges d
   await page.goto(fixtureRoute('stacked-list-item', { fixtureName: 'narrow-actions' }), {
     waitUntil: 'load',
   });
+  await page.getByTestId('actions-no-leading').evaluate((element) => {
+    element.hidden = false;
+  });
   await page.locator('[data-testid="actions"] .cinder-button').waitFor({ state: 'visible' });
   const read = await page.evaluate(() => {
     const box = (root: Element | null, selector: string) => {
@@ -23,28 +26,36 @@ test('a narrow two-line row puts its action under the text, and several badges d
       const { top, bottom, left, right, width } = element.getBoundingClientRect();
       return { top, bottom, left, right, width };
     };
-    const actions = document.querySelector('[data-testid="actions"]');
+    const actions = [
+      document.querySelector('[data-testid="actions"]'),
+      document.querySelector('[data-testid="actions-no-leading"]'),
+    ];
     const badges = document.querySelector('[data-testid="badges"]');
     const lines = [...(badges?.querySelectorAll('[data-badge]') ?? [])].map((badge) => {
       const { top, bottom, right } = badge.getBoundingClientRect();
       return { top, bottom, right };
     });
     return {
-      row: box(actions, '.cinder-stacked-list-item'),
-      title: box(actions, '.cinder-stacked-list-item__title'),
-      meta: box(actions, '.cinder-stacked-list-item__meta'),
-      button: box(actions, '.cinder-stacked-list-item__trailing'),
+      actions: actions.map((action) => ({
+        row: box(action, '.cinder-stacked-list-item'),
+        title: box(action, '.cinder-stacked-list-item__title'),
+        meta: box(action, '.cinder-stacked-list-item__meta'),
+        button: box(action, '.cinder-stacked-list-item__trailing'),
+      })),
       badgeRow: box(badges, '.cinder-stacked-list-item'),
       badgeTitle: box(badges, '.cinder-stacked-list-item__title'),
       lines,
     };
   });
 
-  // The button: under the meta, at the text's start, not a column beside it.
-  expect(read.button!.top).toBeGreaterThanOrEqual(read.meta!.bottom - 1);
-  expect(Math.abs(read.button!.left - read.title!.left)).toBeLessThanOrEqual(1);
-  // The title keeps most of the row: with the button beside it, it would have had half.
-  expect(read.title!.width).toBeGreaterThan(read.row!.right - read.row!.left - 120);
+  // The button: under the meta, at the text's start, not a column beside it. Check both the
+  // leading tile's status-start title area and an unadorned row's actual title track.
+  for (const action of read.actions) {
+    expect(action.button!.top).toBeGreaterThanOrEqual(action.meta!.bottom - 1);
+    expect(Math.abs(action.button!.left - action.title!.left)).toBeLessThanOrEqual(1);
+    // The title keeps most of the row: with the button beside it, it would have had half.
+    expect(action.title!.width).toBeGreaterThan(action.row!.right - action.row!.left - 120);
+  }
 
   // Three badges: none past the row, and they sit under the title, side by side on one line.
   const [first, second, third] = read.lines;
