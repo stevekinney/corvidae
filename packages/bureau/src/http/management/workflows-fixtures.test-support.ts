@@ -68,6 +68,13 @@ export interface ServeOptions {
   /** `manual` leaves the engine's maintenance to the test, as a host that runs it on its own does. */
   readonly maintenance?: 'manual';
   /**
+   * The durable engine's ownership posture. Omitted, it is the Bureau's default `workflow-lease`;
+   * `{ ownership: 'none' }` is the posture a test that forks a run needs, because Weft's
+   * `engine.fork` throws `EngineDeposedError` under `workflow-lease` (it writes the fork's id
+   * fenced by a claim nothing has acquired).
+   */
+  readonly durableOwnership?: BureauOptions<AgentDefinitions>['durableOwnership'];
+  /**
    * The store the Bureau keeps its state in, for a test that reads what it holds. A test that
    * serves a second Bureau over the first's store, as a restart does, passes the same one to both.
    * Defaults to a fresh one.
@@ -93,6 +100,9 @@ export async function serveWorkflows(
     ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     ...(options.maintenance === undefined ? {} : { maintenance: options.maintenance }),
+    ...(options.durableOwnership === undefined
+      ? {}
+      : { durableOwnership: options.durableOwnership }),
     storage: options.storage ?? new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

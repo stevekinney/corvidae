@@ -1421,12 +1421,12 @@ export const askSummarizerDurably = createPeerCallTool({
 
 The target is an AI host that observes and steers existing work: Claude Desktop and Claude Code, over Streamable HTTP. Interborough mounts the adapter at `/bureau/mcp` (not `/mcp`, which is the engine's own endpoint) and its on-demand `smoke:claude-code-mcp` script connects a real Claude Code to it. Other hosts that speak Streamable HTTP MCP should work, but none is tested or supported.
 
-Twenty-three operations are exposed, as tools of the same name:
+Twenty-four operations are exposed, as tools of the same name:
 
 | Area | Tools |
 | --- | --- |
 | Tasks | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
-| Runs | `bureau.runs.timeline` |
+| Runs | `bureau.runs.timeline`, `compare` |
 | Reviews | `bureau.reviews.list`, `get`, `resolve` |
 | Contexts | `bureau.contexts.list`, `get`, `input` |
 | Goals, schedules | `bureau.goals.list`, `get`; `bureau.schedules.list`, `get` |
@@ -1434,6 +1434,8 @@ Twenty-three operations are exposed, as tools of the same name:
 | Agents | `bureau.agents.list` |
 
 `bureau.runs.timeline` reads one run's steps in the order the run took them, for a waterfall: each entry's `label`, `operationType`, `status`, `timestamp` (its start), `duration` and `tries`, with no step's input or output. The run is an agent run's task id or a workflow instance's id, and `kind` says which; it is read with the access `bureau.tasks.get` or `bureau.workflows.runs.get` asks, and any other run, or one the caller may not read, is `NotFound`. The layout that turns the entries into bars is `stepWaterfall` in `@lostgradient/interborough-plugin/step-waterfall`, which the Interborough run page and a plugin's panel share.
+
+`bureau.runs.compare` reads a forked workflow run beside the run it was forked from, step by step: `runId` is the fork's instance id, and the answer is the `sourceRunId`, the `forkPoint` and the steps aligned by durable step, each with its `index`, whether it is `shared` (before the fork point, so both sides are the source's entry) and its `source` and `fork` sides (`operationType`, `label`, `status`, and the `input` and `output` the engine summarizes, redacted as the timeline read redacts them). The durable engine aligns the runs (`weft.workflows.compare` serves the same alignment), and the operation decides who may read it: the fork and then its source are each read with the access `bureau.workflows.runs.get` asks, before the engine reads either timeline, so a caller who may read the fork and not its source gets the answer a run that does not exist gets, `NotFound`. A run the caller may read that is not a fork is `Unprocessable`, and its message says what to do. It pages by step with `limit` (100 by default, at most 1000) and `nextCursor`.
 
 `bureau.tasks.events` is the one subscription: a call answers with the events recorded after its `fromCursor`, up to `maxEvents`, and the cursor to resume from, so a client polls it rather than holding a stream. `respond`, `cancel`, `resolve`, and `input` change state and carry the matching tool annotations. Nothing here starts a run, creates or edits a goal, schedule, or workflow, reads memory or assets, or touches agent definitions: those stay on the management plane, and `bureau.surfaces` commands have no MCP tool.
 
@@ -1472,6 +1474,7 @@ Two further options let an application publish MCP Apps beside the tools. `resou
 | --- | --- | --- |
 | `ui://inspectors/run-inspector/v1` | `bureau.tasks.inspect` | One task's liveness, ownership tree, progress, result, and abort. Reads `bureau.tasks.inspect` (`bureau.task-inspection.v1`: no transcript, prompt, tool argument, result, or checkpoint; each step carries its `planReason`, and a read of one step its `effectiveContext`, digests and message ids only) and aborts through `bureau.tasks.cancel`. |
 | `ui://inspectors/pending-review/v1` | `bureau.reviews.list` | The caller's pending reviews. Reads through `bureau.reviews.get`; decides through `bureau.reviews.resolve` (approve, deny, or reject with a `reason`). It sends the `round` it displayed, so a decision on a re-gated review is refused as `Conflict`. |
+| `ui://inspectors/run-comparison/v1` | `bureau.runs.compare` | A forked workflow run beside its source: the steps the fork kept as shared and collapsed, the steps it ran again marked changed, the same or in one run only, and a selected step's input and output differences. Reads `bureau.runs.compare` (it follows `nextCursor` to the last page); a run that is not a fork shows the server's message. |
 
 The inspector also follows a task through `bureau.tasks.events`. Both declare an empty content-security policy (no network origin, frame, or base URI) and no permissions, which a host reads as denied, and neither asks for a dedicated sandbox origin. The version is part of each URI: a changed contract is a new URI. Closing an app never cancels a run; abort is the explicit `bureau.tasks.cancel`. The MCP Apps contract Bureau uses for tracked surfaces, including the `mcp-app` representation, is [`documentation/interactive-surface.md`](./documentation/interactive-surface.md); the adapter's apps are plain tool-linked pages and do not create surfaces.
 

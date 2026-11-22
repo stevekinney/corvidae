@@ -167,6 +167,15 @@ describe('the run inspector’s panel', () => {
         placements: [{ kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' }],
       }),
     );
+    // The run comparison opens from the compare tool and is mounted on a run's page (COR-2544).
+    expect(listed.apps).toContainEqual(
+      expect.objectContaining({
+        plugin: 'inspectors',
+        app: 'run-comparison',
+        opensFromTool: 'bureau.runs.compare',
+        placements: [{ kind: 'run' }],
+      }),
+    );
     // A panel that declares no placement lists an empty array.
     expect(listed.apps).toContainEqual(
       expect.objectContaining({ app: 'pending-review', placements: [] }),
@@ -260,8 +269,8 @@ describe('a panel build that never finishes (COR-2219)', () => {
     };
     const starting = start(false, { panelBuild: { build, clock } });
     // Only the hung build still holds its timer once the others are served; that is when it fires.
-    await waitUntil(() => built.length === 2 && timers.size === 1, {
-      message: 'the two other builds are served and only the stalled one waits',
+    await waitUntil(() => built.length === 3 && timers.size === 1, {
+      message: 'the three other builds are served and only the stalled one waits',
     });
     for (const fire of timers.values()) fire();
     const host = await starting;
@@ -273,6 +282,7 @@ describe('a panel build that never finishes (COR-2219)', () => {
     };
     expect(apps.apps.map(({ app }) => app).toSorted()).toEqual([
       'pending-review',
+      'run-comparison',
       'workflow-revision-review',
     ]);
     const pluginsResponse = await fetch(new URL('/host/plugins', host.url));

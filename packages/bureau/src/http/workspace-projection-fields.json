@@ -2128,6 +2128,27 @@
     "$.receipt",
     "$.remembered"
   ],
+  "output:bureau.runs.compare": [
+    "$.forkPoint",
+    "$.nextCursor",
+    "$.runId",
+    "$.sourceRunId",
+    "$.steps",
+    "$.steps[].fork",
+    "$.steps[].fork.input",
+    "$.steps[].fork.label",
+    "$.steps[].fork.operationType",
+    "$.steps[].fork.output",
+    "$.steps[].fork.status",
+    "$.steps[].index",
+    "$.steps[].shared",
+    "$.steps[].source",
+    "$.steps[].source.input",
+    "$.steps[].source.label",
+    "$.steps[].source.operationType",
+    "$.steps[].source.output",
+    "$.steps[].source.status"
+  ],
   "output:bureau.runs.timeline": [
     "$.entries",
     "$.entries[].duration",

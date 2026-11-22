@@ -4,7 +4,12 @@ import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import inspectors, { pendingReview, runInspector, workflowRevisionReview } from './plugin.ts';
+import inspectors, {
+  pendingReview,
+  runComparison,
+  runInspector,
+  workflowRevisionReview,
+} from './plugin.ts';
 
 pluginContract(inspectors, { createHost: createPluginTestHost });
 
@@ -16,6 +21,7 @@ describe('the inspectors plugin', () => {
         { plugin: 'inspectors', version: '1.0.1', app: runInspector },
         { plugin: 'inspectors', version: '1.0.1', app: pendingReview },
         { plugin: 'inspectors', version: '1.0.1', app: workflowRevisionReview },
+        { plugin: 'inspectors', version: '1.0.1', app: runComparison },
       ]);
     } finally {
       await host.dispose();
@@ -23,6 +29,14 @@ describe('the inspectors plugin', () => {
     expect(runInspector.uri).toBe('ui://inspectors/run-inspector/v1');
     expect(pendingReview.uri).toBe('ui://inspectors/pending-review/v1');
     expect(workflowRevisionReview.uri).toBe('ui://inspectors/workflow-revision-review/v1');
+    expect(runComparison.uri).toBe('ui://inspectors/run-comparison/v1');
+  });
+
+  it('declares the run comparison’s run-page placement and opens it from the compare tool (COR-2544)', () => {
+    expect(runComparison.placements).toEqual([{ kind: 'run' }]);
+    expect(runComparison.opensFromTool).toBe('bureau.runs.compare');
+    expect(runComparison.allowedTools).toEqual(['bureau.runs.compare']);
+    expect(runComparison.hostOnlyTools).toBeUndefined();
   });
 
   it('links each panel to the tool a client runs to open it, one it may call', () => {
@@ -45,6 +59,7 @@ describe('the inspectors plugin', () => {
       [runInspector, 'run-inspector'],
       [pendingReview, 'pending-review'],
       [workflowRevisionReview, 'workflow-revision'],
+      [runComparison, 'run-comparison'],
     ] as const) {
       const named = new Set<string>();
       // The page's script and its components (`.svelte`): a tool a component calls is listed too.
@@ -59,7 +74,7 @@ describe('the inspectors plugin', () => {
   });
 
   it('points every panel at an entry module that exists', async () => {
-    for (const app of [runInspector, pendingReview, workflowRevisionReview]) {
+    for (const app of [runInspector, pendingReview, workflowRevisionReview, runComparison]) {
       expect(await Bun.file(app.entry).exists()).toBe(true);
     }
   });

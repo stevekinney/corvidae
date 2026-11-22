@@ -190,6 +190,7 @@ describe('the identity of every request', () => {
       'bureau.reviews.resolve',
       'bureau.workflows.get',
       'bureau.workflows.update',
+      'bureau.runs.compare',
     ]);
     const visibilities = Object.fromEntries(
       (tools as Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }>).map((tool) => [
@@ -212,6 +213,7 @@ describe('the identity of every request', () => {
         uri: 'ui://inspectors/workflow-revision-review/v1',
         mimeType: 'text/html;profile=mcp-app',
       },
+      { uri: 'ui://inspectors/run-comparison/v1', mimeType: 'text/html;profile=mcp-app' },
     ]);
     // The pending-review app opens from the existing `bureau.reviews.list`; it adds no tool name.
     const reviewList = tools.find((tool) => tool.name === 'bureau.reviews.list') as {

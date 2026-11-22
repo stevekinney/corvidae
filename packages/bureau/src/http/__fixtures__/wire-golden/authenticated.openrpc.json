@@ -4999,6 +4999,235 @@
       }
     },
     {
+      "description": "Takes the id of a workflow run made by forking another and returns the run it was forked from (`sourceRunId`), the `forkPoint` (the source checkpoint step the fork started from) and the two runs aligned by durable step: each step's `index`, whether it is `shared` (before the fork point, so both sides are the source's entry) and, for `source` and `fork`, the `operationType`, `label`, `status`, `input` and `output` the engine summarizes, with payload fields redacted as the timeline read redacts them. A side is absent when that run has no entry for the step. Pages by step: `limit` (100 by default, at most 1000) and `nextCursor`. The fork and its source are each read with the access `bureau.workflows.runs.get` asks; a run the caller may not read, a source the caller may not read, a run that is no instance of a workflow file, and a run that does not exist are all `NotFound`. A run that is not a fork is `Unprocessable`, and its message says what to do.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.runs.compare",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "forkPoint": {
+              "description": "The source checkpoint step the fork started from.",
+              "type": "number"
+            },
+            "nextCursor": {
+              "description": "Pass as `cursor` for the next page; absent on the last.",
+              "type": "string"
+            },
+            "runId": {
+              "description": "The fork that was compared.",
+              "type": "string"
+            },
+            "sourceRunId": {
+              "description": "The run the fork was made from.",
+              "type": "string"
+            },
+            "steps": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "fork": {
+                    "additionalProperties": false,
+                    "description": "The fork’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  },
+                  "index": {
+                    "description": "The durable step index both sides share.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "shared": {
+                    "description": "True before the fork point: the fork kept the source’s result, on both sides.",
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "description": "The source run’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "index",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "runId",
+            "sourceRunId",
+            "forkPoint",
+            "steps"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Compare a forked workflow run with its source, step by step",
+      "tags": [
+        {
+          "name": "Runs"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "runId": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the run the cancel would stop (1 while the task is in progress, 0 once it has finished or when it belongs to a goal or a workflow instance, whose cancel is `rejected`), and a task the real call would not find is `NotFound` as well.",
       "errors": [
         {

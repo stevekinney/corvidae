@@ -43,6 +43,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.tasks.inspect', 'runs:read'],
   // A run's step timeline, for the run timeline panel and an MCP client: names and timings only.
   ['bureau.runs.timeline', 'runs:read'],
+  // A fork compared with its source, for the run comparison panel and an MCP client: a read of two runs.
+  ['bureau.runs.compare', 'runs:read'],
   // COR-2113: every check result links to the run or goal it judged, so the list is a read of runs.
   ['bureau.checks.list', 'runs:read'],
   ['bureau.workflows.start', 'runs:write'],

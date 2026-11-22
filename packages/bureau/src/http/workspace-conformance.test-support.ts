@@ -146,6 +146,12 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [['bureau.runs.timeline', 'owner']],
   },
   {
+    testFile: 'management/runs-compare-operation.test.ts',
+    inputFixture: 'A workflow instance with private step input, and a fork of it',
+    sentinel: 'PRIVATE-COMPARE-INPUT-5b8e',
+    operations: [['bureau.runs.compare', 'owner']],
+  },
+  {
     testFile: 'workspace-context-privacy.test.ts',
     inputFixture: 'Independent owned context per actor and mutation',
     sentinel: 'PRIVATE-CONTEXT-HISTORY-b0ca',
