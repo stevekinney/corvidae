@@ -1,5 +1,7 @@
-import { afterEach, expect, test } from 'bun:test';
-import { rmSync } from 'node:fs';
+import { afterAll, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { ciEvidenceRequestKey, type CiEvidenceRequest } from './ci-evidence.ts';
 import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
@@ -8,12 +10,19 @@ import { changedAnswer, jobsAnswer, runsAnswer } from './landing-evidence.test-s
 import { validateLandingEvidence } from './landing-evidence.ts';
 import type { Runner } from './process-runner.ts';
 
-const directories: string[] = [];
+const directory = mkdtempSync(join(tmpdir(), 'chef-landing-evidence-'));
+const fixture = await createDeliveryVerificationFixture(
+  {
+    directory,
+    outputDirectory: directory,
+    base: 'a'.repeat(40),
+    revision: 'b'.repeat(40),
+    integrationTree: 'c'.repeat(40),
+  },
+  { route: 'pull-request', landing: true },
+);
 
-afterEach(() => {
-  for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
 async function evidence(
   paths: string[],
@@ -24,11 +33,6 @@ async function evidence(
   checkedTree?: string,
   actualIntegrationTree?: string,
 ): Promise<string | undefined> {
-  const fixture = await createDeliveryVerificationFixture(undefined, {
-    route: 'pull-request',
-    landing: true,
-  });
-  directories.push(fixture.directory);
   const loaded = loadDeliveryVerification(fixture.verification, fixture.dependencies);
   const { request } = loaded;
   const listed = [
@@ -122,6 +126,8 @@ async function evidence(
   );
 }
 
+// spawn-free: an in-process Runner and CI provider supply all Git and GitHub observations.
+
 test('reuses a complete manual full receipt only for an unpinned pending pull-request run', async () => {
   const pending = { id: 4243, status: 'in_progress', conclusion: '' };
   expect(await evidence(['scripts/chef/landing-evidence.ts'], pending)).toBeUndefined();
@@ -147,6 +153,8 @@ test('reuses a complete manual full receipt only for an unpinned pending pull-re
   expect(await evidence(['package.json'], pending)).toContain('has not finished');
   expect(await evidence(['turbo.json'], pending)).toContain('has not finished');
 });
+
+// spawn-free: an in-process Runner and CI provider supply all Git and GitHub observations.
 
 test('keeps pinned, failed, incomplete, and wrong-tree evidence blocking', async () => {
   expect(
