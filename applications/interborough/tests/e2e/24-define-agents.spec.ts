@@ -594,7 +594,7 @@ test.describe('an agent that exists', () => {
 
     await page.getByRole('button', { name: copy.deleteAction }).click();
     const dialog = page.getByRole('dialog', {
-      name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-delete'),
+      name: pageCopy.settings.deleteDialog.title(BASE_DEFINITION.name),
     });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -605,7 +605,7 @@ test.describe('an agent that exists', () => {
 
     await page.getByRole('button', { name: copy.deleteAction }).click();
     const confirmed = page.getByRole('dialog', {
-      name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-delete'),
+      name: pageCopy.settings.deleteDialog.title(BASE_DEFINITION.name),
     });
     await confirmed
       .getByLabel(pageCopy.settings.deleteDialog.typeLabel('e2e-delete'))
@@ -639,7 +639,7 @@ test.describe('the delete confirmation', () => {
       await page.getByRole('button', { name: copy.deleteAction }).click();
       await expect(
         page.getByRole('dialog', {
-          name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-dialog'),
+          name: pageCopy.settings.deleteDialog.title(BASE_DEFINITION.name),
         }),
       ).toBeVisible();
       await checkA11y(`delete confirmation at ${width}px`);
@@ -705,7 +705,7 @@ test.describe('a file that changed outside Interborough', () => {
 
     await page.getByRole('button', { name: copy.deleteAction }).click();
     const dialog = page.getByRole('dialog', {
-      name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-stale-delete'),
+      name: pageCopy.settings.deleteDialog.title(BASE_DEFINITION.name),
     });
     await dialog
       .getByLabel(pageCopy.settings.deleteDialog.typeLabel('e2e-stale-delete'))
