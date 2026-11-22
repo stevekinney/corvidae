@@ -48,7 +48,7 @@ function isVerdict(value: unknown): value is ExplanationVerdict {
 }
 
 /** Whether `value` is what the explain read answers: a result of any other shape is not drawn. */
-export function isExplanation(value: unknown): value is Explanation {
+function isExplanation(value: unknown): value is Explanation {
   if (!isRecord(value) || !isRecord(value['cause'])) return false;
   const { cause, step } = value;
   return (

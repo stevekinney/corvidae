@@ -3,11 +3,14 @@ import { describe, expect, it } from 'bun:test';
 import {
   buildExplanationModel,
   explanationOfResult,
-  isExplanation,
   refusalOf,
   runIdOf,
   type Explanation,
 } from './model.ts';
+
+/** Whether the shape is one the page draws, as a tool result carries it. */
+const isExplanation = (value: unknown): boolean =>
+  explanationOfResult({ structuredContent: value }) !== undefined;
 
 const explanation: Explanation = {
   summary: 'The step "charge-card" failed because the code it ran raised an error.',

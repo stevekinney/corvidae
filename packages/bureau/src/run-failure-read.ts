@@ -45,12 +45,21 @@ export interface RunFailureReads {
 export type RunToExplain =
   { readonly kind: 'agent'; readonly task: TaskView } | { readonly kind: 'workflow' };
 
+/** The explanation as plain, mutable data: nothing of the stored facts is shared with the caller. */
+export type PlainRunFailureExplanation = Omit<
+  RunFailureExplanation,
+  'verdicts' | 'nextCommands'
+> & {
+  verdicts: RunVerdict[];
+  nextCommands: string[];
+};
+
 /**
  * What the read found: the explanation of a failed run, a run that did not fail (with the status it
  * has), or a workflow instance the Bureau cannot read because it has no durable engine.
  */
 export type RunFailureRead =
-  | { readonly outcome: 'explained'; readonly explanation: RunFailureExplanation }
+  | { readonly outcome: 'explained'; readonly explanation: PlainRunFailureExplanation }
   | { readonly outcome: 'not-failed'; readonly status: string }
   | { readonly outcome: 'unsupported' };
 
