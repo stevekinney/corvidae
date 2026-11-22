@@ -1,39 +1,39 @@
 {
   "issue": "COR-2528",
   "branch": "chef/cor-2528-health-run-rows",
-  "checkedAt": "5c510f22ba41f3ed7f65b9b8c127aede2c52f82d",
+  "checkedAt": "260e580729c8a291326279503f1f950bee194bf3",
   "briefVersion": "4f7fb514bd2a",
-  "status": "READY",
+  "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "attention-rows.ts words run-stalled, run-looping and run-overspending (one row each, id includes the kind, action 'View run' to /runs/<id>); bureau-attention.ts keeps the three kinds. Tests: attention-rows.test.ts, bureau-attention.test.ts. Design round 1: a narrow Needs attention row now puts its action on a line under the text (Cinder stacked-list-item container query at 448px, stacked-list-item-narrow-actions Chromium spec measures it at 20rem), so titles wrap to two lines instead of truncating. Home's own card is untouched."
+      "evidence": "unchanged; attention-rows tests"
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "RunRow.attention; run-list-row.svelte draws one Badge per state through StackedListItem's badge slot. Cinder carries the slot's 4px gap and, for several badges, drops them whole to a line under the title where they do not fit (stacked-list-item.css, stacked-list-item-badge.test.ts, Chromium spec measures three badges at 20rem). The e2e spec adds a run in all three states and captures 'three badges on one row' (the capture harness takes 320 and 375). Tests: run-rows-attention.test.ts, run-list-attention.test.ts."
+      "evidence": "badge baselines for narrow-actions and wrap-meta committed from run 45056739642"
     },
     {
       "id": "AC3",
-      "status": "met-on-branch",
-      "evidence": "Cinder ToggleFacet 'Needs attention' chip; attention=1 in the address; with it on the page reads listAllTasksNeedingAttention, one bureau.tasks.list per kind, merged by task. A settled run that overspent is listed. Design round 1: the pressed toggle now carries one mark (the Chip's check) in the neutral accent tint, with no dot and no solid amber fill (filter-bar.svelte, filter-bar.test.ts). 'All' stays selected beside the chip on purpose: the status segments and the chip are independent axes, and All is the status axis unfiltered, counting the same runs the chip lists. COR-2535 had not landed on main at this merge. Tests: run-list-attention.test.ts."
+      "status": "needs-decision",
+      "evidence": "runs-states.spec.ts:208 receives folded=2 because the Needs attention toggle is a second foldable chip; merged main's pressed-toggle treatment (dot, no check) replaces the branch's"
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "run-attention-note.svelte: one Callout per state in one group with an 8px gap; a run that is still going says 'It keeps running until you stop it.' once, under the last note (run-attention-note.ts); a stalled run says when the Bureau saw it stall and that it last made progress before then. The Callout title is already semibold (600, now asserted in callout.test.ts) with a 4px gap to its message; the capture font renders every weight alike, so no Cinder change was made. Tests: run-attention-note.test.ts."
+      "evidence": "unchanged"
     },
     {
       "id": "AC5",
       "status": "met-on-main",
-      "evidence": "The field shipped with COR-2527 (settings-controls.ts, runs.spendThresholdUsd in General). Coverage added on this branch: general-settings.test.ts saves 2.5 through bureau.settings.update as a number, and shows the Bureau's InvalidParams issue at the field with the typed value kept."
+      "evidence": "unchanged"
     },
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "tests/e2e/run-attention-states.spec.ts: a stalled run is found through Health's Needs attention (row opens /runs/<id>, the page shows the stalled note) and through the Runs list's Needs attention chip (asserts the page asked the Bureau for stalled, looping and overspending, and lists the settled overspending run and the three-state run). Run in Chromium on this host at the owner's coordinator's request (12 of 12 passed, light); CI run recorded in the return."
+      "evidence": "run-attention-states.spec.ts updated for the dot-only pressed chip"
     }
   ]
 }
