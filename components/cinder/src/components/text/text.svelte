@@ -70,12 +70,12 @@
 
   const measureClamp: Attachment<HTMLElement> = (node) => {
     if (clampLines === undefined || expanded) return;
-    const measure = (): void => {
+    const measureCut = (): void => {
       cutOff = node.scrollHeight > node.clientHeight;
     };
-    measure();
+    measureCut();
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(measureCut);
     observer.observe(node);
     return () => observer.disconnect();
   };
