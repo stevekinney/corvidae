@@ -435,7 +435,11 @@ describe('an agent-authored type', () => {
   test('leads with its title and identifier, what it is for, what starts it, and the agent it runs as, and shows Active by absence', async () => {
     const { container } = open('/workflows/digest', {
       files: [
-        readyFile('digest', { description: 'Writes the daily digest.', title: 'Daily digest' }),
+        readyFile('digest', {
+          description: 'Writes the daily digest.',
+          title: 'Daily digest',
+          agent: null,
+        }),
       ],
     });
     const root = await ready(container);

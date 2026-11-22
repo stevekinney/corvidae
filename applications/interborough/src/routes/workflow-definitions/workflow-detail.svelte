@@ -601,9 +601,10 @@
   });
 
   const workflowAgent = $derived.by(() => {
-    if (!invalidFile) return file?.agent ?? undefined;
-    const savedAgents = agentsOfSteps(lastSavedVersion?.steps);
-    return savedAgents.length === 1 ? savedAgents[0] : undefined;
+    if (!invalidFile && file?.agent != null) return file.agent;
+    const steps = invalidFile ? lastSavedVersion?.steps : (document?.steps ?? file?.steps);
+    const agents = agentsOfSteps(steps);
+    return agents.length === 1 ? agents[0] : undefined;
   });
   const agentName = $derived(
     workflowAgent === undefined ? null : agentLabel(workflowAgent, undefined),

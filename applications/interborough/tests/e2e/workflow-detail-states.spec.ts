@@ -103,7 +103,9 @@ for (const width of WIDTHS) {
       await expect(root.getByRole('heading', { name: /Release notes/, level: 1 })).toBeVisible();
       await expect(root.getByTestId('workflow-identifier')).toHaveText('release-notes');
       await expect(root.getByTestId('workflow-state')).toHaveCount(0);
-      await expect(root.getByTestId('workflow-line-starts')).toContainText(/every Friday/i);
+      const starts = root.getByTestId('workflow-line-starts');
+      await expect(starts).toContainText('Starts every Friday at 11:00 AM');
+      await expect(starts).toContainText('Runs as Assistant');
       await expect(root.getByTestId('workflow-line-last-run')).toContainText(/failed\s+at step 2/i);
       await expect(root.getByTestId('workflow-line-schedule')).toContainText(
         'Release notes digest',
