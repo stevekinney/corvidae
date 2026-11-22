@@ -8,8 +8,8 @@ export const bestPracticeSections: Record<
     topic: 'imports',
     title: 'Imports',
     guidance: [
-      'Import components and metadata from @lostgradient/cinder; the root entry loads the aggregate stylesheet as a side effect.',
-      'Use named exports from @lostgradient/cinder; the package has no component or stylesheet subpath exports.',
+      'Import named components from @lostgradient/cinder or a default component from its subpath, such as @lostgradient/cinder/button.',
+      'Import the aggregate stylesheet from @lostgradient/cinder/styles or a published component stylesheet such as @lostgradient/cinder/button/styles.',
       'Use the kebab-case manifest id when cross-referencing components in tools or generated code.',
     ],
   },
@@ -17,7 +17,7 @@ export const bestPracticeSections: Record<
     topic: 'styles',
     title: 'Styles',
     guidance: [
-      'The @lostgradient/cinder root entry loads the aggregate component CSS automatically and declares cascade layer order, tokens, foundation rules, utilities, and shared internal chrome.',
+      'The @lostgradient/cinder root entry loads aggregate CSS in Svelte and browser builds. The stylesheet declares cascade layer order, tokens, foundation rules, utilities, and shared internal chrome.',
       'Override public --cinder-* tokens and component root classes; do not redefine private --_cinder-* variables.',
     ],
   },

@@ -20,12 +20,10 @@ const { values } = parseArgs({
 if (
   !values.outdir ||
   !values.version ||
-  !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\da-z-]+(?:\.[\da-z-]+)*)?(?:\+[\da-z-]+(?:\.[\da-z-]+)*)?$/i.test(
-    values.version,
-  )
+  !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\da-z-]+(?:\.[\da-z-]+)*)?$/i.test(values.version)
 ) {
   throw new Error(
-    'Usage: bun packages/markdown/scripts/pack-release.ts --version <semver> --outdir <directory>',
+    'Usage: bun packages/markdown/scripts/pack-release.ts --version <semver without build metadata> --outdir <directory>',
   );
 }
 const outputDirectory = resolve(values.outdir);

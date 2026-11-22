@@ -115,6 +115,12 @@ describe('cinder-mcp server', () => {
       });
       expect(textContent(search)).toContain('"id": "modal"');
 
+      const imports = await client.callTool({
+        name: 'get_best_practices',
+        arguments: { topic: 'imports' },
+      });
+      expect(textContent(imports)).toContain('@lostgradient/cinder/button/styles');
+
       const component = await client.readResource({ uri: 'cinder://component/button' });
       const firstComponent = component.contents[0];
       expect(firstComponent && 'text' in firstComponent ? firstComponent.text : '').toContain(

@@ -13,7 +13,7 @@ on:
           - cinder-mcp
         required: true
       version:
-        description: SemVer to pack or publish.
+        description: Version to pack or publish, without build metadata.
         type: string
         required: true
       markdown-version:
@@ -42,6 +42,9 @@ jobs:
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      MARKDOWN_VERSION: ${{ inputs.markdown-version }}
+      CINDER_VERSION: ${{ inputs.cinder-version }}
     steps:
       - name: Validate release inputs
         env:
@@ -51,6 +54,18 @@ jobs:
             markdown|cinder|editor|cinder-mcp) ;;
             *) exit 1 ;;
           esac
+          if [[ "$VERSION" == *+* ]]; then
+            echo '::error::Use a version without SemVer build metadata. npm removes it when publishing.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == cinder || "$PACKAGE" == editor ]] && [[ -z "$MARKDOWN_VERSION" ]]; then
+            echo '::error::Set markdown-version to the published Markdown version.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == editor || "$PACKAGE" == cinder-mcp ]] && [[ -z "$CINDER_VERSION" ]]; then
+            echo '::error::Set cinder-version to the published Cinder version.'
+            exit 1
+          fi
           if [ "$PUBLISH" = true ]; then
             test "$GITHUB_REF" = refs/heads/main
             test "$GITHUB_REF_PROTECTED" = true
@@ -68,9 +83,6 @@ jobs:
           package-manager-cache: false
       - run: bun install --frozen-lockfile
       - name: Pack and verify
-        env:
-          MARKDOWN_VERSION: ${{ inputs.markdown-version }}
-          CINDER_VERSION: ${{ inputs.cinder-version }}
         run: |
           output="$RUNNER_TEMP/cinder-npm-package"
           mkdir "$output"
@@ -120,7 +132,7 @@ jobs:
           local_integrity="$(jq -er --arg name "@lostgradient/$PACKAGE" --arg version "$VERSION" --arg tarball "$tarball" '.[0] | select(.name == $name and .version == $version and .filename == $tarball) | .integrity' receipt.json)"
           actual_integrity="sha512-$(openssl dgst -sha512 -binary "$tarball" | openssl base64 -A)"
           test "$local_integrity" = "$actual_integrity"
-          case "${VERSION%%+*}" in
+          case "$VERSION" in
             *-*) tag=next ;;
             *) tag=latest ;;
           esac
