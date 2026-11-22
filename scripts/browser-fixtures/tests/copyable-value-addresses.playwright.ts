@@ -123,3 +123,47 @@ test('the A2A address keeps its host and its file extension whole, and breaks at
   expect(narrow.partHeights[hostIndex]).toBeLessThan(narrow.row * 1.5);
   expect(narrow.partHeights[fileIndex]).toBeLessThan(narrow.row * 1.5);
 });
+
+// COR-2548: after "The API is at" the address broke between two of its parts ("127.0.0.1:" and
+// "7399/api") at 320 pixels although it fits a row of its own. The whole value is one box now, so it
+// moves below the words whole.
+test('an address that fits a row moves below the words before it whole, never ending the row between its parts', async ({
+  componentPage,
+}) => {
+  if (entry === undefined || fixture === undefined) throw new Error('No addresses fixture.');
+  const page = await componentPage.open({
+    entry,
+    theme: 'light',
+    viewport: { name: 'mobile', width: 320, height: 700 },
+    fixtureName: 'addresses',
+    fixtureContentHash: fixture.fixtureContentHash,
+  });
+  await open(page);
+  const reading = await page.getByTestId('lead').evaluate((paragraph) => {
+    const root = paragraph.querySelector<HTMLElement>('.cinder-copyable-value');
+    const lead = paragraph.firstChild;
+    if (root === null || lead === null) throw new Error('No address or lead.');
+    // A place wider than the address alone but narrower than the words and the address together.
+    const alone = root.getBoundingClientRect().width;
+    paragraph.style.inlineSize = `${Math.ceil(alone) + 4}px`;
+    const words = document.createRange();
+    words.selectNodeContents(lead);
+    const wordsBottom = Math.max(...[...words.getClientRects()].map((rect) => rect.bottom));
+    const parts = [...root.querySelectorAll<HTMLElement>(':scope > .cinder-copyable-value__part')];
+    return {
+      // The parts that start on a lower row than the first. The part that holds the control is
+      // taller than a text row, so its top sits a pixel or two above the rest of its row: a row is
+      // a line height apart, not a pixel.
+      partsOnLaterRows: parts.filter(
+        (part) =>
+          part.getBoundingClientRect().top >
+          parts[0]!.getBoundingClientRect().top + parts[0]!.getBoundingClientRect().height / 2,
+      ).length,
+      belowTheWords: root.getBoundingClientRect().top >= wordsBottom - 1,
+      fits: root.getBoundingClientRect().right <= paragraph.getBoundingClientRect().right + 1,
+    };
+  });
+  expect(reading.partsOnLaterRows).toBe(0);
+  expect(reading.belowTheWords).toBe(true);
+  expect(reading.fits).toBe(true);
+});

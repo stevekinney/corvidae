@@ -10,6 +10,7 @@ import {
   exampleOf,
   formatExample,
   operationGroups,
+  operationsEmptiness,
   scopeOf,
   type OpenApiDocumentLike,
 } from './api-operations.ts';
@@ -140,6 +141,14 @@ describe('buildApiOperations', () => {
 
   test('an empty document lists nothing', () => {
     expect(buildApiOperations({})).toEqual([]);
+  });
+
+  // COR-2548: a server that lists nothing gets the state alone; a group that has none keeps the select.
+  test('says whether nothing is listed at all, a chosen group has none, or there are rows', () => {
+    expect(operationsEmptiness([], [])).toBe('none');
+    expect(operationsEmptiness(operations, [])).toBe('group');
+    expect(operationsEmptiness(operations, operations)).toBeUndefined();
+    expect(operationsEmptiness(operations, operations.slice(0, 1))).toBeUndefined();
   });
 });
 
