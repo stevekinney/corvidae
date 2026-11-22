@@ -179,8 +179,13 @@ test.describe('the list', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: WORKFLOW_COPY.list.clearAction }).click();
     await expect(row(page, 'e2e-searchable-workflow')).toBeVisible();
-    await expect(search).toHaveValue('');
-    await expect(search).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Filter' })).toBeFocused();
+    await page.getByRole('button', { name: 'Filter' }).click();
+    const reopenedMenu = page.locator('.cinder-filter-bar__menu');
+    await reopenedMenu.getByRole('button', { name: 'Search' }).click();
+    await expect(reopenedMenu.getByRole('searchbox', { name: WORKFLOW_COPY.list.searchLabel })).toHaveValue(
+      '',
+    );
     await checkA11y('workflow search at 375px');
   });
 

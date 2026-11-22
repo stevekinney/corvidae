@@ -126,6 +126,7 @@
 
   let segment = $state<ListSegment>('all');
   let search = $state('');
+  let filterBar = $state<HTMLElement>();
   const counts = $derived(segmentCounts(workflows));
   const segments = $derived([
     { value: 'all', label: copy.segments.all, count: counts.all },
@@ -160,9 +161,10 @@
     search = '';
     segment = 'all';
     await tick();
-    document
-      .querySelector<HTMLInputElement>(`input[type="search"][aria-label="${copy.searchLabel}"]`)
-      ?.focus();
+    // The narrow search lives in FilterBar's portalled popover. Clicking this page-level clear
+    // action dismisses that popover before this update, so Cinder restores focus to Filter. The
+    // wide search stays in this local bar and remains the useful focus destination.
+    filterBar?.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
   }
 
   function go(event: MouseEvent, path: string): void {
@@ -244,16 +246,18 @@
         />
       </ListPageEmpty>
     {:else}
-      <FilterBar
-        aria-label={copy.segmentsLabel}
-        searchQuery={search}
-        searchPlaceholder={copy.searchPlaceholder}
-        searchAriaLabel={copy.searchLabel}
-        {segments}
-        segmentValue={segment}
-        onSegmentChange={chooseSegment}
-        onSearchChange={(query) => (search = query)}
-      />
+      <div bind:this={filterBar}>
+        <FilterBar
+          aria-label={copy.segmentsLabel}
+          searchQuery={search}
+          searchPlaceholder={copy.searchPlaceholder}
+          searchAriaLabel={copy.searchLabel}
+          {segments}
+          segmentValue={segment}
+          onSegmentChange={chooseSegment}
+          onSearchChange={(query) => (search = query)}
+        />
+      </div>
 
       {#if visible.length === 0}
         <EmptyState
