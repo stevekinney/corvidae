@@ -9,6 +9,7 @@ import {
   pendingReview,
   runComparison,
   runInspector,
+  runTimeline,
   scheduleEditor,
   workflowRevisionReview,
 } from '@lostgradient/plugin-inspectors';
@@ -21,6 +22,7 @@ describe.each([
   ['the pending-review list', pendingReview],
   ['the workflow revision review', workflowRevisionReview],
   ['the schedule editor', scheduleEditor],
+  ['the run timeline', runTimeline],
   ['the run comparison', runComparison],
 ])('%s', (_name, panel) => {
   test('builds into one self-contained page whose styles follow the host theme', async () => {

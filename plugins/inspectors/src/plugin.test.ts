@@ -9,6 +9,7 @@ import inspectors, {
   pendingReview,
   runComparison,
   runInspector,
+  runTimeline,
   scheduleEditor,
   workflowRevisionReview,
 } from './plugin.ts';
@@ -24,6 +25,7 @@ describe('the inspectors plugin', () => {
         { plugin: 'inspectors', version: '1.0.1', app: pendingReview },
         { plugin: 'inspectors', version: '1.0.1', app: workflowRevisionReview },
         { plugin: 'inspectors', version: '1.0.1', app: scheduleEditor },
+        { plugin: 'inspectors', version: '1.0.1', app: runTimeline },
         { plugin: 'inspectors', version: '1.0.1', app: runComparison },
       ]);
     } finally {
@@ -33,6 +35,7 @@ describe('the inspectors plugin', () => {
     expect(pendingReview.uri).toBe('ui://inspectors/pending-review/v1');
     expect(workflowRevisionReview.uri).toBe('ui://inspectors/workflow-revision-review/v1');
     expect(scheduleEditor.uri).toBe('ui://inspectors/schedule-editor/v1');
+    expect(runTimeline.uri).toBe('ui://inspectors/run-timeline/v1');
     expect(runComparison.uri).toBe('ui://inspectors/run-comparison/v1');
   });
 
@@ -55,6 +58,16 @@ describe('the inspectors plugin', () => {
     ]);
     expect(workflowRevisionReview.opensFromTool).toBe('bureau.workflows.update');
     expect(workflowRevisionReview.allowedTools).toContain('bureau.workflows.update');
+    expect(runTimeline.opensFromTool).toBe('bureau.runs.timeline');
+    expect(runTimeline.placements).toEqual([
+      { kind: 'run' },
+      { kind: 'chat-tool', agentTool: 'bureau:runs-timeline' },
+    ]);
+  });
+
+  it('lets the run timeline call the timeline read and no other tool', () => {
+    expect(runTimeline.allowedTools).toEqual(['bureau.runs.timeline']);
+    expect(runTimeline.hostOnlyTools).toBeUndefined();
   });
 
   it('places the schedule editor on a page of its own and on a run’s page, and nowhere else (COR-2545)', () => {
@@ -91,6 +104,7 @@ describe('the inspectors plugin', () => {
       [pendingReview, 'pending-review'],
       [workflowRevisionReview, 'workflow-revision'],
       [scheduleEditor, 'schedule-editor'],
+      [runTimeline, 'run-timeline'],
       [runComparison, 'run-comparison'],
     ] as const) {
       const named = new Set<string>();
@@ -154,6 +168,7 @@ describe('the inspectors plugin', () => {
       pendingReview,
       workflowRevisionReview,
       scheduleEditor,
+      runTimeline,
       runComparison,
     ]) {
       expect(await Bun.file(app.entry).exists()).toBe(true);

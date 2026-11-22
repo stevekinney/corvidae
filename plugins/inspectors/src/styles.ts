@@ -6,7 +6,7 @@
  */
 export const BASE_STYLES = `
 body{margin:0;padding:var(--cinder-space-3) var(--cinder-space-4)}
-.panel-page{display:flex;flex-direction:column;gap:var(--cinder-space-4)}
+.panel-page{display:flex;flex-direction:column;gap:var(--cinder-space-4);max-width:40rem}
 .panel-status{margin:0 0 var(--cinder-space-2);color:var(--cinder-text-muted);font-size:var(--cinder-text-sm)}
 .panel-status:empty{display:none}
 .panel-list{margin:var(--cinder-space-1) 0;padding-inline-start:var(--cinder-space-5)}
@@ -21,22 +21,47 @@ export const PENDING_REVIEW_STYLES = `${BASE_STYLES}
 `;
 
 /**
- * The run comparison's styles: the shared ones plus the frame Cinder's `ListDetail` fills, its detail
- * and the diff in it. The rows and the divider are Cinder's own. The frame gives the list a height
- * to fill, as the run page's step list does: side by side, a fixed one once a step is open, and only
- * as tall as what it holds, up to the same height, before. With the detail under the list the page
- * simply grows, so a phone holds no inner scroll.
+ * The run comparison's styles: the shared ones plus its shared-step list, its detail and the diff in
+ * it. The step list and its divider are Cinder's `ListDetail`. The shared `.panel-page` width cap
+ * keeps the panel narrower than `ListDetail`'s stacking width, so the detail sits under the list
+ * and the page simply grows: no inner scroll and no frame height to give it.
  */
 export const RUN_COMPARISON_STYLES = `${BASE_STYLES}
 .comparison-note{margin:0;font-size:var(--cinder-text-xs);color:var(--cinder-text-subtle)}
-.comparison-frame{min-inline-size:0}
-.comparison-frame[data-step-chosen]:has([data-cinder-layout=split]){block-size:30rem;overflow:hidden}
-.comparison-frame:not([data-step-chosen]):has([data-cinder-layout=split]){max-block-size:30rem;overflow-y:auto}
 .comparison-shared{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--cinder-space-1)}
 .comparison-shared li{display:flex;align-items:center;gap:var(--cinder-space-2);padding:var(--cinder-space-1) var(--cinder-space-2);font-size:var(--cinder-text-xs)}
 .comparison-mono{font-family:var(--cinder-font-mono);font-size:var(--cinder-text-xs);overflow-wrap:anywhere}
 .comparison-detail{min-width:0;display:flex;flex-direction:column;gap:var(--cinder-space-3)}
 .comparison-payload{display:flex;flex-direction:column;gap:var(--cinder-space-2)}
+`;
+
+/**
+ * The run timeline's styles: the shared ones plus its step rows and waterfall tracks. A track is as
+ * wide as the run, so the rows read as one chart; a bar's color says the step's status, and the
+ * words beside it say the same, so color is never the only signal.
+ */
+export const RUN_TIMELINE_STYLES = `${BASE_STYLES}
+.timeline-announcement{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.timeline-header{display:flex;flex-direction:column;gap:var(--cinder-space-1)}
+.timeline-heading{display:flex;flex-wrap:wrap;align-items:center;gap:var(--cinder-space-2)}
+.timeline-run-id{margin:0;font:var(--cinder-text-xs)/1.4 var(--cinder-font-mono);color:var(--cinder-text-subtle);overflow-wrap:anywhere}
+.timeline-summary{margin:0;color:var(--cinder-text-muted);font-size:var(--cinder-text-sm)}
+.timeline-axis{display:flex;justify-content:space-between;margin-bottom:var(--cinder-space-1);font-size:var(--cinder-text-xs);color:var(--cinder-text-subtle)}
+.timeline-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.timeline-step{display:flex;flex-direction:column;gap:var(--cinder-space-1);padding:var(--cinder-space-2) 0;border-top:1px solid var(--cinder-border-muted)}
+.timeline-step:first-child{border-top:0}
+.timeline-step__head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--cinder-space-2)}
+.timeline-step__name{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--cinder-space-2);min-width:0}
+.timeline-step__label{overflow-wrap:anywhere;font-weight:var(--cinder-font-semibold)}
+.timeline-step__type{font:var(--cinder-text-xs)/1.4 var(--cinder-font-mono);color:var(--cinder-text-subtle)}
+.timeline-step__track{position:relative;display:block;inline-size:100%;block-size:var(--cinder-space-2);border-radius:var(--cinder-radius-sm);background:var(--cinder-surface-inset);overflow:hidden}
+.timeline-step__bar{position:absolute;inset-block:0;border-radius:var(--cinder-radius-sm);background:var(--cinder-status-success-solid)}
+.timeline-step__bar[data-status=failed],.timeline-step__bar[data-status=timed-out]{background:var(--cinder-status-danger-solid)}
+.timeline-step__bar[data-status=running]{background:var(--cinder-accent-solid)}
+.timeline-step__bar[data-status=cancelled],.timeline-step__bar[data-status=ended]{background:var(--cinder-text-disabled)}
+.timeline-step__bar[data-open]{background:linear-gradient(to right,var(--cinder-accent-solid),transparent)}
+.timeline-step__meta{display:flex;gap:var(--cinder-space-3);margin:0;font-size:var(--cinder-text-xs);color:var(--cinder-text-subtle)}
+.timeline-step__tries[data-retried]{color:var(--cinder-status-warning-text);font-weight:var(--cinder-font-semibold)}
 `;
 
 /** The workflow revision review's styles: the shared ones plus its comparison grid and footer. */
@@ -61,7 +86,6 @@ export const SCHEDULE_EDITOR_STYLES = `${BASE_STYLES}
 .schedule-list{list-style:none;padding-inline-start:0}
 .schedule-list li{display:flex;align-items:center;justify-content:space-between;gap:var(--cinder-space-3);padding:var(--cinder-space-2) 0;border-top:1px solid var(--cinder-border-muted)}
 .schedule-list li span{min-width:0;overflow-wrap:anywhere}
-.panel-page{max-width:40rem}
 .editor-status[data-empty=true]{position:absolute;width:1px;height:1px;overflow:hidden}
 .schedule-form{display:flex;flex-direction:column;gap:var(--cinder-space-3)}
 `;

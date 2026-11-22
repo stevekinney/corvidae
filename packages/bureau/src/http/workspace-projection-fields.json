@@ -2160,6 +2160,7 @@
     "$.entries[].tries",
     "$.kind",
     "$.runId",
+    "$.runStatus",
     "$.truncated"
   ],
   "output:bureau.schedules.cancel": [

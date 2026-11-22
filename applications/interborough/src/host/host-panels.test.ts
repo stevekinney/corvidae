@@ -69,7 +69,7 @@ async function start(
     port: 0,
     // These tests are about the routes and the tool calls, not about the page's bytes, which the
     // panel build's own tests and the browser specs cover: a page that is a stub keeps every start
-    // from building three Cinder pages.
+    // from building five Cinder pages.
     panelBuild: { build: async (request) => stubPage(request.title) },
     ...extra,
     ...(authenticated
@@ -283,6 +283,7 @@ describe('a panel build that never finishes (COR-2219)', () => {
     expect(apps.apps.map(({ app }) => app).toSorted()).toEqual([
       'pending-review',
       'run-comparison',
+      'run-timeline',
       'schedule-editor',
       'workflow-revision-review',
     ]);

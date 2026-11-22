@@ -208,6 +208,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // The run comparison panel in a frame, in each state it draws (COR-2544). `--grep run-comparison-states`
   // selects it.
   'tests/panels/run-comparison-states.spec.ts',
+  // The run timeline panel in each state it draws, likewise a frame no page capture sees (COR-2542).
+  'tests/panels/run-timeline-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

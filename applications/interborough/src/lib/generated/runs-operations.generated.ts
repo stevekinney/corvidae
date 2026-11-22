@@ -31,6 +31,8 @@ export type RunsOperationTypes = {
       }>;
       readonly kind: 'agent' | 'workflow';
       readonly runId: string;
+      readonly runStatus:
+        'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
       readonly truncated: boolean;
     };
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
