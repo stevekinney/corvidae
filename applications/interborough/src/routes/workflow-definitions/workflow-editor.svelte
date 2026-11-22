@@ -41,7 +41,7 @@
     Tabs,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
 
   import {
     CONNECTION_MAX_ATTEMPTS,
@@ -129,8 +129,10 @@
   let builder = $state<{ focusProblem: () => Promise<void> }>();
   /** The line the Bureau refused the document at, until the text changes (row 65z). */
   let documentProblem = $state<DocumentProblem | null>(null);
-  /** The Bureau's checks are being asked before Save, so a second press waits for them. */
-  let checking = $state(false);
+  /** Keep the form locked from the validation request until the write settles. */
+  let saving = $state(false);
+  const lifetime = new AbortController();
+  onDestroy(() => lifetime.abort());
   /** The tab the loading form shows, before the builder takes over. */
   let loadingTab = $state<'builder' | 'json'>('builder');
 
@@ -267,6 +269,9 @@
       expectedHash: string;
       definition: Record<string, unknown>;
     }) => updateWorkflowFile(type, expectedHash, definition),
+    onSettled: () => {
+      saving = false;
+    },
     onMutate: () => {
       failure = null;
     },
@@ -287,7 +292,7 @@
   }));
 
   async function submit(): Promise<void> {
-    if (base === null || save.isPending || changedOnDisk || checking) return;
+    if (base === null || saving || changedOnDisk) return;
     const parsed = updateDefinitionFromText(text);
     if (!parsed.ok) {
       // The JSON tab marks the line to fix, and the footer says it; Save takes the person there.
@@ -298,14 +303,19 @@
     // tab rather than said as a failure (row 65z). A check that cannot be made leaves it to Save.
     const asked = text;
     const expectedHash = base;
-    checking = true;
+    saving = true;
     const problem = await documentProblemFor(asked, () =>
-      validateWorkflowDefinition({ id: type, expectedHash, definition: parsed.definition }),
-    ).finally(() => {
-      checking = false;
-    });
-    if (text !== asked || base !== expectedHash) return;
+      validateWorkflowDefinition(
+        { id: type, expectedHash, definition: parsed.definition },
+        { signal: lifetime.signal },
+      ),
+    );
+    if (lifetime.signal.aborted || text !== asked || base !== expectedHash) {
+      saving = false;
+      return;
+    }
     if (problem !== undefined) {
+      saving = false;
       documentProblem = problem;
       await tick();
       void builder?.focusProblem();
@@ -520,7 +530,7 @@
           {text}
           mode="edit"
           error=""
-          saving={save.isPending || checking}
+          {saving}
           {failure}
           initialTab={loaded.state === 'invalid' ? 'json' : loadingTab}
           jsonId="workflow-editor-text"
@@ -536,12 +546,9 @@
             documentProblem = null;
           }}
         >
-          {#snippet actions(readOnly: boolean, locked: boolean)}
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={locked}
-              onclick={cancel}>{editor.cancelAction}</Button
+          {#snippet actions(readOnly: boolean)}
+            <Button variant="secondary" size="sm" disabled={saving} onclick={cancel}
+              >{editor.cancelAction}</Button
             >
             <Button
               data-changes
@@ -549,8 +556,8 @@
               onclick={() => void submit()}
               variant="primary"
               size="sm"
-              disabled={locked || readOnly}
-              >{save.isPending || checking ? editor.savingAction : editor.saveAction}</Button
+              disabled={saving || readOnly}
+              >{saving ? editor.savingAction : editor.saveAction}</Button
             >
           {/snippet}
         </WorkflowBuilder>

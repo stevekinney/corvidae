@@ -17,7 +17,7 @@
    */
   import { Button, ConfirmDialog, PageHeader } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
@@ -69,8 +69,10 @@
   let focusAfterSave = $state(false);
   /** The line the Bureau refused the document at, until the text changes (row 65z). */
   let documentProblem = $state<DocumentProblem | null>(null);
-  /** The Bureau's checks are being asked before Create, so a second press waits for them. */
-  let checking = $state(false);
+  /** Keep the form locked from the validation request until the write settles. */
+  let saving = $state(false);
+  const lifetime = new AbortController();
+  onDestroy(() => lifetime.abort());
 
   // Leaving with what was typed asks first; an untouched form leaves at once.
   const leaveGuard = new LeaveGuard(() => text !== TEMPLATE);
@@ -85,6 +87,9 @@
   const save = createMutation(() => ({
     mutationFn: ({ id, definition }: { id: string; definition: Record<string, unknown> }) =>
       createWorkflowFile(id, definition),
+    onSettled: () => {
+      saving = false;
+    },
     onMutate: () => {
       failure = null;
     },
@@ -128,7 +133,7 @@
   });
 
   async function submit(): Promise<void> {
-    if (save.isPending || checking) return;
+    if (saving) return;
     const parsed = createDefinitionFromText(text);
     const problems = workflowProblems(text, {
       mode: 'create',
@@ -142,14 +147,19 @@
     // The Bureau's own checks first, so a document it refuses is marked at its line on the JSON
     // tab rather than said as a failure (row 65z). A check that cannot be made leaves it to Create.
     const asked = text;
-    checking = true;
+    saving = true;
     const problem = await documentProblemFor(asked, () =>
-      validateWorkflowDefinition({ id: parsed.id, definition: parsed.definition }),
-    ).finally(() => {
-      checking = false;
-    });
-    if (text !== asked) return;
+      validateWorkflowDefinition(
+        { id: parsed.id, definition: parsed.definition },
+        { signal: lifetime.signal },
+      ),
+    );
+    if (lifetime.signal.aborted || text !== asked) {
+      saving = false;
+      return;
+    }
     if (problem !== undefined) {
+      saving = false;
       documentProblem = problem;
       checked = true;
       await tick();
@@ -190,7 +200,7 @@
       error=""
       showProblems={checked}
       {...takenId === undefined ? {} : { takenId }}
-      saving={save.isPending || checking}
+      {saving}
       {failure}
       {documentProblem}
       jsonId="workflow-creator-text"
@@ -202,8 +212,8 @@
         documentProblem = null;
       }}
     >
-      {#snippet actions(readOnly: boolean, locked: boolean)}
-        <Button variant="secondary" size="sm" disabled={locked} onclick={cancel}
+      {#snippet actions(readOnly: boolean)}
+        <Button variant="secondary" size="sm" disabled={saving} onclick={cancel}
           >{creator.cancelAction}</Button
         >
         <Button
@@ -212,8 +222,8 @@
           onclick={() => void submit()}
           variant="primary"
           size="sm"
-          disabled={locked || readOnly}
-          >{save.isPending || checking ? creator.creatingAction : creator.saveAction}</Button
+          disabled={saving || readOnly}
+          >{saving ? creator.creatingAction : creator.saveAction}</Button
         >
       {/snippet}
     </WorkflowBuilder>

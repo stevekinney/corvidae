@@ -114,7 +114,7 @@
      * whether the builder is read-only (below 640 pixels), so the primary action is drawn off there
      * rather than inviting a save it cannot make (note N3).
      */
-    actions?: Snippet<[boolean, boolean]>;
+    actions?: Snippet<[boolean]>;
     /**
      * Whether the page has asked to save: the problems of the workflow are then said at their
      * fields and, from two, in one line above the footer. Before that nothing is called wrong.
@@ -961,7 +961,7 @@
       {/if}
     </p>
     {#if actions !== undefined}
-      <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions(readOnly, locked)}</div>
+      <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions(readOnly)}</div>
     {/if}
   </footer>
 </div>

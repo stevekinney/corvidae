@@ -8,6 +8,7 @@
  * changed on disk is "This file changed on disk." with Reload and Keep mine. An invalid file opens
  * on the JSON tab with where it stops being a workflow above it, so it can be fixed.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -346,16 +347,13 @@ describe('the version a save makes', () => {
     stub?.on('bureau.workflows.update', () => answer.promise);
     await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
 
-    const saving = await waitFor(() => {
-      const found = getByRole('button', { name: EDITOR.savingAction }) as HTMLButtonElement;
-      expect(found.disabled).toBe(true);
-      return found;
-    });
-    expect(saving).toBeTruthy();
+    await waitFor(() => expect(footer(container)).toBe('Saving version 1.4.0…'));
+    expect((getByRole('button', { name: EDITOR.savingAction }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     expect((getByRole('button', { name: EDITOR.cancelAction }) as HTMLButtonElement).disabled).toBe(
       true,
     );
-    expect(footer(container)).toBe('Saving version 1.4.0…');
     expect(container.querySelector('.weft-workflow-builder__json')?.hasAttribute('inert')).toBe(
       true,
     );
@@ -947,7 +945,8 @@ describe('the step builder in the editor', () => {
     await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
 
     answer({ status: 'ok', id: 'digest', hash: 'hash-1' });
-    await waitFor(() => expect(stub?.callsTo('bureau.workflows.update')).toEqual([]));
+    await quietFor(50);
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
     expect(router.pathname).toBe('/workflows/digest');
   });
 
@@ -1065,7 +1064,7 @@ describe('the step builder in the editor', () => {
     const keep = [...dialog.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === DISCARD.keep,
     );
-    await waitFor(() => expect(document.activeElement).toBe(keep ?? null));
+    await waitFor(() => expect(document.activeElement === keep).toBe(true));
     await fireEvent.click(keep as HTMLElement);
     expect(router.pathname).toBe('/workflows/digest/edit');
     expect(field(container, 'workflow-builder-title').value).toBe('Changed');

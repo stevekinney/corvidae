@@ -236,18 +236,20 @@ describe('the new-workflow editor', () => {
   });
 
   test('says only that the save failed for a fault that names nothing the person can act on', async () => {
-    const { container, getByRole, findByRole } = open();
+    const { container, findByRole } = open();
     await openJson(container);
     await typeInto(container, withName('fresh-flow'));
-    for (const fault of [
+    const faults = [
       workflowFaults.conflict('agent-file-exists'),
       workflowFaults.stale('hash', 'old'),
       workflowFaults.notFound('workflow'),
-    ]) {
+    ];
+    for (const [index, fault] of faults.entries()) {
       stub?.on('bureau.workflows.create', () => {
         throw fault;
       });
-      await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+      await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+      await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(index + 1));
       const alert = await findByRole('alert');
       expect(alert.textContent).toContain(WORKFLOW_COPY.creator.saveFailed);
       expect(alert.textContent).not.toContain(fault.message);
