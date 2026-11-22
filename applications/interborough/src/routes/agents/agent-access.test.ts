@@ -11,7 +11,6 @@ import { tick } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
-import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import type { AgentDefinitionInput, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import {
@@ -20,6 +19,7 @@ import {
   readyAgent,
   StubFault,
 } from '../../lib/bureau-stub.test-support.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
 import {
@@ -662,7 +662,10 @@ describe('guardrails and spend', () => {
 
       const chat = await findByLabelText(copy.spendLabel);
       await fireEvent.input(chat, { target: { value: '0,' } });
-      current = { ...detailWith({ limits: { steps: null, cost: null, tools: null } }), hash: 'hash-2' };
+      current = {
+        ...detailWith({ limits: { steps: null, cost: null, tools: null } }),
+        hash: 'hash-2',
+      };
       await client.refetchQueries({ queryKey: queryKeys.agents.definition('researcher') });
       await tick();
       expect(chat).toHaveValue('');
