@@ -2465,7 +2465,8 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
       finishReason: 'error',
       message: 'the real failure',
     });
-    expect((await fenceOf(registry, 'run-1')).message).toBe('the real failure');
+    const replaced = await fenceOf(registry, 'run-1');
+    expect(replaced.message).toBe('the real failure');
 
     expect(await registry.recordModelExplanation('run-1', EXPLANATION, fence)).toBe('stale');
     expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
