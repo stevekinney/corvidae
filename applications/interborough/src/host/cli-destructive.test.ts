@@ -179,10 +179,9 @@ describe('the CLI registry of destructive commands', () => {
       const [command] = name.split(' ');
       const registered = CLI_COMMAND_REGISTRY[command!]!;
       expect(registered.options, `${name} takes --dry-run`).toContain('dry-run');
-      for (const operation of action.operations)
-        expect(CLI_OPERATION_MAPPINGS[command as keyof typeof CLI_OPERATION_MAPPINGS]).toContain(
-          operation,
-        );
+      const mapped: readonly string[] =
+        CLI_OPERATION_MAPPINGS[command as keyof typeof CLI_OPERATION_MAPPINGS];
+      for (const operation of action.operations) expect(mapped).toContain(operation);
       if (action.confirms === 'never')
         expect(CLI_UNCONFIRMED_ACTIONS, `${name} is neither confirmed nor named`).toContain(name);
       else expect(registered.options, `${name} confirms, so it takes --yes`).toContain('yes');
@@ -353,6 +352,60 @@ describe('--dry-run', () => {
       },
     });
     expect(host.calls.map((call) => call.method)).toEqual(['bureau.schedules.get']);
+  });
+
+  const notFound = {
+    code: -32004,
+    message: 'No such target.',
+    data: { weftCode: 'NotFound', httpStatus: 404, retryable: false },
+  };
+  const failing: Partial<CliClientDependencies> = {
+    fetch: async () => Response.json({ jsonrpc: '2.0', id: '1', error: notFound }),
+  };
+
+  // spawn-free: injected fetch answers a NotFound fault.
+  test('a dry run of an absent Bureau target exits 1, where the real command would exit 7', async () => {
+    for (const command of [
+      ['schedules', 'pause', 'missing'],
+      ['hooks', 'delete', 'missing'],
+      ['goals', 'cancel', 'missing'],
+    ]) {
+      const dry = await executeCli([...command, '--dry-run', '--output', 'json', ...url], failing);
+      expect(dry.exitCode, command.join(' ')).toBe(1);
+      expect(JSON.parse(dry.stdout)).toMatchObject({ error: { code: 'NotFound', exitCode: 1 } });
+      const real = await executeCli(
+        [...command, ...(command[0] === 'hooks' ? ['--yes'] : []), '--output', 'json', ...url],
+        failing,
+      );
+      expect(real.exitCode, command.join(' ')).toBe(7);
+    }
+  });
+
+  // spawn-free: injected fetch aborts the request.
+  test('an aborted dry run is not an unknown mutation outcome', async () => {
+    const aborting: Partial<CliClientDependencies> = {
+      fetch: async () => {
+        throw new DOMException('aborted', 'AbortError');
+      },
+    };
+    const dry = await executeCli(
+      ['hooks', 'delete', 'h1', '--dry-run', '--output', 'json', ...url],
+      aborting,
+    );
+    expect(dry.exitCode).toBe(6);
+    const real = await executeCli(['hooks', 'delete', 'h1', '--yes', ...url], aborting);
+    expect(real.exitCode).toBe(7);
+  });
+
+  // spawn-free: no command runs; the table and the scenarios above are read.
+  test('every previewable action has a scenario above', () => {
+    const scenarios = new Set([
+      ...SERVER_DRY_RUNS.map((scenario) => scenario.arguments.slice(0, 2).join(' ')),
+      ...previews.map((scenario) => scenario.arguments.slice(0, 2).join(' ')),
+      'schedules pause',
+      'api call',
+    ]);
+    expect([...scenarios].toSorted()).toEqual(Object.keys(CLI_DESTRUCTIVE_ACTIONS).toSorted());
   });
 });
 
