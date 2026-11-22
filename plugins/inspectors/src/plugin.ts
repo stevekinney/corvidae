@@ -3,6 +3,7 @@ import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugi
 import {
   BASE_STYLES,
   PENDING_REVIEW_STYLES,
+  RUN_TIMELINE_STYLES,
   SCHEDULE_EDITOR_STYLES,
   WORKFLOW_REVISION_STYLES,
 } from './styles.ts';
@@ -57,6 +58,26 @@ export const workflowRevisionReview: PluginPanel = {
 };
 
 /**
+ * The run timeline: one run's steps as a waterfall, each with its status, duration and tries. A
+ * client opens it from `bureau.runs.timeline`, the tool the page is linked to, Chat opens it inline
+ * when an agent calls `bureau:runs-timeline`, and a run's page mounts it beside the run. It reads
+ * `bureau.runs.timeline` and no other tool, and changes nothing. The bars come
+ * from `stepWaterfall`, the layout the run page draws its own steps with. `allowedTools` lists
+ * every tool the page calls, which a test keeps true.
+ */
+export const runTimeline: PluginPanel = {
+  name: 'run-timeline',
+  title: 'Run timeline',
+  description: 'The steps of one run as a waterfall: each step’s status, duration and tries.',
+  uri: 'ui://inspectors/run-timeline/v1',
+  entry: new URL('./run-timeline/app.ts', import.meta.url),
+  styles: RUN_TIMELINE_STYLES,
+  allowedTools: ['bureau.runs.timeline'],
+  placements: [{ kind: 'run' }, { kind: 'chat-tool', agentTool: 'bureau:runs-timeline' }],
+  opensFromTool: 'bureau.runs.timeline',
+};
+
+/**
  * The schedule editor (COR-2545): the schedules the caller may change, and one schedule's form to
  * change when it runs, which agent or workflow it runs, and whether it is paused, or to make a new
  * one. It reads through `bureau.schedules.list`, `bureau.schedules.get`, `bureau.agents.list` and
@@ -97,17 +118,17 @@ export const scheduleEditor: PluginPanel = {
 };
 
 /**
- * Four interface panels, the run inspector, pending-review list, workflow revision review and schedule
- * editor. Each is a page the host builds from a browser entry at startup and serves as a `ui://`
- * resource.
+ * Five interface panels, the run inspector, pending-review list, workflow revision review, schedule
+ * editor and run timeline. Each is a page the host builds from a browser entry at startup and serves
+ * as a `ui://` resource.
  */
 export default definePlugin({
   name: 'inspectors',
   title: 'Inspectors',
   version: '1.0.1',
   description:
-    'Adds the run inspector, the pending-review list, the workflow revision review and the schedule editor as interface panels over the run, review, workflow and schedule tools.',
+    'Adds the run inspector, the pending-review list, the workflow revision review, the schedule editor and the run timeline as interface panels over the run, review, workflow and schedule tools.',
   setup: () => ({
-    panels: [runInspector, pendingReview, workflowRevisionReview, scheduleEditor],
+    panels: [runInspector, pendingReview, workflowRevisionReview, scheduleEditor, runTimeline],
   }),
 });

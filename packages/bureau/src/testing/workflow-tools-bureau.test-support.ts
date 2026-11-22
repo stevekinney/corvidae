@@ -90,6 +90,8 @@ export interface WorkflowToolsOptions {
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   /** The file agents to create, by identifier. Defaults to `scribe`. */
   readonly agents?: readonly string[];
+  /** Leave out `workflowSource`: a Bureau with agents and no workflow directory (COR-2542). */
+  readonly withoutWorkflowDirectory?: boolean;
   /** Optional file operations used by workflow-source tests to simulate read failures. */
   readonly workflowOperations?: AgentFileOperations;
 }
@@ -142,10 +144,16 @@ export async function startWorkflowToolsBureau(
       }),
     },
     agentSource: agentFileDirectory(agentsPath),
-    workflowSource: workflowFileDirectory(
-      workflowsPath,
-      options.workflowOperations === undefined ? {} : { operations: options.workflowOperations },
-    ),
+    ...(options.withoutWorkflowDirectory === true
+      ? {}
+      : {
+          workflowSource: workflowFileDirectory(
+            workflowsPath,
+            options.workflowOperations === undefined
+              ? {}
+              : { operations: options.workflowOperations },
+          ),
+        }),
     models: {
       catalog: createVendorCatalog().descriptors,
       generate: (_descriptor: BackendDescriptor) => generate,
