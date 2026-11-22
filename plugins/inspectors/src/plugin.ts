@@ -101,10 +101,10 @@ export const scheduleEditor: PluginPanel = {
  * The run comparison: a forked workflow run beside the run it was forked from, with the steps the
  * two share and the input and output differences of each step the fork ran again. A client opens it
  * from `bureau.runs.compare`, the tool the page is linked to and the only one it calls. It declares a
- * `run` placement, so a run's page mounts it with its run panels: an agent run's page gives it the
- * run's `taskId` (an agent run is never a fork, so it shows the server's message), and a workflow
- * instance's page gives it `{ runId, runKind: 'workflow' }` (owner decision, 2026-11-22), which is
- * where a fork's comparison is. A run that is not a fork shows the server's message.
+ * `run` placement, and the Interborough run page mounts it on a workflow instance that is a fork,
+ * giving it `{ runId, runKind: 'workflow' }` (owner decision, 2026-11-22, refined by the design
+ * review of #1219: a card is mounted only when it has something to say about the run). A client
+ * that opens it on a run that is not a fork gets the server's message, shown as written.
  * `allowedTools` lists every tool the page calls, which a test keeps true.
  */
 export const runComparison: PluginPanel = {

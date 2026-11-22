@@ -16,8 +16,11 @@
     EmptyState,
     ErrorState,
     JsonDiffViewer,
+    ListDetail,
+    SelectableRow,
     Section,
     Skeleton,
+    Text,
   } from '@lostgradient/cinder';
   import {
     classifyComparedStep,
@@ -67,6 +70,14 @@
 
   let selectedIndex = $state<number | null>(null);
   const selected = $derived(ranAgain.find((entry) => entry.step.index === selectedIndex));
+
+  /** Below this width in pixels the detail sits under the list, as it does in the run comparison panel. */
+  const STACK_BELOW = 720;
+
+  /** `ListDetail` keys are text; a step's key is its index. */
+  function keyOf(entry: { readonly step: ComparedStep }): string {
+    return String(entry.step.index);
+  }
 
   const KIND_BADGE: Record<ComparedStepKind, 'neutral' | 'warning' | 'info' | 'accent'> = {
     shared: 'neutral',
@@ -149,102 +160,108 @@
         description={RUN_COMPARISON_COPY.noStepsDescription}
       />
     {:else}
-      <div class="weft-fork-comparison__layout">
-        <Section title={RUN_COMPARISON_COPY.stepsHeading} level={3}>
-          <ul class="weft-fork-comparison__steps" aria-label={RUN_COMPARISON_COPY.stepsLabel}>
-            {#each ranAgain as { step, kind } (step.index)}
-              <li>
-                <button
-                  type="button"
-                  class="weft-fork-comparison__row"
-                  data-compared-step={step.index}
-                  data-kind={kind}
-                  aria-pressed={selectedIndex === step.index}
-                  onclick={() => (selectedIndex = step.index)}
-                >
-                  <span class="weft-fork-comparison__mono weft-fork-comparison__row-title">
-                    {RUN_COMPARISON_COPY.stepTitle(step.index, labelOf(step))}
-                  </span>
-                  <Badge variant={KIND_BADGE[kind]} size="sm"
-                    >{RUN_COMPARISON_COPY.kinds[kind]}</Badge
-                  >
-                  {#if differenceSummary(step)}
-                    <span class="weft-fork-comparison__row-detail">{differenceSummary(step)}</span>
-                  {/if}
-                </button>
-              </li>
-            {/each}
-          </ul>
-        </Section>
-
-        <div class="weft-fork-comparison__detail">
-          {#if selected === undefined}
-            <EmptyState
-              kind="first-use"
-              headingLevel={3}
-              title={RUN_COMPARISON_COPY.chooseTitle}
-              description={RUN_COMPARISON_COPY.chooseDescription}
-            />
-          {:else}
-            {@const { step, kind } = selected}
-            <Section
-              title={RUN_COMPARISON_COPY.detailLabel(step.index)}
-              level={3}
-              data-compared-detail={step.index}
+      <!-- The same Cinder list the run comparison panel draws: ListDetail over SelectableRow. -->
+      <div
+        class="weft-fork-comparison__frame"
+        data-step-chosen={selected === undefined ? undefined : ''}
+      >
+        <ListDetail
+          items={ranAgain}
+          key={keyOf}
+          label={RUN_COMPARISON_COPY.stepsLabel}
+          detailLabel={RUN_COMPARISON_COPY.detailRegionLabel}
+          selectionParameter={null}
+          pushBelow={0}
+          stackBelow={STACK_BELOW}
+          bind:selectedKey={
+            () => (selectedIndex === null ? null : String(selectedIndex)),
+            (key) => (selectedIndex = key === null ? null : Number(key))
+          }
+        >
+          {#snippet header()}
+            <Text as="h3" variant="h4">{RUN_COMPARISON_COPY.stepsHeading}</Text>
+          {/snippet}
+          {#snippet list({ step, kind }, context)}
+            {#snippet differs()}{differenceSummary(step)}{/snippet}
+            <SelectableRow
+              selected={context.selected}
+              selectedState="current"
+              onclick={context.open}
+              data-compared-step={step.index}
+              data-kind={kind}
+              {...differenceSummary(step) === undefined ? {} : { description: differs }}
             >
-              <div class="weft-fork-comparison__detail-body">
-                {#if step.source === undefined || step.fork === undefined}
+              {#snippet title()}
+                <span class="weft-fork-comparison__mono">
+                  {RUN_COMPARISON_COPY.stepTitle(step.index, labelOf(step))}
+                </span>
+              {/snippet}
+              {#snippet meta()}
+                <Badge variant={KIND_BADGE[kind]} size="sm">{RUN_COMPARISON_COPY.kinds[kind]}</Badge
+                >
+              {/snippet}
+            </SelectableRow>
+          {/snippet}
+          {#snippet empty()}
+            <div class="weft-fork-comparison__detail-body">
+              <Text as="h3" variant="h4">{RUN_COMPARISON_COPY.chooseTitle}</Text>
+              <p class="weft-fork-comparison__note">{RUN_COMPARISON_COPY.chooseDescription}</p>
+            </div>
+          {/snippet}
+          {#snippet detail({ step, kind })}
+            <div class="weft-fork-comparison__detail-body" data-compared-detail={step.index}>
+              <Text as="h3" variant="h4">{RUN_COMPARISON_COPY.detailLabel(step.index)}</Text>
+              {#if step.source === undefined || step.fork === undefined}
+                <p class="weft-fork-comparison__note">
+                  {kind === 'source-only'
+                    ? RUN_COMPARISON_COPY.onlyInSource
+                    : RUN_COMPARISON_COPY.onlyInFork}
+                </p>
+              {:else}
+                {#if step.source.operationType !== step.fork.operationType}
                   <p class="weft-fork-comparison__note">
-                    {kind === 'source-only'
-                      ? RUN_COMPARISON_COPY.onlyInSource
-                      : RUN_COMPARISON_COPY.onlyInFork}
+                    {RUN_COMPARISON_COPY.operationChange(
+                      step.source.operationType,
+                      step.fork.operationType,
+                    )}
                   </p>
-                {:else}
-                  {#if step.source.operationType !== step.fork.operationType}
-                    <p class="weft-fork-comparison__note">
-                      {RUN_COMPARISON_COPY.operationChange(
-                        step.source.operationType,
-                        step.fork.operationType,
-                      )}
-                    </p>
-                  {/if}
-                  {#if step.source.status !== step.fork.status}
-                    <p class="weft-fork-comparison__note">
-                      {RUN_COMPARISON_COPY.statusChange(step.source.status, step.fork.status)}
-                    </p>
-                  {/if}
-                  {#each payloadsOf(step.source, step.fork) as payload (payload.heading)}
-                    <Section title={payload.heading} level={4}>
-                      {#if payload.source === undefined && payload.fork === undefined}
-                        <p class="weft-fork-comparison__note">
-                          {RUN_COMPARISON_COPY.sameBothSides(payload.heading)}
-                        </p>
-                      {:else if payload.source === undefined}
-                        <p class="weft-fork-comparison__note">
-                          {RUN_COMPARISON_COPY.missingSource(payload.heading)}
-                        </p>
-                      {:else if payload.fork === undefined}
-                        <p class="weft-fork-comparison__note">
-                          {RUN_COMPARISON_COPY.missingFork(payload.heading)}
-                        </p>
-                      {:else if payload.source === payload.fork}
-                        <p class="weft-fork-comparison__note">
-                          {RUN_COMPARISON_COPY.sameBothSides(payload.heading)}
-                        </p>
-                      {:else}
-                        <JsonDiffViewer
-                          before={parseSummary(payload.source)}
-                          after={parseSummary(payload.fork)}
-                          label={RUN_COMPARISON_COPY.diffLabel(payload.heading, step.index)}
-                        />
-                      {/if}
-                    </Section>
-                  {/each}
                 {/if}
-              </div>
-            </Section>
-          {/if}
-        </div>
+                {#if step.source.status !== step.fork.status}
+                  <p class="weft-fork-comparison__note">
+                    {RUN_COMPARISON_COPY.statusChange(step.source.status, step.fork.status)}
+                  </p>
+                {/if}
+                {#each payloadsOf(step.source, step.fork) as payload (payload.heading)}
+                  <Section title={payload.heading} level={4}>
+                    {#if payload.source === undefined && payload.fork === undefined}
+                      <p class="weft-fork-comparison__note">
+                        {RUN_COMPARISON_COPY.sameBothSides(payload.heading)}
+                      </p>
+                    {:else if payload.source === undefined}
+                      <p class="weft-fork-comparison__note">
+                        {RUN_COMPARISON_COPY.missingSource(payload.heading)}
+                      </p>
+                    {:else if payload.fork === undefined}
+                      <p class="weft-fork-comparison__note">
+                        {RUN_COMPARISON_COPY.missingFork(payload.heading)}
+                      </p>
+                    {:else if payload.source === payload.fork}
+                      <p class="weft-fork-comparison__note">
+                        {RUN_COMPARISON_COPY.sameBothSides(payload.heading)}
+                      </p>
+                    {:else}
+                      <JsonDiffViewer
+                        before={parseSummary(payload.source)}
+                        after={parseSummary(payload.fork)}
+                        label={RUN_COMPARISON_COPY.diffLabel(payload.heading, step.index)}
+                      />
+                    {/if}
+                  </Section>
+                {/each}
+              {/if}
+            </div>
+          {/snippet}
+        </ListDetail>
       </div>
     {/if}
   {/if}
@@ -265,27 +282,30 @@
     color: var(--cinder-text-subtle);
   }
 
-  .weft-fork-comparison__layout {
-    display: grid;
-    grid-template-columns: minmax(220px, 320px) 1fr;
-    gap: var(--cinder-space-4);
-    align-items: start;
+  /* The list owns its height when the panes sit side by side, so the frame gives it one, as the run
+   * page's step list does: fixed once a step is open, and only as tall as what it holds, up to the
+   * same height, before. With the detail under the list the page simply grows. */
+  .weft-fork-comparison__frame {
+    min-inline-size: 0;
   }
 
-  @media (max-width: 900px) {
-    .weft-fork-comparison__layout {
-      grid-template-columns: 1fr;
-    }
+  .weft-fork-comparison__frame[data-step-chosen]:has([data-cinder-layout='split']) {
+    block-size: 30rem;
+    overflow: hidden;
   }
 
-  .weft-fork-comparison__shared,
-  .weft-fork-comparison__steps {
+  .weft-fork-comparison__frame:not([data-step-chosen]):has([data-cinder-layout='split']) {
+    max-block-size: 30rem;
+    overflow-y: auto;
+  }
+
+  .weft-fork-comparison__shared {
     list-style: none;
     margin: 0;
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--cinder-space-1);
   }
 
   .weft-fork-comparison__shared li {
@@ -299,52 +319,11 @@
   .weft-fork-comparison__mono {
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
-  }
-
-  .weft-fork-comparison__row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-    width: 100%;
-    min-height: 40px;
-    padding: var(--cinder-space-2);
-    background: transparent;
-    border: 0;
-    border-radius: var(--cinder-radius-md);
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-    text-align: start;
-  }
-
-  @media (hover: hover) {
-    .weft-fork-comparison__row:hover {
-      background: var(--cinder-surface-hover);
-    }
-  }
-
-  .weft-fork-comparison__row[aria-pressed='true'] {
-    background: var(--cinder-surface-hover);
-  }
-
-  .weft-fork-comparison__row-title {
-    flex: 1 1 auto;
-    min-width: 0;
     overflow-wrap: anywhere;
   }
 
-  .weft-fork-comparison__row-detail {
-    flex-basis: 100%;
-    font-size: var(--cinder-text-2xs);
-    color: var(--cinder-text-subtle);
-  }
-
-  .weft-fork-comparison__detail {
-    min-width: 0;
-  }
-
   .weft-fork-comparison__detail-body {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);

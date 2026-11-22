@@ -95,9 +95,12 @@ const FIELD_WORDS: Record<ComparedField, string> = {
   output: 'output',
 };
 
-/** The words for each kind of step. */
+/**
+ * The words for each kind of step. A step the fork kept from the source and one it ran again with
+ * the same result are the same idea, nothing differs, and have the one word: `Same`.
+ */
 export const KIND_WORDS: Record<ComparedStepKind, string> = {
-  shared: 'Shared',
+  shared: 'Same',
   changed: 'Changed',
   unchanged: 'Same',
   'source-only': 'Only in the source',
@@ -105,7 +108,7 @@ export const KIND_WORDS: Record<ComparedStepKind, string> = {
 };
 
 /** One step as a list row draws it. */
-type StepRow = {
+export type StepRow = {
   readonly index: number;
   /** `Step 2, issueTicket`: the step's place among the run's steps, from 1, and its name. */
   readonly title: string;
@@ -147,7 +150,8 @@ function rowOf(step: ComparedStep): StepRow {
 export function buildComparisonModel(comparison: Comparison): ComparisonModel {
   const rows = comparison.steps.map(rowOf);
   return {
-    title: `Run ${comparison.runId} compared with ${comparison.sourceRunId}`,
+    // No identifiers: the panel sits on the fork's own page, so "the source run" is all it needs.
+    title: 'Compared with the source run',
     intro: `Forked from checkpoint step ${String(comparison.forkPoint)}. The steps before it keep the source’s results; the rest ran again.`,
     shared: rows.filter((row) => row.step.shared),
     ranAgain: rows.filter((row) => !row.step.shared),

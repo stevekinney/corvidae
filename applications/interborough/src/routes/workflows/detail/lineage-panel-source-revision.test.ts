@@ -85,7 +85,41 @@ describe('LineagePanel — forked-from source revision attribution', () => {
     await waitFor(() => {
       expect(getByText('reconcile-ledger')).not.toBeNull();
     });
-    expect(getByText(/^rev reconcil/)).not.toBeNull();
+    expect(getByText('Pinned revision')).not.toBeNull();
+  });
+
+  test('names the forked-from source by its workflow and when it started, never printing its id or its revision', async () => {
+    const client = baseClient({
+      get: async (id) =>
+        id === 'wf_source'
+          ? workflow({
+              id: 'wf_source',
+              type: 'reconcile-ledger',
+              revision: 'sha256:8fed91eee71886dcbb4cf2c06728d0eb4315b6c6b5bc80effdd69b0cd81bfcf0',
+              createdAt: 500,
+            })
+          : null,
+    });
+
+    const { getByText, getByRole, container } = render(LineagePanelHarness, {
+      props: {
+        client,
+        workflow: workflow({ forkedFrom: { workflowId: 'wf_source', step: 12 } }),
+      },
+    });
+
+    await waitFor(() => expect(getByText('reconcile-ledger')).not.toBeNull());
+    expect(getByText(/^started /)).not.toBeNull();
+    // The link carries the id; neither the id nor the revision is printed as a label. The revision
+    // is the tooltip's, in full.
+    expect(getByRole('link', { name: 'reconcile-ledger' }).getAttribute('href')).toContain(
+      'wf_source',
+    );
+    expect(getByText('Pinned revision').textContent).not.toContain('sha256');
+    expect(container.querySelector('.weft-lineage-panel__id')).toBeNull();
+    expect(
+      getByText('Pinned revision').closest('[data-section="lineage"]')?.textContent,
+    ).not.toContain('wf_source');
   });
 
   test('shows an explicit "Unpinned" badge — not a silent blank — when the forked-from source is attributable but has no persisted revision (Codex review, PR #978)', async () => {
@@ -113,7 +147,7 @@ describe('LineagePanel — forked-from source revision attribution', () => {
       expect(getByText('reconcile-ledger')).not.toBeNull();
     });
     expect(getByText('Unpinned')).not.toBeNull();
-    expect(queryByText(/^rev /)).toBeNull();
+    expect(queryByText('Pinned revision')).toBeNull();
     expect(queryByText('Revision not attributable')).toBeNull();
   });
 
@@ -149,7 +183,7 @@ describe('LineagePanel — forked-from source revision attribution', () => {
       expect(getByText('reconcile-ledger')).not.toBeNull();
     });
     expect(getByText('Revision not attributable')).not.toBeNull();
-    expect(queryByText(/^rev reconcil/)).toBeNull();
+    expect(queryByText('Pinned revision')).toBeNull();
   });
 
   test('omits the source-revision chip for an UNTRACKED id reuse — a purged source id fresh-started again with no restartedFrom at all (Codex review, PR #978, round 2)', async () => {
@@ -186,7 +220,7 @@ describe('LineagePanel — forked-from source revision attribution', () => {
       expect(getByText('reconcile-ledger')).not.toBeNull();
     });
     expect(getByText('Revision not attributable')).not.toBeNull();
-    expect(queryByText(/^rev reconcil/)).toBeNull();
+    expect(queryByText('Pinned revision')).toBeNull();
   });
 
   test('shows the source-revision chip when the fetched generation originated BEFORE this fork was created AND was never restarted', async () => {
@@ -224,7 +258,7 @@ describe('LineagePanel — forked-from source revision attribution', () => {
     await waitFor(() => {
       expect(getByText('reconcile-ledger')).not.toBeNull();
     });
-    expect(getByText(/^rev reconcil/)).not.toBeNull();
+    expect(getByText('Pinned revision')).not.toBeNull();
     expect(queryByText('Revision not attributable')).toBeNull();
   });
 
@@ -267,6 +301,6 @@ describe('LineagePanel — forked-from source revision attribution', () => {
       expect(getByText('reconcile-ledger')).not.toBeNull();
     });
     expect(getByText('Revision not attributable')).not.toBeNull();
-    expect(queryByText(/^rev reconcil/)).toBeNull();
+    expect(queryByText('Pinned revision')).toBeNull();
   });
 });

@@ -76,11 +76,12 @@ describe('the run comparison, drawn with Cinder (COR-2544)', () => {
     view.phase = 'ready';
     await tick();
 
-    expect(
-      getByRole('heading', { level: 1, name: 'Run fork-1 compared with source-1' }),
-    ).not.toBeNull();
+    expect(getByRole('heading', { level: 1, name: 'Compared with the source run' })).not.toBeNull();
+    // No run id is printed anywhere in the panel.
+    expect(container.textContent).not.toContain('fork-1');
+    expect(container.textContent).not.toContain('source-1');
     expect(queryByText('Step 1, reserveStock')).toBeNull();
-    await fireEvent.click(getByRole('button', { name: '1 step shared with the source' }));
+    await fireEvent.click(getByRole('button', { name: '1 step the same as the source' }));
     expect(getByText('Step 1, reserveStock')).not.toBeNull();
 
     expect(container.querySelector('[data-compared-step="1"]')?.getAttribute('data-kind')).toBe(
@@ -90,6 +91,45 @@ describe('the run comparison, drawn with Cinder (COR-2544)', () => {
       'unchanged',
     );
     expect(getByText('Select a step')).not.toBeNull();
+  });
+
+  it('uses one word, Same, for a step that kept the source’s result and one that ran again the same', async () => {
+    const { view, container, getByRole } = open();
+    view.model = buildComparisonModel(data);
+    view.phase = 'ready';
+    await tick();
+
+    await fireEvent.click(getByRole('button', { name: '1 step the same as the source' }));
+    const keptBadge = container.querySelector('[data-shared-step="0"] .cinder-badge');
+    const reranBadge = container.querySelector('[data-compared-step="2"] .cinder-badge');
+    expect(keptBadge?.textContent?.trim()).toBe('Same');
+    expect(reranBadge?.textContent?.trim()).toBe('Same');
+    expect(container.textContent).not.toContain('Shared');
+  });
+
+  it('draws the steps as one Cinder list, each row one element that a spec or a person can name', async () => {
+    const { view, container } = open();
+    view.model = buildComparisonModel(data);
+    view.phase = 'ready';
+    await tick();
+
+    expect(container.querySelectorAll('.cinder-list-detail')).toHaveLength(1);
+    for (const index of [1, 2]) {
+      expect(container.querySelectorAll(`[data-compared-step="${String(index)}"]`)).toHaveLength(1);
+      expect(
+        container
+          .querySelector(`[data-compared-step="${String(index)}"]`)
+          ?.closest('.cinder-selectable-row'),
+      ).not.toBeNull();
+    }
+    // The "Differs in …" line is the row's own description, not a loose element.
+    expect(
+      container.querySelector('[data-compared-step="1"] .cinder-selectable-row__description')
+        ?.textContent,
+    ).toBe('Differs in output');
+    expect(
+      container.querySelector('[data-compared-step="2"] .cinder-selectable-row__description'),
+    ).toBeNull();
   });
 
   it('opens a changed step to its output difference, and reads the changed value', async () => {
@@ -111,15 +151,37 @@ describe('the run comparison, drawn with Cinder (COR-2544)', () => {
     expect(diff?.textContent).toContain('1 → 2');
   });
 
-  it('is operable by keyboard: the step rows are buttons, and the selection is exposed', async () => {
-    const { view, getAllByRole } = open();
+  it('is operable by keyboard: the step rows are buttons, and the open one is marked current', async () => {
+    const { view, container, getAllByRole } = open();
     view.model = buildComparisonModel(data);
     view.phase = 'ready';
     await tick();
 
     const rows = getAllByRole('button', { name: /^Step [23]/ });
-    expect(rows.map((row) => row.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
+    expect(rows.map((row) => row.getAttribute('aria-current'))).toEqual([null, null]);
     await fireEvent.click(rows[1]!);
-    expect(rows.map((row) => row.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    expect(rows.map((row) => row.getAttribute('aria-current'))).toEqual([null, 'true']);
+    // Cinder marks the open row on its root too, which is what draws the selected state.
+    expect(
+      container
+        .querySelector('.cinder-selectable-row[data-cinder-selected] [data-compared-step]')
+        ?.getAttribute('data-compared-step'),
+    ).toBe('2');
+  });
+
+  it('leaves the placeholder at the start of its pane, beside the list, not centred away from it', async () => {
+    const { view, container } = open();
+    view.model = buildComparisonModel(data);
+    view.phase = 'ready';
+    await tick();
+
+    const placeholder = container.querySelector(
+      '.cinder-list-detail__detail-body .comparison-detail',
+    );
+    expect(placeholder?.textContent).toContain('Select a step');
+    // It is the plain leading-aligned block, never Cinder's centred empty state.
+    expect(
+      container.querySelector('.cinder-list-detail__detail-body .cinder-empty-state'),
+    ).toBeNull();
   });
 });

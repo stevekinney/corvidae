@@ -20,20 +20,23 @@ export const PENDING_REVIEW_STYLES = `${BASE_STYLES}
 .panel-reject{margin-top:var(--cinder-space-3);display:flex;flex-direction:column;gap:var(--cinder-space-2)}
 `;
 
-/** The run comparison's styles: the shared ones plus its step list, its detail and the diff beside it. */
+/**
+ * The run comparison's styles: the shared ones plus the frame Cinder's `ListDetail` fills, its detail
+ * and the diff in it. The rows and the divider are Cinder's own. The frame gives the list a height
+ * to fill, as the run page's step list does: side by side, a fixed one once a step is open, and only
+ * as tall as what it holds, up to the same height, before. With the detail under the list the page
+ * simply grows, so a phone holds no inner scroll.
+ */
 export const RUN_COMPARISON_STYLES = `${BASE_STYLES}
 .comparison-note{margin:0;font-size:var(--cinder-text-xs);color:var(--cinder-text-subtle)}
-.comparison-layout{display:grid;grid-template-columns:minmax(14rem,22rem) minmax(0,1fr);gap:var(--cinder-space-4);align-items:start}
-.comparison-steps,.comparison-shared{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--cinder-space-1)}
+.comparison-frame{min-inline-size:0}
+.comparison-frame[data-step-chosen]:has([data-cinder-layout=split]){block-size:30rem;overflow:hidden}
+.comparison-frame:not([data-step-chosen]):has([data-cinder-layout=split]){max-block-size:30rem;overflow-y:auto}
+.comparison-shared{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--cinder-space-1)}
 .comparison-shared li{display:flex;align-items:center;gap:var(--cinder-space-2);padding:var(--cinder-space-1) var(--cinder-space-2);font-size:var(--cinder-text-xs)}
-.comparison-mono{font-family:var(--cinder-font-mono);font-size:var(--cinder-text-xs)}
-.comparison-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--cinder-space-2);width:100%;min-height:2.5rem;padding:var(--cinder-space-2);background:transparent;border:0;border-radius:var(--cinder-radius-md);font:inherit;color:inherit;cursor:pointer;text-align:start}
-.comparison-row:hover,.comparison-row[aria-pressed=true]{background:var(--cinder-surface-hover)}
-.comparison-row__title{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
-.comparison-row__detail{flex-basis:100%;font-size:var(--cinder-text-2xs);color:var(--cinder-text-subtle)}
+.comparison-mono{font-family:var(--cinder-font-mono);font-size:var(--cinder-text-xs);overflow-wrap:anywhere}
 .comparison-detail{min-width:0;display:flex;flex-direction:column;gap:var(--cinder-space-3)}
 .comparison-payload{display:flex;flex-direction:column;gap:var(--cinder-space-2)}
-@media (max-width:600px){.comparison-layout{grid-template-columns:1fr}}
 `;
 
 /** The workflow revision review's styles: the shared ones plus its comparison grid and footer. */

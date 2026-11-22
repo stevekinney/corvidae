@@ -119,10 +119,11 @@ describe('ForkDialog', () => {
       },
     });
 
+    // The revision is in the tooltip, in full, never printed as a label.
     await waitFor(() => {
-      expect(getByText('rev order-pr…ment')).not.toBeNull();
+      expect(getByText(/as last loaded: order-processing-rev-replacement\./)).not.toBeNull();
     });
-    expect(queryByText('rev order-pr…rent')).toBeNull();
+    expect(queryByText(/as last loaded: order-processing-rev-current\./)).toBeNull();
     expect(requestedIds).toEqual(['wf-1']);
     // The refetch is added ON TOP of the snapshot disclosure, not instead of it.
     expect(getByText(/as last loaded here/)).not.toBeNull();
@@ -153,7 +154,7 @@ describe('ForkDialog', () => {
       // The refetch settles (no fetch left in flight) before asserting the fallback held.
       await waitFor(() => expect(calls).toBe(1));
       await waitFor(() => expect(queryClient.isFetching()).toBe(0));
-      expect(getByText('rev order-pr…rent')).not.toBeNull();
+      expect(getByText(/as last loaded: order-processing-rev-current\./)).not.toBeNull();
       unmount();
     }
   });
@@ -534,9 +535,9 @@ describe('ForkDialog fork preview (COR-2538)', () => {
     );
   });
 
-  test('says when the fork would run on a different revision', async () => {
+  test('says when the fork would run on a different revision, in a warning Callout, and says the revision once', async () => {
     const calls: PreviewInput[] = [];
-    const { getByText } = render(ForkDialogHarness, {
+    const { getByText, container, queryByText } = render(ForkDialogHarness, {
       props: props(
         previewClient(
           async () =>
@@ -552,14 +553,33 @@ describe('ForkDialog fork preview (COR-2538)', () => {
 
     await waitFor(() =>
       expect(
-        getByText('The fork would run on rev-fork, not the source’s rev-source.'),
+        getByText('The fork would run on a different revision than the source run.'),
       ).not.toBeNull(),
     );
+    const callout = container.querySelector('.cinder-callout[data-cinder-variant="warning"]');
+    expect(callout?.textContent).toContain('Runs on a different revision');
+    // No revision id is printed, and the "Retains…" line is not a second statement beside it.
+    expect(container.textContent).not.toContain('rev-source');
+    expect(container.textContent).not.toContain('rev-fork');
+    expect(queryByText(/^Retains/)).toBeNull();
   });
 
-  test('a refused preview shows the revision conflict and leaves Create fork disabled', async () => {
+  test('keeps the "Retains…" line, and adds no second statement, when the revision would not change', async () => {
     const calls: PreviewInput[] = [];
-    const { getByRole, getByText } = render(ForkDialogHarness, {
+    const { getByText, container } = render(ForkDialogHarness, {
+      props: props(previewClient(async () => previewAnswer(), calls)),
+    });
+
+    await waitFor(() => expect(container.querySelector('[data-fork-preview-kept]')).not.toBeNull());
+    // The line is one sentence with no revision in it; the full revision is the tooltip's.
+    expect(getByText(/^Retains the source run's own revision/).textContent).not.toContain('rev-');
+    expect(container.querySelector('.cinder-callout[data-cinder-variant="warning"]')).toBeNull();
+    expect(container.textContent).not.toContain('same revision as the source');
+  });
+
+  test('a refused preview shows the revision conflict as a Callout and leaves Create fork disabled', async () => {
+    const calls: PreviewInput[] = [];
+    const { getByRole, getByText, container } = render(ForkDialogHarness, {
       props: props(
         previewClient(async () => {
           throw new HttpClientError(409, 'revision not registered', {
@@ -572,7 +592,49 @@ describe('ForkDialog fork preview (COR-2538)', () => {
 
     await waitFor(() => expect(getByText('Revision unavailable')).not.toBeNull());
     expect(getByText(/revision not registered/)).not.toBeNull();
+    // Still announced as an alert, drawn by Cinder's Callout rather than a bordered box of its own.
+    const alert = getByRole('alert');
+    expect(alert.querySelector('.cinder-callout[data-cinder-variant="warning"]')).not.toBeNull();
+    expect(container.querySelector('.weft-fork-dialog__conflict')).toBeNull();
     expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  test('draws no box around the preview, a normal-width Create fork, and names no field of the record', async () => {
+    const calls: PreviewInput[] = [];
+    const { getByRole, container } = render(ForkDialogHarness, {
+      props: props(previewClient(async () => previewAnswer(), calls)),
+    });
+
+    await waitFor(() => expect(container.querySelector('[data-fork-preview-kept]')).not.toBeNull());
+    const preview = container.querySelector('[data-fork-preview]');
+    expect(preview).not.toBeNull();
+    // A box is a border or a fill; the preview's rule has neither, so no box sits inside the dialog's.
+    const source = await Bun.file(new URL('./fork-dialog.svelte', import.meta.url)).text();
+    const rule = /\.weft-fork-dialog__preview \{([^}]*)\}/.exec(source)?.[1] ?? '';
+    expect(rule).not.toBe('');
+    expect(rule).not.toMatch(/border|background|padding/);
+    expect(
+      getByRole('button', { name: 'Create fork' }).hasAttribute('data-cinder-full-width'),
+    ).toBe(false);
+    expect(container.textContent).not.toContain('forkedFrom');
+    expect(container.querySelector('code')).toBeNull();
+  });
+
+  test('names the fork by its workflow and when it started, links to its id, and prints no id', async () => {
+    const { getByRole, getByText, container } = render(ForkDialogHarness, {
+      props: props(previewClient(async () => previewAnswer(), [])),
+    });
+    await waitFor(() =>
+      expect(getByRole('button', { name: 'Create fork' }).hasAttribute('disabled')).toBe(false),
+    );
+
+    await fireEvent.click(getByRole('button', { name: 'Create fork' }));
+
+    await waitFor(() => expect(getByText(/^Forked as/)).not.toBeNull());
+    const link = getByRole('link', { name: 'order-processing' });
+    expect(link.getAttribute('href')).toContain('wf-forked-1');
+    expect(container.textContent).toContain('started just now');
+    expect(container.textContent).not.toContain('wf-forked-1');
   });
 
   test('asks nothing for a step that is not a number, and for a principal that may not fork', async () => {

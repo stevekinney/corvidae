@@ -106,6 +106,10 @@ export const RUN_CHECKPOINTS_COPY = {
  * the steps the two runs share, and what differs in a step the fork ran again.
  */
 export const RUN_COMPARISON_COPY = {
+  /** How a run is named beside its workflow: when it started, not its id. `ago` is `formatRelativeTime`'s. */
+  startedAgo: (ago: string): string => `started ${ago}`,
+  /** A source's revision as the Lineage row says it: the revision itself is in the tooltip, in full. */
+  pinnedRevision: 'Pinned revision',
   action: 'Compare with source',
   actionHide: 'Hide comparison',
   heading: 'Compared with the source run',
@@ -113,15 +117,20 @@ export const RUN_COMPARISON_COPY = {
   intro: (forkPoint: number): string =>
     `Forked from checkpoint step ${String(forkPoint)}. The steps before it keep the source’s results; the rest ran again.`,
   sharedSummary: (count: number): string =>
-    count === 1 ? '1 step shared with the source' : `${String(count)} steps shared with the source`,
+    count === 1 ? '1 step the same as the source' : `${String(count)} steps the same as the source`,
   sharedNote: 'The fork kept the source’s result for these steps and did not run them again.',
   stepsLabel: 'Steps the fork ran again',
+  detailRegionLabel: 'Step differences',
   stepsHeading: 'Steps after the fork point',
   noStepsTitle: 'Nothing to compare',
   noStepsDescription: 'Neither run has any steps after the fork point yet.',
   stepTitle: (index: number, label: string): string => `Step ${String(index + 1)}, ${label}`,
+  /**
+   * One word, `Same`, for a step the fork kept from the source and for one it ran again with the
+   * same result: nothing differs in either. The run comparison panel uses the same words.
+   */
   kinds: {
-    shared: 'Shared',
+    shared: 'Same',
     changed: 'Changed',
     unchanged: 'Same',
     'source-only': 'Only in the source',
@@ -167,12 +176,24 @@ export const RUN_FORK_PREVIEW_COPY = {
   rerunNote: 'These steps run again from the fork point.',
   noSteps: 'No steps',
   step: (index: number, label: string): string => `Step ${String(index + 1)}, ${label}`,
-  revisionWouldChange: (
-    sourceRevision: string | undefined,
-    forkRevision: string | undefined,
-  ): string =>
-    `The fork would run on ${forkRevision ?? 'a different revision'}, not the source’s ${sourceRevision ?? 'revision'}.`,
-  revisionKept: 'The fork would run on the same revision as the source.',
+  /**
+   * The warning when the dry run says the fork would run on another revision. It names no revision:
+   * the run's own page holds it, and a hash in a sentence is not something a person reads. It is the
+   * dialog's one statement of the revision, so the "Retains…" line is not shown beside it.
+   */
+  revisionWouldChangeTitle: 'Runs on a different revision',
+  revisionWouldChange: (chosen: boolean): string =>
+    chosen
+      ? 'The fork would run on the revision you chose, not the source run’s own.'
+      : 'The fork would run on a different revision than the source run.',
+  refusedTitle: 'Revision unavailable',
+  refusedFallback: 'The requested revision could not be resolved.',
+  /** The dialog's note under the choices: what making a fork does. */
+  linked: 'A new run is created and linked to this one.',
+  /** The start of the line after a fork is made: followed by its workflow's name, a link to the run. */
+  forkedAs: 'Forked as',
+  /** The end of that line: a run made a moment ago, so its start time is now. */
+  startedJustNow: 'started just now',
 } as const;
 
 /** The words for the lines a run logged, in a step and under the run's Details. */
@@ -212,8 +233,6 @@ export const RUN_PAGE_COPY = {
   inputPayload: 'Input payload',
   resultPayload: 'Result payload',
   activityHeading: 'Activity',
-  /** Names the plugin a panel on the run page comes from. */
-  panelFromPlugin: (plugin: string) => `From the ${plugin} plugin`,
   eventsHeading: 'Events',
   eventsLockedTitle: 'Events are locked',
   checkpointsHeading: 'Checkpoints',

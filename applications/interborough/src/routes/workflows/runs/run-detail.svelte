@@ -82,6 +82,7 @@
   import RunHeader from './run-header.svelte';
   import RunHooks from './run-hooks.svelte';
   import RunInputOutput from './run-input-output.svelte';
+  import LineagePanel from '../detail/lineage-panel.svelte';
   import RunInspector from './run-inspector.svelte';
   import { instanceEntries, progressPhrase, triesOfStep } from './run-instance.ts';
   import { workflowTimelineQueryKey } from '../detail/workflow-timeline-data.ts';
@@ -696,10 +697,14 @@
     }),
     undefined,
   );
+  // A fork's lineage, its schedule provenance among it, is drawn ahead of the tabs, so the tab is
+  // shown for the worker version alone.
   const versioningShown = $derived(
     workflow !== undefined &&
       (hasVersioning(workflow) ||
-        (scheduleProvenance.data !== undefined && scheduleProvenance.data !== null)),
+        (workflow.forkedFrom === undefined &&
+          scheduleProvenance.data !== undefined &&
+          scheduleProvenance.data !== null)),
   );
 
   // How many times the failed step was tried, and how long that took: the engine's timeline keeps
@@ -1005,7 +1010,7 @@
               <RunPanels taskId={task.data.id} />
             {:else if notFound && workflow !== undefined}
               <!-- A run only the engine holds has no task: its panels are given the engine's run. -->
-              <RunPanels workflowId={workflow.id} />
+              <RunPanels workflowId={workflow.id} fork={workflow.forkedFrom !== undefined} />
             {/if}
             {#if workflow !== undefined && !readOnlyRun}<RunChange {engine} {workflow} />{/if}
           {/snippet}
@@ -1031,6 +1036,12 @@
               <RunEnginePanels {engine} {workflow} part="attributes" />
             {/if}
           {/snippet}
+          <!-- A fork's lineage, with the comparison with its source a button away, leads the operator
+               tabs: where a reader of a fork is looking, never behind the Versioning tab under that
+               tab's own empty state. A run that is not a fork keeps its lineage in Versioning. -->
+          {#if workflow !== undefined && workflow.forkedFrom !== undefined}
+            <LineagePanel client={engine.client} {workflow} />
+          {/if}
           <RunHowItRan bind:open={() => howOpen, (open) => (howOverride = open)}>
             <RunHowItRanTabs
               bind:active={howTab}

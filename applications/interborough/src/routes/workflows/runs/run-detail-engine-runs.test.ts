@@ -4,6 +4,7 @@
  * answers `bureau.tasks.get` NotFound for them, so the page reads them from the engine; none of
  * them may lead to the page that says the run was not found (COR-2424). The tick is read-only.
  */
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -122,7 +123,8 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(rail.querySelector('[aria-label="Copy Run ID"]')).not.toBeNull();
   });
 
-  test('mounts the run panels on its Inspector tab, which a run with no task used to go without (owner, 2026-11-22)', async () => {
+  /** Lists the inspectors' run panels, as the host does, and answers a panel's page. */
+  function routeRunPanels(): void {
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
     fetchScript.routeUrl('/host/panels', {
       apps: [
@@ -143,6 +145,13 @@ describe('an instance of a workflow file opened from the Runs list', () => {
         },
         {
           plugin: 'inspectors',
+          app: 'schedule-editor',
+          title: 'Schedule editor',
+          uri: 'ui://inspectors/schedule-editor/v1',
+          placements: [{ kind: 'page', path: 'schedules' }, { kind: 'run' }],
+        },
+        {
+          plugin: 'inspectors',
           app: 'pending-review',
           title: 'Pending reviews',
           uri: 'ui://inspectors/pending-review/v1',
@@ -151,21 +160,71 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       ],
     });
     fetchScript.routeUrl('/host/plugins/', { html: '<div id="root"></div>', ui: {} });
-    routeEngine('instance-panels', engineRun({}));
+  }
 
-    const view = mount('instance-panels');
+  async function openInspectorTab(view: ReturnType<typeof mount>): Promise<void> {
     const trigger = await view.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
     if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
     const tab = await view.findByRole('tab', { name: RUN_DETAIL_COPY.howItRan.tabs.inspector });
     if (tab.getAttribute('aria-selected') !== 'true') await fireEvent.click(tab);
+  }
 
-    await waitFor(() =>
-      expect(
-        [...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]')].map(
-          (section) => section.dataset['app'],
-        ),
-      ).toEqual(['run-inspector', 'run-comparison']),
+  const mountedPanels = (view: ReturnType<typeof mount>) =>
+    [...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]')].map(
+      (section) => section.dataset['app'],
     );
+
+  test('mounts the run comparison on its Inspector tab when it is a fork, and neither the run inspector nor the schedule editor (owner, 2026-11-22, refined)', async () => {
+    routeRunPanels();
+    fetchScript.routeUrl('/workflows/instance-source', engineRun({ id: 'instance-source' }));
+    fetchScript.routeJsonRpcMethod('weft.workflows.scheduleprovenance.get', null);
+    routeEngine(
+      'instance-panels',
+      engineRun({ forkedFrom: { workflowId: 'instance-source', step: 2 } }),
+    );
+
+    const view = mount('instance-panels');
+    await openInspectorTab(view);
+
+    await waitFor(() => expect(mountedPanels(view)).toEqual(['run-comparison']));
+  });
+
+  test('mounts no panel on an instance that is not a fork: it has no task, no source and no schedule to show', async () => {
+    routeRunPanels();
+    routeEngine('instance-plain', engineRun({}));
+
+    const view = mount('instance-plain');
+    await openInspectorTab(view);
+    await waitUntil(() => fetchScript.calls.some((call) => call.url.includes('/host/panels')));
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-section="change"]')).not.toBeNull(),
+    );
+    // Nothing is going to appear, so the check is that the page stays as it was.
+    await quietFor(50);
+    expect(mountedPanels(view)).toEqual([]);
+  });
+
+  test('puts a fork’s lineage, with the comparison’s button, ahead of the operator tabs, not behind Versioning', async () => {
+    routeRunPanels();
+    fetchScript.routeUrl('/workflows/instance-source', engineRun({ id: 'instance-source' }));
+    fetchScript.routeJsonRpcMethod('weft.workflows.scheduleprovenance.get', null);
+    routeEngine(
+      'instance-fork-lineage',
+      engineRun({ forkedFrom: { workflowId: 'instance-source', step: 2 } }),
+    );
+
+    const view = mount('instance-fork-lineage');
+
+    const compare = await view.findByRole('button', { name: 'Compare with source' });
+    const lineage = view.container.querySelector('[data-section="lineage"]');
+    expect(lineage).not.toBeNull();
+    expect(lineage?.contains(compare)).toBe(true);
+    // It leads the "How it ran" disclosure, which is closed: no tab has been opened to reach it.
+    const howItRan = view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+    expect(lineage?.compareDocumentPosition(howItRan) === Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      true,
+    );
+    expect(howItRan.getAttribute('aria-expanded')).not.toBe('true');
   });
 
   /**

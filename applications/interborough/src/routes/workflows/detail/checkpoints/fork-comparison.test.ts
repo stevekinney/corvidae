@@ -65,16 +65,21 @@ describe('ForkComparison', () => {
       props: { client: client(async () => comparisonPage()), workflowId: 'wf-fork' },
     });
 
-    await waitFor(() => expect(getByText('1 step shared with the source')).not.toBeNull());
+    await waitFor(() => expect(getByText('1 step the same as the source')).not.toBeNull());
     expect(
       getByText(/Forked from checkpoint step 2\. The steps before it keep the source’s results/),
     ).not.toBeNull();
     // The shared step is behind the collapsed disclosure, not among the steps the fork ran again.
     expect(container.querySelector('[data-compared-step="0"]')).toBeNull();
     expect(queryByText('Step 1, reserveStock')).toBeNull();
-    await fireEvent.click(getByRole('button', { name: '1 step shared with the source' }));
+    await fireEvent.click(getByRole('button', { name: '1 step the same as the source' }));
     expect(getByText('Step 1, reserveStock')).not.toBeNull();
-    expect(container.querySelector('[data-shared-step="0"]')?.textContent).toContain('Shared');
+    // One word for "nothing differs", on a kept step and on a step that ran again the same.
+    expect(container.querySelector('[data-shared-step="0"]')?.textContent).toContain('Same');
+    expect(
+      container.querySelector('[data-compared-step="2"] .cinder-badge')?.textContent?.trim(),
+    ).toBe('Same');
+    expect(container.textContent).not.toContain('Shared');
 
     const changed = container.querySelector('[data-compared-step="1"]');
     expect(changed?.getAttribute('data-kind')).toBe('changed');
@@ -177,7 +182,38 @@ describe('ForkComparison', () => {
     expect(getByText(/not a fork/)).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(getByText('1 step shared with the source')).not.toBeNull());
+    await waitFor(() => expect(getByText('1 step the same as the source')).not.toBeNull());
+  });
+
+  test('draws the steps as the same Cinder list as the panel: the open row is marked, the placeholder leads its pane', async () => {
+    const { getByRole, container } = render(ForkComparisonHarness, {
+      props: { client: client(async () => comparisonPage()), workflowId: 'wf-fork' },
+    });
+    await waitFor(() => expect(container.querySelector('[data-compared-step="1"]')).not.toBeNull());
+
+    expect(container.querySelectorAll('.cinder-list-detail')).toHaveLength(1);
+    // Each step is one element, a row of Cinder's SelectableRow, for a person and for a spec.
+    for (const index of [1, 2]) {
+      const rows = container.querySelectorAll(`[data-compared-step="${String(index)}"]`);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.closest('.cinder-selectable-row')).not.toBeNull();
+    }
+    expect(
+      container.querySelector('.cinder-list-detail__detail-body .cinder-empty-state'),
+    ).toBeNull();
+    expect(container.querySelector('[data-cinder-selected]')).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: /Step 2, issueTicket/ }));
+
+    expect(
+      container
+        .querySelector('.cinder-selectable-row[data-cinder-selected] [data-compared-step]')
+        ?.getAttribute('data-compared-step'),
+    ).toBe('1');
+    expect(getByRole('button', { name: /Step 2, issueTicket/ }).getAttribute('aria-current')).toBe(
+      'true',
+    );
+    expect(getByRole('button', { name: /Step 3, notify/ }).getAttribute('aria-current')).toBeNull();
   });
 });
 

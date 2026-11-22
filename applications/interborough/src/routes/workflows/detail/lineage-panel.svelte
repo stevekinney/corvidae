@@ -276,16 +276,19 @@
             >
               {forkSourceQuery.data?.type ?? `${truncateId(forkedFrom.workflowId)} run`}
             </a>
-            <span class="weft-lineage-panel__id" title={forkedFrom.workflowId}>
-              {truncateId(forkedFrom.workflowId)}
-            </span>
+            <!-- Named by its workflow and when it started; the link and the copy button carry the id. -->
+            {#if forkSourceQuery.data}
+              <span class="weft-lineage-panel__when">
+                {RUN_COMPARISON_COPY.startedAgo(formatRelativeTime(forkSourceQuery.data.createdAt))}
+              </span>
+            {/if}
             <CopyButton value={forkedFrom.workflowId} label="Copy workflow ID" />
             {#if sourceRevisionAttributable && forkSourceQuery.data?.revision !== undefined}
               {@const sourceRevision = forkSourceQuery.data.revision}
               <Tooltip
                 text={`Source revision (exact executable artifact): ${sourceRevision}. Best-effort attribution: this ID has never been displaced by a tracked start-new replacement, and this record's own creation time precedes this fork — not an absolute guarantee against an untracked ID reuse racing a clock-skewed server.`}
               >
-                <span class="weft-lineage-panel__id">rev {truncateId(sourceRevision)}</span>
+                <span class="weft-lineage-panel__when">{RUN_COMPARISON_COPY.pinnedRevision}</span>
               </Tooltip>
             {:else if sourceRevisionAttributable && forkSourceQuery.data}
               <Tooltip
@@ -336,6 +339,11 @@
 <style>
   .weft-lineage-panel__id {
     font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-2xs);
+    color: var(--cinder-text-subtle);
+  }
+
+  .weft-lineage-panel__when {
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-text-subtle);
   }

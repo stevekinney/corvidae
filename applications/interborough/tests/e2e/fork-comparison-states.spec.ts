@@ -16,7 +16,7 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { FORK_COMPARISON_RUN_ID } from '../../fixtures/fork-comparison-ids.ts';
-import { captureForDesignReview } from './design-review-capture.ts';
+import { captureForDesignReviewWithPhone } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { openHowItRan } from './workflow-support.ts';
 
@@ -115,21 +115,33 @@ async function makeFork(request: APIRequestContext): Promise<string> {
   return forkId;
 }
 
-/** Opens a fork's page at its Versioning tab, where the Lineage panel is, and answers that panel. */
+/**
+ * The one changed row whose key is `id`: a leaf row, so the row of its parent object, which contains
+ * it, does not match as well.
+ */
+function changedIdRow(output: Locator): Locator {
+  return output
+    .locator('[data-cinder-diff-kind="changed"]')
+    .filter({ hasNot: output.page().locator('[data-cinder-diff-kind]') })
+    .filter({ has: output.page().locator('.cinder-json-diff-viewer__key', { hasText: /^id$/ }) });
+}
+
+/**
+ * Opens a fork's page. Its Lineage panel, with the Compare with source button, leads the page ahead
+ * of the operator tabs, so no tab is opened to reach it.
+ */
 async function openLineage(page: Page, forkId: string): Promise<Locator> {
   await page.goto(`/runs/${encodeURIComponent(forkId)}`);
-  await openHowItRan(page);
-  await page.getByRole('tab', { name: 'Versioning' }).click();
   const lineage = page.locator('[data-section="lineage"]');
   await expect(lineage.getByRole('button', { name: 'Compare with source' })).toBeVisible();
   return lineage;
 }
 
+/** Captures at the desktop widths and at 375 and 320, where the list and its detail stack. */
 async function captureLineage(page: Page, state: string, ready: () => Promise<void>) {
   await ready();
-  await captureForDesignReview(page, {
+  await captureForDesignReviewWithPhone(page, {
     route: '/runs/:run',
-    tab: 'Versioning',
     state,
     source: SOURCE,
     ready,
@@ -179,7 +191,7 @@ test.describe('fork-comparison-states: /runs/:run, the comparison on a fork’s 
     await lineage.getByRole('button', { name: 'Compare with source' }).click();
     const comparison = lineage.locator('[data-section="fork-comparison"]');
 
-    const shared = comparison.getByRole('button', { name: '2 steps shared with the source' });
+    const shared = comparison.getByRole('button', { name: '2 steps the same as the source' });
     await captureLineage(page, 'comparison ready, every kind of step', async () => {
       await expect(shared).toHaveAttribute('aria-expanded', 'false');
       const kinds = ['changed', 'unchanged', 'source-only', 'fork-only'];
@@ -201,9 +213,7 @@ test.describe('fork-comparison-states: /runs/:run, the comparison on a fork’s 
       await expect(comparison.getByText('The input is the same in both runs.')).toBeVisible();
       const output = comparison.getByRole('group', { name: 'Output differences, step 3' });
       await expect(output).toBeVisible();
-      await expect(
-        output.locator('[data-cinder-diff-kind="changed"]').filter({ hasText: 'id' }),
-      ).toContainText('1 → 2');
+      await expect(changedIdRow(output)).toContainText('1 → 2');
     });
   });
 
@@ -259,9 +269,10 @@ async function openForkPanel(page: Page, runId: string): Promise<Locator> {
   return dialog;
 }
 
+/** Captures at the desktop widths and at 375 and 320, where the dialog's lists and button reflow. */
 async function captureDialog(page: Page, state: string, ready: () => Promise<void>) {
   await ready();
-  await captureForDesignReview(page, {
+  await captureForDesignReviewWithPhone(page, {
     route: '/runs/:run',
     tab: 'Events and logs',
     state,
@@ -296,8 +307,9 @@ test.describe('fork-comparison-states: /runs/:run, the fork dialog’s preview',
   test('ready: the steps the fork keeps and the steps it runs again', async ({ page }) => {
     const dialog = await openForkPanel(page, FORK_COMPARISON_RUN_ID);
     await captureDialog(page, 'fork preview ready', async () => {
-      await expect(dialog.getByText('Kept, not run again (1)')).toBeVisible();
-      await expect(dialog.getByText('Run again (1)')).toBeVisible();
+      // Exact, or "Run again (1)" also matches the button's own words and the heading's sentence.
+      await expect(dialog.getByText('Kept, not run again (1)', { exact: true })).toBeVisible();
+      await expect(dialog.getByText('Run again (1)', { exact: true })).toBeVisible();
       await expect(dialog.locator('[data-fork-preview-kept] li')).toHaveText([
         'Step 1, reserveStock',
       ]);
@@ -332,7 +344,14 @@ test.describe('fork-comparison-states: /runs/:run, the fork dialog’s preview',
     });
     const dialog = await openForkPanel(page, FORK_COMPARISON_RUN_ID);
     await captureDialog(page, 'fork preview revision would change', async () => {
-      await expect(dialog.getByText(/The fork would run on .*, not the source’s /)).toBeVisible();
+      // A warning Callout that is the dialog's one statement of the revision, and names no revision.
+      const warning = dialog.locator('.cinder-callout[data-cinder-variant="warning"]');
+      await expect(warning).toBeVisible();
+      await expect(warning).toContainText('Runs on a different revision');
+      await expect(warning).toContainText(
+        'The fork would run on a different revision than the source run.',
+      );
+      await expect(dialog.getByText(/^Retains /)).toHaveCount(0);
     });
   });
 
@@ -388,8 +407,10 @@ test.describe('fork-comparison-states: /runs/:run, the fork dialog’s preview',
 
 /**
  * The run panels on a workflow run's page (owner decision, 2026-11-22: run-page panels mount on
- * workflow runs). The seeded runs are the engine's own, with no Bureau task: the run inspector says
- * it has no task to inspect, the schedule editor lists the schedules, and the comparison card reads
+ * workflow runs; refined by the design review of #1219: a card is mounted only when it has something
+ * to say about the run). The seeded runs are the engine's own, with no Bureau task, so the run
+ * inspector has nothing to show and is not mounted, nor is the schedule editor, which cannot narrow
+ * to the run's workflow; the comparison card is mounted on a fork, where it reads
  * `bureau.runs.compare`, which the Bureau serves for an instance of a workflow file and answers
  * with its own message for a run it does not hold as one. The seeded fork is a fork of a fixture
  * workflow the console's own engine runs, not of an instance of a workflow file, and a fork of a
@@ -399,26 +420,29 @@ test.describe('fork-comparison-states: /runs/:run, the fork dialog’s preview',
  * the Bureau's own answer for a fork of a workflow file is `runs-compare-operation.test.ts`.
  */
 test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow run’s page', () => {
-  const PANEL_TITLES = ['Run inspector', 'Schedule editor', 'Run comparison'] as const;
-
   /** `bureau.runs.compare` as the Bureau answers a fork of a workflow file. */
   function bureauComparisonOf(forkId: string) {
     const { steps, forkPoint } = comparisonOf(forkId);
     return { runId: forkId, sourceRunId: FORK_COMPARISON_RUN_ID, forkPoint, steps };
   }
 
+  /**
+   * Opens a fork's Inspector tab. A card is mounted only when it has something to say about the run,
+   * so a fork's page holds the comparison and nothing else: the run has no agent task for the run
+   * inspector, and the schedule editor cannot narrow to its workflow.
+   */
   async function openPanels(page: Page, runId: string): Promise<void> {
     await page.goto(`/runs/${encodeURIComponent(runId)}`);
     await openHowItRan(page);
     await page.getByRole('tab', { name: 'Inspector' }).click();
-    for (const title of PANEL_TITLES) {
-      await expect(page.locator(`iframe[title="${title}"]`)).toBeVisible();
-    }
+    await expect(page.locator('iframe[title="Run comparison"]')).toBeVisible();
+    await expect(page.locator('[data-section="plugin-panel"]')).toHaveCount(1);
   }
 
+  /** Captures at the desktop widths and at 375 and 320. */
   async function capturePanels(page: Page, state: string, ready: () => Promise<void>) {
     await ready();
-    await captureForDesignReview(page, {
+    await captureForDesignReviewWithPhone(page, {
       route: '/runs/:run',
       tab: 'Inspector',
       state,
@@ -446,7 +470,7 @@ test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow 
         'changed',
       );
       await expect(
-        card.getByRole('button', { name: '2 steps shared with the source' }),
+        card.getByRole('button', { name: '2 steps the same as the source' }),
       ).toBeVisible();
     });
   });
@@ -468,22 +492,18 @@ test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow 
     );
   });
 
-  test('a workflow run’s page: the run inspector and the schedule editor cards', async ({
+  test('a workflow run’s page that is not a fork: no cards, since none has anything to say', async ({
     page,
   }) => {
-    await openPanels(page, FORK_COMPARISON_RUN_ID);
-    const inspector = page.frameLocator('iframe[title="Run inspector"]');
-    const editor = page.frameLocator('iframe[title="Schedule editor"]');
-    await capturePanels(
-      page,
-      'workflow run page, run inspector and schedule editor cards',
-      async () => {
-        await expect(inspector.locator('[data-inspector-notice]')).toContainText(
-          'has no agent task to inspect',
-        );
-        await expect(inspector.getByRole('button', { name: 'Abort run' })).toHaveCount(0);
-        await expect(editor.getByRole('button', { name: 'New schedule' })).toBeVisible();
-      },
-    );
+    await page.goto(`/runs/${encodeURIComponent(FORK_COMPARISON_RUN_ID)}`);
+    await openHowItRan(page);
+    await page.getByRole('tab', { name: 'Inspector' }).click();
+    await capturePanels(page, 'workflow run page, no run cards', async () => {
+      // The page's own controls are there; no run inspector (no agent task), no schedule editor
+      // (it cannot narrow to this run's workflow) and no comparison (the run is not a fork).
+      await expect(page.locator('[data-section="change"]')).toBeVisible();
+      await expect(page.locator('[data-section="plugin-panel"]')).toHaveCount(0);
+      await expect(page.locator('iframe')).toHaveCount(0);
+    });
   });
 });

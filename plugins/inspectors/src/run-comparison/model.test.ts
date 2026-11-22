@@ -88,7 +88,10 @@ describe('buildComparisonModel', () => {
   it('separates the steps the fork kept from the steps it ran again, and says what each is', () => {
     const model = buildComparisonModel(comparison);
 
-    expect(model.title).toBe('Run fork-1 compared with source-1');
+    // No run id in the title: the panel is on the fork's page and says "the source run".
+    expect(model.title).toBe('Compared with the source run');
+    expect(model.title).not.toContain('fork-1');
+    expect(model.title).not.toContain('source-1');
     expect(model.intro).toContain('checkpoint step 2');
     expect(model.shared.map((row) => row.title)).toEqual(['Step 1, reserveStock']);
     expect(model.ranAgain.map((row) => [row.title, row.kind, row.differs])).toEqual([

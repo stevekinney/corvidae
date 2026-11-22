@@ -1,22 +1,36 @@
 <script lang="ts">
   /**
    * The run comparison (COR-2544): a fork beside the run it came from, drawn with Cinder through the
-   * panel kit. The steps the fork kept are shared and collapsed; the steps it ran again are a list,
-   * each marked changed, the same, or in one run only; opening one shows its input and output
-   * differences in `JsonDiffViewer`. Values go in as text, never as markup. A run the server will not
+   * panel kit. The steps the fork kept are the same as the source's and collapsed; the steps it ran
+   * again are a Cinder `ListDetail` of `SelectableRow`s, each marked changed, the same, or in one run
+   * only; opening one shows its input and output differences in `JsonDiffViewer`, beside the list
+   * when the panel is wide and under it when it is narrow. The run page draws the same comparison
+   * from the same components. Values go in as text, never as markup. A run the server will not
    * compare, such as one that is not a fork, shows the server's own message.
+   *
+   * The panel runs in a frame that can neither read storage nor change an address, so the list keeps
+   * its selection in the view, never in the URL, and remembers no divider width.
    */
-  import { Badge, Callout, Collapsible, Text } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Callout,
+    Collapsible,
+    ListDetail,
+    SelectableRow,
+    Text,
+  } from '@lostgradient/cinder';
   import { JsonDiffViewer } from '@lostgradient/cinder/panel';
 
-  import { KIND_WORDS, stepDetail } from './model.ts';
+  import { KIND_WORDS, stepDetail, type StepRow } from './model.ts';
   import type { ComparisonView } from './view.svelte.ts';
 
   let { view }: { view: ComparisonView } = $props();
 
+  /** Below this width in pixels the detail sits under the list, so a phone never holds two columns. */
+  const STACK_BELOW = 720;
+
   const model = $derived(view.model);
-  const selected = $derived(model?.ranAgain.find((row) => row.index === view.selectedIndex)?.step);
-  const detail = $derived(selected === undefined ? undefined : stepDetail(selected));
+  const selected = $derived(model?.ranAgain.find((row) => row.index === view.selectedIndex));
 
   const BADGE = {
     shared: 'neutral',
@@ -25,6 +39,11 @@
     'source-only': 'info',
     'fork-only': 'accent',
   } as const;
+
+  /** `ListDetail` keys are text; a step's key is its index. */
+  function keyOf(row: StepRow): string {
+    return String(row.index);
+  }
 </script>
 
 {#if view.phase === 'loading'}
@@ -47,8 +66,8 @@
       <Collapsible
         variant="flat"
         trigger={model.shared.length === 1
-          ? '1 step shared with the source'
-          : `${String(model.shared.length)} steps shared with the source`}
+          ? '1 step the same as the source'
+          : `${String(model.shared.length)} steps the same as the source`}
       >
         <p class="comparison-note">
           The fork kept the source’s result for these steps and did not run them again.
@@ -67,56 +86,71 @@
     {#if model.ranAgain.length === 0}
       <p class="panel-status" role="status">Neither run has any steps after the fork point yet.</p>
     {:else}
-      <div class="comparison-layout">
-        <section aria-labelledby="comparison-steps-heading">
-          <Text as="h2" variant="h4" id="comparison-steps-heading">Steps after the fork point</Text>
-          <ul class="comparison-steps">
-            {#each model.ranAgain as row (row.index)}
-              <li>
-                <button
-                  type="button"
-                  class="comparison-row"
-                  data-compared-step={row.index}
-                  data-kind={row.kind}
-                  aria-pressed={view.selectedIndex === row.index}
-                  onclick={() => (view.selectedIndex = row.index)}
-                >
-                  <span class="comparison-mono comparison-row__title">{row.title}</span>
-                  <Badge variant={BADGE[row.kind]} size="sm">{KIND_WORDS[row.kind]}</Badge>
-                  {#if row.differs}<span class="comparison-row__detail">{row.differs}</span>{/if}
-                </button>
-              </li>
-            {/each}
-          </ul>
-        </section>
-
-        <section aria-labelledby="comparison-detail-heading" class="comparison-detail">
-          {#if detail === undefined}
-            <Text as="h2" variant="h4" id="comparison-detail-heading">Select a step</Text>
-            <p class="comparison-note">
-              Choose a step to read what differs between the source and the fork.
-            </p>
-          {:else}
-            <Text as="h2" variant="h4" id="comparison-detail-heading">{detail.heading}</Text>
-            {#each detail.notes as note (note)}
-              <p class="comparison-note">{note}</p>
-            {/each}
-            {#each detail.payloads as payload (payload.heading)}
-              <div class="comparison-payload">
-                <Text as="h3" variant="h5">{payload.heading}</Text>
-                {#if payload.kind === 'note'}
-                  <p class="comparison-note">{payload.note}</p>
-                {:else}
-                  <JsonDiffViewer
-                    before={payload.before}
-                    after={payload.after}
-                    label={`${payload.heading} differences, step ${String(detail.index + 1)}`}
-                  />
-                {/if}
-              </div>
-            {/each}
-          {/if}
-        </section>
+      <div class="comparison-frame" data-step-chosen={selected === undefined ? undefined : ''}>
+        <ListDetail
+          items={[...model.ranAgain]}
+          key={keyOf}
+          label="Steps the fork ran again"
+          detailLabel="Step differences"
+          selectionParameter={null}
+          pushBelow={0}
+          stackBelow={STACK_BELOW}
+          bind:selectedKey={
+            () => (view.selectedIndex === undefined ? null : String(view.selectedIndex)),
+            (key) => (view.selectedIndex = key === null ? undefined : Number(key))
+          }
+        >
+          {#snippet header()}
+            <Text as="h2" variant="h4">Steps after the fork point</Text>
+          {/snippet}
+          {#snippet list(row, context)}
+            {#snippet differs()}{row.differs}{/snippet}
+            <SelectableRow
+              selected={context.selected}
+              selectedState="current"
+              onclick={context.open}
+              data-compared-step={row.index}
+              data-kind={row.kind}
+              {...row.differs === undefined ? {} : { description: differs }}
+            >
+              {#snippet title()}<span class="comparison-mono">{row.title}</span>{/snippet}
+              {#snippet meta()}
+                <Badge variant={BADGE[row.kind]} size="sm">{KIND_WORDS[row.kind]}</Badge>
+              {/snippet}
+            </SelectableRow>
+          {/snippet}
+          {#snippet empty()}
+            <div class="comparison-detail">
+              <Text as="h2" variant="h4">Select a step</Text>
+              <p class="comparison-note">
+                Choose a step to read what differs between the source and the fork.
+              </p>
+            </div>
+          {/snippet}
+          {#snippet detail(row)}
+            {@const read = stepDetail(row.step)}
+            <div class="comparison-detail">
+              <Text as="h2" variant="h4">{read.heading}</Text>
+              {#each read.notes as note (note)}
+                <p class="comparison-note">{note}</p>
+              {/each}
+              {#each read.payloads as payload (payload.heading)}
+                <div class="comparison-payload">
+                  <Text as="h3" variant="h5">{payload.heading}</Text>
+                  {#if payload.kind === 'note'}
+                    <p class="comparison-note">{payload.note}</p>
+                  {:else}
+                    <JsonDiffViewer
+                      before={payload.before}
+                      after={payload.after}
+                      label={`${payload.heading} differences, step ${String(read.index + 1)}`}
+                    />
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/snippet}
+        </ListDetail>
       </div>
     {/if}
   </main>
