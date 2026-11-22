@@ -690,6 +690,17 @@
     padding-inline-end: 0;
   }
 
+  /* A viewport-width phone row gives the status its full word. Its timestamp must then reflow at
+     large text rather than widening the list past the viewport; the run list uses a time snippet,
+     so this belongs on the time cell rather than only on the text-value form below. */
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--group
+    )
+    .cinder-stacked-list-item__time {
+    text-align: end;
+    white-space: normal;
+  }
+
   .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
       .cinder-stacked-list-item--no-line-two
     )
