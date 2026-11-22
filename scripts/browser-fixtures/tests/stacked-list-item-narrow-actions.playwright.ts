@@ -54,6 +54,7 @@ test('a narrow two-line row puts its action under the text, and several badges d
         meta: box(action, '.cinder-stacked-list-item__meta'),
         button: box(action, '.cinder-stacked-list-item__trailing'),
       })),
+      statusInlineActions,
       badgeRow: box(badges, '.cinder-stacked-list-item'),
       badgeTitle: box(badges, '.cinder-stacked-list-item__title'),
       lines,
