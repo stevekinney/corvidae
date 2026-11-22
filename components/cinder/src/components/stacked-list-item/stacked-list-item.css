@@ -655,6 +655,36 @@
     }
   }
 
+  /* The ordinary 448px trailing rule comes before the two-line phone grid above. Keep a single
+     action under the body at that documented narrow width instead of letting the later status grid
+     squeeze its text; a collapsed menu, decorative glyph, or explicit phone buttons has its own
+     compact arrangement. */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      )
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        'body'
+        'trailing';
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      )
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns: auto 1fr;
+      grid-template-areas:
+        'leading body'
+        'trailing trailing';
+    }
+  }
+
   /* The phone form by the window (`phoneWidth="viewport"`): the rules of the container queries
      above, for a row the script marks as a phone while the viewport is below 640px. A
      list that fills the page's content column follows the window, so a tablet whose navigation

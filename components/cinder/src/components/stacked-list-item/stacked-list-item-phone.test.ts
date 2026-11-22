@@ -176,6 +176,47 @@ describe('StackedListItem on a phone', () => {
     setPhone(false);
   });
 
+  test('below 448 an ordinary one-action line row puts the action under its body (COR-2403)', () => {
+    setPhone(true);
+    const { container, getByRole } = render(StackedListItem, {
+      props: {
+        lines: true,
+        wrapMeta: true,
+        leadingTone: 'warning',
+        leading: textSnippet('warning'),
+        title: textSnippet('Connect a provider before the next run'),
+        meta: textSnippet('Scheduled runs cannot start until a provider is connected.'),
+        actions: [{ label: 'Connect provider', href: '/settings/providers' }],
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--lines')).toBe(true);
+    expect(row?.classList.contains('cinder-stacked-list-item--has-leading')).toBe(true);
+    expect(row?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(true);
+    expect(row?.classList.contains('cinder-stacked-list-item--collapsed-actions')).toBe(false);
+    expect(row?.classList.contains('cinder-stacked-list-item--phone-buttons')).toBe(false);
+    expect(getByRole('link', { name: 'Connect provider' }).classList).toContain(
+      'button-size-small',
+    );
+
+    const ordinaryLineActionMatch =
+      /@container cinder-stacked-list-item \(max-width: 448px\) \{[\s\S]*?\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--has-trailing:not\([\s\S]*?\)\s*> \.cinder-stacked-list-item__layout\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      ) ?? [];
+    const [ordinaryLineActionSelector = '', ordinaryLineAction = ''] = ordinaryLineActionMatch;
+    expect(ordinaryLineAction).toContain("'leading body'");
+    expect(ordinaryLineAction).toContain("'trailing trailing'");
+    for (const exception of [
+      'cinder-stacked-list-item--collapsed-actions',
+      'cinder-stacked-list-item--trailing-glyph',
+      'cinder-stacked-list-item--phone-buttons',
+    ]) {
+      expect(ordinaryLineActionSelector).toContain(exception);
+    }
+    cleanup();
+    setPhone(false);
+  });
+
   test('two actions on a phone are still one menu button', () => {
     setPhone(true);
     const { container, getByRole } = render(ExtrasFixture, {
