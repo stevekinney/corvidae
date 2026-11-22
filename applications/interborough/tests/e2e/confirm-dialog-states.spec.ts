@@ -366,7 +366,7 @@ test.describe('confirm-dialog-states: the bulk action dialog', () => {
     const dialog = await openBulkDialog(page, 'Cancel');
     await expectPreview(dialog, 'cancel');
     await confirmPreview(dialog, 'cancel');
-    await expect(dialog.getByText('Cancelled 45 of 47 workflows')).toBeVisible();
+    await expect(dialog.getByText('Canceled 45 of 47 workflows')).toBeVisible();
     await expect(dialog.getByRole('listitem')).toHaveCount(2);
     await captureDialog(page, BULK, 'result-with-errors');
   });
