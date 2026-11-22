@@ -19,7 +19,7 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
   try {
     const page = await context.newPage();
     await page.goto(fixtureRoute('copy-button'), { waitUntil: 'load' });
-    const buttons = page.locator('button.cinder-copy-button');
+    const buttons = page.locator('.example-preview-row-layout button.cinder-copy-button');
     await expect(buttons).toHaveCount(2);
     const [icon, text] = [buttons.nth(0), buttons.nth(1)];
 

@@ -33,5 +33,7 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-3);
     align-items: center;
+    /* The coarse probe reaches 21px above a compact face, so keep that real target in view. */
+    padding-block-start: var(--cinder-space-4);
   }
 </style>
