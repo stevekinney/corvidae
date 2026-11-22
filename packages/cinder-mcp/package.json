@@ -1,0 +1,32 @@
+{
+  "name": "@lostgradient/cinder-mcp",
+  "private": true,
+  "version": "0.1.24",
+  "description": "Model Context Protocol server for Cinder component discovery and guidance",
+  "type": "module",
+  "bin": {
+    "cinder-mcp": "./src/bin.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts' src",
+    "test:slow": "bun ../../scripts/bun-test-selected.ts --parallel=1 .integration.test.ts"
+  },
+  "dependencies": {
+    "@lostgradient/cinder": "workspace:*",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "typescript": "catalog:"
+  }
+}
