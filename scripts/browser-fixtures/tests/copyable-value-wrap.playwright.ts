@@ -64,7 +64,7 @@ test('separator hints wrap an address as a unit and keep the button on its last 
   await expect(control).toHaveCSS('user-select', 'none');
   await expect(page.getByTestId('address')).toHaveCSS('user-select', 'auto');
 
-  const { lines, buttonTop } = await value.evaluate((element) => {
+  const { lines, buttonTop, lineHeight } = await value.evaluate((element) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) =>
         node.parentElement?.closest('.cinder-copyable-value__control')
@@ -89,11 +89,17 @@ test('separator hints wrap an address as a unit and keep the button on its last 
         previous = rect;
       }
     }
-    return { lines, buttonTop: element.querySelector('button')!.getBoundingClientRect().top };
+    return {
+      lines,
+      buttonTop: element.querySelector('button')!.getBoundingClientRect().top,
+      lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+    };
   });
   expect(lines.length).toBeGreaterThanOrEqual(2);
   for (const line of lines.slice(0, -1)) expect(line.text).toMatch(/[.\-@:/]$/);
   const last = lines.at(-1)!;
-  expect(buttonTop).toBeGreaterThanOrEqual(last.top);
-  expect(buttonTop).toBeLessThan(last.bottom);
+  // Range bounds describe the text; the line also includes the CSS leading around it.
+  const halfLeading = Math.max(0, lineHeight - (last.bottom - last.top)) / 2;
+  expect(buttonTop).toBeGreaterThanOrEqual(last.top - halfLeading);
+  expect(buttonTop).toBeLessThan(last.bottom + halfLeading);
 });
