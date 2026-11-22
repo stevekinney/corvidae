@@ -280,12 +280,11 @@ export async function validateWorkflowDefinition(
   options?: Options,
 ): Promise<WorkflowValidation> {
   return validationSchema.parse(
-    await callBureau(
-      'bureau.workflows.validate',
+    await bureauClient['bureau.workflows.validate'](
       {
         ...(draft.id === undefined ? {} : { id: draft.id }),
         ...(draft.expectedHash === undefined ? {} : { expectedHash: draft.expectedHash }),
-        definition: draft.definition,
+        definition: wireDefinition(draft.definition),
       },
       options,
     ),

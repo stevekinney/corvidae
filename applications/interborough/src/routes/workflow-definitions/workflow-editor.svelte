@@ -520,7 +520,7 @@
           {text}
           mode="edit"
           error=""
-          saving={save.isPending}
+          saving={save.isPending || checking}
           {failure}
           initialTab={loaded.state === 'invalid' ? 'json' : loadingTab}
           jsonId="workflow-editor-text"

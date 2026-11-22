@@ -982,7 +982,7 @@ describe('the step builder in the editor', () => {
     });
     await builderReady(container);
     stub?.on('bureau.workflows.update', () => {
-      throw workflowFaults.writeFailed('digest.json');
+      throw new Error('digest.json couldn’t be written: permission denied.');
     });
     await fireEvent.input(field(container, 'workflow-builder-description'), {
       target: { value: 'Changed.' },
@@ -997,7 +997,7 @@ describe('the step builder in the editor', () => {
       EDITOR.saveFailed('Release notes'),
     );
     expect(body.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      `${WORKFLOW_COPY.builder.writeFailed('digest.json', 'permission-denied')} ${WORKFLOW_COPY.creator.nothingSaved}`,
+      `digest.json couldn’t be written: permission denied. ${WORKFLOW_COPY.creator.nothingSaved}`,
     );
     expect(field(container, 'workflow-builder-description').value).toBe('Changed.');
     expect(router.pathname).toBe('/workflows/digest/edit');

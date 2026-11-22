@@ -190,7 +190,7 @@
       error=""
       showProblems={checked}
       {...takenId === undefined ? {} : { takenId }}
-      saving={save.isPending}
+      saving={save.isPending || checking}
       {failure}
       {documentProblem}
       jsonId="workflow-creator-text"
