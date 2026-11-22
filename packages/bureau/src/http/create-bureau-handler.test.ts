@@ -649,6 +649,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.reviews.get',
         'bureau.reviews.list',
         'bureau.reviews.resolve',
+        'bureau.runs.compare',
         'bureau.runs.timeline',
         'bureau.schedules.cancel',
         'bureau.schedules.create',
