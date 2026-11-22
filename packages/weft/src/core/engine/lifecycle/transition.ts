@@ -12,7 +12,7 @@ import { normalizeForkStep, selectPersistedWorkflowStartHeaders } from '../state
 import { loadWorkflowState } from '../storage-io.ts';
 import { decodeWorkflowState } from '../validation.ts';
 import { launchWorkflowFromCheckpoint } from './checkpoint-launch.ts';
-import { commitForkWrite } from './fork-build-binding.ts';
+import { commitForkWrite, releaseUnlaunchedForkClaim } from './fork-build-binding.ts';
 import {
   buildForkBatchOperations,
   buildForkCatalogEntryCondition,
@@ -444,7 +444,7 @@ export async function fork(
     let forkStarted = false;
     try {
       const forkCheckpointBytes = serializeCheckpoint(forkCheckpoint);
-      // Fence fork creation so a deposed engine cannot create a phantom run.
+      // Fenced, or under `workflow-lease` claiming the fork id in the same batch (COR-2635).
       await commitForkWrite(
         internals,
         workflowId,
@@ -486,6 +486,7 @@ export async function fork(
         internals.workflowVersionTuples.delete(workflowId);
         internals.eventLogHeads.delete(workflowId);
         internals.workflowHeaders.delete(workflowId);
+        await releaseUnlaunchedForkClaim(internals, workflowId);
       }
     }
   } finally {

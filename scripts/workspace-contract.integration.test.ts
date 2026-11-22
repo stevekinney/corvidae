@@ -22,6 +22,7 @@ const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'backchannel',
   'backchannel-mcp',
+  'cinder-mcp',
   'bureau',
   'interborough-plugin',
   'operative',
@@ -66,6 +67,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/weft',
   '@lostgradient/velveteen',
   '@lostgradient/cinder',
+  '@lostgradient/cinder-mcp',
   '@lostgradient/chat',
   '@lostgradient/editor',
   '@lostgradient/markdown',
