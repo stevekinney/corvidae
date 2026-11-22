@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { readCatalog } from './agent-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { touchHeight } from './hit-area.ts';
 import { pressChord } from './shortcut-support.ts';
@@ -222,12 +223,14 @@ test.describe('the Connect tools page', () => {
         await expect(sourceChoices).toHaveCount(2);
         for (const card of await sourceChoices.all())
           expect(await touchHeight(card)).toBeGreaterThanOrEqual(44);
-        await expect(connectForm).toHaveJSProperty(
-          'scrollWidth',
-          await connectForm.evaluate((form) => form.clientWidth),
-        );
+        // SegmentedControl leaves room for its focus ring beyond the form's inline edge.
+        // The outlet is the surface people can scroll, and it must still fit the screen.
+        const outlet = page.locator('main.weft-shell-outlet');
+        const outletFits = () =>
+          outlet.evaluate((element) => element.scrollWidth <= element.clientWidth);
+        expect(await outletFits()).toBe(true);
 
-        await sourceChoices.filter({ hasText: connect.kind.openapi }).click();
+        await sourceChoices.filter({ hasText: connect.kind.openapi }).tap();
         await expect(sourceChoices.filter({ hasText: connect.kind.openapi })).toHaveAttribute(
           'aria-checked',
           'true',
@@ -237,9 +240,17 @@ test.describe('the Connect tools page', () => {
         await expect(documentChoices).toHaveCount(2);
         for (const segment of await documentChoices.all())
           expect(await touchHeight(segment)).toBeGreaterThanOrEqual(44);
-        await documentChoices.filter({ hasText: connect.specification.file }).click();
+        await documentChoices.filter({ hasText: connect.specification.file }).tap();
         await expect(connectForm.locator('#connect-file')).toBeVisible();
-        await documentChoices.filter({ hasText: connect.specification.url }).click();
+        expect(await outletFits()).toBe(true);
+        if (width === 375) {
+          await captureForDesignReview(page, {
+            route: '/capabilities/connect',
+            state: 'OpenAPI file choice',
+            source: 'capabilities.spec.ts',
+          });
+        }
+        await documentChoices.filter({ hasText: connect.specification.url }).tap();
         await expect(connectForm.locator('#connect-specification-address')).toBeVisible();
       });
     }
