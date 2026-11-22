@@ -171,6 +171,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // The Runs list and the run page in the states the sample world does not hold, and the run page
   // in each state it does (COR-2423, COR-2424).
   'tests/e2e/runs-states.spec.ts',
+  // The Retrying and Failed at step filters on the Runs list, and in the workflow list's query builder (COR-2535).
+  'tests/e2e/runs-failure-filters.spec.ts',
   'tests/e2e/run-page-states.spec.ts',
   'tests/e2e/run-page-live-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
