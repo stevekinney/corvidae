@@ -53,7 +53,7 @@ Mechanics: [Turborepo stage mechanics](documentation/repository/turborepo-stage-
 - Only applications have `build` tasks. Lint, test, and development tasks consume library source and never depend on library builds; `typecheck` depends only on its dependencies' `types` tasks.
 - Declare an environment variable in `turbo.json` only when it changes the task's result; give tasks that write reusable artifacts outputs, and keep watchers and mutation tasks uncached. `scripts/task-cache.integration.test.ts` enforces the cache rules.
 - Use `--filter` for focused work, or `bun run check` for what a change can reach (`bun scripts/affected-tests.ts --explain` says why). Coverage is a report (`bun run coverage`) that never fails on a floor (owner decision, 2026-11-10).
-- The heavy root stages (`validate`, `lint`, `typecheck`, `build`, `release:check`, Playwright, `harden`) hold the host lock of `scripts/run-exclusively.ts`; every `bun test` takes slots from a host-wide pool (`scripts/bun-test-pool.ts`). The wrapper installs first; a bare `bunx turbo run` does not, so run `bun install --frozen-lockfile` after changing a manifest.
+- The heavy root stages (`validate`, `lint`, `typecheck`, `build`, `release:check`, Playwright, `harden`) hold the host lock of `scripts/run-exclusively.ts`; every `bun test` takes slots from a host-wide pool (`scripts/bun-test-pool.ts`). The wrapper installs first; a bare `bunx turbo run` does not, so run `bun run preflight` after changing a manifest; it also fails when `node_modules` disagrees with `bun.lock`.
 - `bun run validate` runs every workspace task except application builds; run `bun run build` when a change can affect a deployed application. Nothing is accepted as a rare failure (COR-1736).
 
 ## Worktrees and agents
