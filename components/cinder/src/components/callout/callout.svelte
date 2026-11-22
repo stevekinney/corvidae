@@ -41,6 +41,9 @@
     return filtered;
   });
 
+  /** The action sits under the message, at the trailing edge (`stacked`) or the leading one (`stacked-start`). */
+  const stackedAction = $derived(actionLayout === 'stacked' || actionLayout === 'stacked-start');
+
   // Derive an accessible name for the root so an aside callout that lands at
   // landmark level is not an unnamed `complementary` landmark, and a note mode
   // callout has the expected note name. Priority mirrors banner.svelte:
@@ -53,7 +56,8 @@
   {...restWithoutForbidden}
   class={classNames(
     'cinder-callout',
-    actionLayout !== 'stacked' && 'cinder-callout--inline-action',
+    !stackedAction && 'cinder-callout--inline-action',
+    actionLayout === 'stacked-start' && 'cinder-callout--stacked-start-action',
     actionLayout === 'beside' && 'cinder-callout--beside-action',
     actionLayout === 'fit' && 'cinder-callout--fit-action',
     icon && 'cinder-callout--with-icon',
@@ -66,11 +70,11 @@
   role={semantic === 'note' ? 'note' : undefined}
   aria-label={ariaLabel}
 >
-  {#if icon && !(actionLayout !== 'stacked' && action)}
+  {#if icon && !(!stackedAction && action)}
     {@render iconBlock()}
   {/if}
 
-  {#if actionLayout !== 'stacked' && action}
+  {#if !stackedAction && action}
     <div class="cinder-callout__body">
       <!-- The glyph and the message stand together, so the action centres against both and the
            glyph stays on the message's first line wherever the row puts it. -->

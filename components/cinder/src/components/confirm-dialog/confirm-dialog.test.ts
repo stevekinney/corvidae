@@ -228,6 +228,13 @@ describe('ConfirmDialog', () => {
     const row = css.match(/\.cinder-confirm-dialog__options > ul > li \{[^}]*\}/u)?.[0] ?? '';
     expect(row).toContain('border-block-start: 1px solid var(--cinder-border-muted)');
     expect(row).toContain('overflow-wrap: anywhere');
+    // Rows are small text a space-1 apart, so a list of ids does not push the field below the fold.
+    expect(row).toContain('font-size: var(--cinder-text-sm)');
+    expect(row).toContain('padding-block: var(--cinder-space-1)');
+    // The description is the louder sentence: default colour at the body's size.
+    const description = css.match(/\.cinder-confirm-dialog__description \{[^}]*\}/u)?.[0] ?? '';
+    expect(description).toContain('color: var(--cinder-text-default)');
+    expect(description).toContain('font-size: var(--cinder-text-body)');
     // The first row has no padding above it, so the line that leads the list sits 16px above it.
     const first =
       css.match(/\.cinder-confirm-dialog__options > ul > li:first-child \{[^}]*\}/u)?.[0] ?? '';
@@ -237,6 +244,19 @@ describe('ConfirmDialog', () => {
     const note = css.match(/\.cinder-confirm-dialog__options > p \{[^}]*\}/u)?.[0] ?? '';
     expect(note).toContain('var(--cinder-text-muted)');
     expect(note).toContain('var(--cinder-text-sm)');
+  });
+
+  test('an identifier in the description or in options is monospace and wraps at any character', async () => {
+    const css = await Bun.file(new URL('./confirm-dialog.css', import.meta.url)).text();
+    // A workflow id or a filter summary is one long unbroken token; it must not widen the dialog.
+    for (const region of ['description', 'options']) {
+      const rule =
+        css.match(
+          new RegExp(`\\.cinder-confirm-dialog__${region} :where\\(code\\) \\{[^}]*\\}`, 'u'),
+        )?.[0] ?? '';
+      expect(rule).toContain('var(--cinder-font-mono)');
+      expect(rule).toContain('overflow-wrap: anywhere');
+    }
   });
 
   test('cancel button carries autofocus; confirm button does not', () => {
