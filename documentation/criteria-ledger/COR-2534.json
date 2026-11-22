@@ -1,9 +1,9 @@
 {
   "issue": "COR-2534",
   "branch": "chef/cor-2534-model-explanation",
-  "checkedAt": "1a1367162dcfa8d5a184e833eab110d3178ef951",
+  "checkedAt": "bcf21b745d578961c60d6274f614d0f902056e63",
   "briefVersion": "b8869fe2e302",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "bureau.tasks.explanation.get reads the record and calls no model. tasks-model-explanation-operation.test.ts 'AC3': the model is called once across generate then two reads (callCount 1), the reads equal the generated answer, a second generate makes callCount 2 and the read then returns the second text. The Run page reads it when it opens (run-failure-explanation.test.ts AC3, no generate call)."
+      "evidence": "bureau.tasks.explanation.get reads the record and calls no model. tasks-model-explanation-operation.test.ts 'AC3': the model is called once across generate then two reads (callCount 1), the reads equal the generated answer, a second generate makes callCount 2 and the read then returns the second text. Correction round 1: the write is fenced (recordModelExplanation takes the revision, settlement time, finish reason and message read before the model call, and returns stored or stale); a purge, or a replacing real failure, landing during the model call stores nothing and the operation answers Unprocessable run-changed (task-registry.test.ts and the operation test, each leaving modelExplanation absent). The Run page reads it when it opens (run-failure-explanation.test.ts AC3, no generate call)."
     },
     {
       "id": "AC4",
@@ -27,8 +27,8 @@
     },
     {
       "id": "AC5",
-      "status": "needs-decision",
-      "evidence": "Built and tested for a failed agent run: run-failure-explanation.test.ts 'AC5' clicks 'Explain further', reads the text under 'Written by anthropic/claude-haiku-5-5' while the stored-facts summary and remediation are still rendered; run-input-output.test.ts mounts a failed task's page, clicks the action and reads the same. A failed instance of a workflow file has no task record to keep the text on, so run-input-output.test.ts asserts it offers no action and the Bureau answers run-has-no-task (tasks-model-explanation-operation.test.ts). Whether that satisfies the criterion is the open question."
+      "status": "met-on-branch",
+      "evidence": "Owner decision, 2026-11-22: Explain further covers failed agent runs only (a failed instance of a workflow file has no task record to keep the text on), which is what is built. Built and tested for a failed agent run: run-failure-explanation.test.ts 'AC5' clicks 'Explain further', reads the text under 'Written by anthropic/claude-haiku-5-5' while the stored-facts summary and remediation are still rendered; run-input-output.test.ts mounts a failed task's page, clicks the action and reads the same. A failed instance of a workflow file has no task record to keep the text on, so run-input-output.test.ts asserts it offers no action and the Bureau answers run-has-no-task (tasks-model-explanation-operation.test.ts)."
     },
     {
       "id": "AC6",
