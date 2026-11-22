@@ -1,7 +1,7 @@
 {
   "issue": "COR-2527",
-  "branch": "worktree-agent-aa62e88121694f7eb",
-  "checkedAt": "726422dc8e6c906db14fcb9c66d22fd52b4cd07c",
+  "branch": "chef/fix-data-list-contract",
+  "checkedAt": "7c8d36002ff8ef8d3a71358dff68fdd94f6e18a7",
   "briefVersion": "8e6fac38bc5f",
   "status": "READY",
   "criteria": [
