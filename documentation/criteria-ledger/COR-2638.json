@@ -1,7 +1,7 @@
 {
   "issue": "COR-2638",
   "branch": "chef/e2e-shared-failures",
-  "checkedAt": "6b4a46d3f3f95ca1e70dc2562707029c21f90e73",
+  "checkedAt": "7755f966244bc6313b871197c7df165cf156c23a",
   "briefVersion": "e5f71b05f715",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Spec cause: shortcut-support.ts chordKeyboard types each chord with CDP input times, used by shell-navigation and 14-shell. Not a sleep or deadline; no page state marks the chat page at rest. Injected 1.3 s main-thread hold: press failed 3/3, chordKeyboard passed 3/3. --repeat-each=20: 40 passed for both specs, and shell-navigation 20 passed again with six chats seeded."
+      "evidence": "Spec cause: shortcut-support.ts chordKeyboard types each chord with CDP input times, used by shell-navigation and 14-shell. Not a sleep or deadline; no page state marks the chat page at rest. Injected 1.3 s main-thread hold: press failed 3/3, chordKeyboard passed 3/3. --repeat-each=20: 40 passed for both specs, and shell-navigation 20 passed again with six chats seeded. The class is closed: all eight g-chord specs use pressChord or chordKeyboard (keys stamped from the host clock, since shell-search fixes the page clock), and tests/e2e-shortcut-chords.test.ts fails a spec that presses g alone or stamps keys outside the helper. The eight chord tests with --repeat-each=3: 24 passed."
     }
   ]
 }

@@ -1,7 +1,7 @@
 {
   "issue": "COR-2637",
   "branch": "chef/e2e-shared-failures",
-  "checkedAt": "6b4a46d3f3f95ca1e70dc2562707029c21f90e73",
+  "checkedAt": "7755f966244bc6313b871197c7df165cf156c23a",
   "briefVersion": "87ed998f097e",
   "status": "READY",
   "criteria": [
