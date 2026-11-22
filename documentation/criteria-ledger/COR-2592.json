@@ -1,7 +1,7 @@
 {
   "issue": "COR-2592",
   "branch": "steve/cor-2592-browser-shard-sharing",
-  "checkedAt": "edb908ce9210762935e18d515f7e5ad052897bf2",
+  "checkedAt": "d1885bbf6d7c20628125dded817a697eb5594958",
   "briefVersion": "7d0dd6382212",
   "status": "BLOCKED",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "The shard-one group has cancel-in-progress false and queue max, retaining producers and every waiting consumer FIFO; its Turbo command and failed-run artifact remain unchanged. browser-suites-workflow.test.ts passes."
+      "evidence": "The shard-one group has cancel-in-progress false and queue max, retaining producers and waiting consumers whose parent remains current; its Turbo command and failed-run artifact remain unchanged. browser-suites-workflow.test.ts passes."
     },
     {
       "id": "AC3",
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "not-met",
-      "evidence": "Awaiting the coordinator-owned next required matched automatic and bound-full provider pair; no additional dispatch, cache eviction, or forced miss was performed."
+      "evidence": "Automatic run 44959361079 and bound run 44959746165 exposed a root guard failure. Neither proves successful shard reuse. The next required pair must show a producer and a replay for the same hash with both parents green."
     }
   ]
 }
