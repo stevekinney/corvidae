@@ -78,7 +78,9 @@ export type JsonEditorProps = Omit<
   validFeedbackVisible?: boolean;
   /** Replaces the "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status. */
   statusLabel?: string;
+  /** Replaces the syntax error status text. Activating the status still moves focus to the marked line. */
   invalidStatusLabel?: string;
+  /** Include the parser's stop line in the marked diagnostic when it follows the line to fix. @default false */
   parserStopVisible?: boolean;
   /** Problems the caller found at specific lines of a document that parses. Each line is marked and shows its message under it. */
   diagnostics?: readonly JsonEditorDiagnostic[];
