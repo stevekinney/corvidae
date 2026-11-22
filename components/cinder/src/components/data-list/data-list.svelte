@@ -14,6 +14,8 @@
     key,
     density,
     statusColumn,
+    trailingTrack,
+    trailingAlign,
     groupBy,
     insertionAnnouncement,
     class: className,
@@ -112,7 +114,14 @@
   that takes no space until it announces and is then the status strip, so the list still holds
   only list items.
 -->
-<ul {...rest} bind:this={listElement} class={classNames('cinder-data-list', className)} role="list">
+<ul
+  {...rest}
+  bind:this={listElement}
+  class={classNames('cinder-data-list', className)}
+  role="list"
+  style:--cinder-stacked-list-item-trailing-track={trailingTrack}
+  style:--cinder-stacked-list-item-trailing-align={trailingAlign}
+>
   {#if insertionAnnouncement !== undefined}
     <li
       class="cinder-data-list-live"

@@ -1,5 +1,28 @@
+/// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { createRawSnippet } from 'svelte';
+
+import { setupHappyDom } from '@lostgradient/testing';
+
+setupHappyDom();
+
+const { render } = await import('@testing-library/svelte');
+const { default: DataList } = await import('../data-list/data-list.svelte');
+
+const row = createRawSnippet(() => ({ render: () => '<li>Row</li>', setup: () => {} }));
+
+function listOf(props: Record<string, unknown>): HTMLElement {
+  const { container } = render(DataList, {
+    props: {
+      items: [{ id: 'a' }],
+      key: (item: { id: string }) => item.id,
+      children: row,
+      ...props,
+    },
+  });
+  return container.querySelector('ul')!;
+}
 
 /**
  * A list whose rows carry a figure in `trailing` (a cost, a count) sizes the trailing track once, for
@@ -27,6 +50,20 @@ describe('StackedListItem trailing track (COR-2525)', () => {
     expect(stylesheet).toMatch(
       /\.cinder-stacked-list-item--lines \.cinder-stacked-list-item__trailing \{[^}]*align-self: var\(--cinder-stacked-list-item-trailing-align, center\);/,
     );
+  });
+
+  test('a DataList hands the track and the alignment its props name to its rows, as custom properties on the list', () => {
+    const list = listOf({ trailingTrack: '9rem', trailingAlign: 'baseline' });
+    expect(list.style.getPropertyValue('--cinder-stacked-list-item-trailing-track')).toBe('9rem');
+    expect(list.style.getPropertyValue('--cinder-stacked-list-item-trailing-align')).toBe(
+      'baseline',
+    );
+  });
+
+  test('a DataList that passes neither sets neither, so each row sizes its own track', () => {
+    const list = listOf({});
+    expect(list.style.getPropertyValue('--cinder-stacked-list-item-trailing-track')).toBe('');
+    expect(list.style.getPropertyValue('--cinder-stacked-list-item-trailing-align')).toBe('');
   });
 
   test('the properties are consumed with a fallback only, so a row that sets none changes nothing and no manifest lists them', () => {
