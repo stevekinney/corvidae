@@ -962,9 +962,11 @@
 
     {#if !isNew && existing.isError}
       <ErrorState
+        variant="row"
         bordered
         title={copy.loadFailed}
-        headingLevel={2}
+        description=""
+        headingLevel={hook !== undefined && standing !== undefined ? 2 : 1}
         retryLabel={RETRY_LABEL}
         {...faultErrorStateAdvice(existing.error, readAgain)}
       />
