@@ -26,6 +26,7 @@ import {
   type RpcBody,
 } from './management-fixtures.test-support.ts';
 import { type Served, serveWorkflows } from './workflows-fixtures.test-support.ts';
+import { tasksExplainOperation } from './tasks-explain-operation.ts';
 import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -412,5 +413,64 @@ describe('bureau.tasks.explain for a failed workflow run', () => {
     }
     const reader = await explainRun(served, 'private-digest', 'workflows-reader-key');
     expect(reader.error).toBeUndefined();
+  });
+});
+
+describe('bureau.tasks.explain when the engine holds nothing to read', () => {
+  /** A host whose run is readable but whose engine state or timeline is absent, as it is with no durable engine. */
+  function hostOf(options: {
+    task?: unknown;
+    state?: unknown;
+    timeline?: unknown;
+  }): Parameters<typeof tasksExplainOperation.invoke>[0]['host'] {
+    return {
+      tasks: { get: async () => options.task, ownerOf: async () => 'owner' },
+      ownership: { mayAccess: () => true, runOwner: async () => 'owner' },
+      workflows: { getRun: async () => ({ id: 'run-1' }) },
+      runState: async () => options.state,
+      runTimeline: async () => options.timeline,
+      runVerdicts: async () => [],
+    } as never;
+  }
+
+  const principal = { method: 'unauthenticated' } as never;
+  const invoke = (host: ReturnType<typeof hostOf>) =>
+    tasksExplainOperation.invoke({ input: { runId: 'run-1' }, host, principal } as never);
+
+  it('is UnsupportedCapability, not run-not-failed, for a workflow instance with no engine state', async () => {
+    const fault = await invoke(hostOf({ state: undefined })).catch((error: unknown) => error);
+    expect(fault).toMatchObject({
+      code: 'UnsupportedCapability',
+      data: { capability: 'durable-engine' },
+    });
+  });
+
+  it('is UnsupportedCapability for a failed workflow instance with no timeline', async () => {
+    const fault = await invoke(
+      hostOf({ state: { status: 'failed', failedStep: { index: 0, label: 'write' } } }),
+    ).catch((error: unknown) => error);
+    expect(fault).toMatchObject({
+      code: 'UnsupportedCapability',
+      data: { capability: 'durable-engine' },
+    });
+  });
+
+  it('keeps tries null for a failed agent run with no timeline', async () => {
+    const task = {
+      status: 'failed',
+      finishReason: 'error',
+      failure: { step: { index: 0, label: 'model' }, errorCode: 'UNKNOWN', errorKind: 'generate' },
+    };
+    expect(await invoke(hostOf({ task }))).toMatchObject({
+      tries: null,
+      cause: { category: 'application', kind: 'generate' },
+    });
+  });
+
+  it('is still run-not-failed for a workflow instance whose state says it did not fail', async () => {
+    const fault = await invoke(hostOf({ state: { status: 'running' } })).catch(
+      (error: unknown) => error,
+    );
+    expect(fault).toMatchObject({ code: 'Unprocessable', data: { reason: 'run-not-failed' } });
   });
 });

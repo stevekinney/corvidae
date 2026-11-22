@@ -78,7 +78,8 @@ const timelineOutput = z.object({
     .describe(`True when the run has more than ${String(RUN_TIMELINE_ENTRY_LIMIT)} entries.`),
 });
 
-function unsupported(): OperationFault {
+/** The fault for a Bureau with no durable engine, which keeps no run state or timeline. */
+export function unsupported(): OperationFault {
   return {
     code: 'UnsupportedCapability',
     message: 'This Bureau has no durable engine, so its runs have no timeline',

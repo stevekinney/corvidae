@@ -30,7 +30,7 @@ import {
 } from '../../run-failure-explanation.ts';
 import { failedStepTries } from '../../run-timeline.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
-import { readableRun } from './runs-timeline-operation.ts';
+import { readableRun, unsupported } from './runs-timeline-operation.ts';
 import type { BureauTasksOperationHost } from './tasks-operations.ts';
 import type { BureauWorkflowsOperationHost } from './workflows-operations.ts';
 
@@ -148,7 +148,7 @@ export const tasksExplainOperation = defineOperation<
   mcpExposable: true,
   summary: 'Explain why a run failed',
   description:
-    'Returns why one failed run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time. `runId` is an agent run’s task id or a workflow instance’s id. `summary` is one sentence naming the step and the cause, built from the failure category (`application`, `timeout`, `cancellation`, `resource`, `system`, or `null` when nothing classifies the failure: a workflow instance’s is the engine’s, an agent run’s is read from its finish reason and its error’s kind) and the error’s kind. `cause` is the category, the error’s `code` and its `kind` (an agent run’s; `null` for a workflow instance). `step` is the step the run failed at (its index and label), `tries` how many times the engine tried that step (`null` when its history records no failed attempt, as for an agent run that ended on a failed result), `verdicts` each guardrail that fired in the run (its `name`, whether it halted the run as a `tripwire` or let it go on as a `guardrail`, and its `outcome`; a workflow instance’s own steps included), `remediation` what to do next, and `nextCommands` `interborough` command lines that read the run. It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`.',
+    'Returns why one failed run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time. `runId` is an agent run’s task id or a workflow instance’s id. `summary` is one sentence naming the step and the cause, built from the failure category (`application`, `timeout`, `cancellation`, `resource`, `system`, or `null` when nothing classifies the failure: a workflow instance’s is the engine’s, an agent run’s is read from its finish reason and its error’s kind) and the error’s kind. `cause` is the category, the error’s `code` and its `kind` (an agent run’s; `null` for a workflow instance). `step` is the step the run failed at (its index and label), `tries` how many times the engine tried that step (`null` when its history records no failed attempt, as for an agent run that ended on a failed result), `verdicts` each guardrail that fired in the run (its `name`, whether it halted the run as a `tripwire` or let it go on as a `guardrail`, and its `outcome`; a workflow instance’s own steps included), `remediation` what to do next, and `nextCommands` `interborough` command lines that read the run. It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`; a workflow instance whose run state or timeline the Bureau cannot read, because it has no durable engine, is `UnsupportedCapability` (`durable-engine`), never `run-not-failed`. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: explainInput,
@@ -179,8 +179,11 @@ export const tasksExplainOperation = defineOperation<
         classifyAgentRunFailure({ finishReason: run.task.finishReason, errorKind });
       step = failure?.step ?? null;
     } else {
-      if (state === undefined || (state.status !== 'failed' && state.status !== 'timed-out')) {
-        throw runNotFailed(runId, state?.status ?? 'unknown');
+      // An instance exists only on a durable engine: no state to read is a Bureau that keeps none,
+      // not a run that did not fail.
+      if (state === undefined) throw unsupported();
+      if (state.status !== 'failed' && state.status !== 'timed-out') {
+        throw runNotFailed(runId, state.status);
       }
       category = state.failureCategory ?? (state.status === 'timed-out' ? 'timeout' : null);
       code = identifierOrNull(state.errorCode);
@@ -189,6 +192,9 @@ export const tasksExplainOperation = defineOperation<
     }
 
     const entries = await host.runTimeline(runId);
+    // An agent run with no timeline keeps `tries: null`; a workflow instance has one or the Bureau
+    // has no durable engine.
+    if (entries === undefined && run.kind === 'workflow') throw unsupported();
     const explanation = explainRunFailure({
       kind: run.kind,
       runId,
