@@ -246,12 +246,11 @@ export function runSegmentOf(status: TaskState): RunStatusSegment {
 
 /**
  * The segment a row is counted under. A run parked at an `await-signal` step needs nobody at the
- * page, so it counts under Waiting and not under Running (COR-2424, row 56g); every other run is
- * counted by its status.
+ * page, so it counts under Waiting (COR-2424, row 56g). A start waiting for an execution slot
+ * is Scheduled and appears only under All (COR-2433, row 59a).
  */
-export function runSegmentOfRow(
-  row: Pick<RunRow, 'status'> & { readonly workflow?: RunWorkflow | null | undefined },
-): RunStatusSegment {
+function runSegmentOfRow(row: RunRow): RunStatusSegment | undefined {
+  if (queuedWorkflowInstance(row)) return undefined;
   return awaitingSignalOf(row) === null ? runSegmentOf(row.status) : 'signal';
 }
 
@@ -799,7 +798,10 @@ export function runSegmentCounts(rows: readonly RunRow[]): Readonly<Record<RunSe
     failed: 0,
     canceled: 0,
   };
-  for (const row of rows) counts[runSegmentOfRow(row)] += 1;
+  for (const row of rows) {
+    const segment = runSegmentOfRow(row);
+    if (segment !== undefined) counts[segment] += 1;
+  }
   return counts;
 }
 
@@ -846,16 +848,30 @@ function awaitingSignalOf(
   return going ? (row.workflow?.awaitingSignal ?? null) : null;
 }
 
+function queuedWorkflowInstance(
+  row: Pick<RunRow, 'status'> & Partial<Pick<RunRow, 'engineRun' | 'workflow'>>,
+): boolean {
+  const type = row.workflow?.type;
+  return (
+    row.status === 'submitted' &&
+    row.engineRun === true &&
+    type !== undefined &&
+    isInstanceWorkflow(type)
+  );
+}
+
 /**
  * The status word of a row, which Cinder's `StatusDot` gives its one tone. An instance waiting for
  * a signal is "Waiting" (the hollow ring), and a run that asked to be woken is "Scheduled" until it
  * is (`now`, when it is given, is the clock the due time is read against).
  */
 export function runStatusWord(
-  row: Pick<RunRow, 'status' | 'checkNotMet'> & Partial<Pick<RunRow, 'workflow' | 'dueAt'>>,
+  row: Pick<RunRow, 'status' | 'checkNotMet'> &
+    Partial<Pick<RunRow, 'workflow' | 'dueAt' | 'engineRun'>>,
   now?: number,
 ): RunStatusWord {
   if (row.checkNotMet) return 'Check not met';
+  if (queuedWorkflowInstance(row)) return 'Scheduled';
   if (awaitingSignalOf({ status: row.status, workflow: row.workflow }) !== null) {
     return SIGNAL_WAIT_WORD;
   }
@@ -1017,6 +1033,8 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       // waiting for a signal or for its time says what it waits for and nothing of its step.
       if (awaiting !== null) {
         parts.push(copy.waitingForSignal(awaiting));
+      } else if (queuedWorkflowInstance(row)) {
+        parts.push(copy.waitingForRunSlot);
       } else if (runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null) {
         parts.push(copy.dueAt(dueWords(row.dueAt, context.now, context.zone)));
       } else {

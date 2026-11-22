@@ -205,6 +205,9 @@
       {/if}
       <div
         class="cinder-confirm-dialog__actions"
+        data-cinder-typed-destructive={destructive && normalizedTypeToConfirm !== undefined
+          ? ''
+          : undefined}
         data-cinder-fault-only={failure && errorAction ? '' : undefined}
         bind:this={actionsElement}
       >

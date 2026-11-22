@@ -11,6 +11,7 @@ export const HEALTH_TITLE = 'Health';
 /** The tabs under the heading, in order, with where each opens. */
 export const HEALTH_PAGE_TABS = [
   { value: 'overview', label: 'Overview', path: '/health' },
+  { value: 'runs', label: 'Runs', path: '/health/runs' },
   { value: 'workers', label: 'Workers', path: '/health/workers' },
   { value: 'storage', label: 'Storage', path: '/health/storage' },
   { value: 'audit', label: 'Audit log', path: '/health/audit' },

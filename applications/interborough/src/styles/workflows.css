@@ -105,7 +105,7 @@
  * never by a value, within two screens at a phone's width. The floor is no wider than the
  * container at 768px (about 642px), so there the table fills it with no sideways scroll, and Type,
  * which carries the tags as its second line, takes what the fixed columns leave. */
-.weft-workflows-table {
+.weft-workflows-table--with-floor {
   min-inline-size: 40rem;
 }
 
@@ -137,6 +137,34 @@
 @media (hover: hover) {
   .weft-workflows-table__id-link:hover {
     text-decoration: underline;
+  }
+}
+
+/* In the phone Health table, keep the run link's extension inside its inline width. */
+@media (max-width: 639.98px) and (any-pointer: coarse) {
+  .weft-workflows-table:not(.weft-workflows-table--with-floor) .weft-workflows-table__run-identity {
+    overflow: visible;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor) .weft-workflows-table__id-link {
+    position: relative;
+    overflow: visible;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor)
+    .weft-workflows-table__id-link
+    > code {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor)
+    .weft-workflows-table__id-link::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 }
 

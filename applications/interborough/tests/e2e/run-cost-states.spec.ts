@@ -315,6 +315,11 @@ test.describe('/health: Needs attention while the Bureau lists runs over the thr
       await openAt(page, '/health', width);
 
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      const attention = page.getByTestId('needs-attention');
+      const settledAttention = attention
+        .getByRole('list', { name: 'Needs attention' })
+        .or(page.getByTestId('needs-attention-clear'));
+      await expect(settledAttention).toBeVisible();
       await expect(page.getByText('run-cost-priced')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/health',
@@ -335,6 +340,10 @@ test.describe('/settings: the spend threshold (COR-2527)', () => {
       page,
     }) => {
       await openAt(page, '/settings', width);
+      const advanced = page.getByRole('button', { name: 'Advanced', exact: true });
+      await expect(advanced).toHaveAttribute('aria-expanded', 'false');
+      await advanced.click();
+      await expect(advanced).toHaveAttribute('aria-expanded', 'true');
       const row = page.locator(`[data-setting="${THRESHOLD_KEY}"]`);
       await expect(row).toBeVisible();
       await expect(row).toContainText(COST_COPY.threshold.label);

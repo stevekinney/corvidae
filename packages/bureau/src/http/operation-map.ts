@@ -202,6 +202,10 @@ export const OPERATION_MAP = {
   },
   'bureau.workflows.history': { workspaceClass: 'member-shared-read', member: 'workflows.history' },
   'bureau.workflows.impact': { workspaceClass: 'member-shared-read', member: 'workflows.impact' },
+  'bureau.workflows.concurrency': {
+    workspaceClass: 'member-shared-read',
+    member: 'workflows.list',
+  },
   'bureau.workflows.runs.list': { workspaceClass: 'private-owned', member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { workspaceClass: 'private-owned', member: 'workflows.getRun' },
   'bureau.workflows.runs.cancel': { workspaceClass: 'private-owned', member: 'workflows.cancel' },
