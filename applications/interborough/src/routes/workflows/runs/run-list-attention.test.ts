@@ -140,11 +140,17 @@ describe('the Needs attention chip', () => {
       .toSorted();
     expect(asked).toEqual(['looping', 'overspending', 'stalled']);
     // It reads no listing of every run (a page of 100 with no filter): the Bureau is the one that
-    // says which carry a state.
+    // says which carry a state. The failed runs are read for the step names the narrowed list
+    // cannot suggest (COR-2535), which is a listing by status.
     expect(
       stub
         ?.callsTo('bureau.tasks.list')
-        .some((call) => call.params['limit'] === 100 && call.params['attention'] === undefined),
+        .some(
+          (call) =>
+            call.params['limit'] === 100 &&
+            call.params['attention'] === undefined &&
+            call.params['status'] === undefined,
+        ),
     ).toBe(false);
 
     expect(rowIds(view.container)).toContain('run-settled-overspent');

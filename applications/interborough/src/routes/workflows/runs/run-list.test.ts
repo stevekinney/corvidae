@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
+import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { agentLabel } from '../../../lib/agent-label.ts';
@@ -264,7 +265,12 @@ describe('the Retrying and Failed at step filters (COR-2535)', () => {
     const view = open('/runs', { tasks: failures });
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
     const bar = view.getByRole('search', { name: TASK_COPY.filtersLabel });
-    expect(bar.querySelector('.cinder-filter-bar__toggle')).toBeNull();
+    // The one toggle in the row is Needs attention (COR-2528), never the retrying filter.
+    expect(
+      [...bar.querySelectorAll('.cinder-filter-bar__toggle')].map((toggle) =>
+        toggle.textContent.trim(),
+      ),
+    ).toEqual([expect.stringContaining(RUN_ATTENTION_COPY.filter)]);
     expect(bar.querySelector('input[role="combobox"]')).toBeNull();
     expect(bar.querySelectorAll('.cinder-filter-bar__menu-button')).toHaveLength(1);
     expect(view.getByRole('radio', { name: /^All\s*,\s*6$/ })).not.toBeNull();
