@@ -23,6 +23,7 @@
     children,
     clamp,
     expanded = $bindable(false),
+    measure = false,
     actions,
     truncate,
     text,
@@ -171,6 +172,7 @@
     class={classNames('cinder-text', className)}
     data-cinder-variant={variant}
     data-cinder-clamp={expanded ? undefined : ''}
+    data-cinder-measure={measure ? '' : undefined}
     style:--_cinder-text-lines={clampLines}
     {@attach measureClamp}
   >
@@ -200,6 +202,7 @@
     {...rest}
     class={classNames('cinder-text', className)}
     data-cinder-variant={variant}
+    data-cinder-measure={measure ? '' : undefined}
   >
     {@render children?.()}
   </svelte:element>

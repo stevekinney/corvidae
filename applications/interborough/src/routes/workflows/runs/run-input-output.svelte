@@ -256,6 +256,7 @@
         category={workflow.failureCategory}
         {errorStack}
         explainFurther={task?.status === 'failed'}
+        framed={false}
       />
     </Alert>
   {:else if task !== undefined && task.status === 'failed'}

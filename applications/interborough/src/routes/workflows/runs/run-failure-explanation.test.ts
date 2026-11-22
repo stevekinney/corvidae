@@ -214,21 +214,41 @@ const MODEL_EXPLANATION = {
 const CONNECT_A_PROVIDER =
   'Connect a provider in Settings, under Models, so a model can write the explanation; the stored explanation of the failure still reads without one.';
 
+/** The host's providers, as Chat reads them: one provider, connected or not. */
+const providersOf =
+  (connected: boolean) =>
+  (url: string): Response | undefined =>
+    url.endsWith('/host/providers')
+      ? Response.json({
+          configurationRevision: null,
+          providers: [{ name: 'anthropic', configured: true, hasKey: connected, connected }],
+          catalog: [],
+          models: [],
+        })
+      : undefined;
+
 describe('a failed agent run’s longer explanation, written by a model on request (COR-2534)', () => {
   test('AC5: "Explain further" asks for it and shows the text under the model’s name, with the stored facts still drawn', async () => {
     let stored: typeof MODEL_EXPLANATION | null = null;
-    const stub = bureau({
-      ...explainAnswers(),
-      'bureau.tasks.explanation.get': () => ({ explanation: stored }),
-      'bureau.tasks.explanation.generate': () => {
-        stored = MODEL_EXPLANATION;
-        return { explanation: MODEL_EXPLANATION };
+    const stub = bureau(
+      {
+        ...explainAnswers(),
+        'bureau.tasks.explanation.get': () => ({ explanation: stored }),
+        'bureau.tasks.explanation.generate': () => {
+          stored = MODEL_EXPLANATION;
+          return { explanation: MODEL_EXPLANATION };
+        },
       },
-    });
+      providersOf(true),
+    );
     restore = stub.restore;
     const { container, findByRole, findByText } = show({ runId: 'run-1', explainFurther: true });
     await findByText(FAILED_RUN_EXPLANATION.summary);
     const action = await findByRole('button', { name: 'Explain further' });
+    // The note says in one sentence what the model reads, before there is an explanation.
+    expect(part(container, 'further-note')?.textContent).toBe(
+      'A model reads the explanation above and each step’s name, status and error message, never what a tool took in or gave back.',
+    );
     // Reading what is stored asks no model: only the click does.
     await waitFor(() =>
       expect(stub.calls.map((call) => call.method)).toContain('bureau.tasks.explanation.get'),
@@ -245,8 +265,12 @@ describe('a failed agent run’s longer explanation, written by a model on reque
       method: 'bureau.tasks.explanation.generate',
       params: { runId: 'run-1' },
     });
-    const label = part(container, 'model-name')?.textContent ?? '';
-    expect(label).toContain('Written by anthropic/claude-haiku-5-5');
+    const label = part(container, 'model-name')?.textContent?.trim() ?? '';
+    // A phrase, never "on Today, 4:00 AM": the day and the clock are joined by "at".
+    expect(label).toMatch(/^Written by anthropic\/claude-haiku-5-5 .+ at \d{1,2}:\d{2} [AP]M$/);
+    expect(label).not.toContain(' on ');
+    // The note is for the first explanation only: the answer already shows what it cost.
+    expect(part(container, 'further-note')).toBeNull();
     expect(part(container, 'model-cost')?.textContent).toContain('Cost of this explanation');
     // The text is paragraphs of plain text, and the stored facts are still on the page.
     expect(container.querySelector('[data-explanation="model-text"]')?.textContent).toContain(
@@ -260,10 +284,13 @@ describe('a failed agent run’s longer explanation, written by a model on reque
   });
 
   test('AC3: a stored explanation is on the page when it opens, with no model asked', async () => {
-    const stub = bureau({
-      ...explainAnswers(),
-      'bureau.tasks.explanation.get': () => ({ explanation: MODEL_EXPLANATION }),
-    });
+    const stub = bureau(
+      {
+        ...explainAnswers(),
+        'bureau.tasks.explanation.get': () => ({ explanation: MODEL_EXPLANATION }),
+      },
+      providersOf(true),
+    );
     restore = stub.restore;
     const { container, findByText } = show({ runId: 'run-1', explainFurther: true });
 
@@ -275,31 +302,96 @@ describe('a failed agent run’s longer explanation, written by a model on reque
     );
   });
 
-  test('AC4: with no provider connected the page says what to do, in the Bureau’s words', async () => {
-    restore = bureau({
-      ...explainAnswers(),
-      'bureau.tasks.explanation.get': () => ({ explanation: null }),
-      'bureau.tasks.explanation.generate': () => {
-        throw new StubFault(
-          'UnsupportedCapability',
-          501,
-          'No model is connected to write the explanation',
-          { remediation: CONNECT_A_PROVIDER },
-        );
+  test('AC4: with no provider connected the page is in its own state, in Chat’s words, with the way to connect one and no action that cannot work', async () => {
+    const stub = bureau(
+      {
+        ...explainAnswers(),
+        'bureau.tasks.explanation.get': () => ({ explanation: null }),
       },
-    }).restore;
+      providersOf(false),
+    );
+    restore = stub.restore;
+    const { container, findByText, queryByRole, getByRole } = show({
+      runId: 'run-1',
+      explainFurther: true,
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+
+    const state = await waitFor(() => {
+      const found = container.querySelector('[data-explanation="no-provider"]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    // One title, in Chat's words, and no second sentence saying it again.
+    expect(state.querySelector('h3')?.textContent).toBe('Connect a provider first');
+    expect(state.querySelectorAll('p')).toHaveLength(0);
+    const link = getByRole('link', { name: 'Connect a provider' });
+    expect(link.getAttribute('href')).toContain('/settings/models');
+    // The action that could not work is not offered, and no model is asked.
+    expect(queryByRole('button', { name: 'Explain further' })).toBeNull();
+    expect(container.querySelector('[data-explanation="further-fault"]')).toBeNull();
+    expect(stub.calls.map((call) => call.method)).not.toContain(
+      'bureau.tasks.explanation.generate',
+    );
+    expect(part(container, 'summary')?.textContent).toBe(FAILED_RUN_EXPLANATION.summary);
+  });
+
+  test('AC4: a Bureau that answers no model can write it is the same state, not a generic fault', async () => {
+    restore = bureau(
+      {
+        ...explainAnswers(),
+        'bureau.tasks.explanation.get': () => ({ explanation: null }),
+        'bureau.tasks.explanation.generate': () => {
+          throw new StubFault(
+            'UnsupportedCapability',
+            501,
+            'No model is connected to write the explanation',
+            { remediation: CONNECT_A_PROVIDER },
+          );
+        },
+      },
+      providersOf(true),
+    ).restore;
     const { container, findByRole, findByText } = show({ runId: 'run-1', explainFurther: true });
     await findByText(FAILED_RUN_EXPLANATION.summary);
 
     await fireEvent.click(await findByRole('button', { name: 'Explain further' }));
 
-    await findByText(CONNECT_A_PROVIDER);
-    expect(container.querySelector('[data-explanation="further-fault"]')?.textContent).toContain(
-      'No model is connected to write the explanation',
+    await waitFor(() =>
+      expect(container.querySelector('[data-explanation="no-provider"]')).not.toBeNull(),
     );
+    expect(container.textContent).not.toContain('No model is connected');
+    expect(container.textContent).not.toContain('Not supported');
+    expect(container.querySelector('[data-explanation="further-fault"]')).toBeNull();
     // Nothing is written, and the stored facts are still drawn.
     expect(container.querySelector('[data-explanation="model-text"]')).toBeNull();
     expect(part(container, 'summary')?.textContent).toBe(FAILED_RUN_EXPLANATION.summary);
+  });
+
+  test('another fault of the ask is drawn as a fault, and the action stays to ask again', async () => {
+    restore = bureau(
+      {
+        ...explainAnswers(),
+        'bureau.tasks.explanation.get': () => ({ explanation: null }),
+        'bureau.tasks.explanation.generate': () => {
+          throw new StubFault(
+            'Unprocessable',
+            422,
+            'The run changed while the explanation was being written, so it was not kept',
+            { reason: 'run-changed' },
+          );
+        },
+      },
+      providersOf(true),
+    ).restore;
+    const { container, findByRole, findByText } = show({ runId: 'run-1', explainFurther: true });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+
+    await fireEvent.click(await findByRole('button', { name: 'Explain further' }));
+
+    await findByText(/changed while the explanation was being written/);
+    expect(container.querySelector('[data-explanation="no-provider"]')).toBeNull();
+    expect(container.querySelector('[data-explanation="model-text"]')).toBeNull();
   });
 
   test('offers no action for a run that is not an agent run’s, and reads no stored explanation for it', async () => {

@@ -522,6 +522,25 @@ describe('ErrorState neutral tone', () => {
     expect(neutral.get('background')).toBe('var(--cinder-surface-inset)');
   });
 
+  test('a bordered neutral row draws its box in the structural border, not a status weight', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const neutral = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='neutral']",
+    );
+    expect(neutral.get('--_cinder-error-state-edge')).toBe('var(--cinder-border)');
+  });
+
+  test('a row’s glyph sits on the title’s first line, not the middle of its lines', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const glyph = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-glyph",
+    );
+    expect(glyph.get('align-self')).toBe('flex-start');
+    expect(glyph.get('margin-block-start')).toContain('1lh');
+  });
+
   test('announce raises a neutral state to an alert', () => {
     const { container, queryByRole } = render(ErrorState, {
       props: { title: 'Gone', description: 'Deleted.', tone: 'neutral', announce: true },
@@ -737,7 +756,8 @@ describe('ErrorState bordered', () => {
     for (const [tone, token] of [
       ['danger', '--cinder-status-danger-border'],
       ['warning', '--cinder-status-warning-border'],
-      ['neutral', '--cinder-status-neutral-border'],
+      // Nothing failed, so a neutral row is drawn in the page's structural hairline (COR-2534).
+      ['neutral', '--cinder-border'],
     ] as const) {
       const { container } = render(ErrorState, {
         props: { title: 'Failed.', description: 'Nope.', variant: 'row', bordered: true, tone },

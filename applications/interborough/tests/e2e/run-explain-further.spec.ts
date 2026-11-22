@@ -3,13 +3,18 @@
  * Bureau stored (COR-2533), the page offers to ask a model to read the run and explain it at more
  * length. It happens only when asked: the action is drawn, then the model's text is drawn under the
  * model's name with what it cost while the stored explanation stays above it, and with no provider
- * connected the Bureau's fault says to connect one.
+ * connected the page says so in Chat's words, with the way to connect one, and offers no action.
  *
  * The run is the failing scripted agent's (`failure-explanation-agents.ts`), so its task is a real
- * failed run with a stored failure. The two operations that call a model are answered by the
- * specification, because no provider is connected to the end-to-end host: `get` answers what is
- * stored and `generate` answers the model's text, or the fault the Bureau answers when no provider
- * is connected (`UnsupportedCapability`, with its remediation in `error.data`).
+ * failed run with a stored failure. The host's providers and the two operations that call a model
+ * are answered by the specification: no model is reachable from the end-to-end host, and whether a
+ * provider is connected must not depend on what the host was started with. `get` answers what is
+ * stored and `generate` answers the model's text.
+ *
+ * The scripted agent is not a durable run, so the page's read of the run from the workflow engine
+ * (`GET /v1/workflows/<run>`, which the page makes for every run and which answers that the engine
+ * holds none for this one) is a 404 the page expects, as `15-view-states.spec.ts` allows it for a
+ * run that does not exist.
  *
  * Captured for the design review on a desktop and a phone, in `/runs/:run`'s `failed agent run,
  * explain further offered`, `failed agent run explained further` and `failed agent run, no provider
@@ -26,7 +31,7 @@ import { tasksOfSession } from './task-support.ts';
 const SOURCE = 'run-explain-further.spec.ts';
 const WIDTHS = [1280, 375] as const;
 const BUREAU_CALLS = '**/jsonrpc';
-const BUREAU_LOGGED = /\/jsonrpc/;
+const HOST_PROVIDERS = '**/host/providers';
 
 const MODEL_EXPLANATION = {
   text: 'The scripted model failed before it could answer, so the run stopped at its first step.\n\nStart the run again once the model is reachable.',
@@ -35,18 +40,33 @@ const MODEL_EXPLANATION = {
   costUsd: 0.0021,
 } as const;
 
-const CONNECT_A_PROVIDER =
-  'Connect a provider in Settings, under Models, so a model can write the explanation; the stored explanation of the failure still reads without one.';
-
-/** Which answer the specification gives the two operations that call a model. */
-type ModelAnswer = 'written' | 'no provider';
-
 /**
- * Answers `bureau.tasks.explanation.get` with nothing stored and `bureau.tasks.explanation.generate`
- * with the model's text or with the fault of a Bureau that has no provider; every other call goes to
- * the host.
+ * Answers the host's providers with one provider, connected or not, and
+ * `bureau.tasks.explanation.get` with nothing stored and `bureau.tasks.explanation.generate` with
+ * the model's text; every other call goes to the host.
  */
-async function answerModelCalls(page: Page, answer: ModelAnswer): Promise<void> {
+async function answerModelCalls(page: Page, providerConnected: boolean): Promise<void> {
+  await page.route(HOST_PROVIDERS, async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        configurationRevision: null,
+        providers: [
+          {
+            name: 'anthropic',
+            configured: true,
+            hasKey: providerConnected,
+            connected: providerConnected,
+          },
+        ],
+        catalog: [],
+        models: [],
+      },
+    });
+  });
   // What the task keeps: nothing until `generate` has written it, as the Bureau does, so a read
   // after the click (a refetch) shows the text and never blanks it.
   let stored: typeof MODEL_EXPLANATION | null = null;
@@ -62,31 +82,9 @@ async function answerModelCalls(page: Page, answer: ModelAnswer): Promise<void> 
       await route.fulfill({ json: { jsonrpc: '2.0', id, result: { explanation: stored } } });
       return;
     }
-    if (answer === 'written') {
-      stored = MODEL_EXPLANATION;
-      await route.fulfill({
-        json: { jsonrpc: '2.0', id, result: { explanation: MODEL_EXPLANATION } },
-      });
-      return;
-    }
+    stored = MODEL_EXPLANATION;
     await route.fulfill({
-      status: 501,
-      json: {
-        jsonrpc: '2.0',
-        id,
-        error: {
-          code: -32000,
-          message: 'No model is connected to write the explanation',
-          // The fields a Bureau's `UnsupportedCapability` carries on the wire (`faultToJsonRpcError`).
-          data: {
-            capability: 'generate',
-            weftCode: 'UnsupportedCapability',
-            httpStatus: 501,
-            retryable: false,
-            remediation: CONNECT_A_PROVIDER,
-          },
-        },
-      },
+      json: { jsonrpc: '2.0', id, result: { explanation: MODEL_EXPLANATION } },
     });
   });
 }
@@ -104,7 +102,15 @@ for (const width of WIDTHS) {
     async function openFailedRun(
       page: Page,
       request: Parameters<typeof runToEnd>[0],
+      pageErrors: { expectEvery: (rule: { pattern: RegExp; reason: string }) => void },
     ): Promise<void> {
+      // The scripted agent's run is not a durable workflow, so the engine answers that it holds no
+      // run of that id; the page reads the run from the engine all the same and shows no engine
+      // sections for it.
+      pageErrors.expectEvery({
+        pattern: loggedFailedResponse(404, /\/v1\/workflows\/run-/),
+        reason: 'the engine holds no workflow for the failing scripted agent’s run',
+      });
       const thread = newThreadId('run-explain-further');
       threads.push(thread);
       await runToEnd(request, FAILING_AGENT_NAME, thread, 'Fail on purpose.');
@@ -120,12 +126,14 @@ for (const width of WIDTHS) {
     test('offers "Explain further" under the stored explanation, and asks no model until it is pressed (COR-2534)', async ({
       page,
       request,
+      pageErrors,
     }) => {
-      await answerModelCalls(page, 'written');
-      await openFailedRun(page, request);
+      await answerModelCalls(page, true);
+      await openFailedRun(page, request, pageErrors);
 
       const further = page.locator('[data-explanation="further"]');
       await expect(further.getByRole('button', { name: 'Explain further' })).toBeVisible();
+      await expect(page.locator('[data-explanation="further-note"]')).toBeVisible();
       await expect(page.locator('[data-explanation="model-text"]')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/runs/:run',
@@ -137,9 +145,10 @@ for (const width of WIDTHS) {
     test('shows the model’s text under its name and cost, with the stored explanation still above it (COR-2534)', async ({
       page,
       request,
+      pageErrors,
     }) => {
-      await answerModelCalls(page, 'written');
-      await openFailedRun(page, request);
+      await answerModelCalls(page, true);
+      await openFailedRun(page, request, pageErrors);
 
       await page.getByRole('button', { name: 'Explain further' }).click();
 
@@ -151,8 +160,10 @@ for (const width of WIDTHS) {
       await expect(written.locator('[data-explanation="model-cost"]')).toContainText(
         'Cost of this explanation',
       );
-      // What the Bureau stored stays on the page, above what the model wrote.
+      // What the Bureau stored stays on the page, above what the model wrote; the note is for the
+      // first explanation only.
       await expect(page.locator('[data-explanation="summary"]')).toBeVisible();
+      await expect(page.locator('[data-explanation="further-note"]')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Explain again' })).toBeVisible();
       await captureForDesignReview(page, {
         route: '/runs/:run',
@@ -161,25 +172,22 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('says to connect a provider when none is connected (COR-2534)', async ({
+    test('says to connect a provider when none is connected, and offers no action that cannot work (COR-2534)', async ({
       page,
       request,
       pageErrors,
     }) => {
-      pageErrors.expectEvery({
-        pattern: loggedFailedResponse(501, BUREAU_LOGGED),
-        reason:
-          'the test answers bureau.tasks.explanation.generate with a 501, as a Bureau with no provider does',
-      });
-      await answerModelCalls(page, 'no provider');
-      await openFailedRun(page, request);
+      await answerModelCalls(page, false);
+      await openFailedRun(page, request, pageErrors);
 
-      await page.getByRole('button', { name: 'Explain further' }).click();
-
-      const fault = page.locator('[data-explanation="further-fault"]');
-      await expect(fault).toContainText('No model is connected to write the explanation');
-      await expect(fault.locator('.cinder-error-state-remediation')).toHaveText(CONNECT_A_PROVIDER);
-      // Nothing was written, and the stored explanation is still there.
+      const state = page.locator('[data-explanation="no-provider"]');
+      await expect(state.getByRole('heading', { name: 'Connect a provider first' })).toBeVisible();
+      await expect(state.getByRole('link', { name: 'Connect a provider' })).toHaveAttribute(
+        'href',
+        /\/settings\/models$/,
+      );
+      await expect(page.getByRole('button', { name: 'Explain further' })).toHaveCount(0);
+      // The stored explanation is still there, and nothing was written.
       await expect(page.locator('[data-explanation="model-text"]')).toHaveCount(0);
       await expect(page.locator('[data-explanation="summary"]')).toBeVisible();
       await captureForDesignReview(page, {

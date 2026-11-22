@@ -49,6 +49,12 @@
      * @default true
      */
     readonly offerHealth?: boolean | undefined;
+    /**
+     * Whether the row draws its hairline box. Left off where a box already surrounds it, such as an
+     * Alert, so the row does not draw a box inside a box.
+     * @default true
+     */
+    readonly bordered?: boolean | undefined;
     /** What Retry does; the row offers it only when the fault can be retried. */
     readonly onRetry?: (() => void) | undefined;
     /** Extra detail for the treatment, drawn under the row. */
@@ -59,6 +65,7 @@
     treatment,
     subject,
     offerHealth = true,
+    bordered = true,
     onRetry,
     children,
   }: FaultErrorStateProps = $props();
@@ -130,7 +137,7 @@
 <!-- Every kind is announced as an alert, as every fault was before it was drawn on `ErrorState`. -->
 <ErrorState
   variant="row"
-  bordered
+  {bordered}
   {tone}
   announce
   title={faultTitle(treatment.kind, subject)}

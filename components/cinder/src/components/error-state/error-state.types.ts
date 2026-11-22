@@ -133,9 +133,9 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state. On the
-   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline in the tone's
-   * border token (danger, warning or neutral) around the one line; the `'flat'` variant has no
-   * box.
+   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline around the one line,
+   * in the danger or warning tone's border token, or in the structural border for the neutral tone,
+   * where nothing failed; the `'flat'` variant has no box.
    * @default false
    */
   bordered?: boolean;
@@ -235,9 +235,9 @@ export interface ErrorStateSchemaProps {
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state. On the
-   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline in the tone's
-   * border token (danger, warning or neutral) around the one line; the `'flat'` variant has no
-   * box.
+   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline around the one line,
+   * in the danger or warning tone's border token, or in the structural border for the neutral tone,
+   * where nothing failed; the `'flat'` variant has no box.
    * @default false
    */
   bordered?: boolean;

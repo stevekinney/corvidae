@@ -286,6 +286,13 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* In a row the glyph sits on the title's first line, not in the middle of however many lines the
+     words take: it starts at the top and is centred on one line of the title's height. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-glyph {
+    align-self: flex-start;
+    margin-block-start: calc((1lh - var(--cinder-space-4)) / 2);
+  }
+
   .cinder-error-state-glyph > svg {
     inline-size: var(--cinder-space-4);
     block-size: var(--cinder-space-4);
@@ -354,7 +361,8 @@
   }
 
   .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='neutral'] {
-    --_cinder-error-state-edge: var(--cinder-status-neutral-border);
+    /* Nothing failed, so the box is the page's structural hairline, not a fourth border weight. */
+    --_cinder-error-state-edge: var(--cinder-border);
   }
 
   /* The next step is not part of the sentence: it takes its own line under it, in the same type. */

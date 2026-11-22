@@ -63,12 +63,12 @@ export const RUN_EXPLAIN_FURTHER_COPY = {
   action: 'Explain further',
   /** The action once a model has written one: asking again replaces the text. */
   again: 'Explain again',
-  /** The action's help: what the model reads, and that it happens only when asked. */
-  note: 'A model reads the explanation above and each step’s name, status and error message, and nothing a tool took in or gave back. It runs only when you ask, and what it costs is shown with its answer.',
+  /** The action's help, shown before the first explanation: what the model reads, in one sentence. */
+  note: 'A model reads the explanation above and each step’s name, status and error message, never what a tool took in or gave back.',
   /** The heading over what the model wrote. */
   heading: 'Longer explanation',
-  /** Which model wrote it, and when. */
-  writtenBy: (model: string, when: string): string => `Written by ${model} on ${when}`,
+  /** Which model wrote it, and when: `when` is a phrase such as "today at 4:00 AM". */
+  writtenBy: (model: string, when: string): string => `Written by ${model} ${when}`,
   /** What writing it cost, kept apart from the run’s own cost. */
   cost: (cost: string): string => `Cost of this explanation: ${cost}`,
   /** The cost when the model has no price. */
