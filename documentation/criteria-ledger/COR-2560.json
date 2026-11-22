@@ -1,7 +1,7 @@
 {
   "issue": "COR-2560",
   "branch": "worktree-agent-aa7c89813f4b0485e",
-  "checkedAt": "7b0d47d91fc5f7ee2ec1c0c769796212af3f7cca",
+  "checkedAt": "c750711b6982b62cf3967833d51d8aadfeceb1d2",
   "briefVersion": "5bfc033455b0",
   "status": "READY",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "fault-boundary.svelte draws app/fault-error-state.svelte, a Cinder ErrorState row, with the same remediation and Retry rule; fault-boundary.test.ts passes with new assertions for remediation as a line under the description and Retry present, absent and defaulted. Deleted from foundation.css, workflows.css and reviews.css: the banner, icon and message rules and the warning tone. Kept: the box (border, background) because the ErrorState row draws none, and the note, field-error and stack rules. Changed assertions: conflict is danger, not warning (ErrorState has no warning tone); danger kinds read their tone from data-cinder-tone on the ErrorState."
+      "evidence": "fault-boundary.svelte draws app/fault-error-state.svelte, a Cinder ErrorState row, with the same remediation and Retry rule. Cinder first: ErrorState gained a warning tone (warning tokens, role=status) and an announce option (components/cinder error-state: css, types, svelte, test, README, examples.json, a11y note), so conflict and unreachable are warning again, not-found and not-supported neutral, the rest danger, and every kind is announced as an alert with announce; the extra role=alert wrapper is gone. fault-boundary.test.ts asserts tone and role for each kind including the restored conflict warning, with new assertions for remediation under the description and Retry present, absent and defaulted. Deleted from foundation.css, workflows.css and reviews.css: the banner, icon and message rules. Kept: the box (border, tone background) because the ErrorState row draws none, and the note, field-error and stack rules. Changed assertions: tones are read from data-cinder-tone on the ErrorState and the role from its body, not data-tone on the alert. Danger-kind notes sit under the alert region, not inside it."
     },
     {
       "id": "AC4",
@@ -28,7 +28,7 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "NOT VERIFIED by the worker: the capture and the design-review verdict are the coordinator's. In place: tests/e2e/fault-remediation.spec.ts calls captureForDesignReview for 'fault retryable with remediation', 'fault not retryable' and 'fault with no remediation' on /hooks (an ErrorState page state) and /reviews (the shared fault row), at 1280 and 375 (the capture repeats a phone at 320 by 640), registered in scripts/design-review-capture.ts and design-review-capture.test.ts."
+      "evidence": "NOT VERIFIED by the worker: the capture and the design-review verdict are the coordinator's. In place: tests/e2e/fault-remediation.spec.ts calls captureForDesignReview for 'fault retryable with remediation', 'fault not retryable' and 'fault with no remediation' on /hooks (an ErrorState page state) and /reviews (the shared fault row), and 'fault warning conflict' on /reviews, at 1280 and 375 (the capture repeats a phone at 320 by 640), registered in scripts/design-review-capture.ts and design-review-capture.test.ts. The Cinder browser fixtures (error-state.playwright.ts, remaining-public-mounts.playwright.ts) were not run on this host and have no warning mount."
     }
   ]
 }
