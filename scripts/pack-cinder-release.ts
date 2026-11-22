@@ -321,6 +321,7 @@ try {
         const tokenVersionPath = join(workspaceRoot, `${tokenVersionFile}.ts`);
         builder.onLoad({ filter: /package-version\.generated\.ts$/ }, ({ path }) => {
           if (path === tokenVersionPath) return { contents: tokenVersionSource, loader: 'ts' };
+          return undefined;
         });
       }
     },
