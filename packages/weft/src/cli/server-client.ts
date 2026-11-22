@@ -24,20 +24,24 @@ import {
   type CatalogOperationTypes,
   type ConnectionOptions,
 } from '../index.ts';
+import { cliFault, faultFromWireError, type CliFault } from './cli-fault.ts';
 import { messageOf } from './output.ts';
 
-/** Successful or failed result of a catalog operation call, never thrown. */
+/**
+ * Successful or failed result of a catalog operation call, never thrown. A failure carries its
+ * {@link CliFault} (`code`, `message`, `retryable`, `remediation`) beside the `kind` that decides
+ * the exit code.
+ */
 export type CatalogCallResult<Output> =
   | { readonly ok: true; readonly value: Output }
-  | { readonly ok: false; readonly kind: 'connection'; readonly message: string }
-  | { readonly ok: false; readonly kind: 'compat'; readonly message: string }
-  | {
+  | ({ readonly ok: false; readonly kind: 'connection' } & CliFault)
+  | ({ readonly ok: false; readonly kind: 'compat' } & CliFault)
+  | ({
       readonly ok: false;
       readonly kind: 'operation';
-      readonly message: string;
       /** Present and `true` when the server answered with its `NotFound` fault. */
       readonly notFound?: true;
-    };
+    } & CliFault);
 
 /**
  * Invoke a single catalog operation through the generated typed client and
@@ -63,17 +67,29 @@ export async function callCatalogOperation<Name extends CatalogOperationName>(
         return {
           ok: false,
           kind: 'compat',
-          message: `operation ${operationName} is not available on this server; the server is older than this CLI. Run 'weft server info' to compare versions, or upgrade the server`,
+          ...cliFault(
+            'MethodNotFound',
+            `operation ${operationName} is not available on this server; the server is older than this CLI`,
+            "Run 'weft server info' to compare versions, or upgrade the server",
+          ),
         };
       }
       return {
         ok: false,
         kind: 'operation',
-        message: error.message,
+        ...faultFromWireError(error.message, error.data),
         ...(isNotFoundFaultData(error.data) ? { notFound: true as const } : {}),
       };
     }
-    return { ok: false, kind: 'connection', message: messageOf(error) };
+    return {
+      ok: false,
+      kind: 'connection',
+      ...cliFault(
+        'Unavailable',
+        `connection failed: ${messageOf(error)}`,
+        "Start a server with 'weft serve', or point --server, WEFT_ADDR or --profile at one that is running",
+      ),
+    };
   }
 }
 

@@ -88,6 +88,12 @@ Because the envelope's `weftCode` is written last, a fine-grained `WeftErrorCode
 
 A catalog operation served as an MCP tool answers a fault as an error result (`isError: true`) whose `structuredContent` is `{ code, message, data?, retryable, remediation? }`, with the same `retryable` and `remediation` as the other two transports. Here `code` is the coarse `FaultCode`, and `data` is the fault's payload.
 
+Weft's own MCP tools (`start_workflow`, `signal_workflow`, `update_workflow`, `query_workflow`, `cancel_workflow`, `list_workflows`, `get_workflow_state`, and the tool of each workflow type) report a failure the same way, with `structuredContent` of `{ code, message, retryable, remediation? }` and no `data`, and the message still in the text content for a host that ignores `structuredContent`. They answer `NotFound` for a workflow that does not exist, `InvalidParams` for a refused argument or an unregistered workflow type, `Conflict` for an id already taken or a cancelled workflow, `Unauthorized` and `Forbidden` for a refused caller, `MethodNotFound` for an unknown tool, and the masked `EngineFailure` (`Tool execution failed`, never a `remediation`) for anything else.
+
+### Command line
+
+`weft workflow` and `weft schedule` report a failure in the same fields. With `--json`, stdout holds `{ "ok": false, "error": { code, message, retryable, remediation? } }` and stderr stays empty. Without it, stderr holds the message, then a `Try:` line when there is a `remediation`. The exit codes do not change. For a failure the server answered, `code` is the server's `FaultCode` (the JSON-RPC `data.weftCode`), and `retryable` and `remediation` are the server's. A failure the CLI finds itself uses the code of the same meaning: `Unavailable` (retryable) when the server cannot be reached, `MethodNotFound` when the server is older than the CLI, and `InvalidParams` for a usage or input error.
+
 ### Server-Sent Events
 
 A stream that fails after it started ends with one `event: error` frame whose `data:` line is `{ code, message, data?, retryable, remediation? }`: the same `retryable` and `remediation` as the other transports, with `code` the coarse `FaultCode`. `data` holds only the fields the JSON-RPC envelope's `data` holds for that code, so no transport sends a field another withholds. A failure that is not a fault, or an `EngineFailure`, is `{ code: "EngineFailure", message: "Internal server error", retryable: false }`, never with a `remediation`. A request refused before the stream starts is an ordinary REST fault with the REST body above.
