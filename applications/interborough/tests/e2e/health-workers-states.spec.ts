@@ -696,6 +696,12 @@ test('a worker name longer than the heading wraps and keeps its Copy button insi
         })(),
       ).size,
       inside: box.left >= pane.left && box.right <= pane.right,
+      // What the failure prints: the pane's edges, the button's and the name's.
+      numbers: JSON.stringify({
+        pane: [pane.left, pane.right],
+        button: [box.left, box.right],
+        name: [heading.getBoundingClientRect().left, heading.getBoundingClientRect().right],
+      }),
       // The button sits to the right of the name, level with its first row, never on a row below it.
       besideTheName: box.left >= heading.getBoundingClientRect().right - 1,
       onTheFirstRow: box.top < heading.getBoundingClientRect().top + box.height,
@@ -703,7 +709,7 @@ test('a worker name longer than the heading wraps and keeps its Copy button insi
     };
   });
   expect(fits.rows).toBeGreaterThan(1);
-  expect(fits.inside).toBe(true);
+  expect(fits.inside, fits.numbers).toBe(true);
   expect(fits.besideTheName).toBe(true);
   expect(fits.onTheFirstRow).toBe(true);
   expect(fits.pageFits).toBe(true);

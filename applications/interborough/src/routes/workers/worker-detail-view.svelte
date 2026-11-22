@@ -125,12 +125,11 @@
     <div class="ib-worker-detail__identity">
       <div class="ib-worker-detail__title-row">
         <h2 class="ib-worker-detail__name">{worker.name ?? copy.unnamed}</h2>
-        <CopyButton
-          class="ib-worker-detail__copy"
-          value={worker.id}
-          label={copy.copyLabel}
-          copiedLabel={copy.copied}
-        />
+        <!-- CopyButton is a tooltip wrapper beside a live region, so the flex item that must keep its
+             size is this box, not the button inside them. -->
+        <div class="ib-worker-detail__copy">
+          <CopyButton value={worker.id} label={copy.copyLabel} copiedLabel={copy.copied} />
+        </div>
       </div>
       <p class="ib-worker-detail__status">
         <Badge variant={badgeVariant[status]} size="sm">{status}</Badge>
@@ -199,7 +198,7 @@
     overflow-wrap: anywhere;
   }
 
-  .ib-worker-detail__title-row :global(.ib-worker-detail__copy) {
+  .ib-worker-detail__copy {
     flex: none;
   }
 
