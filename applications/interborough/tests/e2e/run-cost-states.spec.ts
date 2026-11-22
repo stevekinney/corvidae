@@ -315,6 +315,11 @@ test.describe('/health: Needs attention while the Bureau lists runs over the thr
       await openAt(page, '/health', width);
 
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      const attention = page.getByTestId('needs-attention');
+      const settledAttention = attention
+        .getByRole('list', { name: 'Needs attention' })
+        .or(page.getByTestId('needs-attention-clear'));
+      await expect(settledAttention).toBeVisible();
       await expect(page.getByText('run-cost-priced')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/health',
