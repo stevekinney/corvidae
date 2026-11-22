@@ -316,6 +316,78 @@ describe('evidence plan: a Cinder prop diff', () => {
   });
 });
 
+// COR-2643: a one-line change to an end-to-end spec selected 140 Interborough test files, seven of
+// them `tests/panels/*.spec.ts`; the unit job ran them under `bun test` and each threw "Playwright
+// Test did not expect test.beforeAll() to be called here". A specification is run by the e2e job.
+describe('evidence plan: a Playwright specification is never a unit test file', () => {
+  const interborough = 'applications/interborough';
+  const specifications = [
+    `${interborough}/tests/e2e/confirm-dialog-states.spec.ts`,
+    `${interborough}/tests/panels/schedule-editor.spec.ts`,
+    'scripts/browser-fixtures/tests/smoke.spec.ts',
+  ];
+
+  test('a spec-only change names no specification in any unit lane, and keeps the unit tests', () => {
+    const plan = computeEvidencePlan(
+      [specifications[0] ?? ''],
+      standIn({
+        selected: [
+          {
+            directory: interborough,
+            mode: 'partial',
+            tests: [
+              ...specifications,
+              `${interborough}/scripts/design-review-capture.test.ts`,
+              `${interborough}/src/host/host-api.test.ts`,
+            ],
+          },
+        ],
+      }),
+    );
+    expect(plan.unit_tests).toEqual([
+      {
+        workspace: interborough,
+        full: false,
+        paths: ['scripts/design-review-capture.test.ts', 'src/host/host-api.test.ts'],
+      },
+    ]);
+  });
+
+  test('a workspace whose only selected files are specifications has no unit lane', () => {
+    const plan = computeEvidencePlan(
+      [specifications[2] ?? ''],
+      standIn({
+        selected: [
+          {
+            directory: 'scripts/browser-fixtures',
+            mode: 'partial',
+            tests: [specifications[2] ?? ''],
+          },
+        ],
+      }),
+    );
+    expect(plan.unit_tests).toEqual([]);
+  });
+
+  test('a whole-suite selection lists the unit tests and no specification', () => {
+    const plan = computeEvidencePlan(
+      ['applications/interborough/package.json'],
+      standIn({
+        selected: [
+          {
+            directory: interborough,
+            mode: 'full',
+            tests: [...specifications, `${interborough}/src/host/host-api.test.ts`],
+          },
+        ],
+      }),
+    );
+    expect(plan.unit_tests).toEqual([
+      { workspace: interborough, full: true, paths: ['src/host/host-api.test.ts'] },
+    ]);
+  });
+});
+
 describe('evidence plan: the PageHeader landing whose density and mounts specs broke (72ea00e80)', () => {
   const tests = 'scripts/browser-fixtures/tests';
   const files = {

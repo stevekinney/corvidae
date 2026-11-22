@@ -243,6 +243,13 @@ jobs:
             if [ "$host" = 1 ]; then echo "::notice::host-lane paths run under the default bunfig; dispatch UI tests separately with unit_config=./bunfig.ui.toml"; fi
           fi
           if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi
-          bun test $config --conditions browser --conditions svelte $UNIT_PATHS
+          conditions="--conditions browser --conditions svelte"
+          # Interborough's host lane (`src/host`, `fixtures`) runs with no export conditions, as its
+          # `test` script runs it: under `browser`, Prettier resolves to its standalone build, which
+          # has no `resolveConfig`, so `bureau-client-generation.test.ts` cannot load (COR-2643).
+          if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then
+            conditions=""
+          fi
+          bun test $config $conditions $UNIT_PATHS
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
