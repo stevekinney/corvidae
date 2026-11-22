@@ -40,6 +40,8 @@ export const WORKFLOW_COPY = {
     /** The segments above the rows, and the name of the group they form. */
     segmentsLabel: 'Show workflows',
     segments: { all: 'All', paused: 'Paused', problems: 'Problems' },
+    searchLabel: 'Search workflows',
+    searchPlaceholder: 'Search workflows',
     /** The accessible name of the rows. */
     rowsLabel: 'Workflows',
     clearAction: 'Clear filters',

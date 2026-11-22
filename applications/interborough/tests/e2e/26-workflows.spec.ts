@@ -148,6 +148,42 @@ test.describe('the list', () => {
     await expect(row(page, 'e2e-listed')).toHaveCount(0);
   });
 
+  test('searches workflow titles and identifiers from the narrow Filter menu, then clears a no-match filter', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    await makeWorkflow(request, 'e2e-searchable-workflow', {
+      title: 'Daily search report',
+      steps: STEPS,
+    });
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto('/workflows');
+
+    await page.getByRole('button', { name: 'Filter' }).click();
+    const menu = page.locator('.cinder-filter-bar__menu');
+    await menu.getByRole('button', { name: 'Search' }).click();
+    const search = menu.getByRole('searchbox', { name: WORKFLOW_COPY.list.searchLabel });
+
+    await search.fill('DAILY');
+    await expect(row(page, 'e2e-searchable-workflow')).toBeVisible();
+    await expect(row(page, 'inventory-sync-sweep')).toHaveCount(0);
+
+    await search.fill('INVENTORY-SYNC-SWEEP');
+    await expect(row(page, 'inventory-sync-sweep')).toBeVisible();
+    await expect(row(page, 'e2e-searchable-workflow')).toHaveCount(0);
+
+    await search.fill('no matching workflow');
+    await expect(
+      page.getByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: WORKFLOW_COPY.list.clearAction }).click();
+    await expect(row(page, 'e2e-searchable-workflow')).toBeVisible();
+    await expect(search).toHaveValue('');
+    await expect(search).toBeFocused();
+    await checkA11y('workflow search at 375px');
+  });
+
   test('counts a file’s instances: running, and begun in the last day', async ({
     page,
     request,

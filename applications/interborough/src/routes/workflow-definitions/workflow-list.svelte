@@ -32,6 +32,7 @@
   } from '@lostgradient/cinder';
   import { Search } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
+  import { tick } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';
   import FileLocationDetail from '../../app/file-location-detail.svelte';
@@ -124,20 +125,28 @@
   });
 
   let segment = $state<ListSegment>('all');
+  let search = $state('');
   const counts = $derived(segmentCounts(workflows));
   const segments = $derived([
     { value: 'all', label: copy.segments.all, count: counts.all },
     { value: 'paused', label: copy.segments.paused, count: counts.paused },
     { value: 'problems', label: copy.segments.problems, count: counts.problems },
   ]);
-  const visible = $derived(
-    workflows
-      .filter((row) => inSegment(row, segment))
+  const visible = $derived.by(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return workflows
+      .filter(
+        (row) =>
+          inSegment(row, segment) &&
+          (query === '' ||
+            row.name.toLocaleLowerCase().includes(query) ||
+            row.file?.title?.toLocaleLowerCase().includes(query) === true),
+      )
       .map((row) => ({
         row,
         model: workflowListRow(row, activity.data?.get(row.name), now),
-      })),
-  );
+      }));
+  });
 
   const newPath = workflowNewPath();
   const internalPath = internalWorkflowsPath();
@@ -145,6 +154,15 @@
 
   function chooseSegment(value: string): void {
     segment = value === 'paused' || value === 'problems' ? value : 'all';
+  }
+
+  async function clearFilters(): Promise<void> {
+    search = '';
+    segment = 'all';
+    await tick();
+    document
+      .querySelector<HTMLInputElement>(`input[type="search"][aria-label="${copy.searchLabel}"]`)
+      ?.focus();
   }
 
   function go(event: MouseEvent, path: string): void {
@@ -228,10 +246,13 @@
     {:else}
       <FilterBar
         aria-label={copy.segmentsLabel}
-        searchVisible={false}
+        searchQuery={search}
+        searchPlaceholder={copy.searchPlaceholder}
+        searchAriaLabel={copy.searchLabel}
         {segments}
         segmentValue={segment}
         onSegmentChange={chooseSegment}
+        onSearchChange={(query) => (search = query)}
       />
 
       {#if visible.length === 0}
@@ -241,7 +262,7 @@
           description={copy.noMatch.description}
           headingLevel={2}
           clearFiltersLabel={copy.clearAction}
-          onClearFilters={() => (segment = 'all')}
+          onClearFilters={clearFilters}
         >
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>
