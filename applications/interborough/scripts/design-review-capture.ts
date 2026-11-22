@@ -164,6 +164,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new-workflows.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
+  // These populated pages live on the fixture plugin host, outside the sample world.
+  'tests/e2e/plugin-page.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
