@@ -1,4 +1,4 @@
-import type { Explanation } from '@lostgradient/interborough-plugin/failure-explanation';
+import type { Explanation } from '@lostgradient/failure-explanation';
 import { describe, expect, it } from 'bun:test';
 
 import { explanationOfResult, refusalOf, runIdOf } from './model.ts';

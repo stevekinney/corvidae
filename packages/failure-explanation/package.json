@@ -1,0 +1,28 @@
+{
+  "name": "@lostgradient/failure-explanation",
+  "private": true,
+  "description": "The words of the answer bureau.tasks.explain gives for a failed run, and the one Cinder component that draws them, which the Interborough Run page and the failure explanation panel share.",
+  "type": "module",
+  "exports": {
+    ".": "./src/failure-explanation.ts",
+    "./failure-explanation.svelte": "./src/failure-explanation.svelte"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "release:check": "bun ../../scripts/check-documentation-coverage.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts"
+  },
+  "dependencies": {
+    "@lostgradient/cinder": "workspace:*"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

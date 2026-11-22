@@ -1,15 +1,15 @@
 <script lang="ts">
   /**
    * The failure explanation page (COR-2543): the Bureau's own answer to why one run failed, drawn
-   * by the one component the Run page draws it with (`@lostgradient/interborough-plugin`), so the
+   * by the one component the Run page draws it with (`@lostgradient/failure-explanation`), so the
    * two read alike. Text goes in as text, never as markup. The page is a `main` landmark under its
    * heading, with one live region, visually hidden, for what the page has just learned. It makes no
    * write and has no control: a run that did not fail shows the Bureau's message and what it said
    * to do, and a read the host did not answer says so.
    */
   import { Section, Text, VisuallyHidden } from '@lostgradient/cinder';
-  import FailureExplanation from '@lostgradient/interborough-plugin/failure-explanation.svelte';
-  import { FAILURE_EXPLANATION_LABELS } from '@lostgradient/interborough-plugin/failure-explanation';
+  import { FAILURE_EXPLANATION_LABELS } from '@lostgradient/failure-explanation';
+  import FailureExplanation from '@lostgradient/failure-explanation/failure-explanation.svelte';
 
   import type { ExplanationView } from './view.svelte.ts';
 

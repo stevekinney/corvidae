@@ -4,10 +4,10 @@
  * stored about the run and nothing else, so nothing here words a cause. It reads the answer's
  * fields, names the ones a person reads, and reads a refusal's message and remediation back out of
  * an error result. What it draws of an answer, and the words for it, are the shared ones
- * (`@lostgradient/interborough-plugin/failure-explanation`), which the Run page draws too.
+ * (`@lostgradient/failure-explanation`), which the Run page draws too.
  */
 
-import type { Explanation } from '@lostgradient/interborough-plugin/failure-explanation';
+import type { Explanation } from '@lostgradient/failure-explanation';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

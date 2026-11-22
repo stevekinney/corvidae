@@ -27,6 +27,7 @@
     "@lostgradient/cinder": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
+    "@lostgradient/failure-explanation": "workspace:*",
     "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",

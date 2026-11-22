@@ -20,6 +20,7 @@
   "devDependencies": {
     "@lostgradient/bureau": "workspace:*",
     "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/failure-explanation": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@testing-library/dom": "catalog:",

@@ -2,7 +2,7 @@
 import {
   buildExplanationModel,
   type Explanation as Answer,
-} from '@lostgradient/interborough-plugin/failure-explanation';
+} from '@lostgradient/failure-explanation';
 import { render } from '@testing-library/svelte';
 import { describe, expect, it } from 'bun:test';
 import { tick } from 'svelte';

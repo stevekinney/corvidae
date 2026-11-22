@@ -17,7 +17,7 @@ import { unmount } from 'svelte';
 import {
   buildExplanationModel,
   FAILURE_EXPLANATION_LABELS,
-} from '@lostgradient/interborough-plugin/failure-explanation';
+} from '@lostgradient/failure-explanation';
 import { followHostTheme } from '../host-theme.ts';
 import Explanation from './explanation.svelte';
 

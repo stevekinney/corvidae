@@ -10,11 +10,11 @@
    * the page itself knows, and nothing else is invented.
    */
   import { Badge, Collapsible } from '@lostgradient/cinder';
-  import FailureExplanation from '@lostgradient/interborough-plugin/failure-explanation.svelte';
+  import FailureExplanation from '@lostgradient/failure-explanation/failure-explanation.svelte';
   import {
     buildExplanationModel,
     FAILURE_EXPLANATION_LABELS,
-  } from '@lostgradient/interborough-plugin/failure-explanation';
+  } from '@lostgradient/failure-explanation';
   import type { WorkflowState } from '@lostgradient/weft';
   import { createQuery } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
