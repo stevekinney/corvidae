@@ -236,7 +236,8 @@ test.describe('/runs/:run (run hooks failing): the row under a run’s hooks', (
 
   let waitingRun = '';
   test.beforeAll(async () => {
-    waitingRun = (await readSampleWorldRecords(E2E_SHOWCASE_URL)).runs.waiting;
+    const records = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+    waitingRun = records.runs.waiting;
   });
 
   for (const width of WIDTHS) {
