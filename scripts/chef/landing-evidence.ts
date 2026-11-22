@@ -55,14 +55,14 @@ export interface LandingRoute {
 const FULL_WORKFLOW = '.github/workflows/main.yml';
 const PULL_REQUEST_WORKFLOW = '.github/workflows/pull-request.yml';
 const TARGETED_WORKFLOW = '.github/workflows/targeted-checks.yml';
-const FULL_RECEIPT_JOBS = new Set([
+const FULL_RECEIPT_JOBS = [
   'root',
   'workspaces',
   'tests',
   'tests-slow',
   'browser',
   'test-durations',
-]);
+] as const;
 
 /** The workflows whose runs on a head are judged. */
 export const landingWorkflows: ReadonlySet<string> = new Set([
@@ -161,10 +161,7 @@ interface BoundRuns {
 function hasCompleteFullReceipt(
   receiptJobs: Record<string, 'success' | 'not-applicable'>,
 ): boolean {
-  return (
-    Object.keys(receiptJobs).length === FULL_RECEIPT_JOBS.size &&
-    [...FULL_RECEIPT_JOBS].every((name) => receiptJobs[name] === 'success')
-  );
+  return FULL_RECEIPT_JOBS.every((name) => receiptJobs[name] === 'success');
 }
 
 function allowsPullRequestDuplicateReuse(changed: readonly string[]): boolean {
@@ -204,18 +201,20 @@ async function checkDigests(
     if (listedRun === undefined) return `run ${run.id} is not among the workflow runs on the head`;
     if (listedRun.path !== identity.workflowPath)
       return `run ${run.id} is listed as ${listedRun.path}, not ${identity.workflowPath}`;
+    if (run.checkedRevision !== request.revision || run.head !== request.revision)
+      return `run ${run.id} checked ${run.checkedRevision}, not the head ${request.revision}`;
     if (
-      run.checkedRevision !== request.revision ||
       run.checkedTree !== request.integrationTree ||
-      run.head !== request.revision ||
       run.integrationTree !== request.integrationTree
     )
-      return `run ${run.id} checked ${run.checkedRevision}, not the head ${request.revision}`;
+      return `run ${run.id} checked tree ${run.checkedTree} and reported integration tree ${run.integrationTree}; expected ${request.integrationTree}`;
     if (run.verificationPlanDigest !== expected || run.requestKey !== identity.requestKey)
       return `run ${run.id} carries evidence digest ${run.verificationPlanDigest}, not the pinned ${expected}`;
     const fullReceipt =
       identity.workflowPath === FULL_WORKFLOW && hasCompleteFullReceipt(run.receiptJobs);
-    if (identity.workflowPath !== FULL_WORKFLOW || fullReceipt) ids.add(run.id);
+    if (identity.workflowPath === FULL_WORKFLOW && !fullReceipt)
+      return `pinned main.yml evidence run ${run.id} does not have a complete full receipt`;
+    ids.add(run.id);
     if (
       identity.event === 'workflow_dispatch' &&
       identity.workflowPath === FULL_WORKFLOW &&

@@ -24,6 +24,15 @@ const fixture = await createDeliveryVerificationFixture(
 
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
+const fullReceiptJobs = {
+  root: 'success',
+  workspaces: 'success',
+  tests: 'success',
+  'tests-slow': 'success',
+  browser: 'success',
+  'test-durations': 'success',
+} as const;
+
 async function evidence(
   paths: string[],
   duplicate:
@@ -109,14 +118,7 @@ async function evidence(
               receiptRequestKey: identity.requestKey,
               checkedRevision: request.revision,
               checkedTree: checkedTree ?? request.integrationTree,
-              receiptJobs: receiptJobs ?? {
-                root: 'success',
-                workspaces: 'success',
-                tests: 'success',
-                'tests-slow': 'success',
-                browser: 'success',
-                'test-durations': 'success',
-              },
+              receiptJobs: receiptJobs ?? fullReceiptJobs,
               jobs: ['Evidence aggregate'],
             },
           ];
@@ -131,6 +133,9 @@ async function evidence(
 test('reuses a complete manual full receipt only for an unpinned pending pull-request run', async () => {
   const pending = { id: 4243, status: 'in_progress', conclusion: '' };
   expect(await evidence(['scripts/chef/landing-evidence.ts'], pending)).toBeUndefined();
+  expect(
+    await evidence(['a.ts'], pending, { ...fullReceiptJobs, 'extra-required-lane': 'success' }),
+  ).toBeUndefined();
   expect(
     await evidence(['scripts/chef/landing-evidence.ts'], {
       ...pending,
@@ -165,8 +170,10 @@ test('keeps pinned, failed, incomplete, and wrong-tree evidence blocking', async
   ).toContain('concluded failure');
   expect(
     await evidence(['a.ts'], { id: 4243, status: 'in_progress', conclusion: '' }, {}),
-  ).toContain('has not finished');
-  expect(await evidence(['a.ts'], undefined, {})).toContain('no green run covers the head');
+  ).toContain('does not have a complete full receipt');
+  expect(await evidence(['a.ts'], undefined, {})).toContain(
+    'does not have a complete full receipt',
+  );
   expect(
     await evidence(
       ['a.ts'],
@@ -174,7 +181,7 @@ test('keeps pinned, failed, incomplete, and wrong-tree evidence blocking', async
       undefined,
       '0'.repeat(40),
     ),
-  ).toContain('checked');
+  ).toContain(`checked tree ${'0'.repeat(40)}`);
   expect(
     await evidence(
       ['a.ts'],
