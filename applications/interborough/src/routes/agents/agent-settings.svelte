@@ -243,6 +243,7 @@
     models = [...next.models];
     effort = next.effort;
     stepLimit = next.stepLimit;
+    stepLimitInputText = undefined;
     instructions = next.instructions;
     attempted = false;
     seededHash = at;

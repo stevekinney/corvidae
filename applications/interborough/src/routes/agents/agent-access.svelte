@@ -236,6 +236,7 @@
       }
       // A code agent's overrides carry no skills, so its skills stay as they are; its own tools
       // are offered again once taken away.
+      spendInputText.clear();
       form = AgentAccessState.from(
         loaded,
         offered,
