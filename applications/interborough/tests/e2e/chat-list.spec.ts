@@ -18,6 +18,7 @@ import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -78,10 +79,9 @@ test.describe('the chat list on the sample world', () => {
     await expect(plus).toHaveText('New chat');
     await expect(plus).toHaveAttribute('href', '/chats/new');
     const field = header.getByRole('searchbox', { name: 'Search chats' });
-    const plusBox = await plus.boundingBox();
-    const fieldBox = await field.boundingBox();
-    expect(fieldBox!.y, 'the field sits under the title row').toBeGreaterThan(
-      plusBox!.y + plusBox!.height,
+    const { plus: plusBox, field: fieldBox } = await readBoxes(page, { plus, field });
+    expect(fieldBox.y, 'the field sits under the title row').toBeGreaterThan(
+      plusBox.y + plusBox.height,
     );
   });
 
@@ -202,7 +202,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await row(page, refund).getByRole('link').first().click();
     const detail = page.getByRole('region', { name: 'Open chat' });
     await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
-    const detailBefore = await detail.boundingBox();
+    const detailBefore = (await readBoxes(page, { detail })).detail.width;
 
     // One control: a handle on the divider, never in the header beside the list's "+" (COR-2438).
     const hide = page.getByRole('button', { name: 'Hide chats' });
@@ -237,7 +237,7 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
       });
     const immediateGeometry = await readCollapseGeometry();
     await testInfo.attach('chat-list-collapse-immediate.json', {
-      body: JSON.stringify({ detailBefore: detailBefore!.width, geometry: immediateGeometry }),
+      body: JSON.stringify({ detailBefore, geometry: immediateGeometry }),
       contentType: 'application/json',
     });
     expect(immediateGeometry.collapsed).toBe(true);
@@ -247,20 +247,17 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
 
     // Hiding removes a flex pane. In a loaded host Chromium can expose the changed DOM before its
     // next layout pass, so wait for the same expansion contract before reading its stable geometry.
-    const readDetailWidth = async () => {
-      const bounds = await detail.boundingBox();
-      return bounds?.width ?? 0;
-    };
-    await expect.poll(readDetailWidth).toBeGreaterThan(detailBefore!.width + 150);
-    const detailAfter = await detail.boundingBox();
+    const readDetailWidth = async () => (await readBoxes(page, { detail })).detail.width;
+    await expect.poll(readDetailWidth).toBeGreaterThan(detailBefore + 150);
+    const detailAfter = await readDetailWidth();
     await testInfo.attach('chat-list-collapse-settled.json', {
       body: JSON.stringify({
-        detailBefore: detailBefore!.width,
+        detailBefore,
         geometry: await readCollapseGeometry(),
       }),
       contentType: 'application/json',
     });
-    expect(detailAfter!.width).toBeGreaterThan(detailBefore!.width + 150);
+    expect(detailAfter).toBeGreaterThan(detailBefore + 150);
     // The capture is of the chat as it is, with its history in (COR-2327 B3): its waiting approval.
     await expect(detail.locator('[data-approval-decision]')).toBeVisible();
     await checkA11y('the chat list hidden beside an open chat');
