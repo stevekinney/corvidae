@@ -12,7 +12,7 @@ const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.u
 describe('StackedListItem trailing track (COR-2525)', () => {
   test('the two-line status-first and status-line-two layouts size the trailing track from the list, auto by default', () => {
     const templates = stylesheet.match(
-      /\[trailing\] var\(--cinder-stacked-list-trailing-track, auto\);/g,
+      /\[trailing\] var\(--cinder-stacked-list-item-trailing-track, auto\);/g,
     );
     expect(templates?.length).toBe(2);
   });
@@ -25,12 +25,12 @@ describe('StackedListItem trailing track (COR-2525)', () => {
 
   test('the trailing region centers on both lines unless a list asks for the first line’s baseline', () => {
     expect(stylesheet).toMatch(
-      /\.cinder-stacked-list-item--lines \.cinder-stacked-list-item__trailing \{[^}]*align-self: var\(--cinder-stacked-list-trailing-align, center\);/,
+      /\.cinder-stacked-list-item--lines \.cinder-stacked-list-item__trailing \{[^}]*align-self: var\(--cinder-stacked-list-item-trailing-align, center\);/,
     );
   });
 
   test('the properties are consumed with a fallback only, so a row that sets none changes nothing and no manifest lists them', () => {
-    const declared = stylesheet.match(/--cinder-stacked-list-trailing-(?:track|align)\s*:/g);
+    const declared = stylesheet.match(/--cinder-stacked-list-item-trailing-(?:track|align)\s*:/g);
     expect(declared).toBeNull();
   });
 });

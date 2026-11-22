@@ -570,8 +570,8 @@
    */
   @media (min-width: 640px) {
     .ib-runs__list {
-      --cinder-stacked-list-trailing-track: 9rem;
-      --cinder-stacked-list-trailing-align: baseline;
+      --cinder-stacked-list-item-trailing-track: 9rem;
+      --cinder-stacked-list-item-trailing-align: baseline;
     }
   }
 </style>
