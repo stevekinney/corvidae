@@ -69,9 +69,12 @@ test('commits a German decimal spend limit after typing its separator without wr
       (request.postDataJSON() as { method?: string }).method === 'bureau.agents.overrides.update',
   );
   await spend.press('Tab');
-  expect((await write).postDataJSON()).toMatchObject({
+  const submitted = await write;
+  expect(submitted.postDataJSON()).toMatchObject({
     params: { overrides: { limits: { cost: { run: 7, chat: 0.5 } } } },
   });
+  const response = await submitted.response();
+  expect(response?.ok()).toBe(true);
   const persisted = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
   expect(persisted.result).toMatchObject({
     overrides: { limits: { cost: { run: 7, chat: 0.5 } } },
