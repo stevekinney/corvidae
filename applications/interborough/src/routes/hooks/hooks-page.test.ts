@@ -1683,6 +1683,23 @@ describe('while the hook is read', () => {
     expect(view.container.querySelector('h2.ib-hook-step__title')).toBeNull();
     expect(view.queryByRole('button', { name: HOOKS_COPY.editor.check.save })).toBeNull();
   });
+
+  test('retries a failed hook read and restores the editor', async () => {
+    const refuse: Record<string, StubFault> = {
+      'bureau.hooks.get': new StubFault('EngineFailure', 500, 'It broke.'),
+    };
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha', refuse });
+
+    await view.findByRole('heading', { level: 2, name: HOOKS_COPY.editor.loadFailed });
+    expect(view.queryByLabelText(HOOKS_COPY.editor.check.nameLabel)).toBeNull();
+
+    const failedReads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+    delete refuse['bureau.hooks.get'];
+    await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
+
+    await view.findByLabelText(HOOKS_COPY.editor.check.nameLabel);
+    expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(failedReads);
+  });
 });
 
 describe('the Bureau’s own words about a hook that is gone', () => {

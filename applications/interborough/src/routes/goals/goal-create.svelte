@@ -16,15 +16,17 @@
    * then on, because a second submit repeats the idempotency key, comes back `existing`, and would
    * leave as if the goal had started.
    */
-  import { EmptyState, PageHeader, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, ErrorState, PageHeader, Skeleton } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { tick, untrack } from 'svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import { GOALS_COPY } from '../../app/copy/goals.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { createGoal, getGoal, type GoalCreated } from '../../lib/bureau-goals.ts';
   import { listValidators } from '../../lib/bureau-validators.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { getProviders } from '../../lib/host-providers.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -209,6 +211,16 @@
     />
   </section>
 {:else}
+  {#if validatorsQuery.isError}
+    <ErrorState
+      bordered
+      title={copy.checkLabel}
+      description={copy.checkUnavailableDescription}
+      headingLevel={2}
+      retryLabel={RETRY_LABEL}
+      {...faultErrorStateAdvice(validatorsQuery.error, () => void validatorsQuery.refetch())}
+    />
+  {/if}
   <GoalForm
     {form}
     mode="create"

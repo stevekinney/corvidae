@@ -78,7 +78,7 @@
     type HookActionType,
   } from '../../lib/bureau-hooks.ts';
   import { hookActionKindId, listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
-  import { classifyFault, faultTreatment } from '../../lib/faults.ts';
+  import { classifyFault, faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { hookPath } from '../../lib/identifier-paths.ts';
@@ -961,7 +961,13 @@
     {/if}
 
     {#if !isNew && existing.isError}
-      <Alert variant="danger">{copy.loadFailed}</Alert>
+      <ErrorState
+        bordered
+        title={copy.loadFailed}
+        headingLevel={2}
+        retryLabel={RETRY_LABEL}
+        {...faultErrorStateAdvice(existing.error, readAgain)}
+      />
     {:else if stopped}
       <ErrorState
         bordered
