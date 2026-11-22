@@ -11,6 +11,7 @@ import { tick } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import type { AgentDefinitionInput, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import {
@@ -45,9 +46,9 @@ const UPDATE = 'bureau.agents.definitions.update';
 const updatesOf = (served: { calls: { method: string; params: Record<string, unknown> }[] }) =>
   served.calls.filter((call) => call.method === UPDATE);
 
-const mount = (connection?: ConnectionMonitor) =>
+const mount = (connection?: ConnectionMonitor, client = createQueryClient()) =>
   render(QueryPage, {
-    props: { page: AgentDetail, ...(connection === undefined ? {} : { connection }) },
+    props: { page: AgentDetail, client, ...(connection === undefined ? {} : { connection }) },
   } as never);
 
 const FILE_AGENT = { ...AGENT, name: 'researcher', displayName: 'Researcher', kind: 'file' };
@@ -643,6 +644,32 @@ describe('guardrails and spend', () => {
         expectedHash: 'hash-1',
         definition: { limits: { cost: { run: 7, chat: 0.5 } } },
       });
+    } finally {
+      if (originalLanguage === undefined) delete (navigator as { language?: string }).language;
+      else Object.defineProperty(navigator, 'language', originalLanguage);
+    }
+  });
+
+  test('drops a German decimal draft when an authoritative refresh clears its spend limit', async () => {
+    const originalLanguage = Object.getOwnPropertyDescriptor(navigator, 'language');
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+    try {
+      landAt('/agents/researcher/access');
+      let current = detailWith({ limits: { steps: null, cost: { run: 7, chat: 7 }, tools: null } });
+      const served = serve({ 'bureau.agents.definitions.get': () => current });
+      const client = createQueryClient();
+      const { findByLabelText } = mount(undefined, client);
+
+      const chat = await findByLabelText(copy.spendLabel);
+      await fireEvent.input(chat, { target: { value: '0,' } });
+      current = { ...detailWith({ limits: { steps: null, cost: null, tools: null } }), hash: 'hash-2' };
+      await client.refetchQueries({ queryKey: queryKeys.agents.definition('researcher') });
+      await tick();
+      expect(chat).toHaveValue('');
+
+      await fireEvent.blur(chat);
+      expect(chat).toHaveValue('');
+      expect(updatesOf(served)).toHaveLength(0);
     } finally {
       if (originalLanguage === undefined) delete (navigator as { language?: string }).language;
       else Object.defineProperty(navigator, 'language', originalLanguage);
