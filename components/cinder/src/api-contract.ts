@@ -856,7 +856,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
     props: {
-      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      value: { optional: false, type_kind: 'TSUnionType', default: REQUIRED },
       status: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       statusLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
