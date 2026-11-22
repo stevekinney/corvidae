@@ -1,7 +1,7 @@
 {
   "issue": "COR-2645",
   "branch": "chef/cor-2645-affected-cinder-tests",
-  "checkedAt": "174d1d980d9c9353574c19796334a3cdf8fb44cd",
+  "checkedAt": "1580f73c165294e05af0c7d073b4fa652a3140a9",
   "briefVersion": "bca17a054d1d",
   "status": "READY",
   "criteria": [
