@@ -869,7 +869,7 @@ export async function runInstalled(
         if (command.json) {
           const payload = JSON.parse(result.stdout) as { schemaVersion?: number; data?: unknown };
           cliJourneyResults[command.args.join(' ')] = payload.data;
-          if (payload.schemaVersion !== 1)
+          if (payload.schemaVersion !== 2)
             throw new Error(`Installed CLI ${command.args.join(' ')} returned an invalid envelope`);
         }
       }

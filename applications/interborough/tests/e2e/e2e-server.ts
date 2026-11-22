@@ -61,6 +61,11 @@ import {
 } from './e2e-constants.ts';
 
 import { createEchoAgents } from './echo-agent.ts';
+import {
+  createFailingAgents,
+  EXPLAINER_AGENT_NAME,
+  failureExplainerAgent,
+} from './failure-explanation-agents.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
 import { seedCancellationRequest, seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { createModelAgents } from './model-agents.ts';
@@ -369,6 +374,9 @@ const showcaseStartup = trackStartupPromise(
   seedSampleWorld(join(scratch, 'showcase-home', '.interborough'), {
     host: { port: E2E_SHOWCASE_PORT, buildDirectory },
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
+    // Each step of the story is a phase of its own, so a seed that never settles leaves the step
+    // it stopped on as the last showcase line of the startup log (COR-2632).
+    onStep: (step) => reportStartupPhase(`showcase: ${step}`),
   }).then(({ host: started }) => {
     startupCleanup.push(() => started.close());
     reportStartupPhase('showcase-ready');
@@ -384,8 +392,12 @@ const host = await startHost({
       ...createQuestionAgents(),
       ...createModelAgents(),
       ...createRegenerationProofAgent(),
+      ...createFailingAgents(),
     },
-    withBureauTools: { 'workflow-revision': workflowRevisionAgent },
+    withBureauTools: {
+      'workflow-revision': workflowRevisionAgent,
+      [EXPLAINER_AGENT_NAME]: failureExplainerAgent,
+    },
   },
   environment: { INTERBOROUGH_HOME: home },
   // A chat whose first message carries an access marker is scripted to call a tool (`access-provider.ts`).

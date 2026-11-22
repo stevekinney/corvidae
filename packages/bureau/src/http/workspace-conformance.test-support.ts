@@ -146,6 +146,18 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [['bureau.runs.timeline', 'owner']],
   },
   {
+    testFile: 'management/runs-compare-operation.test.ts',
+    inputFixture: 'A workflow instance with private step input, and a fork of it',
+    sentinel: 'PRIVATE-COMPARE-INPUT-5b8e',
+    operations: [['bureau.runs.compare', 'owner']],
+  },
+  {
+    testFile: 'management/tasks-explain-operation.test.ts',
+    inputFixture: 'An owned failed agent run whose error message holds private text',
+    sentinel: 'PRIVATE-EXPLAIN-ERROR-3b9e',
+    operations: [['bureau.tasks.explain', 'owner']],
+  },
+  {
     testFile: 'workspace-context-privacy.test.ts',
     inputFixture: 'Independent owned context per actor and mutation',
     sentinel: 'PRIVATE-CONTEXT-HISTORY-b0ca',

@@ -79,9 +79,11 @@ export type TaskView = Omit<
    */
   readonly usage?: BureauOutput<'bureau.tasks.get'>['usage'] | undefined;
   /**
-   * What asks for attention on a task that has not ended (COR-2526): `stalled` for a run that is
-   * alive but making no progress outside a declared wait, `looping` for a run whose toolbox
-   * reported a loop. Absent from a Bureau that does not report it, which reads as none.
+   * What asks for attention on a task (COR-2526): `stalled` for a run that is alive but making no
+   * progress outside a declared wait, `looping` for a run whose toolbox reported a loop, both only
+   * while the task has not ended; and `overspending` (COR-2527) for a run a step found over the
+   * workspace's spend threshold, which stays after the run settles. Absent from a Bureau that does
+   * not report it, which reads as none.
    */
   readonly attention?: BureauOutput<'bureau.tasks.get'>['attention'] | undefined;
   /** The instant (ISO 8601) the Bureau saw the run stall, while `attention` holds `stalled`. */
@@ -150,6 +152,17 @@ export type TaskFilter = {
   readonly parentContextId?: string;
   /** Only the tasks that ran on this workflow type (COR-2423); a task's `workflow.type` says which. */
   readonly workflow?: string;
+  /**
+   * Only the tasks that failed at the step with this label (COR-2531, `failure.step.label`): a
+   * tool's name, `model` for a model step, or a workflow run's failed step. The Bureau compares the
+   * first 200 characters and refuses a value past 1,000.
+   */
+  readonly failedStep?: string;
+  /**
+   * `true` lists only the tasks with a step on a second or later try (COR-2531, `retrying` on the
+   * task); `false` only the tasks with none.
+   */
+  readonly retrying?: boolean;
   /**
    * `false` lists only the tasks that have records (COR-2424): the schedule tick's runs and the
    * instances of workflow files, which the engine holds, are left out so a reader of the newest
@@ -370,6 +383,26 @@ export type TaskHooks = TaskInspection['hooks'];
 export async function inspectTaskHooks(taskId: string, options?: Options): Promise<TaskHooks> {
   const answer = await bureauClient['bureau.tasks.inspect']({ taskId }, options);
   return answer.hooks;
+}
+
+/**
+ * Why a failed run failed, from what the Bureau stored about it (`bureau.tasks.explain`, COR-2533):
+ * a sentence, the cause, the step, how often it was tried, the guardrails that fired, what to do
+ * next and the commands that read it. The browser words none of it: the Run page shows this answer,
+ * and so do the CLI and the failure explanation panel.
+ */
+export type RunFailureExplanation = BureauOutput<'bureau.tasks.explain'>;
+
+/**
+ * The explanation of the failed run `runId`, an agent run's task or an instance of a workflow file.
+ * A run that did not fail is an `Unprocessable` fault with a message and a remediation, and a run the
+ * caller may not read is a not-found fault.
+ */
+export async function explainRunFailure(
+  runId: string,
+  options?: Options,
+): Promise<RunFailureExplanation> {
+  return bureauClient['bureau.tasks.explain']({ runId }, options);
 }
 
 /**

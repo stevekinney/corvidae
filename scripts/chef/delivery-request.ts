@@ -53,9 +53,10 @@
 // derives the current base, head and integration tree from git (`git fetch origin <default>`;
 // `--head`, else the worktree's HEAD), then `validateDeliveryVerification`,
 // `validateDeliveryCiEvidence` and `validateLandingEvidence`, and prints each refusal. Run it from
-// a checkout that has the head fetched. A base that has moved is refused even for a branch route,
-// which `deliver.ts` accepts only when the new commits touch nothing the evidence covers: `check`
-// is conservative. The lease and the pull-request threads are `deliver.ts`'s own steps.
+// a checkout that has the head fetched. A base that has moved needs no new evidence run (owner
+// decision, 2026-11-21): `check` accepts it, as `deliver.ts` does, when the request's base is an
+// ancestor of the current one and the head still merges into it without a conflict
+// (`moved-base.ts`). The lease and the pull-request threads are `deliver.ts`'s own steps.
 //
 // Exit codes: `prepare` 0 request written and run dispatched or reused, 1 refused (a git, Linear,
 // lease, authority or evidence condition, printed); `check` 0 when `deliver.ts` would proceed past
@@ -103,6 +104,7 @@ import {
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { changedPaths } from './landing-plan.ts';
 import { createClient, LinearError, readProject } from './linear.ts';
+import { acceptMovedMain } from './moved-base.ts';
 import {
   defaultRunner,
   emitResult,
@@ -795,6 +797,20 @@ export async function check(
     return [
       `the current base, head or integration tree could not be derived (merge-tree exit ${merged.code}): the head conflicts with origin/${defaultBranch} or is not fetched`,
     ];
+  // A moved base never needs a new evidence run (owner decision, 2026-11-21): when the head merges
+  // into the current base cleanly, the attested identity stands, as `deliver.ts` reads it.
+  let attested = { base, tree: integrationTree };
+  if (base !== request.base) {
+    const moved = acceptMovedMain(
+      (...args: string[]) => runner(['git', ...args], { cwd }),
+      { base: request.base, tree: request.integrationTree },
+      head,
+      base,
+      integrationTree,
+    );
+    if ('problem' in moved) return [`verification request has a stale base: ${moved.problem}`];
+    attested = { base: request.base, tree: request.integrationTree };
+  }
   // Each validator stands alone, and a thrown error is its refusal, as it is `deliver.ts`'s.
   const steps: (() => Promise<string | undefined> | string | undefined)[] = [
     () =>
@@ -803,8 +819,8 @@ export async function check(
         {
           repository: request.repository,
           revision: head,
-          base,
-          integrationTree,
+          base: attested.base,
+          integrationTree: attested.tree,
           route,
           action: 'merge',
         },

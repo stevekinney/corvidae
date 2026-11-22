@@ -64,6 +64,7 @@
     {#if items.data === undefined && items.isError}
       <HomeCardError
         title={HOME_COPY.states.cardFailed.attention}
+        error={items.error}
         onRetry={() => void items.refetch()}
       />
     {:else if items.data === undefined}

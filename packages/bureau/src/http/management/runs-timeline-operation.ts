@@ -19,10 +19,17 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  */
 
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
-import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { projectRunTimeline, RUN_TIMELINE_ENTRY_LIMIT } from '../../run-timeline.ts';
+import {
+  RUN_TIMELINE_ENTRY_LIMIT,
+  RUN_TIMELINE_RUN_STATUSES,
+  runStatusOfTask,
+  serveRunTimeline,
+} from '../../run-timeline.ts';
+import type { TaskView } from '../../task-registry.ts';
+import type { WorkflowRunDetail } from '../../workflow-runtime.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
@@ -71,13 +78,19 @@ const timelineEntrySchema = z.object({
 const timelineOutput = z.object({
   runId: z.string(),
   kind: z.enum(['agent', 'workflow']).describe('Which kind of run the id named.'),
+  runStatus: z
+    .enum(RUN_TIMELINE_RUN_STATUSES)
+    .describe(
+      'Where the run stands as the timeline is read. A run that is `completed`, `failed`, `cancelled` or `timed-out` has finished, so no step of it is still going, whatever its last entry says.',
+    ),
   entries: z.array(timelineEntrySchema),
   truncated: z
     .boolean()
     .describe(`True when the run has more than ${String(RUN_TIMELINE_ENTRY_LIMIT)} entries.`),
 });
 
-function unsupported(): OperationFault {
+/** The fault for a Bureau with no durable engine, which keeps no run state or timeline. */
+export function unsupported(): OperationFault {
   return {
     code: 'UnsupportedCapability',
     message: 'This Bureau has no durable engine, so its runs have no timeline',
@@ -94,6 +107,56 @@ function noWorkflowDirectory(): OperationFault {
   };
 }
 
+/**
+ * A run the caller may read: an agent run with its task, or an instance of a workflow file with the
+ * run as the workflow runtime reads it.
+ */
+export type ReadableRun =
+  | { readonly kind: 'agent'; readonly task: TaskView }
+  | { readonly kind: 'workflow'; readonly run: WorkflowRunDetail };
+
+/**
+ * The run `runId` names, once the caller is let in to it: an agent run is read as
+ * `bureau.tasks.get` reads it, and a workflow instance as `bureau.workflows.runs.get` reads it.
+ * A run the caller may not read, a run that is neither kind and one that does not exist are all
+ * `NotFound`, so the engine is read for nobody this refused. Shared by the operations that read
+ * one run by either kind of id.
+ */
+export async function readableRun(
+  host: BureauTasksOperationHost & BureauWorkflowsOperationHost,
+  principal: Principal,
+  runId: string,
+): Promise<ReadableRun> {
+  // An agent run is a task with a record; an id the registry holds is read as a task, and the
+  // caller who may not read it is not then offered the workflow reading of the same id.
+  const task = await host.tasks.get(runId);
+  if (task !== undefined) {
+    if (!(await mayAccessTask(host, principal, runId, 'bureau.tasks:read'))) {
+      throw resourceNotFound('run', runId);
+    }
+    return { kind: 'agent', task };
+  }
+  if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
+    throw resourceNotFound('run', runId);
+  }
+  if (
+    principal.method !== 'unauthenticated' &&
+    principal.workspace !== undefined &&
+    !host.ownership.mayAccess({
+      principal,
+      resourceOwner: await host.ownership.runOwner(runId),
+      operatorScope: 'bureau.workflows:read',
+    })
+  ) {
+    throw resourceNotFound('run', runId);
+  }
+  if (host.workflows === undefined) throw noWorkflowDirectory();
+  // `getRun` is the one reading of "an instance of a workflow file"; anything else is no run here.
+  const run = await host.workflows.getRun(runId);
+  if (run === undefined) throw resourceNotFound('run', runId);
+  return { kind: 'workflow', run };
+}
+
 export const runsTimelineOperation = defineOperation<
   typeof timelineInput,
   typeof timelineOutput,
@@ -103,7 +166,7 @@ export const runsTimelineOperation = defineOperation<
   authorize: authorizeWorkspaceOperation('bureau.runs.timeline'),
   mcpExposable: true,
   summary: 'Read the step timeline of a run',
-  description: `Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s \`label\`, \`operationType\`, \`status\`, \`timestamp\` (its start, in epoch milliseconds), \`duration\` (milliseconds, absent while it runs) and \`tries\` (how many attempts the engine made at the step, this one included). \`runId\` is an agent run’s task id or a workflow instance’s id, and \`kind\` says which. No step’s input or output is returned, only names and timings. An agent run is read with the access \`bureau.tasks.get\` asks and a workflow instance with the access \`bureau.workflows.runs.get\` asks; any other run, a run the caller may not read, and a run that does not exist are all \`NotFound\`. A run of more than ${String(RUN_TIMELINE_ENTRY_LIMIT)} entries is cut and \`truncated\` is true.`,
+  description: `Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s \`label\`, \`operationType\`, \`status\`, \`timestamp\` (its start, in epoch milliseconds), \`duration\` (milliseconds, absent while it runs) and \`tries\` (how many attempts the engine made at the step, this one included). \`runId\` is an agent run’s task id or a workflow instance’s id, and \`kind\` says which; \`runStatus\` says where the run stands (\`pending\`, \`running\`, \`suspended\`, \`completed\`, \`failed\`, \`cancelled\` or \`timed-out\`), so a reader can tell a step the run has left from one it is still in. No step’s input or output is returned, only names and timings. An agent run is read with the access \`bureau.tasks.get\` asks and a workflow instance with the access \`bureau.workflows.runs.get\` asks; any other run, a run the caller may not read, and a run that does not exist are all \`NotFound\`. A run of more than ${String(RUN_TIMELINE_ENTRY_LIMIT)} entries is cut and \`truncated\` is true.`,
   destructive: false,
   tags: ['Runs'],
   inputSchema: timelineInput,
@@ -115,40 +178,20 @@ export const runsTimelineOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { runId } = input;
-    // An agent run is a task with a record; an id the registry holds is read as a task, and the
-    // caller who may not read it is not then offered the workflow reading of the same id.
-    const task = await host.tasks.get(runId);
-    let kind: 'agent' | 'workflow';
-    if (task !== undefined) {
-      if (!(await mayAccessTask(host, principal, runId, 'bureau.tasks:read'))) {
-        throw resourceNotFound('run', runId);
-      }
-      kind = 'agent';
-    } else {
-      if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
-        throw resourceNotFound('run', runId);
-      }
-      if (
-        principal.method !== 'unauthenticated' &&
-        principal.workspace !== undefined &&
-        !host.ownership.mayAccess({
-          principal,
-          resourceOwner: await host.ownership.runOwner(runId),
-          operatorScope: 'bureau.workflows:read',
-        })
-      ) {
-        throw resourceNotFound('run', runId);
-      }
-      if (host.workflows === undefined) throw noWorkflowDirectory();
-      // `getRun` is the one reading of "an instance of a workflow file"; anything else is no run here.
-      if ((await host.workflows.getRun(runId)) === undefined) {
-        throw resourceNotFound('run', runId);
-      }
-      kind = 'workflow';
-    }
+    const readable = await readableRun(host, principal, runId);
     const entries = await host.runTimeline(runId);
     if (entries === undefined) throw unsupported();
-    const timeline = projectRunTimeline(entries);
-    return { runId, kind, entries: [...timeline.entries], truncated: timeline.truncated };
+    const timeline = serveRunTimeline(
+      readable.kind,
+      readable.kind === 'agent' ? runStatusOfTask(readable.task.status) : readable.run.status,
+      entries,
+    );
+    return {
+      runId,
+      kind: timeline.kind,
+      runStatus: timeline.runStatus,
+      entries: [...timeline.entries],
+      truncated: timeline.truncated,
+    };
   },
 });

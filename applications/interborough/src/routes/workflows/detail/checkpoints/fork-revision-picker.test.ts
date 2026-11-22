@@ -57,6 +57,35 @@ describe('isForkRevisionConflict', () => {
     expect(isForkRevisionConflict(error)).toBe(false);
   });
 
+  test('true for the JSON-RPC form of it, which carries the fault reason and no fine-grained weftCode (COR-2538)', () => {
+    for (const reason of ['not-registered', 'legacy-ambiguous', 'not-installed']) {
+      const error = new HttpClientError(409, 'revision unavailable', {
+        faultCode: 'Conflict',
+        data: { reason, weftCode: 'Conflict', httpStatus: 409 },
+      });
+      expect(isForkRevisionConflict(error)).toBe(true);
+    }
+  });
+
+  test('false for a JSON-RPC conflict of another reason, and for another fault with one of these reasons', () => {
+    expect(
+      isForkRevisionConflict(
+        new HttpClientError(409, 'The source was replaced', {
+          faultCode: 'Conflict',
+          data: { reason: 'The source was replaced', weftCode: 'Conflict' },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isForkRevisionConflict(
+        new HttpClientError(404, 'not found', {
+          faultCode: 'NotFound',
+          data: { reason: 'not-registered' },
+        }),
+      ),
+    ).toBe(false);
+  });
+
   test('false for a plain Error', () => {
     expect(isForkRevisionConflict(new Error('boom'))).toBe(false);
   });

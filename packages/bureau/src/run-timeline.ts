@@ -37,20 +37,43 @@ export interface RunTimelineEntry {
   readonly tries: number;
 }
 
-/** A run's timeline as served, and whether the engine held more entries than were returned. */
-export interface RunTimeline {
-  readonly entries: readonly RunTimelineEntry[];
-  readonly truncated: boolean;
+/** What the engine's attempts at one step share: its index and its kind, or `undefined` for neither. */
+function identityOf(entry: WorkflowTimelineEntry): string | undefined {
+  return entry.stepIndex === undefined
+    ? undefined
+    : `${String(entry.stepIndex)}:${entry.operationType}`;
+}
+
+/** How many entries of `entries` are attempts at the step `entry` belongs to; `1` when it has no index. */
+function attemptsAt(
+  entries: readonly WorkflowTimelineEntry[],
+  entry: WorkflowTimelineEntry,
+): number {
+  const identity = identityOf(entry);
+  if (identity === undefined) return 1;
+  return entries.filter((candidate) => identityOf(candidate) === identity).length;
+}
+
+/**
+ * How many times the engine tried the step a run failed at (COR-2532): the attempts at the step of
+ * the run's last failed or timed-out entry, counted as {@link RunTimelineEntry.tries} counts them.
+ * `null` when no entry failed, as for a run whose engine history was not kept.
+ */
+export function failedStepTries(entries: readonly WorkflowTimelineEntry[]): number | null {
+  const failed = entries.findLast(
+    (entry) => entry.status === 'failed' || entry.status === 'timed-out',
+  );
+  return failed === undefined ? null : attemptsAt(entries, failed);
 }
 
 /**
  * The served timeline of `entries`, in the engine's order and at most {@link RUN_TIMELINE_ENTRY_LIMIT}
  * long. `tries` is counted over all of the engine's entries, so a cut never lowers it.
  */
-export function projectRunTimeline(entries: readonly WorkflowTimelineEntry[]): RunTimeline {
+function projectRunTimeline(
+  entries: readonly WorkflowTimelineEntry[],
+): Pick<ServedRunTimeline, 'entries' | 'truncated'> {
   const attempts = new Map<string, number>();
-  const identityOf = (entry: WorkflowTimelineEntry): string | undefined =>
-    entry.stepIndex === undefined ? undefined : `${String(entry.stepIndex)}:${entry.operationType}`;
   for (const entry of entries) {
     const identity = identityOf(entry);
     if (identity !== undefined) attempts.set(identity, (attempts.get(identity) ?? 0) + 1);
@@ -68,4 +91,64 @@ export function projectRunTimeline(entries: readonly WorkflowTimelineEntry[]): R
     };
   });
   return { entries: served, truncated: entries.length > served.length };
+}
+
+/**
+ * Where a run stands, in the engine's own words for a workflow instance. An agent run's task state
+ * is said in the same words ({@link runStatusOfTask}), so a reader draws a run of either kind with
+ * one vocabulary: a run that is `completed`, `failed`, `cancelled` or `timed-out` has finished, so
+ * no step of it is still going whatever its last entry reads.
+ */
+export type RunTimelineRunStatus =
+  'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
+
+/** The values of {@link RunTimelineRunStatus}, for a schema that lists them. */
+export const RUN_TIMELINE_RUN_STATUSES = [
+  'pending',
+  'running',
+  'suspended',
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+] as const satisfies readonly RunTimelineRunStatus[];
+
+/** An agent run's task state, said as a {@link RunTimelineRunStatus}. */
+export function runStatusOfTask(
+  state: 'submitted' | 'working' | 'input-required' | 'completed' | 'failed' | 'canceled',
+): RunTimelineRunStatus {
+  switch (state) {
+    case 'submitted':
+      return 'pending';
+    case 'working':
+      return 'running';
+    case 'input-required':
+      return 'suspended';
+    case 'canceled':
+      return 'cancelled';
+    case 'completed':
+    case 'failed':
+      return state;
+  }
+}
+
+/** A run's timeline as `bureau.runs.timeline` and the `runs-timeline` agent tool serve it. */
+export interface ServedRunTimeline {
+  /** The steps, in the order the run took them. */
+  readonly entries: readonly RunTimelineEntry[];
+  /** Whether the engine held more entries than were returned. */
+  readonly truncated: boolean;
+  /** Which kind of run the id named. */
+  readonly kind: 'agent' | 'workflow';
+  /** Where the run stands as the timeline is read. */
+  readonly runStatus: RunTimelineRunStatus;
+}
+
+/** The served timeline of the run of `kind` that stands at `runStatus`, from the engine's `entries`. */
+export function serveRunTimeline(
+  kind: 'agent' | 'workflow',
+  runStatus: RunTimelineRunStatus,
+  entries: readonly WorkflowTimelineEntry[],
+): ServedRunTimeline {
+  return { kind, runStatus, ...projectRunTimeline(entries) };
 }

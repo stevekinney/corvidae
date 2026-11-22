@@ -153,6 +153,13 @@ type StackedListItemBase = ForwardedLiAttributes & {
    */
   wrapMeta?: boolean;
   /**
+   * How many lines line two (`meta`) may take at a phone width, before an ellipsis. Default `1`.
+   * `2` lets a long line two wrap to a second line where the row is narrower than 640px, so the
+   * last words of it ("try 3" after a step's name) are not cut off on a phone; wider, it stays one
+   * line. Unlike `wrapMeta`, nothing on it is promised to be whole: it ends in an ellipsis past two.
+   */
+  metaLines?: 1 | 2;
+  /**
    * Line two: muted metadata, kind first, then agent, then detail. Pieces are told apart by a space
    * and a step, never by a comma or a dot, and never as a bare run of words in one weight and one
    * colour: each piece is its own element, and a piece that stands apart takes a step in face,

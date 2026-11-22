@@ -10,6 +10,45 @@ The installed `interborough` executable exposes its command registry in `src/hos
 
 Every command accepts `--help`; other flags are command-specific and are listed by `interborough <command> --help`, including a runnable example for the command and each accepted flag. The registry coverage test requires every listed command and flag to have help, example, and completion metadata, and the operation coverage map requires every catalog operation to name its concrete CLI action or an explicit Host/Bureau/Weft exclusion reason. The output is data-only, so scripts can consume the same contract without parsing prose.
 
+### Command errors
+
+Every JSON envelope carries `schemaVersion`, which is `2` (COR-2519). A failed command prints this on stdout under `--output json` and `--output jsonl` (one line), and the exit status says the same thing the shell sees:
+
+```json
+{
+  "schemaVersion": 2,
+  "error": {
+    "code": "Conflict",
+    "exitCode": 4,
+    "message": "The workflow changed under you.",
+    "retryable": false,
+    "remediation": "Re-read the workflow, then send the new revision."
+  }
+}
+```
+
+- `code`: the server's `FaultCode` (`NotFound`, `Conflict`, `Unavailable`, and the rest of Backchannel's closed list) when the server raised the fault. For an error the CLI raised itself, or an HTTP error from a host route that carried no fault, it is one of these named codes: `CLI_USAGE` (bad arguments, exit 2), `CLI_AUTHORIZATION` (exit 3), `CLI_CONFLICT` (exit 4), `CLI_INPUT_REQUIRED` (a prompt was needed and input is off, exit 5), `CLI_CONNECTION_FAILED` (no connection, or the request timed out, exit 1 or 6), `CLI_OUTCOME_UNKNOWN` (a mutation may or may not have happened, exit 7), `CLI_INTERRUPTED` (exit 130) and `CLI_FAILED` (any other failure, exit 1). Before version 2 `code` was `CLI_<exit status>`.
+- `exitCode`: the process exit status, which is unchanged. A script that branches on it keeps working.
+- `retryable`: the server's own value for a server fault, `true` only when repeating the identical call later can succeed. For an error raised in the CLI it is `true` only for `CLI_CONNECTION_FAILED`.
+- `remediation`: one line saying what to do next, present only when the server sent one. Text output prints the message on stderr, then a `Try:` line with it.
+- `identifiers`: beside `error`, present only for a command that has them to report, such as the pending interrupts of a chat run.
+
+Two golden files, `src/host/__fixtures__/cli-error-golden/server-fault.json` and `local-error.json`, pin the JSON error for one server fault and one local error.
+
+### Explaining and retrying a failed run
+
+`interborough runs explain <id>` prints why a run failed, from what Bureau stored about it and never from a model: the summary, the cause, the step, how many times it was tried, the guardrails that fired, what to do next and the commands that read the run. It takes either kind of run by its identifier, so it needs no `--kind`. `--output json` prints the operation's own result (`bureau.tasks.explain`) in the usual envelope. A run that did not fail prints the server's message, and its `Try:` remediation, on stderr and exits with the usage status (2).
+
+`interborough runs retry <id>` runs a failed instance of a workflow file again from the step it failed at, in place (`bureau.workflows.runs.retry`); `--step N`, counted from 1, names the step and must be the one it failed at. It is the command `runs explain` offers in `nextCommands` for an instance a retry accepts. A fault that guarantees nothing ran (`InvalidParams`, `NotFound`, `Unprocessable`, `Forbidden` and the like: the server refused or found the call malformed) exits 1, or 3 or 4 for an authorization or conflict status. A fault that can come after the retry committed (`EngineFailure`, `Unavailable`, `Timeout`), like a request that got no answer, is an outcome the CLI cannot know and exits 7, so a caller does not send the retry again blind. It has no `--dry-run`, because the operation has no preview.
+
+### Previewing and confirming destructive commands
+
+Every command that cancels, pauses, disables, removes or deletes something takes `--dry-run`, which prints what it would change and changes nothing, and the ones that cannot be undone also ask first. `--yes` answers that question. `src/host/cli-destructive.ts` lists the commands, and `cli-destructive.test.ts` fails when a command is mapped to a destructive operation that the list lacks.
+
+- **`--dry-run`**: for a Bureau operation (`runs cancel`, `chats cancel`, `chats delete`, `agents delete`, `goals cancel`, `hooks delete`, `memory forget`) the CLI sends `dryRun: true` to the operation it already calls (`bureau.tasks.cancel` for an agent run, `weft.workflows.cancel` for a workflow run; `chats cancel` goes through `bureau.tasks.cancel` too, as its route does) and prints the server's answer unchanged, so `--dry-run --output json` is the server's `{ dryRun: true, target, effects }` in the usual envelope. `api call <operation> --dry-run` sets `dryRun: true` on the input, over one the input carries, and refuses an operation whose input has no `dryRun` (exit 2). `providers disconnect`, `tool-sources remove` and `plugins disable` change host routes, and Bureau has no dry run for `schedules pause`, so for these four the CLI reads the target and prints the change it would send: `{ dryRun: true, previewedBy: "cli", target, current, wouldSend }`, with a note saying the CLI made the preview. A target that is not there exits 1, as a read of an absent target does. A dry run needs no `--yes`, and a failure of one never reports an unknown mutation outcome (exit 7).
+- **Confirmation**: `chats delete`, `agents delete`, `hooks delete`, `memory forget`, `tool-sources remove`, `providers disconnect` and `api call` on an operation the catalog marks destructive ask on a terminal (`<what>? This cannot be undone. [y/N]`, default no; a no exits 1 and changes nothing) and refuse when input is not a terminal or `--no-input` is given, with the usage exit status (2) and a message naming `--yes`. A script that called one of these without `--yes` now fails until it passes it; `memory forget` and `api call` used to exit 5 here.
+- **No confirmation**: `runs cancel`, `chats cancel`, `goals cancel`, `schedules pause` and `plugins disable` run as before, because they are safety stops or reversible. `reviews` no longer declares `--yes`, which it never read.
+
 ## Running it
 
 Run every command from the repository root.

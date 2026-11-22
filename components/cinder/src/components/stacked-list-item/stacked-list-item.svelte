@@ -50,6 +50,7 @@
     metaCompact,
     metaTooltip,
     wrapMeta = false,
+    metaLines = 1,
     detail,
     error,
     onRetryClick,
@@ -409,6 +410,7 @@
                 <div
                   class="cinder-stacked-list-item__meta"
                   data-cinder-meta-compact={lineMeta === metaCompact ? '' : undefined}
+                  data-cinder-meta-lines={metaLines === 2 ? '2' : undefined}
                 >
                   {@render lineMeta()}
                 </div>

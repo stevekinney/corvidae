@@ -37,6 +37,11 @@ import {
 } from './engine-console.ts';
 import { failureWorkflows, seedFailures, type FailuresEngine } from './failures.ts';
 import { finalizerWorkflows, seedFinalizer, type FinalizerEngine } from './finalizer.ts';
+import {
+  forkComparisonWorkflows,
+  seedForkComparison,
+  type ForkComparisonEngine,
+} from './fork-comparison.ts';
 import { historyWorkflows, seedHistory, type HistoryEngine } from './history.ts';
 import {
   restartLineageWorkflows,
@@ -233,6 +238,7 @@ export const workflows = {
   ...restartLineageWorkflows,
   ...engineConsoleWorkflows,
   ...runStepsWorkflows,
+  ...forkComparisonWorkflows,
 };
 
 /**
@@ -275,7 +281,8 @@ export type FixtureEngine = FixtureWorkflowStarter &
   SchedulesEngine &
   RestartLineageEngine &
   EngineConsoleEngine &
-  RunStepsEngine;
+  RunStepsEngine &
+  ForkComparisonEngine;
 
 /**
  * Starts one run of every fixture workflow, plus every domain-specific
@@ -330,4 +337,5 @@ export async function seed(engine: FixtureEngine): Promise<void> {
   await seedRestartLineage(engine);
   await seedEngineConsole(engine);
   await seedRunSteps(engine);
+  await seedForkComparison(engine);
 }

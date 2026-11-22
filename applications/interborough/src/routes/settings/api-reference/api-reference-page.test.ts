@@ -186,6 +186,15 @@ describe('Settings › API reference', () => {
     );
   });
 
+  test('Operations of a server that lists none is the one EmptyState alone, with no group select or count', async () => {
+    const view = open({ openapi: { paths: {} } });
+
+    expect(await view.findByText(API_REFERENCE_COPY.operations.empty.none)).not.toBeNull();
+    expect(view.queryByTestId('api-operations-count')).toBeNull();
+    expect(view.queryByRole('combobox', { name: 'Group' })).toBeNull();
+    expect(view.queryByRole('table', { name: 'Operations' })).toBeNull();
+  });
+
   test('Operations has a group select, a count and a table of method, path, what it does and scope', async () => {
     const view = open();
 

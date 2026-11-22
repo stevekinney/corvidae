@@ -477,9 +477,12 @@ describe('one list failing', () => {
       new StubFault('EngineFailure', 500, 'The Bureau broke.'),
       {},
     );
-    await findByText('The Bureau broke.');
-    expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
-      'ready',
+    // The stub says "Bureau"; the page reads "the server".
+    await findByText('The server broke.');
+    await waitFor(() =>
+      expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
+        'ready',
+      ),
     );
     expect(container.textContent).not.toContain(REVIEWS_COPY.allCaughtUp);
   });

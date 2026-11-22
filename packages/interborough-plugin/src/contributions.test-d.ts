@@ -65,6 +65,7 @@ export const placedPanel: PluginPanel = {
   placements: [
     { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
     { kind: 'run' },
+    { kind: 'run', when: 'failed' },
     { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
   ],
 };

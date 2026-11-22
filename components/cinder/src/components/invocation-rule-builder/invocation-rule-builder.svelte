@@ -18,6 +18,7 @@
   import Plus from '@lucide/svelte/icons/plus';
   import { tick } from 'svelte';
   import { classNames } from '../../utilities/class-names.ts';
+  import Checkbox from '../checkbox/checkbox.svelte';
   import Combobox from '../combobox/combobox.svelte';
   import type {
     InvocationRule,
@@ -204,10 +205,12 @@
           ...rule,
           actions: [],
           conditions: rule.conditions.map((condition) => {
-            const operator = isConditionsOnlyOperator(condition.operator)
-              ? condition.operator
-              : 'eq';
             const type = fieldValueType(condition.field);
+            // A boolean's operator is said as "is", never chosen, so it is always `eq`.
+            const operator =
+              type !== 'boolean' && isConditionsOnlyOperator(condition.operator)
+                ? condition.operator
+                : 'eq';
             const value = isValueValidForFieldType(condition.value, type, condition.field)
               ? condition.value
               : defaultConditionValue(condition.field);
@@ -619,6 +622,7 @@
         {:else}
           <div
             class="cinder-invocation-rule-builder__conditions"
+            data-cinder-columns={conditionsOnly ? '' : undefined}
             role="list"
             aria-labelledby={`${baseId}-rule-${ruleIndex}-conditions-label`}
           >
@@ -654,22 +658,27 @@
                   </select>
                 {/if}
 
-                <select
-                  class="cinder-invocation-rule-builder__condition-select"
-                  aria-label={`Operator for condition ${conditionIndex + 1} of ${rule.label}`}
-                  value={displayOperator(condition.operator)}
-                  onchange={(event) =>
-                    handleUpdateCondition(
-                      rule.id,
-                      condition.id,
-                      'operator',
-                      (event.target as HTMLSelectElement).value,
-                    )}
-                >
-                  {#each resolvedOperatorOptions as option (option.value)}
-                    <option value={option.value}>{option.label}</option>
-                  {/each}
-                </select>
+                {#if conditionsOnly && fieldValueType(condition.field) === 'boolean'}
+                  <!-- A yes-or-no value has one comparison, so the operator is said, not chosen. -->
+                  <span class="cinder-invocation-rule-builder__condition-fixed-operator">is</span>
+                {:else}
+                  <select
+                    class="cinder-invocation-rule-builder__condition-select"
+                    aria-label={`Operator for condition ${conditionIndex + 1} of ${rule.label}`}
+                    value={displayOperator(condition.operator)}
+                    onchange={(event) =>
+                      handleUpdateCondition(
+                        rule.id,
+                        condition.id,
+                        'operator',
+                        (event.target as HTMLSelectElement).value,
+                      )}
+                  >
+                    {#each resolvedOperatorOptions as option (option.value)}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                {/if}
 
                 {#if conditionsOnly && fieldValueType(condition.field) === 'number'}
                   <input
@@ -687,19 +696,14 @@
                       )}
                   />
                 {:else if conditionsOnly && fieldValueType(condition.field) === 'boolean'}
-                  <input
-                    type="checkbox"
-                    class="cinder-invocation-rule-builder__condition-value-checkbox"
-                    aria-label={`Value for condition ${conditionIndex + 1} of ${rule.label}`}
-                    checked={condition.value === 'true'}
-                    onchange={(event) =>
-                      handleUpdateCondition(
-                        rule.id,
-                        condition.id,
-                        'value',
-                        String((event.target as HTMLInputElement).checked),
-                      )}
-                  />
+                  <span class="cinder-invocation-rule-builder__condition-value-boolean">
+                    <Checkbox
+                      aria-label={`Value for condition ${conditionIndex + 1} of ${rule.label}`}
+                      checked={condition.value === 'true'}
+                      onValueChange={(next) =>
+                        handleUpdateCondition(rule.id, condition.id, 'value', String(next))}
+                    />
+                  </span>
                 {:else if conditionsOnly && fieldValueType(condition.field) === 'enum'}
                   <select
                     class="cinder-invocation-rule-builder__condition-select cinder-invocation-rule-builder__condition-value-select"

@@ -48,12 +48,24 @@
       "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
       "suiteExitCode": 0
     },
+    "code-block": {
+      "renderedSourceSha": "f79fcab553708af354e21732e16a9a756ed7156b",
+      "suiteExitCode": 0
+    },
+    "collapsible": {
+      "renderedSourceSha": "50a1abe787152046a960b2b23b508940022b8456",
+      "suiteExitCode": 0
+    },
     "combobox": {
       "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
       "suiteExitCode": 0
     },
     "copy-button": {
       "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "suiteExitCode": 0
+    },
+    "copyable-value": {
+      "renderedSourceSha": "4bfe587b2ad96df9754570edc9fdb76b89af2e76",
       "suiteExitCode": 0
     },
     "description-list": {

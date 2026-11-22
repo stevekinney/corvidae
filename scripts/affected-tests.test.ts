@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import {
   analyzeSource,
+  owningWorkspace,
   resolveSpecifier,
   type WorkspaceDescription,
 } from './affected-tests-graph.ts';
@@ -26,8 +27,9 @@ import {
   explain,
   explainJson,
   planInvocations,
-  touchesIsolatedTest,
+  shouldRunIsolatedTests,
 } from './affected-tests.ts';
+import { computedPathRules } from './computed-path-tests.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -242,6 +244,56 @@ describe('Svelte sources', () => {
     expect(select(files, ['packages/gamma/src/Widget.svelte']).selected('@scope/gamma')).toEqual([
       'packages/gamma/src/widget.test.ts',
     ]);
+  });
+});
+
+describe('tests no import edge reaches (COR-2645)', () => {
+  // `api-contract.test.ts` reads every component's types file by a computed path, so nothing
+  // connects it to one. #1214 changed DataList's props without the contract and its checks passed.
+  const cinder = workspace('@lostgradient/cinder', 'components/cinder');
+  const dataListTypes = 'components/cinder/src/components/data-list/data-list.types.ts';
+  const apiContract = 'components/cinder/src/api-contract.test.ts';
+  const files: Record<string, string> = {
+    ...baseFiles,
+    'components/cinder/package.json': '{}',
+    'components/cinder/src/api-contract.ts': 'export const CONTRACT = {};\n',
+    [apiContract]:
+      "import { join } from 'node:path';\nimport { CONTRACT } from './api-contract.ts';\nfor (const name of Object.keys(CONTRACT)) void join(import.meta.dir, 'components', name, `${name}.types.ts`);\n",
+    'components/cinder/src/index.test.ts': "import './index.ts';\n",
+    'components/cinder/src/index.ts': 'export {};\n',
+    [dataListTypes]: 'export interface DataListProps {}\n',
+    'components/cinder/src/components/data-list/data-list.ts': "import './data-list.types.ts';\n",
+    'components/cinder/src/components/data-list/data-list.test.ts': "import './data-list.ts';\n",
+    'components/cinder/src/components/badge/badge.test.ts': "import './badge.ts';\n",
+    'components/cinder/src/components/badge/badge.ts': 'export {};\n',
+  };
+  const withCinder = [...everyWorkspace, cinder];
+
+  test('a change to only data-list.types.ts selects api-contract.test.ts', () => {
+    const { selected, mode, selection } = select(files, [dataListTypes], withCinder);
+    expect(selected('@lostgradient/cinder')).toContain(apiContract);
+    expect(selected('@lostgradient/cinder')).toContain(
+      'components/cinder/src/components/data-list/data-list.test.ts',
+    );
+    expect(mode('@lostgradient/cinder')).toBe('partial');
+    const reason = selection.workspaces
+      .find((entry) => entry.name === '@lostgradient/cinder')
+      ?.tests.get(apiContract);
+    expect(reason).toMatchObject({ kind: 'fallback' });
+    expect(explain(selection, [dataListTypes])).toContain(apiContract);
+  });
+
+  test('the rule adds the top-level Cinder tests and no nested test of another component', () => {
+    const { selected } = select(files, [dataListTypes], withCinder);
+    expect(selected('@lostgradient/cinder')).toContain('components/cinder/src/index.test.ts');
+    expect(selected('@lostgradient/cinder')).not.toContain(
+      'components/cinder/src/components/badge/badge.test.ts',
+    );
+  });
+
+  test('a change outside Cinder does not arm it', () => {
+    const { selected } = select(files, ['packages/gamma/src/index.ts'], withCinder);
+    expect(selected('@lostgradient/cinder')).toEqual([]);
   });
 });
 
@@ -645,9 +697,14 @@ describe('invocation plan and manifest', () => {
   });
 
   test('a changed slow or integration test is the one reason the quick tier runs them', () => {
-    expect(touchesIsolatedTest(['packages/alpha/src/extra.ts'])).toBe(false);
-    expect(touchesIsolatedTest(['packages/alpha/src/run.integration.test.ts'])).toBe(true);
-    expect(touchesIsolatedTest(['scripts/tool.slow.test.ts'])).toBe(true);
+    expect(shouldRunIsolatedTests(['packages/alpha/src/extra.ts'])).toBe(false);
+    expect(shouldRunIsolatedTests(['packages/alpha/src/run.integration.test.ts'])).toBe(true);
+    expect(shouldRunIsolatedTests(['scripts/tool.slow.test.ts'])).toBe(true);
+    expect(shouldRunIsolatedTests(['scripts/tool.slow.test.ts'], false)).toBe(false);
+    expect(shouldRunIsolatedTests(['packages/alpha/src/run.integration.test.ts'], false)).toBe(
+      false,
+    );
+    expect(shouldRunIsolatedTests(['packages/alpha/src/extra.ts'], true)).toBe(true);
   });
 
   test('with the isolated lanes, they follow the fast lanes, serially', () => {
@@ -806,6 +863,30 @@ describe('the repository itself', () => {
     expect(weft?.exports?.['.']).toBe('./src/index.ts');
     expect(weft?.preloads).toContain('packages/weft/tests/test-preload.ts');
     expect(weft?.testScripts.some((script) => script.includes('bun-test-junit.ts'))).toBe(true);
+  });
+
+  test('every computed-path rule names tests and a workspace that exist', () => {
+    const directories = new Set(workspaces.map((entry) => entry.directory));
+    for (const rule of computedPathRules) {
+      expect(directories.has(rule.workspace), rule.workspace).toBe(true);
+      for (const prefix of rule.changed) expect(existsSync(join(root, prefix)), prefix).toBe(true);
+      for (const test of rule.tests) {
+        // A pattern is read against the top-level test files of the rule's workspace source.
+        const matched =
+          typeof test === 'string'
+            ? existsSync(join(root, test))
+              ? [test]
+              : []
+            : [...new Bun.Glob(`${rule.workspace}/src/*.test.ts`).scanSync({ cwd: root })].filter(
+                (path) => test.test(path),
+              );
+        expect(matched.length, `${test}`).toBeGreaterThan(0);
+        for (const path of matched) {
+          expect(path.endsWith('.test.ts'), path).toBe(true);
+          expect(owningWorkspace(path, workspaces).directory, path).toBe(rule.workspace);
+        }
+      }
+    }
   });
 
   test('every lane script splits into roots that exist, so narrowing keeps each lane in scope', () => {

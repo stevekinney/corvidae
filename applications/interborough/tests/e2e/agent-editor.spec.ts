@@ -8,6 +8,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
 import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
+import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
 import { agentDuplicatePath } from '../../src/lib/agent-paths.ts';
 import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
 import {
@@ -19,7 +20,9 @@ import {
   readCatalog,
   removeAgent,
 } from './agent-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const copy = AGENT_EDITOR_COPY.model;
 const WIDTHS = [375, 1280] as const;
@@ -47,7 +50,7 @@ for (const width of WIDTHS) {
       await expect(model).toBeVisible();
       // Opened as it stands, with the chosen model in the field, the list is not narrowed to it.
       await model.click();
-      await expect(model).toHaveValue('anthropic/claude-sonnet-5');
+      await expect(model).toHaveValue('Claude Sonnet 5');
 
       await expect(page.locator('.cinder-_option-group__label').first()).toHaveText('Anthropic');
       for (const provider of unconnected) {
@@ -91,12 +94,12 @@ for (const width of WIDTHS) {
       // Enter on it chooses nothing and leaves the list open.
       await model.press('Enter');
       await expect(model).toHaveAttribute('aria-expanded', 'true');
-      await expect(model).toHaveValue('anthropic/claude-sonnet-5');
+      await expect(model).toHaveValue('Claude Sonnet 5');
 
       // Pressing a provider that is not connected chooses nothing.
       await disabledOption.click({ force: true });
       await page.keyboard.press('Escape');
-      await expect(model).toHaveValue('anthropic/claude-sonnet-5');
+      await expect(model).toHaveValue('Claude Sonnet 5');
 
       // The line under the field links to the page that connects a provider.
       const hint = page.getByTestId('agent-model-unconnected');
@@ -119,18 +122,43 @@ for (const width of WIDTHS) {
       expect(box?.height ?? Infinity).toBeLessThanOrEqual(240);
     });
 
-    test('shows the abilities of the chosen model', async ({ page }) => {
+    test('/agents/new new-agent model display names filter and show the chosen model abilities', async ({
+      page,
+    }) => {
       await page.goto('/agents/new');
       const abilities = page.getByTestId('agent-model-abilities');
       await expect(abilities).toBeVisible();
       await expect(abilities).toContainText(copy.abilities.tools);
 
       const model = page.getByRole('combobox', { name: 'Model' });
-      await model.fill('');
-      await page.getByRole('option', { name: /^anthropic\/claude-haiku-4-5/ }).click();
-      await expect(model).toHaveValue('anthropic/claude-haiku-4-5');
+      await model.fill('claude haiku 4.5');
+      const option = page.getByRole('option', { name: /^Claude Haiku 4\.5/ });
+      await expect(option).toBeVisible();
+      await expect(page.getByRole('option', { name: /^Claude Sonnet 5/ })).toHaveCount(0);
+      if (width === 375) {
+        const navigation = page.getByRole('navigation', { name: NAVIGATION_COPY.tabBar });
+        const listbox = page.getByRole('listbox');
+        await expect(navigation).toBeVisible();
+        await navigation.getByRole('button', { name: NAVIGATION_COPY.moreTab }).click({
+          trial: true,
+        });
+        const { dock, panel } = await readBoxes(page, { dock: navigation, panel: listbox });
+        expect(panel.y + panel.height).toBeLessThanOrEqual(dock.y);
+      }
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'model display names, filtered picker',
+        source: 'agent-editor.spec.ts',
+      });
+      await option.click();
+      await expect(model).toHaveValue('Claude Haiku 4.5');
       await expect(abilities).toBeVisible();
       await expect(abilities).toContainText(/context window/);
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'model display name selected',
+        source: 'agent-editor.spec.ts',
+      });
     });
 
     test('offers the chosen model’s efforts, and clears one the next model cannot do', async ({
@@ -152,8 +180,8 @@ for (const width of WIDTHS) {
 
       const model = page.getByRole('combobox', { name: 'Model' });
       await model.fill('');
-      await page.getByRole('option', { name: /^anthropic\/claude-haiku-4-5/ }).click();
-      await expect(model).toHaveValue('anthropic/claude-haiku-4-5');
+      await page.getByRole('option', { name: /^Claude Haiku 4\.5/ }).click();
+      await expect(model).toHaveValue('Claude Haiku 4.5');
       await expect(effort).toHaveValue('');
       await expect(effort).toBeDisabled();
       await expect(page.getByText(AGENT_EDITOR_COPY.effort.notSupportedByModel)).toBeVisible();

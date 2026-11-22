@@ -19,10 +19,11 @@ export type ErrorStateRetryVariant = 'primary' | 'secondary';
 
 /**
  * What kind of problem the state reports. `'danger'` is a failure (a red disc with a warning glyph,
- * announced as an alert); `'neutral'` is a state where nothing failed, such as a thing that no longer
- * exists (a neutral disc with a search glyph, not announced).
+ * announced as an alert); `'warning'` is a problem that may clear or that the person can resolve (an
+ * amber disc with a warning glyph, announced as a status); `'neutral'` is a state where nothing
+ * failed, such as a thing that no longer exists (a neutral disc with a search glyph, not announced).
  */
-export type ErrorStateTone = 'danger' | 'neutral';
+export type ErrorStateTone = 'danger' | 'warning' | 'neutral';
 
 export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'title'> & {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
@@ -32,6 +33,13 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * its whole sentence passes `''` and draws no second paragraph.
    */
   description: string;
+  /**
+   * What to do next, such as "Check that the server is running, then try again." It renders as its
+   * own line right after the description, in the same type, inside the labelled region, so
+   * assistive technology reads it in order. Leave it off when the fault names no next step. Pair
+   * it with `onRetry` when asking again can help, and omit `onRetry` when it cannot.
+   */
+  remediation?: string;
   /**
    * Optional technical detail, such as a fault code. It sits behind a disclosure labelled
    * `detailsLabel`, so the plain-words description stays the first thing a person reads.
@@ -50,10 +58,20 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
   retryStatus?: string;
   /**
    * What kind of problem this reports. `'danger'` is a failure and is announced as an alert;
-   * `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group.
+   * `'warning'` is a problem that may clear by itself or that the person can resolve, such as a
+   * conflicting change or a server that is not answering, drawn in the warning colors and
+   * announced politely as a status; `'neutral'` is a state where nothing failed, such as a missing
+   * page, and is a plain group. `announce` raises a warning or neutral state to an alert.
    * @default 'danger'
    */
   tone?: ErrorStateTone;
+  /**
+   * Announces a `'warning'` or `'neutral'` state as an alert, so assistive technology interrupts
+   * with it as it does for a failure. Use it when the state replaces the content the person came
+   * for, so staying quiet would leave them with nothing. The `'danger'` tone is always an alert.
+   * @default false
+   */
+  announce?: boolean;
   /** Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action. */
   onRetry?: () => void;
   /**
@@ -67,7 +85,8 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * A second action rendered alongside the retry button, such as an "Open Health" link or a
    * "Back to chats" button. Give it the secondary or ghost button variant so the retry button
    * stays the only primary on the page. When both actions are present, the secondary action is
-   * first in DOM and keyboard order, visually left of the primary.
+   * first in DOM and keyboard order, visually left of the primary. Every variant draws it, the
+   * `'row'` too, and it stands alone when the state has no retry.
    */
   secondaryAction?: Snippet;
   /**
@@ -95,9 +114,10 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
-   * the title and description as one sentence, and a secondary retry button (no refresh glyph
-   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
-   * live; the retry drops under the words on a phone.
+   * the title (semibold, on its own line), the description and remediation under it, and
+   * the actions (a secondary retry button with no refresh glyph unless `retryIcon` is given, and
+   * any `secondaryAction`) at the end, for the failure of one card among others that are live;
+   * the actions drop under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
@@ -112,8 +132,10 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
   size?: ErrorStateSize;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
-   * container of its own. Leave it off when a card or panel already surrounds the state. It
-   * applies to the centred layout; the `'flat'` variant has no box.
+   * container of its own. Leave it off when a card or panel already surrounds the state. On the
+   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline in the tone's
+   * border token (danger, warning or neutral) around the one line; the `'flat'` variant has no
+   * box.
    * @default false
    */
   bordered?: boolean;
@@ -134,6 +156,13 @@ export interface ErrorStateSchemaProps {
    */
   description: string;
   /**
+   * What to do next, such as "Check that the server is running, then try again." It renders as its
+   * own line right after the description, in the same type, inside the labelled region, so
+   * assistive technology reads it in order. Leave it off when the fault names no next step. Pair
+   * it with `onRetry` when asking again can help, and omit `onRetry` when it cannot.
+   */
+  remediation?: string;
+  /**
    * Optional technical detail, such as a fault code. It sits behind a disclosure labelled
    * `detailsLabel`, so the plain-words description stays the first thing a person reads.
    */
@@ -151,10 +180,20 @@ export interface ErrorStateSchemaProps {
   retryStatus?: string;
   /**
    * What kind of problem this reports. `'danger'` is a failure and is announced as an alert;
-   * `'neutral'` is a state where nothing failed, such as a missing page, and is a plain group.
+   * `'warning'` is a problem that may clear by itself or that the person can resolve, such as a
+   * conflicting change or a server that is not answering, drawn in the warning colors and
+   * announced politely as a status; `'neutral'` is a state where nothing failed, such as a missing
+   * page, and is a plain group. `announce` raises a warning or neutral state to an alert.
    * @default 'danger'
    */
   tone?: ErrorStateTone;
+  /**
+   * Announces a `'warning'` or `'neutral'` state as an alert, so assistive technology interrupts
+   * with it as it does for a failure. Use it when the state replaces the content the person came
+   * for, so staying quiet would leave them with nothing. The `'danger'` tone is always an alert.
+   * @default false
+   */
+  announce?: boolean;
   /**
    * Label of the retry button.
    * @default "Try again"
@@ -177,9 +216,10 @@ export interface ErrorStateSchemaProps {
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
-   * the title and description as one sentence, and a secondary retry button (no refresh glyph
-   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
-   * live; the retry drops under the words on a phone.
+   * the title (semibold, on its own line), the description and remediation under it, and
+   * the actions (a secondary retry button with no refresh glyph unless `retryIcon` is given, and
+   * any `secondaryAction`) at the end, for the failure of one card among others that are live;
+   * the actions drop under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
@@ -194,8 +234,10 @@ export interface ErrorStateSchemaProps {
   size?: ErrorStateSize;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
-   * container of its own. Leave it off when a card or panel already surrounds the state. It
-   * applies to the centred layout; the `'flat'` variant has no box.
+   * container of its own. Leave it off when a card or panel already surrounds the state. On the
+   * centred layout it is a panel; on the `'row'` variant it is a quiet hairline in the tone's
+   * border token (danger, warning or neutral) around the one line; the `'flat'` variant has no
+   * box.
    * @default false
    */
   bordered?: boolean;

@@ -108,7 +108,9 @@ const SPECIFICATIONS = {
  * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`), and the hook
  * editor and its deliveries: a plugin hook, a default hook, a withdrawn one, the secret field, a
  * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
- * state of its board (`hooks-states.spec.ts`).
+ * state of its board (`hooks-states.spec.ts`), and a fault's remediation and Retry on the Hooks
+ * list's failed state (`fault-remediation.spec.ts`), and the Run page of a failed run that says why
+ * it failed in the Bureau's words (`run-failure-explanation.spec.ts`).
  */
 /**
  * Home's states that `home.spec.ts` holds only at 1280, which it captures at 1280 and at a phone,
@@ -135,6 +137,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/health-overview.spec.ts',
   'tests/e2e/health-states.spec.ts',
   'tests/e2e/health-workers-states.spec.ts',
+  'tests/e2e/06-explore-task-ledger.spec.ts',
   'tests/e2e/health-storage.spec.ts',
   'tests/e2e/health-audit.spec.ts',
   'tests/e2e/health-audit-states.spec.ts',
@@ -163,6 +166,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
+  'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
   // An archived chat, the Archived chats row and view, and a refused archive.
@@ -171,8 +175,18 @@ const SHOWCASE_SPECIFICATIONS = [
   // The Runs list and the run page in the states the sample world does not hold, and the run page
   // in each state it does (COR-2423, COR-2424).
   'tests/e2e/runs-states.spec.ts',
+  // The Retrying and Failed at step filters on the Runs list, and in the workflow list's query builder (COR-2535).
+  'tests/e2e/runs-failure-filters.spec.ts',
   'tests/e2e/run-page-states.spec.ts',
   'tests/e2e/run-page-live-states.spec.ts',
+  // A failed instance's section on the Run page, which says why it failed in the Bureau's words
+  // (COR-2533).
+  'tests/e2e/run-failure-explanation.spec.ts',
+  // Chat opening the failure explanation panel inline, over the result of an agent's explain call.
+  'tests/e2e/failure-explanation-chat.spec.ts',
+  // What a run cost: a reply's details, the run page's rail, the Runs list's Cost column, a goal's
+  // row and Health's Needs attention (COR-2525).
+  'tests/e2e/run-cost-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
   // The Checks page in each state of its design rows: first use, filtered to nothing, loading,
@@ -191,8 +205,30 @@ const SHOWCASE_SPECIFICATIONS = [
   // deleted, Restore, skills and reference documents; Reviews loading, resolved elsewhere, a
   // workflow review, Denied and a Done list longer than a page (COR-2429, COR-2426).
   'tests/e2e/agents-reviews-design-states.spec.ts',
+  'tests/e2e/31-reviews.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
+  // A fault's remediation and Retry on the Hooks list's failed state and the Reviews fault row: a
+  // retryable fault with a remediation, one that is not retryable, one with no remediation, and a
+  // conflict in the warning tone, and the failed row under a run's hooks (COR-2560).
+  'tests/e2e/fault-remediation.spec.ts',
+  // The four typed-confirmation dialogs (bulk action, purge, drain, clear dead letter) in each
+  // state, which no page capture sees (COR-2547). `--grep confirm-dialog-states` selects it.
+  'tests/e2e/confirm-dialog-states.spec.ts',
+  // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
+  // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
+  'tests/panels/schedule-editor-states.spec.ts',
+  // A fork's comparison with its source, the fork dialog's preview, and the run panels on a
+  // workflow run's page (COR-2538). `--grep fork-comparison-states` selects it.
+  'tests/e2e/fork-comparison-states.spec.ts',
+  // The run comparison panel in a frame, in each state it draws (COR-2544). `--grep run-comparison-states`
+  // selects it.
+  'tests/panels/run-comparison-states.spec.ts',
+  // The failure explanation panel, in the same kind of frame, in each state it draws (COR-2543).
+  // `--grep failure-explanation-states` selects it.
+  'tests/panels/failure-explanation-states.spec.ts',
+  // The run timeline panel in each state it draws, likewise a frame no page capture sees (COR-2542).
+  'tests/panels/run-timeline-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

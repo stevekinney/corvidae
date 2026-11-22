@@ -720,55 +720,24 @@
   cursor: pointer;
 }
 
-/* Fault treatment (plan §10.4) — shared by `src/app/fault-boundary.svelte`
- * and `src/routes/system/query-fault-banner.svelte`, so these rules live in
- * this plain global stylesheet, not a component's scoped \3c style> block
+/* Fault treatment (plan §10.4) — the row itself is a Cinder `ErrorState`
+ * (`src/app/fault-error-state.svelte`), which covers its box (the `bordered` hairline), tone,
+ * glyph and text. What is left is what puts a note, the field errors or a stack trace under it,
+ * shared by `src/app/fault-boundary.svelte` and `src/routes/system/query-fault-banner.svelte`, so
+ * these rules live in this plain global stylesheet, not a component's scoped \3c style> block
  * (scoped styles never apply to another component's markup). */
 
-.weft-fault-boundary {
+/* Lines up with the row's glyph. A treatment with nothing to add under the row draws no gap. */
+.weft-fault-boundary__details {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-2, 0.5rem);
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-raised);
+  margin-block-start: var(--cinder-space-2, 0.5rem);
+  margin-inline: var(--cinder-space-4);
 }
 
-.weft-fault-boundary[data-tone='warning'] {
-  border-color: var(--cinder-status-warning-border);
-  background: var(--cinder-status-warning-background);
-}
-
-.weft-fault-boundary[data-tone='danger'] {
-  border-color: var(--cinder-status-danger-border);
-  background: var(--cinder-status-danger-background);
-}
-
-.weft-fault-boundary__banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.weft-fault-boundary__icon {
-  flex: none;
-  color: var(--cinder-text-subtle);
-}
-
-.weft-fault-boundary[data-tone='warning'] .weft-fault-boundary__icon {
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-fault-boundary[data-tone='danger'] .weft-fault-boundary__icon {
-  color: var(--cinder-status-danger-text);
-}
-
-.weft-fault-boundary__message {
-  flex: 1 1 auto;
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-default);
+.weft-fault-boundary__details:not(:has(> *)) {
+  display: none;
 }
 
 .weft-fault-boundary__note,

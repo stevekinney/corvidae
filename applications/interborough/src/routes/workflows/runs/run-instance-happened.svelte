@@ -6,12 +6,11 @@
    * why it failed under it and no banner above the page (row 14t). The entries are made from the
    * history the Bureau keeps of the instance (`run-instance.ts`).
    */
-  import { Alert, Badge, Button, Collapsible, Section } from '@lostgradient/cinder';
+  import { Alert, Button, Section } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { Play, RefreshCw } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
-  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import { clockTimeWithSeconds } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
@@ -23,10 +22,12 @@
     type InstanceProgress,
   } from './run-instance.ts';
   import { oneLine } from '../../../lib/one-line.ts';
-  import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { durationWords } from './run-rows.ts';
+  import RunFailureExplanation from './run-failure-explanation.svelte';
 
   interface RunInstanceHappenedProps {
+    /** The instance's id, whose failure the block explains. */
+    runId: string;
     entries: readonly InstanceEntry[];
     /** When the run started, in epoch milliseconds. */
     startedAt: number;
@@ -70,6 +71,7 @@
   }
 
   let {
+    runId,
     entries,
     startedAt,
     progress,
@@ -86,14 +88,18 @@
 
   const copy = RUN_DETAIL_COPY.instance;
 
+  // How long a step that was tried again took in all (row 55b): the explanation's Tries row says
+  // it, and the page's own sentence below says it while the Bureau has no answer.
+  const tookWords = $derived(
+    progress === undefined || progress.tries < 2 || triesTook === undefined
+      ? undefined
+      : triesTookWords(triesTook),
+  );
   // "Interborough tried 3 times in 3.4 s.", said after why it failed when the step was tried again.
   const tried = $derived(
     progress === undefined || progress.tries < 2
       ? undefined
-      : copy.triedIn(
-          progress.tries,
-          triesTook === undefined ? undefined : triesTookWords(triesTook),
-        ),
+      : copy.triedIn(progress.tries, tookWords),
   );
   const retryKeeps = $derived(
     retryVersion === undefined || progress?.at === null || progress?.at === undefined
@@ -112,7 +118,6 @@
   const stepNumber = $derived(progress?.at ?? undefined);
   // A cancellation is a person's doing; any other failure of a step is not (row 14t).
   const notYourFault = $derived(category !== 'cancellation');
-  const healthPath = TASK_COPY.list.loadFailed.healthPath;
 
   function openLink(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -121,15 +126,18 @@
     event.preventDefault();
     router.navigate(path);
   }
-
-  function openHealth(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(healthPath);
-  }
 </script>
+
+{#snippet fallback()}
+  {#if said !== undefined}
+    <p class="weft-overview-tab__failure-explanation">
+      <strong>{copy.whyItFailed}.</strong>
+      {said}{#if notYourFault}{` ${copy.notYourFault}`}{/if}{#if tried !== undefined}{` ${tried}`}{/if}
+    </p>
+  {:else if tried !== undefined}
+    <p class="weft-overview-tab__failure-explanation">{tried}</p>
+  {/if}
+{/snippet}
 
 <Section title={RUN_DETAIL_COPY.happened.heading} data-section="what-happened">
   <ol class="ib-run-happened" aria-label={RUN_DETAIL_COPY.happened.listLabel}>
@@ -158,20 +166,21 @@
       data-testid="run-step-failure"
       {heading}
     >
-      {#if said !== undefined}
-        <p class="weft-overview-tab__failure-explanation">
-          <strong>{copy.whyItFailed}.</strong>
-          {said}{#if notYourFault}{` ${copy.notYourFault}`}{/if}{#if tried !== undefined}{` ${tried}`}{/if}
-        </p>
-      {:else if tried !== undefined}
-        <p class="weft-overview-tab__failure-explanation">{tried}</p>
+      <!-- Why it failed, as the Bureau stored it (COR-2533): the one reason in the block, with the
+           stack behind a disclosure (rows 14t, 55b). The page's own words about the failure show
+           only while the Bureau has no answer, or holds none. The step is named once, in the
+           heading, and the Bureau's remediation is the one next step. -->
+      <RunFailureExplanation
+        {runId}
+        {category}
+        {errorStack}
+        showStep={false}
+        took={tookWords}
+        {fallback}
+      />
+      {#if retryKeeps !== undefined}
+        <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>{retryKeeps}</p>
       {/if}
-      <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>
-        {#if retryKeeps !== undefined}{`${retryKeeps} `}{/if}{copy.checkHealth.before}<a
-          href={router.href(healthPath)}
-          onclick={openHealth}>{copy.checkHealth.link}</a
-        >{copy.checkHealth.after}
-      </p>
       {#if retry !== undefined || (runAgain !== undefined && runAgain.blocked !== true) || (onOpenStep !== undefined && stepNumber !== undefined)}
         <div class="ib-run-happened__actions" data-run-failure-actions>
           {#if retry !== undefined && stepNumber !== undefined}
@@ -225,21 +234,6 @@
             />
           {/if}
         </div>
-      {/if}
-      <!-- The engine's kind of failure and its operator sentence are details, with the stack, not
-           the block's headline (rows 14t, 55b). -->
-      {#if category !== undefined || (errorStack !== undefined && errorStack.length > 0)}
-        <Collapsible variant="flat" trigger={copy.inBlock.errorDetails}>
-          {#if category !== undefined}
-            <p class="weft-overview-tab__failure-explanation" data-run-failure-category>
-              <Badge variant="danger">{failureCategoryLabel(category)}</Badge>
-              {failureCategoryExplanation(category)}
-            </p>
-          {/if}
-          {#if errorStack !== undefined && errorStack.length > 0}
-            <pre class="weft-send-tab__result">{errorStack}</pre>
-          {/if}
-        </Collapsible>
       {/if}
     </Alert>
   {/if}

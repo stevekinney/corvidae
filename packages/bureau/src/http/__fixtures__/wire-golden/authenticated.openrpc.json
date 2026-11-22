@@ -1004,7 +1004,7 @@
       }
     },
     {
-      "description": "Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.",
+      "description": "Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). A run that is alive but making no progress (`run-stalled`), a run whose toolbox reported a loop (`run-looping`) and a run that cost more than the `runs.spendThresholdUsd` setting (`run-overspending`, listed while it runs and for seven days after it settles) each name their run; none of them stops it. `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1462,6 +1462,174 @@
                       "queue",
                       "waiting",
                       "failedForGood"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When the Bureau saw the run stall, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "run-stalled",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that stalled.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When the first loop was reported, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "run-looping",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that is looping.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When a step found the run over the spend threshold, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "description": "What the run has cost so far, or in total once it settled, in US dollars.",
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "kind": {
+                        "const": "run-overspending",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that cost more than the threshold.",
+                        "type": "string"
+                      },
+                      "settledAt": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "When the run settled, in epoch milliseconds, or `null` while it runs."
+                      },
+                      "thresholdUsd": {
+                        "description": "The spend threshold in force when the step found the run over, in US dollars.",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName",
+                      "costUsd",
+                      "thresholdUsd",
+                      "settledAt"
                     ],
                     "type": "object"
                   }
@@ -1977,10 +2145,11 @@
           "name": "attention",
           "required": false,
           "schema": {
-            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop, `overspending` for a run a step found over the spend threshold (it stays after the run settles). A task that has ended lists neither of the first two, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
             "enum": [
               "stalled",
-              "looping"
+              "looping",
+              "overspending"
             ],
             "type": "string"
           }
@@ -2154,7 +2323,8 @@
                     "items": {
                       "enum": [
                         "stalled",
-                        "looping"
+                        "looping",
+                        "overspending"
                       ],
                       "type": "string"
                     },
@@ -2812,10 +2982,11 @@
             "type": "string"
           },
           "attention": {
-            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop, `overspending` for a run a step found over the spend threshold (it stays after the run settles). A task that has ended lists neither of the first two, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
             "enum": [
               "stalled",
-              "looping"
+              "looping",
+              "overspending"
             ],
             "type": "string"
           },
@@ -2961,7 +3132,8 @@
               "items": {
                 "enum": [
                   "stalled",
-                  "looping"
+                  "looping",
+                  "overspending"
                 ],
                 "type": "string"
               },
@@ -4174,7 +4346,8 @@
                   "items": {
                     "enum": [
                       "stalled",
-                      "looping"
+                      "looping",
+                      "overspending"
                     ],
                     "type": "string"
                   },
@@ -4852,7 +5025,7 @@
       }
     },
     {
-      "description": "Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s `label`, `operationType`, `status`, `timestamp` (its start, in epoch milliseconds), `duration` (milliseconds, absent while it runs) and `tries` (how many attempts the engine made at the step, this one included). `runId` is an agent run’s task id or a workflow instance’s id, and `kind` says which. No step’s input or output is returned, only names and timings. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`. A run of more than 1000 entries is cut and `truncated` is true.",
+      "description": "Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s `label`, `operationType`, `status`, `timestamp` (its start, in epoch milliseconds), `duration` (milliseconds, absent while it runs) and `tries` (how many attempts the engine made at the step, this one included). `runId` is an agent run’s task id or a workflow instance’s id, and `kind` says which; `runStatus` says where the run stands (`pending`, `running`, `suspended`, `completed`, `failed`, `cancelled` or `timed-out`), so a reader can tell a step the run has left from one it is still in. No step’s input or output is returned, only names and timings. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`. A run of more than 1000 entries is cut and `truncated` is true.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -4959,6 +5132,19 @@
             "runId": {
               "type": "string"
             },
+            "runStatus": {
+              "description": "Where the run stands as the timeline is read. A run that is `completed`, `failed`, `cancelled` or `timed-out` has finished, so no step of it is still going, whatever its last entry says.",
+              "enum": [
+                "pending",
+                "running",
+                "suspended",
+                "completed",
+                "failed",
+                "cancelled",
+                "timed-out"
+              ],
+              "type": "string"
+            },
             "truncated": {
               "description": "True when the run has more than 1000 entries.",
               "type": "boolean"
@@ -4967,6 +5153,7 @@
           "required": [
             "runId",
             "kind",
+            "runStatus",
             "entries",
             "truncated"
           ],
@@ -4987,6 +5174,469 @@
         "properties": {
           "runId": {
             "description": "The identifier of the run: an agent run’s task id, or a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Takes the id of a workflow run made by forking another and returns the run it was forked from (`sourceRunId`), the `forkPoint` (the source checkpoint step the fork started from) and the two runs aligned by durable step: each step's `index`, whether it is `shared` (before the fork point, so both sides are the source's entry) and, for `source` and `fork`, the `operationType`, `label`, `status`, `input` and `output` the engine summarizes, with payload fields redacted as the timeline read redacts them. A side is absent when that run has no entry for the step. Pages by step: `limit` (100 by default, at most 1000) and `nextCursor`. The fork and its source are each read with the access `bureau.workflows.runs.get` asks; a run the caller may not read, a source the caller may not read, a run that is no instance of a workflow file, and a run that does not exist are all `NotFound`. A run that is not a fork is `Unprocessable`, and its message says what to do.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.runs.compare",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "forkPoint": {
+              "description": "The source checkpoint step the fork started from.",
+              "type": "number"
+            },
+            "nextCursor": {
+              "description": "Pass as `cursor` for the next page; absent on the last.",
+              "type": "string"
+            },
+            "runId": {
+              "description": "The fork that was compared.",
+              "type": "string"
+            },
+            "sourceRunId": {
+              "description": "The run the fork was made from.",
+              "type": "string"
+            },
+            "steps": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "fork": {
+                    "additionalProperties": false,
+                    "description": "The fork’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  },
+                  "index": {
+                    "description": "The durable step index both sides share.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "shared": {
+                    "description": "True before the fork point: the fork kept the source’s result, on both sides.",
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "description": "The source run’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "index",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "runId",
+            "sourceRunId",
+            "forkPoint",
+            "steps"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Compare a forked workflow run with its source, step by step",
+      "tags": [
+        {
+          "name": "Runs"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "runId": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns why one failed run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time. `runId` is an agent run’s task id or a workflow instance’s id. `summary` is one sentence naming the step and the cause, built from the failure category (`application`, `timeout`, `cancellation`, `resource`, `system`, or `null` when nothing classifies the failure: a workflow instance’s is the engine’s, an agent run’s is read from its finish reason and its error’s kind) and the error’s kind. `cause` is the category, the error’s `code` and its `kind` (an agent run’s; `null` for a workflow instance). `step` is the step the run failed at (its index and label), `tries` how many times the engine tried that step (`null` when its history records no failed attempt, as for an agent run that ended on a failed result), `verdicts` each guardrail that fired in the run (its `name`, whether it halted the run as a `tripwire` or let it go on as a `guardrail`, and its `outcome`; a workflow instance’s own steps included), `remediation` what to do next, and `nextCommands` `interborough` command lines for the run (`runs get`, and `runs retry` for a failed workflow instance `bureau.workflows.runs.retry` would run again for the caller). It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`; a workflow instance whose run state or timeline the Bureau cannot read, because it has no durable engine, is `UnsupportedCapability` (`durable-engine`), never `run-not-failed`. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.tasks.explain",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed run: an agent run’s task id, or a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "cause": {
+              "additionalProperties": false,
+              "properties": {
+                "category": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "application",
+                        "timeout",
+                        "cancellation",
+                        "resource",
+                        "system"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The failure’s category; `null` for a failure nothing classifies."
+                },
+                "code": {
+                  "description": "The error’s code, or `null`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "description": "The error’s kind, or `null`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "category",
+                "code",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "nextCommands": {
+              "description": "`interborough` command lines for the run, each one a command the CLI has: `runs get` always, and `runs retry` for a failed workflow instance that `bureau.workflows.runs.retry` would run again for the caller.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "remediation": {
+              "description": "What to do next, in one or two sentences.",
+              "type": "string"
+            },
+            "step": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "description": "The step’s index in the run, from zero.",
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "label": {
+                      "description": "The step’s label: a tool’s name, `model` for a model step, or the engine’s label.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The step the run failed at, or `null` when none was recorded."
+            },
+            "summary": {
+              "description": "One sentence naming the step the run failed at and the cause.",
+              "type": "string"
+            },
+            "tries": {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many times the engine tried that step, or `null` when it kept no history."
+            },
+            "verdicts": {
+              "description": "Each guardrail that fired in the run.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "description": "`tripwire` for a guardrail that halted the run, `guardrail` for one that let it go on.",
+                    "enum": [
+                      "guardrail",
+                      "tripwire"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "The guardrail’s name.",
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "description": "What it did: `tripwire`, or for a validate-mode guardrail `block`, `warn`, `sanitize` or `redact`.",
+                    "enum": [
+                      "tripwire",
+                      "block",
+                      "warn",
+                      "sanitize",
+                      "redact"
+                    ],
+                    "type": "string"
+                  },
+                  "step": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The step it fired at, or `null`."
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "outcome",
+                  "step"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "summary",
+            "cause",
+            "step",
+            "tries",
+            "verdicts",
+            "remediation",
+            "nextCommands"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Explain why a run failed",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the failed run: an agent run’s task id, or a workflow instance’s id.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -5186,7 +5836,8 @@
                       "items": {
                         "enum": [
                           "stalled",
-                          "looping"
+                          "looping",
+                          "overspending"
                         ],
                         "type": "string"
                       },
@@ -22596,7 +23247,7 @@
       }
     },
     {
-      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
+      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at, and is that step when left out. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -22644,9 +23295,9 @@
         },
         {
           "name": "step",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.",
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer"
@@ -22712,15 +23363,14 @@
             "type": "string"
           },
           "step": {
-            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.",
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "runId",
-          "step"
+          "runId"
         ],
         "type": "object"
       }
@@ -23556,6 +24206,7 @@
                       "budget.threshold",
                       "run.stalled",
                       "run.looping",
+                      "run.overspending",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -23660,6 +24311,7 @@
                         "budget.threshold",
                         "run.stalled",
                         "run.looping",
+                        "run.overspending",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",
@@ -23822,6 +24474,7 @@
                       "budget.threshold",
                       "run.stalled",
                       "run.looping",
+                      "run.overspending",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -23926,6 +24579,7 @@
                         "budget.threshold",
                         "run.stalled",
                         "run.looping",
+                        "run.overspending",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",

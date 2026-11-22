@@ -1332,7 +1332,25 @@
     "$.items[]|oneOf[5].queue",
     "$.items[]|oneOf[5].waiting",
     "$.items[]|oneOf[5].workerId",
-    "$.items[]|oneOf[5].workerName"
+    "$.items[]|oneOf[5].workerName",
+    "$.items[]|oneOf[6].agentName",
+    "$.items[]|oneOf[6].area",
+    "$.items[]|oneOf[6].at",
+    "$.items[]|oneOf[6].kind",
+    "$.items[]|oneOf[6].runId",
+    "$.items[]|oneOf[7].agentName",
+    "$.items[]|oneOf[7].area",
+    "$.items[]|oneOf[7].at",
+    "$.items[]|oneOf[7].kind",
+    "$.items[]|oneOf[7].runId",
+    "$.items[]|oneOf[8].agentName",
+    "$.items[]|oneOf[8].area",
+    "$.items[]|oneOf[8].at",
+    "$.items[]|oneOf[8].costUsd",
+    "$.items[]|oneOf[8].kind",
+    "$.items[]|oneOf[8].runId",
+    "$.items[]|oneOf[8].settledAt",
+    "$.items[]|oneOf[8].thresholdUsd"
   ],
   "output:bureau.hooks.create": [
     "$.action",
@@ -2128,6 +2146,27 @@
     "$.receipt",
     "$.remembered"
   ],
+  "output:bureau.runs.compare": [
+    "$.forkPoint",
+    "$.nextCursor",
+    "$.runId",
+    "$.sourceRunId",
+    "$.steps",
+    "$.steps[].fork",
+    "$.steps[].fork.input",
+    "$.steps[].fork.label",
+    "$.steps[].fork.operationType",
+    "$.steps[].fork.output",
+    "$.steps[].fork.status",
+    "$.steps[].index",
+    "$.steps[].shared",
+    "$.steps[].source",
+    "$.steps[].source.input",
+    "$.steps[].source.label",
+    "$.steps[].source.operationType",
+    "$.steps[].source.output",
+    "$.steps[].source.status"
+  ],
   "output:bureau.runs.timeline": [
     "$.entries",
     "$.entries[].duration",
@@ -2139,6 +2178,7 @@
     "$.entries[].tries",
     "$.kind",
     "$.runId",
+    "$.runStatus",
     "$.truncated"
   ],
   "output:bureau.schedules.cancel": [
@@ -2424,6 +2464,24 @@
     "$|anyOf[1].taskId"
   ],
   "output:bureau.tasks.events": ["$.cursor", "$.subscriptionId"],
+  "output:bureau.tasks.explain": [
+    "$.cause",
+    "$.cause.category",
+    "$.cause.code",
+    "$.cause.kind",
+    "$.nextCommands",
+    "$.remediation",
+    "$.step",
+    "$.step|anyOf[0].index",
+    "$.step|anyOf[0].label",
+    "$.summary",
+    "$.tries",
+    "$.verdicts",
+    "$.verdicts[].kind",
+    "$.verdicts[].name",
+    "$.verdicts[].outcome",
+    "$.verdicts[].step"
+  ],
   "output:bureau.tasks.get": [
     "$.actor",
     "$.agentName",

@@ -37,7 +37,7 @@
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
-  import { classifyFault } from '../../lib/faults.ts';
+  import { classifyFault, faultErrorStateAdvice } from '../../lib/faults.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -227,7 +227,7 @@
           description={hookListFailure(hooks.error)}
           headingLevel={2}
           retryLabel={RETRY_LABEL}
-          onRetry={retry}
+          {...faultErrorStateAdvice(hooks.error, retry)}
         >
           {#snippet secondaryAction()}
             <Button

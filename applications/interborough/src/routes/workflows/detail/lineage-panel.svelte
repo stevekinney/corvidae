@@ -122,12 +122,12 @@
    * "best-effort" and names the exact gap, so an operator reading it is
    * not told a stronger guarantee than the data can support.
    */
-  import { Badge, CopyButton, Section, Skeleton, Tooltip } from '@lostgradient/cinder';
+  import { Badge, Button, CopyButton, Section, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { ArrowRight, CalendarClock, GitFork } from '@lucide/svelte';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
+  import { RUN_COMPARISON_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
@@ -136,6 +136,8 @@
     FRESH_START_REVISION_HEDGE,
     type WorkflowActiveRevisionClient,
   } from '../../../lib/workflow-revision.ts';
+  import ForkComparison from './checkpoints/fork-comparison.svelte';
+  import type { ForkComparisonClient } from './checkpoints/fork-comparison-data.ts';
   import { workflowStatusBadge } from '../list/workflow-status-badge.ts';
   import WorkflowStatusIcon from '../list/workflow-status-icon.svelte';
   import { getScheduleProvenance, scheduleProvenanceQueryKey } from './workflow-observability.ts';
@@ -143,7 +145,8 @@
   interface LineagePanelProps {
     readonly client: Pick<HttpClient, 'get'> & {
       readonly operations: Pick<HttpClient['operations'], 'weft.workflows.scheduleprovenance.get'> &
-        WorkflowActiveRevisionClient['operations'];
+        WorkflowActiveRevisionClient['operations'] &
+        ForkComparisonClient['operations'];
     };
     readonly workflow: WorkflowState;
   }
@@ -172,6 +175,10 @@
   }));
 
   const thisRunBadge = $derived(workflowStatusBadge(workflow.status));
+
+  // The comparison needs only this run's id and the server's answer, so it opens the same way after
+  // a reload and in a new browser session as it does right after the fork.
+  let comparisonOpen = $state(false);
 
   function goToWorkflow(id: string): void {
     router.navigate(workflowDetailPath(id));
@@ -269,16 +276,19 @@
             >
               {forkSourceQuery.data?.type ?? `${truncateId(forkedFrom.workflowId)} run`}
             </a>
-            <span class="weft-lineage-panel__id" title={forkedFrom.workflowId}>
-              {truncateId(forkedFrom.workflowId)}
-            </span>
+            <!-- Named by its workflow and when it started; the link and the copy button carry the id. -->
+            {#if forkSourceQuery.data}
+              <span class="weft-lineage-panel__when">
+                {RUN_COMPARISON_COPY.startedAgo(formatRelativeTime(forkSourceQuery.data.createdAt))}
+              </span>
+            {/if}
             <CopyButton value={forkedFrom.workflowId} label="Copy workflow ID" />
             {#if sourceRevisionAttributable && forkSourceQuery.data?.revision !== undefined}
               {@const sourceRevision = forkSourceQuery.data.revision}
               <Tooltip
                 text={`Source revision (exact executable artifact): ${sourceRevision}. Best-effort attribution: this ID has never been displaced by a tracked start-new replacement, and this record's own creation time precedes this fork — not an absolute guarantee against an untracked ID reuse racing a clock-skewed server.`}
               >
-                <span class="weft-lineage-panel__id">rev {truncateId(sourceRevision)}</span>
+                <span class="weft-lineage-panel__when">{RUN_COMPARISON_COPY.pinnedRevision}</span>
               </Tooltip>
             {:else if sourceRevisionAttributable && forkSourceQuery.data}
               <Tooltip
@@ -307,7 +317,20 @@
             {/if}
           {/if}
           <span class="weft-lineage-panel__meta">at step {forkedFrom.step}</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            label={comparisonOpen ? RUN_COMPARISON_COPY.actionHide : RUN_COMPARISON_COPY.action}
+            aria-expanded={comparisonOpen}
+            aria-controls={`fork-comparison-${workflow.id}`}
+            onclick={() => (comparisonOpen = !comparisonOpen)}
+          />
         </div>
+        {#if comparisonOpen}
+          <div id={`fork-comparison-${workflow.id}`} class="weft-lineage-panel__comparison">
+            <ForkComparison {client} workflowId={workflow.id} />
+          </div>
+        {/if}
       {/if}
     </div>
   </Section>
@@ -316,6 +339,11 @@
 <style>
   .weft-lineage-panel__id {
     font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-2xs);
+    color: var(--cinder-text-subtle);
+  }
+
+  .weft-lineage-panel__when {
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-text-subtle);
   }

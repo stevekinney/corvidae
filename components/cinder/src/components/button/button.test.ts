@@ -272,21 +272,74 @@ describe('Button loading state', () => {
     }
   });
 
-  /** An `offsetWidth` that is the pin while one is set, and the words' own width when none is. */
-  function withNaturalWidths(natural: (text: string) => number, run: () => Promise<void>) {
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+  /**
+   * A layout engine's width reads, which happy-dom has none of: the computed `width` a browser
+   * prints (three decimals), and the rounded `offsetWidth`. `computed` returns the printed width,
+   * or undefined for an engine that prints none.
+   */
+  function withWidths(
+    reads: { offset: number; computed: (element: Element) => string | undefined },
+    run: () => Promise<void>,
+  ) {
+    const offsetDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    const originalComputed = globalThis.getComputedStyle;
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
       configurable: true,
-      get(this: HTMLElement) {
-        return this.style.inlineSize
-          ? Number.parseFloat(this.style.inlineSize)
-          : natural(this.textContent ?? '');
-      },
+      get: () => reads.offset,
     });
+    globalThis.getComputedStyle = ((element: Element) => ({
+      width: reads.computed(element) ?? '',
+    })) as typeof getComputedStyle;
     return run().finally(() => {
-      if (descriptor) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', descriptor);
-      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+      globalThis.getComputedStyle = originalComputed;
+      if (offsetDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetDescriptor);
+      } else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
     });
+  }
+
+  async function pinOf(label: string): Promise<string> {
+    const { container, rerender } = render(Button, { props: { label } });
+    await rerender({ label, loading: true });
+    return container.querySelector('button')!.style.inlineSize;
+  }
+
+  test('the pin keeps the fractional width, so the label never loses a fraction of a pixel to an ellipsis', async () => {
+    // "Save changes" is 82.40625px of words in a 116.40625px button. `offsetWidth` says 116, and a
+    // pin that short made the label box 0.4px narrower than its words, so `text-overflow:
+    // ellipsis` drew "Save chang…". The browser prints the computed width as 116.406px, which
+    // rounds up to the 1/64px layout unit the pin is made of.
+    await withWidths({ offset: 116, computed: () => '116.406px' }, async () => {
+      expect(await pinOf('Save changes')).toBe('116.40625px');
+    });
+    await withWidths({ offset: 64, computed: () => '63.64px' }, async () => {
+      expect(Number.parseFloat(await pinOf('Save'))).toBeGreaterThanOrEqual(63.64);
+    });
+  });
+
+  test('a whole computed width is pinned as it is, and an engine without one pins offsetWidth', async () => {
+    await withWidths({ offset: 96, computed: () => '96px' }, async () => {
+      expect(await pinOf('Save')).toBe('96px');
+    });
+    await withWidths({ offset: 96, computed: () => undefined }, async () => {
+      expect(await pinOf('Save')).toBe('96px');
+    });
+  });
+
+  /** A computed width that is the pin while one is set, and the words' own width when none is. */
+  function withNaturalWidths(natural: (text: string) => number, run: () => Promise<void>) {
+    return withWidths(
+      {
+        offset: 0,
+        computed: (element) =>
+          `${
+            (element as HTMLElement).style.inlineSize
+              ? Number.parseFloat((element as HTMLElement).style.inlineSize)
+              : natural(element.textContent ?? '')
+          }px`,
+      },
+      run,
+    );
   }
 
   test('longer words that come with loading let the width go, so they never spill', async () => {

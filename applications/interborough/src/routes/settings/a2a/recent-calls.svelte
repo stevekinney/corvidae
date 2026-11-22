@@ -19,6 +19,7 @@
   import { A2A_COPY } from '../../../app/copy/a2a.ts';
   import { getRecentCalls } from '../../../lib/a2a-calls.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
+  import { faultErrorStateAdvice } from '../../../lib/faults.ts';
   import type { AgentSummary } from '../../../lib/bureau-client.ts';
   import { queryKeys } from '../../../lib/query.ts';
 
@@ -65,7 +66,7 @@
           title={copy.loadFailed.title}
           description={copy.loadFailed.description}
           retryLabel={copy.retry}
-          onRetry={() => void calls.refetch()}
+          {...faultErrorStateAdvice(calls.error, () => void calls.refetch())}
           data-testid="a2a-calls-failed"
         />
       {:else if calls.data === undefined}

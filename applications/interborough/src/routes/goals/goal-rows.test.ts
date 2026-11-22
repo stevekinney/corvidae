@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { goalAttemptFixture, goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { GOAL_STATUSES, type GoalStatus } from '../../lib/bureau-goals.ts';
 import {
   GOAL_SEGMENTS,
@@ -109,8 +109,28 @@ describe('a goal as a row', () => {
       check: 'Contains phrase "waiting for approval"',
       made: 2,
       allowed: 5,
+      cost: null,
       startedAt: Date.parse('2026-10-30T15:05:00.000Z'),
     });
+  });
+
+  test('AC3: costs what its attempts cost together, partial when one has none, and nothing when none has', () => {
+    const attempts = (costs: readonly (number | null)[]) =>
+      costs.map((costUsd, index) =>
+        goalAttemptFixture(`attempt-${String(index)}`, {
+          attemptIndex: index,
+          usage: { steps: 1, tokens: 1, costUsd },
+        }),
+      );
+    expect(goalRow(goalFixture('goal-1', { attempts: attempts([0.5, 0.25]) })).cost).toEqual({
+      costUsd: 0.75,
+      partial: false,
+    });
+    expect(goalRow(goalFixture('goal-1', { attempts: attempts([0.5, null]) })).cost).toEqual({
+      costUsd: 0.5,
+      partial: true,
+    });
+    expect(goalRow(goalFixture('goal-1', { attempts: attempts([null, null]) })).cost).toBeNull();
   });
 
   test('is titled by its identifier in words when the goal has no name, as everywhere a goal is named, and has no time when the Bureau’s is unreadable', () => {

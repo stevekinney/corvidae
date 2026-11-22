@@ -18,10 +18,12 @@
   let {
     title,
     description,
+    remediation,
     detail,
     detailsLabel = 'Show the error details',
     retryStatus,
     tone = 'danger',
+    announce = false,
     onRetry,
     retryLabel = 'Try again',
     retryVariant = 'primary',
@@ -49,7 +51,12 @@
   const tag = $derived(`h${safeLevel}`);
 
   // An unknown tone behaves as a failure, so an error is never silently demoted to a quiet group.
-  const safeTone = $derived(tone === 'neutral' ? 'neutral' : 'danger');
+  const safeTone = $derived(tone === 'neutral' || tone === 'warning' ? tone : 'danger');
+  // A failure is an alert; a warning is a status and a neutral state a plain group, unless the
+  // caller raises either to an alert with `announce`.
+  const role = $derived(
+    safeTone === 'danger' || announce ? 'alert' : safeTone === 'warning' ? 'status' : 'group',
+  );
   const flat = $derived(variant === 'flat');
   const row = $derived(variant === 'row');
   const compact = $derived(size === 'compact' && !flat && !row);
@@ -60,15 +67,11 @@
   class={classNames('cinder-error-state', className)}
   data-cinder-variant={flat ? 'flat' : row ? 'row' : undefined}
   data-cinder-size={compact ? 'compact' : undefined}
-  data-cinder-bordered={bordered && !flat && !row ? '' : undefined}
+  data-cinder-bordered={bordered && !flat ? '' : undefined}
   data-cinder-tone={safeTone}
 >
   <!-- A failure is announced as an alert; a neutral state (nothing failed) is a plain group. -->
-  <div
-    class="cinder-error-state-body"
-    role={safeTone === 'danger' ? 'alert' : 'group'}
-    aria-labelledby={titleId}
-  >
+  <div class="cinder-error-state-body" {role} aria-labelledby={titleId}>
     {#if row}
       <span class="cinder-error-state-glyph" aria-hidden="true">
         {#if icon}
@@ -86,6 +89,9 @@
         <!-- A row whose title is its whole sentence passes no description, and draws no empty line. -->
         {#if description !== ''}
           <p class="cinder-error-state-description">{description}</p>
+        {/if}
+        {#if remediation}
+          <p class="cinder-error-state-remediation">{remediation}</p>
         {/if}
         {#if retryStatus}
           <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
@@ -129,6 +135,9 @@
         {title}
       </svelte:element>
       <p class="cinder-error-state-description">{description}</p>
+      {#if remediation}
+        <p class="cinder-error-state-remediation">{remediation}</p>
+      {/if}
       {#if retryStatus}
         <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
       {/if}

@@ -49,10 +49,12 @@ Both accept `--source <ref>` (default `HEAD`) and forward any other arguments to
 
 - The exact commit enters the container as `git archive <sha>` on stdin. The host checkout and its `node_modules` are never mounted, so uncommitted changes cannot leak into a run. Commit first, then run.
 - The container installs from the lockfile with `bun install --frozen-lockfile`.
-- The only mount is an empty output directory under the temporary directory. The container copies the Linux baselines, the list of regenerated files, the fixture manifest, the JSON report, and Playwright's `test-results` into it, owned by the host user (`BASELINE_HOST_UID` and `BASELINE_HOST_GID`). The commit is passed as `BASELINE_SOURCE_SHA`, since the archive has no `.git`.
+- The only mount is a temporary output directory. For a component-scoped run it also holds the Playwright test list. The container copies the Linux baselines, the list of regenerated files, the fixture manifest, the JSON report, and Playwright's `test-results` into it, owned by the host user (`BASELINE_HOST_UID` and `BASELINE_HOST_GID`). The commit is passed as `BASELINE_SOURCE_SHA`, since the archive has no `.git`.
 - The container runs as `corvidae-baselines-<run id>` with `--rm` and `--init`. Its `package.json` script holds 4 host slots (`scripts/host-slots.ts`) from `docker build` until the container exits, and the container runs with `--cpus` of 4, or of the Docker VM's processor count when that is smaller ([host admission](../../documentation/repository/host-admission.md)). On SIGINT or SIGTERM the wrapper runs `docker kill` on that name, waits for it to exit, and exits `128 + signal`.
 
-`test:browser:visual:docker` runs the whole suite in block mode, exits with the suite's status (except for the scoped terminal-guard case below), and writes `suite-results.json` (every failing test, screenshot or behavioural) into its run directory. There is no screenshot-only filter. Failure artefacts stay in the printed output directory. A visual run that did not complete normally (see below) prints why on standard error and never exits 0.
+Set `CINDER_TEST_COMPONENTS=collapsible` on either Docker command to run the six Collapsible screenshots. A comma-separated list selects the fixture sweep and any interaction screenshots owned by those components. Without a component scope, both commands select the full suite.
+
+`test:browser:visual:docker` runs the selection in block mode and writes `suite-results.json` with every failing test into its run directory. Failure artefacts stay in the printed output directory. A visual run that did not complete normally (see below) prints why on standard error and never exits 0.
 
 `test:browser:update:docker` first deletes every Linux baseline inside the container, because `--update-snapshots=all` does not rewrite a baseline that already matches within tolerance; every baseline a test uses is then written fresh. After the run it:
 
@@ -62,7 +64,7 @@ Both accept `--source <ref>` (default `HEAD`) and forward any other arguments to
 
 A suite that completed with behavioural failures is applied only with `--accept-behavioural-failures`, after confirming each failure also occurs on an `origin/main` control. A screenshot failure is never accepted, and a run that crashed or was interrupted is never applied. The report records the suite's exit code and every failing test either way.
 
-One failure is expected rather than accepted. `terminal-visual.playwright.ts` holds a guard, "the screenshot scope includes the terminal, so every cell captures an image", that fails whenever `CINDER_TEST_COMPONENTS` leaves the terminal out, so a leftover variable cannot silently skip the terminal's images. On a run scoped by `CINDER_TEST_COMPONENTS`, a suite whose only failure is that guard (matched by its file and exact title) is applied without `--accept-behavioural-failures` (COR-1574), and a scoped `test:browser:visual:docker` run in the same state exits 0 and prints why (COR-1575). Both read the one predicate, `onlyTerminalScopeGuardFailed` in `suite-results.ts`. On a full run, or next to any other failure, it blocks like every other failure.
+The terminal package owns its screenshot suite in `components/terminal/browser`. The root fixture sweep excludes it.
 
 ### Incomplete runs fail closed
 
