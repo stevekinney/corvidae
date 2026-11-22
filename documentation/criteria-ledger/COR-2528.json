@@ -1,14 +1,14 @@
 {
   "issue": "COR-2528",
   "branch": "chef/cor-2528-health-run-rows",
-  "checkedAt": "260e580729c8a291326279503f1f950bee194bf3",
+  "checkedAt": "7eb94b97a5ed57b37aba613fae4a75bc6a2b09e4",
   "briefVersion": "4f7fb514bd2a",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "unchanged; attention-rows tests"
+      "evidence": "attention-rows tests unchanged"
     },
     {
       "id": "AC2",
@@ -17,8 +17,8 @@
     },
     {
       "id": "AC3",
-      "status": "needs-decision",
-      "evidence": "runs-states.spec.ts:208 receives folded=2 because the Needs attention toggle is a second foldable chip; merged main's pressed-toggle treatment (dot, no check) replaces the branch's"
+      "status": "met-on-branch",
+      "evidence": "The Needs attention ToggleFacet is menuOnly (run-list.svelte), like retrying and failedStep: the filter is kept in the address and served by the Bureau, and an applied filter shows as a removable chip. The pressed-toggle treatment is main's (dot, no check). run-list.test.ts and run-list-attention.test.ts open the filter from the Filter menu (34 pass); run-attention-states.spec.ts does the same at 1280. runs-states.spec.ts untouched; the browser specs were not run on this host."
     },
     {
       "id": "AC4",
@@ -33,7 +33,7 @@
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "run-attention-states.spec.ts updated for the dot-only pressed chip"
+      "evidence": "run-attention-states.spec.ts finds the stalled run through the Filter menu at 1280 and the address at 375"
     }
   ]
 }
