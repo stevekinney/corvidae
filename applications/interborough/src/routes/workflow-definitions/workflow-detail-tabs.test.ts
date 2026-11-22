@@ -21,7 +21,6 @@ import {
   savedVersionFixture,
   sourceDefinition,
   workflowFaults,
-  type RevisionFixture,
   type WorkflowStub,
   type World,
 } from '../../lib/workflow-world.test-support.ts';
@@ -41,19 +40,6 @@ afterEach(() => {
 });
 
 const TABS = WORKFLOW_COPY.page.tabs;
-
-function revision(
-  version: string,
-  compatibility: NonNullable<RevisionFixture['compatibility']> | null,
-): RevisionFixture {
-  return {
-    workflowVersion: version,
-    firstRunAt: '2026-10-19T08:00:00.000Z',
-    lastRunAt: '2026-10-19T09:00:00.000Z',
-    document: { name: 'digest', trigger: { kind: 'schedule', spec: '0 6 * * *' }, steps: [] },
-    compatibility,
-  };
-}
 
 function open(path: string, overrides: Partial<World> = {}) {
   stub = installWorkflowWorld(

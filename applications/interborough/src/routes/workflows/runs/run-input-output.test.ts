@@ -193,6 +193,10 @@ describe('a workflow’s input and output', () => {
           trigger: { kind: 'signal' },
           result: { done: false },
           error: 'The approval was refused.',
+          failure: 'The approval was refused.',
+          steps: null,
+          awaitingSignal: null,
+          schedule: null,
         },
       },
     });

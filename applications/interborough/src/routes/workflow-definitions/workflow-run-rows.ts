@@ -45,6 +45,11 @@ export function workflowRunState(status: WorkflowStatus): TaskState {
 /** What started an instance, as the Bureau recorded it on the instance, or `null` when it did not. */
 export type WorkflowRunOrigin = NonNullable<WorkflowFileRun['origin']>;
 
+function scheduledOrigin(id: string, manual: boolean): Extract<RunOrigin, { kind: 'schedule' }> {
+  const path = scheduleDetailPath(id);
+  return { kind: 'schedule', title: '', href: path, scheduleId: id, schedulePath: path, manual };
+}
+
 /** What started an instance, in the words of a run's row. An instance with no recorded origin has none. */
 export function workflowRunOrigin(origin: WorkflowRunOrigin | null | undefined): RunOrigin {
   if (origin === null || origin === undefined) return { kind: 'none' };
@@ -54,14 +59,7 @@ export function workflowRunOrigin(origin: WorkflowRunOrigin | null | undefined):
     case 'person':
       return { kind: 'person', surface: origin.surface, principal: origin.principal ?? undefined };
     case 'schedule':
-      return {
-        kind: 'schedule',
-        title: '',
-        href: scheduleDetailPath(origin.scheduleId),
-        scheduleId: origin.scheduleId,
-        schedulePath: scheduleDetailPath(origin.scheduleId),
-        manual: origin.manual === true,
-      };
+      return scheduledOrigin(origin.scheduleId, origin.manual === true);
     case 'api':
       return { kind: 'api' };
     case 'agent':
@@ -112,6 +110,8 @@ export type WorkflowRunSummary = {
   readonly updatedAt: number;
   /** What started it, when the Bureau recorded that; a code type's instances have none. */
   readonly origin: WorkflowRunOrigin | null;
+  /** The schedule that the engine recorded for a workflow-file instance. */
+  readonly schedule?: WorkflowFileRun['schedule'];
   /** Progress and terminal detail a file-workflow instance reports on its wire summary. */
   readonly steps?: { readonly total: number; readonly at: number | null } | null;
   readonly awaitingSignal?: string | null;
@@ -145,7 +145,10 @@ export function workflowRunRow(run: WorkflowRunSummary, context: WorkflowRunRowC
     awaitingSignal !== null && run.status === 'suspended'
       ? 'working'
       : workflowRunState(run.status);
-  const origin = workflowRunOrigin(run.origin);
+  const origin =
+    run.schedule == null
+      ? workflowRunOrigin(run.origin)
+      : scheduledOrigin(run.schedule.id, run.schedule.manual);
   const scheduleId = origin.kind === 'schedule' ? origin.scheduleId : null;
   return {
     id: run.id,

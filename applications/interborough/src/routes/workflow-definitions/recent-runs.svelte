@@ -98,6 +98,7 @@
             createdAt: Date.parse(run.createdAt),
             updatedAt: Date.parse(run.updatedAt),
             origin: run.origin ?? null,
+            schedule: run.schedule ?? null,
             steps: run.steps ?? null,
             awaitingSignal: run.awaitingSignal ?? null,
             failure: run.failure ?? null,
@@ -228,22 +229,24 @@
       >
     </Alert>
   {:else}
-    <FilterBar
-      aria-label={copy.filtersLabel}
-      {segments}
-      segmentValue={filter.status ?? 'all'}
-      segmentsLabel={TASK_COPY.statusLabel}
-      {facets}
-      {appliedFilters}
-      searchVisible={false}
-      onSegmentChange={chooseSegment}
-      onFacetChange={(key, value) => {
-        if (key === 'startedBy') chooseStartedBy(value);
-      }}
-      onFilterRemove={(key) => {
-        if (key === 'startedBy') chooseStartedBy('');
-      }}
-    />
+    {#if everyRun.length > 0}
+      <FilterBar
+        aria-label={copy.filtersLabel}
+        {segments}
+        segmentValue={filter.status ?? 'all'}
+        segmentsLabel={TASK_COPY.statusLabel}
+        {facets}
+        {appliedFilters}
+        searchVisible={false}
+        onSegmentChange={chooseSegment}
+        onFacetChange={(key, value) => {
+          if (key === 'startedBy') chooseStartedBy(value);
+        }}
+        onFilterRemove={(key) => {
+          if (key === 'startedBy') chooseStartedBy('');
+        }}
+      />
+    {/if}
     {#if runs.isPending}
       <div role="status" aria-busy="true" aria-label={WORKFLOW_COPY.page.recentRuns}>
         <Skeleton height="1.5rem" />
@@ -294,9 +297,11 @@
       </div>
     {/if}
   {/if}
-  <p class="ib-workflow-runs__all">
-    <a href={router.href(runsPath)} onclick={(event) => go(event, runsPath)}
-      >{WORKFLOW_COPY.runsAction}</a
-    >
-  </p>
+  {#if runs.isError || everyRun.length > 0}
+    <p class="ib-workflow-runs__all">
+      <a href={router.href(runsPath)} onclick={(event) => go(event, runsPath)}
+        >{WORKFLOW_COPY.runsAction}</a
+      >
+    </p>
+  {/if}
 </section>

@@ -1012,6 +1012,25 @@ describe('results', () => {
     });
   });
 
+  it('COR-2431: reports the recorded schedule and how it fired in both run reads', async () => {
+    const served = await serve();
+    await seed(served);
+    const scheduleId = 'bureau-workflow-schedule:digest:1';
+    const fired = await served.bureau.durableEngine()!.triggerSchedule(scheduleId);
+    if (fired.outcome !== 'started') throw new Error('Expected the schedule to start immediately.');
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'digest',
+    });
+    const byId = new Map(listOf(listed, 'runs').map((run) => [run.id, run]));
+    expect(byId.get('digest-run')).toMatchObject({ schedule: null });
+    const provenance = { origin: null, schedule: { id: scheduleId, manual: true } };
+    expect(byId.get(fired.workflowId)).toMatchObject(provenance);
+    const read = await ownerRpc(served.owner, 'bureau.workflows.runs.get', {
+      runId: fired.workflowId,
+    });
+    expect(read.result).toMatchObject(provenance);
+  });
+
   it('answers a run that is not an instance of a workflow file as it answers a missing run', async () => {
     const served = await serve();
     await seed(served);

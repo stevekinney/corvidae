@@ -327,6 +327,7 @@ export type WorkflowsOperationTypes = {
         | null;
       readonly outputName: string | null;
       readonly result: unknown;
+      readonly schedule: { readonly id: string; readonly manual: boolean } | null;
       readonly status:
         'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended';
       readonly steps: SharedAtTotal_4df37293 | null;
@@ -378,6 +379,7 @@ export type WorkflowsOperationTypes = {
           | { readonly kind: 'system' }
           | SharedKindPluginWorkflowId_b0296d57
           | null;
+        readonly schedule: { readonly id: string; readonly manual: boolean } | null;
         readonly status:
           'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended';
         readonly steps: SharedAtTotal_4df37293 | null;

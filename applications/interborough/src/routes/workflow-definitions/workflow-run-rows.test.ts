@@ -161,7 +161,7 @@ describe('one instance as a row', () => {
     const done = workflowRunRow(
       summary({
         status: 'completed',
-        origin: { kind: 'schedule', scheduleId: 'daily', fireId: 'one' },
+        schedule: { id: 'daily', manual: false },
       }),
       file,
     );

@@ -267,6 +267,8 @@ export interface WorkflowRunSummary {
   readonly updatedAt: string;
   /** What started the instance, when the runtime recorded an origin. */
   readonly origin: TaskOrigin | null;
+  /** The engine's record of the schedule that fired the instance. */
+  readonly schedule: { readonly id: string; readonly manual: boolean } | null;
   /** The number of steps in the revision and the step the instance reached, both from one. */
   readonly steps: { readonly total: number; readonly at: number | null } | null;
   /** The signal an unfinished instance waits for, or `null`. */
@@ -2239,7 +2241,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     input?: unknown;
   }): Promise<WorkflowRunSummary> {
     // COR-2546: the origin a Bureau start declared, never one a schedule's caller wrote.
-    const { origin } = await startOfRun(engine, state);
+    const { origin, scheduleId, scheduleManual } = await startOfRun(engine, state);
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),
@@ -2248,6 +2250,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       createdAt: new Date(state.createdAt).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
       origin,
+      schedule: scheduleId === null ? null : { id: scheduleId, manual: scheduleManual === true },
       steps: null,
       awaitingSignal: null,
       failure: null,

@@ -220,8 +220,11 @@ for (const width of WIDTHS) {
         `/workflows/${encodeURIComponent(world.workflows.releaseNotes)}?tab=runs`,
         width,
       );
-      const empty = detail(page).locator('.cinder-empty-state[data-cinder-size="compact"]');
-      await expect(empty).toContainText(WORKFLOW_COPY.page.runs.emptyTitle);
+      const empty = detail(page).getByRole('group', { name: WORKFLOW_COPY.page.runs.emptyTitle });
+      await expect(empty).toBeVisible();
+      await expect(
+        detail(page).getByLabel(WORKFLOW_COPY.page.runs.filtersLabel, { exact: true }),
+      ).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',
         tab: 'runs',
@@ -403,7 +406,7 @@ for (const width of WIDTHS) {
         page.getByRole('heading', { level: 1, name: WORKFLOW_COPY.page.notFound.title }),
       ).toBeVisible();
       await expect(
-        page.getByRole('link', { name: WORKFLOW_COPY.page.notFound.back }),
+        page.getByRole('link', { name: 'Back to Workflows', exact: true }),
       ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',

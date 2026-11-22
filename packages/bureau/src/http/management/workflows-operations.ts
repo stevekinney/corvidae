@@ -264,6 +264,10 @@ const runSummarySchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   origin: taskOriginSchema.nullable(),
+  schedule: z
+    .object({ id: z.string(), manual: z.boolean() })
+    .nullable()
+    .describe('The schedule the runtime recorded as having fired the instance.'),
   steps: z
     .object({ total: z.number().int(), at: z.number().int().nullable() })
     .nullable()
@@ -1233,6 +1237,7 @@ export const workflowsRunsGetOperation = defineOperation<
       createdAt: run.createdAt,
       updatedAt: run.updatedAt,
       origin: run.origin ?? null,
+      schedule: run.schedule,
       steps: run.steps === null ? null : { total: run.steps.total, at: run.steps.at },
       awaitingSignal: run.awaitingSignal,
       failure: run.failure,

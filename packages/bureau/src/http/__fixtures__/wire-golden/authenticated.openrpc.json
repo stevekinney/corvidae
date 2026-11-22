@@ -21932,6 +21932,30 @@
                       }
                     ]
                   },
+                  "schedule": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "manual": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "manual"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The schedule the runtime recorded as having fired the instance."
+                  },
                   "status": {
                     "enum": [
                       "pending",
@@ -21997,6 +22021,7 @@
                   "createdAt",
                   "updatedAt",
                   "origin",
+                  "schedule",
                   "steps",
                   "awaitingSignal",
                   "failure"
@@ -22446,6 +22471,30 @@
                 }
               ]
             },
+            "schedule": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "manual": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "manual"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The schedule the runtime recorded as having fired the instance."
+            },
             "status": {
               "enum": [
                 "pending",
@@ -22521,6 +22570,7 @@
             "createdAt",
             "updatedAt",
             "origin",
+            "schedule",
             "steps",
             "awaitingSignal",
             "failure",
