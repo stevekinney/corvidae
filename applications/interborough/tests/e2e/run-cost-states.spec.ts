@@ -335,6 +335,10 @@ test.describe('/settings: the spend threshold (COR-2527)', () => {
       page,
     }) => {
       await openAt(page, '/settings', width);
+      const advanced = page.getByRole('button', { name: 'Advanced', exact: true });
+      await expect(advanced).toHaveAttribute('aria-expanded', 'false');
+      await advanced.click();
+      await expect(advanced).toHaveAttribute('aria-expanded', 'true');
       const row = page.locator(`[data-setting="${THRESHOLD_KEY}"]`);
       await expect(row).toBeVisible();
       await expect(row).toContainText(COST_COPY.threshold.label);
