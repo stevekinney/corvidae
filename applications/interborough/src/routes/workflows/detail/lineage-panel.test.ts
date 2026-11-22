@@ -167,7 +167,9 @@ describe('LineagePanel compare with source (COR-2538)', () => {
     const { queryByRole, container } = render(LineagePanelHarness, {
       props: { client: baseClient(), workflow: workflow() },
     });
-    await waitFor(() => expect(container.querySelector('[data-section="lineage"]')).toBeNull());
+    await waitFor(() =>
+      expect(container.querySelector('[data-section="lineage"]')?.outerHTML ?? null).toBeNull(),
+    );
     expect(queryByRole('button', { name: 'Compare with source' })).toBeNull();
   });
 

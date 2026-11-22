@@ -27,13 +27,12 @@
  * refuses, so no new workflow or catalog mutation survives it) and one new
  * schedule — safe anywhere in the run order relative to the other flows.
  */
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, test } from './fixtures.ts';
 import { openHowItRan } from './workflow-support.ts';
 
 test('operator inspects revision bindings, attempts a rejected explicit-revision fork, and pins a schedule', async ({
   page,
   checkA11y,
-  pageErrors,
 }) => {
   await page.goto('/workflows/order-processing/runs');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
@@ -82,15 +81,10 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await expect(revisionSelect).toBeVisible();
   await revisionSelect.selectOption('order-processing-candidate-2');
 
-  // The refusal is a 409, which Chromium logs as a console error; the test causes it on purpose.
-  pageErrors.expect({
-    pattern: loggedFailedResponse(409, /\/v1\/workflows\/[^/]+\/fork/),
-    reason: 'the test previews a fork on a revision the server refuses, and the server answers 409',
-  });
-
   // The fork dialog asks the server what the fork would do before Create fork can be pressed
   // (COR-2538), so the real rejected fork — `WorkflowRevisionUnavailableError` — is the dry run's
-  // refusal, never a mocked one, and the button stays disabled. `07-activate-workflow-revision.spec.ts`
+  // refusal, never a mocked one, and the button stays disabled. The dry run is a JSON-RPC call,
+  // which answers 200 with the fault in its body, so the browser logs no failed response for it. `07-activate-workflow-revision.spec.ts`
   // establishes the same real-refusal pattern for the System route's Activate flow.
   const conflictBanner = page.getByRole('alert').filter({ hasText: 'Revision unavailable' });
   await expect(conflictBanner).toBeVisible();

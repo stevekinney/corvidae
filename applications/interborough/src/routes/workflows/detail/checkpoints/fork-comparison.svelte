@@ -49,6 +49,8 @@
   const comparisonQuery = createQuery(() => ({
     queryKey: forkComparisonQueryKey(workflowId),
     queryFn: () => fetchForkComparison(client, workflowId),
+    // Opened again, it reads again: the fork may have run on since it was last shown.
+    refetchOnMount: 'always' as const,
   }));
 
   const treatment = $derived(

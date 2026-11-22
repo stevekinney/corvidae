@@ -1,11 +1,14 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { rejectionOf } from '@lostgradient/testing';
+import { HttpClient, HttpClientError } from '@lostgradient/weft';
 
+import { installFetchImplementation } from '../../../../lib/live-source/fetch.test-support.ts';
 import { fetchForkComparison, fetchForkPreview } from './fork-comparison-data.ts';
 import ForkComparisonHarness from './fork-comparison.test-harness.svelte';
 import { forkOperations, previewAnswer } from './fork-comparison.test-support.ts';
+import { isForkRevisionConflict } from './fork-revision-picker.ts';
 
 type Page = Awaited<ReturnType<ReturnType<typeof forkOperations>['weft.workflows.compare']>>;
 
@@ -180,7 +183,7 @@ describe('ForkComparison', () => {
 
 describe('fetchForkComparison', () => {
   test('follows nextCursor so a comparison of more than one page is whole', async () => {
-    const asked: Array<{ cursor?: string; limit?: number }> = [];
+    const asked: Array<{ cursor?: string | undefined; limit?: number | undefined }> = [];
     const pages: Record<string, Page> = {
       first: comparisonPage({
         steps: [{ index: 0, shared: true, source: side(), fork: side() }],
@@ -215,9 +218,9 @@ describe('fetchForkPreview', () => {
     const operations = {
       'weft.workflows.fork': async () => ({ id: 'wf-created' }),
     };
-    await expect(fetchForkPreview({ operations }, 'wf-1', { fromStep: 1 })).rejects.toThrow(
-      'did not answer the dry run with a preview',
-    );
+    const refusal = await rejectionOf(fetchForkPreview({ operations }, 'wf-1', { fromStep: 1 }));
+    expect(refusal).toBeInstanceOf(TypeError);
+    expect((refusal as TypeError).message).toContain('did not answer the dry run with a preview');
   });
 
   test('asks for a dry run of the step and revision, and returns the preview', async () => {
@@ -236,5 +239,117 @@ describe('fetchForkPreview', () => {
 
     expect(seen).toEqual([{ workflowId: 'wf-1', fromStep: 4, revision: 'rev-x', dryRun: true }]);
     expect(preview.keptSteps).toHaveLength(1);
+  });
+});
+
+/**
+ * The comparison and the dry run reach the server over JSON-RPC, not REST: only one operation has a
+ * REST binding in the client, so a call answers HTTP 200 with a fault in its body, and a fault carries
+ * its coarse code, never the fine-grained `weftCode` (`WorkflowRevisionUnavailableError`) a REST fault
+ * does. A real `HttpClient` over a recording `fetch` pins the transport, and what the dialog frames a
+ * refused dry run by.
+ */
+describe('the requests a real HttpClient sends', () => {
+  type Reply = { result: unknown } | { error: { code: number; message: string; data: object } };
+
+  async function recorded(run: (client: HttpClient) => Promise<unknown>, reply: Reply) {
+    const requests: { method: string; path: string; body: unknown }[] = [];
+    const restore = installFetchImplementation(async (input, init) => {
+      const url = new URL(typeof input === 'string' ? input : (input as Request).url);
+      requests.push({
+        method: init?.method ?? 'GET',
+        path: url.pathname,
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+      });
+      return Response.json({ jsonrpc: '2.0', id: 'weft', ...reply });
+    });
+    let failure: unknown;
+    try {
+      await run(new HttpClient({ baseUrl: 'https://weft.test/api' }));
+    } catch (error) {
+      failure = error;
+    } finally {
+      restore();
+    }
+    return { requests, failure };
+  }
+
+  test('weft.workflows.compare is a JSON-RPC call for the fork, with the page size', async () => {
+    const { requests, failure } = await recorded(
+      (client) => fetchForkComparison(client, 'wf-fork'),
+      {
+        result: { workflowId: 'wf-fork', sourceWorkflowId: 'wf-1', forkPoint: 2, steps: [] },
+      },
+    );
+    expect(failure).toBeUndefined();
+    expect(requests).toEqual([
+      {
+        method: 'POST',
+        path: '/api/jsonrpc',
+        body: {
+          jsonrpc: '2.0',
+          method: 'weft.workflows.compare',
+          params: { workflowId: 'wf-fork', limit: 1000 },
+          id: 'weft.workflows.compare',
+        },
+      },
+    ]);
+  });
+
+  test('weft.workflows.fork with dryRun is a JSON-RPC call with the step, revision and dryRun', async () => {
+    const { requests, failure } = await recorded(
+      (client) => fetchForkPreview(client, 'wf-1', { fromStep: 4, revision: 'rev-x' }),
+      { result: previewAnswer() },
+    );
+    expect(failure).toBeUndefined();
+    expect(requests).toEqual([
+      {
+        method: 'POST',
+        path: '/api/jsonrpc',
+        body: {
+          jsonrpc: '2.0',
+          method: 'weft.workflows.fork',
+          params: { workflowId: 'wf-1', fromStep: 4, revision: 'rev-x', dryRun: true },
+          id: 'weft.workflows.fork',
+        },
+      },
+    ]);
+  });
+
+  test('a dry run the server refuses for an uninstalled revision is framed as a revision conflict, without a fine-grained weftCode', async () => {
+    const { failure } = await recorded(
+      (client) => fetchForkPreview(client, 'wf-1', { fromStep: 1, revision: 'rev-missing' }),
+      {
+        error: {
+          code: -32009,
+          message: 'Revision rev-missing is not registered',
+          // What the server writes for a `WorkflowRevisionUnavailableError`: the fault's own `reason`,
+          // and the envelope's coarse `weftCode` over the fine-grained one.
+          data: { reason: 'not-registered', weftCode: 'Conflict', httpStatus: 409 },
+        },
+      },
+    );
+    expect(failure).toBeInstanceOf(HttpClientError);
+    expect((failure as HttpClientError).weftCode).toBeUndefined();
+    expect(isForkRevisionConflict(failure)).toBe(true);
+  });
+
+  test('another conflict of a fork is not framed as a revision conflict', async () => {
+    const { failure } = await recorded(
+      (client) => fetchForkPreview(client, 'wf-1', { fromStep: 1 }),
+      {
+        error: {
+          code: -32009,
+          message: 'The source run was replaced while the fork resolved',
+          data: {
+            reason: 'The source run was replaced while the fork resolved',
+            weftCode: 'Conflict',
+            httpStatus: 409,
+          },
+        },
+      },
+    );
+    expect(failure).toBeInstanceOf(HttpClientError);
+    expect(isForkRevisionConflict(failure)).toBe(false);
   });
 });

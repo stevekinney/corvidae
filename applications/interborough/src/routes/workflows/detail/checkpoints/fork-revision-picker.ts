@@ -15,7 +15,7 @@
  * the default."
  */
 import type { ForkOptions } from '@lostgradient/weft';
-import { isWeftFault } from '@lostgradient/weft';
+import { HttpClientError, isWeftFault } from '@lostgradient/weft';
 
 export type ForkRevisionSelection =
   { readonly mode: 'source' } | { readonly mode: 'explicit'; readonly revision: string };
@@ -39,8 +39,24 @@ export function resolveForkOptions(
  * opt-in can actually cause.
  */
 export function isForkRevisionConflict(error: unknown): boolean {
-  return isWeftFault(error, 'WorkflowRevisionUnavailableError');
+  if (isWeftFault(error, 'WorkflowRevisionUnavailableError')) return true;
+  // The fork's dry run goes over JSON-RPC (COR-2538), whose fault carries the coarse `Conflict` and
+  // never the fine-grained `weftCode`, but keeps the fault's own `reason`. These three are the reasons
+  // of this error and of nothing else a fork answers: its other conflicts give their message.
+  return (
+    error instanceof HttpClientError &&
+    error.faultCode === 'Conflict' &&
+    typeof error.data?.['reason'] === 'string' &&
+    REVISION_UNAVAILABLE_REASONS.has(error.data['reason'])
+  );
 }
+
+/** Why a revision is unavailable (`WorkflowRevisionUnavailableError.reason`). */
+const REVISION_UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
+  'not-registered',
+  'legacy-ambiguous',
+  'not-installed',
+]);
 
 /**
  * The recovery sentence shown alongside a `WorkflowRevisionUnavailableError`

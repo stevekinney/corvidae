@@ -73,6 +73,18 @@ describe('seed', () => {
     expect(state).toMatchObject({ status: 'completed', result: { finalValue: 220 } });
   });
 
+  it('seeds a run whose newest checkpoint, the first row of the checkpoint list, keeps one step and runs one again (COR-2538)', async () => {
+    const checkpoints = await engine.listCheckpoints(FORK_COMPARISON_RUN_ID);
+    // The list is newest first, so the first row is the one the end-to-end spec forks from.
+    const newest = checkpoints[0];
+    expect(newest).toBeDefined();
+
+    const preview = await engine.previewFork(FORK_COMPARISON_RUN_ID, { fromStep: newest!.step });
+
+    expect(preview.keptSteps.map((step) => step.label)).toEqual(['reserveStock']);
+    expect(preview.rerunSteps.map((step) => step.label)).toEqual(['issueTicket']);
+  });
+
   it('seeds a run whose fork from the last checkpoint answers a different ticket than the source (COR-2538)', async () => {
     const fork = await engine.fork(FORK_COMPARISON_RUN_ID);
     await fork.result();

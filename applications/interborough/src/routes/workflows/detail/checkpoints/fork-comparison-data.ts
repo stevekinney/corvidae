@@ -7,11 +7,15 @@
  * only asks, follows the comparison's pages, and narrows the fork operation's two answers; it
  * aligns nothing, and it replaced the browser-side alignment `divergence.ts` made.
  *
- * Both operations have REST bindings, so `client.operations[...]` reaches them over REST and a fault
- * keeps its fine-grained `weftCode` (`WorkflowRevisionUnavailableError` for an uninstalled revision).
+ * Both go over JSON-RPC, as every operation `client.operations[...]` reaches does but one, which
+ * answers HTTP 200 with the fault in its body and carries a fault's coarse code only. A refused
+ * dry run therefore says it is a revision conflict through its `reason`
+ * (`isForkRevisionConflict`), not a fine-grained `weftCode`.
  */
 import type { HttpClient } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
+
+import { queryKeys } from '../../../../lib/query.ts';
 
 /** The one read the comparison needs off `client.operations`. */
 export interface ForkComparisonClient {
@@ -40,8 +44,13 @@ export type ForkPreviewResult = Extract<
 /** The steps a page holds when the comparison asks for the most the server allows. */
 const COMPARISON_PAGE_SIZE = 1000;
 
+/**
+ * Keyed under the fork's own detail key, so a live event for the fork (a step it ran again settled,
+ * the run finished) invalidates it as it invalidates the run's detail: a comparison read while the
+ * fork was still running does not stay a snapshot of that moment.
+ */
 export function forkComparisonQueryKey(forkWorkflowId: string): QueryKey {
-  return ['workflows', 'fork-comparison', forkWorkflowId];
+  return [...queryKeys.workflows.detail(forkWorkflowId), 'comparison'];
 }
 
 /**

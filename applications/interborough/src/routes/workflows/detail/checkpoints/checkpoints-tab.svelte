@@ -9,10 +9,13 @@
    *
    * `weft.workflows.checkpoints.list`/`.get` have a REST binding
    * (`transports.http: true`), but `HttpClient.operations[name](input)`
-   * always speaks JSON-RPC over the wire regardless — confirmed against
-   * `weft/src/cli/operation-client-runtime.ts`'s module doc ("The HTTP
-   * transport speaks JSON-RPC over the wire") — there is no REST fallback
-   * to opt into from the console. This didn't work against a real `POST
+   * speaks JSON-RPC for every operation but the one `CLIENT_REST_OPERATION_
+   * BINDINGS` lists (`weft/src/client/http-operations.ts`,
+   * `httpClientOperationTransport`) — there is no REST fallback to opt into
+   * from the console, and a JSON-RPC fault carries only the coarse fault code,
+   * never a fine-grained `weftCode`. `fork-comparison.test.ts` pins the requests
+   * the comparison (`weft.workflows.compare`) and the fork dialog's dry run
+   * (`weft.workflows.fork` with `dryRun`) send. This didn't work against a real `POST
    * /jsonrpc` in the dev harness at all before
    * `@lostgradient/weft@0.12.0` (weft#710's `serve({ engine })` bug forced
    * `tests/e2e/e2e-server.ts` onto a bare `handleRequest()` workaround, which

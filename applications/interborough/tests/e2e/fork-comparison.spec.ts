@@ -46,10 +46,19 @@ async function forkFromTheLastCheckpoint(page: Page): Promise<string> {
 
 test('a fork is compared with its source after the page is loaded again, down to a changed payload', async ({
   page,
+  request,
   checkA11y,
 }) => {
   const forkId = await forkFromTheLastCheckpoint(page);
   expect(forkId).not.toBe('');
+
+  // The comparison is of what the fork has run, so the spec waits for the fork to finish.
+  await expect
+    .poll(async () => {
+      const response = await request.get(`/v1/workflows/${encodeURIComponent(forkId)}`);
+      return ((await response.json()) as { status?: string }).status;
+    })
+    .toBe('completed');
 
   // The comparison needs nothing from the session that made the fork: a fresh load of the fork's page.
   await page.goto(`/runs/${encodeURIComponent(forkId)}`);
@@ -57,8 +66,9 @@ test('a fork is compared with its source after the page is loaded again, down to
   await openHowItRan(page);
   await page.getByRole('tab', { name: 'Versioning' }).click();
 
-  await expect(page.getByText('Forked from')).toBeVisible();
-  await page.getByRole('button', { name: 'Compare with source' }).click();
+  const lineage = page.locator('[data-section="lineage"]');
+  await expect(lineage.getByText('Forked from')).toBeVisible();
+  await lineage.getByRole('button', { name: 'Compare with source' }).click();
 
   const comparison = page.locator('[data-section="fork-comparison"]');
   await expect(comparison).toBeVisible();

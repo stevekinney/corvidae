@@ -28,8 +28,8 @@ type ForkPreviewAnswer = Extract<Awaited<ReturnType<ForkOperation>>, { readonly 
 
 /** What a test may override of the two operations; the rest answer the defaults. */
 export type ForkOperationOverrides = {
-  readonly compare?: CompareOperation;
-  readonly fork?: ForkOperation;
+  readonly compare?: CompareOperation | undefined;
+  readonly fork?: ForkOperation | undefined;
 };
 
 /** A preview of a fork from `fromStep` that keeps one step and runs one again. */
