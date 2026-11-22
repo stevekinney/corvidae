@@ -38,6 +38,7 @@ import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import {
   pending,
   responsiveAddresses,
@@ -762,6 +763,33 @@ test('gives every route in the table an address, and every pending route an owne
     expect(entry.issue, entry.pattern).toMatch(/^COR-\d+$/);
   }
   expect(new Set(pending.map((entry) => entry.pattern)).size).toBe(pending.length);
+});
+
+test('/agents/:agent/hooks keeps the last switch reachable above the phone tabs at 320px', async ({
+  page,
+}) => {
+  const route = '/agents/:agent/hooks';
+  await settle(page, route, 320);
+  await page.setViewportSize({ width: 320, height: 640 });
+  const outlet = page.locator('main.weft-shell-outlet');
+  const tabBar = page.getByRole('navigation', { name: 'Main tabs', exact: true });
+  const toggle = page.getByTestId('agent-hooks').getByRole('switch').last();
+  await expect(toggle).toBeVisible();
+  await outlet.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  const boxes = await readBoxes(page, { outlet, tabBar, toggle });
+  expect(boxes.toggle.y).toBeGreaterThanOrEqual(boxes.outlet.y);
+  expect(boxes.toggle.y + boxes.toggle.height).toBeLessThanOrEqual(boxes.tabBar.y);
+  expect(boxes.toggle.y + boxes.toggle.height).toBeLessThanOrEqual(
+    boxes.outlet.y + boxes.outlet.height,
+  );
+  await toggle.click({ trial: true });
+  await captureForDesignReview(page, {
+    route,
+    state: 'last hook switch at scroll end',
+    source: 'responsive.spec.ts',
+  });
 });
 
 test.describe('the measurement', () => {
