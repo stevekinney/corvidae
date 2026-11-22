@@ -65,6 +65,14 @@
     margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
 
+  /* Keep the button's invisible touch extension above the surface that follows the heading. */
+  @media (any-pointer: coarse) {
+    .cinder-section-heading__actions:has(> .cinder-button[data-cinder-hit-target='44']) {
+      position: relative;
+      z-index: 1;
+    }
+  }
+
   .cinder-section-heading__tabs {
     display: block;
     min-width: 0;
