@@ -690,6 +690,17 @@
     padding-inline-end: 0;
   }
 
+  /* A viewport-width phone row gives the status its full word. Its timestamp must then reflow at
+     large text rather than widening the list past the viewport; the run list uses a time snippet,
+     so this belongs on the time cell rather than only on the text-value form below. */
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--group
+    )
+    .cinder-stacked-list-item__time {
+    text-align: end;
+    white-space: normal;
+  }
+
   .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
       .cinder-stacked-list-item--no-line-two
     )
@@ -1045,6 +1056,20 @@
   }
 
   @media (any-pointer: coarse) {
+    /* The disclosure's painted word stays compact in a run/schedule row. Its hit region reaches
+       44px outside normal layout, like the compact actions menu below, so it neither widens nor
+       makes the row taller. */
+    .cinder-stacked-list-item__disclosure {
+      min-block-size: 0;
+    }
+
+    .cinder-stacked-list-item__disclosure::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
     .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger::before {
       content: '';
       position: absolute;

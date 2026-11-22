@@ -143,7 +143,7 @@ describe('StackedListItem on a phone', () => {
     );
     // Under a coarse pointer it reaches 44px through a positioned pseudo-element, taking no space.
     expect(stylesheet).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.cinder-stacked-list-item \.cinder-stacked-list-item__actions-trigger::before\s*\{[^}]*position:\s*absolute;[^}]*var\(--cinder-touch-target-min\)/,
+      /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\.cinder-stacked-list-item \.cinder-stacked-list-item__actions-trigger::before\s*\{[^}]*position:\s*absolute;[^}]*var\(--cinder-touch-target-min\)/,
     );
 
     await fireEvent.click(trigger);
@@ -290,17 +290,44 @@ describe('StackedListItem on a phone', () => {
     // The cap and the wrapping name a group row among the rows they leave alone.
     expect(cappedRule('> .cinder-stacked-list-item__layout')).not.toBe('');
     expect(cappedRule('.cinder-stacked-list-item__time-text')).not.toBe('');
-    // No other rule lets a time wrap.
+    // The shared viewport-phone form also lets a timestamp reflow, but keeps group rows' time and
+    // disclosure semantics intact.
     const wrappingTimeRules = [
       ...stylesheet.matchAll(
         /([^{}]*\.cinder-stacked-list-item__time(?:-text)?)\s*\{[^}]*white-space:\s*normal/g,
       ),
     ].map((match) => match[1] ?? '');
-    expect(wrappingTimeRules).toHaveLength(1);
+    expect(wrappingTimeRules).toHaveLength(2);
     expect(wrappingTimeRules[0]).toContain('--has-trailing');
     expect(wrappingTimeRules[0]).toContain('.cinder-stacked-list-item--group');
+    expect(wrappingTimeRules[1]).toContain("[data-cinder-phone-width='viewport']");
+    expect(wrappingTimeRules[1]).toContain('.cinder-stacked-list-item--status-leading');
     cleanup();
     setPhone(false);
+  });
+
+  test('on a coarse pointer a group disclosure reaches 44px without reserving that height in its row (COR-2403)', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Missed runs'),
+        time: textSnippet('Oct 30'),
+        meta: textSnippet('Schedule, Assistant'),
+        details: textSnippet('Mon, Nov 2, 3:00 AM'),
+      },
+    });
+    expect(container.querySelector('.cinder-stacked-list-item__disclosure')?.textContent).toContain(
+      'Show',
+    );
+
+    const coarse = stylesheet.slice(stylesheet.indexOf('@media (any-pointer: coarse)'));
+    const compactDisclosure =
+      /\.cinder-stacked-list-item__disclosure\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(compactDisclosure).toMatch(/min-block-size:\s*0;/);
+    const hitArea =
+      /\.cinder-stacked-list-item__disclosure::before\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(hitArea).toMatch(/position:\s*absolute;/);
+    expect(hitArea).toContain('var(--cinder-touch-target-min)');
   });
 
   test('at 200% text in a 375px container a group row lets Show drop whole under its time, never past the row', () => {
@@ -376,6 +403,36 @@ describe('StackedListItem on a phone', () => {
     expect(base).toMatch(/white-space:\s*nowrap;/);
     expect(stylesheet).toMatch(/\[time\] var\(--_cinder-time-track, auto\)/);
     expect([...stylesheet.matchAll(/--_cinder-time-track:/g)]).toHaveLength(1);
+    cleanup();
+    setPhone(false);
+  });
+
+  test('at 200% text a viewport-width phone row reflows its timestamp instead of widening its list (COR-2403)', () => {
+    setPhone(true);
+    const { container } = render(StackedListItem, {
+      props: {
+        phoneWidth: 'viewport',
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Waiting on you'),
+        time: textSnippet('Yesterday, 6:00 PM'),
+        meta: textSnippet('Workflow run, Assistant'),
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.getAttribute('data-cinder-phone-width')).toBe('viewport');
+    expect(row?.hasAttribute('data-cinder-phone')).toBe(true);
+    expect(row?.querySelector('.cinder-stacked-list-item__time')?.textContent?.trim()).toBe(
+      'Yesterday, 6:00 PM',
+    );
+    expect(row?.querySelector('.cinder-stacked-list-item__meta')?.textContent).toBe(
+      'Workflow run, Assistant',
+    );
+
+    const viewportPhoneTime =
+      /\[data-cinder-phone-width='viewport'\]\[data-cinder-phone\]\.cinder-stacked-list-item--status-leading:not\(\s*\.cinder-stacked-list-item--group\s*\)\s+\.cinder-stacked-list-item__time\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      )?.[1] ?? '';
+    expect(viewportPhoneTime).toMatch(/white-space:\s*normal;/);
     cleanup();
     setPhone(false);
   });
