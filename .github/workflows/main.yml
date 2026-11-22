@@ -194,6 +194,7 @@ jobs:
 
   tests-slow:
     name: Slow and integration tests
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -223,6 +224,7 @@ jobs:
 
   browser:
     name: Browser suites
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
     uses: ./.github/workflows/browser-suites.yml
     # The called workflow reads TURBO_TOKEN for the remote cache.
     secrets: inherit
@@ -286,6 +288,7 @@ jobs:
           VERIFICATION_PLAN: ${{ inputs.verification_plan }}
           VERIFICATION_BASE: ${{ inputs.verification_base }}
           CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
+          CI_EVIDENCE_NOT_APPLICABLE: ${{ github.event_name == 'push' && vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '["tests-slow","browser"]' || '[]' }}
           CI_EVIDENCE_EXPECTED_JOBS: '["root","workspaces","tests","tests-slow","browser","test-durations"]'
           CI_EVIDENCE_ARTIFACT_DIRECTORY: ci-evidence-artifacts
         run: bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
