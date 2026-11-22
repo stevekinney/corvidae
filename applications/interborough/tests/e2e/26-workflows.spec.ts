@@ -19,7 +19,8 @@ import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { refuseMethod } from './goal-check-support.ts';
 import { jsonEditor, jsonEditorSource, replaceJsonEditorText } from './json-editor-support.ts';
 import {
   APPROVAL_SIGNAL,
@@ -881,7 +882,7 @@ test.describe('the editor', () => {
     });
   }
 
-  test('shows the error for JSON that is not valid, and for a document the Bureau refuses, and saves neither', async ({
+  test('rejects a decoded document that is invalid locally and leaves the file unchanged', async ({
     page,
     request,
   }) => {
@@ -891,6 +892,12 @@ test.describe('the editor', () => {
     const root = page.locator('[data-page="workflow-editor"]');
     await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
+    let updates = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+      if (body.method === 'bureau.workflows.update') updates += 1;
+      await route.fallback();
+    });
 
     await replaceJsonEditorText(editor, '{ "trigger": ');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
@@ -900,13 +907,50 @@ test.describe('the editor', () => {
 
     await replaceJsonEditorText(
       editor,
-      JSON.stringify({ trigger: { kind: 'schedule', spec: 'never ever' }, steps: [] }),
+      JSON.stringify({ trigger: { kind: 'schedule', spec: 'never ever' }, steps: [] }, null, 2),
     );
+    await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
+    await expect(root.locator('.cinder-json-editor__status')).toHaveText(
+      'Valid JSON, not a valid workflow',
+    );
+    await expect(editor.locator('.cinder-json-editor__line--problem')).toHaveCount(1);
+    expect(updates).toBe(0);
+    await expect(page).toHaveURL(/\/workflows\/e2e-refused\/edit$/);
+    const unchanged = await readWorkflow(request, 'e2e-refused');
+    expect(unchanged.hash).toBe(before.hash);
+    expect(unchanged.text).toBe(before.text);
+  });
+
+  test('shows Couldn’t save for a locally valid document the server rejects', async ({
+    page,
+    request,
+    pageErrors,
+  }) => {
+    await makeWorkflow(request, 'e2e-refused');
+    const before = await readWorkflow(request, 'e2e-refused');
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
+      reason: 'the test makes the server reject an otherwise valid workflow update',
+    });
+    await refuseMethod(page, 'bureau.workflows.update', 500, {
+      weftCode: 'Internal',
+      message: 'The workflow file could not be written.',
+    });
+    await page.goto('/workflows/e2e-refused/edit');
+    const root = page.locator('[data-page="workflow-editor"]');
+    await openJsonTab(root);
+    const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
+    const definition = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
+    definition['trigger'] = { kind: 'schedule', spec: '6h' };
+    await replaceJsonEditorText(editor, JSON.stringify(definition));
+    await expect(root.locator('.cinder-json-editor__status')).toHaveText('Valid JSON');
+
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root).toContainText(/Couldn’t save /);
     await expect(page).toHaveURL(/\/workflows\/e2e-refused\/edit$/);
     const unchanged = await readWorkflow(request, 'e2e-refused');
     expect(unchanged.hash).toBe(before.hash);
+    expect(unchanged.text).toBe(before.text);
   });
 
   test('says the file changed on disk, and Reload discards the edits', async ({
