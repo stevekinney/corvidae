@@ -226,6 +226,9 @@ entries.set('./manifest', './.metadata/components.json');
 await addComponentEntries(entries, workspaceRoot, metadata, isCinder);
 const testOnly =
   /(?:^|\/)(?:__tests__|__fixtures__|[^/]+[-.]fixtures?(?:\.[^/]+)?|[^/]+\.(?:test|spec|test-support)\.[^/]+)$/;
+const tokenVersionFile = 'src/tokens/runtime/package-version.generated';
+const tokenVersionLiteral = JSON.stringify(version);
+const tokenVersionSource = `export const VERSION = ${tokenVersionLiteral};\n`;
 
 const scratch = await mkdtemp(join(tmpdir(), `corvidae-${name}-release-`));
 try {
@@ -236,6 +239,13 @@ try {
       recursive: true,
       filter: (path) => !testOnly.test(path),
     });
+  }
+  if (isCinder) {
+    await Bun.write(join(stage, `${tokenVersionFile}.ts`), tokenVersionSource);
+    await Bun.write(
+      join(stage, `.types/${tokenVersionFile}.d.ts`),
+      `export declare const VERSION: ${tokenVersionLiteral};\n`,
+    );
   }
   for (const path of new Bun.Glob('**/*.d.ts').scanSync({ cwd: stage, dot: true })) {
     if (!path.startsWith('.types/')) continue;
@@ -266,10 +276,16 @@ try {
     }
   }
 
-  const ignoreServerStyles: BunPlugin = {
-    name: 'ignore-server-styles',
+  const serverSources: BunPlugin = {
+    name: 'cinder-release-server-sources',
     setup(builder) {
       builder.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'js' }));
+      if (isCinder) {
+        const tokenVersionPath = join(workspaceRoot, `${tokenVersionFile}.ts`);
+        builder.onLoad({ filter: /package-version\.generated\.ts$/ }, ({ path }) => {
+          if (path === tokenVersionPath) return { contents: tokenVersionSource, loader: 'ts' };
+        });
+      }
     },
   };
   const result = await Bun.build({
@@ -283,7 +299,7 @@ try {
     external: [...dependencies.keys(), 'svelte'].filter(
       (dependency) => dependency !== '@lucide/svelte',
     ),
-    plugins: [ignoreServerStyles, sveltePlugin({ generate: 'server', development: false })],
+    plugins: [serverSources, sveltePlugin({ generate: 'server', development: false })],
   });
   if (!result.success) throw new AggregateError(result.logs, `Failed to build ${name} for Node`);
   await Bun.write(join(stage, 'dist/stylesheet.d.ts'), 'export {};\n');

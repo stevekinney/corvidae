@@ -10,6 +10,7 @@ const packageName = '@lostgradient/' + name;
 const require = createRequire(import.meta.url);
 const manifestPath = require.resolve(packageName + '/package.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+  version: string;
   exports: Record<string, string | { default?: string; import?: string }>;
 };
 
@@ -39,6 +40,8 @@ if (name === 'cinder' || name === 'editor') {
   const entry = packageName + (name === 'cinder' ? '/button' : '/markdown-editor');
   const subpath = await import(entry);
   if (name === 'cinder') {
+    const { CINDER_BASE } = await import(packageName + '/tokens/runtime');
+    assert.equal(CINDER_BASE.packageVersion, manifest.version);
     assert.equal(components.Button, subpath.default);
     assert.match(render(components.Button, { props: {} }).body, /<button/);
   } else {
