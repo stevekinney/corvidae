@@ -225,6 +225,9 @@ export const runsCompareOperation = defineOperation<
         throw error;
       });
     if (comparison === undefined) throw unsupported();
+    // The engine read the fork's lineage again. A run replaced under the same id between the two
+    // reads can name another source, which the caller was not let in to: nothing of it is served.
+    if (comparison.sourceWorkflowId !== sourceRunId) throw resourceNotFound('run', runId);
     return {
       runId: comparison.workflowId,
       sourceRunId: comparison.sourceWorkflowId,

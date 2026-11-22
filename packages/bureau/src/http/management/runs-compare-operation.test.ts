@@ -207,6 +207,22 @@ describe('bureau.runs.compare asks about the source as well as the fork', () => 
     expect(status(other)).toBe(404);
   });
 
+  it('serves nothing when the engine reads another source than the one the caller was let in to', async () => {
+    const { served, engine, forkId } = await serveWithFork();
+    const compared = await engine.compare(forkId);
+    spyOn(engine, 'compare').mockResolvedValue({ ...compared, sourceWorkflowId: 'another-run' });
+
+    const response = await rpc(
+      served.keyed,
+      'bureau.runs.compare',
+      { runId: forkId },
+      'operator-key',
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(status(response)).toBe(404);
+  });
+
   it('answers a member who owns neither run as a missing run', async () => {
     const { served, engine, forkId } = await serveAsWorkspace();
     const read = spyOn(engine, 'compare');
