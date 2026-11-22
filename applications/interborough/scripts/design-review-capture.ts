@@ -168,6 +168,9 @@ const SHOWCASE_SPECIFICATIONS = [
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
+  // The workflow builder's JSON validation, unknown-step, write-failure and discard states
+  // (COR-2432, board PageWorkflowBuilder).
+  'tests/e2e/workflow-builder-states.spec.ts',
   // The Runs list and the run page in the states the sample world does not hold, and the run page
   // in each state it does (COR-2423, COR-2424).
   'tests/e2e/runs-states.spec.ts',
