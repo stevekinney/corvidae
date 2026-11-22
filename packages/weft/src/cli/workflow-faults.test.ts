@@ -93,6 +93,52 @@ describe('weft workflow failures', () => {
     expect(typeof body.error.remediation).toBe('string');
   });
 
+  it('does not tell a caller to retry a refused credential, or an unusable server URL', async () => {
+    const engine = new Engine();
+    const key = 'weft_key_valid123456789012345678901';
+    const server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [key], defaultApiKeyScopes: ['workflows:read'] },
+    });
+    try {
+      for (const token of [undefined, 'weft_key_wrong1234567890123456789012']) {
+        const result = await executeWorkflow({
+          ...base,
+          action: 'get',
+          server: server.url,
+          ...(token === undefined ? {} : { token }),
+          workflowId: 'wf',
+        } satisfies WorkflowCommand);
+        expect(result.exitCode).toBe(2);
+        expect(JSON.parse(result.stdout)).toEqual({
+          ok: false,
+          error: {
+            code: 'Unauthorized',
+            message: 'connection failed: the server refused the credentials (HTTP 401)',
+            retryable: false,
+            remediation: 'Pass a valid token with --token, WEFT_TOKEN or --profile',
+          },
+        });
+      }
+    } finally {
+      await server.stop();
+      engine[Symbol.dispose]();
+    }
+
+    const unusable = await executeWorkflow({
+      ...base,
+      action: 'get',
+      server: 'not-a-url',
+      workflowId: 'wf',
+    } satisfies WorkflowCommand);
+    expect(unusable.exitCode).toBe(2);
+    expect(JSON.parse(unusable.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'InvalidParams', retryable: false },
+    });
+  });
+
   it('reports an unreadable --input as InvalidParams with exit code 3, for start and signal', async () => {
     for (const command of [
       { ...base, action: 'start', workflowType: 'echo', input: '{nope' },
@@ -178,6 +224,55 @@ describe('weft schedule failures', () => {
       stderr: 'Error: scheduleId is required for schedule pause',
       exitCode: 1,
     });
+  });
+
+  it('reports a schedule that does not exist as NotFound, not as an engine failure', async () => {
+    const database = join(tmpdir(), `weft-schedule-missing-${crypto.randomUUID()}.db`);
+    try {
+      const result = await executeSchedule({
+        ...schedule,
+        database,
+        action: 'pause',
+        scheduleId: 'no-such-schedule',
+        json: true,
+      } satisfies ScheduleCommand);
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toEqual({
+        ok: false,
+        error: {
+          code: 'NotFound',
+          message: 'Schedule "no-such-schedule" not found',
+          retryable: false,
+        },
+      });
+    } finally {
+      for (const suffix of ['', '-wal', '-shm']) rmSync(`${database}${suffix}`, { force: true });
+    }
+  });
+
+  it('reports a cadence the engine refuses as InvalidParams', async () => {
+    const database = join(tmpdir(), `weft-schedule-cadence-${crypto.randomUUID()}.db`);
+    try {
+      const result = await executeSchedule({
+        ...schedule,
+        database,
+        action: 'create',
+        workflows: new URL('./__fixtures__/validation/hello-world/src/index.ts', import.meta.url)
+          .pathname,
+        workflowType: 'helloWorld',
+        cronExpression: 'not a cron',
+        input: 'null',
+        backfill: false,
+        json: true,
+      } satisfies ScheduleCommand);
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        error: { code: 'InvalidParams', retryable: false },
+      });
+    } finally {
+      for (const suffix of ['', '-wal', '-shm']) rmSync(`${database}${suffix}`, { force: true });
+    }
   });
 
   it('classifies an engine error by its class, keeping the engine message', async () => {

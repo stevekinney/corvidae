@@ -16,7 +16,11 @@
  * @module cli/server-client
  */
 
-import { CatalogClientError, createCatalogClient } from '@lostgradient/backchannel/client';
+import {
+  CatalogClientError,
+  createCatalogClient,
+  type CatalogFetch,
+} from '@lostgradient/backchannel/client';
 import { httpJsonRpcTransport } from '../client/weft-connection-transport.ts';
 import {
   CATALOG_OPERATION_NAMES,
@@ -24,8 +28,12 @@ import {
   type CatalogOperationTypes,
   type ConnectionOptions,
 } from '../index.ts';
-import { cliFault, faultFromWireError, type CliFault } from './cli-fault.ts';
-import { messageOf } from './output.ts';
+import {
+  cliFault,
+  faultFromTransportFailure,
+  faultFromWireError,
+  type CliFault,
+} from './cli-fault.ts';
 
 /**
  * Successful or failed result of a catalog operation call, never thrown. A failure carries its
@@ -58,8 +66,17 @@ export async function callCatalogOperation<Name extends CatalogOperationName>(
     CATALOG_OPERATION_NAMES,
     httpJsonRpcTransport(connection),
   );
+  // The transport drops the HTTP status of an answer that is not JSON-RPC (an authentication
+  // challenge, a proxy error); the call's own `fetch` sees it, so a refused credential is told
+  // from a server that is down.
+  let lastHttpStatus: number | undefined;
+  const recordingFetch: CatalogFetch = async (request, init) => {
+    const response = await fetch(request, init);
+    lastHttpStatus = response.status;
+    return response;
+  };
   try {
-    const value = await client[operationName](input);
+    const value = await client[operationName](input, { fetch: recordingFetch });
     return { ok: true, value };
   } catch (error) {
     if (error instanceof CatalogClientError) {
@@ -84,11 +101,7 @@ export async function callCatalogOperation<Name extends CatalogOperationName>(
     return {
       ok: false,
       kind: 'connection',
-      ...cliFault(
-        'Unavailable',
-        `connection failed: ${messageOf(error)}`,
-        "Start a server with 'weft serve', or point --server, WEFT_ADDR or --profile at one that is running",
-      ),
+      ...faultFromTransportFailure({ error, httpStatus: lastHttpStatus }),
     };
   }
 }

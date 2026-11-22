@@ -124,13 +124,24 @@ async function executeScheduleCreate(
   }
 
   const spec = options.every !== undefined ? { every: options.every } : options.cronExpression;
-  const handle = await engine.schedule(options.workflowType, parsedInput.value, spec, {
-    ...(options.id !== undefined ? { id: options.id } : {}),
-    ...(options.overlap !== undefined ? { overlap: options.overlap } : {}),
-    ...(options.backfill ? { backfill: true } : {}),
-    ...(options.jitter !== undefined ? { jitter: options.jitter } : {}),
-    ...(options.revisionPolicy !== undefined ? { revisionPolicy: options.revisionPolicy } : {}),
-  });
+  let handle: Awaited<ReturnType<Engine['schedule']>>;
+  try {
+    handle = await engine.schedule(options.workflowType, parsedInput.value, spec, {
+      ...(options.id !== undefined ? { id: options.id } : {}),
+      ...(options.overlap !== undefined ? { overlap: options.overlap } : {}),
+      ...(options.backfill ? { backfill: true } : {}),
+      ...(options.jitter !== undefined ? { jitter: options.jitter } : {}),
+      ...(options.revisionPolicy !== undefined ? { revisionPolicy: options.revisionPolicy } : {}),
+    });
+  } catch (error) {
+    // Everything the engine refuses here is the caller's spec (a cron expression, an interval, an
+    // id, an overlap policy), so what the generic classification cannot name is `InvalidParams`.
+    return renderFault(faultFromLocalError(error, 'InvalidParams'), {
+      json: options.json,
+      exitCode: 1,
+      prefix: 'Error: ',
+    });
+  }
 
   const schedule = await handle.describe();
   return {

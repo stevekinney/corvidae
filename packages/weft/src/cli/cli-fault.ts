@@ -7,7 +7,12 @@
  */
 
 import { isFaultCode, type FaultCode } from '@lostgradient/backchannel';
-import { FAULT_CODE_RETRYABLE, remediationProblem } from '@lostgradient/backchannel/internals';
+import {
+  FAULT_CODE_RETRYABLE,
+  classifyEngineError,
+  remediationProblem,
+} from '@lostgradient/backchannel/internals';
+import { ConnectionConfigurationError } from '../connection.ts';
 import { weftFaultPolicy } from '../server/weft-fault-policy.ts';
 import { prettyJson } from './output.ts';
 import type { CommandOutput } from './types.ts';
@@ -56,14 +61,63 @@ export function faultFromWireError(message: string, data: unknown): CliFault {
 }
 
 /**
- * The fault of an error thrown by the embedded engine a local command runs: the code comes from
- * Weft's fault policy (`NotFound`, `Conflict`, `InvalidParams` for the engine's own classes) and
- * `EngineFailure` otherwise; the message is the error's own, because the operator who ran the
- * command is the one who reads it.
+ * The fault of an error thrown by the embedded engine a local command runs. The code comes from
+ * the same classification the server applies to a thrown error (Weft's fault policy for its own
+ * classes, then the generic message heuristics: `NotFound`, `Conflict`, `Timeout`); an error that
+ * classification leaves as `EngineFailure` takes `fallback`, the code of the command's own caller
+ * mistake (`InvalidParams` for a schedule spec it was asked to create). The message is the
+ * error's own, because the operator who ran the command is the one who reads it.
  */
-export function faultFromLocalError(error: unknown): CliFault {
+export function faultFromLocalError(
+  error: unknown,
+  fallback: FaultCode = 'EngineFailure',
+): CliFault {
   const message = error instanceof Error ? error.message : String(error);
-  return cliFault(weftFaultPolicy.classifyError?.(error)?.code ?? 'EngineFailure', message);
+  const classified = classifyEngineError(error, undefined, weftFaultPolicy).code;
+  return cliFault(classified === 'EngineFailure' ? fallback : classified, message);
+}
+
+/** Why a request never produced a JSON-RPC answer, as far as the CLI can tell. */
+export type TransportFailure = {
+  readonly error: unknown;
+  /** The status of the last HTTP response, when the server answered at all. */
+  readonly httpStatus: number | undefined;
+};
+
+/**
+ * The fault of a call that failed before a JSON-RPC answer: a server URL that cannot be used is a
+ * caller mistake (`InvalidParams`), a refused credential is `Unauthorized` or `Forbidden`, and
+ * anything else (nothing listening, a dropped connection, a proxy error) is `Unavailable`, the one
+ * code whose repair is to try again.
+ */
+export function faultFromTransportFailure({ error, httpStatus }: TransportFailure): CliFault {
+  const detail = error instanceof Error ? error.message : String(error);
+  if (error instanceof ConnectionConfigurationError) {
+    return cliFault(
+      'InvalidParams',
+      `connection failed: ${detail}`,
+      'Pass a full server URL such as http://localhost:7233 with --server, WEFT_ADDR or --profile',
+    );
+  }
+  if (httpStatus === 401) {
+    return cliFault(
+      'Unauthorized',
+      'connection failed: the server refused the credentials (HTTP 401)',
+      'Pass a valid token with --token, WEFT_TOKEN or --profile',
+    );
+  }
+  if (httpStatus === 403) {
+    return cliFault(
+      'Forbidden',
+      'connection failed: the server refused this credential (HTTP 403)',
+      'Use a token that holds the scope this command needs',
+    );
+  }
+  return cliFault(
+    'Unavailable',
+    `connection failed: ${detail}`,
+    "Start a server with 'weft serve', or point --server, WEFT_ADDR or --profile at one that is running",
+  );
 }
 
 /**
