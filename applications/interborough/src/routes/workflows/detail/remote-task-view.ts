@@ -16,7 +16,7 @@ export const REMOTE_TASK_STATE_LABELS = {
   cancelling: 'Cancellation requested',
   deadLettered: 'Dead lettered',
   resolved: 'Resolved',
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
   retryExhausted: 'Retries exhausted',
   terminalUnknown: 'Finished, disposition not reported',
 } as const;

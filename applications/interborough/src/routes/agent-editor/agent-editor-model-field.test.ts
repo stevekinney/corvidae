@@ -115,14 +115,46 @@ function groupsOf(): { name: string; options: string[] }[] {
 }
 
 describe('the models of a new agent', () => {
+  test('new-agent model display names filter readable labels and submit canonical model values', async () => {
+    const calls = bureau();
+    const { findByRole, getByRole } = mountEditor();
+    const field = await findByRole('combobox', { name: 'Model' });
+    expect(field).toHaveValue('Claude Sonnet 5');
+
+    await openModelOptions(field, { clear: false });
+    await fireEvent.input(field, { target: { value: 'gPt 4.1' } });
+    expect(groupsOf()).toEqual([{ name: 'OpenAI', options: ['GPT 4.1'] }]);
+    const [matchingOption] = await openModelOptions(field, { clear: false });
+    if (matchingOption === undefined) throw new Error('Expected the filtered GPT 4.1 model.');
+    await fireEvent.mouseDown(matchingOption);
+    expect(field).toHaveValue('GPT 4.1');
+
+    await openModelOptions(field, { clear: false });
+    await fireEvent.input(field, { target: { value: 'claude sonnet' } });
+    expect(groupsOf()).toEqual([{ name: 'Anthropic', options: ['Claude Sonnet 5'] }]);
+    await closeModelList(field);
+    expect(field).toHaveValue('GPT 4.1');
+
+    await fireEvent.input(await findByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'Order helper' },
+    });
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
+    await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.create')).toHaveLength(1));
+    expect(
+      calls.callsTo('bureau.agents.definitions.create')[0]?.params['definition'],
+    ).toMatchObject({
+      model: 'openai/gpt-4.1',
+    });
+  });
+
   test('are grouped by provider, each provider under its name', async () => {
     bureau({ hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const { findByRole } = mountEditor();
     await openModelOptions(await findByRole('combobox', { name: 'Model' }));
 
     expect(groupsOf()).toEqual([
-      { name: 'Anthropic', options: ['anthropic/claude-sonnet-5'] },
-      { name: 'OpenAI', options: ['openai/gpt-4.1'] },
+      { name: 'Anthropic', options: ['Claude Sonnet 5'] },
+      { name: 'OpenAI', options: ['GPT 4.1'] },
     ]);
   });
 
@@ -130,18 +162,18 @@ describe('the models of a new agent', () => {
     bureau({ hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const { findByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('anthropic/claude-sonnet-5');
+    expect(field).toHaveValue('Claude Sonnet 5');
 
     // Nothing is cleared: the text is the chosen model's name, which must not narrow the list to it.
     await openModelOptions(field, { clear: false });
     expect(groupsOf()).toEqual([
-      { name: 'Anthropic', options: ['anthropic/claude-sonnet-5'] },
-      { name: 'OpenAI', options: ['openai/gpt-4.1'] },
+      { name: 'Anthropic', options: ['Claude Sonnet 5'] },
+      { name: 'OpenAI', options: ['GPT 4.1'] },
     ]);
 
     // Typing narrows it as before.
     await fireEvent.input(field, { target: { value: 'gpt' } });
-    expect(groupsOf()).toEqual([{ name: 'OpenAI', options: ['openai/gpt-4.1'] }]);
+    expect(groupsOf()).toEqual([{ name: 'OpenAI', options: ['GPT 4.1'] }]);
   });
 
   test('list a provider with no key as one disabled option, and point to Settings › Models', async () => {
@@ -164,9 +196,7 @@ describe('the models of a new agent', () => {
     // Pressing it chooses nothing.
     await fireEvent.mouseDown(gemini as HTMLElement);
     await closeModelList(await findByRole('combobox', { name: 'Model' }));
-    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue(
-      'anthropic/claude-sonnet-5',
-    );
+    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue('Claude Sonnet 5');
 
     // The line under the field names the provider and links to the page that connects it.
     const hint = getByTestId('agent-model-unconnected');
@@ -204,7 +234,7 @@ describe('the models of a new agent', () => {
     }
     expect(abilities).toHaveAccessibleName(copy.abilitiesLabel);
 
-    await chooseModel(field, 'openai/gpt-4.1');
+    await chooseModel(field, 'GPT 4.1');
 
     await waitFor(() => expect(within(abilities).getByText(copy.textOnly)).not.toBeNull());
     expect(within(abilities).getByText(copy.context('200K'))).not.toBeNull();
@@ -243,22 +273,22 @@ describe('a model the model policy forbids', () => {
     const { findByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
     // The first model that is not forbidden.
-    expect(field).toHaveValue('anthropic/claude-sonnet-5');
+    expect(field).toHaveValue('Claude Sonnet 5');
 
     const options = await openModelOptions(field);
     const byName = Object.fromEntries(options.map((option) => [optionLabel(option), option]));
-    expect(byName['openai/gpt-4.1']).toHaveAttribute('aria-disabled', 'true');
-    expect(optionDescription(byName['openai/gpt-4.1'] as HTMLElement)).toBe(
+    expect(byName['GPT 4.1']).toHaveAttribute('aria-disabled', 'true');
+    expect(optionDescription(byName['GPT 4.1'] as HTMLElement)).toBe(
       copy.reasons['provider-denied'],
     );
-    expect(optionDescription(byName['anthropic/claude-haiku-5'] as HTMLElement)).toBe(
+    expect(optionDescription(byName['Claude Haiku 5'] as HTMLElement)).toBe(
       copy.reasons['model-denied'],
     );
-    expect(byName['anthropic/claude-sonnet-5']).not.toHaveAttribute('aria-disabled');
+    expect(byName['Claude Sonnet 5']).not.toHaveAttribute('aria-disabled');
 
-    await fireEvent.mouseDown(byName['openai/gpt-4.1'] as HTMLElement);
+    await fireEvent.mouseDown(byName['GPT 4.1'] as HTMLElement);
     await closeModelList(field);
-    expect(field).toHaveValue('anthropic/claude-sonnet-5');
+    expect(field).toHaveValue('Claude Sonnet 5');
   });
 
   test('leaves a new agent nothing to save when every model is forbidden', async () => {
@@ -284,9 +314,7 @@ describe('a model the model policy forbids', () => {
       },
     });
     const { findByRole } = mountEditor();
-    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue(
-      'anthropic/claude-sonnet-5',
-    );
+    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue('Claude Sonnet 5');
   });
 });
 
@@ -303,14 +331,14 @@ describe('a model turned off or retired', () => {
     });
     const { findByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('anthropic/current');
+    expect(field).toHaveValue('Current');
     const options = await openModelOptions(field);
     expect(
       options.map((option) => [optionLabel(option), optionDescription(option) === '' ? '' : 'x']),
     ).toEqual([
-      ['anthropic/old', 'x'],
-      ['anthropic/off', 'x'],
-      ['anthropic/current', 'x'],
+      ['Old', 'x'],
+      ['Off', 'x'],
+      ['Current', 'x'],
     ]);
     expect(optionDescription(options[0] as HTMLElement)).toBe(copy.reasons.retired);
     expect(optionDescription(options[1] as HTMLElement)).toBe(copy.reasons['turned-off']);
