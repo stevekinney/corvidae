@@ -288,7 +288,7 @@ describe('CLI configuration commands', () => {
 
   // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('treats an aborted DELETE as an unknown mutation outcome', async () => {
-    const result = await commandRunner(['providers', 'disconnect', 'anthropic'], {
+    const result = await commandRunner(['providers', 'disconnect', 'anthropic', '--yes'], {
       fetch: async (_url, init) => {
         if (init?.method === 'DELETE') throw new DOMException('aborted', 'AbortError');
         return response({ configurationRevision: 'r1' });

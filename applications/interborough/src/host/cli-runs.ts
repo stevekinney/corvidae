@@ -1,5 +1,6 @@
 import { request, stream, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
+import { isDryRun } from './cli-destructive.ts';
 
 type RecordValue = Record<string, unknown>;
 type RunKind = 'task' | 'workflow';
@@ -350,6 +351,14 @@ async function cancel(
 ): Promise<CliCommandResult> {
   const kind = requiredKind(parsed);
   const rawId = identifier(parsed);
+  // The operation's own answer to `dryRun: true`, printed as the server sent it.
+  if (isDryRun(parsed))
+    return kind === 'task'
+      ? rpc(target, parsed, dependencies, 'bureau.tasks.cancel', { taskId: rawId, dryRun: true })
+      : rpc(target, parsed, dependencies, 'weft.workflows.cancel', {
+          workflowId: rawId,
+          dryRun: true,
+        });
   const response =
     kind === 'task'
       ? await rpc(target, parsed, dependencies, 'bureau.tasks.cancel', {
