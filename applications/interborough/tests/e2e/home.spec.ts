@@ -807,6 +807,62 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
         ].map(async (locator) => (await locator.boundingBox())!.y),
       );
     const topsWhileLoading = await sectionTops();
+    const loadingShellSnapshot = await page.evaluate(() => {
+      const rectangle = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (element === null) return null;
+        const { top, height } = element.getBoundingClientRect();
+        return { top, height };
+      };
+      const outlet = document.querySelector<HTMLElement>('main.weft-shell-outlet');
+      const visualViewport = window.visualViewport;
+      return {
+        outlet:
+          outlet === null
+            ? null
+            : {
+                rectangle: rectangle('main.weft-shell-outlet'),
+                clientHeight: outlet.clientHeight,
+                clientWidth: outlet.clientWidth,
+                scrollHeight: outlet.scrollHeight,
+                scrollWidth: outlet.scrollWidth,
+                scrollTop: outlet.scrollTop,
+                scrollLeft: outlet.scrollLeft,
+              },
+        scroll: {
+          document: {
+            scrollTop: document.documentElement.scrollTop,
+            scrollLeft: document.documentElement.scrollLeft,
+          },
+          window: { scrollX: window.scrollX, scrollY: window.scrollY },
+          visualViewport:
+            visualViewport === null
+              ? null
+              : {
+                  offsetLeft: visualViewport.offsetLeft,
+                  offsetTop: visualViewport.offsetTop,
+                  pageLeft: visualViewport.pageLeft,
+                  pageTop: visualViewport.pageTop,
+                },
+        },
+        home: rectangle('.ib-home'),
+        date: rectangle('.ib-home__date'),
+        focus: rectangle('.ib-home__focus'),
+        columns: rectangle('.ib-home__columns'),
+        pointer: {
+          coarse: matchMedia('(pointer: coarse)').matches,
+          fine: matchMedia('(pointer: fine)').matches,
+          anyCoarse: matchMedia('(any-pointer: coarse)').matches,
+          anyFine: matchMedia('(any-pointer: fine)').matches,
+        },
+        viewport: {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          visualWidth: visualViewport?.width ?? null,
+          visualHeight: visualViewport?.height ?? null,
+        },
+      };
+    });
     // The page settles its paint on animation frames, which a stopped clock never delivers.
     await page.clock.resume();
     await checkA11y('Home loading');
@@ -822,7 +878,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
     const topsLoaded = await sectionTops();
     const signedTopDifferences = topsLoaded.map((top, index) => top - topsWhileLoading[index]!);
-    const geometry = `loading=${JSON.stringify(topsWhileLoading)} loaded=${JSON.stringify(topsLoaded)} signed differences=${JSON.stringify(signedTopDifferences)}`;
+    const geometry = `loading=${JSON.stringify(topsWhileLoading)} loaded=${JSON.stringify(topsLoaded)} signed differences=${JSON.stringify(signedTopDifferences)} loading shell=${JSON.stringify(loadingShellSnapshot)}`;
     for (const [index, name] of ['Needs you', 'Needs attention', 'Start a chat'].entries()) {
       expect(
         Math.abs(topsLoaded[index]! - topsWhileLoading[index]!),
