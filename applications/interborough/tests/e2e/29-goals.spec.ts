@@ -207,6 +207,8 @@ test.describe('Goal edit actions above the phone tab bar', () => {
         const x = box.left + box.width / 2;
         const y = box.top + box.height / 2;
         return {
+          x,
+          y,
           height: box.height,
           owned: element.contains(document.elementFromPoint(x, y)),
         };
