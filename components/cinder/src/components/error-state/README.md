@@ -1,6 +1,6 @@
 # ErrorState
 
-Placeholder layout for a region whose data failed to load. The default layout is the centred page state: a 48px disc, the title (16px semibold), a sentence of at most 380px, an optional progress line, the actions, and a collapsed details disclosure. A failure is announced as an alert and never looks like an empty result; a `neutral` tone covers a thing that doesn't exist, where nothing failed.
+Placeholder layout for a region whose data failed to load. The default layout is the centred page state: a 48px disc, the title (16px semibold), a sentence of at most 380px, an optional progress line, the actions, and a collapsed details disclosure. A failure is announced as an alert and never looks like an empty result; a `warning` tone covers a problem the person can resolve (announced as a status), and a `neutral` tone a thing that doesn't exist, where nothing failed (a plain group). `announce` raises either to an alert.
 
 The words follow one rule on every page: say what failed in plain words, whether it was the person, and the next action. Use contractions, sentence case and no exclamation marks. Fault codes go in `detail`, behind the "Show the error details" disclosure. Show an error where it happened (a field, a row, a step); use a full-page error state only when the page has nothing to show, and never beside a banner for the same failure.
 

@@ -12,7 +12,8 @@
  * reads exactly what a real fault gives it. Each state is a named capture for the design review, at
  * 1280 and at a phone (the capture repeats a phone at 320 by 640). The three states: a retryable
  * fault with a remediation, a fault that is not retryable (its remediation stays, Retry goes), and a
- * fault with no remediation (Retry stays, no line).
+ * fault with no remediation (Retry stays, no line). A fourth state, a conflict, is the warning tone
+ * of the shared fault row (`/reviews` only, below).
  *
  * Not drawn: the fault boundary itself, which only a thrown render error reaches and no page
  * throws on purpose; it draws the same `fault-error-state.svelte` row as the Reviews page's.

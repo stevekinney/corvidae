@@ -197,8 +197,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/31-reviews.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
-  // A fault's remediation and Retry on the Hooks list's failed state: a retryable fault with a
-  // remediation, one that is not retryable, and one with no remediation (COR-2560).
+  // A fault's remediation and Retry on the Hooks list's failed state and the Reviews fault row: a
+  // retryable fault with a remediation, one that is not retryable, one with no remediation, and a
+  // conflict in the warning tone (COR-2560).
   'tests/e2e/fault-remediation.spec.ts',
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
   // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
