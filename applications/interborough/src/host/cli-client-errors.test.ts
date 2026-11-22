@@ -9,6 +9,7 @@ import {
   CLI_SCHEMA_VERSION,
   executeCli,
   type CliClientDependencies,
+  type CliExitCode,
 } from './cli-client.ts';
 
 const goldenDirectory = join(import.meta.dir, '__fixtures__', 'cli-error-golden');
@@ -155,7 +156,7 @@ describe('Interborough command client failures', () => {
       readonly arguments: string[];
       readonly handler: FetchHandler;
       readonly extra?: Partial<CliClientDependencies>;
-      readonly exitCode: number;
+      readonly exitCode: CliExitCode;
       readonly code: string;
       readonly retryable: boolean;
     }> = [
