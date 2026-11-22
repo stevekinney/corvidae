@@ -274,7 +274,7 @@ describe('the run’s status', () => {
     ['failed', 'Failed', 'danger'],
     ['cancelled', 'Cancelled', 'neutral'],
     ['timed-out', 'Timed out', 'danger'],
-  ])('says %s as %s in a %s badge', (runStatus, label, variant) => {
+  ] as const)('says %s as %s in a %s badge', (runStatus, label, variant) => {
     expect(statusOf(runStatus)).toEqual({ label, variant });
   });
 

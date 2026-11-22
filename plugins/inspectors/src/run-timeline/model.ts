@@ -214,23 +214,22 @@ function statusOf(status: string, open: boolean): { label: string; variant: Stat
     : { label: status, variant: 'neutral' };
 }
 
-const RUN_STATUS_WORDS: Readonly<Record<string, { label: string; variant: StatusVariant }>> =
-  Object.assign(Object.create(null) as Record<string, never>, {
-    pending: { label: 'Pending', variant: 'neutral' },
-    running: { label: 'Running', variant: 'info' },
-    suspended: { label: 'Suspended', variant: 'neutral' },
-    completed: { label: 'Completed', variant: 'success' },
-    failed: { label: 'Failed', variant: 'danger' },
-    cancelled: { label: 'Cancelled', variant: 'neutral' },
-    'timed-out': { label: 'Timed out', variant: 'danger' },
-  });
+const RUN_STATUS_WORDS: ReadonlyMap<string, { label: string; variant: StatusVariant }> = new Map([
+  ['pending', { label: 'Pending', variant: 'neutral' }],
+  ['running', { label: 'Running', variant: 'info' }],
+  ['suspended', { label: 'Suspended', variant: 'neutral' }],
+  ['completed', { label: 'Completed', variant: 'success' }],
+  ['failed', { label: 'Failed', variant: 'danger' }],
+  ['cancelled', { label: 'Cancelled', variant: 'neutral' }],
+  ['timed-out', { label: 'Timed out', variant: 'danger' }],
+]);
 
 /** How a run's status reads in its badge: the word, and the tint, with an unknown status said as sent. */
 function runStatusOf(
   status: string | undefined,
 ): { label: string; variant: StatusVariant } | undefined {
   if (status === undefined) return undefined;
-  return RUN_STATUS_WORDS[status] ?? { label: status, variant: 'neutral' };
+  return RUN_STATUS_WORDS.get(status) ?? { label: status, variant: 'neutral' };
 }
 
 const plural = (count: number, one: string, many: string): string =>
