@@ -140,7 +140,7 @@ function sourceNoLongerAvailable(runId: string, sourceRunId: string): OperationF
   return {
     code: 'NotFound',
     message: `The source run ${sourceRunId} is no longer available: its id was reused by a restart, so run ${runId} cannot be compared with it.`,
-    data: { resource: 'run', identifier: sourceRunId, reason: 'source-replaced' },
+    data: { resource: 'run', identifier: sourceRunId },
   };
 }
 
