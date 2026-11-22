@@ -260,8 +260,8 @@ describe('a panel build that never finishes (COR-2219)', () => {
     };
     const starting = start(false, { panelBuild: { build, clock } });
     // Only the hung build still holds its timer once the others are served; that is when it fires.
-    await waitUntil(() => built.length === 4 && timers.size === 1, {
-      message: 'the four other builds are served and only the stalled one waits',
+    await waitUntil(() => built.length === 5 && timers.size === 1, {
+      message: 'the five other builds are served and only the stalled one waits',
     });
     for (const fire of timers.values()) fire();
     const host = await starting;
@@ -272,6 +272,7 @@ describe('a panel build that never finishes (COR-2219)', () => {
       apps: { plugin: string; app: string }[];
     };
     expect(apps.apps.map(({ app }) => app).toSorted()).toEqual([
+      'failure-explanation',
       'pending-review',
       'run-timeline',
       'schedule-editor',

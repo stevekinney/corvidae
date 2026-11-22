@@ -1332,14 +1332,52 @@ export const workflowsRunsCancelOperation = defineOperation<
   },
 });
 
+/** The scope a run's retry asks of `principal`: write for the owner, read for a workspace member. */
+function retryScopeOf(principal: Principal): BureauScope {
+  return principal.method === 'unauthenticated' || principal.workspace === undefined
+    ? 'bureau.workflows:write'
+    : 'bureau.workflows:read';
+}
+
+/** Whether a workspace member may manage the run `runId`; any other caller always may. */
+async function mayManageRun(
+  host: BureauWorkflowsOperationHost,
+  principal: Principal,
+  runId: string,
+): Promise<boolean> {
+  if (principal.method === 'unauthenticated' || principal.workspace === undefined) return true;
+  return host.ownership.mayAccess({
+    principal,
+    resourceOwner: await host.ownership.runOwner(runId),
+    operatorScope: 'bureau.workflows:write',
+  });
+}
+
+/**
+ * The step `bureau.workflows.runs.retry` would run again for the instance `runId` when `principal`
+ * asked it, or `undefined` when it would refuse or answer `NotFound` (COR-2533). `bureau.tasks.explain`
+ * suggests a retry only for a run this answers for, so the command it gives is one that works.
+ */
+export async function retryableStepFor(
+  host: BureauWorkflowsOperationHost,
+  principal: Principal,
+  runId: string,
+): Promise<number | undefined> {
+  if (host.workflows === undefined) return undefined;
+  if (!mayAccessWorkflows(host, principal, retryScopeOf(principal))) return undefined;
+  if (!(await mayManageRun(host, principal, runId))) return undefined;
+  return host.workflows.retryableStep(runId);
+}
+
 const runsRetryInput = z.object({
   runId: z.string().min(1).describe('The identifier of the failed workflow instance to run again.'),
   step: z
     .number()
     .int()
     .min(1)
+    .optional()
     .describe(
-      'The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.',
+      'The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.',
     ),
   retryId: z
     .string()
@@ -1367,7 +1405,7 @@ export const workflowsRunsRetryOperation = defineOperation<
   mcpExposable: false,
   summary: 'Run a failed workflow run again from the step it failed at',
   description:
-    'Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.',
+    'Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at, and is that step when left out. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: runsRetryInput,
@@ -1380,29 +1418,13 @@ export const workflowsRunsRetryOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     // Authorized as `bureau.workflows.runs.cancel` is: the owner or the write scope, and for a
     // workspace member, the run's own owner with the right to manage.
-    const workflows = workflowsFor(
-      host,
-      principal,
-      principal.method === 'unauthenticated' || principal.workspace === undefined
-        ? 'bureau.workflows:write'
-        : 'bureau.workflows:read',
-      'run',
-      input.runId,
-    );
-    if (
-      principal.method !== 'unauthenticated' &&
-      principal.workspace !== undefined &&
-      !host.ownership.mayAccess({
-        principal,
-        resourceOwner: await host.ownership.runOwner(input.runId),
-        operatorScope: 'bureau.workflows:write',
-      })
-    ) {
+    const workflows = workflowsFor(host, principal, retryScopeOf(principal), 'run', input.runId);
+    if (!(await mayManageRun(host, principal, input.runId))) {
       throw resourceNotFound('run', input.runId);
     }
     try {
       return await workflows.retryRun(input.runId, {
-        step: input.step,
+        ...(input.step === undefined ? {} : { step: input.step }),
         ...(input.retryId === undefined ? {} : { retryId: input.retryId }),
       });
     } catch (error) {

@@ -435,6 +435,30 @@
     white-space: nowrap;
   }
 
+  /* `metaLines={2}`: on a phone, line two takes a second line before it ends in an ellipsis. The
+     row's own width decides, as it does for the phone form (a row that follows the window takes
+     the same rule from the script's phone mark, as the title rule below does); wider, line two
+     stays one line. */
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item--lines:not([data-cinder-phone-width='viewport'])
+      .cinder-stacked-list-item__meta[data-cinder-meta-lines='2'] {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      white-space: normal;
+    }
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone]
+    .cinder-stacked-list-item__meta[data-cinder-meta-lines='2'] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+  }
+
   /* `wrapMeta`: line two carries a control, so it wraps and nothing on it is cut. */
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--wrap-meta
     .cinder-stacked-list-item__meta {

@@ -16,12 +16,30 @@
   import { getPanels, loadPluginApp, pluginToolCaller } from '../../../lib/host-panels.ts';
   import { queryKeys } from '../../../lib/query.ts';
 
-  interface RunPanelsProps {
-    /** The Bureau task the panels show. */
-    taskId: string;
-  }
+  /**
+   * The run the panels show: a Bureau task (an agent run), or a run only the workflow engine holds
+   * (a workflow instance, a fork among them), which has no task. Exactly one is given. `failed` is
+   * whether the run failed: a panel that placed itself `when: 'failed'` is mounted only then
+   * (COR-2543), so a run that did not fail shows no card with nothing to say. A workflow instance
+   * mounts only those panels: a panel with no `when` is written for a task, and per-panel scoping
+   * of instances belongs to the run panel scope table, not to this page.
+   */
+  type RunPanelsProps = (
+    { taskId: string; workflowId?: never } | { workflowId: string; taskId?: never }
+  ) & { failed?: boolean };
 
-  let { taskId }: RunPanelsProps = $props();
+  let { taskId, workflowId, failed = false }: RunPanelsProps = $props();
+
+  /**
+   * What each run placement passes its panel (owner decision 2026-11-22): an agent run is
+   * `{ taskId }`, as it always was; a workflow instance is `{ runId, runKind: 'workflow' }`, with no
+   * `taskId`, so a panel that reads a task is never handed an id that names none.
+   */
+  const run = $derived(
+    workflowId === undefined
+      ? { key: `task:${String(taskId)}`, input: { taskId } }
+      : { key: `workflow:${workflowId}`, input: { runId: workflowId, runKind: 'workflow' } },
+  );
 
   const apps = createQuery(
     () => ({
@@ -36,7 +54,18 @@
   // composition keeps every app's `ui://` URI unique across plugins, so the URI keys the list.
   const panels = $derived(
     (apps.data ?? [])
-      .filter((candidate) => candidate.placements.some((placement) => placement.kind === 'run'))
+      .filter((candidate) =>
+        candidate.placements.some(
+          (placement) =>
+            placement.kind === 'run' &&
+            (placement.when === 'failed'
+              ? failed
+              : // A panel with no `when` reads a task (the run inspector's `taskId`, the schedule
+                // editor's list, the timeline's task read), which an instance has none of: it
+                // would draw an empty card, so only an agent run mounts one.
+                placement.when === undefined && workflowId === undefined),
+        ),
+      )
       .toSorted((left, right) =>
         left.plugin < right.plugin ? -1 : left.plugin > right.plugin ? 1 : 0,
       ),
@@ -54,13 +83,13 @@
     data-plugin={panel.plugin}
     data-app={panel.app}
   >
-    {#key taskId}
+    {#key run.key}
       <McpApp
         resourceUri={panel.uri}
         title={panel.title}
         {loadResource}
         {onToolCall}
-        toolInput={{ arguments: { taskId } }}
+        toolInput={{ arguments: run.input }}
       />
     {/key}
   </Section>

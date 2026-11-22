@@ -61,6 +61,11 @@ import {
 } from './e2e-constants.ts';
 
 import { createEchoAgents } from './echo-agent.ts';
+import {
+  createFailingAgents,
+  EXPLAINER_AGENT_NAME,
+  failureExplainerAgent,
+} from './failure-explanation-agents.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
 import {
   seedCancellationRequest,
@@ -391,8 +396,12 @@ const host = await startHost({
       ...createQuestionAgents(),
       ...createModelAgents(),
       ...createRegenerationProofAgent(),
+      ...createFailingAgents(),
     },
-    withBureauTools: { 'workflow-revision': workflowRevisionAgent },
+    withBureauTools: {
+      'workflow-revision': workflowRevisionAgent,
+      [EXPLAINER_AGENT_NAME]: failureExplainerAgent,
+    },
   },
   environment: { INTERBOROUGH_HOME: home },
   // A chat whose first message carries an access marker is scripted to call a tool (`access-provider.ts`).

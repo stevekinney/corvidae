@@ -28,6 +28,8 @@ import {
   MEMORY_STORE_TOOL_NAME,
   MEMORY_WRITTEN_EVENT_NAME,
   noteAnnouncementOf,
+  stoppedNoteId,
+  stoppedRunIdOf,
   stopReasonOf,
   taskNoteAnnouncements,
   TOOL_GRANT_SETTLED_EVENT_NAME,
@@ -628,5 +630,15 @@ describe('taskNoteAnnouncements', () => {
     );
 
     expect(notesOn(stamped, 'a2').map((note) => note.kind)).toEqual(['child-run']);
+  });
+});
+
+describe('the run a stop line is about (COR-2533)', () => {
+  test('is read from the line’s own identity, and from no other note', () => {
+    expect(stoppedRunIdOf(stoppedNoteId('task-1'))).toBe('task-1');
+    expect(stoppedRunIdOf(stoppedNoteId('a:b'))).toBe('a:b');
+    for (const other of ['memory:1', 'stopped:', 'child:task-1', '']) {
+      expect(stoppedRunIdOf(other)).toBeUndefined();
+    }
   });
 });

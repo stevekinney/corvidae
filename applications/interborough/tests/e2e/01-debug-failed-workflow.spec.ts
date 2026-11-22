@@ -39,11 +39,12 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await openHowItRan(page);
   await expect(page.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
-  await expect(
-    page.getByText(
-      'The workflow or an activity threw an error that did not match a timeout, cancellation, resource, or system failure.',
-    ),
-  ).toBeVisible();
+  // A run only the engine holds has no stored-facts explanation to read (`bureau.tasks.explain` is
+  // answered as not found), so its failure shows the engine's own category as a badge and says
+  // nothing the browser made up for it (COR-2533).
+  await expect(page.locator('[data-run-failure] [data-run-failure-category]')).toContainText(
+    'application',
+  );
   await checkA11y('workflow detail — overview (failure explanation)');
 
   await expect(page.getByRole('heading', { level: 3, name: 'Steps' })).toBeVisible();

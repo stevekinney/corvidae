@@ -1,0 +1,115 @@
+/**
+ * COR-2543, "Coordinator, 2026-11-22: shown only for failed runs": a panel that places itself on a
+ * run's page `when: 'failed'` is mounted for a run that failed and for no other, so a run that did
+ * not fail shows no card with nothing to say. A run placement with no condition mounts on every
+ * agent run; a workflow instance has no task for those panels to read, so it mounts none of them.
+ */
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { afterEach, describe, expect, test } from 'bun:test';
+
+import { bureau } from '../../chat/pages.test-support.ts';
+import QueryPage from '../../chat/query-page.test-harness.svelte';
+import RunPanels from './run-panels.svelte';
+
+let restore: (() => void) | undefined;
+/** Whether the host has answered the panels list. */
+let listed = false;
+afterEach(() => {
+  cleanup();
+  restore?.();
+  restore = undefined;
+});
+
+const APPS = [
+  {
+    plugin: 'inspectors',
+    app: 'run-inspector',
+    title: 'Run inspector',
+    uri: 'ui://inspectors/run-inspector/v1',
+    placements: [{ kind: 'run' }],
+  },
+  {
+    plugin: 'inspectors',
+    app: 'schedule-editor',
+    title: 'Schedule editor',
+    uri: 'ui://inspectors/schedule-editor/v1',
+    placements: [{ kind: 'page', path: 'schedules' }, { kind: 'run' }],
+  },
+  {
+    plugin: 'inspectors',
+    app: 'run-timeline',
+    title: 'Run timeline',
+    uri: 'ui://inspectors/run-timeline/v1',
+    placements: [{ kind: 'run' }, { kind: 'chat-tool', agentTool: 'bureau:runs-timeline' }],
+  },
+  {
+    plugin: 'inspectors',
+    app: 'failure-explanation',
+    title: 'Failure explanation',
+    uri: 'ui://inspectors/failure-explanation/v1',
+    opensFromTool: 'bureau.tasks.explain',
+    placements: [
+      { kind: 'run', when: 'failed' },
+      { kind: 'chat-tool', agentTool: 'bureau:tasks-explain' },
+    ],
+  },
+];
+
+function show(
+  failed: boolean,
+  run: { taskId: string } | { workflowId: string } = { taskId: 'run-1' },
+) {
+  listed = false;
+  restore = bureau({}, (url) => {
+    if (!url.endsWith('/host/panels')) return new Response('{}', { status: 404 });
+    listed = true;
+    return Response.json({ apps: APPS });
+  }).restore;
+  return render(QueryPage, {
+    props: { page: RunPanels, pageProps: { ...run, failed } },
+  } as never);
+}
+
+const apps = (container: HTMLElement): (string | undefined)[] =>
+  [...container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]')].map(
+    (section) => section.dataset['app'],
+  );
+
+describe('a panel placed on a run’s page only when it failed', () => {
+  test('is mounted for a run that failed, beside the panels every run has', async () => {
+    const { container } = show(true);
+    // In the order the host lists a plugin's panels.
+    await waitFor(() =>
+      expect(apps(container)).toEqual([
+        'run-inspector',
+        'schedule-editor',
+        'run-timeline',
+        'failure-explanation',
+      ]),
+    );
+  });
+
+  test('is the one panel a workflow instance that failed mounts, and no panel at all when it did not fail', async () => {
+    // The run inspector, the schedule editor and the timeline read a task, which an instance has
+    // none of: mounted for one, each would draw an empty card.
+    const failed = show(true, { workflowId: 'instance-1' });
+    await waitFor(() => expect(apps(failed.container)).toEqual(['failure-explanation']));
+    failed.unmount();
+    cleanup();
+    restore?.();
+    const running = show(false, { workflowId: 'instance-1' });
+    // Nothing is mounted from the list once the host has answered it.
+    await waitUntil(() => listed, { message: 'the host lists its panels' });
+    await quietFor(50);
+    expect(apps(running.container)).toEqual([]);
+  });
+
+  test('is left off the page of a run that did not fail, which keeps the panels every run has', async () => {
+    const { container } = show(false);
+    await waitFor(() =>
+      expect(apps(container)).toEqual(['run-inspector', 'schedule-editor', 'run-timeline']),
+    );
+    expect(container.textContent).not.toContain('Failure explanation');
+  });
+});
