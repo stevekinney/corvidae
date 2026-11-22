@@ -1,7 +1,7 @@
 {
   "issue": "COR-2532",
   "branch": "chef/cor-2532-explain-failure",
-  "checkedAt": "e645b9a1d632c237267bc7a2c2084214614f866b",
+  "checkedAt": "f0f5dba2553cf9ee428ccffbc00a7c990a9faa48",
   "briefVersion": "f5788e2b71af",
   "status": "READY",
   "criteria": [
@@ -33,7 +33,7 @@
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "tasks-explain-operation.ts runNotFailed: Unprocessable with data.reason run-not-failed (the code and reason bureau.workflows.runs.retry answers for a run that has not failed) and a remediation. tasks-explain-operation.test.ts covers a completed agent run, a running agent run and a completed workflow instance."
+      "evidence": "tasks-explain-operation.ts runNotFailed: Unprocessable with data.reason run-not-failed (the code and reason bureau.workflows.runs.retry answers for a run that has not failed) and a remediation. tasks-explain-operation.test.ts covers a completed agent run, a running agent run and a completed workflow instance. A workflow instance with no engine state or timeline is UnsupportedCapability (durable-engine), not run-not-failed (review round 1, tested)."
     },
     {
       "id": "AC7",
