@@ -9,7 +9,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import {
   modelDisplayName,
@@ -75,6 +75,7 @@ async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> 
 }
 
 const copy = AGENT_EDITOR_COPY;
+const pageCopy = AGENT_PAGE_COPY;
 
 /**
  * The providers the host can call and has no key for. The field lists each once, as a disabled
@@ -592,7 +593,9 @@ test.describe('an agent that exists', () => {
     await expect(page).toHaveURL(/\/agents\/e2e-delete\/edit$/);
 
     await page.getByRole('button', { name: copy.deleteAction }).click();
-    const dialog = page.getByRole('dialog', { name: copy.deleteDialog.title });
+    const dialog = page.getByRole('dialog', {
+      name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-delete'),
+    });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
@@ -601,10 +604,13 @@ test.describe('an agent that exists', () => {
     expect(kept.state).toBe('ready');
 
     await page.getByRole('button', { name: copy.deleteAction }).click();
-    await page
-      .getByRole('dialog', { name: copy.deleteDialog.title })
-      .getByRole('button', { name: copy.deleteDialog.confirm })
-      .click();
+    const confirmed = page.getByRole('dialog', {
+      name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-delete'),
+    });
+    await confirmed
+      .getByLabel(pageCopy.settings.deleteDialog.typeLabel('e2e-delete'))
+      .fill('e2e-delete');
+    await confirmed.getByRole('button', { name: pageCopy.settings.deleteDialog.confirm }).click();
     // The delete lands on the list, and the agent has left it.
     await expect(page).toHaveURL(/\/agents$/);
     await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
@@ -631,7 +637,11 @@ test.describe('the delete confirmation', () => {
       await makeAgent(request, 'e2e-dialog');
       await page.goto('/agents/e2e-dialog/edit');
       await page.getByRole('button', { name: copy.deleteAction }).click();
-      await expect(page.getByRole('dialog', { name: copy.deleteDialog.title })).toBeVisible();
+      await expect(
+        page.getByRole('dialog', {
+          name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-dialog'),
+        }),
+      ).toBeVisible();
       await checkA11y(`delete confirmation at ${width}px`);
     });
   }
@@ -694,10 +704,13 @@ test.describe('a file that changed outside Interborough', () => {
     await writeFile(path, onDisk);
 
     await page.getByRole('button', { name: copy.deleteAction }).click();
-    await page
-      .getByRole('dialog', { name: copy.deleteDialog.title })
-      .getByRole('button', { name: copy.deleteDialog.confirm })
-      .click();
+    const dialog = page.getByRole('dialog', {
+      name: pageCopy.settings.deleteDialog.title('End-to-end agent e2e-stale-delete'),
+    });
+    await dialog
+      .getByLabel(pageCopy.settings.deleteDialog.typeLabel('e2e-stale-delete'))
+      .fill('e2e-stale-delete');
+    await dialog.getByRole('button', { name: pageCopy.settings.deleteDialog.confirm }).click();
     await expect(page.getByText(copy.stale.title)).toBeVisible();
     expect(await readFile(path, 'utf8')).toBe(onDisk);
   });

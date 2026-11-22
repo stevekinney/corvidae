@@ -410,7 +410,8 @@ describe('the delete block (row 41x)', () => {
     // Cancel and Save are the bar's only buttons.
     expect(container.querySelector('.cinder-form-actions')?.contains(button)).toBe(false);
     await fireEvent.click(button);
-    await findByRole('dialog', { name: copy.deleteDialog.title });
+    const dialog = await findByRole('dialog', { name: 'Delete Researcher?' });
+    expect(within(dialog).getByRole('button', { name: 'Delete agent' })).toBeDisabled();
     expect(calls.callsTo('bureau.agents.definitions.delete')).toEqual([]);
   });
 });
