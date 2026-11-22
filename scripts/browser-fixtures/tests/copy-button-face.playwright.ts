@@ -5,6 +5,7 @@
  * nothing beside the button moves.
  */
 
+import { freezePageTimers } from '@lostgradient/testing/playwright/page-timers';
 import { expect, test } from '@playwright/test';
 import { fixtureRoute } from './layout-fixture.ts';
 
@@ -32,6 +33,9 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
     await expect(text.locator(':scope > svg.lucide-copy')).toHaveCount(1);
     await expect(text.locator('[data-cinder-current]')).toHaveText('Copy');
 
+    // The copied state lasts 1.5s on a page timer; under load it can clear before the assertions
+    // below read it, so the timers stop before the clicks (COR-2644).
+    await freezePageTimers(page);
     for (const button of [icon, text]) {
       const before = await button.boundingBox();
       await button.click();
