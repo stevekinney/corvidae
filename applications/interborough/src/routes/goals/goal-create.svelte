@@ -211,22 +211,11 @@
     />
   </section>
 {:else}
-  {#if validatorsQuery.isError}
-    <ErrorState
-      bordered
-      title={copy.checkLabel}
-      description={copy.checkUnavailableDescription}
-      headingLevel={2}
-      retryLabel={RETRY_LABEL}
-      {...faultErrorStateAdvice(validatorsQuery.error, () => void validatorsQuery.refetch())}
-    />
-  {/if}
   <GoalForm
     {form}
     mode="create"
     {agents}
     agentsFailed={agentsQuery.isError}
-    checksFailed={validatorsQuery.isError}
     {providerConnected}
     {scripted}
     busy={submitting}
@@ -235,7 +224,20 @@
     {cancelPath}
     onSubmit={submit}
     onUseAgent={(name) => (form.agentName = name)}
-  />
+  >
+    {#snippet checkRecovery()}
+      {#if validatorsQuery.isError}
+        <ErrorState
+          bordered
+          title={copy.checkLabel}
+          description={copy.checkUnavailableDescription}
+          headingLevel={2}
+          retryLabel={RETRY_LABEL}
+          {...faultErrorStateAdvice(validatorsQuery.error, () => void validatorsQuery.refetch())}
+        />
+      {/if}
+    {/snippet}
+  </GoalForm>
 {/if}
 
 <style>

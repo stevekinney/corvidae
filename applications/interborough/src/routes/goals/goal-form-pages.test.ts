@@ -596,7 +596,10 @@ describe('a failed checks catalog', () => {
     const page = within(view.container);
     const prompt = (await page.findByLabelText(copy.promptLabel)) as HTMLTextAreaElement;
     await fireEvent.input(prompt, { target: { value: 'Keep this draft.' } });
-    await page.findByRole('heading', { level: 2, name: copy.checkLabel });
+    const check = page.getByRole('combobox', { name: copy.checkLabel });
+    const recovery = await page.findByRole('heading', { level: 2, name: copy.checkLabel });
+    expect(check.compareDocumentPosition(recovery) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(page.getAllByText(copy.checkUnavailableDescription)).toHaveLength(1);
 
     await fireEvent.click(page.getByRole('button', { name: RETRY_LABEL }));
 
