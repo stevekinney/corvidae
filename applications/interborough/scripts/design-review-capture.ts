@@ -195,6 +195,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/agents-reviews-design-states.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
+  // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
+  // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
+  'tests/panels/schedule-editor-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

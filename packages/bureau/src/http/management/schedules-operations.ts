@@ -56,10 +56,11 @@ import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { bureauNameOf } from '../../namespaced-identifier.ts';
 import { AGENT_SCHEDULE_WORKFLOW_TYPE } from '../../workflow-schedule.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
-import type { BureauSchedules } from '../../bureau-types/schedules.ts';
+import type { BureauSchedules, ScheduleActor } from '../../bureau-types/schedules.ts';
 import { WorkflowInputInvalidError } from '../../workflow-schema.ts';
 import type { BureauWorkflows, WorkflowScheduleBlocker } from '../../workflow-runtime.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
+import { hostPanelUriOfCall } from '../host-panel-operations.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
 import { mayAccessWorkflows } from './workflows-operations.ts';
@@ -359,6 +360,17 @@ function faultOf(error: unknown, scheduleId: string): never {
     }
   }
   throw error;
+}
+
+/**
+ * Who asks, for the audit trail (COR-2545): the caller's owner of record, and the host panel the
+ * call came through, which is read from the call's own in-process scope and never from the request.
+ */
+function actorOf(principal: Principal): ScheduleActor | undefined {
+  const owner = ownerOfPrincipal(principal);
+  if (owner === undefined) return undefined;
+  const panelUri = hostPanelUriOfCall();
+  return panelUri === undefined ? { principal: owner } : { principal: owner, panelUri };
 }
 
 /**
@@ -667,19 +679,24 @@ export const schedulesCreateOperation = defineOperation<
       } satisfies OperationFault;
     }
     refuseMixedTarget(input, ['input', 'sessionId', 'continueChat']);
+    // The entry of `schedule.created` names who asked, and the host panel they asked through.
+    const createdBy = { actor: actorOf(principal) };
     if (input.workflowType !== undefined) {
       workflowsForSchedule(host, principal, input.workflowType);
       assertKnownTimeZone(input.timeZone);
       try {
-        const summary = await host.schedules.createWorkflow({
-          workflowType: input.workflowType,
-          spec: input.spec,
-          ...(input.workflowInput === undefined ? {} : { workflowInput: input.workflowInput }),
-          ...(input.description === undefined ? {} : { description: input.description }),
-          ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
-          ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
-          principal: owner,
-        });
+        const summary = await host.schedules.createWorkflow(
+          {
+            workflowType: input.workflowType,
+            spec: input.spec,
+            ...(input.workflowInput === undefined ? {} : { workflowInput: input.workflowInput }),
+            ...(input.description === undefined ? {} : { description: input.description }),
+            ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
+            ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+            principal: owner,
+          },
+          createdBy,
+        );
         if (summary === undefined) throw unsupported();
         return viewOf(summary, owner, undefined, undefined, false, undefined, principal);
       } catch (error) {
@@ -707,17 +724,20 @@ export const schedulesCreateOperation = defineOperation<
     }
     assertKnownTimeZone(input.timeZone);
     try {
-      const summary = await host.schedules.create({
-        agentName: input.agentName,
-        spec: input.spec,
-        input: input.input,
-        ...(input.description === undefined ? {} : { description: input.description }),
-        ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-        ...(input.continueChat === true ? { continueChat: true } : {}),
-        ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
-        ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
-        principal: owner,
-      });
+      const summary = await host.schedules.create(
+        {
+          agentName: input.agentName,
+          spec: input.spec,
+          input: input.input,
+          ...(input.description === undefined ? {} : { description: input.description }),
+          ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+          ...(input.continueChat === true ? { continueChat: true } : {}),
+          ...(input.overlap === undefined ? {} : { overlap: input.overlap }),
+          ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+          principal: owner,
+        },
+        createdBy,
+      );
       if (summary === undefined) throw unsupported();
       // The preview comes from the request's own text, never a second read of storage: a read that
       // failed after the schedule was made would hide the schedule from a retry (COR-411).
@@ -745,7 +765,10 @@ function defineGuardedWrite(
   run: (
     schedules: BureauSchedulesOperationHost['schedules'],
     scheduleId: string,
-    guard: { readonly expectedRevision: number | undefined },
+    guard: {
+      readonly expectedRevision: number | undefined;
+      readonly actor: ScheduleActor | undefined;
+    },
   ) => Promise<true | undefined>,
 ) {
   return defineOperation<typeof guardedInput, typeof receiptSchema, BureauSchedulesOperationHost>({
@@ -774,6 +797,7 @@ function defineGuardedWrite(
       try {
         const done = await run(host.schedules, input.scheduleId, {
           expectedRevision: input.expectedRevision,
+          actor: actorOf(principal),
         });
         if (done === undefined) throw unsupported();
       } catch (error) {
@@ -1236,7 +1260,7 @@ export const schedulesUpdateOperation = defineOperation<
           ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
           ...(input.continueChat === true ? { continueChat: true } : {}),
         },
-        { expectedRevision: input.expectedRevision },
+        { expectedRevision: input.expectedRevision, actor: actorOf(principal) },
       );
       if (done === undefined) throw unsupported();
     } catch (error) {

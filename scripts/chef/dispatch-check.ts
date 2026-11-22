@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 // Chef dispatch check: overlap ordering for batches. Two batches that change the same files build
-// in sequence, never side by side, because the second would be merged onto the first's rewrite and
-// need a new evidence run (review corrections, section 5; `land-queue.ts` re-verifies at landing,
-// this check keeps the clash from being built at all).
+// in sequence, never side by side, because the second would conflict with the first's rewrite, and a
+// conflict is the one thing that refuses a moved base (`moved-base.ts`; owner decision, 2026-11-21):
+// the worker would have to merge and return a new head. This check keeps the clash from being built
+// at all.
 //
 // The dispatch input is the run's batch file, a sibling of its note and log:
 // `<main checkout>/tmp/chef/<run id>-batch.json`.
