@@ -12,7 +12,7 @@ export type McpAccessContext = {
 };
 
 /** What a tool failure tells the caller beyond its message: the fault code and the next step. */
-export type McpToolFaultOptions = {
+type McpToolFaultOptions = {
   /** The fault code the tool result reports; `InvalidParams` when omitted. */
   readonly faultCode?: FaultCode;
   /** One line saying what the caller can do next (see `assertValidRemediation`). */

@@ -29,7 +29,7 @@ export type McpToolDefinition = {
  * surface's fault. `retryable` is the code's own answer, and `remediation` is one line saying what
  * to do next, when there is something to say.
  */
-export type McpToolFault = {
+type McpToolFault = {
   readonly code: FaultCode;
   readonly message: string;
   readonly retryable: boolean;

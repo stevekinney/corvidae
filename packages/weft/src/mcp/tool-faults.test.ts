@@ -14,7 +14,9 @@ import { workflow } from '../core/types/workflow-function.ts';
 import { createMcpEndpoint, type McpEndpoint } from './http.ts';
 import { connectInProcessClient } from './mcp-client.test-support.ts';
 import { MCP_PROTOCOL_VERSION } from './protocol.ts';
-import { callMcpTool, type McpToolFault, type McpToolResult } from './tools.ts';
+import { callMcpTool, type McpToolResult } from './tools.ts';
+
+type McpToolFault = NonNullable<McpToolResult['structuredContent']>;
 
 let engines: Engine[] = [];
 let endpoints: McpEndpoint[] = [];
