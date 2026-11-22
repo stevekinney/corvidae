@@ -7,7 +7,7 @@
  * place. What was decided is under Done. Sessions are started through the AG-UI mount, the way a
  * client other than the page would.
  */
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
@@ -599,6 +599,48 @@ test.describe('a phone tool approval', () => {
       await note.scrollIntoViewIfNeeded();
       await expect(note).toBeInViewport();
       await expect(actions).toBeInViewport();
+    });
+  });
+
+  test('/reviews keeps every approval argument reachable above the dock at 320px', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await withAlwaysRefundMode(request, async () => {
+      await waitingRefund(page, request, 'reviews-320-approval-input', REFUND_APPROVAL);
+      const pane = paneOf(page);
+      const input = pane.getByRole('group', { name: 'Input', exact: true });
+      const actions = pane.getByRole('group', { name: 'Approval actions' });
+
+      async function readAboveActions(value: Locator): Promise<void> {
+        await value.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+        await expect(value).toBeInViewport({ ratio: 1 });
+        const boxes = await readBoxes(page, { actions, value });
+        expect(boxes.value.y + boxes.value.height).toBeLessThanOrEqual(boxes.actions.y);
+        await expect(actions).toBeInViewport();
+      }
+
+      for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
+        await readAboveActions(input.getByText(argument, { exact: true }));
+      }
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'approval Fields above dock',
+        source: '31-reviews.spec.ts',
+      });
+
+      await input.getByText('JSON', { exact: true }).tap();
+      const tree = input.getByRole('tree', { name: 'JSON tree' });
+      await expect(tree).toContainText('reason');
+      for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
+        await readAboveActions(tree.getByText(argument, { exact: false }).last());
+      }
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'approval JSON above dock',
+        source: '31-reviews.spec.ts',
+      });
     });
   });
 });
