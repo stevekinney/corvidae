@@ -247,6 +247,7 @@ import {
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
+import { createRunTimelineTool } from './run-timeline-tool';
 import { runStatusOfTask, serveRunTimeline } from './run-timeline';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
@@ -588,26 +589,31 @@ async function constructBureau<const D extends AgentDefinitions>(
               owner: await ownerOf({ kind: 'run', id: runId }),
               hookOrigin: await hookOriginOfRun(runId),
             }),
-            // The `runs-timeline` tool: an agent run is a task with a record, and an id the
-            // registry does not hold is read as an instance of a workflow file, as
-            // `bureau.runs.timeline` reads it.
-            runTimeline: async (runId) => {
-              const task = await taskRegistryHolder.current?.get(runId);
-              if (task !== undefined) {
-                const entries = await durableEngine()?.getTimeline(runId);
-                return entries === undefined
-                  ? 'unsupported'
-                  : serveRunTimeline('agent', runStatusOfTask(task.status), entries);
-              }
-              const workflowRun = await workflowRuntime?.workflows.getRun(runId);
-              if (workflowRun === undefined) return undefined;
-              const entries = await durableEngine()?.getTimeline(runId);
-              return entries === undefined
-                ? 'unsupported'
-                : serveRunTimeline('workflow', workflowRun.status, entries);
-            },
           }),
         )),
+    // COR-2542: a run's timeline is a read of the run, not workflow management, so the tool does
+    // not wait for a workflow directory. An agent run is a task with a record, and an id the
+    // registry does not hold is read as an instance of a workflow file, as `bureau.runs.timeline`
+    // reads it.
+    createRunTimelineTool({
+      workspace: workspace,
+      ownerOfRun: (runId) => ownerOf({ kind: 'run', id: runId }),
+      runTimeline: async (runId) => {
+        const task = await taskRegistryHolder.current?.get(runId);
+        if (task !== undefined) {
+          const entries = await durableEngine()?.getTimeline(runId);
+          return entries === undefined
+            ? 'unsupported'
+            : serveRunTimeline('agent', runStatusOfTask(task.status), entries);
+        }
+        const workflowRun = await workflowRuntime?.workflows.getRun(runId);
+        if (workflowRun === undefined) return undefined;
+        const entries = await durableEngine()?.getTimeline(runId);
+        return entries === undefined
+          ? 'unsupported'
+          : serveRunTimeline('workflow', workflowRun.status, entries);
+      },
+    }),
   ];
   // COR-2009 — the code-defined agents built from Bureau's own tools join `agents` before any
   // plugin is composed, so a plugin agent of the same name is a clash, as with any host agent.

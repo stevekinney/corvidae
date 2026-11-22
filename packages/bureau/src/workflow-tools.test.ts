@@ -110,7 +110,6 @@ describe('which agents are offered the tools', () => {
       'workflows-runs-list',
       'workflows-runs-get',
       'workflows-runs-history',
-      'runs-timeline',
     ]);
     const harness = await start();
     await harness.callTool('bureau__workflows-list', {});
@@ -316,7 +315,6 @@ describe('what a model is shown of a tool’s input', () => {
         createWorkflowTools({
           workflows: () => undefined,
           runIdentity: async () => ({ agent: undefined, owner: undefined }),
-          runTimeline: async () => undefined,
         }),
       ),
     );
@@ -1062,7 +1060,6 @@ describe('workflows-list', () => {
     const tools = createWorkflowTools({
       workflows: () => undefined,
       runIdentity: async () => ({ agent: undefined, owner: undefined }),
-      runTimeline: async () => undefined,
     });
     expect(tools['workflows-update']?.description).toContain('description and schemas included');
     expect(tools['workflows-list']?.description).toContain('description');
@@ -1197,7 +1194,6 @@ describe('who the tools act for', () => {
     const tools = createWorkflowTools({
       workflows: () => harness.bureau.workflows,
       runIdentity: async () => ({ agent: 'scribe', owner: harness.bureau.workflows!.owner }),
-      runTimeline: async () => undefined,
     });
     const answer = await (
       tools['workflows-list'] as unknown as {
@@ -1232,7 +1228,6 @@ describe('who the tools act for', () => {
       'workflows-runs-get',
       'workflows-runs-cancel',
       'workflows-runs-history',
-      'runs-timeline',
     ] as const) {
       const input = tool === 'workflows-runs-list' ? {} : { runId: 'missing-run' };
       const call = await foreign.callTool(`bureau__${tool}`, input, principal);
@@ -1396,41 +1391,6 @@ describe('agent-owned workflow runs', () => {
     expect(toolEvents.every((event) => !Object.hasOwn(event, 'data'))).toBe(true);
   });
 
-  it('reads a finished run’s step timeline with its status and no payload, and a missing run as not-found', async () => {
-    const harness = await start();
-    await harness.putAgent('scribe');
-    await harness.callTool('bureau__workflows-create', {
-      name: 'Timed',
-      trigger: { kind: 'manual' },
-      steps: STEPS,
-    });
-    const started = await harness.callTool('bureau__workflows-start', { id: 'timed' });
-    const runId = (started.result as { runId: string }).runId;
-    await waitUntil(async () => (await harness.bureau.workflows!.getRun(runId)) !== undefined, {
-      message: 'started workflow run did not become readable',
-    });
-    await harness.bureau.durableEngine()!.getHandle(runId).result();
-    const timeline = await harness.callTool('bureau__runs-timeline', { runId });
-    expect(timeline.result).toMatchObject({
-      status: 'ok',
-      runId,
-      kind: 'workflow',
-      runStatus: 'completed',
-      truncated: false,
-    });
-    const entries = (timeline.result as { entries: readonly Record<string, unknown>[] }).entries;
-    expect(entries.length).toBeGreaterThan(0);
-    for (const entry of entries) {
-      expect(Object.keys(entry).toSorted()).toEqual(
-        ['duration', 'label', 'operationType', 'status', 'step', 'timestamp', 'tries'].filter(
-          (key) => key !== 'duration' || Object.hasOwn(entry, 'duration'),
-        ),
-      );
-    }
-    const missing = await harness.callTool('bureau__runs-timeline', { runId: 'no-such-run' });
-    expect(missing.result).toEqual({ status: 'not-found', id: 'no-such-run' });
-  });
-
   it('signals a matching workflow and cancels a waiting run', async () => {
     const harness = await start();
     await harness.callTool('bureau__workflows-create', {
@@ -1489,7 +1449,6 @@ describe('a calling agent whose identifier is not an agent identifier', () => {
     const tools = createWorkflowTools({
       workflows: () => harness.bureau.workflows,
       runIdentity: async () => ({ agent: 'Not An Agent', owner: harness.bureau.workflows!.owner }),
-      runTimeline: async () => undefined,
     });
     const run = (name: string, input: unknown) =>
       (
@@ -1549,7 +1508,6 @@ describe('what a person is shown of each tool', () => {
     const tools: Record<string, Tool> = createWorkflowTools({
       workflows: () => undefined,
       runIdentity: async () => ({ agent: undefined, owner: undefined }),
-      runTimeline: async () => undefined,
     });
     for (const name of WORKFLOW_TOOL_NAMES) {
       const line = readToolShortDescription(tools[name]?.metadata);

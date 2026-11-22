@@ -1,8 +1,7 @@
 /**
  * The tools an agent manages its workflows with (COR-1529): `workflows-create`, `workflows-update`,
  * `workflows-pause`, `workflows-resume`, `workflows-list`, `workflows-get`,
- * `workflows-revisions-list`, and `workflows-revisions-get`, and with them `runs-timeline`, which
- * reads the step timeline of any run the calling run owns. The built-in `bureau` plugin
+ * `workflows-revisions-list`, and `workflows-revisions-get`. The built-in `bureau` plugin
  * contributes them when `workflowSource` is set (COR-1890), so an agent file receives them only when
  * it lists them in `tools` as `bureau:workflows-create` and so on, and a provider calls them
  * `bureau__workflows-create`. They write through `Bureau.workflows`, the same operations HTTP callers
@@ -27,7 +26,6 @@ import { z } from 'zod';
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
 import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
 import { mayRunUseSharedConfiguration } from './run-authority.ts';
-import type { ServedRunTimeline } from './run-timeline.ts';
 import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 import {
   checkWorkflowIdentifier,
@@ -61,7 +59,6 @@ export const WORKFLOW_TOOL_NAMES = [
   'workflows-runs-list',
   'workflows-runs-get',
   'workflows-runs-history',
-  'runs-timeline',
 ] as const;
 
 const WORKFLOW_RUN_STATUS_INPUTS = [
@@ -95,12 +92,6 @@ export interface WorkflowToolHost {
     readonly owner: string | undefined;
     readonly hookOrigin?: string | undefined;
   }>;
-  /**
-   * The step timeline of the run `runId`, an agent run's or a workflow instance's: `undefined` when
-   * no such run exists, and `'unsupported'` for a Bureau with no durable engine. The tools call it
-   * only after the calling run has been let in to the run.
-   */
-  readonly runTimeline: (runId: string) => Promise<ServedRunTimeline | 'unsupported' | undefined>;
 }
 
 /** One failure in a document, located by a path such as `steps[0].handler`. */
@@ -1050,32 +1041,6 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     },
   });
 
-  const runsTimeline = createTool({
-    name: 'runs-timeline',
-    version: '1.0.0',
-    description:
-      'Read the step timeline of one run, an agent run or a workflow-file run owned by the calling run: each step’s label, status, start, duration and tries, and where the run stands. No step’s input or output is returned.',
-    input: z.object({ runId: z.string().min(1) }),
-    metadata: {
-      readOnly: true,
-      title: 'Read run timeline',
-      shortDescription: 'Read a run’s step timeline.',
-    },
-    execute: async (input, context) => {
-      const calling = await caller(context, input.runId, 'bureau.workflows:read');
-      if ('refusal' in calling) return calling.refusal;
-      const identity = await host.runIdentity(input.runId);
-      if (identity.owner !== calling.owner)
-        return { status: 'not-found' as const, id: input.runId };
-      const timeline = await host.runTimeline(input.runId);
-      if (timeline === undefined) return { status: 'not-found' as const, id: input.runId };
-      if (timeline === 'unsupported') {
-        return { status: 'unavailable' as const, reason: 'no-durable-engine' as const };
-      }
-      return { status: 'ok' as const, runId: input.runId, ...timeline };
-    },
-  });
-
   return {
     [create.name]: create,
     [update.name]: update,
@@ -1094,6 +1059,5 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     [runsGet.name]: runsGet,
     [runsCancel.name]: runsCancel,
     [runsHistory.name]: runsHistory,
-    [runsTimeline.name]: runsTimeline,
   };
 }
