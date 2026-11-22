@@ -20,7 +20,6 @@ import { DecisionSchemaError } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError } from '../../bureau-errors.ts';
 import { ModelPolicyDeniedError } from '../../file-agent-generate.ts';
 import {
   explanationRequestSteps,
@@ -108,14 +107,6 @@ const CONNECT_PROVIDER_REMEDIATION =
 
 /** The fault a failed model call is answered with: the model cannot be reached, answered badly, or is not allowed. */
 function modelFault(error: unknown): unknown {
-  if (error instanceof BureauError && error.code === 'NOT_CONFIGURED') {
-    return {
-      code: 'UnsupportedCapability',
-      message: 'No model is connected to write the explanation',
-      data: { capability: 'generate' },
-      remediation: CONNECT_PROVIDER_REMEDIATION,
-    } satisfies OperationFault;
-  }
   if (error instanceof ModelPolicyDeniedError) {
     return {
       code: 'Unprocessable',
@@ -131,7 +122,15 @@ function modelFault(error: unknown): unknown {
       remediation: 'Ask again; the model may answer differently.',
     } satisfies OperationFault;
   }
-  return bureauFaultOf(error, { capability: 'generate' });
+  // No model can answer is `NOT_CONFIGURED`: the policy file builds the fault, in this operation's
+  // words, and any other error is left to the policy.
+  return bureauFaultOf(error, {
+    capability: 'generate',
+    notConfigured: {
+      message: 'No model is connected to write the explanation',
+      remediation: CONNECT_PROVIDER_REMEDIATION,
+    },
+  });
 }
 
 export const tasksExplanationGetOperation = defineOperation<
