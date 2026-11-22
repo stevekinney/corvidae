@@ -410,6 +410,47 @@ describe('a save', () => {
     expect(found?.querySelector('[aria-invalid="true"]')).not.toBeNull();
   });
 
+  test('saves the spend threshold through the runtime setting, as a number (COR-2528)', async () => {
+    const served = servedSettings();
+    const view = open(served);
+    await view.findByRole('group', READY);
+    expect(row(view.container, 'runs.spendThresholdUsd')?.textContent).toContain(
+      'Spend threshold per run',
+    );
+    await typeAndLeave(view.container, 'runs.spendThresholdUsd', '2.5');
+
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params['patch']).toEqual({ 'runs.spendThresholdUsd': 2.5 });
+    await waitFor(() => expect(served.values['runs.spendThresholdUsd']).toBe(2.5));
+  });
+
+  test('shows the Bureau’s own refusal of the spend threshold at its field, and keeps what was typed (COR-2528)', async () => {
+    const view = open(servedSettings(), {
+      extra: {
+        'bureau.settings.update': () => {
+          throw new StubFault('InvalidParams', 400, 'invalid params', {
+            issues: [
+              {
+                path: ['patch', 'runs.spendThresholdUsd'],
+                message: 'Too small: expected number to be >0',
+              },
+            ],
+          });
+        },
+      },
+    });
+    await view.findByRole('group', READY);
+    await typeAndLeave(view.container, 'runs.spendThresholdUsd', '3');
+
+    const found = row(view.container, 'runs.spendThresholdUsd');
+    await waitFor(() =>
+      expect(found?.textContent).toContain(
+        `runs.spendThresholdUsd: Too small: expected number to be >0 ${SETTINGS_COPY.nothingSaved}`,
+      ),
+    );
+    expect(fieldOf(view.container, 'runs.spendThresholdUsd').value).toBe('3');
+  });
+
   test('keeps the typed value, says the save did not go through, and tries again on Try again', async () => {
     const served = servedSettings();
     let failing = true;

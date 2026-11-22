@@ -1,7 +1,7 @@
 /**
  * What a run cost, in every place it is said (COR-2525), captured for the design review on a desktop
  * and a phone: a reply's details, the Run page's rail, the Runs list's Cost column, the Goals list
- * and Health's Needs attention. The Bureau answers the page as it would in a world whose runs were
+ * and the spend threshold in Settings. The Bureau answers the page as it would in a world whose runs were
  * priced; the real answer is rewritten before the page reads it (`rewriteBureauAnswer`), with
  * amounts large enough to read as dollars, and one amount under a cent for `< $0.01`. The sample
  * world's own runs, goals and chats are the rows that are rewritten or added to.
@@ -265,65 +265,8 @@ test.describe('/goals: what a goal cost (COR-2525)', () => {
   }
 });
 
-/** The three run items the Bureau lists once runs stall, loop and overspend; no row words them yet. */
-const RUN_ATTENTION_ITEMS: readonly Json[] = [
-  {
-    kind: 'run-overspending',
-    area: 'runs',
-    at: Date.parse('2026-11-02T16:40:00.000Z'),
-    runId: 'run-cost-priced',
-    agentName: 'tool-runner',
-    costUsd: 12.3456,
-    thresholdUsd: 10,
-    settledAt: null,
-  },
-  {
-    kind: 'run-stalled',
-    area: 'runs',
-    at: Date.parse('2026-11-02T16:30:00.000Z'),
-    runId: 'run-cost-stalled',
-    agentName: 'tool-runner',
-  },
-  {
-    kind: 'run-looping',
-    area: 'runs',
-    at: Date.parse('2026-11-02T16:20:00.000Z'),
-    runId: 'run-cost-looping',
-    agentName: null,
-  },
-];
-
-test.describe('/health: Needs attention while the Bureau lists runs over the threshold (COR-2525)', () => {
-  test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
-
-  for (const width of WIDTHS) {
-    test(`the run items are counted and have no row yet, at ${String(width)} pixels`, async ({
-      page,
-    }) => {
-      await rewriteBureauAnswer(page, 'bureau.health.attention', (result) => {
-        const items = [...((result['items'] as Json[] | undefined) ?? []), ...RUN_ATTENTION_ITEMS];
-        const checks = ((result['checks'] as Json[] | undefined) ?? []).filter(
-          (check) => check['area'] !== 'runs',
-        );
-        return {
-          ...result,
-          items,
-          count: items.length,
-          checks: [...checks, { area: 'runs', count: RUN_ATTENTION_ITEMS.length }],
-        };
-      });
-      await openAt(page, '/health', width);
-
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-      await expect(page.getByText('run-cost-priced')).toHaveCount(0);
-      await captureForDesignReview(page, {
-        route: '/health',
-        state: 'needs attention with no run rows yet',
-        source: SOURCE,
-      });
-    });
-  }
-});
+// The run items of Health's Needs attention (stalled, looping, over the threshold) have rows now:
+// `run-attention-states.spec.ts` captures them (COR-2528).
 
 const THRESHOLD_KEY = 'runs.spendThresholdUsd';
 

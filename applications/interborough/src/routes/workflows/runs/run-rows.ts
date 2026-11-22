@@ -24,6 +24,8 @@ import type { Goal } from '../../../lib/bureau-goals.ts';
 import {
   isScheduleFire,
   isTerminalState,
+  TASK_ATTENTION_KINDS,
+  type TaskAttention,
   type TaskState,
   type TaskView,
 } from '../../../lib/bureau-tasks.ts';
@@ -172,6 +174,13 @@ export type RunRow = {
    * is the engine's, so it opens for a caller who may read the engine (`workflows:read`).
    */
   readonly engineRun?: boolean;
+  /**
+   * What asks for attention on the run (COR-2528), in the order {@link TASK_ATTENTION_KINDS} lists
+   * the states: stalled, looping, over the spend threshold. Each is a badge on the row. Absent or
+   * empty for a run with none, which is every run an engine holds and every goal attempt a task
+   * does not describe.
+   */
+  readonly attention?: readonly TaskAttention[];
 };
 
 /** The workflow types a task record is made for; every other type is a run only the engine holds. */
@@ -266,6 +275,12 @@ export type RunFilter = {
   readonly workflow?: string;
   /** Words the title, the agent or the summary must hold, whatever their case. */
   readonly search?: string;
+  /**
+   * Only the runs that carry an attention state (COR-2528): stalled, looping, or over the spend
+   * threshold, a settled run that overspent included. The page asks the Bureau for them
+   * (`listAllTasksNeedingAttention`) rather than reading every run.
+   */
+  readonly attention?: true;
 };
 
 function waitSummary(task: TaskView): string {
@@ -520,7 +535,14 @@ function taskRow(
       null,
     dueAt: task.status === 'working' && !Number.isNaN(wake) ? wake : null,
     engineRun: isEngineRunTask(task),
+    attention: attentionOf(task),
   };
+}
+
+/** The states a task asks for attention in, in the order a row says them, each once. */
+function attentionOf(task: Pick<TaskView, 'attention'>): readonly TaskAttention[] {
+  const states = task.attention ?? [];
+  return TASK_ATTENTION_KINDS.filter((kind) => states.includes(kind));
 }
 
 const ATTEMPT_STATUS = {
@@ -613,7 +635,15 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     checkNotMet: false,
     // No task is the instance, only its steps are: the engine holds the run a person started.
     engineRun: true,
+    attention: attentionOfSteps(steps),
   };
+}
+
+/** The states any of the steps asks for attention in, which the instance they make up carries. */
+function attentionOfSteps(steps: readonly RunRow[]): readonly TaskAttention[] {
+  return TASK_ATTENTION_KINDS.filter((kind) =>
+    steps.some((step) => step.attention?.includes(kind)),
+  );
 }
 
 /** Every run the two sources hold, the most recently changed first, each run once. */
@@ -665,12 +695,21 @@ export function buildRunRows(input: {
  * The rows as Runs lists them: the steps of each workflow instance folded into one row for the
  * instance, which is the run a person started, and every run the most recently started first. A
  * run's place does not change when it finishes, so a row stays where it is while it is watched.
+ * An instance's row carries the attention states of its steps.
+ *
+ * `foldSteps: false` lists each step as its own run. The Needs attention filter reads only the
+ * steps that ask for attention (COR-2528), and an instance made of some of its steps would state a
+ * status and a cost the instance does not have.
  */
-export function runListRows(rows: readonly RunRow[]): RunRow[] {
+export function runListRows(
+  rows: readonly RunRow[],
+  options: { readonly foldSteps?: boolean } = {},
+): RunRow[] {
+  const foldSteps = options.foldSteps ?? true;
   const listed = new Map<string, RunRow>();
   const steps = new Map<string, RunRow[]>();
   for (const row of rows) {
-    if (row.origin.kind === 'parent') {
+    if (row.origin.kind === 'parent' && foldSteps) {
       const parentRunId = row.origin.parentRunId;
       steps.set(parentRunId, [...(steps.get(parentRunId) ?? []), row]);
     } else {
@@ -689,8 +728,13 @@ export function runListRows(rows: readonly RunRow[]): RunRow[] {
       const agentName =
         instance.agentName ?? instanceSteps.find((step) => step.agentName !== null)?.agentName;
       const cost = instance.cost ?? stepsCost(instanceSteps);
-      if (agentName !== instance.agentName || cost !== instance.cost) {
-        listed.set(parentRunId, { ...instance, agentName: agentName ?? null, cost });
+      const attention = attentionOfSteps([instance, ...instanceSteps]);
+      if (
+        agentName !== instance.agentName ||
+        cost !== instance.cost ||
+        attention.length !== (instance.attention?.length ?? 0)
+      ) {
+        listed.set(parentRunId, { ...instance, agentName: agentName ?? null, cost, attention });
       }
     }
   }
@@ -723,6 +767,7 @@ export function filterRunRows(
       (filter.agent === undefined || row.agentName === filter.agent) &&
       (filter.startedBy === undefined || row.origin.kind === filter.startedBy) &&
       (filter.workflow === undefined || row.workflowType === filter.workflow) &&
+      (filter.attention === undefined || (row.attention?.length ?? 0) > 0) &&
       (filter.search === undefined || matchesSearch(row, filter.search, agentLabelOf)),
   );
 }
@@ -745,6 +790,9 @@ export function runSegmentCounts(rows: readonly RunRow[]): Readonly<Record<RunSe
   return counts;
 }
 
+/** What the address holds for the Needs attention filter: `/runs?attention=1`. */
+const ATTENTION_PARAMETER_VALUE = '1';
+
 /** Reads the filter out of a query string; a value it does not know is no filter. */
 export function parseRunFilter(search: URLSearchParams): RunFilter {
   const status = RUN_STATUS_SEGMENTS.find((segment) => segment === search.get('status'));
@@ -753,6 +801,7 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
   const workflow = search.get('workflow')?.trim();
   const words = search.get('q')?.trim();
   return {
+    ...(search.get('attention') === ATTENTION_PARAMETER_VALUE ? { attention: true as const } : {}),
     ...(status === undefined ? {} : { status }),
     ...(agent === undefined || agent === '' ? {} : { agent }),
     ...(startedBy === undefined ? {} : { startedBy }),
@@ -764,6 +813,7 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
 /** The query string a filter is kept in the address as. */
 export function serializeRunFilter(filter: RunFilter): string {
   const params = new URLSearchParams();
+  if (filter.attention !== undefined) params.set('attention', ATTENTION_PARAMETER_VALUE);
   if (filter.status !== undefined) params.set('status', filter.status);
   if (filter.agent !== undefined) params.set('agent', filter.agent);
   if (filter.startedBy !== undefined) params.set('startedBy', filter.startedBy);

@@ -153,6 +153,11 @@ export type TaskFilter = {
   /** Only the tasks that ran on this workflow type (COR-2423); a task's `workflow.type` says which. */
   readonly workflow?: string;
   /**
+   * Only the tasks whose `attention` lists this kind (COR-2528). One kind at a time: the Bureau
+   * takes no list, so {@link listAllTasksNeedingAttention} asks for each.
+   */
+  readonly attention?: TaskAttention;
+  /**
    * `false` lists only the tasks that have records (COR-2424): the schedule tick's runs and the
    * instances of workflow files, which the engine holds, are left out so a reader of the newest
    * tasks (the chat list, the command palette) is not given its slots to them.
@@ -201,6 +206,32 @@ export async function listAllTasks(
     pageToken = page.nextPageToken ?? undefined;
   } while (pageToken !== undefined);
   return tasks;
+}
+
+/** What can ask for attention on a task (COR-2526, COR-2527), in the order a row says them. */
+export const TASK_ATTENTION_KINDS = ['stalled', 'looping', 'overspending'] as const;
+
+/** One of {@link TASK_ATTENTION_KINDS}. */
+export type TaskAttention = (typeof TASK_ATTENTION_KINDS)[number];
+
+/**
+ * Every task that carries at least one attention state (COR-2528), asked of the Bureau one kind at
+ * a time and merged by task, so a task that is stalled and over the threshold is listed once. The
+ * Bureau keeps `overspending` on a task after it settles, so this lists a run that the Needs
+ * attention feed dropped after seven days.
+ */
+export async function listAllTasksNeedingAttention(
+  filter: Omit<TaskFilter, 'attention'> = {},
+  options?: Options,
+): Promise<TaskView[]> {
+  const lists = await Promise.all(
+    TASK_ATTENTION_KINDS.map((attention) => listAllTasks({ ...filter, attention }, options)),
+  );
+  const merged = new Map<string, TaskView>();
+  for (const task of lists.flat()) {
+    if (!merged.has(task.id)) merged.set(task.id, task);
+  }
+  return [...merged.values()];
 }
 
 /** The states of a task that is going: it has started, or it is about to. A waiting task is neither. */

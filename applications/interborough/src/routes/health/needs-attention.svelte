@@ -21,8 +21,11 @@
   } from '@lostgradient/cinder';
   import {
     CalendarClock,
+    CircleDollarSign,
     Database,
+    Hourglass,
     Plug,
+    Repeat,
     Server,
     Sparkles,
     TriangleAlert,
@@ -56,6 +59,9 @@
     plugin: Plug,
     worker: Server,
     alert: TriangleAlert,
+    stalled: Hourglass,
+    looping: Repeat,
+    overspending: CircleDollarSign,
   };
 
   /** Opens `path` in place, and leaves a modified click to the browser. */

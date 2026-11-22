@@ -124,7 +124,11 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
           (params['contextId'] === undefined || task.contextId === params['contextId']) &&
           (params['agentName'] === undefined || task.agentName === params['agentName']) &&
           (params['status'] === undefined || task.status === params['status']) &&
-          (params['origin'] === undefined || task.origin?.kind === params['origin']),
+          (params['origin'] === undefined || task.origin?.kind === params['origin']) &&
+          // Only the tasks whose `attention` lists this kind (COR-2528), as the Bureau filters.
+          (params['attention'] === undefined ||
+            (task.attention as readonly unknown[] | undefined)?.includes(params['attention']) ===
+              true),
       );
       const page = matching.slice(offset, offset + limit);
       return {

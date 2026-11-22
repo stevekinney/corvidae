@@ -73,6 +73,7 @@
   import { isTerminalStatus } from '../detail/workflow-status.ts';
   import RestartDialog from '../detail/restart-dialog.svelte';
   import RunActivity from './run-activity.svelte';
+  import RunAttentionNote from './run-attention-note.svelte';
   import { threadIdForTask } from './run-activity.ts';
   import { RunAgain } from './run-again.svelte.ts';
   import { messageInOfRun } from './run-message-in.ts';
@@ -930,6 +931,7 @@
           </Section>
         {/if}
         {#if task.data}
+          <RunAttentionNote task={task.data} />
           <RunWaiting task={task.data} onAnswerHold={(held) => (answerHeld = held)} />
           <RunMessageBlocked task={task.data} />
         {/if}

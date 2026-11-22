@@ -143,9 +143,11 @@
     flex: 0 1 auto;
   }
 
+  /* The mark is one badge or several side by side (a run's states): the gap spaces them. */
   .cinder-stacked-list-item__badge {
     display: inline-flex;
     flex: none;
+    gap: var(--cinder-space-1);
     white-space: nowrap;
   }
 

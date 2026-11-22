@@ -5,6 +5,7 @@
  */
 import { HttpClientError } from '@lostgradient/weft';
 
+import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { faultAdvisingRetry, isNetworkFailure } from '../../../lib/faults.ts';
 import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
@@ -33,6 +34,7 @@ export function runNoMatchDescription(filter: RunFilter, agent: string | undefin
   const copy = TASK_COPY.list.noMatch;
   const clauses = [
     copy.none(agent, filter.status === undefined ? undefined : copy.statusWords[filter.status]),
+    ...(filter.attention === undefined ? [] : [RUN_ATTENTION_COPY.noMatchClause]),
     ...(filter.startedBy === undefined ? [] : [copy.startedBy(startedByPhrase(filter.startedBy))]),
     ...(filter.workflow === undefined ? [] : [copy.workflow(workflowTypeName(filter.workflow))]),
     ...(filter.search === undefined ? [] : [copy.matching(filter.search)]),

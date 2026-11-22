@@ -90,7 +90,7 @@ The chat list is a recorded exception on every width, because its pane is too na
 
 ### A mark after the title
 
-Pass `badge` for a short mark after the title, such as a neutral extra-small `Badge` reading "Plugin" on a hook a plugin made. It sits 6px after the title on the first line's baseline, outside the title's clamp: the title gives up its room and ends in an ellipsis first, and the mark is never cut and never takes a line of its own. On a phone the title takes one line with the mark, so the mark always sits right after the last character drawn ("Post settled r… Plugin"), never beside the box of a title that wrapped. The row's `tooltip` stays the whole title. Draw the mark only on the rows it marks: a row with no `badge` keeps its title as it was.
+Pass `badge` for a short mark after the title, such as a neutral extra-small `Badge` reading "Plugin" on a hook a plugin made. It sits 6px after the title on the first line's baseline, outside the title's clamp: the title gives up its room and ends in an ellipsis first, and the mark is never cut and never takes a line of its own. On a phone the title takes one line with the mark, so the mark always sits right after the last character drawn ("Post settled r… Plugin"), never beside the box of a title that wrapped. The row's `tooltip` stays the whole title. The mark may be several badges side by side (a run's states), which the slot spaces 4px apart. Draw the mark only on the rows it marks: a row with no `badge` keeps its title as it was.
 
 ### A third line
 

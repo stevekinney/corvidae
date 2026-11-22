@@ -140,6 +140,30 @@ export const HEALTH_ATTENTION_COPY = {
     line: (dates: string): string => `Interborough was off when it was due on ${dates}.`,
     action: 'View schedule',
   },
+  /**
+   * A run that asks for a look (COR-2528): stalled, looping, or over the workspace's spend
+   * threshold. None of them stops the run, and none says the threshold's figure: only what the
+   * run has cost.
+   */
+  run: {
+    /** What a run is called when no agent is named. */
+    unnamed: 'A run',
+    action: 'View run',
+    stalledTitle: (name: string): string => `${name} stopped making progress`,
+    stalledLine: (at: string): string =>
+      `Seen stalled at ${at}. It last made progress before then, and it is still running.`,
+    loopingTitle: (name: string): string => `${name} is repeating itself`,
+    loopingLine: (at: string): string =>
+      `Its tools reported a loop at ${at}. It keeps running until you stop it.`,
+    overspendingTitle: (name: string, cost: string | undefined): string =>
+      cost === undefined
+        ? `${name} is over the spend threshold`
+        : `${name} has cost ${cost}, over the spend threshold`,
+    overspendingRunningLine: (at: string): string =>
+      `Found over the threshold at ${at}. It keeps running until you stop it.`,
+    overspendingSettledLine: (at: string, settled: string): string =>
+      `Found over the threshold at ${at}. The run finished at ${settled}.`,
+  },
   hook: {
     failedTitle: (name: string, status: string | null): string =>
       status === null

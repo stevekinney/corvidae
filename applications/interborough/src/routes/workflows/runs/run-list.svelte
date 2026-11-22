@@ -11,7 +11,11 @@
    *
    * The Bureau's task listing has no total, so every page is read (`listAllTasks`, the read Home's
    * Running now count makes too) and the segments, the facets, the search and the page of ten are
-   * all applied here. A list the filters leave empty says so and offers Clear filters. The engine's
+   * all applied here. The Needs attention chip (`?attention=1`) asks the Bureau for the runs that
+   * are stalled, looping or over the spend threshold instead (`listAllTasksNeedingAttention`), so
+   * it also lists a run that overspent and settled after the Needs attention feed dropped it; each
+   * such run's row says which states it is in with a badge each (COR-2528). A list the filters
+   * leave empty says so and offers Clear filters. The engine's
    * own table of workflows is the Health area's; it is not here.
    *
    * The page keeps its header in every state, so it draws its own (`ownsStatesOnPatterns` in
@@ -42,6 +46,7 @@
   import { getConnection } from '../../../app/connection.svelte.ts';
   import ListPageEmpty from '../../../app/list-page-empty.svelte';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
@@ -49,7 +54,7 @@
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { faultErrorStateAdvice } from '../../../lib/faults.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
-  import { listAllTasks } from '../../../lib/bureau-tasks.ts';
+  import { listAllTasks, listAllTasksNeedingAttention } from '../../../lib/bureau-tasks.ts';
   import { followLinks } from '../../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
   import { phoneViewport } from '../../../lib/phone-viewport.svelte.ts';
@@ -89,6 +94,8 @@
   const START_RUN_PATH = '/runs/new';
   /** The query that reads every task: its key is cancelled by name when a slow read is given up. */
   const TASKS_QUERY_KEY = ['bureau-tasks', 'runs', 'all'] as const;
+  /** The query that reads the runs with an attention state, under the Needs attention filter. */
+  const ATTENTION_QUERY_KEY = ['bureau-tasks', 'runs', 'attention'] as const;
   /** How often a running run's duration is read again while one is on the list. */
   const RUNNING_CLOCK_MILLISECONDS = 1_000;
   const filter = $derived(parseRunFilter(router.current.search));
@@ -102,11 +109,15 @@
   // feed is not live, read in the option getter so the timer returns when the feed is lost.
   const bureauLive = useBureauEventsLive();
   // Every run, every page of them: the listing has no total, and the segments count all of them.
+  // With the Needs attention filter on, the Bureau is asked for the runs that carry a state, so a run
+  // that overspent and settled long ago is listed whether or not the whole list holds it (COR-2528).
+  const attentionOnly = $derived(filter.attention !== undefined);
   const tasks = createQuery(() => {
     const polling = !bureauLive();
     return {
-      queryKey: TASKS_QUERY_KEY,
-      queryFn: ({ signal }: { signal: AbortSignal }) => listAllTasks({}, { signal }),
+      queryKey: attentionOnly ? ATTENTION_QUERY_KEY : TASKS_QUERY_KEY,
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        attentionOnly ? listAllTasksNeedingAttention({}, { signal }) : listAllTasks({}, { signal }),
       // A catalog run is announced by `run.settled` alone: no event says one has started, and
       // `run.removed` is not emitted for it (COR-1730), so a run still going shows only on the timer.
       // poll-reason: fallback
@@ -156,6 +167,8 @@
     undefined,
   );
 
+  const loading = $derived(tasks.isPending || goals.isPending || chats.isPending);
+
   function agentLabel(agentName: string): string {
     return agentLabelOf(agentName, agents.data);
   }
@@ -167,6 +180,9 @@
     return schedules.data?.cadences?.get(scheduleId);
   }
 
+  // Under the Needs attention filter the tasks are only those that carry a state, and a workflow
+  // instance made of some of its steps would state a status and a cost it does not have, so each
+  // step is listed as itself.
   const everyRun = $derived(
     runListRows(
       buildRunRows({
@@ -175,11 +191,13 @@
         chats: chats.data ?? [],
         scheduleNames: schedules.data?.names ?? new Map<string, string>(),
       }),
+      { foldSteps: !attentionOnly },
     ),
   );
   // Every filter but the status: the segments count what these leave, so each says what choosing it
   // would show, and a filter that matches nothing makes every count 0.
   const others = $derived<RunFilter>({
+    ...(filter.attention === undefined ? {} : { attention: filter.attention }),
     ...(filter.agent === undefined ? {} : { agent: filter.agent }),
     ...(filter.startedBy === undefined ? {} : { startedBy: filter.startedBy }),
     ...(filter.workflow === undefined ? {} : { workflow: filter.workflow }),
@@ -301,7 +319,18 @@
       count: loading ? 'pending' : counts[value],
     })),
   );
+  // The runs that carry a state, which the Needs attention chip counts beside its label.
+  const attentionCount = $derived(
+    everyRun.filter((row) => (row.attention?.length ?? 0) > 0).length,
+  );
   const facets = $derived<FacetDefinition[]>([
+    {
+      type: 'toggle',
+      key: 'attention',
+      label: RUN_ATTENTION_COPY.filter,
+      tone: 'warning',
+      ...(loading ? {} : { count: attentionCount }),
+    },
     {
       type: 'choice',
       key: 'startedBy',
@@ -329,9 +358,13 @@
   ]);
   // The chips that move into the Filter menu when the row cannot hold them, least used first: a
   // chip with a filter applied never moves, so an applied filter stays visible and removable
-  // (row 52x).
+  // (row 52x). The Needs attention chip is left out of the order on purpose: the chips it does not
+  // name fold after those it does, so it is the last to leave the row.
   const FOLD_ORDER = ['workflow', 'agent', 'startedBy'] as const;
   const appliedFilters = $derived<AppliedFilter[]>([
+    ...(filter.attention === undefined
+      ? []
+      : [{ key: 'attention', value: 'On', label: RUN_ATTENTION_COPY.filter }]),
     ...(filter.startedBy === undefined
       ? []
       : [{ key: 'startedBy', value: filter.startedBy, label: TASK_COPY.startedByLabel }]),
@@ -390,7 +423,6 @@
       { operation: 'bureau.contexts.list', error: chats.data === undefined ? chats.error : null },
     ]),
   );
-  const loading = $derived(tasks.isPending || goals.isPending || chats.isPending);
 
   // Cancel, in the status line a slow read shows, gives the read up: the rows are replaced by
   // "Loading canceled" and Try again, and the header and the bar stay. Reads that go on to deliver
@@ -409,7 +441,9 @@
   });
   function cancelLoading(): void {
     canceled = true;
-    void queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
+    void queryClient.cancelQueries({
+      queryKey: attentionOnly ? ATTENTION_QUERY_KEY : TASKS_QUERY_KEY,
+    });
     void queryClient.cancelQueries({ queryKey: queryKeys.goals.runs() });
     void queryClient.cancelQueries({ queryKey: queryKeys.contexts.runs() });
   }
@@ -419,7 +453,8 @@
     if (goals.data === undefined) void goals.refetch();
     if (chats.data === undefined) void chats.refetch();
   }
-  const firstUse = $derived(!loading && !failed && everyRun.length === 0);
+  // Under the Needs attention filter an empty list says no run needs attention, not that none has run.
+  const firstUse = $derived(!loading && !failed && !attentionOnly && everyRun.length === 0);
   const noMatch = $derived(
     runNoMatchDescription(
       filter,
@@ -442,7 +477,9 @@
     searchAriaLabel={TASK_COPY.list.searchLabel}
     onSegmentChange={(value) => change({ status: value === 'all' ? '' : value })}
     onSearchChange={search}
-    onFacetChange={(key, value) => change({ [key]: value })}
+    onFacetChange={(key, value) =>
+      // The Needs attention toggle is on or off: the address holds `1` for on.
+      change({ [key]: key === 'attention' && value !== '' ? '1' : value })}
     onFilterRemove={(key) => change({ [key]: '' })}
   />
 {/snippet}

@@ -7,9 +7,15 @@
    * one link to the run's page; the list around it follows the link in place (`followLinks`). A
    * running row keeps its place: its duration follows `now`, and its word changes where it stands.
    */
-  import { StackedListItem, StatusDot, type StackedListItemPhoneWidth } from '@lostgradient/cinder';
+  import {
+    Badge,
+    StackedListItem,
+    StatusDot,
+    type StackedListItemPhoneWidth,
+  } from '@lostgradient/cinder';
 
   import { COST_COPY } from '../../../app/copy/cost.ts';
+  import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
   import { formatAttemptsCost } from '../../../lib/format/cost.ts';
@@ -85,8 +91,21 @@
   // A phone's row has no room for a column beside its time at large text, so the cost takes the
   // line under line two, as a goal's check does, and the row never grows wider than the screen.
   const phone = $derived(phoneViewport.current);
+  // Each state the run asks for attention in is a badge after the title (COR-2528): a stalled or a
+  // looping run is a warning, a run over the spend threshold a danger. The title gives way to them.
+  const attention = $derived(row.attention ?? []);
 </script>
 
+{#snippet attentionBadges()}
+  {#each attention as state (state)}
+    <Badge
+      size="xs"
+      variant={state === 'overspending' ? 'danger' : 'warning'}
+      data-attention={state}
+      title={RUN_ATTENTION_COPY.badgeTitles[state]}>{RUN_ATTENTION_COPY.badges[state]}</Badge
+    >
+  {/each}
+{/snippet}
 {#snippet lockedNote()}{TASK_COPY.list.engineRunLocked}{/snippet}
 {#snippet costCell()}
   <span
@@ -106,6 +125,7 @@
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
+  {...attention.length === 0 ? {} : { badge: attentionBadges }}
   {...cost === undefined ? {} : phone ? { detail: costCell } : { trailing: costCell }}
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
