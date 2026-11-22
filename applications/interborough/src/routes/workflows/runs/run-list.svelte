@@ -483,7 +483,6 @@
       { operation: 'bureau.contexts.list', error: chats.data === undefined ? chats.error : null },
     ]),
   );
-  const loading = $derived(tasks.isPending || goals.isPending || chats.isPending);
   // The list held from the last filter while the one the address names is read: what it holds says
   // nothing of the filter on screen, so no count is told and no first use is declared from it.
   const settling = $derived(tasks.isPlaceholderData);
