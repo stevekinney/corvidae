@@ -247,7 +247,10 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
 
     // Hiding removes a flex pane. In a loaded host Chromium can expose the changed DOM before its
     // next layout pass, so wait for the same expansion contract before reading its stable geometry.
-    const readDetailWidth = async () => (await detail.boundingBox())?.width ?? 0;
+    const readDetailWidth = async () => {
+      const bounds = await detail.boundingBox();
+      return bounds?.width ?? 0;
+    };
     await expect.poll(readDetailWidth).toBeGreaterThan(detailBefore!.width + 150);
     const detailAfter = await detail.boundingBox();
     await testInfo.attach('chat-list-collapse-settled.json', {
