@@ -199,9 +199,7 @@ test.describe('/runs: the Retrying and Failed at step filters (COR-2535)', () =>
     await expect(async () => {
       await failedStepField(page).fill('mo');
       await failedStepField(page).fill('mod');
-      await expect(page.getByRole('option', { name: 'model', exact: true })).toBeVisible({
-        timeout: 1000,
-      });
+      await expect(page.getByRole('option', { name: 'model', exact: true })).toBeVisible();
     }).toPass();
     await captureForDesignReview(page, {
       route: '/runs',
