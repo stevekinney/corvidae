@@ -27,6 +27,7 @@ import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const SOURCE = 'run-attention-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
@@ -346,14 +347,16 @@ test.describe('/runs: badges and the Needs attention chip (COR-2528)', () => {
       ]);
       // The title is never crushed beside them: it is drawn whole (its row's width, or its own),
       // and the badges that do not fit beside it drop to a line under it, never past the row.
-      const title = await row.locator('.cinder-stacked-list-item__title').boundingBox();
-      const frame = await row.boundingBox();
-      expect(title?.width ?? 0).toBeGreaterThan(40);
-      for (let index = 0; index < 3; index += 1) {
-        const badge = await badges.nth(index).boundingBox();
-        expect((badge?.x ?? 0) + (badge?.width ?? 0)).toBeLessThanOrEqual(
-          (frame?.x ?? 0) + (frame?.width ?? 0) + 1,
-        );
+      const boxes = await readBoxes(page, {
+        frame: row,
+        title: row.locator('.cinder-stacked-list-item__title'),
+        stalled: badges.nth(0),
+        looping: badges.nth(1),
+        overspending: badges.nth(2),
+      });
+      expect(boxes.title.width).toBeGreaterThan(40);
+      for (const badge of [boxes.stalled, boxes.looping, boxes.overspending]) {
+        expect(badge.x + badge.width).toBeLessThanOrEqual(boxes.frame.x + boxes.frame.width + 1);
       }
       await captureForDesignReview(page, {
         route: '/runs',

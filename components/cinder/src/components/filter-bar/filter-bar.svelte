@@ -484,7 +484,7 @@
     {pressed}
     disabled={disabled || facet.disabled === true}
     onPressedChange={(next) => onFacetChange?.(facet.key, next ? 'true' : '')}
-    leadingIcon={pressed ? undefined : toggleDot}
+    {...pressed ? {} : { leadingIcon: toggleDot }}
   />
 {/snippet}
 
