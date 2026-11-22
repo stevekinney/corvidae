@@ -66,6 +66,10 @@ export interface BulkListFilterInput {
   readonly attributes?: readonly BulkFilterAttributeInput[];
   readonly idPrefix?: string;
   readonly failureCategory?: FailureCategory | FailureCategory[];
+  /** The step a failed run stopped at (COR-2535): the bulk wire takes the list's own field. */
+  readonly failedStep?: string;
+  /** Whether the runs are retrying an activity (`true`) or are not (`false`). */
+  readonly retrying?: boolean;
   readonly createdAt?: BulkTimeRange;
   readonly updatedAt?: BulkTimeRange;
   readonly executionDeadline?: BulkTimeRange;
@@ -116,6 +120,8 @@ export function toBulkListFilterInput(filter: WorkflowListQuery): BulkListFilter
       : {}),
     ...(filter.idPrefix !== undefined ? { idPrefix: filter.idPrefix } : {}),
     ...(filter.failureCategory !== undefined ? { failureCategory: filter.failureCategory } : {}),
+    ...(filter.failedStep !== undefined ? { failedStep: filter.failedStep } : {}),
+    ...(filter.retrying !== undefined ? { retrying: filter.retrying } : {}),
     ...(filter.createdAt !== undefined ? { createdAt: toBulkTimeRange(filter.createdAt) } : {}),
     ...(filter.updatedAt !== undefined ? { updatedAt: toBulkTimeRange(filter.updatedAt) } : {}),
     ...(filter.executionDeadline !== undefined

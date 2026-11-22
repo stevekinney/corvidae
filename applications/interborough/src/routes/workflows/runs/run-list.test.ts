@@ -179,6 +179,139 @@ describe('the status segments', () => {
   });
 });
 
+/** A run that failed at `step`, and one that is on a later try of `retrying`'s step (COR-2535). */
+const CHARGE_FAILED = taskFixture({
+  id: 'charge-failed',
+  contextId: 'handle-3',
+  agentName: 'echo',
+  status: 'failed',
+  failure: {
+    step: { index: 2, label: 'charge-card' },
+    errorCode: 'tool-failed',
+    errorKind: 'tool',
+    toolCall: { name: 'charge-card', callId: 'call-1' },
+  },
+});
+const MODEL_FAILED = taskFixture({
+  id: 'model-failed',
+  contextId: 'handle-4',
+  agentName: 'echo',
+  status: 'failed',
+  failure: { step: { index: 0, label: 'model' }, errorCode: null, errorKind: null, toolCall: null },
+});
+const CHARGE_RETRYING = taskFixture({
+  id: 'charge-retrying',
+  contextId: 'handle-5',
+  agentName: 'echo',
+  status: 'working',
+  retrying: { label: 'charge-card', attempt: 3 },
+});
+
+/**
+ * What the page last asked `bureau.tasks.list` for in its read of every run (a page of 100; the
+ * calls with a smaller `limit` are other reads, such as a chat's last run, and the read of the
+ * failed tasks that offers step names names a `status`, which this one never does: the status
+ * segments are applied in the browser): every page of the read has the same filters.
+ */
+function lastTasksRequest(): Record<string, unknown> | undefined {
+  return stub
+    ?.callsTo('bureau.tasks.list')
+    .map((call) => call.params)
+    .findLast((params) => params['limit'] === 100 && params['status'] === undefined);
+}
+
+describe('the Retrying and Failed at step filters (COR-2535)', () => {
+  const failures = [CHARGE_FAILED, MODEL_FAILED, CHARGE_RETRYING];
+
+  test('Retrying narrows the read to the runs retrying a step, and the row says which and its try', async () => {
+    const view = open('/runs', { tasks: failures });
+    await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
+    expect(lastTasksRequest()).not.toHaveProperty('retrying');
+    // The step names come from the list itself while nothing narrows it: no other read is made.
+    expect(
+      stub?.callsTo('bureau.tasks.list').some((call) => call.params['status'] === 'failed'),
+    ).toBe(false);
+
+    await fireEvent.click(view.getByRole('button', { name: TASK_COPY.retryingLabel }));
+    await waitFor(() => expect(router.search.get('retrying')).toBe('true'));
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['charge-retrying']));
+    expect(lastTasksRequest()).toMatchObject({ retrying: true });
+    expect(
+      view.container.querySelector(
+        '[data-run="charge-retrying"] .cinder-stacked-list-item__line-two',
+      )?.textContent,
+    ).toContain('retrying charge-card, try 3');
+  });
+
+  test('Failed at step suggests the steps the runs failed at, and a chosen one narrows the read', async () => {
+    const view = open('/runs', { tasks: failures });
+    await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
+    const field = view.getByRole('combobox', { name: TASK_COPY.failedStepLabel });
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: 'c' } });
+    const options = await view.findAllByRole('option');
+    expect(options.map((option) => option.textContent?.trim())).toEqual(['charge-card']);
+    // The listbox completes on the pointer going down, as a person's press does.
+    await fireEvent.mouseDown(options[0]!);
+
+    await waitFor(() => expect(router.search.get('failedStep')).toBe('charge-card'));
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['charge-failed']));
+    expect(lastTasksRequest()).toMatchObject({ failedStep: 'charge-card' });
+  });
+
+  test('a typed name is kept on Enter, never on each key, and emptying the field takes it out', async () => {
+    const view = open('/runs', { tasks: failures });
+    await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
+    const field = view.getByRole('combobox', { name: TASK_COPY.failedStepLabel });
+    await fireEvent.input(field, { target: { value: 'mod' } });
+    expect(router.search.get('failedStep')).toBeNull();
+    await fireEvent.input(field, { target: { value: 'model' } });
+    expect(router.search.get('failedStep')).toBeNull();
+    await fireEvent.submit(field.closest('form')!);
+
+    await waitFor(() => expect(router.search.get('failedStep')).toBe('model'));
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['model-failed']));
+
+    await fireEvent.input(field, { target: { value: '' } });
+    await waitFor(() => expect(router.search.get('failedStep')).toBeNull());
+    await waitFor(() => expect(rowIds(view.container)).toHaveLength(6));
+  });
+
+  test('an address carrying both, with the other filters, restores the filtered list', async () => {
+    const view = open('/runs?status=failed&agent=echo&failedStep=charge-card', {
+      tasks: failures,
+    });
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['charge-failed']));
+    expect(lastTasksRequest()).toMatchObject({ failedStep: 'charge-card' });
+    expect(
+      (view.getByRole('combobox', { name: TASK_COPY.failedStepLabel }) as HTMLInputElement).value,
+    ).toBe('charge-card');
+    // The other filters of the address are applied with it: the agent has its chip.
+    expect(view.getByRole('button', { name: 'Remove filter: Agent: Echo' })).not.toBeNull();
+  });
+
+  test('a filter the Bureau leaves nothing for is a filtered list, not a first use', async () => {
+    const view = open('/runs?failedStep=nothing-fails-here', { tasks: failures });
+    await view.findByRole('heading', { level: 2, name: TASK_COPY.noMatch.title });
+    expect(
+      view.getByText('No runs that failed at nothing-fails-here. Try another step.'),
+    ).not.toBeNull();
+    // The bar stays, with its field, so another step can be tried.
+    expect(view.getByRole('combobox', { name: TASK_COPY.failedStepLabel })).not.toBeNull();
+    expect(view.queryByText(TASK_COPY.empty.title)).toBeNull();
+  });
+
+  test('both are kept when another filter changes', async () => {
+    const view = open('/runs?retrying=true&failedStep=model', { tasks: failures });
+    await view.findByRole('heading', { level: 2, name: TASK_COPY.noMatch.title });
+    expect(lastTasksRequest()).toMatchObject({ retrying: true, failedStep: 'model' });
+    await fireEvent.click(view.getByRole('radio', { name: /^Failed\s*,\s*\d+$/ }));
+    await waitFor(() => expect(router.search.get('status')).toBe('failed'));
+    expect(router.search.get('retrying')).toBe('true');
+    expect(router.search.get('failedStep')).toBe('model');
+  });
+});
+
 describe('the Started by and Agent chips', () => {
   test('Started by offers every kind of origin, and the one chosen narrows the list', async () => {
     const view = open('/runs');

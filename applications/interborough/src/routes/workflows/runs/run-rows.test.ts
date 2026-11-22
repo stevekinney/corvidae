@@ -5,11 +5,14 @@ import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
 import {
   buildRunRows,
+  FAILED_STEP_LIMIT,
+  failedStepName,
   FILTER_LABEL_LIMIT,
   filterLabelOf,
   filterRunRows,
   parseRunFilter,
   serializeRunFilter,
+  serverRunFilter,
 } from './run-rows.ts';
 import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
 
@@ -347,6 +350,124 @@ describe('filterRunRows', () => {
       filterRunRows(rows, { search: 'helper' }, (name) => `${name} helper`).map((row) => row.id),
     ).toEqual(['goal-seeded-goal-a0', 'run-1']);
     expect(filterRunRows(rows, { search: 'nothing like it' })).toEqual([]);
+  });
+});
+
+describe('the failure filters (COR-2535)', () => {
+  const rows = buildRunRows({
+    tasks: [
+      taskFixture({
+        id: 'charging',
+        contextId: 'chat-1',
+        status: 'working',
+        retrying: { label: 'charge-card', attempt: 3 },
+      }),
+      taskFixture({
+        id: 'charge-failed',
+        contextId: 'chat-1',
+        status: 'failed',
+        failure: {
+          step: { index: 2, label: 'charge-card' },
+          errorCode: 'tool-failed',
+          errorKind: 'tool',
+          toolCall: { name: 'charge-card', callId: 'call-9' },
+        },
+      }),
+      taskFixture({
+        id: 'model-failed',
+        contextId: 'chat-1',
+        status: 'failed',
+        failure: {
+          step: { index: 0, label: 'model' },
+          errorCode: null,
+          errorKind: null,
+          toolCall: null,
+        },
+      }),
+      taskFixture({ id: 'unexplained', contextId: 'chat-1', status: 'failed', failure: null }),
+      taskFixture({ id: 'fine', contextId: 'chat-1', status: 'completed', retrying: null }),
+    ],
+    goals: [goal],
+    chats: [chat],
+  });
+
+  test('a row says the step it failed at and the step it is retrying', () => {
+    const byId = new Map(rows.map((row) => [row.id, row] as const));
+    expect(byId.get('charge-failed')?.failedStep).toBe('charge-card');
+    expect(byId.get('model-failed')?.failedStep).toBe('model');
+    expect(byId.get('unexplained')?.failedStep).toBeNull();
+    expect(byId.get('charging')?.retrying).toEqual({ label: 'charge-card', attempt: 3 });
+    expect(byId.get('fine')?.retrying).toBeNull();
+  });
+
+  test('Failed at step keeps the runs that failed at that step, and no goal attempt without a task', () => {
+    expect(filterRunRows(rows, { failedStep: 'charge-card' }).map((row) => row.id)).toEqual([
+      'charge-failed',
+    ]);
+    expect(filterRunRows(rows, { failedStep: 'model' }).map((row) => row.id)).toEqual([
+      'model-failed',
+    ]);
+    expect(filterRunRows(rows, { failedStep: 'nothing' })).toEqual([]);
+  });
+
+  test('Retrying keeps the runs with a step on a second or later try', () => {
+    expect(filterRunRows(rows, { retrying: true }).map((row) => row.id)).toEqual(['charging']);
+  });
+
+  test('both combine with every other filter', () => {
+    expect(
+      filterRunRows(rows, { retrying: true, status: 'running', agent: 'assistant' }).map(
+        (row) => row.id,
+      ),
+    ).toEqual(['charging']);
+    expect(filterRunRows(rows, { retrying: true, failedStep: 'charge-card' })).toEqual([]);
+    expect(filterRunRows(rows, { failedStep: 'charge-card', status: 'done' })).toEqual([]);
+    expect(
+      filterRunRows(rows, { failedStep: 'charge-card', search: 'Refund' }).map((row) => row.id),
+    ).toEqual(['charge-failed']);
+  });
+
+  test('both go to the Bureau, and nothing else does', () => {
+    expect(serverRunFilter({})).toEqual({});
+    expect(
+      serverRunFilter({
+        failedStep: 'charge-card',
+        retrying: true,
+        status: 'failed',
+        agent: 'assistant',
+        search: 'x',
+      }),
+    ).toEqual({ failedStep: 'charge-card', retrying: true });
+  });
+
+  test('are kept in the address and read back from it', () => {
+    const filter = {
+      status: 'failed',
+      agent: 'echo',
+      failedStep: 'charge card',
+      retrying: true,
+      search: 'refund',
+    } as const;
+    const query = serializeRunFilter(filter);
+    expect(new URLSearchParams(query).get('failedStep')).toBe('charge card');
+    expect(new URLSearchParams(query).get('retrying')).toBe('true');
+    expect(parseRunFilter(new URLSearchParams(query))).toEqual(filter);
+  });
+
+  test('an address with a value the filters do not know applies no filter', () => {
+    expect(parseRunFilter(new URLSearchParams('retrying=yes&failedStep=%20%20'))).toEqual({});
+    expect(parseRunFilter(new URLSearchParams('retrying=false'))).toEqual({});
+  });
+
+  test('a step name past what the Bureau compares is cut to it, never in a surrogate pair', () => {
+    const long = 'a'.repeat(FAILED_STEP_LIMIT + 50);
+    expect(failedStepName(long)).toBe('a'.repeat(FAILED_STEP_LIMIT));
+    const emoji = `${'a'.repeat(FAILED_STEP_LIMIT - 1)}😀`;
+    expect(failedStepName(emoji)).toBe('a'.repeat(FAILED_STEP_LIMIT - 1));
+    expect(parseRunFilter(new URLSearchParams({ failedStep: long })).failedStep).toBe(
+      'a'.repeat(FAILED_STEP_LIMIT),
+    );
+    expect(failedStepName('  charge-card ')).toBe('charge-card');
   });
 });
 
