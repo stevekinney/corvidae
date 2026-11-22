@@ -227,6 +227,7 @@ export function detailOf(event: AuditEvent, lookups: AuditLookups, now: number):
     case 'schedule.missed':
     case 'schedule.fired':
     case 'schedule.created':
+    case 'schedule.updated':
     case 'schedule.paused':
     case 'schedule.resumed':
     case 'schedule.cancelled': {
