@@ -298,6 +298,51 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     );
   });
 
+  test('COR-2543: a failed instance mounts a panel placed on a failed run in its Inspector tab, and a completed one does not', async () => {
+    const panels = {
+      apps: [
+        {
+          plugin: 'inspectors',
+          app: 'failure-explanation',
+          title: 'Failure explanation',
+          uri: 'ui://inspectors/failure-explanation/v1',
+          opensFromTool: 'bureau.tasks.explain',
+          placements: [{ kind: 'run', when: 'failed' }],
+        },
+      ],
+    };
+    const inspectorPanels = async (view: ReturnType<typeof mount>) => {
+      const trigger = await view.findByRole('button', { name: 'How it ran' });
+      if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+      const tab = await view.findByRole('tab', { name: 'Inspector' });
+      if (tab.getAttribute('aria-selected') !== 'true') await fireEvent.click(tab);
+      return [...view.container.querySelectorAll('[data-section="plugin-panel"]')];
+    };
+
+    serveFailedReleaseNotes();
+    fetchScript.routeUrl('/host/panels', panels);
+    const failed = mount('release-run');
+    await waitFor(async () => {
+      const found = await inspectorPanels(failed);
+      expect(found.map((section) => section.getAttribute('data-app'))).toEqual([
+        'failure-explanation',
+      ]);
+    });
+    failed.unmount();
+
+    // A run that is not failed shows no panel that placed itself for failed runs only.
+    fetchScript.restore();
+    fetchScript = new ScriptedFetch();
+    fetchScript.routeSseStream('/v1/events/sse');
+    fetchScript.routeJsonRpcMethodNotFound('bureau.tasks.get', 'No such task');
+    fetchScript.routeUrl('/host/panels', panels);
+    fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
+    routeEngine('done-run', engineRun({ status: 'completed', result: {} }));
+    const done = mount('done-run');
+    await done.findByRole('heading', { level: 1 });
+    expect(await inspectorPanels(done)).toEqual([]);
+  });
+
   test('is not found only when the engine and the Bureau’s record both lack it', async () => {
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
     fetchScript.routeUrlStatus('/workflows/purged-1', 404);

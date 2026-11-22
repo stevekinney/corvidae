@@ -57,7 +57,7 @@
     {#if state.model.verdicts.length > 0}
       <Section title="Guardrails">
         <ul aria-label="Guardrails that fired" class="panel-list" data-part="verdicts">
-          {#each state.model.verdicts as verdict (verdict)}
+          {#each state.model.verdicts as verdict, index (index)}
             <li>{verdict}</li>
           {/each}
         </ul>

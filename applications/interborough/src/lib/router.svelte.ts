@@ -180,6 +180,7 @@ class DashboardRouter {
   // in Svelte 5.
   #pathname = $state<string | undefined>(undefined);
   #searchString = $state<string | undefined>(undefined);
+  #hashString = $state<string | undefined>(undefined);
   #listening = false;
   // The key the outlet mounts the route under, while a navigation asked the page to keep it
   // (`navigate`'s `keep`). `undefined` means the key is the pathname.
@@ -240,6 +241,17 @@ class DashboardRouter {
   #syncFromLocation(): void {
     this.#pathname = window.location.pathname;
     this.#searchString = window.location.search;
+    this.#hashString = window.location.hash;
+  }
+
+  /**
+   * The current location's fragment, live, with its `#` (empty for none). `pushState` never scrolls
+   * to a fragment as a page load does, so a page whose target mounts after its data arrives reads
+   * this and scrolls to the target itself, once it is there (COR-2533).
+   */
+  get hash(): string {
+    this.#listen();
+    return this.#hashString ?? window.location.hash;
   }
 
   /** The current location's pathname, live. */

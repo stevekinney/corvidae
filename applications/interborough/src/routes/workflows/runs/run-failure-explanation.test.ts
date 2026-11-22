@@ -10,7 +10,8 @@ import {
   explainAnswers,
   FAILED_RUN_EXPLANATION,
 } from '../../../lib/bureau-fixtures.test-support.ts';
-import { bureau } from '../../chat/pages.test-support.ts';
+import { failureExplanationPath, router } from '../../../lib/router.svelte.ts';
+import { bureau, landAt } from '../../chat/pages.test-support.ts';
 import QueryPage from '../../chat/query-page.test-harness.svelte';
 import RunFailureExplanation from './run-failure-explanation.svelte';
 
@@ -57,6 +58,66 @@ describe('a failed run’s explanation', () => {
       FAILED_RUN_EXPLANATION.remediation,
     );
     expect(part(container, 'remediation')?.textContent).toContain('What to do next.');
+  });
+
+  test('lists a guardrail that fired more than once, each time (a repeated verdict is no duplicate key)', async () => {
+    const fired = { name: 'pii', kind: 'guardrail', outcome: 'redact', step: 1 } as const;
+    restore = bureau(
+      explainAnswers({
+        ...FAILED_RUN_EXPLANATION,
+        verdicts: [fired, fired, { ...fired, step: 2 }],
+      }),
+    ).restore;
+    const { container, findByText } = show({ runId: 'run-1' });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    const items = [...(part(container, 'guardrails')?.querySelectorAll('li') ?? [])];
+    expect(items.map((item) => item.textContent)).toEqual([
+      'pii redacted the step',
+      'pii redacted the step',
+      'pii redacted the step',
+    ]);
+  });
+
+  test('scrolls itself into view after a client-side navigation to its fragment, once it has mounted and again when its answer arrives', async () => {
+    const scrolled: Element[] = [];
+    const original = window.HTMLElement.prototype.scrollIntoView;
+    window.HTMLElement.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      restore = bureau(explainAnswers()).restore;
+      // The link Chat draws navigates through the router, which never scrolls as a page load does.
+      landAt('/runs/run-1');
+      router.navigate(failureExplanationPath('run-1'));
+      expect(router.hash).toBe('#failure-explanation');
+      const { container, findByText } = show({ runId: 'run-1' });
+      const region = container.querySelector('[data-run-explanation]');
+      await waitFor(() => expect(scrolled).toContain(region as Element));
+      const before = scrolled.length;
+      await findByText(FAILED_RUN_EXPLANATION.summary);
+      await waitFor(() => expect(scrolled.length).toBeGreaterThan(before));
+      expect(new Set(scrolled)).toEqual(new Set([region as Element]));
+    } finally {
+      window.HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  test('does not scroll when the address names no fragment', async () => {
+    const scrolled: Element[] = [];
+    const original = window.HTMLElement.prototype.scrollIntoView;
+    window.HTMLElement.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      restore = bureau(explainAnswers()).restore;
+      landAt('/runs/run-1');
+      expect(router.hash).toBe('');
+      const { findByText } = show({ runId: 'run-1' });
+      await findByText(FAILED_RUN_EXPLANATION.summary);
+      expect(scrolled).toEqual([]);
+    } finally {
+      window.HTMLElement.prototype.scrollIntoView = original;
+    }
   });
 
   test('AC1: carries the anchor Chat links to, and a name for the region', async () => {

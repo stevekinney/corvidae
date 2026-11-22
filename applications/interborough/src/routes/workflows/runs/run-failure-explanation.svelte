@@ -20,7 +20,7 @@
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { explainRunFailure } from '../../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { FAILURE_EXPLANATION_ANCHOR } from '../../../lib/router.svelte.ts';
+  import { FAILURE_EXPLANATION_ANCHOR, router } from '../../../lib/router.svelte.ts';
   import { failureCategoryLabel, failureCategoryTone } from '../detail/failure-category.ts';
 
   interface RunFailureExplanationProps {
@@ -50,6 +50,16 @@
     undefined,
   );
   const answer = $derived(explanation.data);
+
+  // A client-side navigation to `#failure-explanation` (Chat's "Why it failed" link) never scrolls
+  // as a page load does, and this section mounts after the run's own queries resolve, so it scrolls
+  // itself into view once it is there, and again once its answer has changed its height.
+  let section = $state<HTMLElement | undefined>();
+  $effect(() => {
+    if (section === undefined || router.hash !== `#${FAILURE_EXPLANATION_ANCHOR}`) return;
+    void answer;
+    section.scrollIntoView({ block: 'start' });
+  });
   // The server's category is the one the sentence is built from; the engine's stands in until it
   // arrives, and when the Bureau cannot say.
   const shown = $derived(answer === undefined ? category : answer.cause.category);
@@ -88,13 +98,16 @@
 
 {#snippet guardrails()}
   <ul class="ib-run-explanation__guardrails" data-explanation="guardrails">
-    {#each answer?.verdicts ?? [] as verdict (`${verdict.name}:${String(verdict.step)}:${verdict.outcome}`)}
+    <!-- Keyed by place: the same guardrail can fire again with the same outcome, in the run or in a
+         child run, and a verdict has no identity of its own. -->
+    {#each answer?.verdicts ?? [] as verdict, index (index)}
       <li>{words.verdict(verdict.name, verdict.outcome)}</li>
     {/each}
   </ul>
 {/snippet}
 
 <div
+  bind:this={section}
   class="ib-run-explanation"
   id={FAILURE_EXPLANATION_ANCHOR}
   role="group"

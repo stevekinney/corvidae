@@ -1004,6 +1004,10 @@
                 builtIn={isBuiltInWorkflow(task.data.workflow?.type ?? '')}
               />
               <RunPanels taskId={task.data.id} failed={task.data.status === 'failed'} />
+            {:else if notFound && workflow !== undefined}
+              <!-- A run only the engine holds has no task: its panels are given the engine's run, and
+                   one placed `when: 'failed'` shows only when the run failed (COR-2543). -->
+              <RunPanels workflowId={workflow.id} failed={instanceFailed} />
             {/if}
             {#if workflow !== undefined && !readOnlyRun}<RunChange {engine} {workflow} />{/if}
           {/snippet}

@@ -38,14 +38,17 @@ const APPS = [
   },
 ];
 
-function show(failed: boolean) {
+function show(
+  failed: boolean,
+  run: { taskId: string } | { workflowId: string } = { taskId: 'run-1' },
+) {
   restore = bureau({}, (url) =>
     url.endsWith('/host/panels')
       ? Response.json({ apps: APPS })
       : new Response('{}', { status: 404 }),
   ).restore;
   return render(QueryPage, {
-    props: { page: RunPanels, pageProps: { taskId: 'run-1', failed } },
+    props: { page: RunPanels, pageProps: { ...run, failed } },
   } as never);
 }
 
@@ -59,6 +62,18 @@ describe('a panel placed on a run’s page only when it failed', () => {
     const { container } = show(true);
     // In the order the host lists a plugin's panels.
     await waitFor(() => expect(apps(container)).toEqual(['run-inspector', 'failure-explanation']));
+  });
+
+  test('is mounted for a workflow instance that failed, which has no task, and for no other', async () => {
+    const failed = show(true, { workflowId: 'instance-1' });
+    await waitFor(() =>
+      expect(apps(failed.container)).toEqual(['run-inspector', 'failure-explanation']),
+    );
+    failed.unmount();
+    cleanup();
+    restore?.();
+    const running = show(false, { workflowId: 'instance-1' });
+    await waitFor(() => expect(apps(running.container)).toEqual(['run-inspector']));
   });
 
   test('is left off the page of a run that did not fail, which keeps the panels every run has', async () => {

@@ -46,6 +46,23 @@ describe('the failure explanation page, drawn with Cinder (COR-2543)', () => {
     expect(part(container, 'remediation')?.textContent).toBe(answer.remediation);
   });
 
+  it('lists a guardrail that fired more than once, each time (a repeated verdict is no duplicate key)', () => {
+    const fired = { name: 'pii', kind: 'guardrail', outcome: 'redact', step: 1 } as const;
+    const { container } = open({
+      kind: 'explained',
+      model: buildExplanationModel({
+        ...answer,
+        verdicts: [fired, fired, { ...fired, step: null }],
+      }),
+    });
+    const items = [...(part(container, 'verdicts')?.querySelectorAll('li') ?? [])];
+    expect(items.map((item) => item.textContent)).toEqual([
+      'pii redacted the step',
+      'pii redacted the step',
+      'pii redacted the step',
+    ]);
+  });
+
   it('is a main landmark with one labelled section for each part, and a live region', () => {
     const { container } = open({ kind: 'explained', model: buildExplanationModel(answer) });
     expect(container.querySelector('main[aria-labelledby="explanation-title"]')).not.toBeNull();

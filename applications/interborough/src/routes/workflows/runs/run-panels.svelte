@@ -16,17 +16,28 @@
   import { getPanels, loadPluginApp, pluginToolCaller } from '../../../lib/host-panels.ts';
   import { queryKeys } from '../../../lib/query.ts';
 
-  interface RunPanelsProps {
-    /** The Bureau task the panels show. */
-    taskId: string;
-    /**
-     * Whether the run failed. A panel that placed itself `when: 'failed'` is mounted only then
-     * (COR-2543), so a run that did not fail shows no card with nothing to say.
-     */
-    failed?: boolean;
-  }
+  /**
+   * The run the panels show: a Bureau task (an agent run), or a run only the workflow engine holds
+   * (a workflow instance, a fork among them), which has no task. Exactly one is given. `failed` is
+   * whether the run failed: a panel that placed itself `when: 'failed'` is mounted only then
+   * (COR-2543), so a run that did not fail shows no card with nothing to say.
+   */
+  type RunPanelsProps = (
+    { taskId: string; workflowId?: never } | { workflowId: string; taskId?: never }
+  ) & { failed?: boolean };
 
-  let { taskId, failed = false }: RunPanelsProps = $props();
+  let { taskId, workflowId, failed = false }: RunPanelsProps = $props();
+
+  /**
+   * What each run placement passes its panel (owner decision 2026-11-22): an agent run is
+   * `{ taskId }`, as it always was; a workflow instance is `{ runId, runKind: 'workflow' }`, with no
+   * `taskId`, so a panel that reads a task is never handed an id that names none.
+   */
+  const run = $derived(
+    workflowId === undefined
+      ? { key: `task:${String(taskId)}`, input: { taskId } }
+      : { key: `workflow:${workflowId}`, input: { runId: workflowId, runKind: 'workflow' } },
+  );
 
   const apps = createQuery(
     () => ({
@@ -65,13 +76,13 @@
     data-plugin={panel.plugin}
     data-app={panel.app}
   >
-    {#key taskId}
+    {#key run.key}
       <McpApp
         resourceUri={panel.uri}
         title={panel.title}
         {loadResource}
         {onToolCall}
-        toolInput={{ arguments: { taskId } }}
+        toolInput={{ arguments: run.input }}
       />
     {/key}
   </Section>

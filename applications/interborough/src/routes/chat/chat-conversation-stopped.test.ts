@@ -8,6 +8,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -254,6 +255,12 @@ describe('a chat whose run failed on a call', () => {
       'The reply stopped while Issue refund was running',
     );
     expect(link.closest('.chat-note')?.querySelector('button')?.textContent).toContain('Retry');
+
+    // Clicked, it navigates inside the app, to the section's fragment: the Run page scrolls to it.
+    await fireEvent.click(link);
+    expect(router.pathname).toBe('/runs/task-1');
+    expect(router.hash).toBe('#failure-explanation');
+    landAt('/chats/session-1');
 
     await fireEvent.click(await findByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(served.started).toHaveLength(1));
