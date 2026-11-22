@@ -43,6 +43,32 @@ describe('createOffsetRuntime', () => {
     expect(() => runtime.advance(-1)).toThrow(RangeError);
     expect(() => runtime.advance(Number.NaN)).toThrow(RangeError);
   });
+
+  test('held, reads its instant however much real time passes, and runs on from it once resumed (COR-2632)', () => {
+    let real = Date.parse('2026-11-22T12:00:00Z');
+    const runtime = createOffsetRuntime(NINE_AM, { realNow: () => real });
+    real += 5_000;
+    expect(runtime.clock.now()).toBe(NINE_AM + 5_000);
+
+    const fire = Date.parse('2026-10-23T08:00:00-05:00');
+    runtime.hold(fire);
+    real += 60_000;
+    expect(runtime.clock.now()).toBe(fire);
+    // Held, it is still moved by the story: a paced step, and a jump to another moment.
+    runtime.advance(12_000);
+    expect(runtime.clock.now()).toBe(fire + 12_000);
+    runtime.setTime(fire + 20_000);
+    real += 60_000;
+    expect(runtime.clock.now()).toBe(fire + 20_000);
+
+    runtime.resume();
+    expect(runtime.clock.now()).toBe(fire + 20_000);
+    real += 1_000;
+    expect(runtime.clock.now()).toBe(fire + 21_000);
+    // A running clock is left as it is.
+    runtime.resume();
+    expect(runtime.clock.now()).toBe(fire + 21_000);
+  });
 });
 
 describe('a host on an offset clock', () => {

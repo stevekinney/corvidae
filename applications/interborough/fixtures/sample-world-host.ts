@@ -179,6 +179,31 @@ export async function waitForSettledRuns(
 }
 
 /**
+ * Sets the story's clock to `at`, the instant a schedule comes due, and holds it there until
+ * `started` says the fire has started its run; the clock then runs on from there.
+ *
+ * The engine's scheduler reaches an occurrence on its next poll, and counts one it reaches more
+ * than a poll interval and a second late as missed, starting no run (`scheduleLateAfterMilliseconds`
+ * in Weft). On a running clock, a stall of the event loop between the jump to `at` and that poll
+ * (the e2e server starts its other hosts in the same process while the seed runs) lets the clock run past
+ * that grace, the fire is missed, and a seed waiting for its run waits until the hang guard
+ * (COR-2632). Held, the clock reads `at` whenever the poll lands.
+ */
+export async function fireScheduleAt(
+  runtime: OffsetRuntime,
+  at: number,
+  started: () => Promise<boolean>,
+  what: string,
+): Promise<void> {
+  runtime.hold(at);
+  try {
+    await waitUntil(started, { message: what });
+  } finally {
+    runtime.resume();
+  }
+}
+
+/**
  * The scene being played: what each scripted answer and goal check waits for while it is on. The
  * seed sets it before the work that needs it and clears it after, so a pace never leaks into the
  * next scene.
