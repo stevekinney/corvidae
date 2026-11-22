@@ -80,17 +80,17 @@ async function answerAudit(
     }
     const request: AuditRequest = { id: body.id, read: readOf(body.params ?? {}) };
     const reply = await answer(request.read);
-    const witness =
-      request.read === 'export' && exportWitness !== undefined
-        ? {
-            limit: body.params?.['limit'] ?? null,
-            hasCursor: Object.hasOwn(body.params ?? {}, 'cursor'),
-            classified: request.read,
-            reply: replyKind(reply),
-            completion: 'pending' as const,
-          }
-        : undefined;
-    if (witness !== undefined) exportWitness.push(witness);
+    let witness: ExportRouteWitness | undefined;
+    if (request.read === 'export' && exportWitness !== undefined) {
+      witness = {
+        limit: body.params?.['limit'] ?? null,
+        hasCursor: Object.hasOwn(body.params ?? {}, 'cursor'),
+        classified: request.read,
+        reply: replyKind(reply),
+        completion: 'pending',
+      };
+      exportWitness.push(witness);
+    }
     if (reply === undefined) {
       await route.fallback();
     } else if (reply === 'hold') {
