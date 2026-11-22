@@ -22,6 +22,12 @@
     },
     {
       "kind": "panel",
+      "id": "inspectors:run-comparison",
+      "version": "1.0.1",
+      "schema": "sha256:bba91bcbe00efa13996896e62571d46e77cd5103e9fc95001767d71144d59f75"
+    },
+    {
+      "kind": "panel",
       "id": "inspectors:run-inspector",
       "version": "1.0.1",
       "schema": "sha256:94fd4bcd7495d850b5a56631bb7edc5e331cbd1f2174fc04d93b695376b4f8e0"

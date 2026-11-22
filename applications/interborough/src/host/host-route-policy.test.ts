@@ -152,13 +152,12 @@ test('fully composed host captures its routes and its engine discovery catalog',
     expect(keys).toContain('* /bureau/*');
     const bureauRoute = host.routeInventory.find((entry) => entry.key === '* /bureau/*');
     expect(bureauRoute?.resourceClass).toBeNull();
-    // One child per operation the Bureau handler serves, which is exactly its operation map: 134,
-    // `bureau.agents.disable` and `bureau.agents.enable` (COR-2429), `bureau.workflows.runs.retry`
-    // (COR-2424), `bureau.skills.get` (COR-2435), `bureau.runs.timeline` (COR-2541) and
-    // `bureau.tasks.explain` (COR-2532) and `bureau.workflows.concurrency` (COR-2433).
+    // One child per operation the Bureau handler serves: 141, including `bureau.workflows.concurrency`
+    // (COR-2433), `bureau.runs.compare` (COR-2544) and `bureau.tasks.explain` (COR-2532).
     const operations = bureauRoute?.children?.filter((entry) => entry.kind === 'operation') ?? [];
-    expect(operations).toHaveLength(140);
+    expect(operations).toHaveLength(141);
     expect(operations.some((entry) => entry.key === 'bureau.workflows.concurrency')).toBe(true);
+    expect(operations.some((entry) => entry.key === 'bureau.runs.compare')).toBe(true);
     expect(bureauRoute?.children?.every((entry) => entry.workspaceClass !== undefined)).toBe(true);
     expect(bureauRoute?.children?.some((entry) => entry.key === '/ag-ui')).toBe(true);
     expect(host.routeInventory.find((entry) => entry.key === '* /bureau/*')?.transports).toContain(
