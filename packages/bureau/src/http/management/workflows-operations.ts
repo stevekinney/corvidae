@@ -1048,7 +1048,9 @@ const revisionsOutput = z.object({
           lastRunAt: z.string().nullable(),
         })
         .nullable()
-        .describe('Runs on this version, or `null` when the caller may not read run counts.'),
+        .describe(
+          'Retained runs on this engine revision, or `null` when the totals are unavailable or private.',
+        ),
       document: documentSchema,
       /**
        * Weft's verdict for this revision against the workflow's current revision; `null` when the
@@ -1081,9 +1083,10 @@ export const workflowsRevisionsOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
+    const mayReadTotals = authorizeWorkspaceClass('deployment-operator', principal).allowed;
     const revisions = await workflows.revisions(
       input.id,
-      authorizeWorkspaceClass('deployment-operator', principal).allowed
+      mayReadTotals
         ? undefined
         : async (runId) => {
             const owner = ownerOfPrincipal(principal);
@@ -1092,17 +1095,13 @@ export const workflowsRevisionsOperation = defineOperation<
     );
     if (revisions === undefined) throw resourceNotFound('workflow', input.id);
     const history = await workflows.history(input.id);
-    if (history === undefined) throw resourceNotFound('workflow', input.id);
-    const runsByVersion = new Map(
-      history.map((revision) => [revision.workflowVersion, revision.runs]),
-    );
     return {
-      savedVersionCount: history.length,
+      savedVersionCount: history?.length ?? 0,
       revisions: revisions.map((revision) => ({
         workflowVersion: revision.workflowVersion,
         firstRunAt: revision.firstRunAt,
         lastRunAt: revision.lastRunAt,
-        runs: runsByVersion.get(revision.workflowVersion) ?? null,
+        runs: mayReadTotals ? revision.runs : null,
         document: {
           name: revision.document.name,
           trigger: { ...revision.document.trigger },

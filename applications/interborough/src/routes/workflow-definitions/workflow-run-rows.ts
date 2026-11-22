@@ -6,8 +6,7 @@
  * and a code type's from the engine. Each instance becomes one {@link RunRow}: titled with the
  * workflow's name, run by the workflow's agent, and started by what its recorded origin names.
  *
- * An instance summary carries no step position, failure reason or awaited signal, so line two says
- * what started the run, the agent and how long it took, and nothing the summary does not hold.
+ * A file run's summary also carries its original step progress, failure and awaited signal.
  */
 import type { WorkflowStatus } from '@lostgradient/weft';
 
@@ -53,7 +52,7 @@ export function workflowRunOrigin(origin: WorkflowRunOrigin | null | undefined):
     case 'chat':
       return { kind: 'chat', title: '', href: chatSessionPath(origin.contextId) };
     case 'person':
-      return { kind: 'person', surface: origin.surface };
+      return { kind: 'person', surface: origin.surface, principal: origin.principal ?? undefined };
     case 'schedule':
       return {
         kind: 'schedule',

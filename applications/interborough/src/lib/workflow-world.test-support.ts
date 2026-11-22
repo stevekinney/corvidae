@@ -19,7 +19,7 @@ import {
   urlOf,
 } from './bureau-stub.test-support.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
-import type { SignalResult } from './workflow-files.ts';
+import type { SavedWorkflowVersion, SignalResult } from './workflow-files.ts';
 
 export type Call = { readonly method: string; readonly params: Record<string, unknown> };
 
@@ -114,6 +114,9 @@ export type RunFixture = {
   createdAt: number;
   updatedAt: number;
   origin?: Record<string, unknown> | null;
+  steps?: { total: number; at: number | null } | null;
+  awaitingSignal?: string | null;
+  failure?: string | null;
 };
 
 export type RevisionFixture = {
@@ -130,6 +133,35 @@ export type RevisionFixture = {
   /** Weft's verdict against the current revision; `null` (the default) when there is none. */
   compatibility?: { compatible: true } | { compatible: false; reasons: string[] } | null;
 };
+
+/** A saved file version as the Bureau's History operation answers it. */
+export function savedVersionFixture(
+  version: string,
+  overrides: Partial<SavedWorkflowVersion> = {},
+): SavedWorkflowVersion {
+  return {
+    version,
+    current: true,
+    savedAt: '2026-10-19T08:00:00.000Z',
+    hash: `hash-${version}`,
+    workflowVersion: `revision-${version}`,
+    origin: 'write',
+    actor: null,
+    surface: null,
+    title: null,
+    description: null,
+    trigger: { kind: 'manual' },
+    steps: [],
+    inputSchema: null,
+    outputSchema: null,
+    outputName: null,
+    previousVersion: null,
+    changes: [],
+    compatibility: null,
+    runs: null,
+    ...overrides,
+  };
+}
 
 export const DOCUMENT_TEXT = JSON.stringify(
   {
@@ -336,6 +368,7 @@ export type World = {
   runs: RunFixture[];
   /** What `bureau.workflows.revisions` answers, by identifier: only the versions that have run. */
   revisions: Record<string, RevisionFixture[]>;
+  savedVersions: Record<string, SavedWorkflowVersion[]>;
   /** What `weft.workflows.revisions.list` answers, by name: every installed version, run or not. */
   installedRevisions: Record<string, unknown[]>;
   /** The starts `bureau.workflows.start` accepted, in order. */
@@ -426,6 +459,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     schedules: [],
     runs: [],
     revisions: {},
+    savedVersions: {},
     installedRevisions: {},
     startedRuns: [],
     engineStarts: [],
@@ -576,6 +610,32 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     return schedule;
   };
 
+  function savedVersionsOf(id: string): SavedWorkflowVersion[] | undefined {
+    if (Object.hasOwn(world.savedVersions, id)) return world.savedVersions[id];
+    if (Object.hasOwn(world.savedSteps, id)) {
+      return [savedVersionFixture('1.0.0', { current: false, steps: world.savedSteps[id] ?? [] })];
+    }
+    if (Object.hasOwn(world.revisions, id)) {
+      return world.revisions[id]?.map((revision, index, revisions) =>
+        savedVersionFixture(`1.${String(revisions.length - 1 - index)}.0`, {
+          current: index === 0,
+          workflowVersion: revision.workflowVersion,
+          savedAt: revision.firstRunAt,
+          trigger: revision.document.trigger,
+          steps: revision.document.steps,
+          compatibility:
+            revision.compatibility == null
+              ? null
+              : revision.compatibility.compatible
+                ? 'compatible'
+                : 'breaking',
+          runs: { count: 1, firstRunAt: revision.firstRunAt, lastRunAt: revision.lastRunAt },
+        }),
+      );
+    }
+    return find(id) === undefined ? undefined : [];
+  }
+
   const bureauHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
     'bureau.agents.list': () => ({ agents: world.agents }),
     'bureau.health.attention': () => ({
@@ -584,9 +644,9 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       checks: [],
     }),
     'bureau.workflows.history': (params) => {
-      const steps = world.savedSteps[String(params['id'])];
-      if (steps === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
-      return { revisions: [{ current: false, steps }] };
+      const versions = savedVersionsOf(String(params['id']));
+      if (versions === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
+      return { revisions: versions };
     },
     'bureau.agents.definitions.get': (params) => {
       const id = String(params['id']);
@@ -828,7 +888,10 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
           status: run.status,
           createdAt: new Date(run.createdAt).toISOString(),
           updatedAt: new Date(run.updatedAt).toISOString(),
-          ...(run.origin === undefined ? {} : { origin: run.origin }),
+          origin: run.origin ?? null,
+          steps: run.steps ?? null,
+          awaitingSignal: run.awaitingSignal ?? null,
+          failure: run.failure ?? null,
         }));
       return { runs, nextOffset: null };
     },
@@ -867,14 +930,22 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       };
     },
     'bureau.workflows.revisions': (params) => {
-      const revisions = world.revisions[String(params['id'])];
-      if (revisions === undefined) {
+      const id = String(params['id']);
+      const savedVersions = savedVersionsOf(id);
+      const revisions = Object.hasOwn(world.revisions, id) ? (world.revisions[id] ?? []) : [];
+      if (savedVersions === undefined) {
         throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
       }
       // The Bureau always answers both schemas, `null` for a file that declares none.
       return {
+        savedVersionCount: savedVersions.length,
         revisions: revisions.map((revision) => ({
           ...revision,
+          runs: {
+            count: 1,
+            firstRunAt: revision.firstRunAt,
+            lastRunAt: revision.lastRunAt,
+          },
           compatibility: revision.compatibility ?? null,
           document: {
             ...revision.document,

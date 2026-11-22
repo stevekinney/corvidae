@@ -46,6 +46,7 @@ export type RunOrigin =
   /** A person started it outside a chat, from the surface the origin names. */
   | {
       readonly kind: 'person';
+      readonly principal?: string | undefined;
       readonly surface: RunPersonSurface | null;
       /** Who started it, as the Bureau recorded them, when it did: "You" when it is the viewer. */
       readonly principal?: string | null | undefined;
@@ -836,6 +837,8 @@ export type RunLineContext = {
    * identifier, or `undefined` when the schedule was not read (row 53l).
    */
   readonly scheduleCadence?: (scheduleId: string) => string | undefined;
+  readonly workflowPage?: boolean;
+  readonly viewer?: string;
   /**
    * Why a schedule will not start its next run, in words, by its identifier and the agent the run
    * is for ("Order refund can’t load", "no provider is connected"); empty when nothing holds it.
@@ -862,6 +865,8 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   // its identifier only when no title is loaded; never "An agent". Interborough's own bookkeeping
   // says "Interborough started" only of a tick it recorded after a restart, which is when that is
   // true (row 53l); any other is said by what it did.
+  const onWorkflowPage = instance && context.workflowPage === true;
+  const person = onWorkflowPage && row.origin.kind === 'person' ? row.origin : null;
   const agent =
     row.origin.kind === 'system'
       ? tick?.whileStopped === true
@@ -880,11 +885,10 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
             : TASK_COPY.unknownAgent;
   // A run of a workflow file that nothing recorded an origin for is still a workflow's.
   const kind =
-    instance && row.origin.kind === 'none' ? copy.kinds.parent : copy.kinds[row.origin.kind];
+    (instance && row.origin.kind === 'none') || person !== null
+      ? copy.kinds.parent
+      : copy.kinds[row.origin.kind];
   const parts: string[] = [kind];
-  if (instance && row.scheduleName !== null && row.scheduleName !== undefined) {
-    parts.push(row.scheduleName);
-  }
   const scheduleId =
     row.origin.kind === 'schedule' ? (row.origin.scheduleId ?? workflow?.scheduleId ?? null) : null;
   // A schedule's run that is due says what holds its schedule first, then its agent and when it
@@ -894,16 +898,25 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
     (row.status === 'working' || row.status === 'submitted') &&
     awaitingSignalOf(row) === null &&
     runStatusWord(row, context.now) === 'Scheduled';
+  const cadence =
+    (!instance || (onWorkflowPage && row.status === 'completed')) && !due && scheduleId !== null
+      ? context.scheduleCadence?.(scheduleId)
+      : undefined;
+  if (instance && !cadence && row.scheduleName != null) parts.push(row.scheduleName);
   if (due && scheduleId !== null) {
     for (const hold of context.scheduleHolds?.(scheduleId, row.agentName) ?? []) {
       parts.push(hold);
     }
   }
-  if (agent !== null) parts.push(agent);
-  // A schedule's chat run says when its schedule runs, after the agent: "Schedule, Assistant,
-  // every day at 3:00 AM, 14 s" (row 53l).
-  const cadence =
-    !instance && !due && scheduleId !== null ? context.scheduleCadence?.(scheduleId) : undefined;
+  if (person !== null) {
+    parts.push(
+      person.principal !== undefined && person.principal === context.viewer
+        ? copy.startedByViewer
+        : copy.kinds.person,
+    );
+  } else if (agent !== null) {
+    parts.push(agent);
+  }
   if (cadence !== undefined && cadence !== '') parts.push(cadence);
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
   if (tick !== null) {
@@ -926,7 +939,14 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       // Only a run that is running says its step (10h: "step 2 of 4, running 1 min 12 s"); one
       // waiting for a signal or for its time says what it waits for and nothing of its step.
       if (awaiting !== null) {
-        parts.push(copy.waitingForSignal(awaiting));
+        parts.push(
+          onWorkflowPage
+            ? copy.waitingForWorkflowSignal(awaiting)
+            : copy.waitingForSignal(awaiting),
+        );
+        if (onWorkflowPage && steps != null && reached !== null) {
+          parts.push(copy.stepOf(reached, steps.total));
+        }
       } else if (runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null) {
         parts.push(copy.dueAt(dueWords(row.dueAt, context.now, context.zone)));
       } else {

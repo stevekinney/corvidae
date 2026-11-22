@@ -11,10 +11,10 @@ import {
   createWorkflowFile,
   deleteWorkflowFile,
   getWorkflowFile,
+  getWorkflowRevisionSummary,
   isIdentifierTaken,
   listWorkflowFileRuns,
   listWorkflowFiles,
-  listWorkflowRevisions,
   parseWorkflowText,
   pauseWorkflowFile,
   resumeWorkflowFile,
@@ -113,8 +113,9 @@ describe('the operations', () => {
         },
       }),
     );
-    const revisions = await listWorkflowRevisions('one');
-    expect(revisions.map((revision) => revision.workflowVersion)).toEqual(['v1']);
+    const summary = await getWorkflowRevisionSummary('one');
+    expect(summary.savedVersionCount).toBe(1);
+    expect(summary.revisions.map((revision) => revision.workflowVersion)).toEqual(['v1']);
   });
 
   test('every write names the hash it read, and answers the hash now on disk', async () => {

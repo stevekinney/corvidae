@@ -144,6 +144,45 @@ describe('one instance as a row', () => {
     ).toContain('notes-approved');
   });
 
+  test('names a completed schedule cadence and the viewer’s step while waiting on a signal', () => {
+    const file = {
+      ...CONTEXT,
+      type: 'release-notes',
+      scheduleNames: new Map([['daily', 'Daily']]),
+    };
+    const context = {
+      now: 1_760_000_010_000,
+      zone: 'America/Chicago',
+      agentLabel: () => 'Assistant',
+      workflowPage: true,
+      viewer: 'local',
+      scheduleCadence: (id: string) => (id === 'daily' ? 'every day at 8:00 AM' : undefined),
+    };
+    const done = workflowRunRow(
+      summary({
+        status: 'completed',
+        origin: { kind: 'schedule', scheduleId: 'daily', fireId: 'one' },
+      }),
+      file,
+    );
+    expect(runLineTwo(done, context)).toBe('Schedule, Assistant, every day at 8:00 AM, 3 s');
+    const waiting = workflowRunRow(
+      summary({
+        status: 'suspended',
+        origin: { kind: 'person', principal: 'local', surface: 'web' },
+        awaitingSignal: 'notes-approved',
+        steps: { total: 4, at: 4 },
+      }),
+      file,
+    );
+    expect(runLineTwo(waiting, context)).toBe(
+      'Workflow, You, waiting for the signal notes-approved, step 4 of 4',
+    );
+    expect(runLineTwo(waiting, { ...context, viewer: 'someone-else' })).toContain(
+      'Started by hand',
+    );
+  });
+
   test('says on line two what started it, the agent and how long it took, kind first', () => {
     const row = workflowRunRow(
       summary({ origin: { kind: 'schedule', scheduleId: 'nightly', fireId: 'fire-1' } }),
@@ -193,6 +232,7 @@ describe('what started an instance', () => {
   test('keeps the surface a person started it from', () => {
     expect(workflowRunOrigin({ kind: 'person', principal: 'local', surface: 'web' })).toEqual({
       kind: 'person',
+      principal: 'local',
       surface: 'web',
     });
   });

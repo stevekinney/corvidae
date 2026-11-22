@@ -234,9 +234,12 @@ export const WORKFLOW_COPY = {
       runsAs: (agent: string): string => `runs as ${agent}`,
       /** "Last run" and the date, which is a link to the run, follow each other. */
       lastRunLabel: 'Last run',
+      waitingForSignal: 'Waiting for the signal ',
+      failedAtStep: (step: number): string => ` at step ${String(step)}`,
       lastRun: (when: string): string => `Last run ${when}`,
       /** The last run of a type Interborough runs itself, said as the day it began. */
       lastRunToday: (clock: string): string => `Last run today, ${clock}`,
+      todayAt: (clock: string): string => `today, ${clock}`,
       neverRun: 'Never run',
       /** "file" and the file's name, which is set in monospace, follow each other. */
       fileLabel: 'file',
@@ -938,10 +941,9 @@ export const WORKFLOW_COPY = {
     },
   },
   revisions: {
-    heading: 'Revisions that have run',
-    description:
-      'The versions of this workflow that have run, most recently run first, each with whether it is compatible with the current one.',
-    caption: 'Versions of this workflow that have run',
+    heading: 'Saved versions',
+    description: 'Saved versions of this workflow, newest first.',
+    caption: 'Saved versions of this workflow',
     /** One row's title: the day the version first ran and its short hash, "Oct 19, 8:00 AM, version 1.3.0, current version". */
     versionTitle: (when: string, shortVersion: string, current: boolean): string =>
       `${when}, version ${shortVersion}, ${current ? 'current version' : 'older version'}`,
@@ -949,14 +951,28 @@ export const WORKFLOW_COPY = {
     copyVersion: (shortVersion: string): string => `Copy version ${shortVersion}`,
     /** When the version last ran, after its verdict: "last run Thu, Oct 29, 9:15 AM". */
     lastRun: (when: string): string => `last run ${when}`,
+    saved: (when: string): string => `Saved ${when}`,
+    editedInBuilder: (what: string): string => `Edited in the builder: ${what}`,
+    rewordedStep: (step: number): string => `reworded step ${String(step)}`,
+    addedStep: (step: number): string => `added step ${String(step)}`,
+    addedApproval: 'added the approval step',
+    renamedStep: (step: number): string => `renamed step ${String(step)}`,
+    changedStep: (step: number): string => `changed step ${String(step)}`,
+    changedFile: 'changed workflow settings',
+    runsKeepGoing: 'Runs in flight keep going.',
+    current: 'current version',
+    older: 'older version',
+    runsOnVersion: (count: number, date?: string): string =>
+      `Run${count === 1 ? '' : 's'} on this version: ${String(count)}${date === undefined ? '' : ` (${date})`}`,
+    noRunsOnVersion: 'No runs on this version yet',
     /** The footnote under the list. */
     footnote:
       'Compatibility says whether a run started on one version can continue after the next is saved. Scheduled and chat runs always start on the current version.',
     versionColumn: 'Version',
     firstRunColumn: 'First run',
     lastRunColumn: 'Last run',
-    emptyTitle: 'No version of this workflow has run yet',
-    emptyDescription: 'A version appears here after its first run.',
+    emptyTitle: 'No saved versions yet',
+    emptyDescription: 'Save this workflow and its versions appear here.',
     failed: 'The revision history could not be loaded.',
     /** The verdict against the current revision. */
     verdictColumn: 'Compatibility',

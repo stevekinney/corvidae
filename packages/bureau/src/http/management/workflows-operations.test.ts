@@ -15,6 +15,7 @@ import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 import { createBureau } from '../../create-bureau.ts';
 import { waitForCondition } from '../../test';
+import { WORKFLOW_REVISION_KEY_PREFIX } from '../../workflow-revision-ledger.ts';
 import {
   AGENT_STEP,
   FAST_SCHEDULE,
@@ -451,6 +452,10 @@ describe('results', () => {
       { id: 'digest' },
       'operator-key',
     );
+    expect(revisions.result).toMatchObject({
+      savedVersionCount: 1,
+      revisions: [{ runs: null }],
+    });
     expect(revisions.result?.['revisions']).toHaveLength(1);
     const history = await rpc(
       workspace,
@@ -492,6 +497,53 @@ describe('results', () => {
       'operator-key',
     );
     expect(memberImpact.result?.['inFlight']).toBeNull();
+  });
+
+  it('counts runs by the engine revision even when two saves have the same revision', async () => {
+    const runtime = createManualRuntimeServices();
+    const served = await serveWorkflows(cleanups, { runtime });
+    const created = await served.bureau.workflows!.create('digest', DEFINITION);
+    const first = await ownerRpc(served.owner, 'bureau.workflows.start', { id: 'digest' });
+    expect(first.result?.['workflowVersion']).toBeString();
+
+    runtime.setTime(runtime.clock.now() + 1);
+    await served.bureau.workflows!.update(
+      'digest',
+      { ...DEFINITION, title: 'New title' },
+      {
+        expectedHash: created.hash,
+      },
+    );
+    runtime.setTime(runtime.clock.now() + 1);
+    const second = await ownerRpc(served.owner, 'bureau.workflows.start', { id: 'digest' });
+    expect(second.result?.['workflowVersion']).toBe(first.result?.['workflowVersion']);
+
+    const answer = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });
+    expect(answer.result).toMatchObject({
+      savedVersionCount: 2,
+      revisions: [{ workflowVersion: first.result?.['workflowVersion'], runs: { count: 2 } }],
+    });
+  });
+
+  it('retains a deleted workflow’s stored run revision when no saved-version record exists', async () => {
+    const storage = new MemoryStorage();
+    const served = await serveWorkflows(cleanups, { storage });
+    const created = await served.bureau.workflows!.create('digest', DEFINITION);
+    const started = await ownerRpc(served.owner, 'bureau.workflows.start', { id: 'digest' });
+    expect(started.result?.['workflowVersion']).toBeString();
+    await served.bureau.workflows!.delete('digest', { expectedHash: created.hash });
+    const revisionKeys: string[] = [];
+    for await (const [key] of storage.scan('')) {
+      if (key.includes(`${WORKFLOW_REVISION_KEY_PREFIX}digest:`)) revisionKeys.push(key);
+    }
+    expect(revisionKeys).toHaveLength(1);
+    for (const key of revisionKeys) await storage.delete(key);
+
+    const answer = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });
+    expect(answer.result).toMatchObject({
+      savedVersionCount: 0,
+      revisions: [{ workflowVersion: started.result?.['workflowVersion'], runs: { count: 1 } }],
+    });
   });
 
   it('signals only the caller-owned waiting runs and starts new runs with the caller owner', async () => {

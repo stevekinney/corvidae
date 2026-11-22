@@ -1,12 +1,6 @@
 <script lang="ts">
   /**
-   * The versions of an agent-authored workflow that have run, most recently run first
-   * (`bureau.workflows.revisions`). It is the Bureau's list and not the engine's: a version that
-   * was saved and never ran is not on it, and nothing here activates a version, because the file
-   * is what runs next. Each version is named, says whether it is the current one, and carries
-   * Weft's verdict on whether it is compatible with the current one (a neutral dot and the word,
-   * because amber is for what waits on you) and the reasons when it is breaking. A footnote under
-   * the list says what compatibility means.
+   * Every saved version of an agent-authored workflow, newest first (`bureau.workflows.history`).
    */
   import { Alert, Button, CopyButton, EmptyState, Skeleton, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -16,29 +10,22 @@
   import { dayAndTime } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { CATALOG_STALE_TIME_MS } from '../../lib/workflow-catalog.ts';
-  import { listWorkflowRevisions } from '../../lib/workflow-files.ts';
+  import { listWorkflowSavedVersions } from '../../lib/workflow-files.ts';
+  import { savedChangeSummary } from './workflow-impact.ts';
 
   interface Props {
     /** The workflow's identifier, which is its file's. */
     id: string;
-    /** The version the file is at now, or `null` when the Bureau does not say. */
-    currentVersion: string | null;
   }
 
-  let { id, currentVersion }: Props = $props();
+  let { id }: Props = $props();
 
   const copy = WORKFLOW_COPY.revisions;
 
-  /** The hash a person can tell versions apart by: a `sha256:` prefix is dropped and the rest cut short. */
-  function shortVersionOf(version: string): string {
-    const bare = version.replace(/^sha256:/, '');
-    return bare.length > 12 ? bare.slice(0, 8) : bare;
-  }
-
   const revisions = createQuery(
     () => ({
-      queryKey: queryKeys.workflowCatalog.revisions(id),
-      queryFn: ({ signal }) => listWorkflowRevisions(id, { signal }),
+      queryKey: queryKeys.workflowCatalog.savedVersions(id),
+      queryFn: ({ signal }) => listWorkflowSavedVersions(id, { signal }),
       // The page already read this list for the tab's count, so mounting the tab does not ask again.
       staleTime: CATALOG_STALE_TIME_MS,
       retry: false,
@@ -68,36 +55,44 @@
     />
   {:else}
     <ul class="weft-workflow-revisions__list" aria-label={copy.caption}>
-      {#each revisions.data as revision (revision.workflowVersion)}
-        {@const shortVersion = shortVersionOf(revision.workflowVersion)}
+      {#each revisions.data as revision (revision.version)}
+        {@const summary = savedChangeSummary(revision)}
         <li class="weft-workflow-revisions__row" data-version={revision.workflowVersion}>
           <p class="weft-workflow-revisions__version" data-testid="workflow-revision-title">
-            <span title={revision.workflowVersion}
-              >{copy.versionTitle(
-                dayAndTime(Date.parse(revision.firstRunAt), Date.now()),
-                shortVersion,
-                revision.workflowVersion === currentVersion,
-              )}</span
+            <span
+              >{`Version ${revision.version}, ${revision.current ? copy.current : copy.older}`}</span
             >
-            <CopyButton value={revision.workflowVersion} label={copy.copyVersion(shortVersion)} />
+            <CopyButton value={revision.hash} label={copy.copyVersion(revision.version)} />
           </p>
           <p class="weft-workflow-revisions__line" data-testid="workflow-revision-verdict">
-            {#if revision.compatibility === null}
-              <StatusDot status="neutral" label={copy.noCurrent} />
-            {:else if revision.compatibility.compatible}
+            {#if revision.compatibility === 'compatible'}
               <StatusDot status="neutral" label={copy.compatible} />
-            {:else}
+            {:else if revision.compatibility === 'breaking'}
               <StatusDot status="neutral" label={copy.incompatible} />
-            {/if}{', '}<time datetime={revision.lastRunAt}
-              >{copy.lastRun(dayAndTime(Date.parse(revision.lastRunAt), Date.now()))}</time
+            {:else}
+              <StatusDot status="neutral" label={copy.noCurrent} />
+            {/if}
+            {', '}<time datetime={revision.savedAt}
+              >{copy.saved(dayAndTime(Date.parse(revision.savedAt), Date.now()))}</time
             >
           </p>
-          {#if revision.compatibility?.compatible === false}
-            <ul class="weft-workflow-revisions__reasons" data-testid="workflow-revision-reasons">
-              {#each revision.compatibility.reasons as reason (reason)}
-                <li>{copy.reason(reason)}</li>
-              {/each}
-            </ul>
+          {#if summary !== undefined}
+            <p class="weft-workflow-revisions__line">{summary}</p>
+          {/if}
+          {#if revision.current && revision.compatibility === 'compatible'}
+            <p class="weft-workflow-revisions__line">{copy.runsKeepGoing}</p>
+          {/if}
+          {#if revision.runs !== null}
+            <p class="weft-workflow-revisions__line">
+              {revision.runs.count === 0
+                ? copy.noRunsOnVersion
+                : copy.runsOnVersion(
+                    revision.runs.count,
+                    revision.runs.lastRunAt === null
+                      ? undefined
+                      : dayAndTime(Date.parse(revision.runs.lastRunAt), Date.now()),
+                  )}
+            </p>
           {/if}
         </li>
       {/each}

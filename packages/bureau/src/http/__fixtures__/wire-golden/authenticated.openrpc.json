@@ -20126,7 +20126,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "Runs on this version, or `null` when the caller may not read run counts."
+                    "description": "Retained runs on this engine revision, or `null` when the totals are unavailable or private."
                   },
                   "workflowVersion": {
                     "type": "string"

@@ -77,12 +77,6 @@ export type CodeWorkflowListing = CodeEntry;
 /** One file as `bureau.workflows.get` shows it, with its text and its live schedule. */
 export type WorkflowFileDetail = AbsentTolerant<BureauOutput<'bureau.workflows.get'>>;
 
-/** A version of the workflow's document that has run. */
-export type WorkflowRevision = BureauOutput<'bureau.workflows.revisions'>['revisions'][number];
-
-/** A revision's compatibility with the current revision: `{ compatible: true }`, or the reasons it is not. */
-export type WorkflowCompatibility = NonNullable<WorkflowRevision['compatibility']>;
-
 /**
  * A workflow that code registered, as `bureau.workflows.internal.get` shows it. `source.text` is
  * the workflow's description followed by its registered contract as JSON; the code is not exposed.
@@ -150,18 +144,17 @@ export async function getWorkflowFile(id: string, options?: Options): Promise<Wo
   return bureauClient['bureau.workflows.get']({ id }, options);
 }
 
-/** The versions of the workflow that have run, most recently run first. */
-export async function listWorkflowRevisions(
+/** The run revisions together with the count of every saved version, including unrun ones. */
+export async function getWorkflowRevisionSummary(
   id: string,
   options?: Options,
-): Promise<readonly WorkflowRevision[]> {
-  const answer = await bureauClient['bureau.workflows.revisions']({ id }, options);
-  return answer.revisions;
+): Promise<Pick<BureauOutput<'bureau.workflows.revisions'>, 'revisions' | 'savedVersionCount'>> {
+  return bureauClient['bureau.workflows.revisions']({ id }, options);
 }
 
 /**
  * The steps of the newest version the Bureau saved of a workflow's file, as `bureau.workflows.history`
- * lists them. Unlike {@link listWorkflowRevisions} it holds a version that never ran, and it still
+ * lists them. Unlike {@link getWorkflowRevisionSummary} it holds a version that never ran, and it still
  * answers for a workflow whose file cannot load or was deleted, so a schedule row can say which
  * agent such a workflow ran. `undefined` when the workflow has no saved version.
  */
@@ -169,18 +162,31 @@ export async function getLatestSavedSteps(
   id: string,
   options?: Options,
 ): Promise<readonly Readonly<Record<string, unknown>>[] | undefined> {
-  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
-  return revisions[0]?.steps;
+  const [latest] = await listWorkflowSavedVersions(id, options);
+  return latest?.steps;
 }
 
-type SavedVersion = BureauOutput<'bureau.workflows.history'>['revisions'][number];
+/** One saved version of a file, including versions that never ran. */
+export type SavedWorkflowVersion = BureauOutput<'bureau.workflows.history'>['revisions'][number];
+
+/** The versions of the workflow's file, newest first. */
+export async function listWorkflowSavedVersions(
+  id: string,
+  options?: Options,
+): Promise<readonly SavedWorkflowVersion[]> {
+  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
+  return revisions;
+}
 
 /**
  * One saved version of a workflow: its number (`1.2.0`) and the engine revision it registered as,
  * and the version's steps as written, titles included, which the engine's revision drops.
  */
-export type WorkflowVersionLabel = Pick<SavedVersion, 'version' | 'current' | 'workflowVersion'> & {
-  readonly steps?: SavedVersion['steps'] | undefined;
+export type WorkflowVersionLabel = Pick<
+  SavedWorkflowVersion,
+  'version' | 'current' | 'workflowVersion'
+> & {
+  readonly steps?: SavedWorkflowVersion['steps'] | undefined;
 };
 
 /**
@@ -192,8 +198,7 @@ export async function listWorkflowVersionLabels(
   id: string,
   options?: Options,
 ): Promise<readonly WorkflowVersionLabel[]> {
-  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
-  return revisions;
+  return listWorkflowSavedVersions(id, options);
 }
 
 /** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */

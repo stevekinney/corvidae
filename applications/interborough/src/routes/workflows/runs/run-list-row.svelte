@@ -27,6 +27,9 @@
     pluginTitle?: ((plugin: string) => string | undefined) | undefined;
     /** When a schedule runs, by its identifier, which a schedule's chat run says (row 53l). */
     scheduleCadence?: ((scheduleId: string) => string | undefined) | undefined;
+    /** The Workflow page includes the current step for a signal wait and schedule cadence for completed runs. */
+    workflowPage?: boolean;
+    viewer?: string | undefined;
     /**
      * Which width decides the row's phone form (Cinder's `phoneWidth`): the Runs list, which fills
      * the page's content column, follows the window, so on a tablet beside the navigation rail the
@@ -55,6 +58,8 @@
     agentLabel,
     pluginTitle = undefined,
     scheduleCadence = undefined,
+    workflowPage = false,
+    viewer = undefined,
     scheduleHolds = undefined,
     phoneWidth = 'row',
     href = undefined,
@@ -62,11 +67,16 @@
   }: Props = $props();
 
   const word = $derived(runStatusWord(row, now));
+  const statusLabel = $derived(
+    workflowPage && word === 'Waiting for a signal' ? TASK_COPY.list.segments.signal : undefined,
+  );
   const baseLineTwo = $derived(
     runLineTwo(row, {
       now,
       zone,
       agentLabel,
+      workflowPage,
+      ...(viewer === undefined ? {} : { viewer }),
       ...(pluginTitle === undefined ? {} : { pluginTitle }),
       ...(scheduleCadence === undefined ? {} : { scheduleCadence }),
       ...(scheduleHolds === undefined ? {} : { scheduleHolds }),
@@ -88,7 +98,10 @@
   tooltip={row.title}
   metaTooltip={lineTwo}
 >
-  {#snippet status()}<StatusDot {word} />{/snippet}
+  {#snippet status()}<StatusDot
+      {word}
+      {...statusLabel === undefined ? {} : { label: statusLabel }}
+    />{/snippet}
   {#snippet title()}{row.title}{/snippet}
   {#snippet time()}
     <time datetime={new Date(row.startedAt).toISOString()}>{clockTime(row.startedAt, zone)}</time>

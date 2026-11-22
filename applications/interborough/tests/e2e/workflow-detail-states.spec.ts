@@ -104,7 +104,7 @@ for (const width of WIDTHS) {
       await expect(root.getByTestId('workflow-identifier')).toHaveText('release-notes');
       await expect(root.getByTestId('workflow-state')).toHaveCount(0);
       await expect(root.getByTestId('workflow-line-starts')).toContainText(/every Friday/i);
-      await expect(root.getByTestId('workflow-line-last-run')).toContainText(/failed at step 2/i);
+      await expect(root.getByTestId('workflow-line-last-run')).toContainText(/failed\s+at step 2/i);
       await expect(root.getByTestId('workflow-line-schedule')).toContainText(
         'Release notes digest',
       );
@@ -115,7 +115,7 @@ for (const width of WIDTHS) {
       });
 
       await page.goto(`${path}?tab=code`);
-      const code = root.getByTestId('workflow-code-source');
+      const code = root.getByTestId('workflow-file-source');
       await expect(code).toContainText('0 11 * * 5');
       await expect(code).toContainText('America/Chicago');
       await expect(code).toContainText('notes-approved');

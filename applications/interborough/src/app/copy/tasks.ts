@@ -58,6 +58,7 @@ export const TASK_COPY = {
     },
     /** Line two's agent for a run Interborough started for its own bookkeeping. */
     interboroughStarted: 'Interborough started',
+    startedByViewer: 'You',
     /** The title of a schedule tick, the run that records what the scheduler did (COR-2009). */
     scheduleTickTitle: 'Schedule tick',
     /** What a schedule tick recorded, on line two: missed runs it noticed, or a schedule that came due. */
@@ -73,6 +74,7 @@ export const TASK_COPY = {
       `failed at step ${String(at)} of ${String(total)}`,
     /** What an instance parked at an `await-signal` step waits for, and how long it has. */
     waitingForSignal: (signal: string): string => `waiting for signal ${signal}`,
+    waitingForWorkflowSignal: (signal: string): string => `waiting for the signal ${signal}`,
     /** When a run that asked to be woken is due, at the end of line two: "due today at 11:00 AM". */
     dueAt: (when: string): string => `due ${when}`,
     due: { today: 'today', tomorrow: 'tomorrow' },

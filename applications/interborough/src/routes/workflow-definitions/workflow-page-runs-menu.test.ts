@@ -207,12 +207,7 @@ describe('the "⋯" menu', () => {
     const view = open('/workflows/digest');
     await ready(view.container);
     await openMenu(view);
-    expect(await menuItems(view)).toEqual([
-      MENU.sendSignal,
-      MENU.duplicate,
-      MENU.pause,
-      MENU.delete,
-    ]);
+    expect(await menuItems(view)).toEqual([MENU.duplicate, MENU.pause, MENU.delete]);
     expect(testId(document, 'workflow-menu-pause-description')?.textContent).toBe(
       MENU.pauseDescription,
     );

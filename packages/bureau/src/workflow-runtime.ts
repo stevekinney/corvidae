@@ -394,6 +394,8 @@ export function describeCodeWorkflow(
 
 /** A revision of a workflow that has run, with whether it is compatible with the workflow's current revision. */
 export interface WorkflowRevisionReport extends WorkflowRevision {
+  /** Retained runs of this exact engine revision, or null when the caller cannot see the total. */
+  readonly runs: WorkflowHistoryRuns | null;
   /**
    * Weft's compatibility verdict for this revision against the file's current revision
    * (`checkWorkflowCompatibility` over the manifests of the two documents): `{ compatible: true }`,
@@ -2338,13 +2340,14 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }
 
   /** Stamp the first and last start of every revision of workflow `id` that has an instance in the engine. */
-  async function syncRunHistory(id: string): Promise<void> {
-    const bounds = new Map<string, { first: number; last: number }>();
+  async function syncRunHistory(id: string): Promise<ReadonlyMap<string, WorkflowHistoryRuns>> {
+    const bounds = new Map<string, { count: number; first: number; last: number }>();
     for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
       const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
       for (const summary of page.items) {
         const known = bounds.get(summary.version);
         bounds.set(summary.version, {
+          count: (known?.count ?? 0) + 1,
           first: Math.min(known?.first ?? summary.createdAt, summary.createdAt),
           last: Math.max(known?.last ?? summary.createdAt, summary.createdAt),
         });
@@ -2352,10 +2355,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       offset += page.items.length;
       if (page.items.length === 0 || offset >= page.total) break;
     }
-    for (const [version, { first, last }] of bounds) {
-      await snapshots.stampRun(id, version, new Date(first).toISOString());
-      if (last !== first) await snapshots.stampRun(id, version, new Date(last).toISOString());
+    const runs = new Map<string, WorkflowHistoryRuns>();
+    for (const [version, { count, first, last }] of bounds) {
+      const firstRunAt = new Date(first).toISOString();
+      const lastRunAt = new Date(last).toISOString();
+      await snapshots.stampRun(id, version, firstRunAt);
+      if (last !== first) await snapshots.stampRun(id, version, lastRunAt);
+      runs.set(version, { count, firstRunAt, lastRunAt });
     }
+    return runs;
   }
 
   async function knownTypes(): Promise<string[]> {
@@ -2711,6 +2719,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   async function withCompatibility(
     id: string,
     revisions: readonly WorkflowRevision[],
+    runs?: ReadonlyMap<string, WorkflowHistoryRuns>,
   ): Promise<readonly WorkflowRevisionReport[]> {
     const current = catalog.find(id);
     const manifestOf = async (document: WorkflowDocument) => {
@@ -2727,15 +2736,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const currentManifest = current === undefined ? undefined : await manifestOf(current.document);
     return Promise.all(
       revisions.map(async (revision): Promise<WorkflowRevisionReport> => {
+        const facts = { ...revision, runs: runs?.get(revision.workflowVersion) ?? null };
         if (current === undefined || currentManifest === undefined) {
-          return { ...revision, compatibility: null };
+          return { ...facts, compatibility: null };
         }
         if (revision.workflowVersion === current.version) {
-          return { ...revision, compatibility: { compatible: true } };
+          return { ...facts, compatibility: { compatible: true } };
         }
         const manifest = await manifestOf(revision.document);
         return {
-          ...revision,
+          ...facts,
           compatibility:
             manifest === undefined ? null : checkWorkflowCompatibility(currentManifest, manifest),
         };
@@ -3017,9 +3027,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       await Promise.allSettled(pendingStamps);
       // The engine's own record of when each revision's instances began is the source of truth: a
       // start event can arrive after the call that made the instance, or never (a crash).
-      await syncRunHistory(id);
+      const runs = await syncRunHistory(id);
       const revisions = await snapshots.revisions(id);
-      if (revisions.length > 0) return withCompatibility(id, revisions);
+      if (revisions.length > 0) return withCompatibility(id, revisions, runs);
       if (catalog.list().some((entry) => entry.id === id)) return [];
       const stored = await snapshots.snapshotsOf(id);
       return stored.length > 0 ? [] : undefined;
