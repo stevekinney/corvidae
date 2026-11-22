@@ -460,6 +460,8 @@ describe('a save', () => {
     const served = servedSettings();
     const view = open(served);
     await view.findByRole('group', READY);
+    // No designed row draws it, so it sits under Advanced like every undrawn key.
+    await openAdvanced(view.container);
     expect(row(view.container, 'runs.spendThresholdUsd')?.textContent).toContain(
       'Spend threshold per run',
     );
@@ -486,6 +488,7 @@ describe('a save', () => {
       },
     });
     await view.findByRole('group', READY);
+    await openAdvanced(view.container);
     await typeAndLeave(view.container, 'runs.spendThresholdUsd', '3');
 
     const found = row(view.container, 'runs.spendThresholdUsd');
