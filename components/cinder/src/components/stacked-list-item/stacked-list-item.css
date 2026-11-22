@@ -1056,6 +1056,20 @@
   }
 
   @media (any-pointer: coarse) {
+    /* The disclosure's painted word stays compact in a run/schedule row. Its hit region reaches
+       44px outside normal layout, like the compact actions menu below, so it neither widens nor
+       makes the row taller. */
+    .cinder-stacked-list-item__disclosure {
+      min-block-size: 0;
+    }
+
+    .cinder-stacked-list-item__disclosure::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
     .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger::before {
       content: '';
       position: absolute;

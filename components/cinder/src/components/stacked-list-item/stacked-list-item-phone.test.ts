@@ -143,7 +143,7 @@ describe('StackedListItem on a phone', () => {
     );
     // Under a coarse pointer it reaches 44px through a positioned pseudo-element, taking no space.
     expect(stylesheet).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.cinder-stacked-list-item \.cinder-stacked-list-item__actions-trigger::before\s*\{[^}]*position:\s*absolute;[^}]*var\(--cinder-touch-target-min\)/,
+      /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\.cinder-stacked-list-item \.cinder-stacked-list-item__actions-trigger::before\s*\{[^}]*position:\s*absolute;[^}]*var\(--cinder-touch-target-min\)/,
     );
 
     await fireEvent.click(trigger);
@@ -304,6 +304,30 @@ describe('StackedListItem on a phone', () => {
     expect(wrappingTimeRules[1]).toContain('.cinder-stacked-list-item--status-leading');
     cleanup();
     setPhone(false);
+  });
+
+  test('on a coarse pointer a group disclosure reaches 44px without reserving that height in its row (COR-2403)', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Missed runs'),
+        time: textSnippet('Oct 30'),
+        meta: textSnippet('Schedule, Assistant'),
+        details: textSnippet('Mon, Nov 2, 3:00 AM'),
+      },
+    });
+    expect(container.querySelector('.cinder-stacked-list-item__disclosure')?.textContent).toContain(
+      'Show',
+    );
+
+    const coarse = stylesheet.slice(stylesheet.indexOf('@media (any-pointer: coarse)'));
+    const compactDisclosure =
+      /\.cinder-stacked-list-item__disclosure\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(compactDisclosure).toMatch(/min-block-size:\s*0;/);
+    const hitArea =
+      /\.cinder-stacked-list-item__disclosure::before\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(hitArea).toMatch(/position:\s*absolute;/);
+    expect(hitArea).toContain('var(--cinder-touch-target-min)');
   });
 
   test('at 200% text in a 375px container a group row lets Show drop whole under its time, never past the row', () => {
