@@ -47,6 +47,7 @@
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
   import { readScheduleAttention } from '../../../lib/bureau-attention.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
+  import { faultErrorStateAdvice } from '../../../lib/faults.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listAllTasks } from '../../../lib/bureau-tasks.ts';
   import { followLinks } from '../../../lib/follow-links.ts';
@@ -470,7 +471,7 @@
         detail={failure.detail}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={retry}
+        {...faultErrorStateAdvice(failure.fault, retry)}
       >
         {#snippet secondaryAction()}
           <Button

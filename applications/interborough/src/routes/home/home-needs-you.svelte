@@ -60,6 +60,7 @@
   <HomeCard title={copy.title}>
     <HomeCardError
       title={HOME_COPY.states.cardFailed.needsYou}
+      error={reviews.error}
       onRetry={() => void reviews.refetch()}
     />
   </HomeCard>
