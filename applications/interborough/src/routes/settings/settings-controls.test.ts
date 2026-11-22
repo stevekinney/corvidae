@@ -58,6 +58,7 @@ describe('the controls', () => {
       'decisions.maximumPerTask': 'number',
       'scorers.sampleRate': 'number',
       'scorers.dailyBudget': 'number',
+      'runs.spendThresholdUsd': 'number',
       'context.summarizerModel': 'choice',
       'retention.audit': 'form',
       'retention.runs': 'form',
@@ -198,7 +199,8 @@ describe('the sections', () => {
         !key.startsWith('decisions.') &&
         !key.startsWith('a2a.') &&
         !key.startsWith('retention.') &&
-        !key.startsWith('scorers.'),
+        !key.startsWith('scorers.') &&
+        key !== 'runs.spendThresholdUsd',
     )) {
       expect(inSection(key, 'general'), key).toBe(true);
       expect(inSection(key, 'retention'), key).toBe(false);
@@ -208,9 +210,15 @@ describe('the sections', () => {
     }
   });
 
-  test('give the scorer settings no section: no control is drawn for them yet (COR-2202, COR-2205)', () => {
-    const scorers = SETTING_KEYS.filter((key) => key.startsWith('scorers.'));
-    expect(scorers).toEqual(['scorers.sampleRate', 'scorers.dailyBudget']);
+  test('give the scorer settings and the spend threshold no section: no control is drawn for them yet (COR-2202, COR-2205, COR-2527)', () => {
+    const scorers = SETTING_KEYS.filter(
+      (key) => key.startsWith('scorers.') || key === 'runs.spendThresholdUsd',
+    );
+    expect(scorers).toEqual([
+      'scorers.sampleRate',
+      'scorers.dailyBudget',
+      'runs.spendThresholdUsd',
+    ]);
     for (const key of scorers) {
       for (const section of [
         'general',
@@ -281,8 +289,9 @@ describe('the groups', () => {
       'engine',
       'durability',
       'a2a',
-      // No section draws it, so the group is only the key's own name.
+      // No section draws them, so each group is only the key's own name.
       'scorers',
+      'runs',
     ]);
     // A group the page does not know comes after the ones it does, so a new key is not dropped.
     expect(groupsOf(['zeta.key', 'tools.wakeup'])).toEqual(['tools', 'zeta']);

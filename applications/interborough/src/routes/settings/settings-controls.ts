@@ -216,13 +216,17 @@ function isRetentionKey(key: string): boolean {
   return key.startsWith('retention.');
 }
 
+/** The setting that holds the dollars one run may cost before the Bureau flags it. */
+const SPEND_THRESHOLD_KEY = 'runs.spendThresholdUsd';
+
 /**
  * The settings no section edits yet: how many finished runs are scored, and the most scoring may
- * spend in a day (COR-2202, COR-2205). They are set through the Bureau's settings alone until a
- * later change gives them a control, so General does not draw a row for them.
+ * spend in a day (COR-2202, COR-2205), and the most one run may cost before it is flagged
+ * (COR-2527). They are set through the Bureau's settings alone until a later change gives them a
+ * control, so General does not draw a row for them.
  */
 function isScorerKey(key: string): boolean {
-  return key.startsWith('scorers.');
+  return key.startsWith('scorers.') || key === SPEND_THRESHOLD_KEY;
 }
 
 /** Whether the section `section` edits the key `key`. */

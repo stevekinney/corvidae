@@ -162,6 +162,13 @@ export const settingsSchema = z
     'scorers.dailyBudget': nonNegativeInteger.describe(
       'The most times scorers may run in one UTC day, counting each scorer on each scored run. Once the day’s count reaches it no scorer runs until the next UTC day; 0 stops scoring. Unset, there is no limit.',
     ),
+    'runs.spendThresholdUsd': z
+      .number()
+      .finite()
+      .positive()
+      .describe(
+        'The most one run may cost, in US dollars. A run that costs more is flagged and listed under Needs attention; it is never stopped. A change applies to the next step of each run: runs already flagged stay flagged, and runs that settled under the old amount stay as they were. Unset, no run is flagged.',
+      ),
     'context.summarizerModel': z
       .string()
       .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
@@ -343,6 +350,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'scorers.sampleRate': 'live',
   // Read at each scorer's reservation (COR-2205), so a new budget applies to the next scorer to run.
   'scorers.dailyBudget': 'live',
+  // Read after each step of a run (COR-2527), so a new amount applies to the next step to finish.
+  'runs.spendThresholdUsd': 'live',
   'context.summarizerModel': 'live',
   'retention.audit': 'live',
   'retention.runs': 'live',

@@ -533,6 +533,7 @@ export {
   RunFailedOutcomeEvent,
   RunGuardrailRecordedEvent,
   RunLoopingEvent,
+  RunOverspendingEvent,
   RunRegisteredEvent,
   RunStalledEvent,
   RunTripwireRecordedEvent,
