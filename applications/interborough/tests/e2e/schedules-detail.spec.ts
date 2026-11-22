@@ -159,22 +159,30 @@ test.describe('the workflow-version explanation on a coarse phone', () => {
   test.use({ hasTouch: true, isMobile: true });
 
   for (const width of [320, 375] as const) {
-    test(`a ${width}px phone reaches the compact info button without taking its neighboring workflow link`, async ({
+    test(`a ${width}px phone reaches the compact info button without taking its linked run`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 });
-      await openSchedule(page, 'Daily summary');
+      await answerGoingRun(page);
+      await openSchedule(page, 'Release notes digest');
+      const main = page.locator('main');
       const card = page.getByTestId('schedule-details');
       const info = card.getByRole('button', { name: 'About the workflow version' });
-      const workflow = card
-        .getByRole('link')
-        .filter({ has: card.locator('code') })
-        .first();
+      const run = main.getByTestId('schedule-summary').getByRole('link', { name: 'Open run' });
+      await run.scrollIntoViewIfNeeded();
+      expect(
+        await run.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+          );
+        }),
+      ).toBe(true);
       await info.scrollIntoViewIfNeeded();
       await expect(info).toBeInViewport();
 
       // The face stays compact, but a real touch 21px above or below its middle is still owned by
-      // this Button. The nearby workflow link remains independently reachable.
+      // this Button. The linked running result remains independently reachable.
       const hit = await info.evaluate((element) => {
         const box = element.getBoundingClientRect();
         const x = box.left + box.width / 2;
@@ -183,29 +191,16 @@ test.describe('the workflow-version explanation on a coarse phone', () => {
           const target = document.elementFromPoint(x + offsetX, y + offsetY);
           return target !== null && element.contains(target);
         };
-        const neighbor = element
-          .closest('.ib-schedule-card__row')
-          ?.nextElementSibling?.querySelector('a');
-        if (neighbor === null || neighbor === undefined)
-          throw new Error('the workflow link is drawn');
-        const neighborBox = neighbor.getBoundingClientRect();
         return {
           x,
           above: y - 21,
           faceHeight: box.height,
           reaches44Pixels: [reaches(0, -21), reaches(0, 21), reaches(-21, 0), reaches(21, 0)],
-          neighborOwned: neighbor.contains(
-            document.elementFromPoint(
-              neighborBox.left + neighborBox.width / 2,
-              neighborBox.top + neighborBox.height / 2,
-            ),
-          ),
         };
       });
       expect(hit.faceHeight).toBeLessThanOrEqual(36);
       expect(hit.reaches44Pixels).toEqual([true, true, true, true]);
-      expect(hit.neighborOwned).toBe(true);
-      await expect(workflow).toBeVisible();
+      await expect(run).toHaveAttribute('href', `/runs/${GOING_RUN}`);
 
       await page.touchscreen.tap(hit.x, hit.above);
       await expect(info).toBeFocused();
