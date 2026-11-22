@@ -13,7 +13,7 @@ import { EXPLAINER_AGENT_NAME, FAILING_AGENT_NAME } from './failure-explanation-
 import { expect, test } from './fixtures.ts';
 import { tasksOfSession } from './task-support.ts';
 
-test.describe('the failure explanation in Chat', () => {
+test.describe('/chats/:chat, the failure explanation in Chat', () => {
   const threads: string[] = [];
 
   test.afterEach(async () => {

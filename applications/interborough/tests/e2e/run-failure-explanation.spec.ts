@@ -52,7 +52,7 @@ for (const width of WIDTHS) {
 }
 
 for (const width of WIDTHS) {
-  test.describe(`the link to a failed run’s explanation at ${String(width)} pixels`, () => {
+  test.describe(`/runs/:run, the link to a failed run’s explanation at ${String(width)} pixels`, () => {
     test('opens the run’s page scrolled to the section that says why it failed (COR-2533)', async ({
       page,
     }) => {
