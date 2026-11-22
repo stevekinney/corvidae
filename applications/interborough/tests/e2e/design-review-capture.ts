@@ -187,9 +187,10 @@ function viewportWitnesses(): readonly ViewportWitness[] {
   }
 }
 
-/** The literal Playwright title path a resolved row records, without project or file decoration. */
-function physicalWitnessTitle(): string {
-  return test.info().titlePath.join(' ');
+/** Playwright prefixes its grep title with the project, which TestInfo stores separately. */
+export function physicalWitnessTitle(): string {
+  const { project, titlePath } = test.info();
+  return [project.name, ...titlePath].filter(Boolean).join(' ');
 }
 
 /**

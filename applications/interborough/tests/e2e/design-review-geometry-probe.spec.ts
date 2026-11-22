@@ -8,6 +8,14 @@ import { expect, test } from '@playwright/test';
 import { auditCapture, type GeometryCapture } from '@lostgradient/testing/design-review-geometry';
 import { measureGeometry } from '@lostgradient/testing/design-review-geometry-probe';
 
+import { physicalWitnessTitle } from './design-review-capture.ts';
+
+test('constructs the exact grep title for a physical witness', ({}, info) => {
+  expect(physicalWitnessTitle()).toBe(
+    [info.project.name, 'e2e/design-review-geometry-probe.spec.ts', info.title].join(' '),
+  );
+});
+
 const PAGE = `
   <style>
     :root { --cinder-space-0: 0; --cinder-space-2: 0.5rem; --cinder-space-3: 0.75rem; --cinder-space-4: 1rem; }
