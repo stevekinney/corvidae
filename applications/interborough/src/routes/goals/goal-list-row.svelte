@@ -10,8 +10,10 @@
    */
   import { AttemptsIndicator, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
+  import { COST_COPY } from '../../app/copy/cost.ts';
   import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { clockTime } from '../../lib/format/clock.ts';
+  import { formatAttemptsCost } from '../../lib/format/cost.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { GoalRow } from './goal-rows.ts';
@@ -30,8 +32,13 @@
 
   const count = $derived(GOALS_COPY.attempts(row.made, row.allowed));
   const check = $derived(GOALS_COPY.checkLine(row.check));
+  // What the attempts cost together (COR-2525): the sum of those with a cost, "At least" it when one
+  // has none, and nothing at all for a goal none of whose attempts has one.
+  const cost = $derived(formatAttemptsCost(row.cost));
   // Line two as plain text, for the tooltip that carries it whole when it is cut.
-  const lineTwoText = $derived(phone ? `${agent}. ${count}` : `${agent}. ${count}. ${check}`);
+  const lineTwoText = $derived(
+    [agent, count, ...(cost === undefined ? [] : [cost]), ...(phone ? [] : [check])].join('. '),
+  );
 </script>
 
 {#snippet attempts()}
@@ -61,9 +68,10 @@
   {/snippet}
   {#snippet meta()}
     <span class="ib-goal-row__line"
-      ><span>{agent}</span>{@render attempts()}{#if !phone}<span data-testid="goal-check"
-          >{check}</span
-        >{/if}</span
+      ><span>{agent}</span>{@render attempts()}{#if cost !== undefined}<span
+          data-testid="goal-cost"
+          title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.label}>{cost}</span
+        >{/if}{#if !phone}<span data-testid="goal-check">{check}</span>{/if}</span
     >
   {/snippet}
 </StackedListItem>

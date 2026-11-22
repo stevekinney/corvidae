@@ -9,8 +9,10 @@
    */
   import { StackedListItem, StatusDot, type StackedListItemPhoneWidth } from '@lostgradient/cinder';
 
+  import { COST_COPY } from '../../../app/copy/cost.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
+  import { formatAttemptsCost } from '../../../lib/format/cost.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { runLineTwo, runStatusWord, type RunRow } from './run-rows.ts';
 
@@ -75,9 +77,21 @@
   // Line two keeps what the run was; why the row does not open is the row's own description, so a
   // line cut short never drops it first.
   const lineTwo = $derived(baseLineTwo);
+  // The Cost column (COR-2525): what the run cost, or nothing at all for a run with no cost, so a
+  // run the Bureau priced no request of never shows "$0.00" or a dash. An instance of a workflow
+  // file says the sum of its steps that have a cost, as "At least" when a step has none.
+  const cost = $derived(formatAttemptsCost(row.cost ?? null));
 </script>
 
 {#snippet lockedNote()}{TASK_COPY.list.engineRunLocked}{/snippet}
+{#snippet costCell()}
+  <span
+    class="ib-run-list-cost"
+    data-testid="run-cost"
+    title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.column}
+    aria-label={cost === undefined ? undefined : COST_COPY.rowLabel(cost)}>{cost}</span
+  >
+{/snippet}
 
 <StackedListItem
   data-run={row.id}
@@ -87,6 +101,7 @@
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
+  {...cost === undefined ? {} : { trailing: costCell }}
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
   {#snippet title()}{row.title}{/snippet}
@@ -95,3 +110,15 @@
   {/snippet}
   {#snippet meta()}{lineTwo}{/snippet}
 </StackedListItem>
+
+<style>
+  /* The Cost column: figures right-aligned in the row's last column, and as wide as the widest one. */
+  .ib-run-list-cost {
+    display: inline-block;
+    min-inline-size: 5.5rem;
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--cinder-text-muted);
+  }
+</style>

@@ -1,3 +1,5 @@
+import { COST_COPY } from '../app/copy/cost.ts';
+import { formatCost } from '../lib/format/cost.ts';
 import { request, stream, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
@@ -340,7 +342,38 @@ async function getOrInspect(
   if (inspect && option(parsed, 'step') !== undefined)
     params['step'] = numberOption(parsed, 'step');
   const response = await rpc(target, parsed, dependencies, method, params);
-  return { ...response, data: withIdentifier(kind, response.data, rawId) };
+  const data = withIdentifier(kind, response.data, rawId);
+  // A task read as text says how it stands, and what it used and cost (COR-2525); as JSON it is the
+  // task as the Bureau answered it, `usage.costUsd` and all.
+  if (kind === 'task' && !inspect && parsed.output === 'text') {
+    return { ...response, data: taskText(data) };
+  }
+  return { ...response, data };
+}
+
+/** The tokens a task used, as a count with thousands separators. */
+const TOKEN_COUNT = new Intl.NumberFormat('en-US');
+
+/**
+ * A task as `runs get --kind task` prints it as text: its identifier, status and agent, then its
+ * tokens and its cost when the Bureau counted them. A task with no priced request has no cost line,
+ * never `Cost: $0.00`.
+ */
+function taskText(task: RecordValue): string {
+  const usage = record(task['usage']);
+  const totalTokens = usage?.['totalTokens'];
+  const costUsd = usage?.['costUsd'];
+  const cost = formatCost(typeof costUsd === 'number' ? costUsd : null);
+  const lines = [
+    `Run: ${String(task['id'])}`,
+    ...(typeof task['status'] === 'string' ? [`Status: ${task['status']}`] : []),
+    ...(typeof task['agentName'] === 'string' ? [`Agent: ${task['agentName']}`] : []),
+    ...(typeof totalTokens === 'number' && totalTokens > 0
+      ? [`Tokens: ${TOKEN_COUNT.format(totalTokens)}`]
+      : []),
+    ...(cost === undefined ? [] : [`${COST_COPY.label}: ${cost}`]),
+  ];
+  return lines.join('\n');
 }
 
 async function cancel(

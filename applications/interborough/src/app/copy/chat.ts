@@ -448,7 +448,7 @@ export const CHAT_COPY = {
       reason === undefined || reason === ''
         ? `${sourceId}: ${disposition}`
         : `${sourceId}: ${disposition} (${reason})`,
-    usage: 'Tokens this run used',
+    usage: 'What this run used',
     usageNote: 'Counted across every step of the run, not this reply alone.',
     usageKinds: { input: 'Input', output: 'Output', total: 'Total' },
   },

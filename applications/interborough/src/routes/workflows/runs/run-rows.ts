@@ -28,6 +28,7 @@ import {
   type TaskView,
 } from '../../../lib/bureau-tasks.ts';
 import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format/clock.ts';
+import { attemptsCost, type AttemptsCost } from '../../../lib/format/cost.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
 import { oneLine } from '../../../lib/one-line.ts';
 import { reasonClause } from '../../../lib/reason-clause.ts';
@@ -139,6 +140,12 @@ export type RunRow = {
   readonly updatedAt: number;
   /** How long it took, once it is over. */
   readonly durationMs: number | null;
+  /**
+   * What the run cost (COR-2525), which the Cost column says: the run's own figure, or for an
+   * instance of a workflow file the sum of its steps that have one, marked partial when a step has
+   * none. `null` for a run the Bureau priced no request of, which shows no cost at all.
+   */
+  readonly cost?: AttemptsCost | null;
   /** Which attempt of its goal the run is, or `null` for a run no goal made. */
   readonly attempt: RunAttempt | null;
   /**
@@ -502,6 +509,7 @@ function taskRow(
     startedAt,
     updatedAt,
     durationMs: isTerminalState(task.status) ? Math.max(0, updatedAt - startedAt) : null,
+    cost: attemptsCost([{ usage: { costUsd: task.usage?.costUsd ?? null } }]),
     attempt: null,
     checkNotMet: false,
     workflowType: workflow?.type ?? null,
@@ -549,6 +557,7 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
       startedAt,
       updatedAt: completedAt ?? startedAt,
       durationMs: completedAt === null ? null : Math.max(0, completedAt - startedAt),
+      cost: attemptsCost([attempt]),
       attempt: {
         number: attempt.attemptIndex + 1,
         of: Math.max(goal.bounds.maximumAttempts, attempt.attemptIndex + 1),
@@ -591,6 +600,7 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     startedAt,
     updatedAt,
     durationMs: isTerminalState(status) ? Math.max(0, updatedAt - startedAt) : null,
+    cost: attemptsCost(steps.map((step) => ({ usage: { costUsd: step.cost?.costUsd ?? null } }))),
     attempt: null,
     checkNotMet: false,
     // No task is the instance, only its steps are: the engine holds the run a person started.
@@ -632,6 +642,8 @@ export function buildRunRows(input: {
             origin: goalRow.origin,
             title: goalRow.title,
             attempt: goalRow.attempt,
+            // The task's own figure wins; the goal's record of the attempt fills in a task with none.
+            cost: row.cost ?? goalRow.cost ?? null,
             checkNotMet: missedCheck.has(task.id) && row.status === 'completed',
           }
         : row,

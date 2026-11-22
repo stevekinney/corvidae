@@ -6,7 +6,8 @@
 import { cleanup, render, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { COST_COPY } from '../../app/copy/cost.ts';
+import { goalAttemptFixture, goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import GoalListRow from './goal-list-row.svelte';
 import { goalRow } from './goal-rows.ts';
 
@@ -81,5 +82,44 @@ describe('a goal’s row', () => {
     expect(lineTwo?.textContent).not.toContain('Check:');
     const third = container.querySelector('.cinder-stacked-list-item__detail');
     expect(third?.textContent).toContain(CHECK);
+  });
+});
+
+describe('a goal’s cost on its row (COR-2525)', () => {
+  const attempt = (index: number, costUsd: number | null) =>
+    goalAttemptFixture(`goal-1-a${String(index)}`, {
+      attemptIndex: index,
+      usage: { steps: 1, tokens: 1, costUsd },
+    });
+  const costOf = (costs: readonly (number | null)[], phone = false) => {
+    const row = goalRow(
+      goalFixture('goal-1', {
+        agentName: 'tool-runner',
+        attempts: costs.map((cost, index) => attempt(index, cost)),
+      }),
+    );
+    const { container } = render(GoalListRow, {
+      props: { row, agent: 'Tool runner', zone: 'America/Chicago', phone },
+    } as never);
+    return container.querySelector('[data-testid="goal-cost"]');
+  };
+
+  test('AC3: says the sum of its attempts on line two, beside the attempts', () => {
+    expect(costOf([0.5, 0.25])?.textContent).toBe('$0.75');
+  });
+
+  test('AC3: says it is at least the sum when an attempt has no cost, and why in its tooltip', () => {
+    const cell = costOf([0.5, null]);
+    expect(cell?.textContent).toBe(COST_COPY.atLeast('$0.50'));
+    expect(cell?.getAttribute('title')).toBe(COST_COPY.partialNote);
+  });
+
+  test('AC4: says nothing when no attempt has a cost, never `$0.00`', () => {
+    expect(costOf([null, null])).toBeNull();
+    expect(costOf([])).toBeNull();
+  });
+
+  test('keeps the cost on line two on a phone, with the check on its own line', () => {
+    expect(costOf([0.5], true)?.textContent).toBe('$0.50');
   });
 });
