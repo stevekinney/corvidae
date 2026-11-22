@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2527",
+  "branch": "worktree-agent-aa62e88121694f7eb",
+  "checkedAt": "f72ceaf85e69f35cdc891e69ff04eb090c8fd681",
+  "briefVersion": "8e6fac38bc5f",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/bureau/src/task-run-overspending.test.ts 'AC1': saves 2.5 and reads it back from settings.get().values; -1, 0, 'five', false and Infinity are rejected invalid-value naming runs.spendThresholdUsd; with none set a run that costs more than the threshold is not flagged (attention [] and no feed item). Setting wired through settings-schema, SETTING_APPLY, SETTINGS_WITHOUT_DEFAULT, SETTING_OWNERS, SCHEMA_CHECKED_KEYS."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "task-run-overspending.test.ts 'AC2, AC3, AC4' (non-durable and durable dispatch): run crosses at its second step; attention is [] after step one, ['overspending'] while step three is held, and still ['overspending'] after the run completes. Recorded by run-bookkeeping.judgeRunSpend through TaskRegistry.recordOverspending (first-wins, fenced on the run's holder, allowed after settlement); a second judge at settlement covers a settlement that lands before the last step's write ('flags a run whose only step crosses')."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Same test: the run is over the threshold at steps two and three; one RunOverspendingEvent on the bureau emitter and exactly one delivery to a hook subscribed to run.overspending (kind run.overspending, status delivered). Event added to events.ts, the event map, index.ts, bureau-event-feed (classification and projection) and the catalog; the catalog and field-inventory tests in bureau-event-catalog.test.ts cover it."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Same test: status is working while flagged and completed at the end; 'a flagged run that is canceled keeps overspending and announces it once' covers a stop the owner chose. Flag only: limits.cost stays the way to stop a run."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "packages/bureau/src/attention-feed.test.ts 'runs (COR-2526, COR-2527)': readAttention with one fixture run of each kind returns run-overspending, run-stalled and run-looping items each naming runId and agentName under the runs check; the same items are served by bureau.health.attention (wire test) and stay operator-only (the non-operator allowlist is unchanged; workspace-privacy and the field inventory pass). The Bureau reads them from TaskRegistry.attentionRuns."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "attention-feed.test.ts 'AC6' (unit: 6 days listed, 8 days not, a running run always listed) and task-run-overspending.test.ts 'AC6' (Bureau on the manual runtime: listed while running, listed at 7 days minus one second after settlement, absent at 8 days while bureau.tasks.get still lists ['overspending']). Window reuses MISSED_RUNS_ATTENTION_WINDOW_MILLISECONDS."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "task-run-overspending.test.ts: 'a changed threshold applies only to later steps' (threshold lowered after the run settled: attention [] and no feed item or event) and 'a flag stays when the threshold is raised after it, and is written once' (raised to 1000 mid-run: attention stays ['overspending'], stored thresholdUsd stays the one in force at the crossing, one event). The threshold is read only in judgeRunSpend."
+    }
+  ]
+}
