@@ -50,7 +50,21 @@ export const FAILURE_EXPLANATION_LABELS = {
   next: 'What to do next',
   /** What the page says for a run that did not fail, in place of the Bureau's message. */
   notFailed: 'This run didn’t fail, so there’s nothing to explain.',
+  /** The heading above the page for a run that did not fail, which must not claim a failure. */
+  notFailedRegion: 'Run explanation',
 } as const;
+
+/**
+ * The heading a failure explanation page carries for what it shows. A run that did not fail is not
+ * a failure to be explained, so its page is headed `notFailedRegion`; every other state is headed
+ * `region`. `refusalReason` is the Bureau's `data.reason` for a refusal, or `undefined` when the
+ * page shows no refusal.
+ */
+export function failureExplanationHeading(refusalReason: string | null | undefined): string {
+  return refusalReason === 'run-not-failed'
+    ? FAILURE_EXPLANATION_LABELS.notFailedRegion
+    : FAILURE_EXPLANATION_LABELS.region;
+}
 
 /** What the Bureau says when it will not explain a run, as the panel reads it from the fault. */
 export interface ExplanationRefusal {

@@ -261,7 +261,9 @@ describe('bureau.tasks.explanation.generate', () => {
     await generate(opened, taskId);
 
     const context = await opened.bureau.contexts.get(task!.contextId, { principal: OWNER.alice });
-    expect(JSON.stringify(context ?? null)).not.toContain('GENERATED-TEXT-6a1f');
+    // The chat is there to be read: it holds what the person said, and not what the model wrote.
+    expect(JSON.stringify(context)).toContain(MESSAGE_MARKER);
+    expect(JSON.stringify(context)).not.toContain('GENERATED-TEXT-6a1f');
     expect(
       JSON.stringify(await opened.bureau.internals.taskRegistry.history(taskId)),
     ).not.toContain('GENERATED-TEXT-6a1f');

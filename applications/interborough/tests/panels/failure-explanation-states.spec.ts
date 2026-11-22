@@ -200,6 +200,9 @@ test.describe('failure-explanation-states', () => {
     const ready = async () => {
       await expect(app.getByText(NOT_FAILED_SENTENCE)).toBeVisible();
       await expect(app.locator('[data-explanation="remediation"]')).toBeVisible();
+      // The page is not headed as the explanation of a failure, because the run did not fail.
+      await expect(app.getByRole('heading', { level: 1, name: 'Run explanation' })).toBeVisible();
+      await expect(app.getByRole('heading', { name: 'Why this run failed' })).toHaveCount(0);
     };
     await ready();
     await captureState(page, app, 'not-failed', ready);

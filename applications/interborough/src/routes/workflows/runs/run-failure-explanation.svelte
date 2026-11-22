@@ -9,18 +9,26 @@
    * engine run it does not hold), the engine's category shows as a badge, then `fallback` says what
    * the page itself knows, and nothing else is invented.
    */
-  import { Badge, Collapsible } from '@lostgradient/cinder';
+  import { Badge, Button, Collapsible, Stack, Text } from '@lostgradient/cinder';
   import FailureExplanation from '@lostgradient/plugin-inspectors/failure-explanation.svelte';
   import {
     buildExplanationModel,
     FAILURE_EXPLANATION_LABELS,
   } from '@lostgradient/interborough-plugin/failure-explanation';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
 
-  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
-  import { explainRunFailure } from '../../../lib/bureau-tasks.ts';
+  import FaultErrorState from '../../../app/fault-error-state.svelte';
+  import { RUN_DETAIL_COPY, RUN_EXPLAIN_FURTHER_COPY } from '../../../app/copy/runs.ts';
+  import {
+    explainRunFailure,
+    generateModelExplanation,
+    readModelExplanation,
+  } from '../../../lib/bureau-tasks.ts';
+  import { faultTreatment } from '../../../lib/faults.ts';
+  import { dayAndTime } from '../../../lib/format/clock.ts';
+  import { formatCost } from '../../../lib/format/cost.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { FAILURE_EXPLANATION_ANCHOR, router } from '../../../lib/router.svelte.ts';
   import { failureCategoryLabel, failureCategoryTone } from '../detail/failure-category.ts';
@@ -38,6 +46,11 @@
     took?: string | undefined;
     /** What the page itself says of the failure while the Bureau has no answer, or holds none. */
     fallback?: Snippet | undefined;
+    /**
+     * Whether to offer "Explain further" (COR-2534): a failed agent run, whose task keeps what a
+     * model writes. An instance of a workflow file has no task to keep it on, so it is not offered.
+     */
+    explainFurther?: boolean;
   }
 
   let {
@@ -47,9 +60,37 @@
     showStep = true,
     took = undefined,
     fallback = undefined,
+    explainFurther = false,
   }: RunFailureExplanationProps = $props();
 
   const copy = RUN_DETAIL_COPY.instance;
+  const furtherCopy = RUN_EXPLAIN_FURTHER_COPY;
+  const queryClient = useQueryClient();
+
+  // What a model wrote, kept on the task: read when the section opens, so a reopened page shows it
+  // with no model call. Asking for one happens only on the action below.
+  const stored = createQuery(
+    () => ({
+      queryKey: queryKeys.bureauTasks.modelExplanation(runId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => readModelExplanation(runId, { signal }),
+      enabled: explainFurther,
+      retry: false,
+    }),
+    undefined,
+  );
+  const ask = createMutation(() => ({
+    mutationFn: () => generateModelExplanation(runId),
+    onSuccess: (written) => {
+      queryClient.setQueryData(queryKeys.bureauTasks.modelExplanation(runId), written);
+    },
+    // The fault is drawn under the action with the server's remediation, so no toast says it twice.
+    onError: () => undefined,
+  }));
+  const written = $derived(stored.data ?? undefined);
+  // The fault of the last ask, with the server's remediation; a new ask clears it.
+  const askFault = $derived(ask.isError ? faultTreatment(ask.error) : undefined);
+  const paragraphs = $derived((written?.text ?? '').split(/\n{2,}/).filter((part) => part !== ''));
+  const writtenCost = $derived(formatCost(written?.costUsd));
 
   const explanation = createQuery(
     () => ({
@@ -99,6 +140,42 @@
       </p>
     {/if}
     {@render fallback?.()}
+  {/if}
+  {#if explainFurther}
+    <Stack gap="var(--cinder-space-3)" data-explanation="further">
+      {#if written !== undefined}
+        <Stack gap="var(--cinder-space-2)" data-explanation="model-text">
+          <Text as="h3" variant="h5">{furtherCopy.heading}</Text>
+          <Text variant="caption" data-explanation="model-name">
+            {furtherCopy.writtenBy(
+              written.model,
+              dayAndTime(Date.parse(written.generatedAt), Date.now()),
+            )}
+          </Text>
+          {#each paragraphs as paragraph, index (index)}
+            <Text variant="body">{paragraph}</Text>
+          {/each}
+          <Text variant="caption" data-explanation="model-cost">
+            {writtenCost === undefined ? furtherCopy.costUnknown : furtherCopy.cost(writtenCost)}
+          </Text>
+        </Stack>
+      {/if}
+      {#if askFault !== undefined}
+        <div data-explanation="further-fault">
+          <FaultErrorState treatment={askFault} offerHealth={false} onRetry={() => ask.mutate()} />
+        </div>
+      {/if}
+      <div>
+        <Button
+          variant="secondary"
+          label={written === undefined ? furtherCopy.action : furtherCopy.again}
+          loading={ask.isPending}
+          disabled={ask.isPending || stored.isPending}
+          onclick={() => ask.mutate()}
+        />
+      </div>
+      <Text variant="caption" data-explanation="further-note">{furtherCopy.note}</Text>
+    </Stack>
   {/if}
   {#if errorStack !== undefined && errorStack.length > 0}
     <Collapsible variant="flat" trigger={copy.inBlock.errorDetails}>

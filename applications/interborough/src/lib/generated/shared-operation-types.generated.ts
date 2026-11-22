@@ -661,6 +661,12 @@ export type SharedCostStepsTools_95f40410 = {
   readonly steps?: number | null;
   readonly tools?: SharedCallsSeconds_35295711 | null;
 };
+export type SharedCostUsdGeneratedAtModel_ce6ddde1 = {
+  readonly costUsd: number | null;
+  readonly generatedAt: string;
+  readonly model: string;
+  readonly text: string;
+};
 export type SharedCostUsdStepsTokens_b79f227c = {
   readonly costUsd: number | null;
   readonly steps: number;

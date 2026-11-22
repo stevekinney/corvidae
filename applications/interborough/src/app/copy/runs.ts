@@ -54,6 +54,27 @@ export const RUN_STEPS_COPY = {
     `Logged before the first step, ${lines === 1 ? '1 line' : `${String(lines)} lines`}`,
 } as const;
 
+/**
+ * The words for the longer explanation of a failed agent run that a model writes when asked
+ * (COR-2534), under the explanation Bureau stored.
+ */
+export const RUN_EXPLAIN_FURTHER_COPY = {
+  /** The action on a failed agent run that asks a model to read the run and explain it at more length. */
+  action: 'Explain further',
+  /** The action once a model has written one: asking again replaces the text. */
+  again: 'Explain again',
+  /** The action's help: what the model reads, and that it happens only when asked. */
+  note: 'A model reads the explanation above and each step’s name, status and error message, and nothing a tool took in or gave back. It runs only when you ask, and what it costs is shown with its answer.',
+  /** The heading over what the model wrote. */
+  heading: 'Longer explanation',
+  /** Which model wrote it, and when. */
+  writtenBy: (model: string, when: string): string => `Written by ${model} on ${when}`,
+  /** What writing it cost, kept apart from the run’s own cost. */
+  cost: (cost: string): string => `Cost of this explanation: ${cost}`,
+  /** The cost when the model has no price. */
+  costUnknown: 'The cost of this explanation is not known.',
+} as const;
+
 /** The words for the runs related to one run, in its Details rail and the topology that opens from it. */
 export const RUN_RELATED_COPY = {
   heading: 'Related runs',

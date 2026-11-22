@@ -255,6 +255,7 @@
         runId={task?.id ?? workflow.id}
         category={workflow.failureCategory}
         {errorStack}
+        explainFurther={task?.status === 'failed'}
       />
     </Alert>
   {:else if task !== undefined && task.status === 'failed'}
@@ -267,7 +268,8 @@
       {...bureauFailure === '' ? {} : { description: bureauFailure }}
       data-run-failure
     >
-      <RunFailureExplanation runId={task.id} />
+      <!-- A model writes a longer explanation on request, kept on the task (COR-2534). -->
+      <RunFailureExplanation runId={task.id} explainFurther />
     </Section>
   {:else if record !== undefined && workflow === undefined && !failureOnStep}
     {#if record.error !== undefined && record.error !== null}

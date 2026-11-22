@@ -16,7 +16,7 @@ import { unmount } from 'svelte';
 
 import {
   buildExplanationModel,
-  FAILURE_EXPLANATION_LABELS,
+  failureExplanationHeading,
 } from '@lostgradient/interborough-plugin/failure-explanation';
 import { followHostTheme } from '../host-theme.ts';
 import Explanation from './explanation.svelte';
@@ -59,7 +59,7 @@ async function start(): Promise<void> {
     const refusal = refusalOf(result);
     if (refusal !== undefined) {
       // The heading, not the message the page already shows under it.
-      show({ kind: 'refused', refusal }, FAILURE_EXPLANATION_LABELS.region);
+      show({ kind: 'refused', refusal }, failureExplanationHeading(refusal.reason));
       return true;
     }
     return false;

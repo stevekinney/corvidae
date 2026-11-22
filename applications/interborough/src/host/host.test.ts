@@ -172,6 +172,10 @@ describe('the identity of every request', () => {
     const tools = (listed.result?.['tools'] ?? []) as Array<{ name: string }>;
     const names = tools.map((tool) => tool.name);
     expect(names).toContain('bureau.reviews.list');
+    // A model's longer explanation of a failed run is kept off MCP, so a model cannot spend tokens
+    // asking another model to explain a run (COR-2534); the stored-facts explanation is on it.
+    expect(names).toContain('bureau.tasks.explain');
+    expect(names.filter((name) => name.startsWith('bureau.tasks.explanation.'))).toEqual([]);
     // The run inspector is an injected `ui://` resource, linked from `bureau.tasks.inspect` (COR-910).
     const inspect = (tools as Array<{ name: string; _meta?: unknown }>).find(
       (tool) => tool.name === 'bureau.tasks.inspect',
