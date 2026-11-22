@@ -43,7 +43,9 @@ test.describe('a panel placed on a run’s page', () => {
 
   test('shows the run inspector once it has loaded', async ({ page, request }) => {
     const taskId = await openRun(page, request, 'run-panels-ready');
-    const section = page.locator('[data-section="plugin-panel"][data-plugin="inspectors"]');
+    const section = page.locator(
+      '[data-section="plugin-panel"][data-plugin="inspectors"][data-app="run-inspector"]',
+    );
     await expect(section.locator('.mcp-app')).toHaveAttribute('data-state', 'ready');
     await expect(section.locator('iframe[title="Run inspector"]')).toBeVisible();
     await captureForDesignReview(page, {
@@ -63,7 +65,9 @@ test.describe('a panel placed on a run’s page', () => {
       await route.continue();
     });
     const taskId = await openRun(page, request, 'run-panels-loading');
-    const section = page.locator('[data-section="plugin-panel"][data-plugin="inspectors"]');
+    const section = page.locator(
+      '[data-section="plugin-panel"][data-plugin="inspectors"][data-app="run-inspector"]',
+    );
     await expect(section.locator('.mcp-app')).toHaveAttribute('data-state', 'loading');
     await expect(section.getByRole('status')).toHaveText('Loading Run inspector');
     await expect(section.getByText('Loading app…')).toHaveCount(0);
@@ -98,7 +102,9 @@ test.describe('a panel placed on a run’s page', () => {
       reason: 'the test returns a failed inspector resource to capture the error state',
     });
     const taskId = await openRun(page, request, 'run-panels-failed');
-    const section = page.locator('[data-section="plugin-panel"][data-plugin="inspectors"]');
+    const section = page.locator(
+      '[data-section="plugin-panel"][data-plugin="inspectors"][data-app="run-inspector"]',
+    );
     await expect(section.locator('.mcp-app')).toHaveAttribute('data-state', 'error');
     await expect(
       section.getByRole('heading', { name: 'Couldn’t open Run inspector' }),

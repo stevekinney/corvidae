@@ -166,6 +166,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/agent-duplicate.spec.ts',
   'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
+  // These populated pages live on the fixture plugin host, outside the sample world.
+  'tests/e2e/plugin-page.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
@@ -199,6 +201,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/31-reviews.spec.ts',
   'tests/e2e/hooks.spec.ts',
   'tests/e2e/hooks-states.spec.ts',
+  // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
+  // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
+  'tests/panels/schedule-editor-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';
