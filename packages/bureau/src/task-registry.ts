@@ -218,7 +218,7 @@ export const TASK_ATTENTION_KINDS: readonly TaskAttention[] = [
  * threshold, and the threshold in force then, in US dollars. A later change of the setting never
  * rewrites it: the mark records what was true when the run crossed.
  */
-export interface TaskOverspending {
+interface TaskOverspending {
   readonly since: string;
   readonly thresholdUsd: number;
 }

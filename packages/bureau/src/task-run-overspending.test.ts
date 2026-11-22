@@ -12,7 +12,6 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
 
 import type { EncryptionKey } from '@lostgradient/cryptography';
-import type { BureauAttentionItem } from './attention-feed.ts';
 import { RunOverspendingEvent } from './events.ts';
 import {
   createReceiver,
@@ -126,9 +125,33 @@ async function start(
 
 type Started = Awaited<ReturnType<typeof start>>;
 
+/** A task as `bureau.tasks.get` shows it. */
+async function viewOf(world: Started, taskId: string) {
+  return world.bureau.tasks.get(taskId);
+}
+
 /** A task's `attention` as `bureau.tasks.get` shows it. */
 async function attentionOf(world: Started, taskId: string) {
-  return (await world.bureau.tasks.get(taskId))?.attention;
+  const view = await viewOf(world, taskId);
+  return view?.attention;
+}
+
+/** Whether the task's `attention` holds `overspending`. */
+async function isOverspending(world: Started, taskId: string): Promise<boolean> {
+  const attention = await attentionOf(world, taskId);
+  return attention?.includes('overspending') === true;
+}
+
+/** What the task has cost so far, as `bureau.tasks.get` shows it; `undefined` before its first step. */
+async function costOf(world: Started, taskId: string) {
+  const view = await viewOf(world, taskId);
+  return view?.usage?.costUsd;
+}
+
+/** What `bureau.settings` holds for the spend threshold. */
+async function storedThreshold(world: Started) {
+  const { values } = await world.bureau.settings.get();
+  return values['runs.spendThresholdUsd'];
 }
 
 /** Waits for the run to end and every write the Bureau made for it to land. */
@@ -144,6 +167,12 @@ async function overspendingItems(world: Started) {
   return items.filter((item) => item.kind === 'run-overspending');
 }
 
+/** How many overspending items the Bureau's attention feed lists. */
+async function overspendingCount(world: Started): Promise<number> {
+  const items = await overspendingItems(world);
+  return items.length;
+}
+
 describe('the spend threshold setting (COR-2527)', () => {
   it('AC1: saves an amount and reads it back, refuses a negative or non-numeric value, and flags nothing while unset', async () => {
     const model = threeSteps();
@@ -157,13 +186,13 @@ describe('the spend threshold setting (COR-2527)', () => {
     model.releaseSecond();
     model.releaseThird();
     await settle(world, task);
-    expect((await world.bureau.tasks.get(task.id))?.usage?.costUsd).toBeGreaterThan(THRESHOLD);
+    expect(await costOf(world, task.id)).toBeGreaterThan(THRESHOLD);
     expect(await attentionOf(world, task.id)).toEqual([]);
     expect(await overspendingItems(world)).toEqual([]);
     expect(world.overspending).toEqual([]);
 
     expect(await world.setThreshold(2.5)).toMatchObject({ outcome: 'applied' });
-    expect((await world.bureau.settings.get()).values['runs.spendThresholdUsd']).toBe(2.5);
+    expect(await storedThreshold(world)).toBe(2.5);
 
     for (const refused of [-1, 0, 'five', false, Number.POSITIVE_INFINITY]) {
       expect(await world.setThreshold(refused)).toMatchObject({
@@ -172,7 +201,7 @@ describe('the spend threshold setting (COR-2527)', () => {
         keys: ['runs.spendThresholdUsd'],
       });
     }
-    expect((await world.bureau.settings.get()).values['runs.spendThresholdUsd']).toBe(2.5);
+    expect(await storedThreshold(world)).toBe(2.5);
   });
 });
 
@@ -195,25 +224,21 @@ describe('a run over the spend threshold (COR-2527)', () => {
 
       // One step in: under the threshold.
       await model.reachedSecond;
-      await waitUntil(
-        async () => (await world.bureau.tasks.get(task.id))?.usage?.costUsd !== undefined,
-      );
+      await waitUntil(async () => (await costOf(world, task.id)) !== undefined);
       expect(await attentionOf(world, task.id)).toEqual([]);
 
       // The second step crosses it, and the run goes on.
       model.releaseSecond();
       await model.reachedThird;
-      await waitUntil(
-        async () => (await attentionOf(world, task.id))?.includes('overspending') === true,
-      );
-      const running = await world.bureau.tasks.get(task.id);
+      await waitUntil(() => isOverspending(world, task.id));
+      const running = await viewOf(world, task.id);
       expect(running?.status).toBe('working');
       expect(running?.attention).toEqual(['overspending']);
 
       // The third step is over the threshold too: nothing more is announced, and the run completes.
       model.releaseThird();
       await settle(world, task);
-      const settled = await world.bureau.tasks.get(task.id);
+      const settled = await viewOf(world, task.id);
       expect(settled?.status).toBe('completed');
       expect(settled?.attention).toEqual(['overspending']);
 
@@ -237,11 +262,10 @@ describe('a run over the spend threshold (COR-2527)', () => {
     );
     const task = await world.bureau.tasks.start('helper', 'Go.', { principal: PRINCIPAL });
     await settle(world, task);
-    await waitUntil(
-      async () => (await attentionOf(world, task.id))?.includes('overspending') === true,
-    );
+    await waitUntil(() => isOverspending(world, task.id));
 
-    expect((await world.bureau.tasks.get(task.id))?.status).toBe('completed');
+    const view = await viewOf(world, task.id);
+    expect(view?.status).toBe('completed');
     expect(world.overspending).toHaveLength(1);
   });
 
@@ -260,7 +284,7 @@ describe('a run over the spend threshold (COR-2527)', () => {
     const task = await world.bureau.tasks.start('helper', 'Go.', { principal: PRINCIPAL });
     await settle(world, task);
 
-    expect((await world.bureau.tasks.get(task.id))?.usage?.costUsd).toBeNull();
+    expect(await costOf(world, task.id)).toBeNull();
     expect(await attentionOf(world, task.id)).toEqual([]);
     expect(world.overspending).toEqual([]);
   });
@@ -271,15 +295,13 @@ describe('a run over the spend threshold (COR-2527)', () => {
     const task = await world.bureau.tasks.start('helper', 'Go.', { principal: PRINCIPAL });
     model.releaseSecond();
     await model.reachedThird;
-    await waitUntil(
-      async () => (await attentionOf(world, task.id))?.includes('overspending') === true,
-    );
+    await waitUntil(() => isOverspending(world, task.id));
 
     await world.bureau.tasks.cancel(task.id);
     model.releaseThird();
     await settle(world, task);
 
-    const view = await world.bureau.tasks.get(task.id);
+    const view = await viewOf(world, task.id);
     expect(view?.status).toBe('canceled');
     expect(view?.attention).toEqual(['overspending']);
     expect(world.overspending).toHaveLength(1);
@@ -307,9 +329,7 @@ describe('a run over the spend threshold (COR-2527)', () => {
     await model.reachedSecond;
     model.releaseSecond();
     await model.reachedThird;
-    await waitUntil(
-      async () => (await attentionOf(world, task.id))?.includes('overspending') === true,
-    );
+    await waitUntil(() => isOverspending(world, task.id));
 
     expect(await world.setThreshold(1000)).toMatchObject({ outcome: 'applied' });
     model.releaseThird();
@@ -330,12 +350,9 @@ describe('the attention feed lists a run over the threshold (COR-2527)', () => {
     await model.reachedSecond;
     model.releaseSecond();
     await model.reachedThird;
-    await waitUntil(async () => (await overspendingItems(world)).length === 1);
+    await waitUntil(async () => (await overspendingCount(world)) === 1);
 
-    const [whileRunning] = (await overspendingItems(world)) as Extract<
-      BureauAttentionItem,
-      { kind: 'run-overspending' }
-    >[];
+    const [whileRunning] = await overspendingItems(world);
     expect(whileRunning).toMatchObject({
       kind: 'run-overspending',
       area: 'runs',
@@ -348,10 +365,7 @@ describe('the attention feed lists a run over the threshold (COR-2527)', () => {
     model.releaseThird();
     await settle(world, task);
     await world.runtime.advance(7 * DAY - 1_000);
-    const [afterSettling] = (await overspendingItems(world)) as Extract<
-      BureauAttentionItem,
-      { kind: 'run-overspending' }
-    >[];
+    const [afterSettling] = await overspendingItems(world);
     expect(afterSettling).toMatchObject({ runId: task.id });
     expect(afterSettling!.settledAt).not.toBeNull();
     expect(afterSettling!.costUsd).toBeCloseTo(STEP_COST * 3, 10);
