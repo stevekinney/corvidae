@@ -21648,8 +21648,22 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "awaitingSignal": {
+                    "description": "The signal an unfinished instance waits for.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "createdAt": {
                     "type": "string"
+                  },
+                  "failure": {
+                    "description": "Why a failed or timed-out instance ended, at most 1,000 characters.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "id": {
                     "type": "string"
@@ -21886,6 +21900,41 @@
                     ],
                     "type": "string"
                   },
+                  "steps": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "at": {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "total": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "total",
+                          "at"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "How many steps the version the instance ran has, and the one it reached, from one."
+                  },
                   "updatedAt": {
                     "type": "string"
                   },
@@ -21903,7 +21952,10 @@
                   "status",
                   "createdAt",
                   "updatedAt",
-                  "origin"
+                  "origin",
+                  "steps",
+                  "awaitingSignal",
+                  "failure"
                 ],
                 "type": "object"
               },
@@ -22074,10 +22126,24 @@
           },
           "additionalProperties": false,
           "properties": {
+            "awaitingSignal": {
+              "description": "The signal an unfinished instance waits for.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "createdAt": {
               "type": "string"
             },
             "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "failure": {
+              "description": "Why a failed or timed-out instance ended, at most 1,000 characters.",
               "type": [
                 "string",
                 "null"
@@ -22348,6 +22414,41 @@
               ],
               "type": "string"
             },
+            "steps": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "at": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many steps the version the instance ran has, and the one it reached, from one."
+            },
             "trigger": {
               "anyOf": [
                 {
@@ -22376,6 +22477,9 @@
             "createdAt",
             "updatedAt",
             "origin",
+            "steps",
+            "awaitingSignal",
+            "failure",
             "trigger",
             "result",
             "error",

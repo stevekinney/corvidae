@@ -906,6 +906,57 @@ describe('results', () => {
     expect(none.result?.['runs']).toEqual([]);
   });
 
+  it('COR-2431: reports run progress, the awaited signal, and a bounded failure', async () => {
+    const served = await serve();
+    await seed(served);
+    await failedDigestRun(served);
+    await served.bureau.workflows!.create('approval', {
+      trigger: { kind: 'signal', name: 'begin' },
+      steps: [AGENT_STEP, { kind: 'await-signal', signal: 'notes-approved' }],
+    });
+    await served.bureau.durableEngine()!.start('approval', null, { id: 'approval-run' });
+    await waitForCondition(async () => {
+      const state = await served.bureau.durableEngine()!.get('approval-run');
+      return state?.waitingForSignals?.includes('notes-approved') === true;
+    }, 'the approval run waits for its signal');
+
+    const digest = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'digest',
+    });
+    const byId = new Map(
+      listOf(digest, 'runs').map((run) => [run.id, run as Record<string, unknown>]),
+    );
+    expect(byId.get('digest-run')).toMatchObject({
+      steps: { total: 1, at: 1 },
+      awaitingSignal: null,
+      failure: null,
+    });
+    expect(byId.get('failed-digest-run')).toMatchObject({
+      status: 'failed',
+      steps: { total: 1, at: 1 },
+      awaitingSignal: null,
+    });
+    expect(String(byId.get('failed-digest-run')?.['failure'])).toContain('the writer is down');
+
+    const approval = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'approval',
+    });
+    expect(listOf(approval, 'runs')[0]).toMatchObject({
+      id: 'approval-run',
+      steps: { total: 2, at: 2 },
+      awaitingSignal: 'notes-approved',
+      failure: null,
+    });
+    const detail = await ownerRpc(served.owner, 'bureau.workflows.runs.get', {
+      runId: 'approval-run',
+    });
+    expect(detail.result).toMatchObject({
+      steps: { total: 2, at: 2 },
+      awaitingSignal: 'notes-approved',
+      failure: null,
+    });
+  });
+
   it('answers a run that is not an instance of a workflow file as it answers a missing run', async () => {
     const served = await serve();
     await seed(served);

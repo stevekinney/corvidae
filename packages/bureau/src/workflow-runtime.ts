@@ -267,6 +267,12 @@ export interface WorkflowRunSummary {
   readonly updatedAt: string;
   /** What started the instance, when the runtime recorded an origin. */
   readonly origin: TaskOrigin | null;
+  /** The number of steps in the revision and the step the instance reached, both from one. */
+  readonly steps: { readonly total: number; readonly at: number | null } | null;
+  /** The signal an unfinished instance waits for, or `null`. */
+  readonly awaitingSignal: string | null;
+  /** The bounded engine failure message for a failed instance, or `null`. */
+  readonly failure: string | null;
 }
 
 /** One instance with what started it and how it ended. */
@@ -2240,6 +2246,47 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       createdAt: new Date(state.createdAt).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
       origin,
+      steps: null,
+      awaitingSignal: null,
+      failure: null,
+    };
+  }
+
+  /** The progress a workflow list and detail show for the revision a run actually used. */
+  async function progressOf(
+    runId: string,
+    type: string,
+    workflowVersion: string,
+    state: WorkflowState | null | undefined,
+  ): Promise<Pick<WorkflowRunSummary, 'steps' | 'awaitingSignal' | 'failure'>> {
+    if (state === null || state === undefined) {
+      return { steps: null, awaitingSignal: null, failure: null };
+    }
+
+    const revision = await revisionOf(bureauNameOf(type), workflowVersion);
+    const total =
+      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
+    const events =
+      total === undefined || state.status === 'completed'
+        ? undefined
+        : await engine.getEvents(runId);
+    const latestStep = events?.findLast((event) => event.type === 'file-workflow:step-started');
+    const index = latestStep?.data['step'];
+    const at =
+      total === undefined
+        ? null
+        : state.status === 'completed'
+          ? total
+          : typeof index === 'number' && Number.isSafeInteger(index) && index >= 0
+            ? index + 1
+            : null;
+    const unfinished = IN_FLIGHT_STATUSES.includes(state.status);
+    const failed = state.status === 'failed' || state.status === 'timed-out';
+
+    return {
+      steps: total === undefined ? null : { total, at },
+      awaitingSignal: unfinished ? (state.waitingForSignals?.[0] ?? null) : null,
+      failure: failed && state.error !== undefined ? state.error.slice(0, 1000) : null,
     };
   }
 
@@ -3034,7 +3081,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           : (await isWorkflowType(filter.workflow))
             ? [filter.workflow]
             : [];
-      const found: WorkflowRunSummary[] = [];
+      const found: Array<{
+        readonly summary: WorkflowRunSummary;
+        readonly type: string;
+        readonly state: WorkflowState | null | undefined;
+      }> = [];
       for (const type of types) {
         for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
           const page = await engine.list({
@@ -3067,7 +3118,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             ) {
               continue;
             }
-            found.push(await summarize({ ...run, input: state?.input }));
+            found.push({
+              summary: await summarize({ ...run, input: state?.input }),
+              type,
+              state,
+            });
           }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
@@ -3075,9 +3130,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const ordered = found.toSorted(
         (left, right) =>
-          right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+          right.summary.createdAt.localeCompare(left.summary.createdAt) ||
+          left.summary.id.localeCompare(right.summary.id),
       );
-      const runs = ordered.slice(filter.offset, filter.offset + filter.limit);
+      const runs = await Promise.all(
+        ordered
+          .slice(filter.offset, filter.offset + filter.limit)
+          .map(async ({ summary, type, state }) => ({
+            ...summary,
+            ...(await progressOf(summary.id, type, summary.workflowVersion, state)),
+          })),
+      );
       return {
         runs,
         nextOffset:
@@ -3151,6 +3214,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           tags: state.tags,
           input: state.input,
         })),
+        ...(await progressOf(runId, state.type, state.versionTuple.workflowVersion, state)),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
