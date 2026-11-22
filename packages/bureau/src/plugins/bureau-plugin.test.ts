@@ -71,6 +71,8 @@ const WORKFLOW_TOOLS = [
   'workflows-runs-get',
   'workflows-runs-history',
 ];
+/** The run tools: a read of a run, offered on every Bureau, with or without workflow files. */
+const RUN_TOOLS = ['tasks-explain'];
 const CHILD_RUN_TOOLS = [
   'child-runs-dispatch',
   'child-runs-list',
@@ -116,7 +118,7 @@ describe('the built-in bureau plugin', () => {
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([]);
     expect(listing?.contributions.map(({ kind, id }) => `${kind} ${id}`).toSorted()).toEqual(
-      ['discover-agents', ...CHILD_RUN_TOOLS, ...ASSET_TOOLS, ...WORKFLOW_TOOLS]
+      ['discover-agents', ...CHILD_RUN_TOOLS, ...ASSET_TOOLS, ...RUN_TOOLS, ...WORKFLOW_TOOLS]
         .map(
           (name) =>
             `tool bureau:${name}@${name === 'discover-agents' ? BUREAU_PLUGIN_VERSION : '1.0.0'}`,
@@ -190,7 +192,7 @@ describe('the built-in bureau plugin', () => {
   it('lists the workflow tools in the tool catalog as Bureau’s, under bureau:', async () => {
     const harness = await start();
     const names = harness.bureau.agents.tools().map((tool) => tool.name);
-    for (const name of WORKFLOW_TOOLS) expect(names).toContain(`bureau:${name}`);
+    for (const name of [...RUN_TOOLS, ...WORKFLOW_TOOLS]) expect(names).toContain(`bureau:${name}`);
     expect(names).not.toContain('workflows-create');
     expect(
       harness.bureau.agents

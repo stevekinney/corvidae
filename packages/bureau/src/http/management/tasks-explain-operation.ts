@@ -16,51 +16,24 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module tasks-explain-operation
  */
 
-import type { FailureCategory, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import {
-  classifyAgentRunFailure,
-  explainRunFailure,
-  RUN_FAILURE_CATEGORIES,
-  RUN_VERDICT_OUTCOMES,
-  type RunFailureStep,
-  type RunVerdict,
-} from '../../run-failure-explanation.ts';
-import { failedStepTries } from '../../run-timeline.ts';
+import { RUN_FAILURE_CATEGORIES, RUN_VERDICT_OUTCOMES } from '../../run-failure-explanation.ts';
+import { readRunFailure, type RunFailureReads } from '../../run-failure-read.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 import { readableRun, unsupported } from './runs-timeline-operation.ts';
 import type { BureauTasksOperationHost } from './tasks-operations.ts';
 import { type BureauWorkflowsOperationHost, retryableStepFor } from './workflows-operations.ts';
 
-/** What `bureau.tasks.explain` reads from the handler's `host`. */
+/**
+ * What `bureau.tasks.explain` reads from the handler's `host`: the run's task and instance as the
+ * other run operations read them, and what the engine and the audit trail hold of it
+ * ({@link RunFailureReads}), read only after the caller has been let in to the run.
+ */
 export type BureauTasksExplainOperationHost = BureauTasksOperationHost &
-  BureauWorkflowsOperationHost & {
-    /**
-     * What the engine holds of the run `runId` that explaining it reads, or `undefined` for a
-     * Bureau with no durable engine or a run it holds none for: its `status`, the `failureCategory`
-     * it sorted a failure into (`null` for a failure it could not sort, absent for a run it did not
-     * fail), the Weft `errorCode` of the failure, and the step the failed run stopped at. Read only
-     * after the caller has been let in to the run.
-     */
-    readonly runState: (runId: string) => Promise<
-      | {
-          readonly status: string;
-          readonly failureCategory?: FailureCategory | null | undefined;
-          readonly errorCode?: string | undefined;
-          readonly failedStep?: RunFailureStep | undefined;
-        }
-      | undefined
-    >;
-    /** The engine's timeline of the run, or `undefined` for a Bureau with no durable engine. */
-    readonly runTimeline: (runId: string) => Promise<readonly WorkflowTimelineEntry[] | undefined>;
-    /** The guardrails that fired in the run, read from the audit trail. */
-    readonly runVerdicts: (
-      runId: string,
-      kind: 'agent' | 'workflow',
-    ) => Promise<readonly RunVerdict[]>;
-  };
+  BureauWorkflowsOperationHost &
+  RunFailureReads;
 
 const explainInput = z.object({
   runId: z
@@ -122,13 +95,6 @@ const explainOutput = z.object({
     ),
 });
 
-/** An identifier a stored value may be answered as: letters, digits and a few separators. */
-const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_.:-]{0,99}$/;
-
-function identifierOrNull(value: string | null | undefined): string | null {
-  return value !== undefined && value !== null && IDENTIFIER.test(value) ? value : null;
-}
-
 /** The fault for a run that did not fail: nothing to explain. */
 function runNotFailed(runId: string, status: string): OperationFault {
   return {
@@ -163,58 +129,15 @@ export const tasksExplainOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const { runId } = input;
     const run = await readableRun(host, principal, runId);
-    const state = await host.runState(runId);
-
-    let category: FailureCategory | null;
-    let code: string | null;
-    let errorKind: string | null;
-    let step: RunFailureStep | null;
-    if (run.kind === 'agent') {
-      if (run.task.status !== 'failed') throw runNotFailed(runId, run.task.status);
-      const failure = run.task.failure;
-      code = identifierOrNull(failure?.errorCode);
-      errorKind = identifierOrNull(failure?.errorKind);
-      // An agent run ends as a completed engine run that carries a failed result, so the engine
-      // holds a category only for one it failed itself; the task's own finish reason says the rest.
-      category =
-        state?.failureCategory ??
-        classifyAgentRunFailure({ finishReason: run.task.finishReason, errorKind });
-      step = failure?.step ?? null;
-    } else {
-      // An instance exists only on a durable engine: no state to read is a Bureau that keeps none,
-      // not a run that did not fail.
-      if (state === undefined) throw unsupported();
-      if (state.status !== 'failed' && state.status !== 'timed-out') {
-        throw runNotFailed(runId, state.status);
-      }
-      category = state.failureCategory ?? (state.status === 'timed-out' ? 'timeout' : null);
-      code = identifierOrNull(state.errorCode);
-      errorKind = null;
-      step = state.failedStep ?? null;
-    }
-
-    const entries = await host.runTimeline(runId);
-    // An agent run with no timeline keeps `tries: null`; a workflow instance has one or the Bureau
-    // has no durable engine.
-    if (entries === undefined && run.kind === 'workflow') throw unsupported();
-    const explanation = explainRunFailure({
-      kind: run.kind,
+    // Only an instance can run again, and only for a caller the retry would let in (COR-2533).
+    const read = await readRunFailure(
+      host,
+      run,
       runId,
-      category,
-      code,
-      errorKind,
-      step: step === null ? null : { index: step.index, label: step.label },
-      tries: entries === undefined ? null : failedStepTries(entries),
-      verdicts: await host.runVerdicts(runId, run.kind),
-      // Only an instance can run again, and only for a caller the retry would let in (COR-2533).
-      retryable:
-        run.kind === 'workflow' && (await retryableStepFor(host, principal, runId)) !== undefined,
-    });
-    // The answer is plain, mutable data: nothing of the stored facts is shared with the caller.
-    return {
-      ...explanation,
-      verdicts: explanation.verdicts.map((verdict) => ({ ...verdict })),
-      nextCommands: [...explanation.nextCommands],
-    };
+      async () => (await retryableStepFor(host, principal, runId)) !== undefined,
+    );
+    if (read.outcome === 'not-failed') throw runNotFailed(runId, read.status);
+    if (read.outcome === 'unsupported') throw unsupported();
+    return read.explanation;
   },
 });

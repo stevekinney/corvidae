@@ -39,7 +39,12 @@ describe('the inspectors plugin', () => {
 
   it('opens the failure explanation from the explain tool and places it on a run’s page, calling no other tool (COR-2543)', () => {
     expect(failureExplanation.opensFromTool).toBe('bureau.tasks.explain');
-    expect(failureExplanation.placements).toEqual([{ kind: 'run' }]);
+    // Coordinator, 2026-11-22: shown only for failed runs, and opened in Chat by the agent tool that
+    // explains a run.
+    expect(failureExplanation.placements).toEqual([
+      { kind: 'run', when: 'failed' },
+      { kind: 'chat-tool', agentTool: 'bureau:tasks-explain' },
+    ]);
     // AC4: the one tool it calls is the explain read, and it is no write: nothing is host-only.
     expect(failureExplanation.allowedTools).toEqual(['bureau.tasks.explain']);
     expect(failureExplanation.hostOnlyTools).toBeUndefined();

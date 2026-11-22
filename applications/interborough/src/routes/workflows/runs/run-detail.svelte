@@ -1003,7 +1003,7 @@
                 waitingForSignals={workflow?.waitingForSignals}
                 builtIn={isBuiltInWorkflow(task.data.workflow?.type ?? '')}
               />
-              <RunPanels taskId={task.data.id} />
+              <RunPanels taskId={task.data.id} failed={task.data.status === 'failed'} />
             {/if}
             {#if workflow !== undefined && !readOnlyRun}<RunChange {engine} {workflow} />{/if}
           {/snippet}

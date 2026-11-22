@@ -101,7 +101,8 @@ export const scheduleEditor: PluginPanel = {
  * The failure explanation (COR-2543): why one failed run failed, in the Bureau's own words from
  * what it stored about the run and nothing else: the summary, the cause, the step, how often it was
  * tried, the guardrails that fired and what to do next. A client opens it from the explain tool,
- * which hands the page its result, and a run's page mounts it with the run's `taskId`, which the
+ * which hands the page its result, Chat opens it inline when an agent calls its own `tasks-explain`
+ * tool, and the page of a run that failed mounts it with the run's `taskId`, which the
  * page reads through the same tool. That read is the only call it makes, and it is a read, so the
  * panel has nothing a model or a person could change through it. A run that did not fail is the
  * Bureau's refusal, whose message and remediation the page shows. `allowedTools` lists every tool the
@@ -115,7 +116,12 @@ export const failureExplanation: PluginPanel = {
   entry: new URL('./failure-explanation/app.ts', import.meta.url),
   styles: FAILURE_EXPLANATION_STYLES,
   allowedTools: ['bureau.tasks.explain'],
-  placements: [{ kind: 'run' }],
+  // Coordinator, 2026-11-22: shown only for failed runs. A run's page mounts it for a run that
+  // failed and for no other; Chat opens it over the result of the agent tool that explains a run.
+  placements: [
+    { kind: 'run', when: 'failed' },
+    { kind: 'chat-tool', agentTool: 'bureau:tasks-explain' },
+  ],
   opensFromTool: 'bureau.tasks.explain',
 };
 

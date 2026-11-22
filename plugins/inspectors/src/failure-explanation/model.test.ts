@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   buildExplanationModel,
+  explanationOfResult,
   isExplanation,
   refusalOf,
   runIdOf,
@@ -105,6 +106,28 @@ describe('what the explain read answers (COR-2543)', () => {
       'sanitize sanitized the step',
       'redact redacted the step',
     ]);
+  });
+});
+
+describe('the explanation a tool result carries (COR-2543)', () => {
+  const agentToolResult = { status: 'ok', ...explanation };
+
+  it('reads an object, and the JSON text Chat hands a panel for an agent tool’s result', () => {
+    expect(explanationOfResult({ structuredContent: explanation })).toEqual(explanation);
+    expect(explanationOfResult({ structuredContent: agentToolResult })).toMatchObject({
+      summary: explanation.summary,
+      remediation: explanation.remediation,
+    });
+    expect(
+      explanationOfResult({ structuredContent: JSON.stringify(agentToolResult) }),
+    ).toMatchObject({ summary: explanation.summary });
+  });
+
+  it('is nothing for an error result, text that is not JSON, or any other answer', () => {
+    expect(explanationOfResult({ isError: true, structuredContent: explanation })).toBeUndefined();
+    expect(explanationOfResult({ structuredContent: 'not json' })).toBeUndefined();
+    expect(explanationOfResult({ structuredContent: '{"status":"not-found"}' })).toBeUndefined();
+    expect(explanationOfResult({})).toBeUndefined();
   });
 });
 

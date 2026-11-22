@@ -16,24 +16,8 @@ import { unmount } from 'svelte';
 
 import { followHostTheme } from '../host-theme.ts';
 import Explanation from './explanation.svelte';
-import {
-  buildExplanationModel,
-  isExplanation,
-  refusalOf,
-  runIdOf,
-  type Explanation as ExplanationAnswer,
-} from './model.ts';
+import { buildExplanationModel, explanationOfResult, refusalOf, runIdOf } from './model.ts';
 import { createExplanationView, type ExplanationState } from './view.svelte.ts';
-
-/** The result's structured content when it is an explanation, or `undefined` for anything else. */
-function explanationOf(result: {
-  structuredContent?: unknown;
-  isError?: boolean | undefined;
-}): ExplanationAnswer | undefined {
-  return result.isError !== true && isExplanation(result.structuredContent)
-    ? result.structuredContent
-    : undefined;
-}
 
 async function start(): Promise<void> {
   const root = document.getElementById('root');
@@ -62,7 +46,7 @@ async function start(): Promise<void> {
     content?: unknown;
     isError?: boolean | undefined;
   }): boolean => {
-    const explanation = explanationOf(result);
+    const explanation = explanationOfResult(result);
     if (explanation !== undefined) {
       show({ kind: 'explained', model: buildExplanationModel(explanation) }, 'Explanation loaded.');
       return true;

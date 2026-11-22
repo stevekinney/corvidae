@@ -66,6 +66,28 @@ export function isExplanation(value: unknown): value is Explanation {
   );
 }
 
+/**
+ * The explanation a tool result carries: its structured content, which Chat hands a panel as the
+ * agent tool's result in JSON text and an MCP client hands it as an object. The agent tool's own
+ * result also holds a `status`, which is `ok` for an explanation, and nothing else is one.
+ * `undefined` for an error result, or any other content.
+ */
+export function explanationOfResult(result: {
+  readonly structuredContent?: unknown;
+  readonly isError?: boolean | undefined;
+}): Explanation | undefined {
+  if (result.isError === true) return undefined;
+  let content = result.structuredContent;
+  if (typeof content === 'string') {
+    try {
+      content = JSON.parse(content);
+    } catch {
+      return undefined;
+    }
+  }
+  return isExplanation(content) ? content : undefined;
+}
+
 /** What the page draws of an explanation: each part as the words a person reads. */
 export interface ExplanationModel {
   readonly summary: string;

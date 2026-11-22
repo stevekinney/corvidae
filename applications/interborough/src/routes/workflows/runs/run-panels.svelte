@@ -19,9 +19,14 @@
   interface RunPanelsProps {
     /** The Bureau task the panels show. */
     taskId: string;
+    /**
+     * Whether the run failed. A panel that placed itself `when: 'failed'` is mounted only then
+     * (COR-2543), so a run that did not fail shows no card with nothing to say.
+     */
+    failed?: boolean;
   }
 
-  let { taskId }: RunPanelsProps = $props();
+  let { taskId, failed = false }: RunPanelsProps = $props();
 
   const apps = createQuery(
     () => ({
@@ -36,7 +41,13 @@
   // composition keeps every app's `ui://` URI unique across plugins, so the URI keys the list.
   const panels = $derived(
     (apps.data ?? [])
-      .filter((candidate) => candidate.placements.some((placement) => placement.kind === 'run'))
+      .filter((candidate) =>
+        candidate.placements.some(
+          (placement) =>
+            placement.kind === 'run' &&
+            (placement.when === undefined || (placement.when === 'failed' && failed)),
+        ),
+      )
       .toSorted((left, right) =>
         left.plugin < right.plugin ? -1 : left.plugin > right.plugin ? 1 : 0,
       ),

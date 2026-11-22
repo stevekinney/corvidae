@@ -247,6 +247,8 @@ import {
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
+import { readRunVerdicts } from './run-failure-verdicts';
+import { createTasksExplainTool } from './tasks-explain-tool';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
@@ -589,6 +591,37 @@ async function constructBureau<const D extends AgentDefinitions>(
             }),
           }),
         )),
+    // COR-2543: why a run failed is a read of the run, not workflow management, so the tool does
+    // not wait for a workflow directory. An agent run is a task with a record, and an id the
+    // registry does not hold is read as an instance of a workflow file, as `bureau.tasks.explain`
+    // reads it.
+    createTasksExplainTool({
+      workspace: workspace,
+      ownerOfRun: (runId) => ownerOf({ kind: 'run', id: runId }),
+      task: async (runId) => taskRegistryHolder.current?.get(runId),
+      workflowInstance: async (runId) =>
+        (await workflowRuntime?.workflows.getRun(runId)) !== undefined,
+      runState: async (runId) => {
+        const state = await durableEngine()?.get(runId);
+        return state === null || state === undefined
+          ? undefined
+          : {
+              status: state.status,
+              failureCategory: state.failureCategory,
+              errorCode: state.errorCode,
+              failedStep: state.failedStep,
+            };
+      },
+      runTimeline: async (runId) => durableEngine()?.getTimeline(runId),
+      runVerdicts: async (runId, kind) =>
+        taskRegistryHolder.current === undefined
+          ? []
+          : readRunVerdicts(
+              { trail: auditTrailInstance, tasks: taskRegistryHolder.current },
+              runId,
+              kind,
+            ),
+    }),
   ];
   // COR-2009 — the code-defined agents built from Bureau's own tools join `agents` before any
   // plugin is composed, so a plugin agent of the same name is a clash, as with any host agent.
