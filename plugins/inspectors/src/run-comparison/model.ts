@@ -105,7 +105,7 @@ export const KIND_WORDS: Record<ComparedStepKind, string> = {
 };
 
 /** One step as a list row draws it. */
-export type StepRow = {
+type StepRow = {
   readonly index: number;
   /** `Step 2, issueTicket`: the step's place among the run's steps, from 1, and its name. */
   readonly title: string;
@@ -155,7 +155,7 @@ export function buildComparisonModel(comparison: Comparison): ComparisonModel {
 }
 
 /** One of a step's two payloads, ready to draw. */
-export type PayloadDifference =
+type PayloadDifference =
   | { readonly heading: string; readonly kind: 'note'; readonly note: string }
   | {
       readonly heading: string;
