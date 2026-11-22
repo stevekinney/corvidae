@@ -198,6 +198,7 @@ describe('the identity of every request', () => {
       'bureau.tasks.get',
       // The failure explanation's one read (COR-2543).
       'bureau.tasks.explain',
+      'bureau.runs.timeline',
     ]);
     const visibilities = Object.fromEntries(
       (tools as Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }>).map((tool) => [
@@ -222,6 +223,7 @@ describe('the identity of every request', () => {
       },
       { uri: 'ui://inspectors/schedule-editor/v1', mimeType: 'text/html;profile=mcp-app' },
       { uri: 'ui://inspectors/failure-explanation/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/run-timeline/v1', mimeType: 'text/html;profile=mcp-app' },
     ]);
     // The failure explanation opens from the explain tool (COR-2543).
     const explain = (tools as Array<{ name: string; _meta?: unknown }>).find(

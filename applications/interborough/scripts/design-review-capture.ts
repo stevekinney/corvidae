@@ -211,6 +211,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // The failure explanation panel, in the same kind of frame, in each state it draws (COR-2543).
   // `--grep failure-explanation-states` selects it.
   'tests/panels/failure-explanation-states.spec.ts',
+  // The run timeline panel in each state it draws, likewise a frame no page capture sees (COR-2542).
+  'tests/panels/run-timeline-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

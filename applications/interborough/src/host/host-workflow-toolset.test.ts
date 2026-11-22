@@ -61,6 +61,7 @@ const parentTools = [
   'bureau:workflows-start',
   'bureau:workflows-runs-get',
   'bureau:workflows-runs-history',
+  'bureau:runs-timeline',
   'bureau:child-runs-dispatch',
   'bureau:child-runs-wait',
   'bureau:child-runs-list',

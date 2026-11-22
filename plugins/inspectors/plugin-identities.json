@@ -28,6 +28,12 @@
     },
     {
       "kind": "panel",
+      "id": "inspectors:run-timeline",
+      "version": "1.0.1",
+      "schema": "sha256:ab2d8191bdeec6f6185c3a3b60be038ecffc3f76bcc8ae19eec6a25bcb46c264"
+    },
+    {
+      "kind": "panel",
       "id": "inspectors:schedule-editor",
       "version": "1.0.1",
       "schema": "sha256:4436363a45ecc8a9962a799ddd25244db5c17535676ee6f1afcb7711c91e1346"

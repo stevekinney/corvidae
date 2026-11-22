@@ -49,6 +49,8 @@ export const SPECIFICATION_WEIGHTS: Readonly<Record<string, number>> = {
   'schedule-editor-states.spec.ts': 110,
   // Six states at four widths each, every one reached from a fresh mount of the panel.
   'failure-explanation-states.spec.ts': 50,
+  // Ten states at four widths each, one panel mount apiece.
+  'run-timeline-states.spec.ts': 80,
 };
 
 /** The weight of a specification the table does not list. */

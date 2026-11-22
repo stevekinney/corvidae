@@ -1,0 +1,349 @@
+import { stepWaterfall } from '@lostgradient/interborough-plugin/step-waterfall';
+import { describe, expect, it } from 'bun:test';
+
+import {
+  buildTimelineModel,
+  describeChange,
+  runIdOf,
+  timelineOfResult,
+  type Timeline,
+} from './model.ts';
+
+type TimelineEntry = Timeline['entries'][number];
+
+/** What the run's badge says for each status a finished run can have. */
+const RUN_STATUS_LABELS = {
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  'timed-out': 'Timed out',
+};
+
+/** The timeline a host answered, read the way a tool result is read. */
+const readTimeline = (value: unknown) => timelineOfResult({ structuredContent: value });
+
+const entry = (overrides: Partial<TimelineEntry> & { step: number }): TimelineEntry => ({
+  label: `step-${String(overrides.step)}`,
+  operationType: 'activity',
+  status: 'completed',
+  timestamp: 1_000 + overrides.step * 1_000,
+  duration: 500,
+  tries: 1,
+  ...overrides,
+});
+
+const timeline = (entries: TimelineEntry[], truncated = false, runStatus?: string): Timeline => ({
+  runId: 'run-1',
+  kind: 'workflow',
+  runStatus,
+  entries,
+  truncated,
+});
+
+describe('reading what the host answered', () => {
+  it('reads a timeline and keeps a step with no duration as one without', () => {
+    const read = readTimeline({
+      runId: 'run-1',
+      kind: 'agent',
+      runStatus: 'completed',
+      truncated: false,
+      entries: [
+        {
+          step: 1,
+          label: 'fetch',
+          operationType: 'activity',
+          status: 'running',
+          timestamp: 5,
+          tries: 2,
+        },
+      ],
+    });
+    expect(read?.kind).toBe('agent');
+    expect(read?.entries[0]).toEqual({
+      step: 1,
+      label: 'fetch',
+      operationType: 'activity',
+      status: 'running',
+      timestamp: 5,
+      tries: 2,
+    });
+  });
+
+  it('reads where the run stands, and none from a host that does not say', () => {
+    const answer = { runId: 'r', entries: [] };
+    expect(readTimeline({ ...answer, runStatus: 'failed' })?.runStatus).toBe('failed');
+    expect(readTimeline(answer)?.runStatus).toBeUndefined();
+    expect(readTimeline({ ...answer, runStatus: 3 })?.runStatus).toBeUndefined();
+  });
+
+  it('reads a tool result whether its structured content is an object or Chat’s JSON text', () => {
+    const answer = { status: 'ok', runId: 'r', runStatus: 'completed', entries: [] };
+    expect(timelineOfResult({ structuredContent: answer })?.runId).toBe('r');
+    expect(timelineOfResult({ structuredContent: JSON.stringify(answer) })?.runStatus).toBe(
+      'completed',
+    );
+    expect(timelineOfResult({ structuredContent: '{not json' })).toBeUndefined();
+    expect(timelineOfResult({ structuredContent: answer, isError: true })).toBeUndefined();
+  });
+
+  it('refuses a value that is not a timeline, and one with a step it cannot read', () => {
+    expect(readTimeline(undefined)).toBeUndefined();
+    expect(readTimeline({ runId: 'r' })).toBeUndefined();
+    expect(readTimeline({ runId: 'r', entries: [{ step: 'one' }] })).toBeUndefined();
+    expect(readTimeline({ runId: 'r', entries: [null] })).toBeUndefined();
+  });
+
+  it.each([1.5, -1, 0, Number.NaN, Number.MAX_SAFE_INTEGER + 2])(
+    'refuses a step numbered %s: the engine numbers its steps from 1, and the page keys its rows by number',
+    (step) => {
+      const entry = {
+        step,
+        label: 'a',
+        operationType: 'activity',
+        status: 'completed',
+        timestamp: 1,
+      };
+      expect(readTimeline({ runId: 'r', entries: [entry] })).toBeUndefined();
+      expect(readTimeline({ runId: 'r', entries: [{ ...entry, step: 1 }] })).toBeDefined();
+    },
+  );
+
+  it('keeps reading a timeline whose steps are whole numbers from 1', () => {
+    const entry = { label: 'a', operationType: 'activity', status: 'completed', timestamp: 1 };
+    const read = readTimeline({
+      runId: 'r',
+      entries: [
+        { ...entry, step: 1 },
+        { ...entry, step: 7 },
+      ],
+    });
+    expect(read?.entries.map((each) => each.step)).toEqual([1, 7]);
+  });
+
+  it('counts a missing or invalid number of tries as one', () => {
+    const read = readTimeline({
+      runId: 'r',
+      entries: [
+        {
+          step: 1,
+          label: 'a',
+          operationType: 'activity',
+          status: 'completed',
+          timestamp: 1,
+          tries: 0,
+        },
+        { step: 2, label: 'b', operationType: 'activity', status: 'completed', timestamp: 2 },
+      ],
+    });
+    expect(read?.entries.map((row) => row.tries)).toEqual([1, 1]);
+  });
+
+  it('takes the run from either argument the page is opened with', () => {
+    expect(runIdOf({ runId: 'a' })).toBe('a');
+    expect(runIdOf({ taskId: 'b' })).toBe('b');
+    expect(runIdOf({ runId: '' })).toBeUndefined();
+    expect(runIdOf({ runId: 3 })).toBeUndefined();
+    expect(runIdOf(undefined)).toBeUndefined();
+    // A key the arguments only inherit names no run.
+    expect(runIdOf(Object.create({ runId: 'inherited' }))).toBeUndefined();
+  });
+});
+
+describe('the rows', () => {
+  it('lays the bars out with the run page’s own function', () => {
+    const entries = [
+      entry({ step: 1, timestamp: 1_000, duration: 2_000 }),
+      entry({ step: 2, timestamp: 3_000, duration: 1_000, status: 'failed' }),
+    ];
+    const model = buildTimelineModel(timeline(entries), 10_000);
+    const expected = stepWaterfall(entries, { now: 10_000 });
+    expect(model.rows.map((row) => row.bar)).toEqual([expected.get(1), expected.get(2)]);
+  });
+
+  it('says each step’s status, duration and tries in words', () => {
+    const model = buildTimelineModel(
+      timeline([
+        entry({ step: 1, status: 'completed', duration: 340, tries: 1 }),
+        entry({ step: 2, status: 'failed', duration: 1_200, tries: 3 }),
+        entry({ step: 3, status: 'timed-out', duration: 61_000, tries: 1 }),
+        entry({ step: 4, status: 'cancelled', duration: undefined }),
+      ]),
+      20_000,
+    );
+    expect(model.rows.map((row) => [row.statusLabel, row.durationText, row.triesText])).toEqual([
+      ['Succeeded', '340 ms', '1 try'],
+      ['Failed', '1.2 s', '3 tries'],
+      ['Timed out', '1 min 1 s', '1 try'],
+      ['Cancelled', 'no duration kept', '1 try'],
+    ]);
+    expect(model.rows.map((row) => row.statusVariant)).toEqual([
+      'success',
+      'danger',
+      'danger',
+      'neutral',
+    ]);
+  });
+
+  it('calls the last running step running, and an earlier running step ended', () => {
+    const model = buildTimelineModel(
+      timeline([
+        entry({ step: 1, status: 'running', duration: undefined, timestamp: 1_000 }),
+        entry({ step: 2, status: 'running', duration: undefined, timestamp: 2_000 }),
+      ]),
+      9_000,
+    );
+    expect(model.rows[0]).toMatchObject({ statusLabel: 'Ended', open: false });
+    // The badge says it is running, so the length is not said again in words beside the bar.
+    expect(model.rows[1]).toMatchObject({ statusLabel: 'Running', open: true });
+    expect(model.rows[1]?.durationText).toBeUndefined();
+    expect(model.rows[1]?.bar?.open).toBe(true);
+    expect(model.summary).toBe('2 steps, 1 running.');
+    expect(model.runStatus).toBeUndefined();
+  });
+
+  it.each(['completed', 'failed', 'cancelled', 'timed-out'] as const)(
+    'draws a step the engine left running as ended when the run is %s',
+    (runStatus) => {
+      const entries = [
+        entry({ step: 1, status: 'completed', timestamp: 1_000, duration: 500 }),
+        entry({ step: 2, status: 'running', duration: undefined, timestamp: 2_000 }),
+      ];
+      const going = buildTimelineModel(timeline(entries, false, 'running'), 9_000);
+      expect(going.rows[1]).toMatchObject({ statusLabel: 'Running', open: true });
+
+      const finished = buildTimelineModel(timeline(entries, false, runStatus), 9_000);
+      expect(finished.rows[1]).toMatchObject({
+        statusLabel: 'Ended',
+        statusVariant: 'neutral',
+        open: false,
+      });
+      expect(finished.rows[1]?.durationText).toBe('no duration kept');
+      expect(finished.rows[1]?.bar?.open).toBe(false);
+      expect(finished.rows[1]?.barLabel).not.toContain('still running');
+      expect(finished.summary).toBe('2 steps.');
+      expect(finished.runStatus?.label).toBe(RUN_STATUS_LABELS[runStatus]);
+      // A finished run's last bar ends where the engine's record does, not at `now`.
+      const goingBar = going.rows[1]?.bar;
+      const finishedBar = finished.rows[1]?.bar;
+      expect(finishedBar?.width).toBeLessThan(goingBar?.width ?? 0);
+    },
+  );
+
+  it('orders the rows by step whatever order the host answered in', () => {
+    const model = buildTimelineModel(
+      timeline([entry({ step: 3 }), entry({ step: 1 }), entry({ step: 2 })]),
+      9_000,
+    );
+    expect(model.rows.map((row) => row.step)).toEqual([1, 2, 3]);
+  });
+
+  it('shows an unknown status as the host sent it, in a neutral badge', () => {
+    const model = buildTimelineModel(timeline([entry({ step: 1, status: 'paused' })]), 9_000);
+    expect(model.rows[0]).toMatchObject({ statusLabel: 'paused', statusVariant: 'neutral' });
+  });
+
+  it('says a step with no usable start has no bar', () => {
+    const model = buildTimelineModel(
+      timeline([entry({ step: 1, timestamp: Number.NaN, duration: 5 })]),
+      9_000,
+    );
+    expect(model.rows[0]?.bar).toBeUndefined();
+    expect(model.rows[0]?.barLabel).toBe('no start time kept');
+  });
+
+  it('summarizes a run, an empty run, and a run cut short', () => {
+    expect(buildTimelineModel(timeline([]), 1).summary).toBe('No steps yet.');
+    const cut = buildTimelineModel(
+      timeline([entry({ step: 1, status: 'failed' }), entry({ step: 2 })], true),
+      9_000,
+    );
+    expect(cut.summary).toBe('2 steps, 1 failed or timed out, and more than the page shows.');
+    expect(cut.truncated).toBe(true);
+  });
+});
+
+describe('the run’s status', () => {
+  const statusOf = (runStatus: string | undefined) =>
+    buildTimelineModel(timeline([entry({ step: 1 })], false, runStatus), 9_000).runStatus;
+
+  it.each([
+    ['pending', 'Pending', 'neutral'],
+    ['running', 'Running', 'info'],
+    ['suspended', 'Suspended', 'neutral'],
+    ['completed', 'Completed', 'success'],
+    ['failed', 'Failed', 'danger'],
+    ['cancelled', 'Cancelled', 'neutral'],
+    ['timed-out', 'Timed out', 'danger'],
+  ] as const)('says %s as %s in a %s badge', (runStatus, label, variant) => {
+    expect(statusOf(runStatus)).toEqual({ label, variant });
+  });
+
+  it('says an unknown status as the host sent it, says none from a host that sends none, and trusts no inherited name', () => {
+    expect(statusOf('paused')).toEqual({ label: 'paused', variant: 'neutral' });
+    expect(statusOf(undefined)).toBeUndefined();
+    expect(statusOf('constructor')).toEqual({ label: 'constructor', variant: 'neutral' });
+  });
+});
+
+describe('the scale of the bars', () => {
+  const axisOf = (entries: TimelineEntry[], runStatus?: string) =>
+    buildTimelineModel(timeline(entries, false, runStatus), 100_000).axis;
+
+  it('labels the first step’s start and the latest end of any step, once', () => {
+    expect(
+      axisOf([
+        entry({ step: 1, timestamp: 1_000, duration: 2_000 }),
+        entry({ step: 2, timestamp: 3_000, duration: 9_500 }),
+      ]),
+    ).toEqual({ start: '0 s', end: '11.5 s' });
+  });
+
+  it('runs a step still going to the present moment, and a finished run to its last step', () => {
+    const entries = [
+      entry({ step: 1, timestamp: 1_000, duration: 500 }),
+      entry({ step: 2, timestamp: 2_000, status: 'running', duration: undefined }),
+    ];
+    expect(axisOf(entries, 'running')).toEqual({ start: '0 s', end: '1 min 39 s' });
+    expect(axisOf(entries, 'failed')).toEqual({ start: '0 s', end: '1 s' });
+  });
+
+  it('has no scale to label when every step is one instant, and none for no steps', () => {
+    expect(axisOf([entry({ step: 1, duration: undefined, status: 'completed' })])).toBeUndefined();
+    expect(axisOf([])).toBeUndefined();
+  });
+});
+
+describe('describing a change', () => {
+  const at = (entries: TimelineEntry[]) => buildTimelineModel(timeline(entries), 9_000);
+
+  it('says nothing for the first read and for a read that changed nothing', () => {
+    const model = at([entry({ step: 1 })]);
+    expect(describeChange(undefined, model)).toBeNull();
+    expect(describeChange(model, at([entry({ step: 1 })]))).toBeNull();
+  });
+
+  it('names a step that appeared and a step whose status changed', () => {
+    const before = at([entry({ step: 1, status: 'running', duration: undefined })]);
+    const after = at([entry({ step: 1, status: 'failed' }), entry({ step: 2 })]);
+    expect(describeChange(before, after)).toBe(
+      'Step 1, step-1, failed. Step 2, step-2, succeeded.',
+    );
+  });
+});
+
+describe('formatting a length of time', () => {
+  it.each([
+    [0, '0 ms'],
+    [999, '999 ms'],
+    [1_000, '1 s'],
+    [1_240, '1.2 s'],
+    [60_000, '1 min'],
+    [125_000, '2 min 5 s'],
+    [3_600_000, '1 h'],
+    [3_780_000, '1 h 3 min'],
+    [-5, '0 ms'],
+  ])('a step of %d ms reads %s', (milliseconds, expected) => {
+    const model = buildTimelineModel(timeline([entry({ step: 1, duration: milliseconds })]), 9_000);
+    expect(model.rows[0]?.durationText).toBe(expected);
+  });
+});
