@@ -134,13 +134,21 @@ test.describe('the run setup page', () => {
     request,
     pageErrors,
   }) => {
-    const id = 'e2e-setup-start';
+    // A run outlives its file, and this spec reads that the workflow has none, so each repeat
+    // (`--repeat-each`) takes a workflow of its own.
+    const repeat = test.info().repeatEachIndex;
+    const id = repeat === 0 ? 'e2e-setup-start' : `e2e-setup-start-${String(repeat)}`;
     await createWaiting(request, id);
     await page.goto(`/workflows/${id}/run`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const topic = setup(page).getByLabel('Topic');
     await topic.fill('weather');
     await topic.press('Enter');
+    // Enter makes the form check the input, and the form holds its fields while it does. Once
+    // they can be edited again the check has answered, so no run read after this can still be
+    // on its way from the Enter. A click while it checks starts the run too (COR-2637), which
+    // `run-setup.test.ts` covers.
+    await expect(topic).toBeEditable();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/run$`));
     expect(await listWorkflowRuns(request, id)).toEqual([]);
 

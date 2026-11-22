@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2642",
+  "branch": "chef/e2e-shared-failures",
+  "checkedAt": "7755f966244bc6313b871197c7df165cf156c23a",
+  "briefVersion": "5ad9895123b9",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "04c4099ad6 names the cause: a transient committing state the spec raced (CI snapshot of run 45019753264 shard 1 shows the dialog already at 'Done Retried 1 of 1 workflow'); copy and structure unchanged."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "05-bulk-retry-confirm.spec.ts holds the retryfailed commit at the JSON-RPC transport while it checks the committing state, then lets it through to the host."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "--repeat-each=20 locally in Chromium: 20 passed (tmp/chef/scratch/COR-2642-44b28a17/repeat20.log). Full CI: targeted-run.ts has no flag that forces main.yml and its plan for this diff does not require one, so it dispatched targeted-checks.yml (the earlier run 45035367878 named 05-bulk-retry-confirm.spec.ts); the full main.yml run is bound through delivery-request.ts prepare, the coordinator's step."
+    }
+  ]
+}
