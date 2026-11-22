@@ -1,7 +1,7 @@
 {
   "issue": "COR-2534",
   "branch": "chef/cor-2534-model-explanation",
-  "checkedAt": "bcf21b745d578961c60d6274f614d0f902056e63",
+  "checkedAt": "82425cec93da3ab3481c7272e07a98b36a4a27c0",
   "briefVersion": "b8869fe2e302",
   "status": "READY",
   "criteria": [
