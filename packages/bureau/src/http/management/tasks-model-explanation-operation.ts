@@ -29,6 +29,7 @@ import {
   type ModelExplanationDependencies,
 } from '../../run-model-explanation.ts';
 import { readRunFailure } from '../../run-failure-read.ts';
+import { modelExplanationFenceOf } from '../../task-model-explanation.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
 import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { ownerOfPrincipal } from '../owner-predicate.ts';
@@ -88,6 +89,16 @@ function runHasNoTask(): OperationFault {
     data: { reason: 'run-has-no-task' },
     remediation:
       'Read why it failed from the stored facts with `interborough runs explain`, or open the agent run of the step that failed.',
+  };
+}
+
+/** The fault for a run whose record changed while the model wrote: the text was not kept. */
+function runChangedWhileWriting(): OperationFault {
+  return {
+    code: 'Unprocessable',
+    message: 'The run changed while the explanation was being written, so it was not kept',
+    data: { reason: 'run-changed' },
+    remediation: 'Read the run to see how it stands now, and ask for the explanation again.',
   };
 }
 
@@ -161,7 +172,7 @@ export const tasksExplanationGenerateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Ask a model to explain a failed run at more length',
   description:
-    'Asks the Bureau’s configured decision model to explain why one failed agent run failed, at more length than `bureau.tasks.explain`, stores the text on the task, and returns it as `explanation` with the `model` that wrote it (`<provider>/<model>`), `generatedAt` and `costUsd` (US dollars priced from the model catalog, `null` when unpriced). It replaces any explanation the task held, and each call asks the model again; `bureau.tasks.explanation.get` reads what is stored without a call. The model is sent the stored-facts explanation and, for each step, its name, status, error message and guardrail verdicts, and never a tool argument, a tool result or a message. The cost is the explanation’s own and is not added to the run’s `usage`. It spends a model’s tokens, so it asks what `bureau.tasks.cancel` asks of the caller (the owner of the run, or `bureau.tasks:write` with `bureau.tasks:read`). A run that did not fail is `Unprocessable` with `data.reason` `run-not-failed`; an instance of a workflow file is `Unprocessable` with `run-has-no-task`; with no provider connected the call is `UnsupportedCapability` (`generate`) with a `remediation` that says to connect one; a run the caller may not use is `NotFound`. It is not on MCP.',
+    'Asks the Bureau’s configured decision model to explain why one failed agent run failed, at more length than `bureau.tasks.explain`, stores the text on the task, and returns it as `explanation` with the `model` that wrote it (`<provider>/<model>`), `generatedAt` and `costUsd` (US dollars priced from the model catalog, `null` when unpriced). It replaces any explanation the task held, and each call asks the model again; `bureau.tasks.explanation.get` reads what is stored without a call. The model is sent the stored-facts explanation and, for each step, its name, status, error message and guardrail verdicts, and never a tool argument, a tool result or a message. The cost is the explanation’s own and is not added to the run’s `usage`. It spends a model’s tokens, so it asks what `bureau.tasks.cancel` asks of the caller (the owner of the run, or `bureau.tasks:write` with `bureau.tasks:read`). A run that did not fail is `Unprocessable` with `data.reason` `run-not-failed`; an instance of a workflow file is `Unprocessable` with `run-has-no-task`; a run whose record changed while the model wrote (its chat’s content purged, or its failure replaced by the run’s real end) is `Unprocessable` with `run-changed` and nothing is stored; with no provider connected the call is `UnsupportedCapability` (`generate`) with a `remediation` that says to connect one; a run the caller may not use is `NotFound`. It is not on MCP.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: explanationInput,
@@ -180,11 +191,18 @@ export const tasksExplanationGenerateOperation = defineOperation<
     if (!(await mayAccessTask(host, principal, runId, 'bureau.tasks:write'))) {
       throw resourceNotFound('run', runId);
     }
-    const read = await readRunFailure(host, run, runId, async () => false);
+    // The identity of the failure comes first, and everything the model is sent is read after it, so
+    // whatever changes the record from here on (a purge, a replacing end) is a change the write below
+    // sees and refuses.
+    const fence = modelExplanationFenceOf(await host.modelExplanations.record(runId));
+    if (fence === undefined) throw runNotFailed();
+    const task = await host.tasks.get(runId);
+    if (task === undefined) throw runNotFailed();
+    const read = await readRunFailure(host, { kind: 'agent', task }, runId, async () => false);
     if (read.outcome !== 'explained') throw runNotFailed();
     const steps = explanationRequestSteps({
       explanation: read.explanation,
-      errorMessage: run.task.statusMessage,
+      errorMessage: task.statusMessage,
       entries: await host.runTimeline(runId),
     });
     const request = modelExplanationRequest({ explanation: read.explanation, steps });
@@ -198,9 +216,10 @@ export const tasksExplanationGenerateOperation = defineOperation<
     } catch (error) {
       throw modelFault(error);
     }
-    if (!(await host.modelExplanations.recordModelExplanation(runId, explanation))) {
-      throw runNotFailed();
-    }
+    const outcome = await host.modelExplanations.recordModelExplanation(runId, explanation, fence);
+    // Nothing is stored for a run that changed while the model wrote, and nothing is answered as
+    // stored: the text was written from content that is gone or about a failure that was replaced.
+    if (outcome === 'stale') throw runChangedWhileWriting();
     return { explanation };
   },
 });

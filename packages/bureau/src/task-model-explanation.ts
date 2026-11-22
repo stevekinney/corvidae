@@ -27,6 +27,52 @@ export interface TaskModelExplanation {
   readonly costUsd: number | null;
 }
 
+/**
+ * What identifies the failure a model was asked to explain, captured when the request reads it and
+ * checked when the text is stored. A model call takes a while, and the record can change under it:
+ * a chat's purge empties the settlement's message and drops the text, and the real end of a run
+ * inferred `owner-lost` replaces the failure. The write is fenced on all of it, so an explanation
+ * of content that is gone, or of a failure that was replaced, is never stored.
+ */
+export interface ModelExplanationFence {
+  /** How many times the record had changed (`TaskRecord.revision`, `0` when absent). */
+  readonly revision: number;
+  /** The settlement's time. */
+  readonly settledAt: string;
+  /** The settlement's finish reason. */
+  readonly finishReason: string | null;
+  /** The settlement's message, which a purge empties. */
+  readonly message: string | null;
+}
+
+/** What {@link ModelExplanationFence} reads of a task record. */
+interface FencedRecord {
+  readonly revision?: number | undefined;
+  readonly settled?:
+    | {
+        readonly at: string;
+        readonly status: string;
+        readonly finishReason: string | null;
+        readonly message: string | null;
+      }
+    | undefined;
+}
+
+/** The fence of a task's failed settlement as the record holds it now, or `undefined` for a task that has not failed. */
+export function modelExplanationFenceOf(
+  record: FencedRecord | undefined,
+): ModelExplanationFence | undefined {
+  const settled = record?.settled;
+  if (record === undefined || settled === undefined || settled.status !== 'failed')
+    return undefined;
+  return {
+    revision: record.revision ?? 0,
+    settledAt: settled.at,
+    finishReason: settled.finishReason,
+    message: settled.message,
+  };
+}
+
 /** Whether a stored value is a {@link TaskModelExplanation}. */
 export function isTaskModelExplanation(value: unknown): value is TaskModelExplanation {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;

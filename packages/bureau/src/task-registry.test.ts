@@ -22,6 +22,7 @@ import {
   type TaskRegistryHost,
   type TaskView,
 } from './task-registry';
+import { modelExplanationFenceOf } from './task-model-explanation';
 import type { TaskOrigin } from './task-origin';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -2354,20 +2355,29 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     usage: USAGE,
   });
 
+  /** The fence a request takes when it reads the failure, before it asks the model. */
+  async function fenceOf(registry: ReturnType<typeof build>['registry'], taskId: string) {
+    const fence = modelExplanationFenceOf(await registry.record(taskId));
+    if (fence === undefined) throw new Error(`${taskId} has not failed`);
+    return fence;
+  }
+
   it('is kept on a failed task, replaced by the next, and leaves the run’s usage and revision as they were', async () => {
     const { registry } = build();
     await admit(registry, 'run-1');
     await registry.recordSettled('run-1', settle('failed'));
     const before = await registry.record('run-1');
+    const fence = await fenceOf(registry, 'run-1');
 
-    expect(await registry.recordModelExplanation('run-1', EXPLANATION)).toBe(true);
+    expect(await registry.recordModelExplanation('run-1', EXPLANATION, fence)).toBe('stored');
     const stored = await registry.record('run-1');
     expect(stored?.modelExplanation).toEqual(EXPLANATION);
     expect(stored?.usage).toEqual(USAGE);
     expect(stored?.revision).toBe(before?.revision);
 
     const second = { ...EXPLANATION, text: 'Again.', costUsd: null };
-    expect(await registry.recordModelExplanation('run-1', second)).toBe(true);
+    // Writing moves no revision, so the same fence still holds for the next explanation.
+    expect(await registry.recordModelExplanation('run-1', second, fence)).toBe('stored');
     expect(await recordField(registry, 'run-1', 'modelExplanation')).toEqual(second);
     // The view the operations serve carries none of it: it is read from the record alone.
     expect(JSON.stringify(await registry.get('run-1'))).not.toContain('Again.');
@@ -2379,9 +2389,15 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     await registry.recordSettled('done', settle('completed'));
     await admit(registry, 'going');
 
-    expect(await registry.recordModelExplanation('done', EXPLANATION)).toBe(false);
-    expect(await registry.recordModelExplanation('going', EXPLANATION)).toBe(false);
-    expect(await registry.recordModelExplanation('nope', EXPLANATION)).toBe(false);
+    const fence = {
+      revision: 0,
+      settledAt: settle('failed').at,
+      finishReason: 'error',
+      message: null,
+    };
+    expect(await registry.recordModelExplanation('done', EXPLANATION, fence)).toBe('stale');
+    expect(await registry.recordModelExplanation('going', EXPLANATION, fence)).toBe('stale');
+    expect(await registry.recordModelExplanation('nope', EXPLANATION, fence)).toBe('stale');
     expect(await recordField(registry, 'done', 'modelExplanation')).toBeUndefined();
     expect(await recordField(registry, 'going', 'modelExplanation')).toBeUndefined();
   });
@@ -2390,7 +2406,7 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     const { registry } = build();
     await admit(registry, 'run-1');
     await registry.recordSettled('run-1', settle('failed'));
-    await registry.recordModelExplanation('run-1', EXPLANATION);
+    await registry.recordModelExplanation('run-1', EXPLANATION, await fenceOf(registry, 'run-1'));
     // The catalog hook writes the same failure again, with the answer.
     await registry.recordSettled('run-1', { ...settle('failed'), message: 'later' });
     expect(await recordField(registry, 'run-1', 'modelExplanation')).toEqual(EXPLANATION);
@@ -2402,7 +2418,7 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
       ...settle('failed'),
       finishReason: TASK_OWNER_LOST_FINISH_REASON,
     });
-    await registry.recordModelExplanation('run-2', EXPLANATION);
+    await registry.recordModelExplanation('run-2', EXPLANATION, await fenceOf(registry, 'run-2'));
     await registry.recordSettled('run-2', settle('completed'));
     expect(await recordField(registry, 'run-2', 'modelExplanation')).toBeUndefined();
   });
@@ -2411,11 +2427,48 @@ describe('a model’s explanation of a failed task (COR-2534)', () => {
     const { registry } = build();
     await admit(registry, 'run-1');
     await registry.recordSettled('run-1', settle('failed'));
-    await registry.recordModelExplanation('run-1', EXPLANATION);
+    await registry.recordModelExplanation('run-1', EXPLANATION, await fenceOf(registry, 'run-1'));
 
     expect(await registry.redactSettlement('run-1')).toBe(true);
     expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
     expect(await registry.redactSettlement('run-1')).toBe(false);
+  });
+
+  it('is not stored when a purge lands between reading the failure and writing the text', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    // The request read the failure, with its message, and is now waiting on the model.
+    const fence = await fenceOf(registry, 'run-1');
+    expect(fence.message).toBe('the card was declined');
+
+    // The chat's content is purged: the status stays failed, the message goes.
+    expect(await registry.redactSettlement('run-1')).toBe(true);
+
+    expect(await registry.recordModelExplanation('run-1', EXPLANATION, fence)).toBe('stale');
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
+  });
+
+  it('is not stored when the run’s real end replaces the failure it was asked about', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', {
+      ...settle('failed'),
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+    });
+    const fence = await fenceOf(registry, 'run-1');
+
+    // The owner's real end replaces the inference, here with a failure of its own.
+    await registry.recordSettled('run-1', {
+      ...settle('failed'),
+      at: '2026-10-18T03:00:00.000Z',
+      finishReason: 'error',
+      message: 'the real failure',
+    });
+    expect((await fenceOf(registry, 'run-1')).message).toBe('the real failure');
+
+    expect(await registry.recordModelExplanation('run-1', EXPLANATION, fence)).toBe('stale');
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
   });
 });
 

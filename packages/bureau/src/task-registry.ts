@@ -73,7 +73,12 @@ import {
   type TaskFailureView,
   type TaskRetrying,
 } from './task-failure';
-import { isTaskModelExplanation, type TaskModelExplanation } from './task-model-explanation';
+import {
+  isTaskModelExplanation,
+  modelExplanationFenceOf,
+  type ModelExplanationFence,
+  type TaskModelExplanation,
+} from './task-model-explanation';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import {
   isStoredTaskOrigin,
@@ -774,10 +779,18 @@ export interface TaskRegistry {
   /**
    * COR-2534 — stores the text a model wrote about why a task failed, replacing the one it held. It
    * writes only a task that has failed, and does not count as a change of the record: it moves no
-   * `revision` and leaves the run's `usage` as it was. Resolves `true` when the explanation is
-   * stored, and `false` for a task with no record or one that has not failed.
+   * `revision` and leaves the run's `usage` as it was. The write is fenced on `fence`, the identity
+   * of the failure the model was asked about (`modelExplanationFenceOf`, read before the model was
+   * called): the model call takes time, and a purge of the chat's content, or the real end of a run
+   * inferred `owner-lost`, can land in it. Resolves `stored` when the explanation is stored, and
+   * `stale` when it is not: no record, a task that has not failed, or a record that changed since
+   * the fence was read. A stale explanation is never stored.
    */
-  recordModelExplanation(taskId: string, explanation: TaskModelExplanation): Promise<boolean>;
+  recordModelExplanation(
+    taskId: string,
+    explanation: TaskModelExplanation,
+    fence: ModelExplanationFence,
+  ): Promise<'stored' | 'stale'>;
   /**
    * COR-2526 — records that the Bureau saw a task's run stall (`stalledAt`, an ISO 8601 instant on
    * the Bureau's clock), or that it no longer does (`null`). It writes only a task that has a record
@@ -2254,18 +2267,26 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       });
     },
 
-    async recordModelExplanation(taskId, explanation) {
+    async recordModelExplanation(taskId, explanation, fence) {
       let stored = false;
       await update(
         taskId,
         (record) => {
-          // Re-judged on every compare-and-swap attempt: only the attempt that commits counts.
-          stored = record.settled?.status === 'failed';
+          // Re-judged on every compare-and-swap attempt: only the attempt that commits counts. The
+          // record must still be the failure the model was asked about: a purge or a replacing end
+          // changes its revision, and a message a purge emptied is no longer what was read.
+          const now = modelExplanationFenceOf(record);
+          stored =
+            now !== undefined &&
+            now.revision === fence.revision &&
+            now.settledAt === fence.settledAt &&
+            now.finishReason === fence.finishReason &&
+            now.message === fence.message;
           return stored ? { ...record, modelExplanation: { ...explanation } } : undefined;
         },
         false,
       );
-      return stored;
+      return stored ? 'stored' : 'stale';
     },
 
     recordStall(taskId, stalledAt) {

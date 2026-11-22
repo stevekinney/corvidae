@@ -341,6 +341,83 @@ describe('bureau.tasks.explanation.generate', () => {
   });
 });
 
+describe('bureau.tasks.explanation when the run changes while the model writes', () => {
+  /** A Bureau whose model runs `during` before it answers, as a slow model lets the record change under it. */
+  async function openWith(during: () => Promise<void>): Promise<OpenedBureau> {
+    const opened = await openBureau({
+      agents: { charger: failingAgent() },
+      bureauOptions: {
+        models: {
+          generate: (): GenerateFunction => async () => {
+            await during();
+            return {
+              content: JSON.stringify({ text: 'LATE-TEXT-b41e' }),
+              toolCalls: [],
+              usage: { prompt: 10, completion: 5, total: 15 },
+            };
+          },
+        },
+      },
+    });
+    cleanups.push(() => opened.dispose());
+    return opened;
+  }
+
+  it('stores nothing when the chat’s content is purged between the read and the write', async () => {
+    let purge: () => Promise<void> = async () => undefined;
+    const opened = await openWith(() => purge());
+    const taskId = await failedTask(opened);
+    purge = async () => {
+      await opened.bureau.internals.taskRegistry.redactSettlement(taskId);
+    };
+
+    const response = await generate(opened, taskId);
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.data).toMatchObject({ reason: 'run-changed' });
+    expect(JSON.stringify(response)).not.toContain('LATE-TEXT');
+    expect(await storedExplanation(opened, taskId)).toBeUndefined();
+    expect(textOf(await read(opened, taskId))).toBeUndefined();
+  });
+
+  it('stores nothing when the run’s real end replaces the failure it was asked about', async () => {
+    let replace: () => Promise<void> = async () => undefined;
+    const opened = await openWith(() => replace());
+    const registry = opened.bureau.internals.taskRegistry;
+    // A run inferred `owner-lost`, which is a failed task until its owner’s real end arrives.
+    await registry.recordAdmission({
+      taskId: 'lost-run',
+      contextId: 'lost-run',
+      incarnation: '',
+      agentName: 'charger',
+      owner: OWNER.alice,
+      origin: { kind: 'api' },
+      message: 'go',
+    });
+    await registry.recordSettled('lost-run', {
+      at: '2026-11-22T10:00:00.000Z',
+      status: 'failed',
+      finishReason: 'owner-lost',
+      message: 'the process that ran it is gone',
+    });
+    replace = async () => {
+      await registry.recordSettled('lost-run', {
+        // The run did fail, as its owner saw it, for another reason: still a failed task.
+        at: '2026-11-22T10:05:00.000Z',
+        status: 'failed',
+        finishReason: 'error',
+        message: 'the real failure',
+      });
+    };
+
+    const response = await generate(opened, 'lost-run');
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.data).toMatchObject({ reason: 'run-changed' });
+    expect(await storedExplanation(opened, 'lost-run')).toBeUndefined();
+  });
+});
+
 describe('bureau.tasks.explanation for an instance of a workflow file', () => {
   it('has no task to keep an explanation on: nothing stored on read, and a fault on generate', async () => {
     const served = await serveWorkflows(cleanups, {

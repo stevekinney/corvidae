@@ -1396,8 +1396,8 @@ export function buildBureauHandlerHost(
     // catalog that prices the model that wrote it. `decisions` is the Bureau's configured model.
     modelExplanations: {
       record: (taskId) => bureau.internals.taskRegistry.record(taskId),
-      recordModelExplanation: (taskId, explanation) =>
-        bureau.internals.taskRegistry.recordModelExplanation(taskId, explanation),
+      recordModelExplanation: (taskId, explanation, fence) =>
+        bureau.internals.taskRegistry.recordModelExplanation(taskId, explanation, fence),
       now: () => bureau.runtimeServices.clock.nowISO(),
     },
     catalog: () => bureau.models.catalog().descriptors,
