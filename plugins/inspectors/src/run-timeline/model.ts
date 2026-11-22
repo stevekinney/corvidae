@@ -9,6 +9,7 @@ import {
   openStepNumbers,
   stepWaterfall,
   type WaterfallBar,
+  waterfallSpan,
 } from '@lostgradient/interborough-plugin/step-waterfall';
 
 /** The status of a step as the engine reports it. */
@@ -149,8 +150,11 @@ type TimelineRow = {
   readonly statusVariant: StatusVariant;
   /** True while the run is still in the step. */
   readonly open: boolean;
-  /** How long the step took, in words. */
-  readonly durationText: string;
+  /**
+   * How long the step took, in words, or `undefined` for a step the run is still in: its badge
+   * already says it is running, and its length is not known yet.
+   */
+  readonly durationText: string | undefined;
   /** How many tries it took, in words. */
   readonly triesText: string;
   /** Where the bar sits on the run's scale; `undefined` for a step with no usable start. */
@@ -163,8 +167,13 @@ type TimelineRow = {
 export type TimelineModel = {
   readonly runId: string;
   readonly rows: readonly TimelineRow[];
-  /** Where the run stands in words (`Run completed.`), or `undefined` from a host that does not say. */
-  readonly runStatusText: string | undefined;
+  /** Where the run stands, as a badge says it, or `undefined` from a host that does not say. */
+  readonly runStatus: { readonly label: string; readonly variant: StatusVariant } | undefined;
+  /**
+   * The ends of the scale every bar is drawn against, said once: the first step's start and the
+   * latest end of any step, or `undefined` when the steps are all one instant or none has a start.
+   */
+  readonly axis: { readonly start: string; readonly end: string } | undefined;
   readonly truncated: boolean;
   /** One line over the steps: how many, and how many failed or are running. */
   readonly summary: string;
@@ -205,6 +214,25 @@ function statusOf(status: string, open: boolean): { label: string; variant: Stat
     : { label: status, variant: 'neutral' };
 }
 
+const RUN_STATUS_WORDS: Readonly<Record<string, { label: string; variant: StatusVariant }>> =
+  Object.assign(Object.create(null) as Record<string, never>, {
+    pending: { label: 'Pending', variant: 'neutral' },
+    running: { label: 'Running', variant: 'info' },
+    suspended: { label: 'Suspended', variant: 'neutral' },
+    completed: { label: 'Completed', variant: 'success' },
+    failed: { label: 'Failed', variant: 'danger' },
+    cancelled: { label: 'Cancelled', variant: 'neutral' },
+    'timed-out': { label: 'Timed out', variant: 'danger' },
+  });
+
+/** How a run's status reads in its badge: the word, and the tint, with an unknown status said as sent. */
+function runStatusOf(
+  status: string | undefined,
+): { label: string; variant: StatusVariant } | undefined {
+  if (status === undefined) return undefined;
+  return RUN_STATUS_WORDS[status] ?? { label: status, variant: 'neutral' };
+}
+
 const plural = (count: number, one: string, many: string): string =>
   `${String(count)} ${count === 1 ? one : many}`;
 
@@ -216,6 +244,13 @@ function summaryOf(rows: readonly TimelineRow[], truncated: boolean): string {
   if (failed > 0) parts.push(`${String(failed)} failed or timed out`);
   if (running > 0) parts.push(`${String(running)} running`);
   return `${parts.join(', ')}${truncated ? ', and more than the page shows' : ''}.`;
+}
+
+/** The scale's two ends in words, or `undefined` when there is no width to label. */
+function axisOf(span: number | undefined): { start: string; end: string } | undefined {
+  return span === undefined || span <= 0
+    ? undefined
+    : { start: '0 s', end: formatMilliseconds(span) };
 }
 
 /**
@@ -235,7 +270,7 @@ export function buildTimelineModel(timeline: Timeline, now: number): TimelineMod
       const isOpen = open.has(entry.step);
       const status = statusOf(entry.status, isOpen);
       const durationText = isOpen
-        ? 'running'
+        ? undefined
         : entry.duration === undefined
           ? 'no duration kept'
           : formatMilliseconds(entry.duration);
@@ -266,7 +301,8 @@ export function buildTimelineModel(timeline: Timeline, now: number): TimelineMod
   return {
     runId: timeline.runId,
     rows,
-    runStatusText: runStatus === undefined ? undefined : `Run ${runStatus}.`,
+    runStatus: runStatusOf(runStatus),
+    axis: axisOf(waterfallSpan(timeline.entries, { now, runStatus })),
     truncated: timeline.truncated,
     summary: summaryOf(rows, timeline.truncated),
   };

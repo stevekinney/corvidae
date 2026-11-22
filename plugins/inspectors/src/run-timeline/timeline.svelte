@@ -3,11 +3,14 @@
    * The run timeline's page (COR-2542): one run's steps as a waterfall, drawn with Cinder through
    * the panel kit. Text goes in as text, never as markup. The page is a `main` landmark with one
    * list of steps, each row naming the step, its status, how long it took and how many tries it
-   * took, over a bar on a track as wide as the run, and one polite live region for changes that
-   * outlives every redraw. It has no control and no form: it only shows. A refresh updates the
-   * page in place.
+   * took, over a bar on a track as wide as the run, under one scale labelled at its two ends. A
+   * state with no timeline to draw (loading, nothing to read, a host that gives no server tools) is
+   * Cinder's `EmptyState`, and a note about the timeline that is drawn (the connection, a run cut
+   * short) is a `Callout`. One polite live region carries changes to assistive technology and
+   * outlives every redraw. The page has no control and no form: it only shows. A refresh updates
+   * the page in place.
    */
-  import { Badge, Section, Text } from '@lostgradient/cinder';
+  import { Badge, Callout, EmptyState, Section, Text } from '@lostgradient/cinder';
 
   import type { TimelineView } from './view.svelte.ts';
 
@@ -16,39 +19,88 @@
   const model = $derived(view.model);
 </script>
 
-<p role="status" aria-live="polite" id="timeline-status" class="panel-status">
+<!-- The live region says each change to assistive technology; what a person sees of the same
+     changes is the list, the badges and the callouts, so it draws nothing of its own. -->
+<p role="status" aria-live="polite" id="timeline-status" class="timeline-announcement">
   {view.announcement}
 </p>
 
 {#if view.phase === 'loading'}
-  <p class="panel-notice" data-state="loading">Loading the timeline…</p>
+  <EmptyState
+    kind="first-use"
+    title="Loading the timeline"
+    description="The steps of the run appear here as soon as the host has read them."
+    headingLevel={1}
+    data-state="loading"
+  />
 {:else if view.phase === 'offline'}
-  <p class="panel-notice" data-state="offline">
-    This host does not let the page read a run, so there is no timeline to show.
-  </p>
+  <EmptyState
+    kind="disabled"
+    title="This host does not let the panel read a run"
+    description="The panel can only show a timeline when its host lets it call a tool. Open the run from the application to see its timeline."
+    headingLevel={1}
+    data-state="offline"
+  />
 {:else if view.phase === 'unreadable' && model === undefined}
-  <p class="panel-notice" data-state="unreadable">
-    The timeline could not be read. The run may not exist, you may not be allowed to read it, or
-    this Bureau keeps no timeline.
-  </p>
+  <EmptyState
+    kind="not-found"
+    title="This run’s timeline could not be read"
+    description="It may have been removed, or you may not have access to it."
+    headingLevel={1}
+    data-state="unreadable"
+  />
 {:else if model !== undefined}
   <main aria-labelledby="timeline-title" class="panel-page">
-    <div>
-      <Text as="h1" variant="h3" id="timeline-title">Timeline of run {model.runId}</Text>
-      <p class="timeline-summary">
-        {model.summary}
-        {#if model.runStatusText !== undefined}
-          <span data-run-status>{model.runStatusText}</span>
+    <header class="timeline-header">
+      <div class="timeline-heading">
+        <Text as="h1" variant="h3" id="timeline-title">Run timeline</Text>
+        {#if model.runStatus !== undefined}
+          <Badge
+            variant={model.runStatus.variant}
+            size="sm"
+            aria-label={`Run status: ${model.runStatus.label.toLowerCase()}`}
+            data-run-status
+          >
+            {model.runStatus.label}
+          </Badge>
         {/if}
-      </p>
-    </div>
+      </div>
+      <p class="timeline-run-id">{model.runId}</p>
+      {#if model.rows.length > 0}
+        <p class="timeline-summary">{model.summary}</p>
+      {/if}
+    </header>
 
-    <Section title="Steps">
-      {#if model.rows.length === 0}
-        <p class="panel-notice" data-state="empty">
-          This run has taken no steps yet. They appear here as it works.
-        </p>
-      {:else}
+    {#if view.connection === 'lost'}
+      <Callout variant="warning" data-state="connection-lost">
+        Connection lost. Retrying. The steps and bars may be out of date.
+      </Callout>
+    {:else if view.connection === 'back'}
+      <Callout variant="success" data-state="reconnected">
+        Reconnected. The timeline is up to date.
+      </Callout>
+    {/if}
+
+    {#if model.rows.length === 0}
+      <EmptyState
+        kind="first-use"
+        title="This run has taken no steps yet"
+        description="They appear here as it works."
+        headingLevel={2}
+        data-state="empty"
+      />
+    {:else}
+      <Section title="Steps">
+        {#if model.axis !== undefined}
+          <div
+            class="timeline-axis"
+            role="group"
+            aria-label="Time scale of the bars, from the first step to the end of the run"
+          >
+            <span>{model.axis.start}</span>
+            <span>{model.axis.end}</span>
+          </div>
+        {/if}
         <ol aria-label="Steps of the run, in the order it took them" class="timeline-steps">
           {#each model.rows as row (row.step)}
             <li class="timeline-step" data-step={row.step} data-status={row.status}>
@@ -71,7 +123,9 @@
                 {/if}
               </span>
               <p class="timeline-step__meta">
-                <span class="timeline-step__duration">{row.durationText}</span>
+                {#if row.durationText !== undefined}
+                  <span class="timeline-step__duration">{row.durationText}</span>
+                {/if}
                 <span
                   class="timeline-step__tries"
                   data-retried={row.triesText !== '1 try' ? '' : undefined}
@@ -82,13 +136,13 @@
             </li>
           {/each}
         </ol>
-      {/if}
-      {#if model.truncated}
-        <p class="panel-notice" data-state="truncated">
-          This run has more steps than the timeline holds. The first steps are shown, and the bars
-          are drawn against them alone.
-        </p>
-      {/if}
-    </Section>
+        {#if model.truncated}
+          <Callout variant="info" data-state="truncated">
+            This run has more steps than the timeline holds. The first steps are shown, and the bars
+            are drawn against them alone.
+          </Callout>
+        {/if}
+      </Section>
+    {/if}
   </main>
 {/if}

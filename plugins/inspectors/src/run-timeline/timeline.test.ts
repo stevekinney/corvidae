@@ -58,8 +58,61 @@ async function ready(
 describe('the run timeline page, drawn with Cinder (COR-2542)', () => {
   it('says it is loading until the first read answers', () => {
     const { container } = open();
-    expect(container.querySelector('[data-state="loading"]')?.textContent).toContain('Loading');
+    expect(container.querySelector('[data-state="loading"]')?.textContent).toContain(
+      'Loading the timeline',
+    );
     expect(container.querySelector('main')).toBeNull();
+  });
+
+  it('draws every state with no timeline as an empty state, and every note as a callout, never as a bare paragraph of its own', async () => {
+    const { view, container } = open();
+    for (const phase of ['loading', 'offline', 'unreadable'] as const) {
+      view.phase = phase;
+      await tick();
+      expect(container.querySelector(`.cinder-empty-state[data-state="${phase}"]`)).not.toBeNull();
+    }
+    await ready(view, entries, true);
+    expect(container.querySelector('.cinder-callout[data-state="truncated"]')).not.toBeNull();
+    expect(container.querySelector('.panel-notice')).toBeNull();
+  });
+
+  it('says plainly why a timeline could not be read, with no internal name', async () => {
+    const { view, container } = open();
+    view.phase = 'unreadable';
+    await tick();
+    const words = container.textContent ?? '';
+    expect(words).toContain('It may have been removed, or you may not have access to it.');
+    expect(words).not.toMatch(/Bureau|engine|durable/i);
+  });
+
+  it('says the bars may be out of date while the connection is lost, and that it is back after', async () => {
+    const { view, container } = open();
+    await ready(view);
+    expect(container.querySelector('.cinder-callout[data-state]')).toBeNull();
+    view.connection = 'lost';
+    await tick();
+    const lost = container.querySelector('.cinder-callout[data-state="connection-lost"]');
+    expect(lost?.getAttribute('data-cinder-variant')).toBe('warning');
+    expect(lost?.textContent).toContain('may be out of date');
+    view.connection = 'back';
+    await tick();
+    expect(container.querySelector('.cinder-callout[data-state="connection-lost"]')).toBeNull();
+    expect(
+      container
+        .querySelector('.cinder-callout[data-state="reconnected"]')
+        ?.getAttribute('data-cinder-variant'),
+    ).toBe('success');
+  });
+
+  it('labels the scale once, at its two ends, over the bars', async () => {
+    const { view, container } = open();
+    await ready(view);
+    const axis = container.querySelectorAll('.timeline-axis');
+    expect(axis).toHaveLength(1);
+    expect([...axis[0]!.querySelectorAll('span')].map((span) => span.textContent)).toEqual([
+      '0 s',
+      '8 s',
+    ]);
   });
 
   it('draws a row per step with its status, duration and tries, and renders text as text', async () => {
@@ -67,7 +120,10 @@ describe('the run timeline page, drawn with Cinder (COR-2542)', () => {
     await ready(view);
     expect(container.querySelector('b')).toBeNull();
     expect(container.querySelector('i')).toBeNull();
-    expect(container.querySelector('h1')?.textContent).toContain('<i>1</i>');
+    // The page is the run's timeline, with the run's id as a subtitle, and the run's own status beside it.
+    expect(container.querySelector('h1')?.textContent).toBe('Run timeline');
+    expect(container.querySelector('.timeline-run-id')?.textContent).toBe('run-<i>1</i>');
+    expect(container.querySelector('[data-run-status]')?.textContent?.trim()).toBe('Running');
     expect(container.querySelector('main[aria-labelledby="timeline-title"]')).not.toBeNull();
     const rows = [...container.querySelectorAll('li.timeline-step')];
     expect(rows.map((row) => row.getAttribute('data-step'))).toEqual(['1', '2', '3']);
@@ -75,6 +131,9 @@ describe('the run timeline page, drawn with Cinder (COR-2542)', () => {
     expect(rows[1]?.textContent).toContain('1 s');
     expect(rows[1]?.textContent).toContain('3 tries');
     expect(rows[2]?.textContent).toContain('Running');
+    // The badge says the step is running; the row does not say it a second time in words.
+    expect(rows[2]?.querySelector('.timeline-step__duration')).toBeNull();
+    expect(rows[2]?.textContent?.match(/running/gi)).toHaveLength(1);
     expect(rows[0]?.textContent).toContain('<b>pages</b>');
   });
 
@@ -113,14 +172,19 @@ describe('the run timeline page, drawn with Cinder (COR-2542)', () => {
     expect(last?.textContent).toContain('Ended');
     expect(last?.textContent).not.toContain('Running');
     expect(last?.querySelector('.timeline-step__bar[data-open]')).toBeNull();
-    expect(container.querySelector('[data-run-status]')?.textContent).toBe('Run failed.');
+    expect(container.querySelector('[data-run-status]')?.textContent?.trim()).toBe('Failed');
   });
 
-  it('says so when the run has no steps yet', async () => {
+  it('says it once when the run has no steps yet: one message, no section heading over it', async () => {
     const { view, container } = open();
     await ready(view, []);
     expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
     expect(container.querySelector('ol')).toBeNull();
+    expect(container.querySelector('.timeline-axis')).toBeNull();
+    expect(container.querySelector('.timeline-summary')).toBeNull();
+    expect([...container.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
+      'This run has taken no steps yet',
+    ]);
   });
 
   it('says so when the run has more steps than the read holds', async () => {

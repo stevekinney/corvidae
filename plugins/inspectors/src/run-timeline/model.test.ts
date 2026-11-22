@@ -11,6 +11,14 @@ import {
 
 type TimelineEntry = Timeline['entries'][number];
 
+/** What the run's badge says for each status a finished run can have. */
+const RUN_STATUS_LABELS = {
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  'timed-out': 'Timed out',
+};
+
 /** The timeline a host answered, read the way a tool result is read. */
 const readTimeline = (value: unknown) => timelineOfResult({ structuredContent: value });
 
@@ -185,17 +193,15 @@ describe('the rows', () => {
       9_000,
     );
     expect(model.rows[0]).toMatchObject({ statusLabel: 'Ended', open: false });
-    expect(model.rows[1]).toMatchObject({
-      statusLabel: 'Running',
-      open: true,
-      durationText: 'running',
-    });
+    // The badge says it is running, so the length is not said again in words beside the bar.
+    expect(model.rows[1]).toMatchObject({ statusLabel: 'Running', open: true });
+    expect(model.rows[1]?.durationText).toBeUndefined();
     expect(model.rows[1]?.bar?.open).toBe(true);
     expect(model.summary).toBe('2 steps, 1 running.');
-    expect(model.runStatusText).toBeUndefined();
+    expect(model.runStatus).toBeUndefined();
   });
 
-  it.each(['completed', 'failed', 'cancelled', 'timed-out'])(
+  it.each(['completed', 'failed', 'cancelled', 'timed-out'] as const)(
     'draws a step the engine left running as ended when the run is %s',
     (runStatus) => {
       const entries = [
@@ -211,11 +217,11 @@ describe('the rows', () => {
         statusVariant: 'neutral',
         open: false,
       });
-      expect(finished.rows[1]?.durationText).not.toBe('running');
+      expect(finished.rows[1]?.durationText).toBe('no duration kept');
       expect(finished.rows[1]?.bar?.open).toBe(false);
       expect(finished.rows[1]?.barLabel).not.toContain('still running');
       expect(finished.summary).toBe('2 steps.');
-      expect(finished.runStatusText).toBe(`Run ${runStatus}.`);
+      expect(finished.runStatus?.label).toBe(RUN_STATUS_LABELS[runStatus]);
       // A finished run's last bar ends where the engine's record does, not at `now`.
       const goingBar = going.rows[1]?.bar;
       const finishedBar = finished.rows[1]?.bar;
@@ -253,6 +259,57 @@ describe('the rows', () => {
     );
     expect(cut.summary).toBe('2 steps, 1 failed or timed out, and more than the page shows.');
     expect(cut.truncated).toBe(true);
+  });
+});
+
+describe('the run’s status', () => {
+  const statusOf = (runStatus: string | undefined) =>
+    buildTimelineModel(timeline([entry({ step: 1 })], false, runStatus), 9_000).runStatus;
+
+  it.each([
+    ['pending', 'Pending', 'neutral'],
+    ['running', 'Running', 'info'],
+    ['suspended', 'Suspended', 'neutral'],
+    ['completed', 'Completed', 'success'],
+    ['failed', 'Failed', 'danger'],
+    ['cancelled', 'Cancelled', 'neutral'],
+    ['timed-out', 'Timed out', 'danger'],
+  ])('says %s as %s in a %s badge', (runStatus, label, variant) => {
+    expect(statusOf(runStatus)).toEqual({ label, variant });
+  });
+
+  it('says an unknown status as the host sent it, says none from a host that sends none, and trusts no inherited name', () => {
+    expect(statusOf('paused')).toEqual({ label: 'paused', variant: 'neutral' });
+    expect(statusOf(undefined)).toBeUndefined();
+    expect(statusOf('constructor')).toEqual({ label: 'constructor', variant: 'neutral' });
+  });
+});
+
+describe('the scale of the bars', () => {
+  const axisOf = (entries: TimelineEntry[], runStatus?: string) =>
+    buildTimelineModel(timeline(entries, false, runStatus), 100_000).axis;
+
+  it('labels the first step’s start and the latest end of any step, once', () => {
+    expect(
+      axisOf([
+        entry({ step: 1, timestamp: 1_000, duration: 2_000 }),
+        entry({ step: 2, timestamp: 3_000, duration: 9_500 }),
+      ]),
+    ).toEqual({ start: '0 s', end: '11.5 s' });
+  });
+
+  it('runs a step still going to the present moment, and a finished run to its last step', () => {
+    const entries = [
+      entry({ step: 1, timestamp: 1_000, duration: 500 }),
+      entry({ step: 2, timestamp: 2_000, status: 'running', duration: undefined }),
+    ];
+    expect(axisOf(entries, 'running')).toEqual({ start: '0 s', end: '1 min 39 s' });
+    expect(axisOf(entries, 'failed')).toEqual({ start: '0 s', end: '1 s' });
+  });
+
+  it('has no scale to label when every step is one instant, and none for no steps', () => {
+    expect(axisOf([entry({ step: 1, duration: undefined, status: 'completed' })])).toBeUndefined();
+    expect(axisOf([])).toBeUndefined();
   });
 });
 

@@ -122,9 +122,8 @@ test.describe('the run timeline MCP App', () => {
     page,
   }) => {
     const { app, errors } = await open(page, { timeline: RUN });
-    await expect(
-      app.getByRole('heading', { level: 1, name: 'Timeline of run run-1' }),
-    ).toBeVisible();
+    await expect(app.getByRole('heading', { level: 1, name: 'Run timeline' })).toBeVisible();
+    await expect(app.getByText('run-1', { exact: true })).toBeVisible();
     const steps = app.getByRole('list', { name: /Steps of the run/ }).getByRole('listitem');
     await expect(steps).toHaveCount(4);
     await expect(steps.nth(0)).toContainText('fetchPages');
@@ -149,7 +148,8 @@ test.describe('the run timeline MCP App', () => {
     await expect(steps).toHaveCount(4);
     await expect(steps.nth(3)).toContainText('Ended');
     await expect(steps.nth(3)).not.toContainText('Running');
-    await expect(app.getByText('Run failed.')).toBeVisible();
+    await expect(app.getByRole('group', { name: /Time scale of the bars/ })).toBeVisible();
+    await expect(app.getByLabel('Run status: failed')).toBeVisible();
   });
 
   test('reads the run named by `runId` as well as `taskId`', async ({ page }) => {
@@ -163,7 +163,10 @@ test.describe('the run timeline MCP App', () => {
     page,
   }) => {
     const { app } = await open(page, { timeline: { ...RUN, entries: [] } });
-    await expect(app.getByText('This run has taken no steps yet.')).toBeVisible();
+    await expect(
+      app.getByRole('heading', { name: 'This run has taken no steps yet' }),
+    ).toBeVisible();
+    await expect(app.getByRole('heading', { name: 'Steps' })).toHaveCount(0);
     await page.evaluate(() => {
       window.referenceHost.handlers['bureau.runs.timeline'] = () => ({
         runId: 'run-1',
@@ -188,7 +191,12 @@ test.describe('the run timeline MCP App', () => {
 
   test('says when the run could not be read', async ({ page }) => {
     const { app } = await open(page, { timeline: undefined });
-    await expect(app.getByText('The timeline could not be read.')).toBeVisible();
+    await expect(
+      app.getByRole('heading', { name: 'This run’s timeline could not be read' }),
+    ).toBeVisible();
+    await expect(
+      app.getByText('It may have been removed, or you may not have access'),
+    ).toBeVisible();
   });
 
   test('keeps what it shows when the host stops answering, then reconnects', async ({ page }) => {
@@ -198,11 +206,13 @@ test.describe('the run timeline MCP App', () => {
       delete window.referenceHost.handlers['bureau.runs.timeline'];
     });
     await expect(app.getByRole('status')).toHaveText('Connection lost. Retrying.');
+    await expect(app.getByText('The steps and bars may be out of date.')).toBeVisible();
     await expect(app.getByRole('heading', { level: 1 })).toBeVisible();
     await page.evaluate((timeline) => {
       window.referenceHost.handlers['bureau.runs.timeline'] = () => timeline;
     }, RUN);
     await expect(app.getByRole('status')).toHaveText('Reconnected.');
+    await expect(app.getByText('Reconnected. The timeline is up to date.')).toBeVisible();
   });
 
   for (const scheme of SCHEMES) {

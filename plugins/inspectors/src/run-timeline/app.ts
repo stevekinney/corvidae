@@ -21,6 +21,8 @@ import TimelinePage from './timeline.svelte';
 import { createTimelineView } from './view.svelte.ts';
 
 const REFRESH_MILLISECONDS = 3000;
+/** How many reads the page shows that the host answers again, which is half a minute at the refresh rate. */
+const REOPENED_NOTE_READS = 10;
 
 async function start(): Promise<void> {
   const root = document.getElementById('root');
@@ -34,6 +36,8 @@ async function start(): Promise<void> {
   let applied = 0;
   let model: TimelineModel | undefined;
   let connected = true;
+  // Reads that have answered since the host answered again; they time out the note saying so.
+  let reads = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
   // Without the host's `serverTools` capability the page cannot call the server: it shows the
@@ -46,6 +50,14 @@ async function start(): Promise<void> {
   const show = (timeline: Timeline, announceReconnect: boolean): void => {
     const next = buildTimelineModel(timeline, Date.now());
     const announcement = announceReconnect ? 'Reconnected.' : describeChange(model, next);
+    if (announceReconnect) {
+      view.connection = 'back';
+      reads = 0;
+    } else if (view.connection === 'back') {
+      // The note that the host answers again stays for a few reads, counted and not timed, then goes.
+      reads += 1;
+      if (reads >= REOPENED_NOTE_READS) view.connection = 'ok';
+    }
     model = next;
     view.model = next;
     view.phase = 'ready';
@@ -55,6 +67,7 @@ async function start(): Promise<void> {
   const connectionLost = (): void => {
     if (connected && model !== undefined) {
       connected = false;
+      view.connection = 'lost';
       view.announcement = 'Connection lost. Retrying.';
     }
   };
@@ -99,6 +112,7 @@ async function start(): Promise<void> {
     generation += 1;
     model = undefined;
     connected = true;
+    view.connection = 'ok';
     view.model = undefined;
     view.phase = 'loading';
     void refresh();

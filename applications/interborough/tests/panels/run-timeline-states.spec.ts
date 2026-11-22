@@ -89,6 +89,23 @@ const MIXED_STEPS = [
   }),
 ];
 
+/**
+ * The steps of a run that went through without a failure and finished: its last entry is still
+ * `running`, as the engine leaves one it waited in, so the page draws it as ended.
+ */
+const COMPLETED_STEPS = [
+  step({ step: 1, label: 'fetchPages', duration: 2_400 }),
+  step({ step: 2, label: 'summarize', duration: 1_100 }),
+  step({ step: 3, label: 'publish', duration: 900 }),
+  step({
+    step: 4,
+    label: 'await-signal',
+    operationType: 'await-signal',
+    status: 'running',
+    duration: undefined,
+  }),
+];
+
 const timeline = (overrides: Record<string, unknown> = {}) => ({
   runId: 'run-1',
   kind: 'workflow',
@@ -221,7 +238,7 @@ test.describe('run-timeline-states: reading a run', () => {
   test('loading: the first read has not answered', async ({ page }) => {
     const app = await open(page, { answer: HELD });
     const ready = async () => {
-      await expect(app.getByText('Loading the timeline…')).toBeVisible();
+      await expect(app.getByRole('heading', { name: 'Loading the timeline' })).toBeVisible();
       await expect(app.getByRole('main')).toHaveCount(0);
     };
     await ready();
@@ -236,7 +253,9 @@ test.describe('run-timeline-states: reading a run', () => {
       await expect(steps(app)).toHaveCount(4);
       await expect(steps(app).nth(1)).toContainText('3 tries');
       await expect(steps(app).nth(3)).toContainText('Running');
-      await expect(app.getByText('Run running.')).toBeVisible();
+      // The run's own badge, and the scale said once over the bars.
+      await expect(app.getByLabel('Run status: running')).toBeVisible();
+      await expect(app.getByRole('group', { name: /Time scale of the bars/ })).toBeVisible();
     };
     await ready();
     await captureState(page, app, 'mixed', ready);
@@ -248,7 +267,7 @@ test.describe('run-timeline-states: reading a run', () => {
       await expect(steps(app)).toHaveCount(4);
       await expect(steps(app).nth(3)).toContainText('Ended');
       await expect(steps(app).nth(3)).not.toContainText('Running');
-      await expect(app.getByText('Run failed.')).toBeVisible();
+      await expect(app.getByLabel('Run status: failed')).toBeVisible();
     };
     await ready();
     await captureState(page, app, 'finished', ready);
@@ -257,7 +276,11 @@ test.describe('run-timeline-states: reading a run', () => {
   test('empty: the run has taken no steps yet', async ({ page }) => {
     const app = await open(page, { answer: () => timeline({ entries: [], runStatus: 'pending' }) });
     const ready = async () => {
-      await expect(app.getByText('This run has taken no steps yet.')).toBeVisible();
+      // One message, and no "Steps" heading over it saying the same thing.
+      await expect(
+        app.getByRole('heading', { name: 'This run has taken no steps yet' }),
+      ).toBeVisible();
+      await expect(app.getByRole('heading', { name: 'Steps' })).toHaveCount(0);
       await expect(app.getByRole('list', { name: /Steps of the run/ })).toHaveCount(0);
     };
     await ready();
@@ -281,7 +304,12 @@ test.describe('run-timeline-states: reading a run', () => {
       },
     });
     const ready = async () => {
-      await expect(app.getByText('The timeline could not be read.')).toBeVisible();
+      await expect(
+        app.getByRole('heading', { name: 'This run’s timeline could not be read' }),
+      ).toBeVisible();
+      await expect(
+        app.getByText('It may have been removed, or you may not have access to it.'),
+      ).toBeVisible();
       await expect(app.getByRole('main')).toHaveCount(0);
     };
     await ready();
@@ -300,6 +328,7 @@ test.describe('run-timeline-states: the host and the connection', () => {
     });
     const lost = async () => {
       await expect(app.getByRole('status')).toHaveText('Connection lost. Retrying.');
+      await expect(app.getByText('The steps and bars may be out of date.')).toBeVisible();
       await expect(steps(app)).toHaveCount(4);
     };
     await lost();
@@ -310,6 +339,7 @@ test.describe('run-timeline-states: the host and the connection', () => {
     }, timeline());
     const back = async () => {
       await expect(app.getByRole('status')).toHaveText('Reconnected.');
+      await expect(app.getByText('Reconnected. The timeline is up to date.')).toBeVisible();
       await expect(steps(app)).toHaveCount(4);
     };
     await back();
@@ -320,9 +350,7 @@ test.describe('run-timeline-states: the host and the connection', () => {
     const app = await open(page, { withoutServerTools: true });
     const ready = async () => {
       await expect(
-        app.getByText(
-          'This host does not let the page read a run, so there is no timeline to show.',
-        ),
+        app.getByRole('heading', { name: 'This host does not let the panel read a run' }),
       ).toBeVisible();
       await expect(app.getByRole('main')).toHaveCount(0);
     };
@@ -338,14 +366,14 @@ test.describe('run-timeline-states: the host and the connection', () => {
         content: [],
         structuredContent: JSON.stringify({
           status: 'ok',
-          ...timeline({ runStatus: 'completed' }),
+          ...timeline({ runStatus: 'completed', entries: COMPLETED_STEPS }),
         }),
       },
-      answer: () => timeline({ runStatus: 'completed' }),
+      answer: () => timeline({ runStatus: 'completed', entries: COMPLETED_STEPS }),
     });
     const ready = async () => {
       await expect(steps(app)).toHaveCount(4);
-      await expect(app.getByText('Run completed.')).toBeVisible();
+      await expect(app.getByLabel('Run status: completed')).toBeVisible();
       await expect(steps(app).nth(3)).toContainText('Ended');
     };
     await ready();

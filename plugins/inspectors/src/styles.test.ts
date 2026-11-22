@@ -21,4 +21,23 @@ describe('inspector styles', () => {
     expect(styles).not.toMatch(/:disabled/);
     expect(styles).not.toMatch(/opacity\s*:\s*\.6/);
   });
+
+  // A panel in a wide frame holds a readable column instead of spanning it, which stranded a badge
+  // 1,750 pixels from the name it belongs to (COR-2542): the cap is the family's, set once.
+  it('caps the page column in the base styles every panel inherits, and in no panel’s own', () => {
+    expect(BASE_STYLES).toMatch(/\.panel-page\{[^}]*max-width:40rem/);
+    for (const styles of [
+      PENDING_REVIEW_STYLES,
+      WORKFLOW_REVISION_STYLES,
+      RUN_TIMELINE_STYLES,
+      SCHEDULE_EDITOR_STYLES,
+    ]) {
+      expect(styles.split('.panel-page{').length - 1).toBe(1);
+      expect(styles.split('max-width:40rem').length - 1).toBe(1);
+    }
+  });
+
+  it('keeps the timeline’s notices out of its own styles: they are Cinder components', () => {
+    expect(RUN_TIMELINE_STYLES).not.toContain('panel-notice');
+  });
 });

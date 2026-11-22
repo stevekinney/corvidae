@@ -6,7 +6,7 @@
  */
 export const BASE_STYLES = `
 body{margin:0;padding:var(--cinder-space-3) var(--cinder-space-4)}
-.panel-page{display:flex;flex-direction:column;gap:var(--cinder-space-4)}
+.panel-page{display:flex;flex-direction:column;gap:var(--cinder-space-4);max-width:40rem}
 .panel-status{margin:0 0 var(--cinder-space-2);color:var(--cinder-text-muted);font-size:var(--cinder-text-sm)}
 .panel-status:empty{display:none}
 .panel-list{margin:var(--cinder-space-1) 0;padding-inline-start:var(--cinder-space-5)}
@@ -26,8 +26,12 @@ export const PENDING_REVIEW_STYLES = `${BASE_STYLES}
  * words beside it say the same, so color is never the only signal.
  */
 export const RUN_TIMELINE_STYLES = `${BASE_STYLES}
-.panel-notice{margin:var(--cinder-space-2) 0 0;color:var(--cinder-text-muted)}
-.timeline-summary{margin:var(--cinder-space-1) 0 0;color:var(--cinder-text-muted);font-size:var(--cinder-text-sm)}
+.timeline-announcement{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.timeline-header{display:flex;flex-direction:column;gap:var(--cinder-space-1)}
+.timeline-heading{display:flex;flex-wrap:wrap;align-items:center;gap:var(--cinder-space-2)}
+.timeline-run-id{margin:0;font:var(--cinder-text-xs)/1.4 var(--cinder-font-mono);color:var(--cinder-text-subtle);overflow-wrap:anywhere}
+.timeline-summary{margin:0;color:var(--cinder-text-muted);font-size:var(--cinder-text-sm)}
+.timeline-axis{display:flex;justify-content:space-between;margin-bottom:var(--cinder-space-1);font-size:var(--cinder-text-xs);color:var(--cinder-text-subtle)}
 .timeline-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .timeline-step{display:flex;flex-direction:column;gap:var(--cinder-space-1);padding:var(--cinder-space-2) 0;border-top:1px solid var(--cinder-border-muted)}
 .timeline-step:first-child{border-top:0}
@@ -67,7 +71,6 @@ export const SCHEDULE_EDITOR_STYLES = `${BASE_STYLES}
 .schedule-list{list-style:none;padding-inline-start:0}
 .schedule-list li{display:flex;align-items:center;justify-content:space-between;gap:var(--cinder-space-3);padding:var(--cinder-space-2) 0;border-top:1px solid var(--cinder-border-muted)}
 .schedule-list li span{min-width:0;overflow-wrap:anywhere}
-.panel-page{max-width:40rem}
 .editor-status[data-empty=true]{position:absolute;width:1px;height:1px;overflow:hidden}
 .schedule-form{display:flex;flex-direction:column;gap:var(--cinder-space-3)}
 `;
