@@ -136,7 +136,7 @@ async function captureLineage(page: Page, state: string, ready: () => Promise<vo
   });
 }
 
-test.describe('fork-comparison-states: the comparison on a fork’s Lineage panel', () => {
+test.describe('fork-comparison-states: /runs/:run, the comparison on a fork’s Lineage panel', () => {
   test('the Compare with source row, closed', async ({ page, request }) => {
     const forkId = await makeFork(request);
     const lineage = await openLineage(page, forkId);
@@ -272,7 +272,7 @@ async function captureDialog(page: Page, state: string, ready: () => Promise<voi
 
 const isDryRun = (body: JsonRpcBody) => body.params?.['dryRun'] === true;
 
-test.describe('fork-comparison-states: the fork dialog’s preview', () => {
+test.describe('fork-comparison-states: /runs/:run, the fork dialog’s preview', () => {
   test('loading: the dry run is being read, and Create fork waits', async ({ page }) => {
     const held = Promise.withResolvers<void>();
     try {
@@ -395,7 +395,7 @@ test.describe('fork-comparison-states: the fork dialog’s preview', () => {
  * seeded world (the Bureau's engine cannot fork under its default lease, COR-2635), so the card
  * with a comparison is answered at the panel route's edge, in the shape the Bureau serves.
  */
-test.describe('fork-comparison-states: the run panels on a workflow run’s page', () => {
+test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow run’s page', () => {
   const PANEL_TITLES = ['Run inspector', 'Schedule editor', 'Run comparison'] as const;
 
   /** `bureau.runs.compare` as the Bureau answers a fork of a workflow file. */
