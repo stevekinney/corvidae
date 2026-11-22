@@ -9,12 +9,17 @@ import {
   type CliClientDependencies,
   parseCliArguments,
 } from './cli-client.ts';
-import {
-  CLI_DESTRUCTIVE_ACTIONS,
-  CLI_UNCONFIRMED_ACTIONS,
-  destructiveActionName,
-} from './cli-destructive.ts';
+import { CLI_DESTRUCTIVE_ACTIONS } from './cli-destructive.ts';
 import { executeCliWithDispatchAssertions as executeCli } from './cli-dispatch.test-support.ts';
+
+/** The commands that run without asking, named: safety stops, a pause and a disable. */
+const UNCONFIRMED_ACTIONS: readonly string[] = [
+  'runs cancel',
+  'chats cancel',
+  'goals cancel',
+  'schedules pause',
+  'plugins disable',
+];
 
 const PREVIEW = { dryRun: true, target: { kind: 'task', id: 'preview' }, effects: [] };
 
@@ -183,20 +188,19 @@ describe('the CLI registry of destructive commands', () => {
         CLI_OPERATION_MAPPINGS[command as keyof typeof CLI_OPERATION_MAPPINGS];
       for (const operation of action.operations) expect(mapped).toContain(operation);
       if (action.confirms === 'never')
-        expect(CLI_UNCONFIRMED_ACTIONS, `${name} is neither confirmed nor named`).toContain(name);
+        expect(UNCONFIRMED_ACTIONS, `${name} is neither confirmed nor named`).toContain(name);
       else expect(registered.options, `${name} confirms, so it takes --yes`).toContain('yes');
     }
   });
 
   // spawn-free: nothing runs; the registry is read.
-  test('the unconfirmed commands are the named five', () => {
-    expect([...CLI_UNCONFIRMED_ACTIONS].toSorted()).toEqual([
-      'chats cancel',
-      'goals cancel',
-      'plugins disable',
-      'runs cancel',
-      'schedules pause',
-    ]);
+  test('the unconfirmed commands are exactly the named five', () => {
+    expect(
+      Object.entries(CLI_DESTRUCTIVE_ACTIONS)
+        .filter(([, action]) => action.confirms === 'never')
+        .map(([name]) => name)
+        .toSorted(),
+    ).toEqual([...UNCONFIRMED_ACTIONS].toSorted());
   });
 
   // spawn-free: nothing runs; arguments are parsed.
@@ -207,8 +211,7 @@ describe('the CLI registry of destructive commands', () => {
     expect(parseCliArguments(['chats', 'delete', 'c1', '--dry-run'])).toMatchObject({
       command: 'chats',
     });
-    const apiCall = parseCliArguments(['api', 'call', 'x', '--dry-run']);
-    expect('command' in apiCall && destructiveActionName(apiCall)).toBe('api call');
+    expect(parseCliArguments(['api', 'call', 'x', '--dry-run'])).toMatchObject({ command: 'api' });
   });
 });
 

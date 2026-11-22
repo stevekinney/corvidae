@@ -86,7 +86,7 @@ type CliFailure = Error & { status?: number; usage?: boolean; exitCode?: CliExit
  * route) falls back to the code of its exit status. `CLI_CONNECTION_FAILED` is the only code whose
  * `retryable` is `true`.
  */
-export const CLI_LOCAL_ERROR_CODES = Object.freeze({
+const CLI_LOCAL_ERROR_CODES = Object.freeze({
   failed: 'CLI_FAILED',
   usage: 'CLI_USAGE',
   authorization: 'CLI_AUTHORIZATION',
@@ -98,7 +98,7 @@ export const CLI_LOCAL_ERROR_CODES = Object.freeze({
 } as const);
 
 /** A named code for an error the CLI raised itself. */
-export type CliLocalErrorCode = (typeof CLI_LOCAL_ERROR_CODES)[keyof typeof CLI_LOCAL_ERROR_CODES];
+type CliLocalErrorCode = (typeof CLI_LOCAL_ERROR_CODES)[keyof typeof CLI_LOCAL_ERROR_CODES];
 
 const LOCAL_ERROR_CODE_BY_EXIT: Readonly<Record<Exclude<CliExitCode, 0>, CliLocalErrorCode>> =
   Object.freeze({

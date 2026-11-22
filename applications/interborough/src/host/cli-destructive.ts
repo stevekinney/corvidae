@@ -86,15 +86,8 @@ export const CLI_DESTRUCTIVE_ACTIONS: Readonly<Record<string, CliDestructiveActi
     'api call': { subject: 'Run operation', operations: [], confirms: 'destructive-operation' },
   } satisfies Record<string, CliDestructiveAction>);
 
-/** The actions that run without asking, by name: cancels, pause and disable. */
-export const CLI_UNCONFIRMED_ACTIONS: readonly string[] = Object.freeze(
-  Object.entries(CLI_DESTRUCTIVE_ACTIONS)
-    .filter(([, action]) => action.confirms === 'never')
-    .map(([name]) => name),
-);
-
 /** `<command> <action>` for a parsed command, the key of {@link CLI_DESTRUCTIVE_ACTIONS}. */
-export function destructiveActionName(parsed: Parsed): string {
+function destructiveActionName(parsed: Parsed): string {
   return `${parsed.command} ${parsed.arguments[0] ?? ''}`;
 }
 

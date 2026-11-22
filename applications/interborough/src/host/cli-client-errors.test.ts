@@ -5,12 +5,23 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import {
-  CLI_LOCAL_ERROR_CODES,
   CLI_SCHEMA_VERSION,
   executeCli,
   type CliClientDependencies,
   type CliExitCode,
 } from './cli-client.ts';
+
+/** Every `error.code` the CLI raises itself: the test lists them, so a new one is a visible change. */
+const CLI_LOCAL_ERROR_CODES = {
+  failed: 'CLI_FAILED',
+  usage: 'CLI_USAGE',
+  authorization: 'CLI_AUTHORIZATION',
+  conflict: 'CLI_CONFLICT',
+  inputRequired: 'CLI_INPUT_REQUIRED',
+  connectionFailed: 'CLI_CONNECTION_FAILED',
+  outcomeUnknown: 'CLI_OUTCOME_UNKNOWN',
+  interrupted: 'CLI_INTERRUPTED',
+} as const;
 
 const goldenDirectory = join(import.meta.dir, '__fixtures__', 'cli-error-golden');
 
