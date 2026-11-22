@@ -25,8 +25,8 @@ try {
     await Bun.write(
       entry,
       name === 'cinder'
-        ? 'export { Button } from "@lostgradient/cinder/button"; import "@lostgradient/cinder/styles";'
-        : 'export { MarkdownEditor } from "@lostgradient/editor/markdown-editor";',
+        ? 'export { default as Button } from "@lostgradient/cinder/button"; import "@lostgradient/cinder/styles";'
+        : 'export { default as MarkdownEditor } from "@lostgradient/editor/markdown-editor";',
     );
     const result = await Bun.build({
       entrypoints: [entry],

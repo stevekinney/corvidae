@@ -17,10 +17,8 @@ for (const [entry, target] of Object.entries(manifest.exports)) {
   const specifier = packageName + entry.slice(1);
   const runtime = typeof target === 'string' ? target : (target.default ?? target.import);
   assert.ok(runtime, specifier);
-  require.resolve(
-    typeof target === 'object' && !target.default ? packageName + '/package.json' : specifier,
-  );
   if (runtime.endsWith('.js')) await import(specifier);
+  else require.resolve(specifier);
 }
 
 if (name === 'markdown') {
