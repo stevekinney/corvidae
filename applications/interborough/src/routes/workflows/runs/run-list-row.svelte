@@ -106,6 +106,7 @@
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
+  metaLines={2}
   {...cost === undefined ? {} : phone ? { detail: costCell } : { trailing: costCell }}
 >
   {#snippet status()}<StatusDot {word} />{/snippet}

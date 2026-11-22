@@ -36,7 +36,7 @@
     type FacetDefinition,
     type FilterSegment,
   } from '@lostgradient/cinder';
-  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { getConnection } from '../../../app/connection.svelte.ts';
@@ -79,19 +79,27 @@
     runSegmentCounts,
     runStatusWord,
     serializeRunFilter,
+    serverRunFilter,
     visibleRunSegments,
     type RunFilter,
     type RunListEntry,
   } from './run-rows.ts';
+  import RunFailedStep from './run-failed-step.svelte';
   import { STARTED_BY_FILTER_LABELS, STARTED_BY_KINDS } from './started-by.ts';
 
   /** The form that starts a run. */
   const START_RUN_PATH = '/runs/new';
   /** The query that reads every task: its key is cancelled by name when a slow read is given up. */
   const TASKS_QUERY_KEY = ['bureau-tasks', 'runs', 'all'] as const;
+  /** The failed tasks, read for the step names to suggest while a server filter narrows the list. */
+  const FAILED_TASKS_QUERY_KEY = ['bureau-tasks', 'runs', 'failed'] as const;
   /** How often a running run's duration is read again while one is on the list. */
   const RUNNING_CLOCK_MILLISECONDS = 1_000;
   const filter = $derived(parseRunFilter(router.current.search));
+  // The two filters the Bureau applies (COR-2535): the read narrows by them first, and every other
+  // filter is applied here to what it returns.
+  const serverFilter = $derived(serverRunFilter(filter));
+  const serverFiltered = $derived(Object.keys(serverFilter).length > 0);
   const queryClient = useQueryClient();
   const connection = getConnection();
   // A run only the workflow engine holds opens on the engine's page, for a caller who may read it.
@@ -105,8 +113,11 @@
   const tasks = createQuery(() => {
     const polling = !bureauLive();
     return {
-      queryKey: TASKS_QUERY_KEY,
-      queryFn: ({ signal }: { signal: AbortSignal }) => listAllTasks({}, { signal }),
+      queryKey: [...TASKS_QUERY_KEY, serverFilter] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) => listAllTasks(serverFilter, { signal }),
+      // A change of filter keeps the list and the bar (and the focus in the step field) on screen
+      // until the narrowed read answers.
+      placeholderData: keepPreviousData,
       // A catalog run is announced by `run.settled` alone: no event says one has started, and
       // `run.removed` is not emitted for it (COR-1730), so a run still going shows only on the timer.
       // poll-reason: fallback
@@ -114,6 +125,19 @@
       retry: false,
     };
   }, undefined);
+  // While the read is narrowed by the Bureau, the runs it listed say nothing of the other steps
+  // runs failed at, so the failed runs are read for the names to suggest. Unnarrowed, the list is
+  // the source and nothing more is read.
+  const failedTasks = createQuery(
+    () => ({
+      queryKey: FAILED_TASKS_QUERY_KEY,
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        listAllTasks({ status: 'failed' }, { signal }),
+      enabled: serverFiltered,
+      retry: false,
+    }),
+    undefined,
+  );
   // Every goal, a page at a time: a run past the first hundred is still a run.
   const goals = createQuery(() => {
     const polling = !bureauLive();
@@ -183,6 +207,8 @@
     ...(filter.agent === undefined ? {} : { agent: filter.agent }),
     ...(filter.startedBy === undefined ? {} : { startedBy: filter.startedBy }),
     ...(filter.workflow === undefined ? {} : { workflow: filter.workflow }),
+    ...(filter.failedStep === undefined ? {} : { failedStep: filter.failedStep }),
+    ...(filter.retrying === undefined ? {} : { retrying: filter.retrying }),
     ...(filter.search === undefined ? {} : { search: filter.search }),
   });
   const unsegmented = $derived(filterRunRows(everyRun, others, agentLabel));
@@ -293,12 +319,26 @@
     ].toSorted((left, right) => workflowTypeName(left).localeCompare(workflowTypeName(right))),
   );
 
+  // The steps runs failed at (COR-2535), offered to the Failed at step field: the names present in
+  // the listed runs, and the one the address names.
+  const failedSteps = $derived(
+    [
+      ...new Set([
+        ...(serverFiltered ? (failedTasks.data ?? []) : (tasks.data ?? [])).flatMap((task) => {
+          const label = task.failure?.step?.label;
+          return label === undefined || label === '' ? [] : [label];
+        }),
+        ...(filter.failedStep === undefined ? [] : [filter.failedStep]),
+      ]),
+    ].toSorted(),
+  );
+
   const segments = $derived<FilterSegment[]>(
     visibleRunSegments(counts, filter.status).map((value) => ({
       value,
       label: TASK_COPY.list.segments[value],
       // The counts wait for every read: a segment is not 0 because a read has not arrived.
-      count: loading ? 'pending' : counts[value],
+      count: loading || settling ? 'pending' : counts[value],
     })),
   );
   const facets = $derived<FacetDefinition[]>([
@@ -326,6 +366,18 @@
       multiple: false,
       options: agentNames.map((name) => ({ value: name, label: filterLabelOf(agentLabel(name)) })),
     },
+    // The two failure filters live in the Filter menu, never in the row: a row that holds the
+    // segments and the three chips has no room for them (COR-2535), and the row's folding, which the
+    // other filters' rows depend on, stays what it was. While one is on, the row shows it as a
+    // chip, "Failed at step: charge-card", which removes it.
+    { type: 'toggle', key: 'retrying', label: TASK_COPY.retryingLabel, menuOnly: true },
+    {
+      type: 'custom',
+      key: 'failedStep',
+      label: TASK_COPY.failedStepLabel,
+      menuOnly: true,
+      control: failedStepControl,
+    },
   ]);
   // The chips that move into the Filter menu when the row cannot hold them, least used first: a
   // chip with a filter applied never moves, so an applied filter stays visible and removable
@@ -341,6 +393,12 @@
     ...(filter.agent === undefined
       ? []
       : [{ key: 'agent', value: filter.agent, label: TASK_COPY.agentLabel }]),
+    ...(filter.retrying === undefined
+      ? []
+      : [{ key: 'retrying', value: TASK_COPY.retryingOn, label: TASK_COPY.retryingLabel }]),
+    ...(filter.failedStep === undefined
+      ? []
+      : [{ key: 'failedStep', value: filter.failedStep, label: TASK_COPY.failedStepLabel }]),
   ]);
 
   // What is typed in Search runs. The address holds it as typed, and the list reads it trimmed, so
@@ -391,6 +449,9 @@
     ]),
   );
   const loading = $derived(tasks.isPending || goals.isPending || chats.isPending);
+  // The list held from the last filter while the one the address names is read: what it holds says
+  // nothing of the filter on screen, so no count is told and no first use is declared from it.
+  const settling = $derived(tasks.isPlaceholderData);
 
   // Cancel, in the status line a slow read shows, gives the read up: the rows are replaced by
   // "Loading canceled" and Try again, and the header and the bar stay. Reads that go on to deliver
@@ -419,7 +480,10 @@
     if (goals.data === undefined) void goals.refetch();
     if (chats.data === undefined) void chats.refetch();
   }
-  const firstUse = $derived(!loading && !failed && everyRun.length === 0);
+  // A read the Bureau narrowed that lists nothing is a filter matching nothing, not a first use.
+  const firstUse = $derived(
+    !loading && !settling && !failed && !serverFiltered && everyRun.length === 0,
+  );
   const noMatch = $derived(
     runNoMatchDescription(
       filter,
@@ -427,6 +491,22 @@
     ),
   );
 </script>
+
+{#snippet failedStepControl({
+  onValueChange,
+  disabled,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  disabled: boolean;
+})}
+  <RunFailedStep
+    value={filter.failedStep ?? ''}
+    steps={failedSteps}
+    {disabled}
+    onCommit={onValueChange}
+  />
+{/snippet}
 
 {#snippet bar()}
   <FilterBar
