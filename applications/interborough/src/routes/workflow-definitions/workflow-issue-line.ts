@@ -14,7 +14,7 @@ import type { WorkflowValidation } from '../../lib/workflow-files.ts';
 export type DocumentProblem = { readonly line: number; readonly message: string };
 
 /** One issue as the Bureau names it: a path in either form, and its message. */
-export type DocumentIssue = {
+type DocumentIssue = {
   readonly path: string | readonly (string | number)[];
   readonly message: string;
 };
@@ -28,7 +28,7 @@ function sentence(message: string): string {
 }
 
 /** The first issue the text holds a line for, as the JSON tab marks it; `undefined` when none does. */
-export function documentProblemOf(
+function documentProblemOf(
   text: string,
   issues: readonly DocumentIssue[],
 ): DocumentProblem | undefined {

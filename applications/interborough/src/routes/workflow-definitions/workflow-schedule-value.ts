@@ -16,7 +16,7 @@ const CRON = /^\S+(?:\s+\S+){4}$/;
 const INTERVAL = /^(\d+)(m|h)$/;
 
 /** The zone a cron schedule the file names no zone for is read in. */
-export const FILE_SCHEDULE_DEFAULT_ZONE = 'UTC';
+const FILE_SCHEDULE_DEFAULT_ZONE = 'UTC';
 
 /** The trigger's cadence as the builder edits it, or `undefined` for a `spec` it cannot show. */
 export function scheduleValueOf(trigger: {
