@@ -1,14 +1,14 @@
 {
   "issue": "COR-2548",
   "branch": "chef/cor-2548-settings-mcp-follow-up",
-  "checkedAt": "649ffad625d3464a6a762d872cc47a811404447f",
+  "checkedAt": "a03ec3d7b055c546c2bb8f6215eb37f7fba4a78a",
   "briefVersion": "2fb3bb285c65",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "CodeBlock wrap breaks a long URL only at a slash, dot, colon or hyphen: a word with those is one inline-block box with a wbr after each part. code-block-breaks.test.ts passes and the Chromium spec code-block-breaks.playwright.ts passes (run narrowly this round, 645 specs passed). The design review confirmed AC1 met."
+      "evidence": "CodeBlock wrap breaks a long URL only at a slash, dot, colon or hyphen: a word with those is one inline-block box with a wbr after each part. code-block-breaks.test.ts passes and the Chromium spec code-block-breaks.playwright.ts passes (run narrowly this round, 645 specs passed). The design review confirmed AC1 met. Visual baselines for the new breaks fixture and the changed rail fixture were regenerated in the arm64 jammy renderer container and committed."
     },
     {
       "id": "AC2",
