@@ -735,10 +735,67 @@ async function pausedClock(page: Page): Promise<void> {
 
 const homeBody = (page: Page) => page.locator('[data-page="home"]');
 
+/**
+ * Records the primitives that determine Home's loading-to-overview geometry. This is deliberately
+ * test-only evidence: the attachment lets a hosted failure distinguish an offset in a child from a
+ * changed grid, parent gap, focus line, or skeleton without changing the assertion it witnesses.
+ */
+async function homeLoadingGeometry(page: Page): Promise<unknown> {
+  const selectors = [
+    '[data-page="home"]',
+    '[data-testid="home-date"]',
+    '.ib-home__focus',
+    '[data-testid="home-loading-focus"]',
+    '.cinder-spotlight',
+    '.ib-home__columns',
+    '.ib-home__main',
+    '.ib-home__aside',
+    '.ib-home__needs-you',
+    '.ib-home__needs-attention',
+    '.ib-home__start-chat',
+    '[data-home-card]',
+    '.cinder-skeleton-status-place',
+    '.cinder-skeleton-group',
+    '.cinder-skeleton',
+  ];
+  const metrics = await Promise.all(
+    selectors.map(async (selector) => ({
+      selector,
+      elements: await page.locator(selector).evaluateAll((elements) =>
+        elements.map((element) => {
+          const rectangle = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            tag: element.tagName.toLowerCase(),
+            className: element.className,
+            homeCard: element.getAttribute('data-home-card'),
+            testId: element.getAttribute('data-testid'),
+            rectangle: {
+              x: Math.round(rectangle.x * 100) / 100,
+              y: Math.round(rectangle.y * 100) / 100,
+              width: Math.round(rectangle.width * 100) / 100,
+              height: Math.round(rectangle.height * 100) / 100,
+            },
+            style: {
+              display: style.display,
+              gap: style.gap,
+              gridTemplateColumns: style.gridTemplateColumns,
+              fontSize: style.fontSize,
+              lineHeight: style.lineHeight,
+            },
+          };
+        }),
+      ),
+    })),
+  );
+  return { viewport: page.viewportSize(), metrics };
+}
+
 test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
   test('draws nothing for the first 300 ms, then placeholders in its real layout (02c, 02d)', async ({
     page,
     checkA11y,
+    testInfo,
   }) => {
     await pausedClock(page);
     const release = await holdHomeReads(page);
@@ -807,6 +864,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
         ].map(async (locator) => (await locator.boundingBox())!.y),
       );
     const topsWhileLoading = await sectionTops();
+    const loadingGeometry = await homeLoadingGeometry(page);
     // The page settles its paint on animation frames, which a stopped clock never delivers.
     await page.clock.resume();
     await checkA11y('Home loading');
@@ -821,6 +879,19 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     expect(Math.round(after!.width)).toBe(Math.round(before!.width));
     await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
     const topsLoaded = await sectionTops();
+    const loadedGeometry = await homeLoadingGeometry(page);
+    await testInfo.attach('home-loading-geometry', {
+      body: JSON.stringify(
+        {
+          sectionTops: { loading: topsWhileLoading, loaded: topsLoaded },
+          loading: loadingGeometry,
+          loaded: loadedGeometry,
+        },
+        null,
+        2,
+      ),
+      contentType: 'application/json',
+    });
     for (const [index, name] of ['Needs you', 'Needs attention', 'Start a chat'].entries()) {
       expect(
         Math.abs(topsLoaded[index]! - topsWhileLoading[index]!),
