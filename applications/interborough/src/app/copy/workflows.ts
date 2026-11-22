@@ -340,6 +340,7 @@ export const WORKFLOW_COPY = {
       /** The accessible names of the filter bar and of the rows. */
       filtersLabel: 'Filter this workflow’s runs',
       rowsLabel: 'Runs of this workflow, newest first',
+      waitingSignalLabel: 'Waiting',
       emptyTitle: 'No runs of this workflow yet',
       emptyDescription: 'Start one and it shows up here with its steps and result.',
       /** The plain hint under the sentence, which names the header's action. */
@@ -979,6 +980,7 @@ export const WORKFLOW_COPY = {
     compatible: 'Compatible',
     incompatible: 'Breaking',
     noCurrent: 'No current revision',
+    noComparison: 'No compatibility comparison',
     noCurrentDescription: 'There is no current revision to compare with.',
     /** Why a revision is not compatible with the current one. */
     reason: (reason: string): string => {

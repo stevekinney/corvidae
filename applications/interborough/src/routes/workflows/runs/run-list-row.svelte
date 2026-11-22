@@ -10,6 +10,7 @@
   import { StackedListItem, StatusDot, type StackedListItemPhoneWidth } from '@lostgradient/cinder';
 
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
+  import { WORKFLOW_COPY } from '../../../app/copy/workflows.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { runLineTwo, runStatusWord, type RunRow } from './run-rows.ts';
@@ -68,7 +69,9 @@
 
   const word = $derived(runStatusWord(row, now));
   const statusLabel = $derived(
-    workflowPage && word === 'Waiting for a signal' ? TASK_COPY.list.segments.signal : undefined,
+    workflowPage && word === 'Waiting for a signal'
+      ? WORKFLOW_COPY.page.runs.waitingSignalLabel
+      : undefined,
   );
   const baseLineTwo = $derived(
     runLineTwo(row, {

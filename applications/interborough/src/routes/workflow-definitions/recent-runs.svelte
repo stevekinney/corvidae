@@ -158,7 +158,7 @@
   const segments = $derived<FilterSegment[]>(
     visibleRunSegments(counts, filter.status).map((value) => ({
       value,
-      label: TASK_COPY.list.segments[value],
+      label: value === 'signal' ? copy.waitingSignalLabel : TASK_COPY.list.segments[value],
       // The counts wait for the read: a segment is not 0 because the read has not arrived.
       count: runs.isPending ? 'pending' : counts[value],
     })),

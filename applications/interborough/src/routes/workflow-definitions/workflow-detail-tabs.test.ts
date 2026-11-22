@@ -279,7 +279,7 @@ describe('the History tab', () => {
     await openTab(root, TABS.history);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain(
-        WORKFLOW_COPY.revisions.noCurrent,
+        WORKFLOW_COPY.revisions.noComparison,
       ),
     );
     expect(testId(root, 'workflow-revisions')?.textContent).not.toContain(

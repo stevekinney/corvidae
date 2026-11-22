@@ -383,6 +383,7 @@
       create={notFoundCopy.create}
       back={fault?.back ?? notFoundCopy.back}
       search={notFoundCopy.searchHidden !== true}
+      neutralError={notFoundCopy.neutralError === true}
     />
   {:else if state === 'error'}
     {@render failure(errorCopy.title, errorCopy.description)}

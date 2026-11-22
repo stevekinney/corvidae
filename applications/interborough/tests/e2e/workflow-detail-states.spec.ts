@@ -60,6 +60,19 @@ async function rewriteOperation(
   });
 }
 
+/** Gives the captioned run its example values while keeping the live run's origin and progress. */
+async function rewriteWorkflowRuns(
+  page: Page,
+  workflow: string,
+  rewrite: (run: JsonRecord) => JsonRecord,
+): Promise<void> {
+  await rewriteOperation(page, 'bureau.workflows.runs.list', (answer, params) => {
+    const runs: unknown = answer['runs'];
+    if (params['workflow'] !== workflow || !Array.isArray(runs)) return answer;
+    return { ...answer, runs: (runs as JsonRecord[]).map(rewrite) };
+  });
+}
+
 /** Opens `path` at `width` on the sample clock and waits until the workflow's page is drawn. */
 async function openWorkflow(page: Page, path: string, width: number): Promise<void> {
   await page.clock.setFixedTime(SAMPLE_NOW);
@@ -133,6 +146,9 @@ for (const width of WIDTHS) {
       page,
     }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await rewriteWorkflowRuns(page, world.workflows.releaseNotes, (run) =>
+        run['status'] === 'failed' ? { ...run, failure: 'GitHub didn’t answer' } : run,
+      );
       const path = `/workflows/${encodeURIComponent(world.workflows.releaseNotes)}`;
       await openWorkflow(page, `${path}?tab=runs`, width);
       const runs = detail(page).getByTestId('workflow-recent-runs');
@@ -194,13 +210,15 @@ for (const width of WIDTHS) {
 
       // The segment a parked run counts under, shown only while one is (row 63o): a bar that
       // folds its segments into one select is opened, so the capture shows it either way.
-      const signalSegment = TASK_COPY.list.segments.signal;
+      const signalSegment = new RegExp(
+        `^${WORKFLOW_COPY.page.runs.waitingSignalLabel}(?:\\s*,?\\s*1)?$`,
+      );
       const folded = runs.getByRole('combobox', { name: TASK_COPY.statusLabel });
       if (await folded.isVisible()) {
         await folded.click();
-        await expect(page.getByRole('option', { name: new RegExp(signalSegment) })).toBeVisible();
+        await expect(page.getByRole('option', { name: signalSegment })).toBeVisible();
       } else {
-        await expect(runs.getByRole('radio', { name: new RegExp(signalSegment) })).toBeVisible();
+        await expect(runs.getByRole('radio', { name: signalSegment })).toBeVisible();
       }
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',
@@ -310,14 +328,23 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('Triage inbox’s Runs tab as the sample world holds it (63p)', async ({ page }) => {
+    test('Triage inbox’s paused Runs tab and its recorded schedule rows (63p)', async ({
+      page,
+    }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await rewriteWorkflowRuns(page, world.workflows.triageInbox, (run) => {
+        const started = run['createdAt'];
+        if (typeof started !== 'string' || !started.startsWith('2026-10-23')) return run;
+        return { ...run, updatedAt: new Date(Date.parse(started) + 39_000).toISOString() };
+      });
       await openWorkflow(
         page,
         `/workflows/${encodeURIComponent(world.workflows.triageInbox)}?tab=runs`,
         width,
       );
-      await expect(detail(page).getByTestId('workflow-recent-runs')).toBeVisible();
+      const runs = detail(page).getByTestId('workflow-recent-runs');
+      await expect(runs).toContainText('41 s');
+      await expect(runs).toContainText('39 s');
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',
         tab: 'runs',
@@ -408,10 +435,11 @@ for (const width of WIDTHS) {
       await expect(
         page.getByRole('heading', { level: 1, name: WORKFLOW_COPY.page.notFound.title }),
       ).toBeVisible();
+      await expect(page.locator('.cinder-error-state[data-cinder-tone="neutral"]')).toBeVisible();
       await expect(
         page
           .getByRole('group', { name: WORKFLOW_COPY.page.notFound.title, exact: true })
-          .getByRole('link', { name: 'Back to Workflows', exact: true }),
+          .getByRole('link', { name: 'Back to workflows', exact: true }),
       ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',

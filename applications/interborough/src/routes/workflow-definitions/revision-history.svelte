@@ -70,7 +70,7 @@
             {:else if revision.compatibility === 'breaking'}
               <StatusDot status="neutral" label={copy.incompatible} />
             {:else}
-              <StatusDot status="neutral" label={copy.noCurrent} />
+              <StatusDot status="neutral" label={copy.noComparison} />
             {/if}
             {', '}<time datetime={revision.savedAt}
               >{copy.saved(dayAndTime(Date.parse(revision.savedAt), Date.now()))}</time
