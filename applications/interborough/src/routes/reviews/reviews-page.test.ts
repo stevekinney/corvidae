@@ -493,7 +493,12 @@ describe('the keys that act on the open review', () => {
     const reversibleApproval = toolApprovalFixture({
       approval: {
         ...APPROVAL.approval,
-        action: { type: 'approval', message: 'Look up this order?', risk: 'medium' },
+        action: {
+          type: 'approval',
+          message: 'Look up this order?',
+          operation: { kind: 'other' },
+          risk: 'medium',
+        },
       },
     });
     const { container, findByRole, queryByText } = open({ reviews: [reversibleApproval] });
