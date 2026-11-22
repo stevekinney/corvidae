@@ -1,7 +1,7 @@
 {
   "issue": "COR-2528",
   "branch": "chef/cor-2528-health-run-rows",
-  "checkedAt": "00e2a1aa363f651090ec4bb01e6091fb5f77116d",
+  "checkedAt": "c16d7095351d071e511b0db5a0fcc282736d53af",
   "briefVersion": "4f7fb514bd2a",
   "status": "READY",
   "criteria": [
