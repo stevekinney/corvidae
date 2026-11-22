@@ -473,7 +473,8 @@ describe('results', () => {
     expect(first.error).toBeUndefined();
     expect(replay.result?.['runId']).toBe(first.result?.['runId']);
     expect(changed.result?.['runId']).toBe(first.result?.['runId']);
-    expect((await served.bureau.durableEngine()!.list({ type: id })).items).toHaveLength(1);
+    const runs = await served.bureau.durableEngine()!.list({ type: id });
+    expect(runs.items).toHaveLength(1);
   });
 
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
