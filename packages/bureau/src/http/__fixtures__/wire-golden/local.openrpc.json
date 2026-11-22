@@ -5013,6 +5013,240 @@
       }
     },
     {
+      "description": "Returns why one failed run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time. `runId` is an agent run’s task id or a workflow instance’s id. `summary` is one sentence naming the step and the cause, built from the failure category (`application`, `timeout`, `cancellation`, `resource`, `system`, or `null` when nothing classifies the failure: a workflow instance’s is the engine’s, an agent run’s is read from its finish reason and its error’s kind) and the error’s kind. `cause` is the category, the error’s `code` and its `kind` (an agent run’s; `null` for a workflow instance). `step` is the step the run failed at (its index and label), `tries` how many times the engine tried that step (`null` when its history records no failed attempt, as for an agent run that ended on a failed result), `verdicts` each guardrail that fired in the run (its `name`, whether it halted the run as a `tripwire` or let it go on as a `guardrail`, and its `outcome`; a workflow instance’s own steps included), `remediation` what to do next, and `nextCommands` `interborough` command lines that read the run. It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`; a workflow instance whose run state or timeline the Bureau cannot read, because it has no durable engine, is `UnsupportedCapability` (`durable-engine`), never `run-not-failed`. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.tasks.explain",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed run: an agent run’s task id, or a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "cause": {
+              "additionalProperties": false,
+              "properties": {
+                "category": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "application",
+                        "timeout",
+                        "cancellation",
+                        "resource",
+                        "system"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The failure’s category; `null` for a failure nothing classifies."
+                },
+                "code": {
+                  "description": "The error’s code, or `null`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "description": "The error’s kind, or `null`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "category",
+                "code",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "nextCommands": {
+              "description": "`interborough` command lines that read the run, each one a command the CLI has.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "remediation": {
+              "description": "What to do next, in one or two sentences.",
+              "type": "string"
+            },
+            "step": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "description": "The step’s index in the run, from zero.",
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "label": {
+                      "description": "The step’s label: a tool’s name, `model` for a model step, or the engine’s label.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The step the run failed at, or `null` when none was recorded."
+            },
+            "summary": {
+              "description": "One sentence naming the step the run failed at and the cause.",
+              "type": "string"
+            },
+            "tries": {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many times the engine tried that step, or `null` when it kept no history."
+            },
+            "verdicts": {
+              "description": "Each guardrail that fired in the run.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "description": "`tripwire` for a guardrail that halted the run, `guardrail` for one that let it go on.",
+                    "enum": [
+                      "guardrail",
+                      "tripwire"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "The guardrail’s name.",
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "description": "What it did: `tripwire`, or for a validate-mode guardrail `block`, `warn`, `sanitize` or `redact`.",
+                    "enum": [
+                      "tripwire",
+                      "block",
+                      "warn",
+                      "sanitize",
+                      "redact"
+                    ],
+                    "type": "string"
+                  },
+                  "step": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The step it fired at, or `null`."
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "outcome",
+                  "step"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "summary",
+            "cause",
+            "step",
+            "tries",
+            "verdicts",
+            "remediation",
+            "nextCommands"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Explain why a run failed",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the failed run: an agent run’s task id, or a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (nothing is applied). A rejection carries a `reason`: `already-terminal` (the task had already finished without being canceled), `owned-by-goal` (the task is one attempt of a goal, which only cancelling the goal stops) or `owned-by-workflow` (the task is a step of a workflow instance, which is not cancelled on its own). Cancelling the task of a child run stops the child as `bureau.children.cancel` does. `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect. With `dryRun: true` nothing is cancelled: the answer is `{ dryRun: true, target, effects }`, whose `runs-in-progress` effect counts the run the cancel would stop (1 while the task is in progress, 0 once it has finished or when it belongs to a goal or a workflow instance, whose cancel is `rejected`), and a task the real call would not find is `NotFound` as well.",
       "errors": [
         {
