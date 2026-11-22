@@ -451,6 +451,7 @@ test.describe('Settings › General', () => {
     page,
   }) => {
     await openGeneral(page);
+    await page.getByRole('button', { name: 'Advanced' }).click();
     const row = settingRow(page, 'logs.maximumLinesPerRun');
     await row.getByRole('spinbutton').fill('9999');
     await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
