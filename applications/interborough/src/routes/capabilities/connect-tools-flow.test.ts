@@ -118,10 +118,6 @@ async function type(id: string, value: string): Promise<void> {
   await fireEvent.input(field(id), { target: { value } });
 }
 
-async function choose(id: string): Promise<void> {
-  await fireEvent.click(field(id));
-}
-
 /** Picks the source type in Source's descriptive card choices. */
 async function chooseKind(kind: 'mcp' | 'openapi'): Promise<void> {
   const source = field('connect-kind');
