@@ -244,7 +244,7 @@ test('compiled automation commands forward hooks', async () => {
     ['hooks', 'create', '--file', hookFile],
     ['hooks', 'update', 'hook-1', '--file', hookUpdateFile, '--if-revision', '1'],
     ['hooks', 'replace-secret', 'hook-1', '--if-revision', '2'],
-    ['hooks', 'delete', 'hook-1'],
+    ['hooks', 'delete', 'hook-1', '--yes'],
     ['hooks', 'test', 'hook-1'],
     ['hooks', 'deliveries', 'hook-1'],
   ]);

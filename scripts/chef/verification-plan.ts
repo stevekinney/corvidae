@@ -330,7 +330,7 @@ export interface EvidencePlan {
   full_run_rules: FullRunRule[];
 }
 
-export const COMPONENT_DIRECTORIES = [
+const COMPONENT_DIRECTORIES = [
   /^components\/cinder\/src\/components\/([\w-]+)\//,
   /^components\/chat\/src\/lib\/components\/([\w-]+)\//,
   /^scripts\/browser-fixtures\/src\/fixtures\/([\w-]+)\.svelte$/,
