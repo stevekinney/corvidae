@@ -482,7 +482,8 @@ describe('what a run is waiting on', () => {
     await fireEvent.input(view.getByLabelText('Your answer'), { target: { value: 'staging' } });
     await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
 
-    expect(await view.findByText(/The Bureau broke/)).not.toBeNull();
+    // The stub says "Bureau"; a screen reads "the server" (the name of the server's own part never shows).
+    expect(await view.findByText(/The server broke/)).not.toBeNull();
     // The question stays open to answer again.
     expect(view.getByLabelText('Your answer')).not.toBeNull();
   });

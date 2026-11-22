@@ -18,7 +18,7 @@
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getClient } from '../../lib/client.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
+  import { faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { kindOf } from '../../lib/schedule-kinds.ts';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
@@ -98,7 +98,7 @@
         description={faultTreatment(detail.error).message}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={() => void detail.refetch()}
+        {...faultErrorStateAdvice(detail.error, () => void detail.refetch())}
       />
     {:else if detail.data === null}
       <FaultBanner

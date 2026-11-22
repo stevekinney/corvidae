@@ -8,15 +8,21 @@
   import { ErrorState } from '@lostgradient/cinder';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
 
   interface HomeCardErrorProps {
     /** What could not be loaded, as a sentence: "Couldn’t load system problems." */
     title: string;
     /** Asks the card's read again. */
     onRetry: () => void;
+    /**
+     * What the read failed with: its remediation is shown under the sentence, and a fault that says
+     * `retryable: false` leaves "Try again" off. Left out, the card offers "Try again".
+     */
+    error?: unknown;
   }
 
-  let { title, onRetry }: HomeCardErrorProps = $props();
+  let { title, onRetry, error }: HomeCardErrorProps = $props();
 </script>
 
 <ErrorState
@@ -24,6 +30,6 @@
   headingLevel={3}
   {title}
   description={HOME_COPY.states.restIsLive}
-  {onRetry}
+  {...faultErrorStateAdvice(error, onRetry)}
   data-testid="home-card-error"
 />

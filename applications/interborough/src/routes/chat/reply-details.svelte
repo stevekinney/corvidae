@@ -12,6 +12,7 @@
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { inspectTaskStep } from '../../lib/bureau-tasks.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { isEmptyDetails, replyDetailsOf } from './reply-details.ts';
   import type { RunUsage } from './run-wiring.ts';
@@ -70,7 +71,7 @@
         description={COPY.failed.description}
         headingLevel={3}
         retryLabel={COPY.retry}
-        onRetry={() => void inspected.refetch()}
+        {...faultErrorStateAdvice(inspected.error, () => void inspected.refetch())}
       />
     {:else if isEmptyDetails(details)}
       <EmptyState

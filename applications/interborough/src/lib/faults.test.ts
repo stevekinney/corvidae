@@ -10,12 +10,18 @@ import type { FaultCode } from '@lostgradient/backchannel';
 import { HttpClientError, type WeftErrorCode } from '@lostgradient/weft';
 
 import {
+  canRetryFault,
   classifyFault,
   FAULT_TREATMENT_TITLE,
+  faultAdvisingRetry,
+  faultErrorStateAdvice,
+  faultTitle,
   faultTreatment,
   isNetworkFailure,
   ServerUnreachableError,
+  treatmentErrorStateAdvice,
   UNKNOWN_FAULT_TREATMENT,
+  withoutInternalNames,
   type FaultTreatmentKind,
 } from './faults.ts';
 
@@ -416,6 +422,139 @@ describe('FAULT_TREATMENT_TITLE', () => {
       expect(FAULT_TREATMENT_TITLE[kind]).toEqual(expect.any(String));
       expect(FAULT_TREATMENT_TITLE[kind].length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('the fault-to-view mapping: remediation and Retry', () => {
+  const retry = () => {};
+
+  /** One fault of each treatment kind, each carrying a remediation line where the wire can. */
+  const faultOfEachKind: readonly (readonly [FaultTreatmentKind, () => unknown])[] = [
+    ['not-found', () => new HttpClientError(404, 'No such run', { remediation: 'List the runs.' })],
+    ['conflict', () => new HttpClientError(409, 'Stale', { remediation: 'Read it again.' })],
+    ['invalid', () => new HttpClientError(422, 'Bad', { remediation: 'Fix the input.' })],
+    ['unauthorized', () => new HttpClientError(401, 'No', { remediation: 'Sign in again.' })],
+    ['not-supported', () => new HttpClientError(501, 'No', { remediation: 'Use another host.' })],
+    ['internal', () => new HttpClientError(500, 'Broke', { remediation: 'Check the logs.' })],
+    ['unreachable', () => new ServerUnreachableError()],
+  ];
+
+  test('covers every treatment kind', () => {
+    expect(faultOfEachKind.map(([kind]) => kind).sort()).toEqual(
+      (Object.keys(FAULT_TREATMENT_TITLE) as FaultTreatmentKind[]).sort(),
+    );
+  });
+
+  for (const [kind, build] of faultOfEachKind) {
+    test(`${kind}: passes the remediation the fault carries, and none it does not`, () => {
+      const treatment = faultTreatment(build());
+      expect(treatment.kind).toBe(kind);
+      const advice = faultErrorStateAdvice(build(), retry);
+      if (kind === 'unreachable') {
+        expect(advice).not.toHaveProperty('remediation');
+      } else {
+        expect(advice.remediation).toBe(treatment.remediation);
+        expect(advice.remediation).toEqual(expect.any(String));
+      }
+    });
+  }
+
+  test('offers Retry for a fault that is retryable or says nothing about it', () => {
+    const retryable = new HttpClientError(503, 'Unavailable', { retryable: true });
+    const silent = new HttpClientError(503, 'Unavailable');
+    expect(faultErrorStateAdvice(retryable, retry).onRetry).toBe(retry);
+    expect(faultErrorStateAdvice(silent, retry).onRetry).toBe(retry);
+    expect(faultErrorStateAdvice(new Error('render bug'), retry).onRetry).toBe(retry);
+    expect(canRetryFault(faultTreatment(silent))).toBe(true);
+  });
+
+  test('offers no Retry for a fault that is not retryable, whatever its kind', () => {
+    for (const [, build] of faultOfEachKind) {
+      const error = build();
+      if (!(error instanceof HttpClientError)) continue;
+      const notRetryable = new HttpClientError(error.status, error.message, {
+        retryable: false,
+        remediation: 'Do the other thing.',
+      });
+      const advice = faultErrorStateAdvice(notRetryable, retry);
+      expect(advice).not.toHaveProperty('onRetry');
+      expect(advice.remediation).toBe('Do the other thing.');
+    }
+  });
+
+  test('a screen that reads several things keeps Retry while any failed read could succeed again', () => {
+    const permanent = new HttpClientError(409, 'Changed', { retryable: false });
+    const transient = new HttpClientError(503, 'Unavailable', { retryable: true });
+    const silent = new Error('boom');
+    expect(faultAdvisingRetry([permanent, transient])).toBe(transient);
+    expect(faultAdvisingRetry([null, permanent, silent])).toBe(silent);
+    expect(faultAdvisingRetry([permanent, null])).toBe(permanent);
+    expect(canRetryFault(faultTreatment(faultAdvisingRetry([permanent, null])))).toBe(false);
+    expect(faultAdvisingRetry([null, undefined])).toBeUndefined();
+  });
+
+  test('offers no Retry where the caller has none, and leaves out an empty remediation', () => {
+    const treatment = { ...faultTreatment(new HttpClientError(500, 'x')), remediation: '' };
+    expect(treatmentErrorStateAdvice(treatment)).toEqual({});
+  });
+});
+
+describe('withoutInternalNames', () => {
+  test('reads "the server" wherever a message names the part of it that answers', () => {
+    for (const [said, shown] of [
+      [
+        'This Bureau keeps no sessions, so it has no contexts',
+        'This server keeps no sessions, so it has no contexts',
+      ],
+      [
+        'Cannot forget grants: Bureau is shutting down.',
+        'Cannot forget grants: The server is shutting down.',
+      ],
+      ['Bureau is not ready.', 'The server is not ready.'],
+      ['The Bureau is not ready.', 'The server is not ready.'],
+      ['"x" is not a published Bureau event kind', '"x" is not a published server event kind'],
+      ['Wait until Bureau has restarted.', 'Wait until the server has restarted.'],
+      ['Nothing to rename here.', 'Nothing to rename here.'],
+    ] as const) {
+      expect(withoutInternalNames(said)).toBe(shown);
+    }
+  });
+
+  test('leaves a quoted or backticked span alone: a person’s own name for something', () => {
+    expect(withoutInternalNames('No agent "Travel Bureau" here. Bureau is shutting down.')).toBe(
+      'No agent "Travel Bureau" here. The server is shutting down.',
+    );
+    expect(withoutInternalNames('The agent `Travel Bureau` or “Bureau North” failed')).toBe(
+      'The agent `Travel Bureau` or “Bureau North” failed',
+    );
+  });
+
+  test('classifyFault applies it to the message, the remediation and each field error', () => {
+    const error = new HttpClientError(422, 'This Bureau rejected it.', {
+      remediation: 'Ask the Bureau again.',
+      data: { issues: [{ path: ['name'], message: 'Bureau already has this name' }] },
+    });
+    expect(classifyFault(error)).toMatchObject({
+      kind: 'invalid',
+      message: 'This server rejected it.',
+      remediation: 'Ask the server again.',
+      fieldErrors: [{ path: 'name', message: 'The server already has this name' }],
+    });
+    expect(JSON.stringify(classifyFault(error))).not.toContain('Bureau');
+  });
+});
+
+describe('faultTitle', () => {
+  test('names what failed to load, in one pattern, whatever the kind of fault', () => {
+    for (const kind of Object.keys(FAULT_TREATMENT_TITLE) as FaultTreatmentKind[]) {
+      expect(faultTitle(kind, 'hooks')).toBe('Couldn’t load hooks');
+    }
+  });
+
+  test('falls back to the kind’s own heading where the screen does not know what failed', () => {
+    expect(faultTitle('internal')).toBe(FAULT_TREATMENT_TITLE.internal);
+    expect(faultTitle('conflict', undefined)).toBe(FAULT_TREATMENT_TITLE.conflict);
+    expect(faultTitle('not-found', '')).toBe(FAULT_TREATMENT_TITLE['not-found']);
   });
 });
 

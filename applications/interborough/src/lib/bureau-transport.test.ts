@@ -50,6 +50,29 @@ describe('postBureauCall', () => {
     });
   });
 
+  test('never lets the name of the server’s own part, "Bureau", reach a screen, in the message or the remediation', async () => {
+    const error = await rejectionOf(
+      postBureauCall(
+        'http://host/jsonrpc',
+        'bureau.hooks.get',
+        { hookId: 'h' },
+        {
+          fetch: faultAnswer({
+            httpStatus: 503,
+            remediation: 'Wait until Bureau has restarted.',
+          }),
+        },
+      ),
+    );
+    expect(error).toMatchObject({
+      message: 'The server is shutting down.',
+      remediation: 'Wait until the server has restarted.',
+    });
+    expect(JSON.stringify([(error as Error).message, classifyFault(error)])).not.toContain(
+      'Bureau',
+    );
+  });
+
   test('keeps a retryable of false, and leaves both out for a fault that carried neither', async () => {
     const refused = await rejectionOf(
       postBureauCall(

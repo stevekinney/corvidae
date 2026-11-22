@@ -49,7 +49,11 @@
       <Skeleton height="8rem" />
     </div>
   {:else if query.isError}
-    <QueryFaultBanner error={query.error} onRetry={() => query.refetch()} />
+    <QueryFaultBanner
+      error={query.error}
+      subject="revision realms"
+      onRetry={() => query.refetch()}
+    />
   {:else if query.data.pools.length === 0}
     <EmptyState
       kind="first-use"
