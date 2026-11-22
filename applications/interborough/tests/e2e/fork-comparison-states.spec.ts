@@ -427,12 +427,66 @@ test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow 
   }
 
   /**
+   * The run timeline shows on every run, but `bureau.runs.timeline` serves an agent run or an
+   * instance of a workflow file, and the seeded runs are the console's own fixture workflows, which
+   * it answers as not found (the panel then says so in its own words). A workflow file's run is
+   * served, so the read is answered here in the shape the Bureau serves, as the comparison is, and
+   * the capture shows the card a person reading such a run sees.
+   */
+  async function serveTimeline(page: Page, runId: string): Promise<void> {
+    await page.route('**/host/plugins/inspectors/apps/run-timeline/tool-calls', async (route) => {
+      const timeline = {
+        runId,
+        kind: 'workflow',
+        runStatus: 'completed',
+        truncated: false,
+        entries: [
+          {
+            step: 0,
+            label: 'reserveStock',
+            operationType: 'activity',
+            status: 'completed',
+            timestamp: 1_000,
+            duration: 40,
+            tries: 1,
+          },
+          {
+            step: 1,
+            label: 'chargeCard',
+            operationType: 'activity',
+            status: 'completed',
+            timestamp: 1_050,
+            duration: 120,
+            tries: 1,
+          },
+          {
+            step: 2,
+            label: 'issueTicket',
+            operationType: 'activity',
+            status: 'completed',
+            timestamp: 1_180,
+            duration: 60,
+            tries: 2,
+          },
+        ],
+      };
+      await route.fulfill({
+        json: {
+          content: [{ type: 'text', text: JSON.stringify(timeline) }],
+          structuredContent: timeline,
+        },
+      });
+    });
+  }
+
+  /**
    * Opens a fork's Inspector tab. A card is mounted only when it has something to say about the run,
    * so a fork's page holds the comparison: the run has no agent task for the run inspector, and the
    * schedule editor cannot narrow to its workflow. The run timeline shows on any run and is not
    * asserted either way.
    */
   async function openPanels(page: Page, runId: string): Promise<void> {
+    await serveTimeline(page, runId);
     await page.goto(`/runs/${encodeURIComponent(runId)}`);
     await openHowItRan(page);
     await page.getByRole('tab', { name: 'Inspector' }).click();
@@ -498,6 +552,7 @@ test.describe('fork-comparison-states: /runs/:run, the run panels on a workflow 
   test('a workflow run’s page that is not a fork: no cards, since none has anything to say', async ({
     page,
   }) => {
+    await serveTimeline(page, FORK_COMPARISON_RUN_ID);
     await page.goto(`/runs/${encodeURIComponent(FORK_COMPARISON_RUN_ID)}`);
     await openHowItRan(page);
     await page.getByRole('tab', { name: 'Inspector' }).click();

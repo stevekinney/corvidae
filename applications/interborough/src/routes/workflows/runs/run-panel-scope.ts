@@ -6,6 +6,14 @@
  * A panel declares only that it shows on a run's page (`placements: [{ kind: 'run' }]`), not which
  * kind of run, so the host that ships the inspectors plugin keeps what it knows about them here. A
  * panel with no entry is a third party's, and shows on every run, as its placement says.
+ *
+ * What each inspectors panel reads from the input a run page gives it (`{ taskId }` on an agent
+ * run, `{ runId, runKind: 'workflow' }` on a workflow instance): the run timeline and the run
+ * comparison read `runId` (the timeline falls back to `taskId`), so both work on either; the run
+ * inspector and the schedule editor read `taskId`, which is why neither is mounted on a workflow
+ * run. The run timeline serves an agent run or an instance of a workflow file
+ * (`bureau.runs.timeline`), and answers any other engine run, such as the end-to-end fixture's own
+ * workflows and their forks, as not found, which its panel says in its own words.
  */
 
 /** The run a page shows: a Bureau task (an agent run) or a workflow instance the engine holds. */
