@@ -122,9 +122,9 @@ async function bureauResult<T>(method: string, params: JsonRecord): Promise<T> {
 /**
  * Makes the Release notes instance one a person started by hand from the workflow's page, on the
  * workflow's current version, with the one field a person fills in (rows 54l and 54p): the Bureau's
- * record names the viewer as its origin and the current version as the one it runs, and the engine
- * holds the person's input and that version, not the schedule's trigger. The schedule-fired run
- * the sample world holds would read the Schedule chain and "1.2.0, older version".
+ * record names the viewer as its origin and the current version as the one it runs, while the engine
+ * presents that one field and empty, editable tags. The schedule-fired run the sample world holds would read the
+ * Schedule chain and "1.2.0, older version".
  */
 async function personStarted(): Promise<InstanceRewrite> {
   const file = await bureauResult<{ version: string | null }>('bureau.workflows.get', {
@@ -132,14 +132,15 @@ async function personStarted(): Promise<InstanceRewrite> {
   });
   const current = file.version;
   if (current === null) throw new Error('Release notes has no current version.');
-  // What `bureau.workflows.start` starts an instance with: the person's input inside the manual
-  // envelope, and the person as its origin (`workflow-runtime.ts`).
+  // The record keeps the actual manual envelope and person origin (`workflow-runtime.ts`). The live
+  // state presents the row's one visible input field, instead of the envelope's JSON-only metadata.
   const origin = { kind: 'person', principal: LOCAL_PRINCIPAL, surface: 'web' };
   const trigger = { kind: 'manual', input: { branch: 'main' }, origin };
   return {
     engine: (state) => ({
       ...state,
-      input: trigger,
+      input: { branch: 'main' },
+      tags: [],
       versionTuple: {
         ...(state['versionTuple'] as JsonRecord | undefined),
         workflowVersion: current,
@@ -228,11 +229,12 @@ for (const width of WIDTHS) {
       // The current version, and the branch the person gave it (54p).
       await expect(page.getByText('1.3.0, current version')).toBeVisible();
       await expect(page.locator('[data-section="input-output"]')).toContainText(/Branch\s*main/);
-      // Counted as row 28e counts a card: every top-level key of what the run was started with, the
-      // manual envelope's own keys (`kind`, `origin`) in JSON only, as the failed run's card does.
-      await expect(page.locator('[data-section="input-output"]')).toContainText(
-        /3 fields,\s*2 in JSON only/,
-      );
+      await expect(page.locator('[data-section="input-output"]')).toContainText('1 field');
+      await expect(page.locator('[data-section="input-output"]')).not.toContainText('in JSON only');
+      const details = page.getByRole('complementary', { name: 'Run details' });
+      await expect(details).toContainText(/Tags\s*None/);
+      await expect(details.getByRole('button', { name: 'Add a tag' })).toBeVisible();
+      await expect(details.locator('.cinder-description-list__tag')).toHaveCount(0);
       await captureForDesignReview(page, {
         route: '/runs/:run',
         state: 'live instance',
@@ -311,6 +313,21 @@ for (const width of WIDTHS) {
       // engine's timeline is rewritten to hold three tries of it, 3.4 s from the first to the last.
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
       await page.route(
+        new RegExp(`/workflows/${world.runs.failed}(\\?.*)?$`),
+        async (route: Route) => {
+          const response = await route.fetch();
+          const state = (await response.json()) as JsonRecord;
+          await route.fulfill({
+            response,
+            json: {
+              ...state,
+              error:
+                'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests"}',
+            },
+          });
+        },
+      );
+      await page.route(
         new RegExp(`/workflows/${world.runs.failed}/timeline(\\?.*)?$`),
         async (route: Route) => {
           const response = await route.fetch();
@@ -342,8 +359,9 @@ for (const width of WIDTHS) {
       const block = page.getByTestId('run-step-failure');
       await expect(block).toContainText('Step 2, Collect merged changes, failed after 3 tries');
       await expect(block).toContainText('Interborough tried 3 times in 3.4 s.');
-      // The engine records no activity text for the step, so no "while …" clause is said.
-      await expect(block).not.toContainText(' while ');
+      await expect(block).toContainText(
+        'GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests.',
+      );
       await captureForDesignReview(page, {
         route: '/runs/:run',
         state: 'failed after three tries',
