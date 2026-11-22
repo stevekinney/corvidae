@@ -154,10 +154,10 @@ export type SharedActionTypeAttemptsCreate_605da491 = {
     readonly workflowId: string | null;
   } | null;
 };
-export type SharedActorAgentNameAttention_ffceb9e6 = {
+export type SharedActorAgentNameAttention_30e4f494 = {
   readonly actor: string | null;
   readonly agentName: string | null;
-  readonly attention: ReadonlyArray<'stalled' | 'looping'>;
+  readonly attention: ReadonlyArray<'stalled' | 'looping' | 'overspending'>;
   readonly cleanup:
     | 'cancel-requested'
     | 'canceled'

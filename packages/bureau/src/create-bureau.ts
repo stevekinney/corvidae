@@ -4943,6 +4943,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         hooks: async () => (await hooksInstance?.hooks.list()) ?? [],
         plugins: () => pluginRegistry.plugins.list(),
         pluginsComposedAt: constructedAtMilliseconds,
+        runs: () => tasks.attentionRuns(),
         ...(options.attention === undefined ? {} : { contributed: options.attention }),
       }),
     reviews,

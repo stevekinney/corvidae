@@ -98,6 +98,7 @@ import {
   ToolErrorRecordedEvent,
   ToolPolicyDeniedRecordedEvent,
   RunLoopingEvent,
+  RunOverspendingEvent,
   RunSettledEvent,
   RunStalledEvent,
   RunRemovedEvent,
@@ -294,6 +295,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'budget.threshold': 'published',
   'run.stalled': 'published',
   'run.looping': 'published',
+  'run.overspending': 'published',
   'tool.policy-denied': 'published',
   'tool.error': 'published',
   'multiagent.child-workflow.started': 'published',
@@ -532,6 +534,12 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     runId: event.runId,
     since: event.since,
     level: event.level,
+  })),
+  projection(RunOverspendingEvent.type, isInstance(RunOverspendingEvent), (event) => ({
+    runId: event.runId,
+    since: event.since,
+    costUsd: event.costUsd,
+    thresholdUsd: event.thresholdUsd,
   })),
   projection(RunSettledEvent.type, isInstance(RunSettledEvent), (event) =>
     definedFields({

@@ -261,6 +261,8 @@ export const RUN_PAGE_COPY = {
     started: 'Started',
     updated: 'Last changed',
     took: 'Took',
+    /** The tokens the run used, from the Bureau's own count of the run (COR-2525); its cost is `COST_COPY.label`. */
+    tokens: 'Tokens',
     deadline: 'Deadline',
     version: 'Version',
     revision: 'Revision',
