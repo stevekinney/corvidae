@@ -137,14 +137,28 @@
 
   // The row elements, so each row's tooltip can anchor to its row and show on hover and on focus.
   const rowElements = new SvelteMap<string, HTMLElement>();
-  const trackRow =
-    (id: string): Attachment<HTMLElement> =>
-    (node) => {
+  /**
+   * One attachment per call id, kept while its row is drawn (COR-2646). Svelte re-runs an attachment
+   * whenever its expression yields a new function, and a host that rebuilds its calls on a clock
+   * hands the rail a new `call` on every tick. A fresh closure per evaluation tore the row out of
+   * `rowElements` and put it back each time, so the row's tooltip saw its `triggerRef` cleared and
+   * rebound: an open tooltip closed, and a pending show restarted its delay, so a focused row whose
+   * calls changed faster than that delay never showed its tooltip.
+   */
+  const rowTrackers = new Map<string, Attachment<HTMLElement>>();
+  const trackRow = (id: string): Attachment<HTMLElement> => {
+    const known = rowTrackers.get(id);
+    if (known !== undefined) return known;
+    const tracker: Attachment<HTMLElement> = (node) => {
       rowElements.set(id, node);
       return () => {
         if (rowElements.get(id) === node) rowElements.delete(id);
+        if (rowTrackers.get(id) === tracker) rowTrackers.delete(id);
       };
     };
+    rowTrackers.set(id, tracker);
+    return tracker;
+  };
 
   const resultText = (call: ToolCallRailCall): string => {
     if (call.status === 'running') return call.result ?? words.running;
