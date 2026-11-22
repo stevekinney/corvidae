@@ -14,7 +14,7 @@ const definition = {
 };
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
 describe('workflow writes refused by the file system', () => {
