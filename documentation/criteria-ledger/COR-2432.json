@@ -1,0 +1,74 @@
+{
+  "issue": "COR-2432",
+  "branch": "codex/cor-2432-workflow-builder",
+  "checkedAt": "5a957692129a0d414eb3a1d2b39cb817bd5d18bb",
+  "briefVersion": "de07a52cf936",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Schedule model and When editor preserve spec, timezone, overlap and catchUp."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "JsonEditor adds Invalid JSON status and parser-stop marking."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Builder JSON note and read-back preserve unknown keys."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Create failure retains text and reuses Create workflow."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "ScheduleWhen exposes cadence, policies, timezone and next runs."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Fields-only JsonSchemaEditor provides schema table controls."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Edit failure retains draft and save action."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Bureau validation marks the semantic issue and focuses its JSON line."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "Unknown steps remain read-only cards and retain their source."
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-branch",
+      "evidence": "Read-back describes the unsupported step."
+    },
+    {
+      "id": "AC11",
+      "status": "met-on-branch",
+      "evidence": "Edit LeaveGuard renders focused discard confirmation."
+    },
+    {
+      "id": "AC12",
+      "status": "met-on-branch",
+      "evidence": "Builder sections use FormSection and page titles remain PageHeader."
+    },
+    {
+      "id": "AC13",
+      "status": "not-met",
+      "evidence": "Local direct tests are blocked by missing generated tokens and static check OOM; CI run 44975012510 is dispatched."
+    }
+  ]
+}
