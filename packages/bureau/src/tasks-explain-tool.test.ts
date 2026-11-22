@@ -40,9 +40,13 @@ describe('the tasks-explain tool on a Bureau with agents and no workflow directo
 
   async function failedRun(harness: WorkflowToolsHarness): Promise<string> {
     const run = await harness.bureau.tasks.start('scribe', FAILING_MESSAGE);
-    await waitUntil(async () => (await harness.bureau.tasks.get(run.id))?.status === 'failed', {
-      message: 'the run failed',
-    });
+    await waitUntil(
+      async () => {
+        const task = await harness.bureau.tasks.get(run.id);
+        return task?.status === 'failed';
+      },
+      { message: 'the run failed' },
+    );
     await harness.bureau.internals.taskRegistry.flush();
     return run.id;
   }
@@ -113,10 +117,11 @@ describe('the tasks-explain tool on a Bureau with workflow files', () => {
     const started = await harness.callTool('bureau__workflows-start', { id: 'doomed' });
     const runId = (started.result as { runId: string }).runId;
     await waitUntil(
-      async () => (await harness.bureau.workflows!.getRun(runId))?.status === 'failed',
-      {
-        message: 'the workflow instance failed',
+      async () => {
+        const instance = await harness.bureau.workflows!.getRun(runId);
+        return instance?.status === 'failed';
       },
+      { message: 'the workflow instance failed' },
     );
 
     const explained = await harness.callTool(TOOL, { runId });

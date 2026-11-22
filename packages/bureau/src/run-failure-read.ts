@@ -21,7 +21,7 @@ import { failedStepTries } from './run-timeline.ts';
 import type { TaskView } from './task-registry.ts';
 
 /** What the engine holds of a run that the explanation reads. */
-export interface RunFailureState {
+interface RunFailureState {
   readonly status: string;
   readonly failureCategory?: FailureCategory | null | undefined;
   readonly errorCode?: string | undefined;

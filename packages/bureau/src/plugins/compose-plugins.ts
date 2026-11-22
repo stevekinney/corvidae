@@ -385,7 +385,7 @@ function checkPlacement(
     // is refused, so a plugin that means "failed" never shows its panel on every page.
     if (when !== undefined && when !== 'failed') {
       throw refusal(
-        `a run placement with the condition ${JSON.stringify(when) ?? String(when)}, which is not "failed"`,
+        `a run placement with the condition ${JSON.stringify(when) ?? typeof when}, which is not "failed"`,
       );
     }
   } else {
