@@ -1,5 +1,3 @@
-import type { FaultCode } from '@lostgradient/backchannel';
-
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
 /**
@@ -10,7 +8,8 @@ import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-clie
 type CliFailure = Error & {
   status?: number;
   exitCode?: number;
-  faultCode?: FaultCode;
+  /** The server's `FaultCode`, forwarded as sent. */
+  faultCode?: string;
   retryable?: boolean;
   remediation?: string;
   connectionFailed?: boolean;
@@ -78,7 +77,7 @@ function faultFields(
   const remediation = source['remediation'];
   return {
     ...(faultCodeSource && typeof weftCode === 'string' && weftCode !== ''
-      ? { faultCode: weftCode as FaultCode }
+      ? { faultCode: weftCode }
       : {}),
     ...(typeof source['retryable'] === 'boolean' ? { retryable: source['retryable'] } : {}),
     ...(typeof remediation === 'string' && remediation !== ''

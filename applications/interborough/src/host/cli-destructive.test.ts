@@ -171,7 +171,7 @@ describe('the CLI registry of destructive commands', () => {
         const destructive =
           catalog?.supportsDryRun === true ||
           (catalog?.destructive === true && destructiveVerb.test(operation)) ||
-          /^DELETE \//u.test(operation) ||
+          operation.startsWith('DELETE /') ||
           /^POST \/.*\/cancel$/u.test(operation);
         if (destructive)
           expect(
