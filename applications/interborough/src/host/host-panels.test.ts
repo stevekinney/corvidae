@@ -267,10 +267,20 @@ describe('a panel build that never finishes (COR-2219)', () => {
       built.push(options.title);
       return Promise.resolve(stubPage(options.title));
     };
+    // Every panel the inspectors plugin contributes but the run inspector, whose build hangs. Its
+    // length is the count of builds to wait for, so a panel added to the plugin is one edit here.
+    const served = [
+      'failure-explanation',
+      'pending-review',
+      'run-comparison',
+      'run-timeline',
+      'schedule-editor',
+      'workflow-revision-review',
+    ];
     const starting = start(false, { panelBuild: { build, clock } });
     // Only the hung build still holds its timer once the others are served; that is when it fires.
-    await waitUntil(() => built.length === 5 && timers.size === 1, {
-      message: 'the five other builds are served and only the stalled one waits',
+    await waitUntil(() => built.length === served.length && timers.size === 1, {
+      message: 'the other builds are served and only the stalled one waits',
     });
     for (const fire of timers.values()) fire();
     const host = await starting;
@@ -280,14 +290,7 @@ describe('a panel build that never finishes (COR-2219)', () => {
     const apps = (await panelsResponse.json()) as {
       apps: { plugin: string; app: string }[];
     };
-    expect(apps.apps.map(({ app }) => app).toSorted()).toEqual([
-      'failure-explanation',
-      'pending-review',
-      'run-comparison',
-      'run-timeline',
-      'schedule-editor',
-      'workflow-revision-review',
-    ]);
+    expect(apps.apps.map(({ app }) => app).toSorted()).toEqual(served);
     const pluginsResponse = await fetch(new URL('/host/plugins', host.url));
     const listing = (await pluginsResponse.json()) as {
       plugins: {
