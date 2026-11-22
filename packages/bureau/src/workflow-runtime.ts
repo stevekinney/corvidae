@@ -1824,10 +1824,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const after: WorkflowState | null | undefined = await engine.get(runId);
       if (after?.status === 'failed') await clearPending();
       if (error instanceof WorkflowRevisionUnavailableError) {
-        throw new WorkflowRetryRefusedError(
-          'version-unavailable',
-          runId,
-          `Run "${runId}" cannot run again on the version it ran: ${error.message}`,
+        // A refusal says nothing changed, so it is only true of an instance still failed. One that
+        // reactivated before its resume failed is running again: that is a failure after the
+        // change, which the caller must not answer by asking again as if nothing had happened.
+        if (after?.status === 'failed') {
+          throw new WorkflowRetryRefusedError(
+            'version-unavailable',
+            runId,
+            `Run "${runId}" cannot run again on the version it ran: ${error.message}`,
+          );
+        }
+        throw new Error(
+          `Run "${runId}" was reactivated, but could not resume on the version it ran: ${error.message}`,
+          { cause: error },
         );
       }
       throw error;

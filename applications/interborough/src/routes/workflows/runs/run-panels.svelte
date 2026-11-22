@@ -20,7 +20,9 @@
    * The run the panels show: a Bureau task (an agent run), or a run only the workflow engine holds
    * (a workflow instance, a fork among them), which has no task. Exactly one is given. `failed` is
    * whether the run failed: a panel that placed itself `when: 'failed'` is mounted only then
-   * (COR-2543), so a run that did not fail shows no card with nothing to say.
+   * (COR-2543), so a run that did not fail shows no card with nothing to say. A workflow instance
+   * mounts only those panels: a panel with no `when` is written for a task, and per-panel scoping
+   * of instances belongs to the run panel scope table, not to this page.
    */
   type RunPanelsProps = (
     { taskId: string; workflowId?: never } | { workflowId: string; taskId?: never }
@@ -56,7 +58,12 @@
         candidate.placements.some(
           (placement) =>
             placement.kind === 'run' &&
-            (placement.when === undefined || (placement.when === 'failed' && failed)),
+            (placement.when === 'failed'
+              ? failed
+              : // A panel with no `when` reads a task (the run inspector's `taskId`, the schedule
+                // editor's list, the timeline's task read), which an instance has none of: it
+                // would draw an empty card, so only an agent run mounts one.
+                placement.when === undefined && workflowId === undefined),
         ),
       )
       .toSorted((left, right) =>

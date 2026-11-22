@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { WorkflowRevisionUnavailableError } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
 import {
@@ -345,6 +346,26 @@ describe('retrying a failed workflow run from its failed step', () => {
     );
     const after = await runOf(harness, runId);
     expect(after?.status).toBe('failed');
+  });
+
+  it('is no refusal when the instance reactivated and only its resume then failed on the version', async () => {
+    const { harness, control } = await failingHarness();
+    const runId = await failedRun(harness);
+    control.failing = false;
+    const engine = harness.bureau.durableEngine()!;
+    const retryFailed = engine.retryFailed.bind(engine);
+    // The engine reactivates the instance, and then its resume finds the version unavailable.
+    engine.retryFailed = async (id) => {
+      await retryFailed(id);
+      throw new WorkflowRevisionUnavailableError('notes', 'v1', 'not-installed');
+    };
+    const error = await rejectionOf(harness.bureau.workflows!.retryRun(runId, { step: 2 }));
+    // A refusal says nothing changed, and the instance is running again: this is an error of the
+    // retry, which an operation answers as a failure after the change, never as `Unprocessable`.
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(WorkflowRetryRefusedError);
+    expect((error as Error).message).toContain('was reactivated');
+    expect(await engineStatus(harness, runId)).not.toBe('failed');
   });
 
   it('COR-2533: runs the step the instance failed at when the request names none', async () => {
