@@ -178,7 +178,9 @@ test.describe('the list', () => {
       page.getByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title }),
     ).toBeVisible();
     const filter = page.getByRole('button', { name: 'Filter' });
-    await page.keyboard.press('Escape');
+    const filterDialog = page.getByRole('dialog', { name: 'Filter' });
+    await filterDialog.getByRole('button', { name: 'Close drawer' }).click();
+    await expect(filterDialog).toBeHidden();
     await expect(filter).toBeFocused();
 
     await page.getByRole('button', { name: WORKFLOW_COPY.list.clearAction }).click();
