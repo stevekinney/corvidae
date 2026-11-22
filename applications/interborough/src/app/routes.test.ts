@@ -117,9 +117,7 @@ describe('the route table', () => {
   test('serves the engine run list under /health, in the engine view, apart from the Bureau runs', () => {
     expect(matchRoute('/health/runs')).toEqual({ pattern: '/health/runs', params: {} });
     expect(routes.find((route) => route.pattern === '/health/runs')?.view).toBe('health');
-    expect(componentPathOf('/health/runs')).toBe(
-      sourcePath('../routes/workflows/list/workflow-list.svelte'),
-    );
+    expect(componentPathOf('/health/runs')).toBe(sourcePath('../routes/health/runs.svelte'));
     expect(componentPathOf('/runs')).not.toBe(componentPathOf('/health/runs'));
   });
 

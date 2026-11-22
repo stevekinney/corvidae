@@ -191,7 +191,8 @@ jobs:
           name: browser-interborough-${{ matrix.shard }}
       # The root script `ci:browser-interborough` runs the gated runner, which picks a free block
       # of ports and never reuses a server; it passes every argument on to `playwright test`.
-      - run: bunx turbo run //#ci:browser-interborough
+      # Stream grouped task output so a job timeout still exposes the active Playwright stage.
+      - run: bunx turbo run //#ci:browser-interborough --log-order=stream
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ failure() }}
         continue-on-error: true

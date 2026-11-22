@@ -43,6 +43,7 @@
     ConfirmDialog,
     EmptyState,
     ErrorState,
+    FormActions,
     Input,
     Link,
     PageHeader,
@@ -1297,26 +1298,28 @@
                 <p class="ib-hook-editor__alert-body">{copy.staleDescription}</p>
               </Alert>
             {/if}
-            <div class="ib-hook-editor__actions">
-              {#if !isDefault}
-                <Button type="submit" variant="primary" disabled={saving.isPending}
-                  >{isNew ? copy.check.create : copy.check.save}</Button
-                >
-              {/if}
-              <!-- Off is `aria-disabled`, not `disabled`: the button stays in the tab order, so the
+            <FormActions>
+              {#snippet end()}
+                {#if !isDefault}
+                  <Button type="submit" variant="primary" disabled={saving.isPending}
+                    >{isNew ? copy.check.create : copy.check.save}</Button
+                  >
+                {/if}
+                <!-- Off is `aria-disabled`, not `disabled`: the button stays in the tab order, so the
                    reason below it can be read from the button itself, and Cinder ignores the press. -->
-              <Button
-                data-changes
-                variant="secondary"
-                aria-disabled={canTest ? undefined : 'true'}
-                aria-describedby={testReason === undefined ? undefined : TEST_REASON_ID}
-                loading={testing.isPending}
-                onclick={() => void sendTest()}
-              >
-                {#snippet leadingIcon()}<Play aria-hidden="true" />{/snippet}
-                {copy.check.test}
-              </Button>
-            </div>
+                <Button
+                  data-changes
+                  variant="secondary"
+                  aria-disabled={canTest ? undefined : 'true'}
+                  aria-describedby={testReason === undefined ? undefined : TEST_REASON_ID}
+                  loading={testing.isPending}
+                  onclick={() => void sendTest()}
+                >
+                  {#snippet leadingIcon()}<Play aria-hidden="true" />{/snippet}
+                  {copy.check.test}
+                </Button>
+              {/snippet}
+            </FormActions>
             {#if testResult !== null}
               <!-- The actions are passed only for a result with a link: Cinder draws its actions box
                    for any snippet, and an empty one wraps to a line of its own on a narrow phone. -->
@@ -1500,12 +1503,6 @@
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
-  }
-
-  .ib-hook-editor__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
   }
 
   .ib-hook-editor__alert-title {

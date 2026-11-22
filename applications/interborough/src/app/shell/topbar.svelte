@@ -5,10 +5,9 @@
    * the quick settings popover. Who the request acts as and which scopes it holds are facts about
    * the host, not controls, so they live on Settings › API reference › Your scopes and not here.
    *
-   * The leading menu button is drawn only while the navigation is a drawer (under 640px, and on a
-   * touch device under 1024px: `./shell-navigation.svelte.ts`), and is the only way to open it:
-   * `Sidebar` renders no trigger of its own. The bar is 52px, and on a phone it reads menu, title,
-   * then search, notifications and quick settings as icon buttons; the search field with its ⌘K
+   * The leading menu button opens the navigation drawer below 1200px. The bar is 52px, and on a
+   * phone it reads menu, title, then search, notifications and quick settings as icon buttons.
+   * The search field with its ⌘K
    * hint returns at tablet width. Below a top-level page on a phone, the trail's back link takes the
    * menu button's place (design row 06m), so the title is not squeezed out; the menu is one step
    * back, on the page that has no parent.

@@ -213,7 +213,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText('Note Optional');
+    const note = await findByLabelText('Note (optional)');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -239,26 +239,30 @@ describe('Enter on a row', () => {
 });
 
 describe('an approval', () => {
-  test('uses the shared approval row and keeps tool identifiers out of its title and metadata', async () => {
-    const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
+  test('uses the shared detail with its tool, declared risk, and note', async () => {
+    const { container, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    const card = await findByRole('article', { name: 'Refund order-1001?' });
-    expect(card.getAttribute('data-cinder-layout')).toBe('row');
-    expect(card.textContent).toContain('Issue refund');
-    expect(card.textContent).toContain("Can't be undone");
-    expect(card.textContent).not.toContain('issue-refund');
-    const note = getByLabelText('Note Optional');
-    expect(note.tagName).toBe('TEXTAREA');
-    expect(note.getAttribute('placeholder')).toBe('Add a note for the agent or the record');
+    expect(container.querySelector('[data-cinder-layout="detail"]')).not.toBeNull();
+    expect(container.textContent).toContain('Issue refund');
+    expect(container.textContent).toContain('issue-refund');
+    expect(container.textContent).toContain('Dangerous');
+    expect(
+      getByText(REVIEWS_COPY.toolApproval, {
+        selector: '.cinder-approval-card__detail-eyebrow span',
+      }),
+    ).not.toBeNull();
+    expect(getByLabelText('Note (optional)').getAttribute('placeholder')).toBe(
+      REVIEWS_COPY.notePlaceholder,
+    );
   });
 
-  test('offers Allow for the rest of the chat', async () => {
+  test('offers a remembered-approval checkbox', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
     expect(
-      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
     ).not.toBeNull();
   });
 
@@ -274,7 +278,7 @@ describe('an approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
     await findByRole('button', { name: 'Approve' });
-    expect(queryByRole('checkbox', { name: /for the rest of this chat$/ })).toBeNull();
+    expect(queryByRole('checkbox', { name: /allow .* for the rest of this chat/i })).toBeNull();
   });
 });
 

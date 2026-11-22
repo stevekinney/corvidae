@@ -176,7 +176,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     const review = await waitingReviewOf(request, threadId);
     await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
     const row = page.locator(`[data-review-row="bureau:${review.id}"]`);
-    const pane = page.locator('.ib-review-pane');
+    const pane = page.locator('.ib-reviews__detail');
     const approve = pane.getByRole('button', { name: 'Approve' });
     await expect(approve).toBeVisible();
     const operations = recordOperations(page);

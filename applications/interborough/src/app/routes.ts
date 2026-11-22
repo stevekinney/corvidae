@@ -377,7 +377,7 @@ export const routes: readonly RouteDefinition[] = [
     kind: 'table',
     crumb: VIEW_COPY.runs.label,
     view: 'health',
-    load: () => import('../routes/workflows/list/workflow-list.svelte'),
+    load: () => import('../routes/health/runs.svelte'),
   },
   {
     pattern: '/health/workers',

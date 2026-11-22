@@ -9,7 +9,7 @@ import { Window } from 'happy-dom';
 import { router } from '../../lib/router.svelte.ts';
 import { LayoutPreferences } from '../layout-preferences.svelte.ts';
 import { TAB_BAR_VIEWS } from './destinations.ts';
-import { DRAWER_QUERY, EXPANDED_QUERY, ShellNavigation } from './shell-navigation.svelte.ts';
+import { DRAWER_QUERY, PHONE_TAB_QUERY, ShellNavigation } from './shell-navigation.svelte.ts';
 import Harness from './tab-bar.test-harness.svelte';
 
 const undo: Array<() => void> = [];
@@ -47,21 +47,21 @@ function mount() {
 
 describe('the tab bar', () => {
   test('is drawn on a phone only, and draws nothing on a tablet or a desktop', () => {
-    for (const matching of [[EXPANDED_QUERY], []]) {
+    for (const matching of [[DRAWER_QUERY], []]) {
       viewport(matching);
       landAt('/');
       const { queryByRole, unmount } = mount();
       expect(queryByRole('navigation', { name: 'Main tabs' })).toBeNull();
       unmount();
     }
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     landAt('/');
     const { getByRole } = mount();
     expect(getByRole('navigation', { name: 'Main tabs' })).not.toBeNull();
   });
 
   test('is Cinder’s bottom bar, with Home, Chat, Reviews and Runs, then More', () => {
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     landAt('/');
     const { getByRole } = mount();
     const bar = getByRole('navigation', { name: 'Main tabs' });
@@ -85,7 +85,7 @@ describe('the tab bar', () => {
   });
 
   test('draws an icon over every label, hidden from assistive technology', () => {
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     landAt('/');
     const { getByRole } = mount();
     const bar = getByRole('navigation', { name: 'Main tabs' });
@@ -98,7 +98,7 @@ describe('the tab bar', () => {
   });
 
   test('marks the tab for the page on screen, Chat on a session and Home at the root alone', () => {
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     const cases = [
       ['/', 'Home'],
       ['/chats/session-1', 'Chat'],
@@ -117,7 +117,7 @@ describe('the tab bar', () => {
   });
 
   test('marks no tab for a page the bar does not hold', () => {
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     landAt('/health');
     const { getByRole } = mount();
     const bar = getByRole('navigation', { name: 'Main tabs' });
@@ -125,7 +125,7 @@ describe('the tab bar', () => {
   });
 
   test('a tab opens its page without leaving the application', async () => {
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     landAt('/');
     const { getByRole, navigation } = mount();
     navigation.drawerOpen = true;
@@ -136,7 +136,7 @@ describe('the tab bar', () => {
   });
 
   test('the More tab opens the navigation drawer and says it is open', async () => {
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     landAt('/');
     const { getByRole, navigation } = mount();
     const more = getByRole('button', { name: 'More' });

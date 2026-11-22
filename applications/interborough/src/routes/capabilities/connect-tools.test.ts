@@ -147,11 +147,17 @@ describe('the Connect tools page', () => {
     ]);
     // No back link: the breadcrumb is the way back.
     expect(container.querySelector('a')).toBeNull();
-    expect(container.querySelector('.cinder-form-actions')).not.toBeNull();
+    const actions = within(container).getByRole('group', { name: 'Form actions' });
+    expect(actions).toHaveClass('cinder-form-actions');
     // Before a test passes, the footer says to test to choose tools (row 33n).
     expect(summary()).toBe(copy.connect.chooseFirst);
     expect(buttonLabelled(copy.connect.actions.cancel)).not.toBeNull();
     expect(buttonLabelled(copy.connect.actions.connect)).not.toBeNull();
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.textContent?.trim()),
+    ).toEqual([copy.connect.actions.cancel, copy.connect.actions.connect]);
   });
 
   test('is opened from the Capabilities header and from the empty Sources tab', async () => {

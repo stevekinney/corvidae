@@ -7,6 +7,11 @@
   // rail and moving the row below it can be read.
   const longFirstWord = 'http://127.0.0.1:7439/bureau/mcp is the address a client connects to';
   const scrolling = `const settings = { theme: 'light', density: 'comfortable', locale: 'en-GB', timeZone: 'Europe/London' };`;
+  const metadataRail = new URLSearchParams(globalThis.location.search).get('metadata-rail') === '1';
+  const metadataCode =
+    'const metadataRailMustReserveEveryVisibleLabel = response.headers.get("x-correlation-id");';
+  const oneLineMetadataCode = 'const response = await model.complete();';
+  const longStreamingLabel = 'Writing response from the selected model…';
 </script>
 
 <div class="code-block-rail">
@@ -30,6 +35,36 @@
   <div data-testid="long-first-word">
     <CodeBlock code={longFirstWord} copyable wrap />
   </div>
+  {#if metadataRail}
+    <!-- The browser rail regression turns these on explicitly, leaving the stable fixture unchanged. -->
+    <div data-testid="floating-language">
+      <CodeBlock code={metadataCode} language="typescript" copyable copyFloating />
+    </div>
+    <div data-testid="floating-streaming-status">
+      <CodeBlock
+        code={metadataCode}
+        language="typescript"
+        streaming
+        streamingLabel="Writing response…"
+        copyFloating
+      />
+    </div>
+    <div data-testid="floating-language-wrapped">
+      <CodeBlock code={metadataCode} language="typescript" copyable copyFloating wrap />
+    </div>
+    <!-- These stay one line at desktop width: wide metadata reserves inline rail space, not height. -->
+    <div data-testid="floating-language-one-line">
+      <CodeBlock code={oneLineMetadataCode} language="typescript" copyable copyFloating />
+    </div>
+    <div data-testid="floating-streaming-one-line">
+      <CodeBlock
+        code={oneLineMetadataCode}
+        streaming
+        streamingLabel={longStreamingLabel}
+        copyFloating
+      />
+    </div>
+  {/if}
 </div>
 
 <style>

@@ -4,11 +4,9 @@
  * key that is unique across the sources, for selection and keyed rendering. The server orders the
  * list (waiting: the longest first; decided: the latest decision first), and this keeps its order.
  */
-import { humanizeIdentifier } from '@lostgradient/cinder';
-
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import type { ListedReview } from '../../lib/bureau-reviews.ts';
-import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
+import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
 
 /**
  * How long a review that is no longer waiting stays in the list, its place saying so, before it
@@ -107,23 +105,6 @@ export function reviewLineTwo(
     // Only a review still waiting says so: a decided one has nothing left to undo (row 25x).
     ...(irreversible ? { risk: REVIEWS_COPY.cantBeUndone } : {}),
   };
-}
-
-/**
- * What an approval's call was given, on one line as the pane says it (row 26o): each argument by its
- * name in words and its value, in the order the tool took them ("Order ID order-1001, Cents 4200").
- */
-export function inputLine(args: unknown): string {
-  return inputParts(args)
-    .map(([key, value]) => `${key} ${value}`)
-    .join(', ');
-}
-
-/** The input line's parts, each argument's name in words and its value, for the pane to mute the names. */
-export function inputParts(args: unknown): readonly (readonly [string, string])[] {
-  return argumentEntries(args).map(
-    ([key, value]) => [humanizeIdentifier(key, { casing: 'sentence' }), value] as const,
-  );
 }
 
 /** The label of what kind of review it is. */
