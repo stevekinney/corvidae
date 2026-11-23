@@ -67,6 +67,41 @@ test('operator reads a worker’s contract verification status', async ({ page, 
   await checkA11y('workers — contract verification');
 });
 
+test('worker verification command Copy targets fit beside their labels at tablet width', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/health/workers?worker=e2e-fleet-worker-1&tab=queues');
+  const panel = page.getByRole('region', { name: 'Verify from the command line' });
+  await expect(
+    panel.getByRole('button', { name: 'Copy weft worker verify command' }),
+  ).toBeVisible();
+
+  const geometry = await panel.evaluate((section) => {
+    const rows = section.querySelectorAll('.weft-verification-commands__row');
+    return {
+      panelOverflow: section.scrollWidth - section.clientWidth,
+      rows: Array.from(rows, (row) => {
+        const label = row.querySelector('.weft-verification-commands__label');
+        const icon = row.querySelector('button svg');
+        if (label === null || icon === null) throw new Error('Command label or Copy icon missing');
+        const glyph = icon.getBoundingClientRect();
+        return {
+          gap: glyph.left - label.getBoundingClientRect().right,
+          iconHeight: glyph.height,
+          textSize: Number.parseFloat(getComputedStyle(label).fontSize),
+        };
+      }),
+    };
+  });
+  expect(geometry.panelOverflow).toBe(0);
+  expect(geometry.rows).toHaveLength(2);
+  for (const row of geometry.rows) {
+    expect(row.gap).toBeCloseTo(8, 1);
+    expect(row.iconHeight).toBeCloseTo(row.textSize, 1);
+  }
+});
+
 /**
  * Failure states, each reached by answering one of the panel's two reads with
  * a JSON-RPC fault (or, for the malformed state, a result the Console's
