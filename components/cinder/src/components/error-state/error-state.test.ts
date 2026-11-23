@@ -590,6 +590,21 @@ describe('ErrorState neutral tone', () => {
     ).toBe('center');
   });
 
+  test('a title-only row’s title is its last child and has no trailing margin (COR-2648)', async () => {
+    const { container } = render(ErrorState, {
+      props: { variant: 'row', title: 'Failed', description: '', onRetry: () => {} },
+    });
+    const title = container.querySelector('.cinder-error-state-title');
+    expect(title?.matches(':last-child')).toBe(true);
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    expect(
+      declarationsFor(
+        css,
+        ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title:last-child",
+      ).get('margin-block-end'),
+    ).toBe('0');
+  });
+
   test('announce raises a neutral state to an alert', () => {
     const { container, queryByRole } = render(ErrorState, {
       props: { title: 'Gone', description: 'Deleted.', tone: 'neutral', announce: true },
