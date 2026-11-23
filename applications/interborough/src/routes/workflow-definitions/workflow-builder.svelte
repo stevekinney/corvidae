@@ -11,7 +11,7 @@
    * lists, a repeat's steps), which reads the text, the catalogs and the one way to change the text
    * from the host this component provides (`workflow-builder-host.ts`). Below 640 pixels the
    * builder shows read-only fields and JSON, hides field editing actions, and disables the footer's
-   * primary action. The tabs still switch, with their read-only status beside them (row 05n).
+   * primary action. The tabs still switch (row 05n).
    *
    * Create workflow's problems (the ID, what starts it, each step) are said at their fields and
    * outline their step once the page asks to `showProblems`, from two of them in one line above the
@@ -667,17 +667,14 @@
 
 <div class="weft-workflow-builder" data-testid="workflow-builder">
   <Tabs bind:value={tab}>
-    <div class="weft-workflow-builder__tabs">
-      <Tabs.List label={copy.tabsLabel} class="weft-workflow-builder__tab-list">
-        <Tabs.Trigger
-          value="builder"
-          disabled={blocked}
-          {...blocked ? { 'aria-describedby': READ_BACK_ID } : {}}>{copy.builderTab}</Tabs.Trigger
-        >
-        <Tabs.Trigger value="json">{copy.jsonTab}</Tabs.Trigger>
-      </Tabs.List>
-      {#if readOnly}<span class="weft-workflow-builder__read-only">{copy.readOnly}</span>{/if}
-    </div>
+    <Tabs.List label={copy.tabsLabel}>
+      <Tabs.Trigger
+        value="builder"
+        disabled={blocked}
+        {...blocked ? { 'aria-describedby': READ_BACK_ID } : {}}>{copy.builderTab}</Tabs.Trigger
+      >
+      <Tabs.Trigger value="json">{copy.jsonTab}</Tabs.Trigger>
+    </Tabs.List>
 
     {#if notice !== undefined}
       <div class="weft-workflow-builder__notice">{@render notice()}</div>
@@ -1000,25 +997,6 @@
     flex-direction: column;
     gap: 20px;
     padding-top: var(--cinder-space-3);
-  }
-
-  .weft-workflow-builder__tabs {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: var(--cinder-space-2);
-    align-items: center;
-    min-width: 0;
-  }
-
-  .weft-workflow-builder__tabs :global(.weft-workflow-builder__tab-list) {
-    inline-size: 100%;
-    min-inline-size: 0;
-  }
-
-  .weft-workflow-builder__read-only {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    white-space: nowrap;
   }
 
   /* A read-only builder offers nothing to type: its fields show their values, never a prompt. */

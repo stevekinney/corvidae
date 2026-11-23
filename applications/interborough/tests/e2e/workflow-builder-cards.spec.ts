@@ -139,7 +139,7 @@ async function openWith(page: Page, document: unknown): Promise<void> {
   await replaceJsonEditorText(json, JSON.stringify(document, null, 2));
   if (size.width < PHONE_BELOW) {
     await page.setViewportSize(size);
-    await expect(root.locator('.weft-workflow-builder__read-only')).toHaveText(BUILDER.readOnly);
+    await expect(root.locator('.cinder-page-header__description')).toHaveText(BUILDER.readOnlyOnScreen);
   }
   await openTab(root, BUILDER.builderTab);
 }
@@ -440,7 +440,7 @@ test.describe('the workflow builder’s nested and missing states', () => {
 });
 
 test.describe('the workflow builder’s read-only step cards', () => {
-  test('workflow builder cards: reset stays reachable on desktop and the phone status shares its tab row', async ({
+  test('workflow builder cards: reset stays reachable on desktop and phone context stays in the heading', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -463,21 +463,20 @@ test.describe('the workflow builder’s read-only step cards', () => {
     const change = root.getByRole('button', { name: BUILDER.idChange });
     await expect(change).toBeFocused();
 
-    const tabRow = root.locator('.weft-workflow-builder__tabs');
+    const builder = root.getByTestId('workflow-builder');
     const tabList = root.getByRole('tablist');
-    const desktop = await readBoxes(page, { tabRow, tabList });
+    const desktop = await readBoxes(page, { builder, tabList });
     expect(Math.round(desktop.tabList.x + desktop.tabList.width)).toBe(
-      Math.round(desktop.tabRow.x + desktop.tabRow.width),
+      Math.round(desktop.builder.x + desktop.builder.width),
     );
 
     await page.setViewportSize({ width: 375, height: 900 });
-    const status = root.locator('.weft-workflow-builder__read-only');
-    await expect(status).toHaveText(BUILDER.readOnly);
-    const phone = await readBoxes(page, { tabList, status });
-    const tabsCenter = phone.tabList.y + phone.tabList.height / 2;
-    const statusCenter = phone.status.y + phone.status.height / 2;
-    expect(Math.abs(tabsCenter - statusCenter)).toBeLessThanOrEqual(1);
-    expect(phone.tabList.x + phone.tabList.width).toBeLessThan(phone.status.x);
+    await expect(root.locator('.cinder-page-header__description')).toHaveText(BUILDER.readOnlyOnScreen);
+    await expect(root.locator('.weft-workflow-builder__read-only')).toHaveCount(0);
+    const phone = await readBoxes(page, { builder, tabList });
+    expect(Math.round(phone.tabList.x + phone.tabList.width)).toBe(
+      Math.round(phone.builder.x + phone.builder.width),
+    );
     await expect(root.getByRole('link', { name: /Back to (the workflow|Workflows)/ })).toHaveCount(
       0,
     );

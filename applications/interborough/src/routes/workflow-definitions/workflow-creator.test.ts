@@ -970,13 +970,14 @@ describe('the builder', () => {
     await waitFor(() => expect(router.pathname).toBe('/workflows/refund'));
   });
 
-  test('is read-only below 640 pixels with a compact status beside switchable tabs', async () => {
+  test('says the builder is read-only in the phone heading while tabs stay full width', async () => {
     phone();
     const { container } = open();
     await ready(container);
-    const readOnly = container.querySelector('.weft-workflow-builder__read-only');
-    expect(readOnly?.textContent).toBe(BUILDER.readOnly);
+    const readOnly = container.querySelector('.cinder-page-header__description');
+    expect(readOnly?.textContent).toBe(BUILDER.readOnlyOnScreen);
     expect(readOnly?.closest('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('.weft-workflow-builder__read-only')).toBeNull();
     expect(container.querySelector('[data-testid="workflow-builder-phone"]')).toBeNull();
     expect(container.querySelector('.weft-workflow-builder__body')?.hasAttribute('inert')).toBe(
       true,
@@ -1004,8 +1005,8 @@ describe('the builder', () => {
     expect(container.querySelector('.weft-workflow-builder__json')?.hasAttribute('inert')).toBe(
       true,
     );
-    expect(container.querySelector('.weft-workflow-builder__read-only')?.textContent).toBe(
-      BUILDER.readOnly,
+    expect(container.querySelector('.cinder-page-header__description')?.textContent).toBe(
+      BUILDER.readOnlyOnScreen,
     );
   });
 
@@ -1023,8 +1024,8 @@ describe('the builder', () => {
 
     resize(true);
     await waitFor(() =>
-      expect(container.querySelector('.weft-workflow-builder__read-only')?.textContent).toBe(
-        BUILDER.readOnly,
+      expect(container.querySelector('.cinder-page-header__description')?.textContent).toBe(
+        BUILDER.readOnlyOnScreen,
       ),
     );
 

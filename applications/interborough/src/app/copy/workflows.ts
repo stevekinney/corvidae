@@ -636,7 +636,7 @@ export const WORKFLOW_COPY = {
     /** Beside an existing workflow's ID. */
     idFixed: 'Can’t be changed',
     resetId: 'Reset ID',
-    readOnly: 'Read-only',
+    readOnlyOnScreen: 'Read-only on this screen.',
     descriptionLabel: 'Description',
     descriptionPlaceholder: 'What does this workflow do?',
     startsHeading: 'Starts',
