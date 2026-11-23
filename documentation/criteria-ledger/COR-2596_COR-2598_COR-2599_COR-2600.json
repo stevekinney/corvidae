@@ -1,0 +1,119 @@
+{
+  "issue": "COR-2596_COR-2598_COR-2599_COR-2600",
+  "branch": "steve/composable-foundations-batch",
+  "checkedAt": "1bd3bd2098276a02908c4fbeaf55d8b25ae3c8ae",
+  "briefVersion": "4f0cc2081b25",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2596/AC1",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts round trips equipment and books; Weft golden adds 111 MCP eligibility fields only"
+    },
+    {
+      "id": "COR-2596/AC2",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts checks repeat generation and instrumented factories"
+    },
+    {
+      "id": "COR-2596/AC3",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts checks plain callable and declared and absent replay"
+    },
+    {
+      "id": "COR-2596/AC4",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts verifies directional paging, observation and replay compatibility, nested transforms and deterministic invalid catalog diagnostics without callbacks"
+    },
+    {
+      "id": "COR-2596/AC5",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts executes both catalog operations and checks browser bundle graph; bun run typecheck passed"
+    },
+    {
+      "id": "COR-2598/AC1",
+      "status": "met-on-branch",
+      "evidence": "Server regression: synchronous and asynchronous factories start once and serve repeated requests."
+    },
+    {
+      "id": "COR-2598/AC2",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover normalized Unicode and encoded mount prefixes, opaque encoded remainders, base, request properties, adjacent fallback and service 404."
+    },
+    {
+      "id": "COR-2598/AC3",
+      "status": "met-on-branch",
+      "evidence": "Server regression covers external and internal admission, forwarded values and cancellation."
+    },
+    {
+      "id": "COR-2598/AC4",
+      "status": "met-on-branch",
+      "evidence": "Server regressions verify normalized equivalent and protected prefixes, route and asset collisions, and reject encoded separators before startup."
+    },
+    {
+      "id": "COR-2598/AC5",
+      "status": "met-on-branch",
+      "evidence": "Coordinator runtime-lifecycle browser suite passed at 03fb157a; server suite covers failed startup and exactly-once cleanup. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
+    },
+    {
+      "id": "COR-2598/AC6",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover host stream release after revocation and listener-owned WebSocket upgrade."
+    },
+    {
+      "id": "COR-2598/AC7",
+      "status": "met-on-branch",
+      "evidence": "Coordinator package-consumer suite passed at 03fb157a, including installed starter mounts in development and production. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
+    },
+    {
+      "id": "COR-2599/AC1",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: canonical metadata and bearer challenges"
+    },
+    {
+      "id": "COR-2599/AC2",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: current principal and delegation after dispatch await, cancellation before operation admission, and delayed body in correction worktree"
+    },
+    {
+      "id": "COR-2599/AC3",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: delegable and denied scope challenges"
+    },
+    {
+      "id": "COR-2599/AC4",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: size, forwarded host, origin, cancellation during authority recheck and scope revocation in correction worktree"
+    },
+    {
+      "id": "COR-2599/AC5",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/installed.integration.test.ts: installed archive listener and dependency graph"
+    },
+    {
+      "id": "COR-2600/AC1",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount"
+    },
+    {
+      "id": "COR-2600/AC2",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount"
+    },
+    {
+      "id": "COR-2600/AC3",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount"
+    },
+    {
+      "id": "COR-2600/AC4",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount"
+    },
+    {
+      "id": "COR-2600/AC5",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount"
+    }
+  ]
+}
