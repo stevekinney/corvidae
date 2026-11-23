@@ -72,6 +72,27 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/bureau": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!"
+      ]
+    },
     "packages/backchannel": {
       "entry": [
         "**/*.test.ts",

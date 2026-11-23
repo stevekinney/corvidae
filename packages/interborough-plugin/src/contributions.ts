@@ -813,7 +813,27 @@ export interface PluginEventDeclaration {
  * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
  * plugin names only the kinds it contributes.
  */
+/** Durable cleanup for a terminally denied or rejected, signed tool call. */
+export interface PluginTerminalReviewRelease {
+  readonly name: string;
+  readonly agent: string;
+  readonly tool: string;
+  readonly toolRevision: string;
+  /** Project only the domain identifier from the verified arguments. */
+  readonly identifier: (arguments_: unknown) => string;
+  /** Idempotently release the identified domain reservation, or prove it no longer needs release. */
+  readonly release: (input: {
+    readonly identifier: string;
+    readonly runId: string;
+    readonly reviewId: string;
+    readonly round: number;
+    readonly toolRevision: string;
+  }) => Promise<void>;
+}
+
 export interface PluginContributions {
+  /** Internal, durable business cleanup; unlike hooks this cannot be disabled separately. */
+  readonly terminalReviewReleases?: readonly PluginTerminalReviewRelease[];
   /** Tools agents can call. */
   readonly tools?: readonly AnyTool[];
   /** Activities workflows can call. */
