@@ -381,7 +381,8 @@ export function cadenceSentence(value: ScheduleValue, options: { zone?: boolean 
         ? `on cron ${field('Cron expression')}`
         : `on cron ${field('Cron expression')} in ${zone}`;
     default:
-      words = repeats.toLowerCase();
+      // Only the first letter is lowered, so a weekday keeps its capital: "every Friday".
+      words = `${repeats.charAt(0).toLowerCase()}${repeats.slice(1)}`;
   }
   const clock = at === '' ? words : `${words} at ${at}`;
   return zone === '' ? clock : `${clock} ${zone}`;

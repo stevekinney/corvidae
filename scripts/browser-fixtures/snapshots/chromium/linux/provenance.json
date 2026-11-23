@@ -84,6 +84,14 @@
       "renderedSourceSha": "dff1b871e1bb8ae4e81fdb83abcb7fc22fbaabe7",
       "suiteExitCode": 0
     },
+    "json-editor": {
+      "renderedSourceSha": "94edd28264ccd3ccd5b976b0fb2d2ab76a0988fd",
+      "suiteExitCode": 0
+    },
+    "json-schema-editor": {
+      "renderedSourceSha": "94edd28264ccd3ccd5b976b0fb2d2ab76a0988fd",
+      "suiteExitCode": 0
+    },
     "json-viewer": {
       "renderedSourceSha": "a32a9e663a918a566ee7f3db1be030bcfa62fde3",
       "suiteExitCode": 0
@@ -98,6 +106,10 @@
     },
     "page-header": {
       "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
+      "suiteExitCode": 0
+    },
+    "schedule-builder": {
+      "renderedSourceSha": "94edd28264ccd3ccd5b976b0fb2d2ab76a0988fd",
       "suiteExitCode": 0
     },
     "schema-form": {

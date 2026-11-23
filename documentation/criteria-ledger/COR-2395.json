@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2395",
+  "branch": "steve/cor-2395-static-export-worker",
+  "checkedAt": "b315c2accd2e11c8481654ad229675c87bafc6f9",
+  "briefVersion": "0d6284a047d0",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Static export awaits each documentation route in static-export.ts; each ordinary component page awaits one fresh featured-example worker, and the old diagnostic discarded exit status and stdout. The coordinator records this source-backed mechanism in the issue comment; the spontaneous termination cause remains unconfirmed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "featured-example-server-renderer.integration.test.ts runs a real worker that exits 17 after writing both streams and asserts the error preserves its exit code, stdout, and stderr; its SIGTERM case asserts the signal and empty captured streams are reported."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "COR-2395-isolated-load-pairs.json records five paired candidate/base passes under hardening load. The owner-approved deterministic real SIGTERM regression passes in the isolated renderer test and reproduces the prior empty-stream diagnostic while proving the fixed diagnostic retains signal and both captured streams."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Reviewed git diff origin/main...HEAD: the existing 120000-millisecond worker hang detector remains unchanged; no timeout, retry, or HANG_GUARD_MILLISECONDS value was added or raised."
+    }
+  ]
+}

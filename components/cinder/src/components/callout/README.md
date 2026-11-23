@@ -40,7 +40,7 @@ Inline note for tips, warnings, or contextual notes within content flow. It is q
 
 Callout is the single notice in Cinder's chat surfaces: one box, one layout, and only the tone varies.
 
-- `variant`: `info`, `warning` or `danger` tint the box with a 1px edge in the tone's colour; `neutral` is the quiet, untinted note.
+- `variant`: `info`, `success`, `warning` or `danger` tint the box with a 1px edge in the tone's colour; `neutral` is the quiet, untinted note.
 - `icon`: the leading tone icon, a 16px glyph in the first track. Pass the icon for the tone (`Info`, `TriangleAlert`, `OctagonAlert`).
 - `title`: an optional bold first line.
 - children: the text.

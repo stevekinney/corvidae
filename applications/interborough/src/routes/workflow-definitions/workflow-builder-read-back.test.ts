@@ -65,6 +65,47 @@ describe('the read-back sentence', () => {
     );
   });
 
+  test('COR-2432: an agent step the file names reads as its name, a name kept as written (row 65j)', () => {
+    const titled = (title: string) => ({ ...agentStep('assistant', 'Do it.'), title });
+    expect(
+      readBack({
+        trigger: { kind: 'schedule', spec: '0 11 * * 5', timezone: 'America/Chicago' },
+        steps: [
+          titled('Find the last release'),
+          titled('Collect merged changes'),
+          titled('Draft the notes'),
+          { kind: 'await-signal', signal: 'notes-approved', title: 'Wait for approval' },
+        ],
+      }),
+    ).toBe(
+      'Every Friday at 11:00 AM CST, find the last release, collect merged changes, draft the notes, then wait for notes-approved.',
+    );
+    expect(readBack({ trigger: { kind: 'manual' }, steps: [titled('GitHub sync')] })).toContain(
+      'GitHub sync',
+    );
+  });
+
+  test('design correction: a saved workflow a person can start says so after its sentence (row 65j)', () => {
+    const release = {
+      trigger: { kind: 'schedule', spec: '0 11 * * 5', timezone: 'America/Chicago' },
+      steps: [{ kind: 'await-signal', signal: 'notes-approved' }],
+    };
+    const saved = (file: unknown) =>
+      readBuilder(JSON.stringify(file), { now: NOVEMBER, canStart: true })?.readBack;
+    expect(saved(release)).toBe(
+      `Every Friday at 11:00 AM CST, wait for notes-approved. ${WORKFLOW_COPY.builder.readBack.startItYourself}`,
+    );
+    // A new workflow has nothing to start yet (row 64r), a paused one starts for no one, and a
+    // manual start already says how it starts.
+    expect(readBack(release)).toBe('Every Friday at 11:00 AM CST, wait for notes-approved.');
+    expect(saved({ ...release, paused: true })).toBe(
+      'Every Friday at 11:00 AM CST, wait for notes-approved.',
+    );
+    expect(saved({ ...release, trigger: { kind: 'manual' } })).not.toContain(
+      WORKFLOW_COPY.builder.readBack.startItYourself,
+    );
+  });
+
   test('names a weekly schedule’s day, and a zone the trigger does not name as UTC', () => {
     const steps = [{ kind: 'await-signal', signal: 'notes-approved' }];
     expect(
