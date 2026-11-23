@@ -253,10 +253,7 @@ function operationToSnapshot(
   return {
     name: operation.name,
     mcpExposable: operation.mcpExposable,
-    ...(operation.behavior === undefined ? {} : { behavior: operation.behavior }),
-    ...(operation.conflictReasonTokens === undefined
-      ? {}
-      : { conflictReasonTokens: operation.conflictReasonTokens }),
+    ...behaviorToSnapshot(operation),
     kind: operation.kind ?? 'unary',
     summary: operation.summary,
     ...(operation.description === undefined ? {} : { description: operation.description }),
@@ -288,6 +285,15 @@ function operationToSnapshot(
             success: { ...restBinding.success },
           },
         }),
+  };
+}
+
+function behaviorToSnapshot(operation: ErasedOperation) {
+  return {
+    ...(operation.behavior === undefined ? {} : { behavior: operation.behavior }),
+    ...(operation.conflictReasonTokens === undefined
+      ? {}
+      : { conflictReasonTokens: operation.conflictReasonTokens }),
   };
 }
 

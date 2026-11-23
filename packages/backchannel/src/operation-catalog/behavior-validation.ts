@@ -28,18 +28,7 @@ function rejectTransforms(schema: z.ZodType, operation: string, seen = new Set<z
   seen.add(schema);
   if (schema instanceof z.ZodPipe || schema instanceof z.ZodTransform)
     throw new Error(`operation "${operation}" behavior does not support schema transforms`);
-  if (schema instanceof z.ZodObject)
-    for (const child of Object.values(schema.shape))
-      rejectTransforms(child as z.ZodType, operation, seen);
-  if (schema instanceof z.ZodArray) rejectTransforms(schema.element as z.ZodType, operation, seen);
-  if (
-    schema instanceof z.ZodOptional ||
-    schema instanceof z.ZodNullable ||
-    schema instanceof z.ZodDefault
-  )
-    rejectTransforms(schema.unwrap() as z.ZodType, operation, seen);
-  if (schema instanceof z.ZodUnion)
-    for (const child of schema.options) rejectTransforms(child as z.ZodType, operation, seen);
+  for (const child of childSchemas(schema)) rejectTransforms(child, operation, seen);
 }
 
 function narrowed(
@@ -63,95 +52,140 @@ function narrowed(
   return matches[0]!;
 }
 
+function childSchemas(schema: z.ZodType): z.ZodType[] {
+  if (schema instanceof z.ZodObject) return Object.values(schema.shape) as z.ZodType[];
+  if (schema instanceof z.ZodArray) return [schema.element as z.ZodType];
+  if (
+    schema instanceof z.ZodOptional ||
+    schema instanceof z.ZodNullable ||
+    schema instanceof z.ZodDefault
+  )
+    return [schema.unwrap() as z.ZodType];
+  if (schema instanceof z.ZodUnion) return schema.options as z.ZodType[];
+  return [];
+}
+
+type ReadBehavior = Extract<NonNullable<ErasedOperation['behavior']>, { kind: 'read' }>;
+type CommandBehavior = Extract<NonNullable<ErasedOperation['behavior']>, { kind: 'command' }>;
+
+function validatePage(
+  operation: ErasedOperation,
+  page: NonNullable<ReadBehavior['pagination']>,
+): void {
+  const name = operation.name;
+  const items = unwrap(field(operation.outputSchema, page.items, name));
+  if (!(items instanceof z.ZodArray))
+    throw new Error(`operation "${name}" pagination items must be an array`);
+  for (const key of page.itemKey) field(items.element as z.ZodType, key, name);
+  for (const filter of page.cursorFilters) field(operation.inputSchema, filter, name);
+  if (!(unwrap(field(operation.outputSchema, page.total, name)) instanceof z.ZodNumber))
+    throw new Error(`operation "${name}" pagination total must be a number`);
+  if (
+    !sameType(
+      field(operation.inputSchema, page.cursorInput, name),
+      field(operation.outputSchema, page.nextCursor, name),
+    )
+  )
+    throw new Error(`operation "${name}" pagination cursors are incompatible`);
+}
+
+function validateRead(operation: ErasedOperation, behavior: ReadBehavior): void {
+  const name = operation.name;
+  const forbidden = [
+    'invalidates',
+    'observedInput',
+    'replay',
+    'responseDisposition',
+    'conflictReasons',
+    'effects',
+  ];
+  if (forbidden.some((key) => Object.hasOwn(behavior, key)))
+    throw new Error(`operation "${name}" has conflicting read and command behavior`);
+  if (operation.destructive) throw new Error(`operation "${name}" cannot be a destructive read`);
+  for (const key of behavior.key ?? []) field(operation.inputSchema, key, name);
+  if (behavior.pagination) validatePage(operation, behavior.pagination);
+  if (behavior.cursor)
+    field(operation.eventSchema ?? operation.outputSchema, behavior.cursor, name);
+}
+
+function lookupRead(
+  byName: Map<string, ErasedOperation>,
+  target: string,
+  name: string,
+): ErasedOperation & { behavior: ReadBehavior } {
+  const read = byName.get(target);
+  if (read?.behavior?.kind !== 'read')
+    throw new Error(`operation "${name}" references missing read "${target}"`);
+  return read as ErasedOperation & { behavior: ReadBehavior };
+}
+
+function validateObservation(
+  operation: ErasedOperation,
+  observed: NonNullable<CommandBehavior['observedInput']>,
+  byName: Map<string, ErasedOperation>,
+): void {
+  const name = operation.name;
+  const read = lookupRead(byName, observed.read, name);
+  const output = narrowed(read.outputSchema, observed.when, name);
+  for (const key of [observed.key, observed.revision]) {
+    if (!sameType(field(operation.inputSchema, key, name), field(output, key, name)))
+      throw new Error(`operation "${name}" observation field "${key}" is incompatible`);
+  }
+  if (!read.behavior.key?.includes(observed.key))
+    throw new Error(`operation "${name}" observation key is not declared by its read`);
+  if (
+    !sameType(
+      field(operation.inputSchema, observed.key, name),
+      field(read.inputSchema, observed.key, name),
+    )
+  )
+    throw new Error(`operation "${name}" observation key is incompatible with its read`);
+}
+
+function validateReplay(
+  operation: ErasedOperation,
+  replay: NonNullable<CommandBehavior['replay']>,
+  byName: Map<string, ErasedOperation>,
+): void {
+  const name = operation.name;
+  field(operation.inputSchema, replay.key, name);
+  const resource = field(operation.outputSchema, replay.resource, name);
+  const read = lookupRead(byName, replay.read, name);
+  if (
+    !read.behavior.key?.includes(replay.resource) ||
+    !sameType(resource, field(read.inputSchema, replay.resource, name))
+  )
+    throw new Error(`operation "${name}" replay resource is incompatible with its read`);
+}
+
+function validateCommand(
+  operation: ErasedOperation,
+  behavior: CommandBehavior,
+  byName: Map<string, ErasedOperation>,
+): void {
+  const name = operation.name;
+  if (['key', 'pagination', 'cursor'].some((key) => Object.hasOwn(behavior, key)))
+    throw new Error(`operation "${name}" has conflicting read and command behavior`);
+  for (const target of behavior.invalidates ?? []) lookupRead(byName, target, name);
+  for (const reason of behavior.conflictReasons ?? []) {
+    if (!operation.conflictReasonTokens?.includes(reason))
+      throw new Error(`operation "${name}" references unknown conflict reason "${reason}"`);
+  }
+  if (behavior.observedInput) validateObservation(operation, behavior.observedInput, byName);
+  if (behavior.replay) validateReplay(operation, behavior.replay, byName);
+}
+
 /** Check declarative references before a host can start. */
 export function validateOperationBehaviors(operations: readonly ErasedOperation[]): void {
   const byName = new Map(operations.map((operation) => [operation.name, operation]));
   for (const operation of operations) {
     const behavior = operation.behavior;
     if (!behavior) continue;
-    const name = operation.name;
-    rejectTransforms(operation.inputSchema, name);
-    rejectTransforms(operation.outputSchema, name);
-    if (operation.eventSchema) rejectTransforms(operation.eventSchema, name);
-    if (behavior.kind === 'read') {
-      if (
-        'invalidates' in behavior ||
-        'observedInput' in behavior ||
-        'replay' in behavior ||
-        'responseDisposition' in behavior ||
-        'conflictReasons' in behavior ||
-        'effects' in behavior
-      )
-        throw new Error(`operation "${name}" has conflicting read and command behavior`);
-      if (operation.destructive)
-        throw new Error(`operation "${name}" cannot be a destructive read`);
-      for (const key of behavior.key ?? []) field(operation.inputSchema, key, name);
-      if (behavior.pagination) {
-        const page = behavior.pagination;
-        const items = unwrap(field(operation.outputSchema, page.items, name));
-        if (!(items instanceof z.ZodArray))
-          throw new Error(`operation "${name}" pagination items must be an array`);
-        for (const key of page.itemKey) field(items.element as z.ZodType, key, name);
-        for (const filter of page.cursorFilters) field(operation.inputSchema, filter, name);
-        const total = unwrap(field(operation.outputSchema, page.total, name));
-        if (!(total instanceof z.ZodNumber))
-          throw new Error(`operation "${name}" pagination total must be a number`);
-        if (
-          !sameType(
-            field(operation.inputSchema, page.cursorInput, name),
-            field(operation.outputSchema, page.nextCursor, name),
-          )
-        )
-          throw new Error(`operation "${name}" pagination cursors are incompatible`);
-      }
-      if (behavior.cursor)
-        field(operation.eventSchema ?? operation.outputSchema, behavior.cursor, name);
-      continue;
-    }
-    if (behavior.kind !== 'command')
-      throw new Error(`operation "${name}" has invalid behavior kind`);
-    if ('key' in behavior || 'pagination' in behavior || 'cursor' in behavior)
-      throw new Error(`operation "${name}" has conflicting read and command behavior`);
-    for (const target of behavior.invalidates ?? []) {
-      if (byName.get(target)?.behavior?.kind !== 'read')
-        throw new Error(`operation "${name}" references missing read "${target}"`);
-    }
-    for (const reason of behavior.conflictReasons ?? []) {
-      if (!operation.conflictReasonTokens?.includes(reason))
-        throw new Error(`operation "${name}" references unknown conflict reason "${reason}"`);
-    }
-    if (behavior.observedInput) {
-      const observed = behavior.observedInput;
-      const read = byName.get(observed.read);
-      if (read?.behavior?.kind !== 'read')
-        throw new Error(`operation "${name}" references missing read "${observed.read}"`);
-      const output = narrowed(read.outputSchema, observed.when, name);
-      for (const key of [observed.key, observed.revision]) {
-        if (!sameType(field(operation.inputSchema, key, name), field(output, key, name)))
-          throw new Error(`operation "${name}" observation field "${key}" is incompatible`);
-      }
-      if (!read.behavior.key?.includes(observed.key))
-        throw new Error(`operation "${name}" observation key is not declared by its read`);
-      if (
-        !sameType(
-          field(operation.inputSchema, observed.key, name),
-          field(read.inputSchema, observed.key, name),
-        )
-      )
-        throw new Error(`operation "${name}" observation key is incompatible with its read`);
-    }
-    if (behavior.replay) {
-      const replay = behavior.replay;
-      field(operation.inputSchema, replay.key, name);
-      const resource = field(operation.outputSchema, replay.resource, name);
-      const read = byName.get(replay.read);
-      if (read?.behavior?.kind !== 'read')
-        throw new Error(`operation "${name}" references missing read "${replay.read}"`);
-      if (
-        !read.behavior.key?.includes(replay.resource) ||
-        !sameType(resource, field(read.inputSchema, replay.resource, name))
-      )
-        throw new Error(`operation "${name}" replay resource is incompatible with its read`);
-    }
+    rejectTransforms(operation.inputSchema, operation.name);
+    rejectTransforms(operation.outputSchema, operation.name);
+    if (operation.eventSchema) rejectTransforms(operation.eventSchema, operation.name);
+    if (behavior.kind === 'read') validateRead(operation, behavior);
+    else if (behavior.kind === 'command') validateCommand(operation, behavior, byName);
+    else throw new Error(`operation "${operation.name}" has invalid behavior kind`);
   }
 }

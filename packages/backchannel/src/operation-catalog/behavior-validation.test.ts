@@ -195,24 +195,18 @@ describe('declared operation behavior', () => {
     expect(sources).toEqual(await createOperationClientSources(snapshot, options));
     expect([...sources.values()].join('\n')).toContain("'books.ping'");
     expect(calls).toBe(0);
-    expect(
-      (
-        await executeOperation(
-          'books.search',
-          { query: 'x' },
-          { principal: anonymousPrincipal(), host: {}, transport: 'http-rest', registry },
-        )
-      ).ok,
-    ).toBe(true);
-    expect(
-      (
-        await executeOperation(
-          'books.rename',
-          { isbn: 'x', title: 'New' },
-          { principal: anonymousPrincipal(), host: {}, transport: 'http-rest', registry },
-        )
-      ).ok,
-    ).toBe(true);
+    const searchResult = await executeOperation(
+      'books.search',
+      { query: 'x' },
+      { principal: anonymousPrincipal(), host: {}, transport: 'http-rest', registry },
+    );
+    expect(searchResult.ok).toBe(true);
+    const renameResult = await executeOperation(
+      'books.rename',
+      { isbn: 'x', title: 'New' },
+      { principal: anonymousPrincipal(), host: {}, transport: 'http-rest', registry },
+    );
+    expect(renameResult.ok).toBe(true);
   });
 
   it('rejects invalid references and shapes with deterministic diagnostics', () => {
