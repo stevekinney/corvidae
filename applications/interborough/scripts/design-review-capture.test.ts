@@ -124,6 +124,7 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/workflow-builder-states.spec.ts',
       'tests/e2e/run-setup.spec.ts',
       'tests/e2e/runs-states.spec.ts',
       'tests/e2e/runs-failure-filters.spec.ts',
@@ -221,6 +222,7 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/workflow-builder-states.spec.ts',
       'tests/e2e/run-setup.spec.ts',
       'tests/e2e/runs-states.spec.ts',
       'tests/e2e/runs-failure-filters.spec.ts',
@@ -302,6 +304,7 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/workflow-builder-states.spec.ts',
       'tests/e2e/run-setup.spec.ts',
       'tests/e2e/runs-states.spec.ts',
       'tests/e2e/runs-failure-filters.spec.ts',
@@ -754,6 +757,7 @@ describe('nextFrame', () => {
     // page outgrew its viewport. Here a frame comes only as a layout observation, as it does then.
     const scope = globalThis as unknown as Record<string, unknown>;
     const saved = {
+      document: scope['document'],
       requestAnimationFrame: scope['requestAnimationFrame'],
       ResizeObserver: scope['ResizeObserver'],
     };
@@ -763,6 +767,7 @@ describe('nextFrame', () => {
     // a ResizeObserver loop error, so each observation must start outside any callback.
     let delivering = false;
     let observedWhileDelivering = 0;
+    scope['document'] ??= { documentElement: {} };
     scope['requestAnimationFrame'] = () => {
       animationFramesAsked += 1;
       return 0;
@@ -794,6 +799,8 @@ describe('nextFrame', () => {
     try {
       await nextFrame(page as never);
     } finally {
+      if (saved.document === undefined) delete scope['document'];
+      else scope['document'] = saved.document;
       scope['requestAnimationFrame'] = saved.requestAnimationFrame;
       scope['ResizeObserver'] = saved.ResizeObserver;
     }

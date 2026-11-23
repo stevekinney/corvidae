@@ -43,6 +43,8 @@
     catchUpLabel?: string | undefined;
     /** Told the label of the first field that shows a problem, or `undefined` when none does. */
     onProblem?: ((field: string | undefined) => void) | undefined;
+    /** Whether Next runs names the schedule's zone after each time ("11:00 AM CST", row 65q). */
+    fireZone?: boolean | undefined;
   }
 
   let {
@@ -56,7 +58,15 @@
     onCatchUpChange,
     catchUpLabel,
     onProblem,
+    fireZone = false,
   }: Props = $props();
+
+  const nextFires = $derived(
+    fireZone
+      ? (next: ScheduleValue, count: number) =>
+          computeNextFires(next, count, new Date(), { zone: true })
+      : computeNextFires,
+  );
 
   let region = $state<HTMLElement>();
 
@@ -118,7 +128,7 @@
   <ScheduleBuilder
     {value}
     {onValueChange}
-    {computeNextFires}
+    computeNextFires={nextFires}
     previewCount={3}
     {label}
     {overlap}

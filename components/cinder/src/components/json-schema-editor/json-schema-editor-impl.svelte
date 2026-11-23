@@ -49,6 +49,7 @@
   import type { JsonSchemaEditorProps } from './json-schema-editor.types.ts';
   import { normaliseSchemaInput } from './json-schema-validator.ts';
   import JsonView from './json-view.svelte';
+  import PropertyList from './property-list.svelte';
 
   let {
     id,
@@ -58,6 +59,7 @@
     schemaKey,
     view = $bindable<JsonSchemaEditorView>('form'),
     readonly = false,
+    variant = 'document',
     maxHistory,
     draftOverride,
     onSchemaChange,
@@ -99,6 +101,20 @@
   let enumDraftHistoryRevision = $state(0);
   const editorState = createEditorState(stateOptions);
   const toolbarValidationErrorCount = $derived(view === 'form' ? localValidationErrorCount : 0);
+
+  /**
+   * The schema explicitly declared as an object that the fields form edits, or `undefined` for a
+   * scalar, boolean, or ambiguous schema: the whole editor then serves instead.
+   */
+  const fieldsSchema = $derived.by(() => {
+    const committed = editorState.committedSchema;
+    return typeof committed === 'object' &&
+      committed !== null &&
+      !Array.isArray(committed) &&
+      committed.type === 'object'
+      ? committed
+      : undefined;
+  });
 
   function schemaMatchesCommitted(input: JsonSchemaValue | string): boolean {
     const normalised = normaliseSchemaInput(input);
@@ -417,62 +433,94 @@
   diff view) inside it, so the noninteractive-element-interactions rule is a
   false positive — `role="region"` is the correct landmark for the editor.
 -->
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div
-  {id}
-  class={classNames('cinder-jse', className)}
-  data-cinder-jse=""
-  onkeydown={onKeyDown}
-  role="region"
-  aria-label="JSON Schema editor"
->
-  <JsonSchemaToolbar
-    state={editorState}
-    localValidationErrorCount={toolbarValidationErrorCount}
-    canRevert={!(controlled && editorState.originalSchema === null)}
-    onUndo={handleUndo}
-    onRedo={handleRedo}
-    onRevert={handleRevert}
-  />
+{#if variant === 'fields' && fieldsSchema !== undefined}
+  <!-- The fields table alone (row 65s): no toolbar, views, title, description or type around it,
+       and Required only in its own column. -->
+  <div
+    {id}
+    class={classNames('cinder-jse', 'cinder-jse--fields', className)}
+    data-cinder-jse=""
+    data-cinder-variant="fields"
+  >
+    <PropertyList
+      idPrefix={`${id}-fields`}
+      path="/properties"
+      depth={0}
+      readonly={editorState.readonly}
+      properties={fieldsSchema.properties ?? {}}
+      required={fieldsSchema.required ?? []}
+      {enumDrafts}
+      historyRevision={enumDraftHistoryRevision}
+      requiredOnlyVisible={false}
+      onvalidationErrorcount={(count) => (localValidationErrorCount = count)}
+      onEnumDraftsChange={(next) => (enumDrafts = next)}
+      onValueChange={(properties, required) => {
+        const { required: _required, ...rest } = fieldsSchema;
+        editorState.commitFromForm(
+          { ...rest, properties, ...(required.length > 0 ? { required } : {}) },
+          { label: 'edit properties' },
+        );
+      }}
+    />
+  </div>
+{:else}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    {id}
+    class={classNames('cinder-jse', className)}
+    data-cinder-jse=""
+    onkeydown={onKeyDown}
+    role="region"
+    aria-label="JSON Schema editor"
+  >
+    <JsonSchemaToolbar
+      state={editorState}
+      localValidationErrorCount={toolbarValidationErrorCount}
+      canRevert={!(controlled && editorState.originalSchema === null)}
+      onUndo={handleUndo}
+      onRedo={handleRedo}
+      onRevert={handleRevert}
+    />
 
-  <Tabs bind:value={view}>
-    <TabList label="Editor view">
-      <Tab value="form">Form</Tab>
-      <Tab value="json">JSON</Tab>
-      <Tab value="diff">
-        Diff{#if editorState.hasDiffChanges}<span class="cinder-sr-only">, has changes</span>{/if}
-        {#snippet trailing()}
-          {#if editorState.hasDiffChanges}
-            <Badge variant="neutral" aria-hidden="true">●</Badge>
-          {/if}
-        {/snippet}
-      </Tab>
-    </TabList>
+    <Tabs bind:value={view}>
+      <TabList label="Editor view">
+        <Tab value="form">Form</Tab>
+        <Tab value="json">JSON</Tab>
+        <Tab value="diff">
+          Diff{#if editorState.hasDiffChanges}<span class="cinder-sr-only">, has changes</span>{/if}
+          {#snippet trailing()}
+            {#if editorState.hasDiffChanges}
+              <Badge variant="neutral" aria-hidden="true">●</Badge>
+            {/if}
+          {/snippet}
+        </Tab>
+      </TabList>
 
-    <TabPanel value="form">
-      <FormView
-        state={editorState}
-        idPrefix={`${id}-form`}
-        {enumDrafts}
-        historyRevision={enumDraftHistoryRevision}
-        onvalidationErrorcount={(count) => (localValidationErrorCount = count)}
-        onEnumDraftsChange={(next) => (enumDrafts = next)}
-        onApplyJsonDraft={async () => {
-          if (await editorState.applyJsonDraft()) enumDrafts = {};
-        }}
-      />
-    </TabPanel>
-    <TabPanel value="json">
-      <JsonView
-        state={editorState}
-        idPrefix={`${id}-json`}
-        editorId={id}
-        {readonly}
-        onApply={() => (enumDrafts = {})}
-      />
-    </TabPanel>
-    <TabPanel value="diff">
-      <DiffView state={editorState} />
-    </TabPanel>
-  </Tabs>
-</div>
+      <TabPanel value="form">
+        <FormView
+          state={editorState}
+          idPrefix={`${id}-form`}
+          {enumDrafts}
+          historyRevision={enumDraftHistoryRevision}
+          onvalidationErrorcount={(count) => (localValidationErrorCount = count)}
+          onEnumDraftsChange={(next) => (enumDrafts = next)}
+          onApplyJsonDraft={async () => {
+            if (await editorState.applyJsonDraft()) enumDrafts = {};
+          }}
+        />
+      </TabPanel>
+      <TabPanel value="json">
+        <JsonView
+          state={editorState}
+          idPrefix={`${id}-json`}
+          editorId={id}
+          {readonly}
+          onApply={() => (enumDrafts = {})}
+        />
+      </TabPanel>
+      <TabPanel value="diff">
+        <DiffView state={editorState} />
+      </TabPanel>
+    </Tabs>
+  </div>
+{/if}

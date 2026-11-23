@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import Chip from '../chip/chip.svelte';
   import Combobox from '../combobox/combobox.svelte';
   import type { ComboboxFooterContext, ComboboxOption } from '../combobox/combobox.types.ts';
@@ -13,7 +15,9 @@
   } from './schedule-builder.types.ts';
   import {
     INTERVAL_UNITS,
+    customDaysLabel,
     REPEATS_OPTIONS,
+    repeatsOptionsFor,
     TIME_ZONE_VISIBLE_COUNT,
     WEEKDAYS,
     timeZoneOffsetLabel,
@@ -62,6 +66,42 @@
   } = $props();
 
   const repeats = $derived<ScheduleRepeats>(draft.repeats);
+
+  // A weekly schedule on one weekday is its own choice, "Every Friday", with no day chips under
+  // it; "Custom days" sits after it and brings the chips back to choose several days (row 65q).
+  // Choosing days is the field's own state: the value stays the custom-days schedule it was.
+  const CHOOSE_DAYS = 'custom-days:choose';
+  let choosingDays = $state(false);
+  const namesWeekday = $derived(
+    repeats === 'custom-days' &&
+      !choosingDays &&
+      customDaysLabel(draft.days) !==
+        REPEATS_OPTIONS.find((option) => option.value === 'custom-days')?.label,
+  );
+  const repeatsOptions = $derived(
+    namesWeekday
+      ? repeatsOptionsFor(draft).flatMap((option) =>
+          option.value === 'custom-days'
+            ? [option, { value: CHOOSE_DAYS, label: 'Custom days' }]
+            : [option],
+        )
+      : REPEATS_OPTIONS,
+  );
+
+  async function handleRepeatsChange(event: Event): Promise<void> {
+    const select = event.currentTarget as HTMLSelectElement;
+    if (select.value === CHOOSE_DAYS) {
+      choosingDays = true;
+      // The list loses its Custom days entry once the chips show, so the select is put back on
+      // the schedule's own choice after it is drawn again.
+      await tick();
+      select.value = 'custom-days';
+      return;
+    }
+    // A person who picks Custom days from another choice is choosing days, whatever they were.
+    choosingDays = select.value === 'custom-days';
+    onRepeatsChange(event);
+  }
   // An interval counts from its start, so it has no zone; At is for a time of day.
   const showTimeOfDay = $derived(repeats !== 'interval' && repeats !== 'cron');
   const showTimeZone = $derived(repeats !== 'interval');
@@ -116,9 +156,9 @@
     <Select
       id={`${baseId}-repeats`}
       label="Repeats"
-      options={REPEATS_OPTIONS}
+      options={repeatsOptions}
       value={repeats}
-      onchange={onRepeatsChange}
+      onchange={handleRepeatsChange}
     />
   </div>
   {#if showTimeOfDay}
@@ -129,7 +169,7 @@
   {#if compact && showTimeZone}
     <div class="cinder-schedule-builder__zone">{@render timeZoneField()}</div>
   {/if}
-  {#if repeats === 'custom-days'}
+  {#if repeats === 'custom-days' && !namesWeekday}
     <div class="cinder-schedule-builder__weekday-group" role="group" aria-label="Days of week">
       {#each WEEKDAYS as day (day.value)}
         <Chip

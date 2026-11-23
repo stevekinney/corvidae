@@ -14,6 +14,20 @@ export type FeaturedExampleRenderer = (
   mountIdPrefix: string,
 ) => Promise<RenderedFeaturedExample>;
 
+type FeaturedExampleWorkerCommand = (
+  workerPath: string,
+  componentName: string,
+  scenario: string,
+  mountIdPrefix: string,
+) => string[];
+
+const productionWorkerCommand: FeaturedExampleWorkerCommand = (
+  workerPath,
+  componentName,
+  scenario,
+  mountIdPrefix,
+) => [process.execPath, 'run', workerPath, componentName, scenario, mountIdPrefix];
+
 const renderPromises = new Map<string, Promise<RenderedFeaturedExample>>();
 let renderPromiseGeneration = -1;
 let substituteRenderer: FeaturedExampleRenderer | null = null;
@@ -65,26 +79,26 @@ async function renderInFreshProcess(
   componentName: string,
   scenario: string,
   mountIdPrefix: string,
+  command: FeaturedExampleWorkerCommand = productionWorkerCommand,
 ): Promise<RenderedFeaturedExample> {
   const workerPath = join(PLAYGROUND_ROOT, 'src', 'featured-example-server-worker.ts');
-  const worker = Bun.spawn(
-    [process.execPath, 'run', workerPath, componentName, scenario, mountIdPrefix],
-    {
-      cwd: PLAYGROUND_ROOT,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      // A hang detector for a worker that never exits, never a performance bound.
-      timeout: 120_000,
-    },
-  );
+  const worker = Bun.spawn(command(workerPath, componentName, scenario, mountIdPrefix), {
+    cwd: PLAYGROUND_ROOT,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    // A hang detector for a worker that never exits, never a performance bound.
+    timeout: 120_000,
+  });
   const [exitCode, stdout, stderr] = await Promise.all([
     worker.exited,
     new Response(worker.stdout).text(),
     new Response(worker.stderr).text(),
   ]);
   if (exitCode !== 0) {
+    const result =
+      worker.signalCode === null ? `exit code ${exitCode}` : `signal ${worker.signalCode}`;
     throw new Error(
-      `[playground] featured example render failed for ${componentName}/${scenario}: ${stderr.trim()}`,
+      `[playground] featured example render failed for ${componentName}/${scenario}: ${result}; stdout: ${JSON.stringify(stdout.trim())}; stderr: ${JSON.stringify(stderr.trim())}`,
     );
   }
   const parsed: unknown = JSON.parse(stdout);
@@ -102,9 +116,20 @@ export async function renderFeaturedExample(
   componentName: string,
   scenario: string,
   mountIdPrefix: string,
+  workerCommandOverride?: FeaturedExampleWorkerCommand,
 ): Promise<RenderedFeaturedExample> {
   if (substituteRenderer !== null) {
     return await substituteRenderer(componentName, scenario, mountIdPrefix);
+  }
+  // A controlled child command is only used by the integration regression. It must not share the
+  // production cache, whose key describes the rendered example rather than a process command.
+  if (workerCommandOverride !== undefined) {
+    return await renderInFreshProcess(
+      componentName,
+      scenario,
+      mountIdPrefix,
+      workerCommandOverride,
+    );
   }
   const rebuildGeneration = getRebuildGeneration();
   if (renderPromiseGeneration !== rebuildGeneration) {

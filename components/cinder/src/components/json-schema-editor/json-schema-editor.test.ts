@@ -1321,3 +1321,150 @@ describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () =>
     expect(observedChanges).toEqual([]);
   });
 });
+
+describe('JsonSchemaEditor — the fields form (COR-2432, row 65s)', () => {
+  test('the table fits its container at every width, a long description wraps, and a narrow name breaks only when it cannot fit (design correction 2, B1 and B2)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(new URL('./json-schema-editor.css', import.meta.url), 'utf8');
+    const ruleOf = (source: string, selector: RegExp) =>
+      new RegExp(`${selector.source}\\s*\\{([^}]*)\\}`).exec(source)?.[1] ?? '';
+    // Table's `min-inline-size: max-content` is dropped outside the container query too, so a long
+    // description never pushes a row's actions past a 720px column.
+    const container = css.indexOf('@container cinder-jse-properties');
+    const wide = css.slice(0, container);
+    expect(
+      ruleOf(
+        wide,
+        /\.cinder-table-scroll > \.cinder-table\.cinder-jse-property-table,\s*\.cinder-table\.cinder-jse-property-table/,
+      ),
+    ).toContain('min-inline-size: 0');
+    expect(ruleOf(wide, /\.cinder-table \.cinder-jse-property-row__description/)).toContain(
+      'white-space: normal',
+    );
+    // Narrow: no fixed widths, and a name keeps its words (`break-word`, never `anywhere`).
+    const narrow = css.slice(container, css.indexOf('.cinder-jse-property-row__trigger {'));
+    expect(narrow).not.toContain('table-layout: fixed');
+    expect(narrow).not.toContain('5.5rem');
+    expect(ruleOf(narrow, /\.cinder-jse-property-row__key/)).toContain('overflow-wrap: break-word');
+  });
+
+  test('row actions are the icon buttons a sortable list uses, named for their field, and Add a field has a leading plus (row 65s)', () => {
+    const { container } = render(JsonSchemaEditorImplementation, {
+      props: { id: 'jse-icons', defaultSchema: schema, variant: 'fields' as const },
+    });
+    const root = requiredInstance(container.querySelector('[data-cinder-jse]'), HTMLElement);
+    const inline = requiredInstance(
+      root.querySelector('.cinder-jse-property-row__inline-actions'),
+      HTMLElement,
+    );
+    const buttons = [...inline.querySelectorAll('button')];
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Move branch up',
+      'Move branch down',
+      'Delete branch',
+    ]);
+    for (const button of buttons) {
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.textContent?.trim()).toBe('');
+    }
+    const add = [...root.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Add a field',
+    );
+    expect(add?.querySelector('svg')).not.toBeNull();
+  });
+
+  const schema: JsonSchemaValue = {
+    type: 'object',
+    required: ['branch'],
+    properties: {
+      branch: { type: 'string', description: 'The branch to release from.' },
+      since: { type: 'string', format: 'date' },
+    },
+  };
+
+  test('is the fields table alone: no toolbar, views, document fields or second Required', () => {
+    const { container } = render(JsonSchemaEditorImplementation, {
+      props: { id: 'jse-fields', defaultSchema: schema, variant: 'fields' as const },
+    });
+    const root = requiredInstance(container.querySelector('[data-cinder-jse]'), HTMLElement);
+    expect(root.getAttribute('data-cinder-variant')).toBe('fields');
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(container.textContent).not.toContain('Valid (');
+    expect(container.textContent).not.toContain('Required fields not yet defined');
+    expect(screen.queryByLabelText('Title')).toBeNull();
+    const table = screen.getByRole('table', { name: 'Schema properties' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent?.trim())
+        .slice(0, 4),
+    ).toEqual(['Field', 'Type', 'Description', 'Required']);
+    expect(screen.getByRole('checkbox', { name: 'branch' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('button', { name: 'Add a field' })).toBeTruthy();
+  });
+
+  test.each([
+    ['a scalar schema', { type: 'string' }],
+    ['a boolean schema', true],
+    ['an ambiguous schema', { properties: { branch: { type: 'string' } } }],
+  ] as const)(
+    'keeps %s in the full editor when fields mode cannot safely edit it',
+    (_label, value) => {
+      const { container } = render(JsonSchemaEditorImplementation, {
+        props: {
+          id: `jse-fields-fallback-${_label}`,
+          defaultSchema: value,
+          variant: 'fields' as const,
+        },
+      });
+
+      const root = requiredInstance(container.querySelector('[data-cinder-jse]'), HTMLElement);
+      expect(root.getAttribute('data-cinder-variant')).toBeNull();
+      expect(screen.getByRole('tablist')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Add a field' })).toBeNull();
+    },
+  );
+
+  test('commits a Required change as the object schema with the field required', async () => {
+    const changes: string[] = [];
+    render(JsonSchemaEditorImplementation, {
+      props: {
+        id: 'jse-fields-commit',
+        defaultSchema: schema,
+        variant: 'fields' as const,
+        onSchemaChange: (event: JsonSchemaEditorChangeEvent) => changes.push(event.jsonString),
+      },
+    });
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'since' }));
+    await waitFor(() => expect(changes.length).toBeGreaterThan(0));
+    const committed = JSON.parse(changes.at(-1) ?? '{}') as { required?: string[]; type?: string };
+    expect(committed.type).toBe('object');
+    expect(committed.required).toEqual(['branch', 'since']);
+  });
+
+  test('keeps every row’s actions in the row, with an icon menu for a narrow container and the description under the name', () => {
+    const { container } = render(JsonSchemaEditorImplementation, {
+      props: { id: 'jse-fields-narrow', defaultSchema: schema, variant: 'fields' as const },
+    });
+    const row = requiredInstance(container.querySelector('.cinder-jse-property-row'), HTMLElement);
+    expect(row.querySelector('.cinder-jse-property-row__inline-actions')).not.toBeNull();
+    expect(row.querySelector('.cinder-jse-property-row__menu')?.textContent?.trim()).toContain(
+      'Actions for branch',
+    );
+    expect(row.querySelector('.cinder-jse-property-row__key-description')?.textContent).toBe(
+      'The branch to release from.',
+    );
+  });
+
+  test('the narrow container rule folds the actions, and the type and description under the name, measured on the list, not the viewport', async () => {
+    const css = await Bun.file(new URL('./json-schema-editor.css', import.meta.url)).text();
+    expect(css).toMatch(/container-type:\s*inline-size/);
+    const narrow =
+      /@container cinder-jse-properties \(max-width: 36rem\) \{([\s\S]*?)\n {2}\}/.exec(css)?.[1];
+    expect(narrow).toBeDefined();
+    expect(narrow).toContain('.cinder-jse-property-row__inline-actions');
+    expect(narrow).toMatch(/\.cinder-jse-property-row__menu \{\s*display: inline-flex;/);
+    expect(narrow).toMatch(/\.cinder-jse-property-row__key-meta \{\s*display: flex;/);
+    expect(narrow).toContain('.cinder-jse-property-row__type,');
+  });
+});

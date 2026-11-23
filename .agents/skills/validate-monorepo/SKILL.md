@@ -9,7 +9,7 @@ Read the root `AGENTS.md`, manifests, and `turbo.json`. Preserve user changes. V
 
 ## Architecture
 
-Confirm private `@lostgradient/*` names, resolvable acyclic `workspace:*` edges, root catalog ownership, and explicit compiler dependencies. Source libraries export only `./src/index.ts` through their root entry and have no build or publishing contract. The `@lostgradient/typescript` workspace under `internal/typescript` exports only `library.json` and `browser.json`; its `base.json` remains internal composition.
+Confirm private `@lostgradient/*` names, resolvable acyclic `workspace:*` edges, root catalog ownership, and explicit compiler dependencies. Source libraries export only `./src/index.ts` through their root entry and have no build or publishing contract. The `@lostgradient/typescript` workspace under `internal/typescript` exports `library.json`, `browser.json` and `component.json`; its `base.json` remains internal composition.
 
 Check all six workspace roots (`scripts/workspace-directories.ts` is the list): `applications/*`, `components/*`, `packages/*`, `testing/*`, `internal/*`, and `plugins/*`. Component production source must pass its browser-only TypeScript check, with DOM types and no ambient server types; tests and tooling must also pass the inclusive TypeScript check. Root lint must reject server globals and imports in component source without excluding its tests from normal quality checks.
 

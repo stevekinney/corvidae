@@ -38,18 +38,48 @@ describe('PropertyList', () => {
 
     const nameCells = within(rows[1]!).getAllByRole('cell');
     expect(within(rows[1]!).getByRole('rowheader').textContent).toContain('name');
-    expect(nameCells[0]!.textContent).toContain('string');
+    expect(nameCells[0]!.textContent).toContain('Text');
     expect(nameCells[1]!.textContent).toContain('Full name');
 
     const ageCells = within(rows[2]!).getAllByRole('cell');
     expect(within(rows[2]!).getByRole('rowheader').textContent).toContain('age');
-    expect(ageCells[0]!.textContent).toContain('integer');
+    expect(ageCells[0]!.textContent).toContain('Whole number');
     expect(ageCells[1]!.textContent).toContain('Years old');
 
     const emailCells = within(rows[3]!).getAllByRole('cell');
     expect(within(rows[3]!).getByRole('rowheader').textContent).toContain('email');
-    expect(emailCells[0]!.textContent).toContain('string');
+    expect(emailCells[0]!.textContent).toContain('Text');
     expect(emailCells[1]!.textContent).toContain('Contact address');
+  });
+
+  test('COR-2432: the columns read Field, Type, Description and Required, the type in words, and the add button Add a field (row 65s)', () => {
+    render(PropertyList, {
+      idPrefix: 'properties',
+      path: '/properties',
+      properties: {
+        branch: { type: 'string', description: 'The branch to release from.' },
+        since: {
+          type: 'string',
+          format: 'date',
+          description: 'Only include changes merged after this date.',
+        },
+      },
+      required: ['branch'],
+      onValueChange: () => {},
+    });
+
+    const table = screen.getByRole('table', { name: 'Schema properties' });
+    const headers = within(table)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent?.trim());
+    expect(headers.slice(0, 4)).toEqual(['Field', 'Type', 'Description', 'Required']);
+    expect(screen.getByRole('row', { name: /since/ }).textContent).toContain('Date');
+    // The Required column holds the checkbox, its own cell, apart from the row's actions.
+    const branchCells = within(screen.getByRole('row', { name: /branch/ })).getAllByRole('cell');
+    expect(branchCells[2]!.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'branch' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('checkbox', { name: 'since' })).toHaveProperty('checked', false);
+    expect(screen.getByRole('button', { name: 'Add a field' })).not.toBeNull();
   });
 
   // "expanding an object row reveals a nested properties table" and "a
@@ -131,10 +161,12 @@ describe('PropertyList', () => {
       onValueChange: () => {},
     });
 
-    expect(screen.getByRole('row', { name: /tags/ }).textContent).toContain('array of string');
-    expect(screen.getByRole('row', { name: /addresses/ }).textContent).toContain('array of object');
-    expect(screen.getByRole('row', { name: /codes/ }).textContent).toContain('array of enum');
-    expect(screen.getByRole('row', { name: /^untyped/ }).textContent).toContain('array of any');
+    expect(screen.getByRole('row', { name: /tags/ }).textContent).toContain('List of text');
+    expect(screen.getByRole('row', { name: /addresses/ }).textContent).toContain('List of object');
+    expect(screen.getByRole('row', { name: /codes/ }).textContent).toContain('List of choice');
+    expect(screen.getByRole('row', { name: /^untyped/ }).textContent).toContain(
+      'List of any value',
+    );
   });
 
   test('a multi-type schema including array does not get an "of <items>" suffix', () => {
@@ -149,8 +181,8 @@ describe('PropertyList', () => {
     });
 
     const rowText = screen.getByRole('row', { name: /nullableList/ }).textContent;
-    expect(rowText).toContain('array | null');
-    expect(rowText).not.toContain('of string');
+    expect(rowText).toContain('List or Nothing');
+    expect(rowText).not.toContain('of text');
   });
 
   test('can add the first required-only property name', async () => {

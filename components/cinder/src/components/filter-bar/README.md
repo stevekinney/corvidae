@@ -6,12 +6,12 @@ A single-row filtering toolbar for list views: status segments with counts, face
 
 `FilterBar` composes `SegmentedControl`, `Select`, `Popover`, `Chip` and `SearchField` into one accessible filtering surface. It owns no routing, persistence or data fetching: it emits change events, and the consumer owns the filter state and the data.
 
-The bar has four kinds of facet, and every one is a single control in the row:
+The bar has four kinds of facet, and each is a single control in the row, except a `toggle` or `custom` facet with `menuOnly: true`, which is a checkbox row of the Filter menu in every layout (opened by one icon button) and shows in the row only as a removable chip while its filter is applied:
 
 - **`select`**: an always-visible single-choice select that reads "Kind: All". The value is on the control, so it never becomes a chip. Use it for a short list the person switches between, such as a memory list's kind and writer.
 - **`choice`**: an add-facet chip ("+ Started by") that opens a popover. With `multiple` (the default) the popover is a titled list of checkboxes with a count at the end of each row and a footer that reads "Matches any selected" beside a Clear link. With `multiple: false` it is a list of radio rows. A facet with a value becomes a tinted chip that reads "Started by: Chats, Goals" with an x that removes it.
-- **`toggle`**: a chip that is on or off, with a dot and a count ("Missed runs 1"). It sits beside the segments for a warning filter that is not a segment, because a row can be both in a segment and in the filter.
-- **`custom`**: a consumer-supplied snippet for a control that cannot be expressed as a list, such as a date-range picker.
+- **`toggle`**: a chip that is on or off, with a dot and a count ("Missed runs 1"). It sits beside the segments for a warning filter that is not a segment, because a row can be both in a segment and in the filter. `menuOnly` (default `false`) keeps it out of the row.
+- **`custom`**: a consumer-supplied snippet for a control that cannot be expressed as a list, such as a date-range picker. `menuOnly` (default `false`) keeps it out of the row.
 
 ## Layouts
 
@@ -21,7 +21,7 @@ The layout is chosen in script, because the controls that disappear move into a 
 | --- | --- | --- |
 | `wide` | Viewport 1024px and wider, and the bar's row holds every control | The segments, the facet controls, and the search field at the end of the row. |
 | `search-folded` | The bar's own row cannot hold the wide form (the viewport never asks for it) | The segments and the facet controls as in `wide`, and the search as an icon button that opens a popover. Search folds away before the segments do. |
-| `medium` | Viewport 640px to 1023px | The segments folded into a "Status: All 19" select, the facet chips unchanged, and the search as an icon button that opens a popover. |
+| `medium` | Viewport 640px to 1023px | The segments folded into a "Status: All 19" select and the search as an icon button that opens a popover. The facet chips stay in the row while they fit. When the row cannot hold them, the unapplied choice and toggle chips (not `menuOnly` ones) move one at a time into a Filter menu behind an icon button, first in `foldOrder` order (list the least used first) and then from the end of the facet list. A chip with an applied filter never moves, and the bar folds to `narrow` only after every unapplied chip has moved. |
 | `narrow` | Viewport under 640px | Only the Status select and a Filter button. The Filter menu lists every facet and Search, and a row opens its options in place. |
 
 The bar also measures its own row, so a wide viewport beside a wide sidebar steps down instead of overflowing: it takes the narrower of what the viewport asks for and the widest form whose drawn controls fit, with the search field at no less than its 11rem basis. The fit is read from the rendered row (the far edge of its last control against its width, never its `scrollWidth`, which also counts a hit area drawn past a control's box), never estimated from the length of the labels, and it is decided after the DOM updates and before the browser paints, so a form that does not fit is never seen. A form it has not drawn with the current labels, counts and chips is drawn once to be measured, except while focus or an open popup is inside the bar, so a count that changes under an open Status select does not remount it; the bar measures again when focus leaves. On the server, and wherever the row has no layout to measure, the viewport alone decides. Pass `layout` to force one. A bar with no segments, chips or toggles (selects and a search field alone) has nothing to fold, so it keeps one form and stacks its controls in one column inside a narrow container, as a list pane's filters do.
@@ -205,6 +205,7 @@ type ToggleFacet = {
   label: string;
   count?: number;
   tone?: 'warning' | 'danger' | 'info' | 'success' | 'neutral';
+  menuOnly?: boolean; // default false: keeps the chip out of the row; a checkbox row of the Filter menu in every layout, shown in the row as a removable chip while applied
   disabled?: boolean;
 };
 
@@ -212,6 +213,7 @@ type CustomFacet = {
   type: 'custom';
   key: string;
   label: string;
+  menuOnly?: boolean; // default false: keeps the control out of the row; a row of the Filter menu in every layout, shown in the row as a removable chip while applied
   control: Snippet<[{ value: string; onValueChange: (value: string) => void; disabled: boolean }]>;
 };
 
