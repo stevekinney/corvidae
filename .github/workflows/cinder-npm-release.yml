@@ -10,6 +10,7 @@ on:
           - markdown
           - cinder
           - editor
+          - chat
           - cinder-mcp
           - armorer
           - conversationalist
@@ -19,10 +20,13 @@ on:
         type: string
         required: true
       markdown-version:
-        description: Published Markdown dependency version for Cinder and Editor.
+        description: Published Markdown dependency version for Cinder, Editor, and Chat.
         type: string
       cinder-version:
-        description: Published Cinder dependency version for Editor and Cinder MCP.
+        description: Published Cinder dependency version for Editor, Chat, and Cinder MCP.
+        type: string
+      conversationalist-version:
+        description: Published Conversationalist dependency version for Chat.
         type: string
       armorer-version:
         description: Published Armorer dependency version for Conversationalist.
@@ -53,6 +57,7 @@ jobs:
     env:
       MARKDOWN_VERSION: ${{ inputs.markdown-version }}
       CINDER_VERSION: ${{ inputs.cinder-version }}
+      CONVERSATIONALIST_VERSION: ${{ inputs.conversationalist-version }}
       ARMORER_VERSION: ${{ inputs.armorer-version }}
     steps:
       - name: Validate release inputs
@@ -61,7 +66,7 @@ jobs:
           PUBLISH: ${{ inputs.publish }}
         run: |
           case "$PACKAGE" in
-            markdown|cinder|editor|cinder-mcp)
+            markdown|cinder|editor|chat|cinder-mcp)
               npm_name="@lostgradient/$PACKAGE"
               tarball="lostgradient-$PACKAGE-$VERSION.tgz"
               ;;
@@ -75,12 +80,16 @@ jobs:
             echo '::error::Use an exact SemVer version without build metadata.'
             exit 1
           fi
-          if [[ "$PACKAGE" == cinder || "$PACKAGE" == editor ]] && [[ -z "$MARKDOWN_VERSION" ]]; then
+          if [[ "$PACKAGE" == cinder || "$PACKAGE" == editor || "$PACKAGE" == chat ]] && [[ -z "$MARKDOWN_VERSION" ]]; then
             echo '::error::Set markdown-version to the published Markdown version.'
             exit 1
           fi
-          if [[ "$PACKAGE" == editor || "$PACKAGE" == cinder-mcp ]] && [[ -z "$CINDER_VERSION" ]]; then
+          if [[ "$PACKAGE" == editor || "$PACKAGE" == chat || "$PACKAGE" == cinder-mcp ]] && [[ -z "$CINDER_VERSION" ]]; then
             echo '::error::Set cinder-version to the published Cinder version.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == chat && -z "$CONVERSATIONALIST_VERSION" ]]; then
+            echo '::error::Set conversationalist-version to the published Conversationalist version.'
             exit 1
           fi
           if [[ "$PACKAGE" == conversationalist && -z "$ARMORER_VERSION" ]]; then
@@ -115,8 +124,8 @@ jobs:
             markdown)
               bun packages/markdown/scripts/pack-release.ts --version "$VERSION" --outdir "$output" > "$output/receipt.json"
               ;;
-            cinder|editor)
-              bun scripts/pack-cinder-release.ts --package "$PACKAGE" --version "$VERSION" --markdown-version "$MARKDOWN_VERSION" --cinder-version "$CINDER_VERSION" --outdir "$output" > "$output/receipt.json"
+            cinder|editor|chat)
+              bun scripts/pack-cinder-release.ts --package "$PACKAGE" --version "$VERSION" --markdown-version "$MARKDOWN_VERSION" --cinder-version "$CINDER_VERSION" --conversationalist-version "$CONVERSATIONALIST_VERSION" --outdir "$output" > "$output/receipt.json"
               ;;
             cinder-mcp)
               bun packages/cinder-mcp/scripts/pack-release.ts --version "$VERSION" --cinder-version "$CINDER_VERSION" --outdir "$output" > "$output/receipt.json"
