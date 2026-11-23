@@ -9,7 +9,7 @@
   "suiteExitCode": 0,
   "componentRenders": {
     "approval-card": {
-      "renderedSourceSha": "268ab41d671ff0bb856af1353302b351de7c2fa5",
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
     "autocomplete": {
@@ -25,7 +25,7 @@
       "suiteExitCode": 0
     },
     "chat": {
-      "renderedSourceSha": "a32a9e663a918a566ee7f3db1be030bcfa62fde3",
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
     "chat-composer-popover": {
@@ -53,7 +53,7 @@
       "suiteExitCode": 0
     },
     "code-block": {
-      "renderedSourceSha": "f79fcab553708af354e21732e16a9a756ed7156b",
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
     "code-location": {
@@ -69,11 +69,11 @@
       "suiteExitCode": 0
     },
     "copy-button": {
-      "renderedSourceSha": "4e96125aa78b1899964942f21378d14f5130ac80",
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
     "copyable-value": {
-      "renderedSourceSha": "4e96125aa78b1899964942f21378d14f5130ac80",
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
     "data-table": {
@@ -109,7 +109,7 @@
       "suiteExitCode": 0
     },
     "json-schema-editor": {
-      "renderedSourceSha": "94edd28264ccd3ccd5b976b0fb2d2ab76a0988fd",
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
     "json-viewer": {
@@ -129,7 +129,11 @@
       "suiteExitCode": 0
     },
     "payload-inspector": {
-      "renderedSourceSha": "4e96125aa78b1899964942f21378d14f5130ac80",
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
+      "suiteExitCode": 0
+    },
+    "restart-state": {
+      "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
     "schedule-builder": {

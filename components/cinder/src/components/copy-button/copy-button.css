@@ -46,11 +46,27 @@
     visibility: hidden;
   }
 
-  /* An icon-only button is still a 24px target, however narrow the place it sits in. */
+  /* The icon-only face is a one-em, borderless ghost beside the value it copies. Its interaction
+   * target stays separate below, so this paint box can match the surrounding text. */
   .cinder-copy-button[data-cinder-icon-only] {
     justify-content: center;
-    min-inline-size: 1.5rem;
-    min-block-size: 1.5rem;
+    font-size: inherit;
+    inline-size: 1em;
+    block-size: 1em;
+    min-inline-size: 1em;
+    min-block-size: 1em;
+    padding: 0;
+    border-width: 0;
+  }
+
+  .cinder-copy-button__icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-copy-button[data-cinder-icon-only] .cinder-copy-button__icon {
+    inline-size: 1em;
+    block-size: 1em;
   }
 
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
@@ -107,9 +123,28 @@
     }
   }
 
+  /* A mouse still gets the 24px target floor, while the glyph keeps its one-em paint box. The
+   * pseudo-element participates in the button's hit testing without taking layout space. */
+  @media (pointer: fine) and (not (any-pointer: coarse)) {
+    .cinder-copy-button[data-cinder-icon-only] {
+      position: relative;
+    }
+
+    .cinder-copy-button[data-cinder-icon-only]::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - 1.5rem) / 2));
+      inset-inline: min(0px, calc((100% - 1.5rem) / 2));
+    }
+  }
+
   .cinder-copy-button[data-cinder-copied] {
     color: var(--cinder-status-success-text);
     border-color: var(--cinder-status-success-border);
+  }
+
+  .cinder-copy-button[data-cinder-icon-only][data-cinder-copied] {
+    border-width: 0;
   }
 
   .cinder-copy-button[data-cinder-appearance='inline'] {
@@ -124,7 +159,12 @@
     user-select: none;
   }
 
-  .cinder-copy-button[data-cinder-appearance='inline'] svg {
+  .cinder-copy-button[data-cinder-appearance='inline'][data-cinder-icon-only] {
+    padding: 0;
+  }
+
+  .cinder-copy-button[data-cinder-appearance='inline'][data-cinder-icon-only]
+    .cinder-copy-button__icon {
     inline-size: 1em;
     block-size: 1em;
   }

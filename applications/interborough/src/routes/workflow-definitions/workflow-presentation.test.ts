@@ -9,6 +9,7 @@ import {
   readyFile,
   sourceDefinition,
 } from '../../lib/workflow-world.test-support.ts';
+import { cadenceText } from '../schedules/schedule-cadence-text.ts';
 import {
   definitionDetails,
   hasDefinitionDetails,
@@ -427,6 +428,15 @@ describe('a schedule trigger’s spec in words', () => {
     expect(triggerSummary({ kind: 'schedule', spec: '0 9 * * 1-5' })).toMatchObject({
       kind: 'schedule',
       words: expect.stringMatching(/^Weekdays at \d{1,2}:\d{2} [AP]M/),
+    });
+  });
+
+  test('uses the timezone declared by a file schedule to calculate its next start', () => {
+    const cronExpression = '0 11 * * 5';
+    const timeZone = 'America/Chicago';
+    expect(triggerSummary({ kind: 'schedule', spec: cronExpression, timezone: timeZone })).toEqual({
+      kind: 'schedule',
+      words: cadenceText({ cronExpression, timeZone }).full,
     });
   });
 
