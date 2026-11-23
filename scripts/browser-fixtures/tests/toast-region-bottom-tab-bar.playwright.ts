@@ -18,7 +18,11 @@ for (const width of [320, 375]) {
     await page.setViewportSize({ width, height: 812 });
     await page.goto(`${fixtureRoute('toast-region')}&bottom-tab-bar=1`, { waitUntil: 'load' });
     const bar = page.locator('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar');
+    const home = page.locator('[data-testid="bottom-tab-bar"] a[href="#home"]');
+    const more = page.locator('[data-testid="bottom-tab-bar"] a[href="#more"]');
     await bar.waitFor({ state: 'visible' });
+    await expect(home).toBeVisible();
+    await expect(more).toBeVisible();
 
     await page.getByRole('button', { name: 'Dismiss-after-action' }).click();
     const toast = page.locator('.cinder-toast', { hasText: 'Item moved to trash.' });
@@ -38,7 +42,7 @@ for (const width of [320, 375]) {
         bar: box('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar'),
         toast: box('.cinder-toast'),
         home: box('[data-testid="bottom-tab-bar"] a[href="#home"]'),
-        more: box('[data-testid="bottom-tab-bar"] button'),
+        more: box('[data-testid="bottom-tab-bar"] a[href="#more"]'),
       };
     });
     const { bar: barBox, toast: toastBox, home: homeBox, more: moreBox } = read;

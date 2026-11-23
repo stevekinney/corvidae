@@ -69,4 +69,30 @@ describe('SettingRow', () => {
     );
     expect(description?.querySelector('a')?.getAttribute('href')).toBe('/health');
   });
+
+  test('keeps its status after supporting content and before the error', () => {
+    const { container } = render(SettingRow, {
+      props: {
+        id: 'sync-setting',
+        label: 'Sync',
+        description: 'Updates are saved automatically.',
+        status: 'saved',
+        error: 'The last update could not be saved.',
+        control: createRawSnippet(() => ({
+          render: () => '<button id="sync-setting" type="button">Sync now</button>',
+        })),
+      },
+    });
+    const children = Array.from(container.querySelector('.cinder-form-field')!.children);
+    const descriptionIndex = children.findIndex(
+      (element) => element.id === 'sync-setting-description',
+    );
+    const statusIndex = children.findIndex((element) =>
+      element.classList.contains('cinder-setting-row__status'),
+    );
+    const errorIndex = children.findIndex((element) => element.id === 'sync-setting-error');
+    expect(descriptionIndex).toBeGreaterThan(-1);
+    expect(statusIndex).toBeGreaterThan(descriptionIndex);
+    expect(errorIndex).toBeGreaterThan(statusIndex);
+  });
 });

@@ -509,7 +509,7 @@ describe('a plugin', () => {
 });
 
 describe('a plugin’s configuration', () => {
-  test('is a form built from the schema, never raw JSON: a row per field with its key and hint, and one explicit Save', async () => {
+  test('is a form built from the schema, never raw JSON: a row per field with its label and hint, and one explicit Save', async () => {
     const { container, getByRole } = open('linear');
     await loaded(container, 'linear');
 
@@ -524,7 +524,7 @@ describe('a plugin’s configuration', () => {
     ).toEqual(['teamKey', 'region', 'labels', 'snippets', 'cacheMs']);
     const team = fieldOf(container, 'teamKey');
     expect(team.textContent).toContain('Team key');
-    expect(team.textContent).toContain('teamKey');
+    expect(team.textContent).not.toContain('teamKey');
     expect(team.textContent).toContain('The team the issues go to.');
     expect((team.querySelector('input') as HTMLInputElement).value).toBe('COR');
     expect(fieldOf(container, 'region').querySelector('select')).not.toBeNull();

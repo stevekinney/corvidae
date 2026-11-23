@@ -93,6 +93,28 @@ describe('Input rendering', () => {
     expect(css).toMatch(
       /\.cinder-input-group:has\(> \.cinder-input\[readonly\]:not\(:disabled\)\)\s*\{[^}]*border-color:\s*transparent;/,
     );
+    expect(css).not.toMatch(
+      /\.cinder-input(?:-group)?[^{]*\[readonly\][^{]*\{[^}]*border-style:\s*dashed;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-input\[data-cinder-appearance='filled'\]\[readonly\]:not\(:disabled\)[\s\S]*?background:\s*transparent;/,
+    );
+  });
+
+  test('forwards read-only, disabled, and title state to the native input', () => {
+    const { container } = render(Input, {
+      props: {
+        id: 'managed-token',
+        value: 'secret',
+        readonly: true,
+        disabled: true,
+        title: 'Managed by policy',
+      },
+    });
+    const input = requiredInstance(container.querySelector('#managed-token'), HTMLInputElement);
+    expect(input.readOnly).toBe(true);
+    expect(input.disabled).toBe(true);
+    expect(input.title).toBe('Managed by policy');
   });
 
   test('code variant applies shared monospace metrics via the token set', async () => {

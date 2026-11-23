@@ -288,11 +288,13 @@
     return settingRows ? rowLabel(field) : field.label;
   }
 
-  /** A row shows its key only beside a title the schema supplies, and not when that title is the key in another case. */
+  /** A row shows its key only beside a schema title that differs from the existing sentence-case key label. */
   function rowIdentifier(field: SchemaFormField): string | undefined {
     const title = field.schema['title'];
     if (typeof title !== 'string' || title.trim().length === 0) return undefined;
-    return title.toLowerCase() === field.key.toLowerCase() ? undefined : field.key;
+    return title.trim().toLowerCase() === sentenceCaseLabel(field.key).toLowerCase()
+      ? undefined
+      : field.key;
   }
 
   /** Map a field's options to Select's `{ value, label }` shape, keyed on the

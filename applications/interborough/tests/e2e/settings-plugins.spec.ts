@@ -446,6 +446,12 @@ test.describe('Settings › Plugins', () => {
         width <= 375 ? 'stacked' : 'split',
       );
       if (width <= 375) {
+        await expect(
+          configuration.getByRole('button', { name: 'Save', exact: true }),
+        ).toBeVisible();
+        await expect(
+          configuration.getByRole('button', { name: 'Save configuration', exact: true }),
+        ).toHaveCount(0);
         const boxes = await readBoxes(page, {
           searchAddressLabel: labelOf('searchAddress'),
           searchAddress: controlOf('searchAddress', 'input'),
@@ -477,7 +483,7 @@ test.describe('Settings › Plugins', () => {
       // The rest of the form: the group's field, the list of groups and Save.
       await configuration.locator('[data-cinder-field="roots"]').scrollIntoViewIfNeeded();
       await configuration
-        .getByRole('button', { name: 'Save configuration' })
+        .getByRole('button', { name: width <= 375 ? 'Save' : 'Save configuration', exact: true })
         .scrollIntoViewIfNeeded();
       await captureForDesignReview(page, {
         route: ROUTE,
