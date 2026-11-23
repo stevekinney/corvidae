@@ -23,6 +23,6 @@ Never comment on:
 - Anything `bun run lint`, `bun run format:check`, or the type checker enforces, including the ban on synchronous `.resolves`/`.rejects`.
 - Scenarios that need an unsupported configuration, a hostile in-process caller, or an interleaving that a lease or claim already fences out.
 - Behavior a linked COR issue or decision document specifies; cite it and stop.
-- Style, naming, documentation wording, speculative hardening, compatibility shims, or missing CI, publishing, or Git hooks (the repository intentionally has none).
+- Style, naming, documentation wording, speculative hardening, compatibility shims, or missing Git hooks (the repository intentionally installs none).
 
 On a re-review, comment only on lines changed since your last review, and only on a regression they introduced or a one-way-door defect. Never re-raise a finding the author answered. One comment per defect class, at most six per review.

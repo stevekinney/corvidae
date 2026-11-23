@@ -16,7 +16,7 @@ The comparison tolerance is `maxDiffPixels: 2` at `threshold: 0.1`, declared onc
 
 Baselines reproduce only on the renderer that wrote them, so there is exactly one: native `linux/arm64` inside `mcr.microsoft.com/playwright:v<version>-jammy`, built from `scripts/browser-fixtures/Dockerfile` as `corvidae-browser-fixtures:<version>-jammy-arm64`.
 
-This reverses cinder's rule, which required x64 to match its `ubuntu-latest` CI runner. Corvidae has no CI, and the host that maintains the baselines is Apple Silicon with no native amd64. Emulated amd64 ran about 17 tests a minute there and timed out behavioural specs, so it could not run the suite at all (COR-1512).
+This reverses cinder's rule, which required x64 to match its `ubuntu-latest` CI runner. Corvidae's CI does not need that match, because the fixtures job in `.github/workflows/browser-suites.yml` runs native `linux/arm64` (`ubuntu-24.04-arm`) in the same `mcr.microsoft.com/playwright:v<version>-jammy` renderer image. The host that maintains the baselines locally is Apple Silicon with no native amd64. Emulated amd64 ran about 17 tests a minute there and timed out behavioural specs, so it could not run the suite at all (COR-1512).
 
 Both versions are derived, never typed:
 
