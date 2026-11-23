@@ -80,6 +80,8 @@ export type JsonEditorProps = Omit<
   statusLabel?: string;
   /** Replaces parse feedback’s status word while preserving its danger tone and line marker, for a caller that needs a stable invalid-state name such as "Invalid JSON". */
   invalidStatusLabel?: string;
+  /** Include the parser's stop line in the marked diagnostic when it follows the line to fix. @default false */
+  parserStopVisible?: boolean;
   /** Problems the caller found at specific lines of a document that parses. Each line is marked and shows its message under it. */
   diagnostics?: readonly JsonEditorDiagnostic[];
   /** The sample that shows muted, after "e.g.", while the editor is empty, such as `{ "timeoutSeconds": 300 }`. Defaults to `{ "key": "value" }`. A `placeholder` replaces the whole text. */
