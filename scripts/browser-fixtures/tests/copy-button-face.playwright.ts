@@ -26,6 +26,16 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
     await expect(icon).toHaveAttribute('aria-label', 'Copy install command');
     await expect(icon.locator('svg.lucide-copy')).toHaveCount(1);
     await expect(icon).toHaveText('');
+    const iconGeometry = await icon.evaluate((button) => {
+      const glyph = button.querySelector<SVGElement>('.cinder-copy-button__icon');
+      if (glyph === null) throw new Error('Missing CopyButton glyph.');
+      const { fontSize } = getComputedStyle(button);
+      const paint = glyph.getBoundingClientRect();
+      return { fontSize: Number.parseFloat(fontSize), paint: [paint.width, paint.height] };
+    });
+    expect(iconGeometry.paint[0]).toBeCloseTo(iconGeometry.fontSize, 1);
+    expect(iconGeometry.paint[1]).toBeCloseTo(iconGeometry.fontSize, 1);
+    await expect(icon).toHaveCSS('border-top-width', '0px');
     await icon.hover();
     await expect(page.getByRole('tooltip')).toHaveText('Copy install command');
 
@@ -45,6 +55,10 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
       expect(after?.width).toBeCloseTo(before?.width ?? 0, 1);
       expect(after?.height).toBeCloseTo(before?.height ?? 0, 1);
     }
+    await expect(icon.locator('.cinder-copy-button__icon')).toHaveCSS(
+      'width',
+      `${iconGeometry.fontSize}px`,
+    );
     await expect(text.locator('[data-cinder-current]')).toHaveText('Copied');
   } finally {
     await context.close();
