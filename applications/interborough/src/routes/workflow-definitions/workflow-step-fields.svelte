@@ -8,7 +8,14 @@
    * a failed read, when no running plugin provides it, and when its registration declares no schema,
    * the step's `input` is kept exactly as the file writes it and a note says why it is not drawn.
    */
-  import { Button, DurationField, Input, Select, Textarea } from '@lostgradient/cinder';
+  import {
+    Button,
+    ConfirmDialog,
+    DurationField,
+    Input,
+    Select,
+    Textarea,
+  } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
@@ -51,6 +58,11 @@
   const host = useBuilderHost();
   const copy = WORKFLOW_COPY.builder;
   const id = $derived(`workflow-builder-step-${address}`);
+  let pendingWorkflow = $state<{
+    workflow: string;
+    input: Readonly<Record<string, unknown>> | undefined;
+  } | null>(null);
+  let workflowSelectRevision = $state(0);
 
   /** The kind label a field's placeholder names. */
   const kindLabel = $derived(
@@ -108,6 +120,44 @@
         : []),
       ...entries.map((entry) => ({ value: entry.id, label: entry.title })),
     ];
+  }
+
+  function inputForWorkflow(workflow: string): Readonly<Record<string, unknown>> | undefined {
+    const chosen =
+      host.workflows.status === 'ready'
+        ? host.workflows.entries.find((candidate) => candidate.id === workflow)
+        : undefined;
+    return startingInput(workflow, chosen?.inputSchema ?? null);
+  }
+
+  function currentWorkflowStep(): Extract<BuilderStep, { kind: 'workflow' }> | undefined {
+    return step.kind === 'workflow' ? step : undefined;
+  }
+
+  function hasEditedWorkflowInput(): boolean {
+    const current = currentWorkflowStep();
+    if (current === undefined) return false;
+    const initialInput = inputForWorkflow(current.workflow);
+    return JSON.stringify(current.input) !== JSON.stringify(initialInput);
+  }
+
+  function replaceWorkflow(
+    workflow: string,
+    input: Readonly<Record<string, unknown>> | undefined,
+  ): void {
+    host.commit(setStepWorkflow(host.text, path, workflow, input));
+  }
+
+  function requestWorkflowChange(workflow: string): void {
+    const current = currentWorkflowStep();
+    if (current === undefined || workflow === current.workflow) return;
+    const input = inputForWorkflow(workflow);
+    if (hasEditedWorkflowInput()) {
+      pendingWorkflow = { workflow, input };
+      workflowSelectRevision += 1;
+      return;
+    }
+    replaceWorkflow(workflow, input);
   }
 </script>
 
@@ -321,25 +371,19 @@
       />
     </div>
   {/if}
-  <Select
-    id={`${id}-workflow`}
-    label={copy.workflowCard.field}
-    aria-label={copy.workflowCard.label(where)}
-    size="sm"
-    required
-    {...host.errorOf(stepFieldId(address, 'workflow'))}
-    value={step.workflow}
-    options={workflowOptions(step.workflow)}
-    onValueChange={(next: string) => {
-      const chosen =
-        workflows.status === 'ready'
-          ? workflows.entries.find((candidate) => candidate.id === next)
-          : undefined;
-      host.commit(
-        setStepWorkflow(host.text, path, next, startingInput(next, chosen?.inputSchema ?? null)),
-      );
-    }}
-  />
+  {#key `${stepKey}:${step.workflow}:${workflowSelectRevision}`}
+    <Select
+      id={`${id}-workflow`}
+      label={copy.workflowCard.field}
+      aria-label={copy.workflowCard.label(where)}
+      size="sm"
+      required
+      {...host.errorOf(stepFieldId(address, 'workflow'))}
+      value={step.workflow}
+      options={workflowOptions(step.workflow)}
+      onValueChange={requestWorkflowChange}
+    />
+  {/key}
   {#if step.input === null}
     <p class="weft-step-fields__note" data-testid="step-input-note">
       {copy.workflowCard.inputNotObject}
@@ -364,6 +408,21 @@
     {/key}
   {/if}
 {/if}
+
+<ConfirmDialog
+  open={pendingWorkflow !== null}
+  title={copy.workflowCard.replaceInput.title}
+  description={copy.workflowCard.replaceInput.description}
+  cancelLabel={copy.workflowCard.replaceInput.cancel}
+  confirmLabel={copy.workflowCard.replaceInput.confirm}
+  destructive
+  onCancel={() => (pendingWorkflow = null)}
+  onConfirm={() => {
+    if (pendingWorkflow === null) return;
+    replaceWorkflow(pendingWorkflow.workflow, pendingWorkflow.input);
+    pendingWorkflow = null;
+  }}
+/>
 
 <style>
   .weft-step-fields__group {

@@ -477,7 +477,7 @@ describe('a workflow card', () => {
     );
   });
 
-  test('chooses a workflow with a schema by replacing the input with its starting input', async () => {
+  test('asks before replacing edited workflow input, keeps it on Cancel, and replaces it on Confirm', async () => {
     const { container } = await openBuilder(
       file([{ kind: 'workflow', workflow: 'demo:other-workflow', input: { raw: [1] } }]),
     );
@@ -485,7 +485,40 @@ describe('a workflow card', () => {
     await waitFor(() =>
       expect(select.querySelector('option[value="demo:echo-workflow"]')).toBeTruthy(),
     );
-    await fireEvent.change(select, { target: { value: 'demo:echo-workflow' } });
+    await fireEvent.change(field(container, 'workflow-builder-step-1-workflow'), {
+      target: { value: 'demo:echo-workflow' },
+    });
+    const confirmation = await waitFor(() => {
+      const found = document.body.querySelector<HTMLElement>('[role="dialog"]');
+      expect(found).toBeTruthy();
+      expect(found?.textContent).toContain('Replace workflow input?');
+      return found as HTMLElement;
+    });
+    expect(stepsOf(await textOf(container))[0]).toEqual({
+      kind: 'workflow',
+      workflow: 'demo:other-workflow',
+      input: { raw: [1] },
+    });
+    expect(field(container, 'workflow-builder-step-1-workflow').value).toBe('demo:other-workflow');
+
+    await fireEvent.click(button(confirmation, 'Keep editing'));
+    expect(stepsOf(await textOf(container))[0]).toEqual({
+      kind: 'workflow',
+      workflow: 'demo:other-workflow',
+      input: { raw: [1] },
+    });
+    expect(field(container, 'workflow-builder-step-1-workflow').value).toBe('demo:other-workflow');
+
+    await fireEvent.change(field(container, 'workflow-builder-step-1-workflow'), {
+      target: { value: 'demo:echo-workflow' },
+    });
+    const secondConfirmation = await waitFor(() => {
+      const found = document.body.querySelector<HTMLElement>('[role="dialog"]');
+      expect(found).toBeTruthy();
+      expect(found?.textContent).toContain('Replace workflow input?');
+      return found as HTMLElement;
+    });
+    await fireEvent.click(button(secondConfirmation, 'Replace input'));
     await waitFor(async () =>
       expect(stepsOf(await textOf(container))[0]).toEqual({
         kind: 'workflow',

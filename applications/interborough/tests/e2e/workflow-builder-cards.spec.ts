@@ -354,6 +354,29 @@ test.describe('the workflow builder’s nested and missing states', () => {
     });
   });
 
+  test('workflow builder cards: replacing edited workflow input asks first, at 1280 pixels', async ({
+    page,
+  }) => {
+    await answerCatalog(page);
+    await openWith(page, {
+      name: 'e2e-replace-input',
+      trigger: { kind: 'manual' },
+      steps: [{ kind: 'workflow', workflow: 'demo:profile', input: { owner: { name: 'Ada' } } }],
+    });
+    const root = page.locator('[data-page="workflow-creator"]');
+    await root
+      .getByRole('combobox', { name: BUILDER.workflowCard.label(BUILDER.where.step(1)) })
+      .selectOption('demo:bare');
+    await expect(
+      page.getByRole('dialog', { name: BUILDER.workflowCard.replaceInput.title }),
+    ).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/workflows/new (step cards)',
+      state: 'replace edited workflow input',
+      source: 'workflow-builder-cards.spec.ts',
+    });
+  });
+
   test('workflow builder cards: the add menu while the catalog loads, at 1280 pixels', async ({
     page,
   }) => {

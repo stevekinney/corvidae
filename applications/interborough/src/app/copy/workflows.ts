@@ -788,6 +788,13 @@ export const WORKFLOW_COPY = {
       noSchema: 'Its input is edited in the JSON tab.',
       noInput: 'It takes no input.',
       inputNotObject: 'Its input is not an object. It is edited in the JSON tab.',
+      replaceInput: {
+        title: 'Replace workflow input?',
+        description:
+          'Switching workflows replaces this step’s input with the new workflow’s input.',
+        cancel: 'Keep editing',
+        confirm: 'Replace input',
+      },
     },
     /** The control-flow cards, in the person's words. */
     controlFlow: {

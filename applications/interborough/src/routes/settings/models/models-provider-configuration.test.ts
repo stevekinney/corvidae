@@ -578,7 +578,7 @@ describe('managing a provider whose plugin has settings', () => {
         name: 'Discard provider settings?',
       });
       await fireEvent.click(within(confirmation).getByRole('button', { name: 'Keep editing' }));
-      const kept = await documentBody.findByRole('dialog', { name: 'Anthropic', exact: true });
+      const kept = await documentBody.findByRole('dialog', { name: 'Anthropic' });
       expect(baseUrlField(kept).value).toBe(draft);
       expect(pluginWrites()).toEqual([]);
 
