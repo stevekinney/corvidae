@@ -78,7 +78,7 @@
     if (pending) typedConfirmation = '';
   });
 
-  let actionsElement: HTMLElement | undefined;
+  let actionsElement = $state<HTMLElement | undefined>();
   let failureElement: HTMLElement | undefined;
   let confirmWasShown = untrack(() => confirmShown);
   let confirmHadFocus = false;
@@ -107,6 +107,57 @@
       failureElement?.querySelector<HTMLElement>('button') ??
       actionsElement?.querySelector<HTMLElement>('.cinder-confirm-dialog__cancel');
     target?.focus();
+  });
+
+  // A sheet's Cancel stays compact only while it and the confirmation actually fit one row. CSS
+  // can wrap the row, but cannot tell the wrapped state to make both buttons equal width. Remember
+  // the width that wrapped, then switch to an intentional vertical group until the available room
+  // grows enough again. This follows the component-width policy instead of guessing from a viewport
+  // breakpoint, so a translated or otherwise long confirmation gets the same treatment.
+  let actionsStacked = $state(false);
+  let actionsStackNeed = 0;
+
+  function updateActionStack(): void {
+    const actions = actionsElement;
+    const sheet = actions?.closest<HTMLDialogElement>('dialog')?.dataset.cinderSheet;
+    if (actions === undefined || sheet !== 'docked') {
+      if (actionsStacked) actionsStacked = false;
+      if (actionsStackNeed !== 0) actionsStackNeed = 0;
+      return;
+    }
+    const room = actions.clientWidth;
+    if (room <= 0) return;
+    if (actionsStacked) {
+      if (room + 1 >= actionsStackNeed) actionsStacked = false;
+      return;
+    }
+    const buttons = Array.from(actions.querySelectorAll<HTMLButtonElement>(':scope > button'));
+    const firstTop = buttons[0]?.offsetTop;
+    if (firstTop === undefined || buttons.every((button) => button.offsetTop === firstTop)) return;
+    const gap = Number.parseFloat(getComputedStyle(actions).columnGap) || 0;
+    actionsStackNeed =
+      buttons.reduce((total, button) => total + button.getBoundingClientRect().width, 0) + gap;
+    actionsStacked = true;
+  }
+
+  $effect(() => {
+    const node = actionsElement;
+    if (node === undefined) return;
+    const view = node.ownerDocument.defaultView;
+    const observer = view?.ResizeObserver
+      ? new view.ResizeObserver(updateActionStack)
+      : undefined;
+    observer?.observe(node);
+    const mutations = view?.MutationObserver ? new view.MutationObserver(updateActionStack) : undefined;
+    mutations?.observe(node, { childList: true, characterData: true, subtree: true });
+    const fonts = node.ownerDocument.fonts;
+    fonts?.addEventListener('loadingdone', updateActionStack);
+    queueMicrotask(updateActionStack);
+    return () => {
+      observer?.disconnect();
+      mutations?.disconnect();
+      fonts?.removeEventListener('loadingdone', updateActionStack);
+    };
   });
 
   function handleCancel() {
@@ -205,6 +256,7 @@
       {/if}
       <div
         class="cinder-confirm-dialog__actions"
+        data-cinder-stacked={actionsStacked ? '' : undefined}
         data-cinder-typed-destructive={destructive && normalizedTypeToConfirm !== undefined
           ? ''
           : undefined}

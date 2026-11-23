@@ -449,3 +449,41 @@ for (const width of WIDTHS) {
     });
   });
 }
+
+test.describe('workflow delete dialog action fitting', () => {
+  for (const [width, stacked] of [
+    [320, true],
+    [375, false],
+  ] as const) {
+    test(`keeps Delete workflow and schedule with Cancel at ${String(width)} pixels`, async ({ page }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      const id = world.workflows.triageInbox;
+      await triageAsDrawn(page, id);
+      await openWorkflow(page, `/workflows/${encodeURIComponent(id)}`, width);
+      await detail(page).getByRole('button', { name: MENU.label }).click();
+      await page.getByRole('menuitem', { name: MENU.delete }).click();
+
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('checkbox').check();
+      const actions = dialog.locator('.cinder-confirm-dialog__actions');
+      if (stacked) {
+        await expect(actions).toHaveAttribute('data-cinder-stacked', '');
+      } else {
+        await expect(actions).not.toHaveAttribute('data-cinder-stacked');
+      }
+      const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true });
+      const confirm = dialog.getByRole('button', { name: DELETE.confirmWithSchedule, exact: true });
+      const [cancelBox, confirmBox] = await Promise.all([cancel.boundingBox(), confirm.boundingBox()]);
+      expect(cancelBox).not.toBeNull();
+      expect(confirmBox).not.toBeNull();
+      if (cancelBox === null || confirmBox === null) return;
+      if (stacked) {
+        expect(confirmBox.y).toBeLessThan(cancelBox.y);
+        expect(Math.abs(confirmBox.width - cancelBox.width)).toBeLessThanOrEqual(1);
+      } else {
+        expect(Math.abs(confirmBox.y - cancelBox.y)).toBeLessThanOrEqual(1);
+        expect(cancelBox.width).toBeLessThan(confirmBox.width);
+      }
+    });
+  }
+});
