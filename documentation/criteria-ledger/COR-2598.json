@@ -1,7 +1,7 @@
 {
   "issue": "COR-2598",
   "branch": "steve/cor-2598-composable",
-  "checkedAt": "fec60209ad9d448bfb91ae3ca82ddcc019035712",
+  "checkedAt": "dd755fb2db7520d1b4a54b260393fc8c1f6a2fad",
   "briefVersion": "7b9e8a74db34",
   "status": "BLOCKED",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Server regressions cover base, encoded path, request properties, adjacent fallback and service 404."
+      "evidence": "Server regressions cover normalized Unicode and encoded mount prefixes, opaque encoded remainders, base, request properties, adjacent fallback and service 404."
     },
     {
       "id": "AC3",
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "Server regression verifies collisions including a valid static asset before startup."
+      "evidence": "Server regressions verify normalized equivalent and protected prefixes, route and asset collisions, and reject encoded separators before startup."
     },
     {
       "id": "AC5",
