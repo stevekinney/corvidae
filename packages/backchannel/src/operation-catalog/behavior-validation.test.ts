@@ -5,6 +5,7 @@ import {
   snapshotOperationCatalog,
   stringifyCatalogSnapshot,
 } from '../operation-catalog-snapshot.ts';
+import type { OperationContext } from '../operation-catalog.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { defineOperation } from '../operation-registry.ts';
 import { anonymousPrincipal } from '../principal.ts';
@@ -133,15 +134,28 @@ describe('declared operation behavior', () => {
 
   it('generates a different catalog and leaves undeclared behavior absent', async () => {
     let calls = 0;
+    let hostCalls = 0;
+    let serviceCalls = 0;
+    const hostFactory = () => {
+      hostCalls++;
+      return {
+        service: () => {
+          serviceCalls++;
+          return 'book';
+        },
+      };
+    };
     const read = defineOperation({
       ...common,
       name: 'books.search',
       inputSchema: z.object({ query: z.string() }),
       outputSchema: z.object({ title: z.string() }),
       behavior: { kind: 'read', key: ['query'] },
-      invoke: async () => {
+      invoke: async ({
+        host,
+      }: OperationContext<{ query: string }, ReturnType<typeof hostFactory>>) => {
         calls++;
-        return { title: 'Book' };
+        return { title: host.service() };
       },
     });
     const plain = defineOperation({
@@ -195,10 +209,12 @@ describe('declared operation behavior', () => {
     expect(sources).toEqual(await createOperationClientSources(snapshot, options));
     expect([...sources.values()].join('\n')).toContain("'books.ping'");
     expect(calls).toBe(0);
+    expect(hostCalls).toBe(0);
+    expect(serviceCalls).toBe(0);
     const searchResult = await executeOperation(
       'books.search',
       { query: 'x' },
-      { principal: anonymousPrincipal(), host: {}, transport: 'http-rest', registry },
+      { principal: anonymousPrincipal(), host: hostFactory, transport: 'http-rest', registry },
     );
     expect(searchResult.ok).toBe(true);
     const renameResult = await executeOperation(
@@ -207,6 +223,41 @@ describe('declared operation behavior', () => {
       { principal: anonymousPrincipal(), host: {}, transport: 'http-rest', registry },
     );
     expect(renameResult.ok).toBe(true);
+    expect(hostCalls).toBe(1);
+    expect(serviceCalls).toBe(1);
+  });
+
+  it('keeps the generated sources and browser client graph free of application runtimes', async () => {
+    const registry = createOperationRegistry(fixture('equipment'));
+    const snapshot = snapshotOperationCatalog({ operations: registry.list(), restBindings: [] });
+    const sources = await createOperationClientSources(snapshot, {
+      packageName: '@example/equipment',
+      serverName: 'Equipment',
+      factoryName: 'createEquipment',
+      outputDirectory: '.',
+      format: async (source) => source,
+    });
+    const paths: string[] = [];
+    const result = await Bun.build({
+      entrypoints: [new URL('../client/index.ts', import.meta.url).pathname],
+      target: 'browser',
+      plugins: [
+        {
+          name: 'record-graph',
+          setup(build) {
+            build.onLoad({ filter: /\.ts$/ }, async (args) => {
+              paths.push(args.path);
+              return { contents: await Bun.file(args.path).text(), loader: 'ts' };
+            });
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    expect(paths.length).toBeGreaterThan(1);
+    expect([...paths, ...sources.values()].join('\n')).not.toMatch(
+      /armorer|velveteen|svelte|applications\//i,
+    );
   });
 
   it('rejects invalid references and shapes with deterministic diagnostics', () => {
