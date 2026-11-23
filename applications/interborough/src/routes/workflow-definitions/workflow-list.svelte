@@ -260,16 +260,16 @@
         data-testid="workflows-empty"
       >
         {#if needsProvider}
-          <Text class="ib-workflows__provider-hint">
+          <Text class="ib-workflows__hint">
             {copy.empty.needsProvider}
             <Link href={router.href(providersPath)} onclick={(event) => go(event, providersPath)}>
               {copy.empty.connectProvider}
             </Link>
           </Text>
         {/if}
-        <p class="ib-workflows__file-hint" data-testid="workflows-file-hint">
+        <Text class="ib-workflows__hint" data-testid="workflows-file-hint">
           {copy.empty.addFileHint(directory)}
-        </p>
+        </Text>
       </ListPageEmpty>
     {:else}
       <div bind:this={filterBar}>
@@ -326,11 +326,3 @@
     {copy.internalAction(engineRows.length)}
   </Button>
 {/snippet}
-
-<style>
-  .ib-workflows__file-hint {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-</style>
