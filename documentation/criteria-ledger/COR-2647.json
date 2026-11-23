@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2647",
+  "branch": "chef/cor-2647-filter-bar-fold",
+  "checkedAt": "cb61fae09a3bf52c7a7f557f460b2a98d749109f",
+  "briefVersion": "d5dec53e1709",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "needs-decision",
+      "evidence": "Mechanism shown from the CI trace (final frame: unfolded row with about 24px slack) and from the CI-image browser: every measurement drawn=medium:0, need=720, available=720, no contents change after the first measure; form.folded stays 0 because the row fits. No commit to carry it."
+    },
+    {
+      "id": "AC2",
+      "status": "needs-decision",
+      "evidence": "No failing Cinder ordering to reproduce: the bar's measurement is correct for the Linux geometry."
+    },
+    {
+      "id": "AC3",
+      "status": "needs-decision",
+      "evidence": "Passes on macOS (local, 1/1) but fails 3/3 in the CI image; cannot pass 20/20 on Linux without changing the test, the page, or the seeded labels."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-main",
+      "evidence": "No deadline, timeout or retry count changed; no diff."
+    }
+  ]
+}
