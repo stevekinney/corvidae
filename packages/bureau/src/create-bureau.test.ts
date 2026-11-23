@@ -89,6 +89,7 @@ import { z } from 'zod';
 import type { AgentDefinitions } from './agent-catalog';
 import type { AuditRecord } from './audit-trail';
 import * as auditTrailModule from './audit-trail';
+import * as durableEventHistoryModule from './durable-event-history';
 import {
   ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
   resolveCancelDurableRun,
@@ -21873,6 +21874,100 @@ describe('AB-390 — outbox claim lease', () => {
       expect(diagnostics).not.toContainEqual(expect.stringContaining('was not durably recorded'));
     } finally {
       await bureau.dispose();
+      await database.dispose();
+    }
+  });
+
+  it('leaves a post-cutoff session outbox append for the next host after shutdown has passed its outbox drain await (COR-2639)', async () => {
+    // Hold event-history disposal, which is after shutdown's outbox-drain
+    // await, so the direct session-store commit below lands in the precise
+    // window that used to let the post-commit listener start a new drain.
+    const database = createSqliteStorageFixture();
+    const runtime = createManualRuntimeServices();
+    const diagnostics: string[] = [];
+    const eventHistoryDisposeReached = Promise.withResolvers<void>();
+    const continueShutdown = Promise.withResolvers<void>();
+    const createEventHistory = durableEventHistoryModule.createDurableEventHistory;
+    const eventHistoryFactory = spyOn(
+      durableEventHistoryModule,
+      'createDurableEventHistory',
+    ).mockImplementation((...args) => {
+      const history = createEventHistory(...args);
+      const dispose = history.dispose.bind(history);
+      spyOn(history, 'dispose').mockImplementation(async () => {
+        eventHistoryDisposeReached.resolve();
+        await continueShutdown.promise;
+        await dispose();
+      });
+      return history;
+    });
+    let bureau: Bureau<AgentDefinitions> | undefined;
+    let recovered: Bureau<AgentDefinitions> | undefined;
+
+    try {
+      bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('unused'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
+        storage: database.storage,
+        runtime,
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      });
+      await bureau.recovery();
+      const sessionStore = bureau.internals.sessionStore;
+      if (!sessionStore) throw new Error('expected a configured session store');
+
+      const shutdown = bureau.dispose();
+      await eventHistoryDisposeReached.promise;
+
+      // `pending()` is the first storage read a newly admitted drain makes.
+      // It must not run for this post-cutoff append; the entry instead stays
+      // durable until a new host recovers it.
+      const pending = sessionStore.outbox.pending.bind(sessionStore.outbox);
+      let postCutoffDrainStarted = false;
+      (sessionStore.outbox as { pending: typeof sessionStore.outbox.pending }).pending = async () => {
+        postCutoffDrainStarted = true;
+        return pending();
+      };
+      const session = createAgentSession({
+        id: 'cor-2639-post-cutoff-session',
+        agentName: 'triage',
+        conversationHistory: createConversationHistory({ id: 'cor-2639-post-cutoff-session' }),
+      });
+      await sessionStore.save(session);
+      expect(postCutoffDrainStarted).toBe(false);
+      expect(await sessionStore.outbox.pending()).toHaveLength(1);
+
+      continueShutdown.resolve();
+      await shutdown;
+      expect(diagnostics).not.toContainEqual(
+        expect.stringContaining('Session outbox drain (post-commit trigger) failed'),
+      );
+
+      recovered = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('unused'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
+        storage: database.storage,
+        runtime: createManualRuntimeServices(),
+      });
+      await recovered.recovery();
+
+      const page = await recovered.contexts.events(session.id);
+      if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
+      expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
+      expect(await recovered.internals.sessionStore?.outbox.pending()).toHaveLength(0);
+    } finally {
+      continueShutdown.resolve();
+      await recovered?.dispose();
+      await bureau?.dispose();
+      eventHistoryFactory.mockRestore();
       await database.dispose();
     }
   });
