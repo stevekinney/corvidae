@@ -282,32 +282,35 @@ describe('sending a delivery again', () => {
 describe('the payload a delivery sent', () => {
   const body = (value: unknown) => JSON.stringify(value);
 
-  test('is the event and the fields of the envelope’s payload', () => {
+  test('keeps the exact envelope, with outer metadata and the original payload keys', () => {
+    const outbound = JSON.stringify(
+      { id: 'x', kind: 'run.error', payload: { runId: 'run-1', step: 2 } },
+      null,
+      2,
+    );
     const sent = delivery('delivered', [attempt(1, { status: 200 })], {
-      request: {
-        url: PAGER,
-        headers: {},
-        body: body({ id: 'x', kind: 'run.error', payload: { runId: 'run-1', step: 2 } }),
-      },
+      request: { url: PAGER, headers: {}, body: outbound },
     });
-    expect(deliveryPayload(sent)).toEqual({
-      kind: 'fields',
-      value: { event: 'run.error', runId: 'run-1', step: 2 },
-    });
+    expect(deliveryPayload(sent)).toEqual({ kind: 'fields', value: outbound, eventEnvelope: true });
   });
 
-  test('is the event alone when the envelope carries no fields', () => {
+  test('keeps an empty payload inside its actual webhook envelope', () => {
+    const outbound = body({ kind: 'hook.test', payload: {} });
     const sent = delivery('delivered', [], {
-      request: { url: PAGER, headers: {}, body: body({ kind: 'hook.test', payload: {} }) },
+      request: { url: PAGER, headers: {}, body: outbound },
     });
-    expect(deliveryPayload(sent)).toEqual({ kind: 'fields', value: { event: 'hook.test' } });
+    expect(deliveryPayload(sent)).toEqual({ kind: 'fields', value: outbound, eventEnvelope: true });
   });
 
   test('is a body that is not an envelope as it is, a body that is not JSON as text, and none without a request', () => {
     const plain = delivery('delivered', [], {
       request: { url: PAGER, headers: {}, body: body({ hello: 'world' }) },
     });
-    expect(deliveryPayload(plain)).toEqual({ kind: 'fields', value: { hello: 'world' } });
+    expect(deliveryPayload(plain)).toEqual({
+      kind: 'fields',
+      value: body({ hello: 'world' }),
+      eventEnvelope: false,
+    });
     const text = delivery('delivered', [], {
       request: { url: PAGER, headers: {}, body: 'not json' },
     });
@@ -318,9 +321,9 @@ describe('the payload a delivery sent', () => {
   });
 
   test('writes the event field as its words and kind, and leaves every other field alone', () => {
-    expect(payloadFieldText(['event'], 'run.error')).toBe('A run fails (run.error)');
+    expect(payloadFieldText(['kind'], 'run.error')).toBe('A run fails (run.error)');
     expect(payloadFieldText(['runId'], 'run-1')).toBeUndefined();
-    expect(payloadFieldText(['payload', 'event'], 'run.error')).toBeUndefined();
+    expect(payloadFieldText(['payload', 'kind'], 'run.error')).toBeUndefined();
   });
 });
 

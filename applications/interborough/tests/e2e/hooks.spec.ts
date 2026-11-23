@@ -1648,6 +1648,21 @@ for (const width of WIDTHS) {
       state: 'expanded failed run.error delivery',
       source: SOURCE,
     });
+
+    await payload.getByRole('radio', { name: 'JSON' }).check({ force: true });
+    await expect(payload.getByRole('tree', { name: 'JSON tree' })).toBeVisible();
+    await expect(payload).not.toContainText('GitHub did not answer (HTTP 503)');
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'expanded failed run.error delivery JSON',
+      source: SOURCE,
+    });
+
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await payload.getByRole('button', { name: 'Copy Payload sent' }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(RUN_ERROR_DELIVERY.request.body);
   });
 }
 

@@ -137,7 +137,7 @@ describe('hookStanding', () => {
   test('is Can’t load only when the Bureau reports a currently unavailable workflow target', () => {
     const hook: StandingHook = {
       enabled: true,
-      action: { type: 'start-workflow', workflowId: 'weekly-cleanup' },
+      action: { type: 'start-workflow', workflowId: 'weekly-cleanup', input: 'payload' },
       lastDelivery: null,
       problems: [{ code: 'workflow-unavailable' }],
     };

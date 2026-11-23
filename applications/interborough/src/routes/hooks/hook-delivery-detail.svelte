@@ -139,7 +139,8 @@
       <PayloadInspector
         label={copy.payloadLabel}
         value={payload.value}
-        formatValue={({ path, value }) => payloadFieldText(path, value)}
+        formatValue={({ path, value }) =>
+          payload.eventEnvelope ? payloadFieldText(path, value) : undefined}
       />
     </div>
   {/if}

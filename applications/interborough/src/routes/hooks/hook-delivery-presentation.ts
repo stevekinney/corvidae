@@ -276,7 +276,7 @@ export function attemptList(delivery: Pick<HookDelivery, 'attempts'>, all: boole
 /** What the payload inspector is given for a delivery. */
 export type DeliveryPayload =
   | { readonly kind: 'none' }
-  | { readonly kind: 'fields'; readonly value: unknown }
+  | { readonly kind: 'fields'; readonly value: string; readonly eventEnvelope: boolean }
   | { readonly kind: 'text'; readonly value: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -284,33 +284,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The payload a delivery sent, for the inspector. A webhook's body is an envelope (`id`, `hookId`,
- * `kind`, `payload` and the rest); the inspector is given the event kind and the fields of its
- * `payload`, which are what the receiver acts on, so Fields reads `Event` first. A body that is not
- * an envelope is shown as it is, and one that is not JSON as text. A delivery that sent no request
- * has no payload.
+ * The recorded request body, including its outer webhook envelope. Use the original string so the
+ * inspector parses the same value for Fields and JSON and can copy the original body.
  */
-export function deliveryPayload(delivery: Pick<HookDelivery, 'request' | 'kind'>): DeliveryPayload {
-  if (delivery.request === null) return { kind: 'none' };
+export function deliveryPayload(delivery: Pick<HookDelivery, 'request'>): DeliveryPayload {
+  const request = delivery.request;
+  if (request === null || request.body === '') return { kind: 'none' };
   const body = deliveryBody(delivery);
-  if (body === undefined) {
-    return delivery.request.body === ''
-      ? { kind: 'none' }
-      : { kind: 'text', value: delivery.request.body };
-  }
-  if (!isRecord(body) || !Object.hasOwn(body, 'payload')) return { kind: 'fields', value: body };
-  const kind = typeof body['kind'] === 'string' ? body['kind'] : delivery.kind;
-  const payload = body['payload'];
-  if (payload === undefined || payload === null) return { kind: 'fields', value: { event: kind } };
+  if (body === undefined) return { kind: 'text', value: request.body };
   return {
     kind: 'fields',
-    value: isRecord(payload) ? { event: kind, ...payload } : { event: kind, payload },
+    value: request.body,
+    eventEnvelope: isRecord(body) && Object.hasOwn(body, 'payload'),
   };
 }
 
-/** Writes the `event` field of {@link deliveryPayload} as the event in words and its kind: `A run fails (run.error)`. */
+/** Adds the event's readable name beside its recorded kind in the webhook envelope's Fields view. */
 export function payloadFieldText(path: readonly string[], value: unknown): string | undefined {
-  if (path.length !== 1 || path[0] !== 'event' || typeof value !== 'string') return undefined;
+  if (path.length !== 1 || path[0] !== 'kind' || typeof value !== 'string') return undefined;
   return COPY.eventField(eventOptionLabel(value), value);
 }
 
