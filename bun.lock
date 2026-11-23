@@ -556,6 +556,7 @@
       "name": "@lostgradient/mcp",
       "version": "0.0.0",
       "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",

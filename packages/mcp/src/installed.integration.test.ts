@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -25,7 +26,7 @@ test('an independent listener installs the HTTP entry without provider dependenc
         dependencies: { '@lostgradient/mcp': `file:./${archive}` },
       }),
     );
-    const install = Bun.spawn([process.execPath, 'install'], {
+    const install = spawnWithHangGuard([process.execPath, 'install'], {
       cwd: directory,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -39,7 +40,7 @@ test('an independent listener installs the HTTP entry without provider dependenc
       join(directory, 'listener.ts'),
       `import { createProtectedHttpHandler } from '@lostgradient/mcp/http';\nconst handler = createProtectedHttpHandler({ origin: 'https://example.com', resourcePath: '/mcp', issuer: 'https://issuer.example', scopes: [], verifyAccessToken: async () => null, resolvePrincipal: async () => null, dispatch: () => new Response() });\nconst server = Bun.serve({port: 0, fetch: handler});\nconst response = await fetch(new URL('/.well-known/oauth-protected-resource/mcp', server.url));\nserver.stop(true);\nif (response.status !== 200) process.exit(1);`,
     );
-    const listener = Bun.spawn([process.execPath, 'listener.ts'], {
+    const listener = spawnWithHangGuard([process.execPath, 'listener.ts'], {
       cwd: directory,
       stdout: 'pipe',
       stderr: 'pipe',

@@ -14,6 +14,7 @@
     "test:slow": "bun ../../scripts/bun-test-selected.ts .integration.test.ts"
   },
   "devDependencies": {
+    "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "oxlint": "catalog:",

@@ -66,9 +66,10 @@ describe('protected HTTP listener', () => {
       async resolvePrincipal() {
         return member ? { delegableScopes: delegable } : null;
       },
-      dispatch(request, context) {
+      async dispatch(request, context) {
         const refusal = context.requireScopes([request.headers.get('x-scope') ?? 'read']);
         if (refusal) return refusal;
+        if (request.method === 'POST') expect(await request.text()).toBe('hello');
         calls++;
         return new Response('private');
       },
@@ -133,6 +134,13 @@ describe('protected HTTP listener', () => {
       const success = await fetch(endpoint, { headers: { authorization: 'Bearer valid' } });
       expect(await success.text()).toBe('private');
       expect(calls).toBe(1);
+      const post = await fetch(endpoint, {
+        method: 'POST',
+        headers: { authorization: 'Bearer valid' },
+        body: 'hello',
+      });
+      expect(await post.text()).toBe('private');
+      expect(calls).toBe(2);
     } finally {
       server.stop(true);
     }
