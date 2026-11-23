@@ -119,7 +119,11 @@ export function hookStanding(hook: StandingHook, context: StandingContext): Hook
     };
   }
   if (hook.problems?.some((problem) => problem.code === 'workflow-unavailable') === true) {
-    return { state: 'workflow-unavailable', word: 'Can’t load', sentence: undefined };
+    return {
+      state: 'workflow-unavailable',
+      word: "Can't load",
+      sentence: undefined,
+    };
   }
   if (hook.action.type === 'plugin') {
     const { plugin, kind } = hook.action;

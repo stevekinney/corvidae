@@ -1568,6 +1568,89 @@ const RECEIPTED = {
   updatedAt: Date.UTC(2026, 10, 2, 15, 0, 1),
 };
 
+/** The failed webhook record and its separately authorized run, for the expanded run-error state. */
+const RUN_ERROR_DELIVERY = {
+  id: 'delivery-run-error',
+  hookId: 'run-error-hook',
+  owner: 'anonymous:local',
+  actionType: 'webhook',
+  kind: 'run.error',
+  test: false,
+  status: 'exhausted',
+  request: {
+    url: 'https://events.pagerduty.com/v2/enqueue',
+    headers: {},
+    body: JSON.stringify({
+      kind: 'run.error',
+      payload: { runId: 'run-1', step: 2, errorCode: 'upstream-unavailable' },
+    }),
+  },
+  work: null,
+  attempts: Array.from({ length: 8 }, (_unused, index) => ({
+    number: index + 1,
+    startedAt: Date.UTC(2026, 9, 30, 11, index),
+    finishedAt: Date.UTC(2026, 9, 30, 11, index, 1),
+    outcome: 'response',
+    status: 410,
+    responseExcerpt: null,
+    responseTruncated: null,
+    error: null,
+    receipt: null,
+  })),
+  maxAttempts: 8,
+  createdAt: Date.UTC(2026, 9, 30, 11),
+  updatedAt: Date.UTC(2026, 9, 30, 11, 7),
+};
+
+const RUN_ERROR_HOOK = hookRecord('run-error-hook', {
+  name: 'Page on-call when a run fails',
+  action: { type: 'webhook', url: 'https://events.pagerduty.com/v2/enqueue' },
+  events: ['run.error'],
+  declaredBy: null,
+});
+
+for (const width of WIDTHS) {
+  test(`[hook-delivery-run-error] /hooks/:hook: an expanded failed run error keeps its actual body separate from its authorized related run, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks/run-error-hook', [RUN_ERROR_HOOK], {
+      'bureau.hooks.deliveries': () => ({ deliveries: [RUN_ERROR_DELIVERY] }),
+      'bureau.tasks.get': () => ({
+        id: 'run-1',
+        workflow: { type: 'release-notes' },
+        failure: { step: { label: 'Collect merged changes' } },
+        statusMessage: 'GitHub did not answer (HTTP 503)',
+      }),
+    });
+    const item = page
+      .getByTestId('hook-deliveries')
+      .locator('li[data-delivery="delivery-run-error"]');
+    await item.locator('button[aria-expanded]').first().click();
+
+    const payload = item.getByTestId('hook-delivery-payload');
+    await expect(payload.getByText('Payload sent')).toBeVisible();
+    await expect(payload.getByRole('radio', { name: 'Fields' })).toBeChecked();
+    await expect(payload.getByRole('radio', { name: 'JSON' })).toBeVisible();
+    await expect(payload.getByRole('button', { name: 'Copy' })).toBeVisible();
+    await expect(payload).toContainText('upstream-unavailable');
+    await expect(payload).not.toContainText('GitHub did not answer (HTTP 503)');
+
+    const related = item.getByTestId('hook-delivery-related-run');
+    await expect(related.getByRole('link', { name: 'Release notes' })).toHaveAttribute(
+      'href',
+      '/runs/run-1',
+    );
+    await expect(related).toContainText('Step: Collect merged changes');
+    await expect(related).toContainText('Error: GitHub did not answer (HTTP 503)');
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'expanded failed run.error delivery',
+      source: SOURCE,
+    });
+  });
+}
+
 // At 375 the capture also takes the 320 phone, so each of these states is seen at 320 and 1280.
 for (const width of WIDTHS) {
   test(`[hook-delivery-receipt] /hooks/:hook: a delivery whose reaction made something shows its summary, a link to it and its reference, at ${width} pixels`, async ({

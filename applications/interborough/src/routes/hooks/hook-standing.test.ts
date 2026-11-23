@@ -144,7 +144,7 @@ describe('hookStanding', () => {
 
     expect(hookStanding(hook, { plugins: undefined, reactions: undefined })).toEqual({
       state: 'workflow-unavailable',
-      word: 'Can’t load',
+      word: "Can't load",
       sentence: undefined,
     });
   });

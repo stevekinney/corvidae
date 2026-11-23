@@ -181,14 +181,32 @@
   });
   function namesFor(delivery: HookDelivery) {
     const references = deliveryReferences(delivery);
+    const run =
+      references.runId === undefined ? undefined : referenceNames.runNames.get(references.runId);
+    const review =
+      references.reviewId === undefined
+        ? undefined
+        : referenceNames.reviewNames.get(references.reviewId);
     return {
-      ...(references.runId === undefined
-        ? {}
-        : { run: referenceNames.runNames.get(references.runId) }),
-      ...(references.reviewId === undefined
-        ? {}
-        : { review: referenceNames.reviewNames.get(references.reviewId) }),
+      ...(run === undefined ? {} : { run }),
+      ...(review === undefined ? {} : { review }),
       ...(hookName === null ? {} : { hook: hookName }),
+    };
+  }
+  function relatedRunFor(delivery: HookDelivery) {
+    const runId = deliveryReferences(delivery).runId;
+    if (runId === undefined) return undefined;
+    const index = runIds.indexOf(runId);
+    const run = index === -1 ? undefined : runs[index]?.data;
+    if (run === undefined) return undefined;
+    const step = run.failure?.step?.label;
+    return {
+      id: runId,
+      name: workflowTypeName(run.workflow?.type ?? 'agentRun'),
+      ...(step === undefined ? {} : { step }),
+      ...(run.statusMessage === undefined || run.statusMessage === null
+        ? {}
+        : { error: run.statusMessage }),
     };
   }
 
@@ -329,6 +347,7 @@
               {delivery}
               {alike}
               names={namesFor(delivery)}
+              relatedRun={relatedRunFor(delivery)}
               retrying={retrying.isPending}
               onRetry={() => retrying.mutate(delivery)}
             />

@@ -2022,6 +2022,14 @@ describe('a hook’s delivery log', () => {
     const { view } = open([hook('alpha')], {
       path: '/hooks/alpha',
       deliveries: { alpha: [gaveUpDelivery('alpha')] },
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          workflow: { type: 'release-notes' } as never,
+          failure: { step: { label: 'Collect merged changes' } } as never,
+          statusMessage: 'GitHub did not answer (HTTP 503)',
+        }),
+      ],
     });
     const deliveries = await view.findByTestId('hook-deliveries');
     await within(deliveries).findByTestId('hook-delivery-list');
@@ -2032,11 +2040,11 @@ describe('a hook’s delivery log', () => {
       'events.pagerduty.com answered 410 Gone on all 8 tries, so Interborough stopped. The webhook URL may have been removed. Check the URL, then retry.',
     );
     const facts = within(item).getByTestId('hook-delivery-facts');
-    // The row above names the event in words, so the facts do not say it again; its raw kind shows
-    // only beside an event that reads alike (R10-23).
-    expect(facts.textContent).not.toContain(copy.facts.event);
+    // The authorized run makes this event fact identify the named record, including its raw kind.
+    expect(facts.textContent).toContain(copy.facts.event);
     expect(item.textContent).toContain('A run fails');
-    expect(facts.textContent).not.toContain('run.error');
+    expect(facts.textContent).toContain('Release notes');
+    expect(facts.textContent).toContain('run.error');
     expect(facts.textContent).toContain('events.pagerduty.com');
     expect(facts.textContent).toContain('410 Gone');
 
@@ -2050,6 +2058,13 @@ describe('a hook’s delivery log', () => {
     expect(payload.textContent).toContain(copy.payloadLabel);
     expect(payload.textContent).toContain('A run fails (run.error)');
     expect(payload.textContent).toContain('upstream-unavailable');
+    expect(payload.textContent).not.toContain('GitHub did not answer (HTTP 503)');
+    const related = await within(item).findByTestId('hook-delivery-related-run');
+    expect(within(related).getByRole('link', { name: 'Release notes' }).getAttribute('href')).toBe(
+      '/runs/run-1',
+    );
+    expect(related.textContent).toContain('Step: Collect merged changes');
+    expect(related.textContent).toContain('Error: GitHub did not answer (HTTP 503)');
     expect(within(item).getByRole('button', { name: copy.retry })).not.toBeNull();
   });
 

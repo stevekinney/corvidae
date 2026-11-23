@@ -378,7 +378,7 @@ test.describe('/hooks: the hooks list states', () => {
       await checkA11y(`hooks with a hook that gave up at ${width}px`);
     });
 
-    test(`a start-workflow target the Bureau cannot load reads Can’t load, at ${width} pixels`, async ({
+    test(`a start-workflow target the Bureau cannot load reads Can't load, at ${width} pixels`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -396,7 +396,7 @@ test.describe('/hooks: the hooks list states', () => {
 
       await expect(row.locator('[data-status-word]')).toHaveAttribute(
         'data-status-word',
-        'Can’t load',
+        "Can't load",
       );
       await expect(row).toContainText('When a run fails, start the Weekly cleanup workflow');
       await captureForDesignReview(page, {

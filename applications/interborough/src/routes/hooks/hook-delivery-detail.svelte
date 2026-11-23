@@ -35,9 +35,25 @@
     alike?: ReadonlySet<string>;
     /** Names read from the delivery's existing identifiers through the normal authorized endpoints. */
     names?: DeliveryReferenceNames;
+    /** The existing authorized run detail named by the recorded delivery body, if it was readable. */
+    relatedRun:
+      | {
+          readonly id: string;
+          readonly name: string;
+          readonly step?: string;
+          readonly error?: string;
+        }
+      | undefined;
   }
 
-  let { delivery, retrying, onRetry, alike = new Set<string>(), names = {} }: Props = $props();
+  let {
+    delivery,
+    retrying,
+    onRetry,
+    alike = new Set<string>(),
+    names = {},
+    relatedRun,
+  }: Props = $props();
 
   const copy = HOOKS_COPY.editor.deliveries;
 
@@ -128,6 +144,19 @@
     </div>
   {/if}
 
+  {#if relatedRun !== undefined}
+    <section
+      class="ib-hook-delivery__related-run"
+      aria-label={copy.relatedRun}
+      data-testid="hook-delivery-related-run"
+    >
+      <h3>{copy.relatedRun}</h3>
+      <Link href={`/runs/${encodeURIComponent(relatedRun.id)}`}>{relatedRun.name}</Link>
+      {#if relatedRun.step !== undefined}<p>{copy.relatedRunStep}: {relatedRun.step}</p>{/if}
+      {#if relatedRun.error !== undefined}<p>{copy.relatedRunError}: {relatedRun.error}</p>{/if}
+    </section>
+  {/if}
+
   {#if canRetry}
     <div class="ib-hook-delivery__actions">
       <Button variant="secondary" size="sm" data-changes disabled={retrying} onclick={onRetry}>
@@ -149,6 +178,11 @@
   }
 
   .ib-hook-delivery__cause {
+    margin: 0;
+  }
+
+  .ib-hook-delivery__related-run h3,
+  .ib-hook-delivery__related-run p {
     margin: 0;
   }
 
