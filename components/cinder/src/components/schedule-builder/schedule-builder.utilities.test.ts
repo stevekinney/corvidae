@@ -12,6 +12,7 @@ import {
   browserTimeZone,
   cronFieldsValid,
   cronForDraft,
+  customDaysLabel,
   defaultScheduleValue,
   describeCronFieldError,
   describeSchedule,
@@ -22,6 +23,7 @@ import {
   orderTimeZones,
   parseClockText,
   parseTime,
+  repeatsOptionsFor,
   splitCron,
   timeZoneDisplayName,
   timeZoneOffsetLabel,
@@ -655,10 +657,28 @@ describe('describeScheduleFields', () => {
     );
   });
 
+  test('COR-2432: Custom days names one weekday only while it is the choice', () => {
+    expect(customDaysLabel([5])).toBe('Every Friday');
+    expect(customDaysLabel([0])).toBe('Every Sunday');
+    expect(customDaysLabel([2, 4])).toBe('Custom days');
+    expect(customDaysLabel([])).toBe('Custom days');
+    const label = (repeats: ScheduleRepeats) =>
+      repeatsOptionsFor({ repeats, days: [5] }).find((option) => option.value === 'custom-days')
+        ?.label;
+    expect(label('custom-days')).toBe('Every Friday');
+    expect(label('daily')).toBe('Custom days');
+  });
+
   test('custom days name the days, and a monthly schedule names the day of the month', () => {
+    // One weekday is Repeats' own words (COR-2432, row 65q); several are listed under Days.
     expect(describeScheduleFields({ cron: '0 11 * * 5', timeZone: 'UTC' })).toEqual([
+      { label: 'Repeats', value: 'Every Friday' },
+      { label: 'At', value: '11:00 AM' },
+      { label: 'Time zone', value: 'UTC' },
+    ]);
+    expect(describeScheduleFields({ cron: '0 11 * * 2,4', timeZone: 'UTC' })).toEqual([
       { label: 'Repeats', value: 'Custom days' },
-      { label: 'Days', value: 'Fridays' },
+      { label: 'Days', value: 'Tuesday and Thursday' },
       { label: 'At', value: '11:00 AM' },
       { label: 'Time zone', value: 'UTC' },
     ]);
