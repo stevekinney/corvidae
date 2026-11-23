@@ -214,6 +214,9 @@ describe('portable generated entries', () => {
     expect(before.get('fetch-operation-client.generated.ts')).toBe(
       after.get('fetch-operation-client.generated.ts'),
     );
+    expect(after.get('portable-operation-client.generated.ts')).not.toContain(
+      'operation-client.generated.ts',
+    );
   });
 
   it('forwards calls, cancellation, and structured faults through the supplied transport', async () => {

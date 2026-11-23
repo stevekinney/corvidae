@@ -290,15 +290,17 @@ export async function createOperationClientSources(
     sources.set(
       portableFile,
       `${GENERATED_HEADER}
-import { createCatalogClient, type CatalogTransport } from '${runtimeSpecifier}';
-import type { CatalogOperationTypes, CatalogOperations } from './${outputFile}';
+import { createCatalogClient, type CatalogClient, type CatalogTransport } from '${runtimeSpecifier}';
+${imports}
 
 const operationNames = [
 ${catalogNames.join('\n')}
 ] as const;
 
+type CatalogOperationTypes = Pick<${types}, (typeof operationNames)[number]>;
+
 /** Bind this catalog to a host-provided transport. */
-export function ${options.factoryName}WithTransport(transport: CatalogTransport): CatalogOperations {
+export function ${options.factoryName}WithTransport(transport: CatalogTransport): CatalogClient<CatalogOperationTypes> {
   return createCatalogClient<CatalogOperationTypes>(operationNames, transport);
 }
 `,
