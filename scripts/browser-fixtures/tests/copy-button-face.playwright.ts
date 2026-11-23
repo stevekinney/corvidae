@@ -26,6 +26,16 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
     await expect(icon).toHaveAttribute('aria-label', 'Copy install command');
     await expect(icon.locator('svg.lucide-copy')).toHaveCount(1);
     await expect(icon).toHaveText('');
+    const iconGeometry = await icon.evaluate((button) => {
+      const glyph = button.querySelector<SVGElement>('.cinder-copy-button__icon');
+      if (glyph === null) throw new Error('Missing CopyButton glyph.');
+      const { fontSize } = getComputedStyle(button);
+      const paint = glyph.getBoundingClientRect();
+      return { fontSize: Number.parseFloat(fontSize), paint: [paint.width, paint.height] };
+    });
+    expect(iconGeometry.paint[0]).toBeCloseTo(iconGeometry.fontSize, 1);
+    expect(iconGeometry.paint[1]).toBeCloseTo(iconGeometry.fontSize, 1);
+    await expect(icon).toHaveCSS('border-top-width', '0px');
     await icon.hover();
     await expect(page.getByRole('tooltip')).toHaveText('Copy install command');
 
@@ -45,6 +55,10 @@ test('the icon face shows its name in a tooltip and both faces keep their width'
       expect(after?.width).toBeCloseTo(before?.width ?? 0, 1);
       expect(after?.height).toBeCloseTo(before?.height ?? 0, 1);
     }
+    await expect(icon.locator('.cinder-copy-button__icon')).toHaveCSS(
+      'width',
+      `${iconGeometry.fontSize}px`,
+    );
     await expect(text.locator('[data-cinder-current]')).toHaveText('Copied');
   } finally {
     await context.close();
@@ -70,17 +84,21 @@ test('the inline copy face fits the text and keeps a visible keyboard ring', asy
   await expect(button).not.toHaveCSS('box-shadow', 'none');
 });
 
-test('a DescriptionList identifier uses the same proportional copy padding', async ({ page }) => {
+test('a DescriptionList identifier has a text-sized ghost copy icon', async ({ page }) => {
   await page.goto(`${fixtureRoute('description-list')}&wrapping=1`, { waitUntil: 'load' });
   const button = page.getByRole('button', { name: 'Copy Run ID' });
-  const { fontSize, padding } = await button.evaluate((node) => {
-    const style = getComputedStyle(node);
+  const { fontSize, face, glyph } = await button.evaluate((node) => {
+    const icon = node.querySelector('svg');
+    if (icon === null) throw new Error('Missing CopyButton glyph.');
     return {
-      fontSize: Number.parseFloat(style.fontSize),
-      padding: Number.parseFloat(style.paddingTop),
+      fontSize: Number.parseFloat(getComputedStyle(node).fontSize),
+      face: node.getBoundingClientRect().height,
+      glyph: icon.getBoundingClientRect().height,
     };
   });
-  expect(Math.abs(padding - fontSize * 0.1)).toBeLessThanOrEqual(0.5);
+  expect(face).toBeCloseTo(fontSize, 1);
+  expect(glyph).toBeCloseTo(fontSize, 1);
+  await expect(button).toHaveCSS('border-top-width', '0px');
 });
 
 test('a stretched 32px text face gives its label enough real side room without moving the icon', async ({

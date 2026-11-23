@@ -569,18 +569,23 @@ test.describe('an agent-authored type', () => {
         WORKFLOW_COPY.page.runs.emptyTitle,
       );
 
-      // History holds the versions that ran: none has, and the page does not offer to activate one.
+      // The initial saved version is recorded even before the workflow's first run.
       await expect(root.getByTestId('workflow-revisions')).toHaveCount(0);
       await openTab(root, WORKFLOW_COPY.page.tabs.history);
-      await expect(root.getByTestId('workflow-revisions')).toContainText(
-        WORKFLOW_COPY.revisions.emptyTitle,
-      );
+      const revisions = root.getByTestId('workflow-revisions').locator('[data-version]');
+      await expect(revisions).toHaveCount(1);
+      await expect(revisions.first()).toContainText('Version 1.0.0, current version');
+      await expect(revisions.first()).toContainText(WORKFLOW_COPY.revisions.noComparison);
+      await expect(revisions.first()).toContainText(WORKFLOW_COPY.revisions.noRunsOnVersion);
       await expect(root.getByRole('button', { name: /Activate/ })).toHaveCount(0);
       await checkA11y(`an agent-authored type at ${width}px`);
     });
   }
 
-  test('lists the versions that ran, and only those', async ({ page, request }) => {
+  test('lists both recorded versions and distinguishes the one with a run', async ({
+    page,
+    request,
+  }) => {
     await makeWorkflow(request, 'e2e-ran', {
       trigger: { kind: 'signal', name: 'e2e-ran-go' },
       steps: [{ kind: 'await-signal', signal: 'e2e-ran-wait' }],
@@ -601,14 +606,14 @@ test.describe('an agent-authored type', () => {
     await page.goto('/workflows/e2e-ran');
     await openTab(detail(page), WORKFLOW_COPY.page.tabs.history);
     const versions = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
-    await expect(versions).toHaveCount(1);
-    // The file was edited after that version ran, so Weft's verdict against the current one is no.
-    await expect(versions.first().getByTestId('workflow-revision-verdict')).toContainText(
+    await expect(versions).toHaveCount(2);
+    // The second revision breaks with the initial revision's signal, which already has a run.
+    await expect(versions.nth(0).getByTestId('workflow-revision-verdict')).toContainText(
       WORKFLOW_COPY.revisions.incompatible,
     );
-    await expect(versions.first().getByTestId('workflow-revision-reasons')).toContainText(
-      WORKFLOW_COPY.revisions.reason('workflow-version-incompatible'),
-    );
+    await expect(versions.nth(0)).toContainText(WORKFLOW_COPY.revisions.noRunsOnVersion);
+    await expect(versions.nth(1)).toContainText(WORKFLOW_COPY.revisions.noComparison);
+    await expect(versions.nth(1)).toContainText(WORKFLOW_COPY.revisions.runsOnVersion(1));
     // Let the instance finish, so it does not stay in the host.
     await expect
       .poll(async () => {
@@ -849,11 +854,10 @@ test.describe('send signal', () => {
   test('says how many were started and reached, and refuses a payload that is not JSON', async ({
     page,
   }) => {
-    await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}`);
+    await page.goto(`/workflows/${SEEDED_WORKFLOWS.approval}`);
     const form = await openSignalDialog(page);
-    // No step of the digest waits for a signal, so the form starts empty.
     const name = form.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel });
-    await expect(name).toHaveValue('');
+    await expect(name).toHaveValue(APPROVAL_START_SIGNAL);
     await name.fill('e2e-nobody-waits');
     await form.getByRole('textbox', { name: WORKFLOW_COPY.signal.payloadLabel }).fill('{ nope');
     await form.getByRole('button', { name: WORKFLOW_COPY.signal.sendAction }).click();

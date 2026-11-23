@@ -302,6 +302,19 @@ const runSummarySchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   origin: taskOriginSchema.nullable(),
+  schedule: z
+    .object({ id: z.string(), manual: z.boolean() })
+    .nullable()
+    .describe('The schedule the runtime recorded as having fired the instance.'),
+  steps: z
+    .object({ total: z.number().int(), at: z.number().int().nullable() })
+    .nullable()
+    .describe('How many steps the version the instance ran has, and the one it reached, from one.'),
+  awaitingSignal: z.string().nullable().describe('The signal an unfinished instance waits for.'),
+  failure: z
+    .string()
+    .nullable()
+    .describe('Why a failed or timed-out instance ended, at most 1,000 characters.'),
 });
 
 const runDetailSchema = runSummarySchema.extend({
@@ -1061,11 +1074,25 @@ const compatibilitySchema = z.discriminatedUnion('compatible', [
 ]);
 
 const revisionsOutput = z.object({
+  savedVersionCount: z
+    .number()
+    .int()
+    .describe('Every saved version of the workflow, including versions that have never run.'),
   revisions: z.array(
     z.object({
       workflowVersion: z.string(),
       firstRunAt: z.string(),
       lastRunAt: z.string(),
+      runs: z
+        .object({
+          count: z.number().int(),
+          firstRunAt: z.string().nullable(),
+          lastRunAt: z.string().nullable(),
+        })
+        .nullable()
+        .describe(
+          'Retained runs on this engine revision, or `null` when the totals are unavailable or private.',
+        ),
       document: documentSchema,
       /**
        * Weft's verdict for this revision against the workflow's current revision; `null` when the
@@ -1098,9 +1125,10 @@ export const workflowsRevisionsOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
+    const mayReadTotals = authorizeWorkspaceClass('deployment-operator', principal).allowed;
     const revisions = await workflows.revisions(
       input.id,
-      authorizeWorkspaceClass('deployment-operator', principal).allowed
+      mayReadTotals
         ? undefined
         : async (runId) => {
             const owner = ownerOfPrincipal(principal);
@@ -1108,11 +1136,14 @@ export const workflowsRevisionsOperation = defineOperation<
           },
     );
     if (revisions === undefined) throw resourceNotFound('workflow', input.id);
+    const history = await workflows.history(input.id);
     return {
+      savedVersionCount: history?.length ?? 0,
       revisions: revisions.map((revision) => ({
         workflowVersion: revision.workflowVersion,
         firstRunAt: revision.firstRunAt,
         lastRunAt: revision.lastRunAt,
+        runs: mayReadTotals ? revision.runs : null,
         document: {
           name: revision.document.name,
           trigger: { ...revision.document.trigger },
@@ -1244,6 +1275,10 @@ export const workflowsRunsGetOperation = defineOperation<
       createdAt: run.createdAt,
       updatedAt: run.updatedAt,
       origin: run.origin ?? null,
+      schedule: run.schedule,
+      steps: run.steps === null ? null : { total: run.steps.total, at: run.steps.at },
+      awaitingSignal: run.awaitingSignal,
+      failure: run.failure,
       trigger: (run.trigger ?? null) as never,
       result: (run.result ?? null) as never,
       error: run.error ?? null,
@@ -1930,9 +1965,7 @@ export const workflowsHistoryOperation = defineOperation<
         previousVersion: entry.previousVersion,
         changes: entry.changes.map((change) => ({ ...change })),
         compatibility: entry.compatibility,
-        runs: authorizeWorkspaceClass('deployment-operator', principal).allowed
-          ? { ...entry.runs }
-          : null,
+        runs: authorizeWorkspaceClass('deployment-operator', principal).allowed ? entry.runs : null,
       })),
     };
   },

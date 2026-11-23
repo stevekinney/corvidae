@@ -42,6 +42,7 @@ import {
   type WorkflowCompatibilityVerdict,
   type WorkflowDocument,
   type WorkflowState,
+  type WorkflowSummary,
   type WorkflowEvent,
   type WorkflowStatus,
 } from '@lostgradient/weft';
@@ -267,6 +268,14 @@ export interface WorkflowRunSummary {
   readonly updatedAt: string;
   /** What started the instance, when the runtime recorded an origin. */
   readonly origin: TaskOrigin | null;
+  /** The engine's record of the schedule that fired the instance. */
+  readonly schedule: { readonly id: string; readonly manual: boolean } | null;
+  /** The number of steps in the revision and the step the instance reached, both from one. */
+  readonly steps: { readonly total: number; readonly at: number | null } | null;
+  /** The signal an unfinished instance waits for, or `null`. */
+  readonly awaitingSignal: string | null;
+  /** The bounded engine failure message for a failed instance, or `null`. */
+  readonly failure: string | null;
 }
 
 /** One instance with what started it and how it ended. */
@@ -388,6 +397,8 @@ export function describeCodeWorkflow(
 
 /** A revision of a workflow that has run, with whether it is compatible with the workflow's current revision. */
 export interface WorkflowRevisionReport extends WorkflowRevision {
+  /** Retained runs of this exact engine revision, or null when the total is unavailable. */
+  readonly runs: WorkflowHistoryRuns | null;
   /**
    * Weft's compatibility verdict for this revision against the file's current revision
    * (`checkWorkflowCompatibility` over the manifests of the two documents): `{ compatible: true }`,
@@ -415,8 +426,9 @@ export interface WorkflowHistoryEntry extends WorkflowRevisionRecord {
   /**
    * The runs that started while this version was the newest. A run started on the version current
    * when it was created, so a run's version is the newest one saved at or before its start.
+   * A truncated scan leaves the totals unavailable.
    */
-  readonly runs: WorkflowHistoryRuns;
+  readonly runs: WorkflowHistoryRuns | null;
 }
 
 /** What saving a definition would do, for the builder's compatibility notice (COR-2009). */
@@ -2312,7 +2324,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     input?: unknown;
   }): Promise<WorkflowRunSummary> {
     // COR-2546: the origin a Bureau start declared, never one a schedule's caller wrote.
-    const { origin } = await startOfRun(engine, state);
+    const { origin, scheduleId, scheduleManual } = await startOfRun(engine, state);
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),
@@ -2321,6 +2333,48 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       createdAt: new Date(state.createdAt).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
       origin,
+      schedule: scheduleId === null ? null : { id: scheduleId, manual: scheduleManual === true },
+      steps: null,
+      awaitingSignal: null,
+      failure: null,
+    };
+  }
+
+  /** The progress a workflow list and detail show for the revision a run actually used. */
+  async function progressOf(
+    runId: string,
+    type: string,
+    workflowVersion: string,
+    state: WorkflowState | null | undefined,
+  ): Promise<Pick<WorkflowRunSummary, 'steps' | 'awaitingSignal' | 'failure'>> {
+    if (state === null || state === undefined) {
+      return { steps: null, awaitingSignal: null, failure: null };
+    }
+
+    const revision = await revisionOf(bureauNameOf(type), workflowVersion);
+    const total =
+      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
+    const events =
+      total === undefined || state.status === 'completed'
+        ? undefined
+        : await engine.getEvents(runId);
+    const latestStep = events?.findLast((event) => event.type === 'file-workflow:step-started');
+    const index = latestStep?.data['step'];
+    const at =
+      total === undefined
+        ? null
+        : state.status === 'completed'
+          ? total
+          : typeof index === 'number' && Number.isSafeInteger(index) && index >= 0
+            ? index + 1
+            : null;
+    const unfinished = IN_FLIGHT_STATUSES.includes(state.status);
+    const failed = state.status === 'failed' || state.status === 'timed-out';
+
+    return {
+      steps: total === undefined ? null : { total, at },
+      awaitingSignal: unfinished ? (state.waitingForSignals?.[0] ?? null) : null,
+      failure: failed && state.error !== undefined ? state.error.slice(0, 1000) : null,
     };
   }
 
@@ -2371,25 +2425,50 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     };
   }
 
-  /** Stamp the first and last start of every revision of workflow `id` that has an instance in the engine. */
-  async function syncRunHistory(id: string): Promise<void> {
-    const bounds = new Map<string, { first: number; last: number }>();
+  /** Read retained runs up to the shared history limit and report whether the scan reached the end. */
+  async function readRetainedRunHistory(id: string) {
+    const runs: WorkflowSummary[] = [];
+    let total: number | undefined;
     for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
-      const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
-      for (const summary of page.items) {
-        const known = bounds.get(summary.version);
-        bounds.set(summary.version, {
-          first: Math.min(known?.first ?? summary.createdAt, summary.createdAt),
-          last: Math.max(known?.last ?? summary.createdAt, summary.createdAt),
-        });
-      }
+      const limit = Math.min(100, RUNS_READ_LIMIT_PER_WORKFLOW - offset);
+      const page = await engine.list({ type: weftNameOf(id), limit, offset });
+      if (total !== undefined && page.total !== total) break;
+      total = page.total;
+      runs.push(...page.items);
       offset += page.items.length;
-      if (page.items.length === 0 || offset >= page.total) break;
+      if (offset >= total) {
+        // A new or pruned run can shift the offsets between otherwise valid pages.
+        const distinct = new Set(runs.map((run) => run.id));
+        return { runs, complete: distinct.size === runs.length };
+      }
+      if (page.items.length === 0) break;
     }
-    for (const [version, { first, last }] of bounds) {
-      await snapshots.stampRun(id, version, new Date(first).toISOString());
-      if (last !== first) await snapshots.stampRun(id, version, new Date(last).toISOString());
+    return { runs, complete: false };
+  }
+
+  /** Stamp the observed run times for each stored revision; report totals after a complete scan. */
+  async function syncRunHistory(
+    id: string,
+  ): Promise<ReadonlyMap<string, WorkflowHistoryRuns> | undefined> {
+    const scan = await readRetainedRunHistory(id);
+    const bounds = new Map<string, { count: number; first: number; last: number }>();
+    for (const summary of scan.runs) {
+      const known = bounds.get(summary.version);
+      bounds.set(summary.version, {
+        count: (known?.count ?? 0) + 1,
+        first: Math.min(known?.first ?? summary.createdAt, summary.createdAt),
+        last: Math.max(known?.last ?? summary.createdAt, summary.createdAt),
+      });
     }
+    const runs = new Map<string, WorkflowHistoryRuns>();
+    for (const [version, { count, first, last }] of bounds) {
+      const firstRunAt = new Date(first).toISOString();
+      const lastRunAt = new Date(last).toISOString();
+      await snapshots.stampRun(id, version, firstRunAt);
+      if (last !== first) await snapshots.stampRun(id, version, lastRunAt);
+      runs.set(version, { count, firstRunAt, lastRunAt });
+    }
+    return scan.complete ? runs : undefined;
   }
 
   async function knownTypes(): Promise<string[]> {
@@ -2745,6 +2824,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   async function withCompatibility(
     id: string,
     revisions: readonly WorkflowRevision[],
+    runs?: ReadonlyMap<string, WorkflowHistoryRuns>,
   ): Promise<readonly WorkflowRevisionReport[]> {
     const current = catalog.find(id);
     const manifestOf = async (document: WorkflowDocument) => {
@@ -2761,15 +2841,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const currentManifest = current === undefined ? undefined : await manifestOf(current.document);
     return Promise.all(
       revisions.map(async (revision): Promise<WorkflowRevisionReport> => {
+        const facts = { ...revision, runs: runs?.get(revision.workflowVersion) ?? null };
         if (current === undefined || currentManifest === undefined) {
-          return { ...revision, compatibility: null };
+          return { ...facts, compatibility: null };
         }
         if (revision.workflowVersion === current.version) {
-          return { ...revision, compatibility: { compatible: true } };
+          return { ...facts, compatibility: { compatible: true } };
         }
         const manifest = await manifestOf(revision.document);
         return {
-          ...revision,
+          ...facts,
           compatibility:
             manifest === undefined ? null : checkWorkflowCompatibility(currentManifest, manifest),
         };
@@ -3051,9 +3132,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       await Promise.allSettled(pendingStamps);
       // The engine's own record of when each revision's instances began is the source of truth: a
       // start event can arrive after the call that made the instance, or never (a crash).
-      await syncRunHistory(id);
+      const runs = await syncRunHistory(id);
       const revisions = await snapshots.revisions(id);
-      if (revisions.length > 0) return withCompatibility(id, revisions);
+      if (revisions.length > 0) return withCompatibility(id, revisions, runs);
       if (catalog.list().some((entry) => entry.id === id)) return [];
       const stored = await snapshots.snapshotsOf(id);
       return stored.length > 0 ? [] : undefined;
@@ -3064,13 +3145,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (records.length === 0) {
         return catalog.list().some((entry) => entry.id === id) ? [] : undefined;
       }
-      const starts: number[] = [];
-      for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
-        const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
-        starts.push(...page.items.map((summary) => summary.createdAt));
-        offset += page.items.length;
-        if (page.items.length === 0 || offset >= page.total) break;
-      }
+      const scan = await readRetainedRunHistory(id);
+      const starts = scan.runs.map((summary) => summary.createdAt);
       const savedAt = records.map((record) => Date.parse(record.savedAt));
       const runsOf = (index: number): WorkflowHistoryRuns => {
         const from = savedAt[index]!;
@@ -3087,7 +3163,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         .map((record, index): WorkflowHistoryEntry => ({
           ...record,
           current: exists && index === records.length - 1,
-          runs: runsOf(index),
+          runs: scan.complete ? runsOf(index) : null,
         }))
         .toReversed();
     },
@@ -3115,7 +3191,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           : (await isWorkflowType(filter.workflow))
             ? [filter.workflow]
             : [];
-      const found: WorkflowRunSummary[] = [];
+      const found: Array<{
+        readonly summary: WorkflowRunSummary;
+        readonly type: string;
+        readonly state: WorkflowState | null | undefined;
+      }> = [];
       for (const type of types) {
         for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
           const page = await engine.list({
@@ -3148,7 +3228,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             ) {
               continue;
             }
-            found.push(await summarize({ ...run, input: state?.input }));
+            found.push({
+              summary: await summarize({ ...run, input: state?.input }),
+              type,
+              state,
+            });
           }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
@@ -3156,9 +3240,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const ordered = found.toSorted(
         (left, right) =>
-          right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+          right.summary.createdAt.localeCompare(left.summary.createdAt) ||
+          left.summary.id.localeCompare(right.summary.id),
       );
-      const runs = ordered.slice(filter.offset, filter.offset + filter.limit);
+      const runs = await Promise.all(
+        ordered
+          .slice(filter.offset, filter.offset + filter.limit)
+          .map(async ({ summary, type, state }) => ({
+            ...summary,
+            ...(await progressOf(summary.id, type, summary.workflowVersion, state)),
+          })),
+      );
       return {
         runs,
         nextOffset:
@@ -3273,6 +3365,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           tags: state.tags,
           input: state.input,
         })),
+        ...(await progressOf(runId, state.type, state.versionTuple.workflowVersion, state)),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),

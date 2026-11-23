@@ -243,7 +243,6 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     expect(flat).toContain(
       `${shared} > :not(:last-child, :has(+ [data-cinder-button-status]:last-child)) { flex: 0 0 auto; }`,
     );
-    expect(modalCss).not.toContain('column-reverse');
     // The body's fields are full 44px targets; the footer's buttons are drawn compact and reach
     // 44px through their hit area, so no sheet rule sets a height on them.
     expect(modalCss).toMatch(
@@ -252,6 +251,15 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     expect(modalCss).not.toMatch(/__footer\s+\.cinder-button:is\(\s*\.button-size-/);
     expect(modalCss).not.toMatch(/__footer > \*\s*\{\s*inline-size:\s*100%;/);
     expect(modalCss).toMatch(/env\(safe-area-inset-bottom\)/);
+  });
+
+  test('stacks only an overflowing ConfirmDialog as equal-width confirmation then Cancel actions', () => {
+    expect(modalCss).toMatch(
+      /\.cinder-confirm-dialog__actions\[data-cinder-stacked\]:not\(\[data-cinder-fault-only\]\)\s*\{\s*flex-direction:\s*column-reverse;/,
+    );
+    expect(modalCss).toMatch(
+      /\.cinder-confirm-dialog__actions\[data-cinder-stacked\]:not\(\[data-cinder-fault-only\]\)\s*> button\s*\{\s*flex:\s*0 0 auto;\s*inline-size:\s*100%;/,
+    );
   });
 
   // COR-2448 review A: Restart, Disable and "Connect Anthropic" are one sheet with one footer.

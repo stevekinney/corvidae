@@ -439,7 +439,12 @@ export function triggerSummary(
 ): TriggerSummary | null {
   if (trigger === null) return null;
   if (trigger['kind'] === 'schedule' && typeof trigger['spec'] === 'string') {
-    return { kind: 'schedule', words: cadenceText(specCadence(trigger['spec'])).full };
+    const timeZone = trigger['timezone'];
+    const cadence = {
+      ...specCadence(trigger['spec']),
+      ...(typeof timeZone === 'string' ? { timeZone } : {}),
+    };
+    return { kind: 'schedule', words: cadenceText(cadence).full };
   }
   if (trigger['kind'] === 'signal' && typeof trigger['name'] === 'string') {
     return { kind: 'signal', name: trigger['name'] };

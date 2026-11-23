@@ -486,6 +486,23 @@
     flex: 0 0 auto;
   }
 
+  /* A ConfirmDialog measures whether its two labels actually fit. When they do not, it marks the
+   * row and becomes one deliberate vertical group: confirmation above Cancel, both full width.
+   * DOM order stays Cancel then confirmation, preserving Cancel's initial focus and tab order. */
+  .cinder-modal[data-cinder-sheet='docked']
+    .cinder-confirm-dialog__actions[data-cinder-stacked]:not([data-cinder-fault-only]) {
+    flex-direction: column-reverse;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked']
+    .cinder-confirm-dialog__actions[data-cinder-stacked]:not([data-cinder-fault-only])
+    > button {
+    flex: 0 0 auto;
+    inline-size: 100%;
+  }
+
   /* A button that is loading mounts a status region (`data-cinder-button-status`, a visually hidden
    * live region) after itself, so the confirmation is not the last child while the region is
    * there. The region is not an action: the button before it is still the confirmation, and

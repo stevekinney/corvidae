@@ -1102,14 +1102,14 @@ describe('the sample world, part B', () => {
     ]);
   });
 
-  test('keeps Release notes’ four versions, the run on 1.2.0, and the files as the Code tabs show them', async () => {
+  test('keeps Release notes’ recorded four-version history and its sole run on 1.2.0', async () => {
     type Revision = {
       version: string;
       savedAt: string;
       surface: string | null;
       compatibility: string | null;
       changes: Array<{ kind: string }>;
-      runs: { count: number; firstRunAt: string | null };
+      runs: { count: number; firstRunAt: string | null; lastRunAt: string | null };
     };
     const { revisions } = await call<{ revisions: Revision[] }>('bureau.workflows.history', {
       id: 'release-notes',
@@ -1142,8 +1142,24 @@ describe('the sample world, part B', () => {
     for (const [index, revision] of revisions.entries()) {
       expectAt(revision.savedAt, saved[index] ?? 0);
     }
-    expect(revisions[1]?.runs.count).toBe(1);
-    expectAt(revisions[1]?.runs.firstRunAt, times.releaseNotesFailed);
+    expect(
+      revisions.map(({ version, runs }) => ({
+        version,
+        count: runs.count,
+        firstRunAt: runs.firstRunAt,
+        lastRunAt: runs.lastRunAt,
+      })),
+    ).toEqual([
+      { version: '1.3.0', count: 0, firstRunAt: null, lastRunAt: null },
+      {
+        version: '1.2.0',
+        count: 1,
+        firstRunAt: new Date(times.releaseNotesFailed).toISOString(),
+        lastRunAt: new Date(times.releaseNotesFailed).toISOString(),
+      },
+      { version: '1.1.0', count: 0, firstRunAt: null, lastRunAt: null },
+      { version: '1.0.0', count: 0, firstRunAt: null, lastRunAt: null },
+    ]);
 
     const workflows = join(home, 'home', 'workflows');
     for (const file of [

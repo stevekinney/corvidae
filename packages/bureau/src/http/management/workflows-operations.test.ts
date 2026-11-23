@@ -16,6 +16,7 @@ import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 import { createBureau } from '../../create-bureau.ts';
 import { waitForCondition } from '../../test';
+import { WORKFLOW_REVISION_KEY_PREFIX } from '../../workflow-revision-ledger.ts';
 import {
   AGENT_STEP,
   FAST_SCHEDULE,
@@ -599,6 +600,10 @@ describe('results', () => {
       { id: 'digest' },
       'operator-key',
     );
+    expect(revisions.result).toMatchObject({
+      savedVersionCount: 1,
+      revisions: [{ runs: null }],
+    });
     expect(revisions.result?.['revisions']).toHaveLength(1);
     const history = await rpc(
       workspace,
@@ -624,7 +629,10 @@ describe('results', () => {
     const localHistory = await ownerRpc(local, 'bureau.workflows.history', { id: 'digest' });
     expect(localHistory.result?.['revisions']).toMatchObject([{ runs: { count: 3 } }]);
     const localRevisions = await ownerRpc(local, 'bureau.workflows.revisions', { id: 'digest' });
-    expect(localRevisions.result?.['revisions']).toHaveLength(1);
+    expect(localRevisions.result).toMatchObject({
+      savedVersionCount: 1,
+      revisions: [{ runs: { count: 3 } }],
+    });
     const localImpact = await ownerRpc(local, 'bureau.workflows.impact', {
       id: 'digest',
       definition: DEFINITION,
@@ -637,6 +645,105 @@ describe('results', () => {
       'operator-key',
     );
     expect(memberImpact.result?.['inFlight']).toBeNull();
+  });
+
+  it('counts runs by the engine revision even when two saves have the same revision', async () => {
+    const runtime = createManualRuntimeServices();
+    const served = await serveWorkflows(cleanups, { runtime });
+    const created = await served.bureau.workflows!.create('digest', DEFINITION);
+    const first = await ownerRpc(served.owner, 'bureau.workflows.start', { id: 'digest' });
+    expect(first.result?.['workflowVersion']).toBeString();
+
+    runtime.setTime(runtime.clock.now() + 1);
+    await served.bureau.workflows!.update(
+      'digest',
+      { ...DEFINITION, title: 'New title' },
+      {
+        expectedHash: created.hash,
+      },
+    );
+    runtime.setTime(runtime.clock.now() + 1);
+    const second = await ownerRpc(served.owner, 'bureau.workflows.start', { id: 'digest' });
+    expect(second.result?.['workflowVersion']).toBe(first.result?.['workflowVersion']);
+
+    const answer = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });
+    expect(answer.result).toMatchObject({
+      savedVersionCount: 2,
+      revisions: [{ workflowVersion: first.result?.['workflowVersion'], runs: { count: 2 } }],
+    });
+  });
+
+  it('reports complete run totals and withholds truncated or shifting totals', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('digest', DEFINITION);
+    const engine = served.bureau.durableEngine()!;
+    const started = await engine.start('digest', null, { id: 'retained-run' });
+    await started.result();
+    const recorded = await engine.list({ type: 'digest' });
+    const [sample] = recorded.items;
+    if (sample === undefined) throw new Error('Expected the recorded digest run.');
+    const retained = Array.from({ length: 1001 }, (_, index) => ({
+      ...sample,
+      id: `retained-${String(index)}`,
+      createdAt: sample.createdAt + 1001 - index,
+    }));
+    let total = 1000;
+    let shifting = false;
+    let overlapping = false;
+    const list = engine.list.bind(engine);
+    const stub = spyOn(engine, 'list').mockImplementation(async (filter, options) => {
+      if (filter?.type !== 'digest') return list(filter, options);
+      const offset = filter.offset ?? 0;
+      const limit = filter.limit ?? 100;
+      const pageTotal = shifting && offset > 0 ? total + 1 : total;
+      const start = overlapping && offset > 0 ? offset - 1 : offset;
+      return {
+        items: retained.slice(start, Math.min(pageTotal, start + limit)),
+        total: pageTotal,
+        offset,
+        limit,
+      };
+    });
+    try {
+      async function expectRuns(runs: { count: number } | null): Promise<void> {
+        for (const method of ['bureau.workflows.revisions', 'bureau.workflows.history'] as const) {
+          const answer = await ownerRpc(served.owner, method, { id: 'digest' });
+          expect(answer.result?.['revisions']).toMatchObject([{ runs }]);
+        }
+      }
+      await expectRuns({ count: 1000 });
+      total = 1001;
+      await expectRuns(null);
+      total = 1000;
+      shifting = true;
+      await expectRuns(null);
+      shifting = false;
+      overlapping = true;
+      await expectRuns(null);
+    } finally {
+      stub.mockRestore();
+    }
+  });
+
+  it('retains a deleted workflow’s stored run revision when no saved-version record exists', async () => {
+    const storage = new MemoryStorage();
+    const served = await serveWorkflows(cleanups, { storage });
+    const created = await served.bureau.workflows!.create('digest', DEFINITION);
+    const started = await ownerRpc(served.owner, 'bureau.workflows.start', { id: 'digest' });
+    expect(started.result?.['workflowVersion']).toBeString();
+    await served.bureau.workflows!.delete('digest', { expectedHash: created.hash });
+    const revisionKeys: string[] = [];
+    for await (const [key] of storage.scan('')) {
+      if (key.includes(`${WORKFLOW_REVISION_KEY_PREFIX}digest:`)) revisionKeys.push(key);
+    }
+    expect(revisionKeys).toHaveLength(1);
+    for (const key of revisionKeys) await storage.delete(key);
+
+    const answer = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });
+    expect(answer.result).toMatchObject({
+      savedVersionCount: 0,
+      revisions: [{ workflowVersion: started.result?.['workflowVersion'], runs: { count: 1 } }],
+    });
   });
 
   it('signals only the caller-owned waiting runs and starts new runs with the caller owner', async () => {
@@ -1189,6 +1296,76 @@ describe('results', () => {
       workflow: 'unknown-flow',
     });
     expect(none.result?.['runs']).toEqual([]);
+  });
+
+  it('COR-2431: reports run progress, the awaited signal, and a bounded failure', async () => {
+    const served = await serve();
+    await seed(served);
+    await failedDigestRun(served);
+    await served.bureau.workflows!.create('approval', {
+      trigger: { kind: 'signal', name: 'begin' },
+      steps: [AGENT_STEP, { kind: 'await-signal', signal: 'notes-approved' }],
+    });
+    await served.bureau.durableEngine()!.start('approval', null, { id: 'approval-run' });
+    await waitForCondition(async () => {
+      const state = await served.bureau.durableEngine()!.get('approval-run');
+      return state?.waitingForSignals?.includes('notes-approved') === true;
+    }, 'the approval run waits for its signal');
+
+    const digest = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'digest',
+    });
+    const byId = new Map(
+      listOf(digest, 'runs').map((run) => [run.id, run as Record<string, unknown>]),
+    );
+    expect(byId.get('digest-run')).toMatchObject({
+      steps: { total: 1, at: 1 },
+      awaitingSignal: null,
+      failure: null,
+    });
+    expect(byId.get('failed-digest-run')).toMatchObject({
+      status: 'failed',
+      steps: { total: 1, at: 1 },
+      awaitingSignal: null,
+    });
+    expect(String(byId.get('failed-digest-run')?.['failure'])).toContain('the writer is down');
+
+    const approval = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'approval',
+    });
+    expect(listOf(approval, 'runs')[0]).toMatchObject({
+      id: 'approval-run',
+      steps: { total: 2, at: 2 },
+      awaitingSignal: 'notes-approved',
+      failure: null,
+    });
+    const detail = await ownerRpc(served.owner, 'bureau.workflows.runs.get', {
+      runId: 'approval-run',
+    });
+    expect(detail.result).toMatchObject({
+      steps: { total: 2, at: 2 },
+      awaitingSignal: 'notes-approved',
+      failure: null,
+    });
+  });
+
+  it('COR-2431: reports the recorded schedule and how it fired in both run reads', async () => {
+    const served = await serve();
+    await seed(served);
+    const scheduleId = 'bureau-workflow-schedule:digest:1';
+    const fired = await served.bureau.durableEngine()!.triggerSchedule(scheduleId);
+    if (fired.outcome !== 'started') throw new Error('Expected the schedule to start immediately.');
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'digest',
+    });
+    const byId = new Map(listOf(listed, 'runs').map((run) => [run.id, run]));
+    expect(byId.get('digest-run')).toMatchObject({ schedule: null });
+    const provenance = { origin: null, schedule: { id: scheduleId, manual: true } };
+    expect(byId.get(fired.workflowId)).toMatchObject(provenance);
+    const read = await ownerRpc(served.owner, 'bureau.workflows.runs.get', {
+      runId: fired.workflowId,
+    });
+    expect(read.result).toMatchObject(provenance);
   });
 
   it('answers a run that is not an instance of a workflow file as it answers a missing run', async () => {

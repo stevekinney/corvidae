@@ -245,9 +245,12 @@ export const WORKFLOW_COPY = {
       runsAs: (agent: string): string => `runs as ${agent}`,
       /** "Last run" and the date, which is a link to the run, follow each other. */
       lastRunLabel: 'Last run',
+      waitingForSignal: 'Waiting for the signal ',
+      failedAtStep: (step: number): string => ` at step ${String(step)}`,
       lastRun: (when: string): string => `Last run ${when}`,
       /** The last run of a type Interborough runs itself, said as the day it began. */
       lastRunToday: (clock: string): string => `Last run today, ${clock}`,
+      todayAt: (clock: string): string => `today, ${clock}`,
       neverRun: 'Never run',
       /** "file" and the file's name, which is set in monospace, follow each other. */
       fileLabel: 'file',
@@ -348,6 +351,7 @@ export const WORKFLOW_COPY = {
       /** The accessible names of the filter bar and of the rows. */
       filtersLabel: 'Filter this workflow’s runs',
       rowsLabel: 'Runs of this workflow, newest first',
+      waitingSignalLabel: 'Waiting',
       emptyTitle: 'No runs of this workflow yet',
       emptyDescription: 'Start one and it shows up here with its steps and result.',
       /** The plain hint under the sentence, which names the header's action. */
@@ -963,10 +967,9 @@ export const WORKFLOW_COPY = {
     },
   },
   revisions: {
-    heading: 'Revisions that have run',
-    description:
-      'The versions of this workflow that have run, most recently run first, each with whether it is compatible with the current one.',
-    caption: 'Versions of this workflow that have run',
+    heading: 'Saved versions',
+    description: 'Saved versions of this workflow, newest first.',
+    caption: 'Saved versions of this workflow',
     /** One row's title: the day the version first ran and its short hash, "Oct 19, 8:00 AM, version 1.3.0, current version". */
     versionTitle: (when: string, shortVersion: string, current: boolean): string =>
       `${when}, version ${shortVersion}, ${current ? 'current version' : 'older version'}`,
@@ -974,20 +977,35 @@ export const WORKFLOW_COPY = {
     copyVersion: (shortVersion: string): string => `Copy version ${shortVersion}`,
     /** When the version last ran, after its verdict: "last run Thu, Oct 29, 9:15 AM". */
     lastRun: (when: string): string => `last run ${when}`,
+    saved: (when: string): string => `Saved ${when}`,
+    editedInBuilder: (what: string): string => `Edited in the builder: ${what}`,
+    rewordedStep: (step: number): string => `reworded step ${String(step)}`,
+    addedStep: (step: number): string => `added step ${String(step)}`,
+    addedApproval: 'added the approval step',
+    renamedStep: (step: number): string => `renamed step ${String(step)}`,
+    changedStep: (step: number): string => `changed step ${String(step)}`,
+    changedFile: 'changed workflow settings',
+    runsKeepGoing: 'Runs in flight keep going.',
+    current: 'current version',
+    older: 'older version',
+    runsOnVersion: (count: number, date?: string): string =>
+      `Run${count === 1 ? '' : 's'} on this version: ${String(count)}${date === undefined ? '' : ` (${date})`}`,
+    noRunsOnVersion: 'No runs on this version yet',
     /** The footnote under the list. */
     footnote:
       'Compatibility says whether a run started on one version can continue after the next is saved. Scheduled and chat runs always start on the current version.',
     versionColumn: 'Version',
     firstRunColumn: 'First run',
     lastRunColumn: 'Last run',
-    emptyTitle: 'No version of this workflow has run yet',
-    emptyDescription: 'A version appears here after its first run.',
+    emptyTitle: 'No saved versions yet',
+    emptyDescription: 'Save this workflow and its versions appear here.',
     failed: 'The revision history could not be loaded.',
     /** The verdict against the current revision. */
     verdictColumn: 'Compatibility',
     compatible: 'Compatible',
     incompatible: 'Breaking',
     noCurrent: 'No current revision',
+    noComparison: 'No compatibility comparison',
     noCurrentDescription: 'There is no current revision to compare with.',
     /** Why a revision is not compatible with the current one. */
     reason: (reason: string): string => {
@@ -1033,7 +1051,11 @@ export const WORKFLOW_COPY = {
     schedulesRun: (count: number): string => `${String(count)} schedules run this workflow. `,
     pastRuns: 'Its past runs stay on Runs. ',
     /** "The file", its name and its directory, both set in monospace, follow each other. */
-    file: { before: 'The file ', middle: ' is removed from ', after: '.' },
+    file: {
+      before: 'The file ',
+      middle: ' is removed from the ',
+      after: ' directory relative to the configured Interborough home.',
+    },
     alsoDeleteSchedule: (schedule: string): string => `Also delete the ${schedule} schedule`,
     alsoDeleteSchedules: (count: number): string =>
       `Also delete the ${String(count)} schedules that run it`,

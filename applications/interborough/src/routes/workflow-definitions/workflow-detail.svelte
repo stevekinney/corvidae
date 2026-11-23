@@ -73,10 +73,10 @@
   } from '../../lib/workflow-type-paths.ts';
   import {
     deleteWorkflowFile,
-    getLatestSavedSteps,
+    getWorkflowRevisionSummary,
     isApplyFailure,
     listWorkflowFileRuns,
-    listWorkflowRevisions,
+    listWorkflowSavedVersions,
     parseWorkflowText,
     pauseWorkflowFile,
     resumeWorkflowFile,
@@ -86,6 +86,7 @@
   import { kindPlugin } from '../../lib/plugin-title.ts';
   import { usePluginTitle } from '../../lib/plugin-title.svelte.ts';
   import { cancelSchedule } from '../schedules/schedule-queries.ts';
+  import { agentsOfSteps } from '../schedules/schedule-row-model.ts';
   import WorkflowRevisionsPanel from '../system/workflow-revisions-panel.svelte';
   import DeleteWorkflowDialog, { type DeleteDialogSchedule } from './delete-workflow-dialog.svelte';
   import RecentRuns from './recent-runs.svelte';
@@ -169,12 +170,18 @@
       queryKey: queryKeys.workflowCatalog.headline(type),
       queryFn: async ({
         signal,
-      }): Promise<{ readonly total: number; readonly newest: LastRun | null }> => {
+      }): Promise<{
+        readonly total: number;
+        readonly newest: LastRun | null;
+        readonly mayHaveWaitingRun: boolean;
+      }> => {
         if (resolution.data?.kind === 'agent-authored') {
-          const runs = await listWorkflowFileRuns(type, HEADLINE_LIMIT, { signal });
+          const { runs, hasMore } = await listWorkflowFileRuns(type, HEADLINE_LIMIT, { signal });
           const [newest] = runs;
           return {
             total: runs.length,
+            // An older page can contain a waiting run. Leave the authorized signal action available.
+            mayHaveWaitingRun: hasMore || runs.some((run) => run.awaitingSignal != null),
             newest:
               newest === undefined
                 ? null
@@ -182,6 +189,8 @@
                     id: newest.id,
                     status: newest.status,
                     createdAt: Date.parse(newest.createdAt),
+                    reachedStep: newest.steps?.at ?? null,
+                    awaitingSignal: newest.awaitingSignal ?? null,
                   },
           };
         }
@@ -189,6 +198,7 @@
         const [newest] = page.items;
         return {
           total: page.total,
+          mayHaveWaitingRun: false,
           newest:
             newest === undefined
               ? null
@@ -201,12 +211,11 @@
     undefined,
   );
 
-  // The versions that have run, for the History tab's count. The tab reads the same key, and a
-  // fresh read is not asked for again when the tab mounts, so the list is asked for once.
+  // The Bureau reports the saved count even when a version has never run.
   const revisions = createQuery(
     () => ({
       queryKey: queryKeys.workflowCatalog.revisions(type),
-      queryFn: ({ signal }) => listWorkflowRevisions(type, { signal }),
+      queryFn: ({ signal }) => getWorkflowRevisionSummary(type, { signal }),
       staleTime: CATALOG_STALE_TIME_MS,
       enabled: resolution.data?.kind === 'agent-authored',
       retry: false,
@@ -542,11 +551,10 @@
       : (definition?.description ?? null),
   );
   const details = $derived(definitionDetails(definition, acceptedSignals));
-  // What starts the workflow: a file's trigger (for a file that cannot load, the newest version that
-  // ran, which is the last the Bureau could read), or the schedules the engine has for a code type.
+  // An unreadable file still has the trigger Bureau last saved.
   const starts = $derived.by(() => {
     if (file === undefined) return schedulesSummary(schedules.data ?? null);
-    const trigger = document?.trigger ?? revisions.data?.[0]?.document.trigger ?? null;
+    const trigger = (invalidFile ? lastSavedVersion?.trigger : document?.trigger) ?? null;
     // A trigger a plugin contributes says what starts it in its kind's own description.
     return triggerSummary(trigger) ?? pluginTriggerSummary(trigger, pluginKinds.data?.triggers);
   });
@@ -566,30 +574,39 @@
   );
   const runSetupPath = workflowRunSetupPath(type);
 
-  // The steps of a file that cannot load are the last good version's, read from the Bureau's history.
-  const savedSteps = createQuery(
+  // An unreadable file uses its last good definition. History shares the cached list.
+  const savedVersions = createQuery(
     () => ({
-      queryKey: queryKeys.workflowCatalog.savedSteps(type),
-      queryFn: ({ signal }) => getLatestSavedSteps(type, { signal }),
+      queryKey: queryKeys.workflowCatalog.savedVersions(type),
+      queryFn: ({ signal }) => listWorkflowSavedVersions(type, { signal }),
+      staleTime: CATALOG_STALE_TIME_MS,
       enabled: invalidFile,
       retry: false,
     }),
     undefined,
   );
+  const lastSavedVersion = $derived(savedVersions.data?.[0]);
+
   /** The steps the Overview lists: the file's, the last good version's for an invalid file, none for a code type. */
   const overviewSteps = $derived.by<readonly WorkflowStepSource[] | undefined>(() => {
     if (!invalidFile) return document?.steps;
     // A file that cannot load shows the last good version's steps, never its own broken ones. With
     // no saved version there is nothing to show, which is not the same as a workflow with no
     // steps, so the section is left out rather than saying "no steps".
-    const saved = (savedSteps.data ?? []).flatMap((step) =>
+    const saved = (lastSavedVersion?.steps ?? []).flatMap((step) =>
       typeof step['kind'] === 'string' ? [{ ...step, kind: step['kind'] }] : [],
     );
     return saved.length === 0 ? undefined : saved;
   });
 
+  const workflowAgent = $derived.by(() => {
+    if (!invalidFile && file?.agent != null) return file.agent;
+    const steps = invalidFile ? lastSavedVersion?.steps : (document?.steps ?? file?.steps);
+    const agents = agentsOfSteps(steps);
+    return agents.length === 1 ? agents[0] : undefined;
+  });
   const agentName = $derived(
-    file?.agent === null || file?.agent === undefined ? null : agentLabel(file.agent, undefined),
+    workflowAgent === undefined ? null : agentLabel(workflowAgent, undefined),
   );
   const internal = $derived(
     engineType ? internalWords(type, definition?.description ?? null) : null,
@@ -606,7 +623,10 @@
   const summary = $derived.by(() => {
     const short = copy.page.internalSummaryByType;
     if (engineType && Object.hasOwn(short, type)) return short[type as keyof typeof short];
-    return internal?.description ?? description;
+    return (
+      internal?.description ??
+      (invalidFile ? (lastSavedVersion?.description ?? description) : description)
+    );
   });
   /** The title: an internal workflow's in words, a file's own, else the identifier. */
   const ownTitle = $derived(file?.title?.trim() ?? '');
@@ -621,19 +641,30 @@
   /** The newest run, `undefined` until the engine has said. */
   const lastRun = $derived(headline.data === undefined ? undefined : headline.data.newest);
 
-  const fileSchedule = $derived(document?.trigger.kind === 'schedule');
+  const fileSchedule = $derived(!invalidFile && document?.trigger.kind === 'schedule');
   /** The name the file gives its schedule, when its trigger is one. */
   const scheduleName = $derived.by(() => {
     const named = fileSchedule ? document?.trigger['name'] : undefined;
     return typeof named === 'string' ? named : undefined;
   });
-  const headerSchedules = $derived<HeaderSchedule[]>(
-    (schedules.data ?? []).map((schedule) => ({
-      label: scheduleName ?? schedule.description ?? schedule.id,
-      href: scheduleDetailPath(schedule.id),
-      status: schedule.status === 'paused' ? 'paused' : 'active',
-      cadence: scheduleLabel(schedule),
-    })),
+  const scheduleFacts = $derived(
+    new Map<string, HeaderSchedule>(
+      (schedules.data ?? []).map((schedule) => {
+        const isFileSchedule =
+          schedule.id === file?.schedule?.id ||
+          schedule.id.startsWith(`bureau-workflow-schedule:${type}:`);
+        return [
+          schedule.id,
+          {
+            label:
+              (isFileSchedule ? scheduleName : undefined) ?? schedule.description ?? schedule.id,
+            href: scheduleDetailPath(schedule.id),
+            status: schedule.status === 'paused' ? 'paused' : 'active',
+            cadence: scheduleLabel(schedule),
+          },
+        ];
+      }),
+    ),
   );
 
   /** The lines under the title, in the order they are read. Offline, the file and schedule lines are left out. */
@@ -657,7 +688,7 @@
       }),
       file === undefined || offline
         ? null
-        : scheduleLine({ schedules: headerSchedules, definedInFile: fileSchedule }),
+        : scheduleLine({ schedules: [...scheduleFacts.values()], definedInFile: fileSchedule }),
     ];
     return found.filter((line): line is HeaderLine => line !== null);
   });
@@ -687,7 +718,7 @@
       tab === 'runs'
         ? headline.data?.total
         : tab === 'history'
-          ? revisions.data?.length
+          ? revisions.data?.savedVersionCount
           : undefined;
     return count === undefined ? label : copy.page.tabWithCount(label, count);
   }
@@ -775,7 +806,9 @@
     <Button variant="primary" size="sm" aria-disabled="true" label={copy.page.startAction} />
   {/if}
   <WorkflowMoreMenu
-    canSignal={actions?.signal === true}
+    canSignal={actions?.signal === true &&
+      (headline.data?.mayHaveWaitingRun === true ||
+        (file?.paused !== true && (document === undefined || document.trigger.kind === 'signal')))}
     onSendSignal={() => (signalOpen = true)}
     onDuplicate={canDuplicate ? () => duplicate.mutate() : undefined}
     onPause={file !== undefined && actions?.pause === true && !file.paused
@@ -957,7 +990,8 @@
             {type}
             kind={resolved.kind}
             title={heading}
-            agentName={file?.agent ?? null}
+            agentName={workflowAgent ?? null}
+            schedules={scheduleFacts}
             {canStart}
             paused={file?.paused === true}
           />
@@ -967,7 +1001,7 @@
             {#if resolved.kind === 'code'}
               <WorkflowRevisionsPanel workflowName={type} />
             {:else}
-              <RevisionHistory id={type} currentVersion={file?.version ?? null} />
+              <RevisionHistory id={type} />
             {/if}
           </Tabs.Panel>
         {/if}

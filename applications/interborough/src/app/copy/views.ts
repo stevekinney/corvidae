@@ -28,6 +28,8 @@ export type ViewNotFoundCopy = ViewStateCopy & {
   readonly back?: ViewLink;
   /** Leaves out the "Search everything" button, for a page whose only way out is back to its list. */
   readonly searchHidden?: boolean;
+  /** Uses the neutral ErrorState for a route whose missing-resource design calls for it. */
+  readonly neutralError?: true;
 };
 
 export type ViewCopy = {

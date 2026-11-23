@@ -153,10 +153,10 @@ export const queryKeys = {
     schedules: (type: string) => ['workflow-catalog', 'schedules', type] as const,
     /** A code-defined workflow's description and registered contract (`bureau.workflows.internal.get`). */
     codeSource: (type: string) => ['workflow-catalog', 'code-source', type] as const,
-    /** The steps of the newest version the Bureau saved of a file, for a file that cannot load (`bureau.workflows.history`). */
-    savedSteps: (type: string) => ['workflow-catalog', 'saved-steps', type] as const,
-    /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
+    /** The run revisions and total saved count for one workflow (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
+    /** Every saved version of one workflow's file (`bureau.workflows.history`). */
+    savedVersions: (type: string) => ['workflow-catalog', 'saved-versions', type] as const,
   },
   /** The caller's goals (`bureau.goals.list`). */
   goals: {

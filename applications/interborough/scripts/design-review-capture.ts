@@ -138,6 +138,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/health-overview.spec.ts',
   'tests/e2e/health-states.spec.ts',
   'tests/e2e/health-workers-states.spec.ts',
+  'tests/e2e/13-verify-worker-contracts.spec.ts',
   'tests/e2e/06-explore-task-ledger.spec.ts',
   'tests/e2e/health-storage.spec.ts',
   'tests/e2e/health-audit.spec.ts',
@@ -167,6 +168,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
   'tests/e2e/workflows-list-states.spec.ts',
+  // Workflow detail, its runs and its More menu on the PageWorkflow board (COR-2431).
+  'tests/e2e/workflow-detail-states.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
   'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
