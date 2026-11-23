@@ -14,11 +14,10 @@
    * same catalog, and it is not drawn while the list loads or when the engine holds none of them.
    *
    * With no workflow besides those the page is the one list-page empty state (`ListPageEmpty`): the
-   * header stays, there is no filter row, the state has New workflow, Ask an agent (a new chat with
-   * an agent that can create workflows) and, when the engine holds them, a way to the internal
-   * workflows it names; the folder a file can be added to is behind a closed "Where workflow files
-   * live" row with Copy. The frame leaves that state to this page (`pageOwnsEmptyOn` in
-   * `app/views.ts`).
+   * header stays, there is no filter row, and the state has New workflow, Ask an agent (a new chat
+   * with an agent that can create workflows), and a small direct file-location hint. The header
+   * keeps the separate Internal workflows affordance. The frame leaves that state to this page
+   * (`pageOwnsEmptyOn` in `app/views.ts`).
    */
   import {
     Button,
@@ -37,7 +36,6 @@
   import { tick } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import FileLocationDetail from '../../app/file-location-detail.svelte';
   import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
@@ -245,9 +243,7 @@
       <ListPageEmpty
         view="workflows"
         title={copy.empty.title}
-        description={engineRows.length > 0
-          ? `${copy.empty.description} ${copy.empty.internal(engineRows.length)}`
-          : copy.empty.description}
+        description={copy.empty.description}
         create={{
           label: WORKFLOW_COPY.newAction,
           href: router.href(newPath),
@@ -260,15 +256,6 @@
             onclick: (event) => go(event, askPath),
             ...(askUnavailable === undefined ? {} : { inertReason: askUnavailable }),
           },
-          ...(engineRows.length > 0
-            ? [
-                {
-                  label: copy.empty.internalAction,
-                  href: router.href(internalPath),
-                  onclick: (event: MouseEvent) => go(event, internalPath),
-                },
-              ]
-            : []),
         ]}
         data-testid="workflows-empty"
       >
@@ -280,14 +267,9 @@
             </Link>
           </Text>
         {/if}
-        <FileLocationDetail
-          label={copy.empty.files.label}
-          lead={copy.empty.files.lead}
-          {directory}
-          copyLabel={copy.empty.files.copyLabel}
-          copiedLabel={copy.empty.files.copiedLabel}
-          data-testid="workflows-file-location"
-        />
+        <p class="ib-workflows__file-hint" data-testid="workflows-file-hint">
+          {copy.empty.addFileHint(directory)}
+        </p>
       </ListPageEmpty>
     {:else}
       <div bind:this={filterBar}>
@@ -344,3 +326,11 @@
     {copy.internalAction(engineRows.length)}
   </Button>
 {/snippet}
+
+<style>
+  .ib-workflows__file-hint {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+</style>

@@ -310,8 +310,8 @@ describe('a row of the list', () => {
       NOW,
       ZONE,
     );
-    expect(counted.date).toBe('Last 2m ago');
-    expect(textsOf(counted.line)).toEqual(['3 runs today', '1 running']);
+    expect(counted.date).toBeNull();
+    expect(textsOf(counted.line)).toEqual(['3 runs today, 1 running, last 2m ago']);
   });
 
   test('counts one step and one run in the singular', () => {

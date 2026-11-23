@@ -253,8 +253,9 @@ describe('the list of workflows', () => {
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
     const code = row(container, 'order-processing');
-    await waitFor(() => expect(partsOf(code)).toEqual(['1 run today', '1 running']));
-    expect(testId(code, 'workflow-last-run')?.textContent).toMatch(/^Last /);
+    await waitFor(() => expect(partsOf(code)).toHaveLength(1));
+    expect(partsOf(code)[0]).toMatch(/^1 run today, 1 running, last (?:just now|\d+s ago|0m ago)$/);
+    expect(testId(code, 'workflow-last-run')).toBeNull();
     const asked = stub?.callsTo('weft.workflows.list').map((call) => call.params['type']);
     // The engine is asked for the code type, and for the file the Bureau cannot count, and for no
     // other: the types it runs itself and the files the Bureau counts are not asked about.
@@ -573,24 +574,21 @@ describe('a host with no workflow of its own', () => {
     const ask = await findByRole('link', { name: WORKFLOW_COPY.list.empty.askAction });
     await waitFor(() => expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows'));
     expect(ask.classList.contains('button-variant-secondary')).toBe(true);
-    // With no type of its own, it says nothing of internal workflows.
+    // With no type of its own, the header has no Internal workflows affordance.
     expect(testId(container, 'internal-workflows-action')).toBeNull();
-    expect(state?.textContent).not.toContain(WORKFLOW_COPY.list.empty.internalAction);
+    expect(state?.querySelectorAll('.cinder-empty-state-action > a')).toHaveLength(2);
+    expect(testId(container, 'workflows-file-hint')?.textContent).toBe(
+      WORKFLOW_COPY.list.empty.addFileHint(STUB_WORKFLOW_DIRECTORY),
+    );
   });
 
-  test('names the internal workflows the engine holds, with a way to them, and no filter row or toolbar', async () => {
+  test('keeps the internal workflows affordance in the header, with no filter row or toolbar', async () => {
     const { container, findByRole } = open({
       definitions: [codeDefinition('agentRun'), codeDefinition('goalRun')],
       files: [],
     });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     const state = testId(container, 'workflows-empty');
-    expect(state?.textContent).toContain(WORKFLOW_COPY.list.empty.internal(2));
-    const see = within(state as HTMLElement).getByRole('link', {
-      name: WORKFLOW_COPY.list.empty.internalAction,
-    });
-    expect(see.getAttribute('href')).toBe('/internal-workflows');
-    expect(see.classList.contains('button-variant-secondary')).toBe(true);
     const ask = within(state as HTMLElement).getByRole('link', {
       name: WORKFLOW_COPY.list.empty.askAction,
     });
@@ -604,54 +602,31 @@ describe('a host with no workflow of its own', () => {
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
   });
 
-  test('keeps the folder out of its words, behind a closed Where workflow files live with Copy, naming the host’s own directory', async () => {
+  test('puts the host directory in the small first-use file hint', async () => {
     const { container, findByRole } = open({ definitions: [], files: [] });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
       'empty',
     );
     const state = testId(container, 'workflows-empty');
-    expect(state?.textContent).not.toContain(STUB_WORKFLOW_DIRECTORY);
-    expect(testId(container, 'file-location-directory')).toBeNull();
-
-    await fireEvent.click(
-      await findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
+    expect(testId(state as HTMLElement, 'workflows-file-hint')?.textContent).toBe(
+      WORKFLOW_COPY.list.empty.addFileHint(STUB_WORKFLOW_DIRECTORY),
     );
-    await waitFor(() =>
-      expect(testId(container, 'file-location-directory')?.textContent).toContain(
-        STUB_WORKFLOW_DIRECTORY,
-      ),
-    );
-    expect(
-      within(state as HTMLElement).getByRole('button', {
-        name: WORKFLOW_COPY.list.empty.files.copyLabel,
-      }),
-    ).not.toBeNull();
   });
 
   test('names the usual directory when the host does not say, and the host’s location when it keeps its files in a bucket', async () => {
     const usual = open({ definitions: [], files: [], workflowDirectory: null });
     await usual.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
-    await fireEvent.click(
-      await usual.findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
-    );
-    await waitFor(() =>
-      expect(testId(usual.container, 'file-location-directory')?.textContent).toContain(
-        WORKFLOW_COPY.list.empty.hintDirectory,
-      ),
+    expect(testId(usual.container, 'workflows-file-hint')?.textContent).toBe(
+      WORKFLOW_COPY.list.empty.addFileHint(WORKFLOW_COPY.list.empty.hintDirectory),
     );
     cleanup();
     stub?.restore();
 
     const remote = open({ definitions: [], files: [], hostMode: 'remote' });
     await remote.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
-    await fireEvent.click(
-      await remote.findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
-    );
-    await waitFor(() =>
-      expect(testId(remote.container, 'file-location-directory')?.textContent).toContain(
-        STUB_REMOTE_WORKFLOW_DIRECTORY,
-      ),
+    expect(testId(remote.container, 'workflows-file-hint')?.textContent).toBe(
+      WORKFLOW_COPY.list.empty.addFileHint(STUB_REMOTE_WORKFLOW_DIRECTORY),
     );
   });
 });

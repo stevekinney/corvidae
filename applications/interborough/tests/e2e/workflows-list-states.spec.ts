@@ -65,7 +65,7 @@ async function releaseRun(
   });
 }
 
-test('/workflows separates today, running and last-run facts for a code workflow (W76)', async ({
+test('/workflows captions code workflow activity as one punctuated sentence (W76)', async ({
   page,
 }) => {
   await rewriteBureauAnswer(page, 'weft.workflows.definitions.list', (result) => ({
@@ -118,9 +118,10 @@ test('/workflows separates today, running and last-run facts for a code workflow
   });
   await openWorkflows(page, 1280);
   const code = row(page, 'captioned-code-workflow');
-  await expect(code.getByTestId('workflow-run-counts')).toHaveText('1 run today');
-  await expect(code.getByText('1 running', { exact: true })).toBeVisible();
-  await expect(code.getByTestId('workflow-last-run')).toHaveText('Last 2m ago');
+  await expect(code.getByTestId('workflow-run-counts')).toHaveText(
+    '1 run today, 1 running, last 2m ago',
+  );
+  await expect(code.getByTestId('workflow-last-run')).toHaveCount(0);
   await captureForDesignReview(page, {
     route: '/workflows',
     state: 'captioned code workflow activity',
@@ -218,7 +219,9 @@ for (const width of [1280, 768, 375]) {
       }
       await openWorkflows(page, width);
       await expect(page.getByRole('heading', { name: 'No workflows yet' })).toBeVisible();
-      await expect(page.getByTestId('workflows-file-location')).toBeVisible();
+      const empty = page.getByTestId('workflows-empty');
+      await expect(empty.getByTestId('workflows-file-hint')).toHaveText(/Or add a file to .+\./);
+      await expect(empty.locator('.cinder-empty-state-action > a')).toHaveCount(2);
       if (!connected) {
         await expect(internal(page)).toHaveCount(0);
         await expect(ask(page)).toHaveAttribute('aria-disabled', 'true');
@@ -289,9 +292,8 @@ test('/workflows keeps each wrapped first-use touch target reachable at 320px', 
     const empty = page.getByTestId('workflows-empty');
     await expect(empty.getByRole('link', { name: 'New workflow' })).toBeVisible();
     await expect(ask(page)).toBeEnabled();
-    await expect(empty.getByRole('button', { name: 'Where workflow files live' })).toBeVisible();
-    const targets = empty.locator('.cinder-empty-state-action > a, .cinder-collapsible__trigger');
-    await expect(targets).toHaveCount(4);
+    const targets = empty.locator('.cinder-empty-state-action > a');
+    await expect(targets).toHaveCount(2);
     const contacts = await targets.evaluateAll((elements) =>
       elements.map((element) => {
         const box = element.getBoundingClientRect();

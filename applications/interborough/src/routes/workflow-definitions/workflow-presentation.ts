@@ -117,9 +117,10 @@ export function listDate(at: number, now: number, zone: string = viewerTimeZone(
 }
 
 /**
- * The right edge of a row: when the newest run began, "Never run" for a workflow with none, and
- * when the run in progress began ("Started 10:45 AM") while one is going. `null` when the engine
- * has not said, so a count that could not be read is never shown as never run.
+ * The right edge of a file row: when the newest run began, "Never run" for a workflow with none,
+ * and when the run in progress began ("Started 10:45 AM") while one is going. Engine-defined rows
+ * put their complete activity caption under the title. `null` when the engine has not said, so a
+ * count that could not be read is never shown as never run.
  */
 function rowDate(
   kind: CatalogRow['kind'],
@@ -133,7 +134,7 @@ function rowDate(
   if (runs.lastRunAt === null) return WORKFLOW_COPY.list.neverRun;
   const at = Date.parse(runs.lastRunAt);
   if (Number.isNaN(at)) return null;
-  if (kind === 'code') return WORKFLOW_COPY.list.latestRunAt(formatRelativeTime(at, now));
+  if (kind === 'code') return null;
   if (hasBureauRunReceipts(runs) && runs.current !== null) {
     const startedAt = Date.parse(runs.current.startedAt);
     return Number.isNaN(startedAt)
@@ -195,7 +196,11 @@ function lastRunLine(runs: WorkflowRunCounts): LinePart | null {
  * what failed to load for a source the engine could not load, then the current run, the steps of
  * the file, its durable total, and its last settled outcome. The date is never repeated here.
  */
-export function rowLine(row: CatalogRow, runs: ListRunCounts | null | undefined): LinePart[] {
+export function rowLine(
+  row: CatalogRow,
+  runs: ListRunCounts | null | undefined,
+  now: number,
+): LinePart[] {
   if (row.file?.state === 'invalid') {
     const fileName = WORKFLOW_COPY.list.fileName(row.name);
     if (row.problem?.syntax !== undefined) {
@@ -229,8 +234,23 @@ export function rowLine(row: CatalogRow, runs: ListRunCounts | null | undefined)
       const last = lastRunLine(runs);
       if (last !== null) parts.push(last);
     } else if (!hasBureauRunReceipts(runs) && runs.lastRunAt !== null) {
-      parts.push({ text: WORKFLOW_COPY.list.runsToday(runs.today), testId: 'workflow-run-counts' });
-      if (runs.running > 0) parts.push({ text: WORKFLOW_COPY.list.runningRuns(runs.running) });
+      const at = Date.parse(runs.lastRunAt);
+      if (row.kind === 'code' && !Number.isNaN(at)) {
+        parts.push({
+          text: WORKFLOW_COPY.list.codeActivity(
+            runs.today,
+            runs.running,
+            formatRelativeTime(at, now),
+          ),
+          testId: 'workflow-run-counts',
+        });
+      } else {
+        parts.push({
+          text: WORKFLOW_COPY.list.runsToday(runs.today),
+          testId: 'workflow-run-counts',
+        });
+        if (runs.running > 0) parts.push({ text: WORKFLOW_COPY.list.runningRuns(runs.running) });
+      }
     }
   }
   return parts;
@@ -262,7 +282,7 @@ export function workflowListRow(
           ? WORKFLOW_COPY.list.statusPaused
           : null,
     date: rowDate(row.kind, runs, now, zone),
-    line: rowLine(row, runs),
+    line: rowLine(row, runs, now),
   };
 }
 

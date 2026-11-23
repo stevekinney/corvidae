@@ -61,8 +61,13 @@ export const WORKFLOW_COPY = {
     runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'}`,
     runsToday: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} today`,
     runningRuns: (count: number): string => `${String(count)} running`,
-    latestRunAt: (when: string): string =>
-      when === 'just now' ? 'Last run just now' : `Last ${when}`,
+    /** The complete activity caption for an engine-defined workflow row. */
+    codeActivity: (today: number, running: number, last: string): string =>
+      [
+        `${String(today)} ${today === 1 ? 'run' : 'runs'} today`,
+        ...(running === 0 ? [] : [`${String(running)} running`]),
+        `last ${last}`,
+      ].join(', '),
     runningStep: (step: number | null, totalSteps: number | null): string =>
       step === null || totalSteps === null
         ? 'Running'
@@ -89,20 +94,10 @@ export const WORKFLOW_COPY = {
       checkingProvider: 'Checking for a model provider.',
       needsProvider: 'Ask an agent to write one needs a model provider.',
       connectProvider: 'Connect a provider',
-      /** The sentence that says Interborough's own workflows exist, when the engine holds some. */
-      internal: (count: number): string =>
-        `Interborough also runs ${String(count)} internal ${count === 1 ? 'workflow' : 'workflows'} of its own for chats, goals and schedules.`,
-      /** The state's way to the internal workflows. */
-      internalAction: 'See internal workflows',
-      /** The closed row under the state that opens to the folder workflow files are read from. */
-      files: {
-        label: 'Where workflow files live',
-        lead: 'Interborough reads workflows from',
-        copyLabel: 'Copy the folder',
-        copiedLabel: 'Folder copied',
-      },
       /** Where the files are when the host does not say. */
       hintDirectory: '~/.interborough/workflows',
+      /** The small, direct path hint under the two first-use actions. */
+      addFileHint: (directory: string): string => `Or add a file to ${directory}.`,
     },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */
