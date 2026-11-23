@@ -118,7 +118,7 @@
     triggerSummary,
   } from './workflow-presentation.ts';
   import { DuplicateRefused, duplicateWorkflowFile } from './workflow-duplicate.ts';
-  import { locateJsonProblem } from './workflow-source.ts';
+  import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
 
   const copy = WORKFLOW_COPY;
   const client = getClient();

@@ -82,6 +82,7 @@ import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
 import { NAMESPACED_IDENTIFIER_SOURCE, weftNameOf } from './namespaced-identifier';
 import { toScheduleSpec } from './schedule-spec';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
+import { locateJsonProblem, type JsonProblem } from './workflow-json-syntax';
 import { inputSchemaIssues, workflowSchemaIssues } from './workflow-schema';
 
 /**
@@ -214,6 +215,8 @@ export type WorkflowFileIssue = WorkflowDocumentIssue;
 export interface WorkflowFileProblem {
   readonly code: WorkflowFileProblemCode;
   readonly message: string;
+  /** The first syntax error in readable JSON, independent of the host engine's error text. */
+  readonly syntax?: JsonProblem;
   /** Every failure found, for `invalid-document`. */
   readonly issues?: readonly WorkflowFileIssue[];
   /**
@@ -639,11 +642,13 @@ export function parseWorkflowFile(
   try {
     value = JSON.parse(text);
   } catch (error) {
+    const syntax = locateJsonProblem(text);
     return {
       ok: false,
       problem: {
         code: 'invalid-json',
         message: `The file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        ...(syntax === null ? {} : { syntax }),
       },
     };
   }

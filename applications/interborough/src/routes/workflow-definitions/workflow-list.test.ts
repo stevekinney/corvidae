@@ -81,7 +81,14 @@ function sampleWorld(overrides: Partial<World> = {}): World {
         description: 'Writes the daily digest.',
         trigger: { kind: 'schedule', spec: '1h' },
         steps: TWO_STEPS,
-        runs: { active: 1, last24Hours: 12, lastRunAt: new Date(NOW - 3 * MINUTE).toISOString() },
+        runs: {
+          active: 1,
+          current: { status: 'running', step: 2, totalSteps: 2, waitingForSignal: null },
+          last: { status: 'completed', failedStep: null },
+          last24Hours: 12,
+          lastRunAt: new Date(NOW - 3 * MINUTE).toISOString(),
+          total: 12,
+        },
       }),
       readyFile('flaky', {
         agent: null,
@@ -202,7 +209,7 @@ describe('the list of workflows', () => {
     const digest = row(container, 'digest');
     // A run is going, so the edge says when it began.
     expect(testId(digest, 'workflow-last-run')?.textContent).toMatch(/^Started /);
-    expect(partsOf(digest)).toEqual(['Running', '2 steps', '12 runs in 24 hours']);
+    expect(partsOf(digest)).toEqual(['Running, step 2 of 2', '2 steps', '12 runs']);
     // A run does not give the workflow a status word of its own.
     expect(digest.dataset['status']).toBeUndefined();
     expect(digest.textContent).not.toContain('last ran');
@@ -225,12 +232,23 @@ describe('the list of workflows', () => {
   });
 
   test('counts a code type from the engine’s own totals, and asks the engine nothing of the types it runs itself', async () => {
-    const { container } = open();
+    const time = new Date();
+    const sameDay = time.getTime();
+    const previousDay = time.setDate(time.getDate() - 1);
+    const { container } = open({
+      runs: [
+        runFixture('order-today', 'order-processing', { createdAt: sameDay, status: 'running' }),
+        runFixture('order-yesterday', 'order-processing', {
+          createdAt: previousDay,
+          status: 'suspended',
+        }),
+      ],
+    });
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
     const code = row(container, 'order-processing');
-    await waitFor(() => expect(partsOf(code)).toEqual(['Running', '3 runs in 24 hours']));
-    expect(testId(code, 'workflow-last-run')?.textContent).toMatch(/^Started /);
+    await waitFor(() => expect(partsOf(code)).toEqual(['1 run today', '1 running']));
+    expect(testId(code, 'workflow-last-run')?.textContent).toMatch(/^Last /);
     const asked = stub?.callsTo('weft.workflows.list').map((call) => call.params['type']);
     // The engine is asked for the code type, and for the file the Bureau cannot count, and for no
     // other: the types it runs itself and the files the Bureau counts are not asked about.
@@ -479,7 +497,21 @@ describe('the header’s Internal workflows', () => {
 });
 
 describe('a host with no workflow of its own', () => {
-  test('is the page’s own first-use state under its header, with New workflow and Ask an agent, and no filter row', async () => {
+  test('explains how to connect a provider and leaves Ask an agent focusable while it is unavailable', async () => {
+    const { findByRole } = open({ definitions: [], files: [], providerConnected: false });
+    const ask = await findByRole('link', { name: WORKFLOW_COPY.list.empty.askAction });
+    const connect = await findByRole('link', { name: 'Connect a provider' });
+
+    expect(ask.getAttribute('aria-disabled')).toBe('true');
+    expect(ask.getAttribute('tabindex')).toBe('0');
+    expect(ask.hasAttribute('href')).toBe(false);
+    expect(
+      document.getElementById(ask.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toContain('needs a model provider');
+    expect(connect.getAttribute('href')).toBe('/settings/models');
+  });
+
+  test('is the page’s own first-use state under its header, with New workflow and Ask an agent to write one, and no filter row', async () => {
     const { container, findByRole, findAllByRole, findByText } = open({
       definitions: [],
       files: [],
@@ -498,7 +530,7 @@ describe('a host with no workflow of its own', () => {
     expect(makers).toHaveLength(2);
     for (const maker of makers) expect(maker.getAttribute('href')).toBe('/workflows/new');
     const ask = await findByRole('link', { name: WORKFLOW_COPY.list.empty.askAction });
-    expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows');
+    await waitFor(() => expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows'));
     expect(ask.classList.contains('button-variant-secondary')).toBe(true);
     // With no type of its own, it says nothing of internal workflows.
     expect(testId(container, 'internal-workflows-action')).toBeNull();
@@ -518,6 +550,10 @@ describe('a host with no workflow of its own', () => {
     });
     expect(see.getAttribute('href')).toBe('/internal-workflows');
     expect(see.classList.contains('button-variant-secondary')).toBe(true);
+    const ask = within(state as HTMLElement).getByRole('link', {
+      name: WORKFLOW_COPY.list.empty.askAction,
+    });
+    await waitFor(() => expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows'));
     // The header's Internal workflows stays beside New workflow.
     expect(testId(container, 'internal-workflows-action')?.textContent?.trim()).toBe(
       'Internal workflows (2)',

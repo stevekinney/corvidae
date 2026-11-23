@@ -18,7 +18,7 @@ import type {
   SharedBreakingKindStep_75afbed9,
   SharedBreakingKindStep_e8bef9d7,
   SharedBreakingKindStep_f7c54476,
-  SharedCodeIssuesMessage_037571b6,
+  SharedCodeIssuesMessage_4f0ab443,
   SharedCodeLastFiredAtRetryAt_58907586,
   SharedDryRunEffectsTarget_b07628bd,
   SharedDryRunExpectedHashId_50848f66,
@@ -96,7 +96,7 @@ export type WorkflowsOperationTypes = {
       readonly outputSchema: Record<string, unknown> | null;
       readonly owner: string;
       readonly paused: boolean;
-      readonly problem: SharedCodeIssuesMessage_037571b6 | null;
+      readonly problem: SharedCodeIssuesMessage_4f0ab443 | null;
       readonly schedule: {
         readonly id: string;
         readonly nextFireAt: string | null;
@@ -228,7 +228,7 @@ export type WorkflowsOperationTypes = {
             readonly outputSchema: Record<string, unknown> | null;
             readonly owner: string;
             readonly paused: boolean;
-            readonly problem: SharedCodeIssuesMessage_037571b6 | null;
+            readonly problem: SharedCodeIssuesMessage_4f0ab443 | null;
             readonly runs: {
               readonly active: number;
               readonly current: {

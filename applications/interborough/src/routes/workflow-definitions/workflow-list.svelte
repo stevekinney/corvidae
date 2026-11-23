@@ -26,9 +26,11 @@
     EmptyState,
     ErrorState,
     FilterBar,
+    Link,
     PageHeader,
     Skeleton,
     StaleRegion,
+    Text,
   } from '@lostgradient/cinder';
   import { Search } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
@@ -42,6 +44,7 @@
   import { getClient } from '../../lib/client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
+  import { getProviders } from '../../lib/host-providers.ts';
   import { newChatFromWorkflowsPath } from '../../lib/new-chat-address.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -115,6 +118,27 @@
   );
   const directory = $derived(hostPaths.data?.workflowDirectory ?? copy.empty.hintDirectory);
 
+  const providers = createQuery(
+    () => ({
+      queryKey: queryKeys.hostProviders(),
+      queryFn: ({ signal }) => getProviders({ signal }),
+      enabled: catalog.isSuccess && workflows.length === 0,
+      retry: false,
+    }),
+    undefined,
+  );
+  const needsProvider = $derived(
+    providers.data !== undefined &&
+      !providers.data.providers.some((provider) => provider.connected),
+  );
+  const askUnavailable = $derived(
+    needsProvider
+      ? copy.empty.needsProvider
+      : providers.isPending
+        ? copy.empty.checkingProvider
+        : undefined,
+  );
+
   // The clock the dates are counted from, read again whenever the rows or their counts are.
   const now = $derived.by(() => {
     void catalog.dataUpdatedAt;
@@ -141,6 +165,7 @@
   const newPath = workflowNewPath();
   const internalPath = internalWorkflowsPath();
   const askPath = newChatFromWorkflowsPath();
+  const providersPath = '/settings/models';
 
   function chooseSegment(value: string): void {
     segment = value === 'paused' || value === 'problems' ? value : 'all';
@@ -188,7 +213,6 @@
     {:else if catalog.isPending}
       <Skeleton variant="list" rows={5} label={VIEW_COPY.workflows.loading.title} />
     {:else if workflows.length === 0}
-      <!-- The internal workflows are the secondary action when this host has them. -->
       <ListPageEmpty
         view="workflows"
         title={copy.empty.title}
@@ -201,20 +225,32 @@
           onclick: (event) => go(event, newPath),
         }}
         secondary={[
-          engineRows.length > 0
-            ? {
-                label: copy.empty.internalAction,
-                href: router.href(internalPath),
-                onclick: (event) => go(event, internalPath),
-              }
-            : {
-                label: copy.empty.askAction,
-                href: router.href(askPath),
-                onclick: (event) => go(event, askPath),
-              },
+          {
+            label: copy.empty.askAction,
+            href: router.href(askPath),
+            onclick: (event) => go(event, askPath),
+            ...(askUnavailable === undefined ? {} : { inertReason: askUnavailable }),
+          },
+          ...(engineRows.length > 0
+            ? [
+                {
+                  label: copy.empty.internalAction,
+                  href: router.href(internalPath),
+                  onclick: (event: MouseEvent) => go(event, internalPath),
+                },
+              ]
+            : []),
         ]}
         data-testid="workflows-empty"
       >
+        {#if needsProvider}
+          <Text class="ib-workflows__provider-hint">
+            {copy.empty.needsProvider}
+            <Link href={router.href(providersPath)} onclick={(event) => go(event, providersPath)}>
+              {copy.empty.connectProvider}
+            </Link>
+          </Text>
+        {/if}
         <FileLocationDetail
           label={copy.empty.files.label}
           lead={copy.empty.files.lead}
@@ -245,7 +281,7 @@
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>
       {:else}
-        <div {@attach followLinks}>
+        <div class="ib-records__bounded-list" {@attach followLinks}>
           <DataList
             items={visible}
             key={(item) => item.row.name}

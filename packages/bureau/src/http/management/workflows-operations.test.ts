@@ -838,14 +838,29 @@ describe('results', () => {
     ]);
   });
 
-  it('lists a file that cannot be used with no counts', async () => {
+  it('locates a broken file’s syntax without including source or counts in the list', async () => {
     const served = await serve();
-    await writeFile(join(served.directory, 'broken.json'), '{ not json');
+    await writeFile(
+      join(served.directory, 'broken.json'),
+      ['{', '  "name": "broken"', '  "steps": []', '}'].join('\n'),
+    );
     await served.bureau.workflows!.refresh();
     const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     expect(listed.result?.['workflows']).toMatchObject([
-      { id: 'broken', state: 'invalid', description: null, trigger: null, runs: null },
+      {
+        id: 'broken',
+        state: 'invalid',
+        title: null,
+        description: null,
+        trigger: null,
+        runs: null,
+        problem: { code: 'invalid-json', syntax: { kind: 'comma', line: 2, stoppedAt: 3 } },
+      },
     ]);
+    const entries = listed.result?.['workflows'];
+    expect(Array.isArray(entries) && entries.length === 1).toBe(true);
+    if (!Array.isArray(entries)) throw new Error('expected a workflow list');
+    expect(entries[0]).not.toHaveProperty('text');
   });
 
   it('keeps the description through a pause and a resume, and replaces it on an update', async () => {

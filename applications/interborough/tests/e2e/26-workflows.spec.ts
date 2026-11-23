@@ -148,7 +148,7 @@ test.describe('the list', () => {
     await expect(row(page, 'e2e-listed')).toHaveCount(0);
   });
 
-  test('counts a file’s instances: running, and begun in the last day', async ({
+  test('counts a file’s instances and names the run waiting for a signal', async ({
     page,
     request,
   }) => {
@@ -160,10 +160,10 @@ test.describe('the list', () => {
     try {
       await page.goto('/workflows');
       const counted = row(page, 'e2e-counted');
-      await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run in 24 hours');
-      // A run is going, so the right edge says when it began and line two leads with Running.
+      await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run');
+      // A run is underway, so the right edge says when it began and line two names the wait.
       await expect(counted.getByTestId('workflow-last-run')).toContainText('Started');
-      await expect(counted).toContainText(WORKFLOW_COPY.list.runningNow);
+      await expect(counted).toContainText(WORKFLOW_COPY.list.waiting);
       // The captioned frame of a run in progress (rows 61j and 61k): the status column stays empty.
       await expect(counted).not.toHaveAttribute('data-status', /.+/);
       await captureForDesignReview(page, {

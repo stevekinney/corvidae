@@ -97,6 +97,13 @@ const problemSchema = z.object({
   code: z.string(),
   message: z.string(),
   issues: z.array(z.object({ path: z.string(), message: z.string() })).nullable(),
+  syntax: z
+    .object({
+      line: z.number().int().positive(),
+      stoppedAt: z.number().int().positive(),
+      kind: z.enum(['comma', 'other']),
+    })
+    .optional(),
 });
 
 /** A JSON Schema as it is written in a workflow file. */
@@ -406,6 +413,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
             code: listing.problem.code,
             message: listing.problem.message,
             issues: listing.problem.issues?.map((issue) => ({ ...issue })) ?? null,
+            ...(listing.problem.syntax === undefined ? {} : { syntax: listing.problem.syntax }),
           },
   };
 }

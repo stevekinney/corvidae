@@ -35,6 +35,19 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  @media (pointer: coarse) {
+    .cinder-collapsible__trigger {
+      position: relative;
+    }
+
+    .cinder-collapsible__trigger::after {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
   .cinder-collapsible[data-cinder-expanded] .cinder-collapsible__trigger {
     border-end-start-radius: 0;
     border-end-end-radius: 0;

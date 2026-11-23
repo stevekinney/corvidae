@@ -19,7 +19,7 @@ import {
   urlOf,
 } from './bureau-stub.test-support.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
-import type { SignalResult } from './workflow-files.ts';
+import type { SignalResult, WorkflowRunCounts } from './workflow-files.ts';
 
 export type Call = { readonly method: string; readonly params: Record<string, unknown> };
 
@@ -58,7 +58,7 @@ export type FileFixture = {
   /** The steps as written, for a file that loaded. Left out, the listing sends none. */
   steps?: Array<Record<string, unknown>> | null;
   /** What `bureau.workflows.list` counts for the file, or `null` for one the Bureau cannot use. */
-  runs: { active: number; last24Hours: number; lastRunAt: string | null } | null;
+  runs: WorkflowRunCounts | null;
   problem: {
     code: string;
     message: string;
@@ -182,7 +182,11 @@ export function sourceDefinition(
 }
 
 /** A Bureau workflow file that loaded. */
-export function readyFile(id: string, overrides: Partial<FileFixture> = {}): FileFixture {
+export function readyFile(
+  id: string,
+  overrides: Partial<Omit<FileFixture, 'runs'>> & { runs?: Partial<WorkflowRunCounts> | null } = {},
+): FileFixture {
+  const { runs, ...fields } = overrides;
   return {
     id,
     state: 'ready',
@@ -195,11 +199,22 @@ export function readyFile(id: string, overrides: Partial<FileFixture> = {}): Fil
     outputSchema: null,
     version: 'version-1',
     trigger: { kind: 'schedule', spec: '0 6 * * *' },
-    runs: { active: 0, last24Hours: 0, lastRunAt: null },
+    runs:
+      runs === null
+        ? null
+        : {
+            active: 0,
+            current: null,
+            last: null,
+            last24Hours: 0,
+            lastRunAt: null,
+            total: runs?.last24Hours ?? 0,
+            ...runs,
+          },
     problem: null,
     text: DOCUMENT_TEXT.replace('"digest"', JSON.stringify(id)),
     schedule: { id: `bureau-workflow-schedule:${id}:1`, status: 'active', nextFireAt: null },
-    ...overrides,
+    ...fields,
   };
 }
 
@@ -348,6 +363,8 @@ export type World = {
   workflowDirectory: string | null;
   /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
   hostMode: 'local' | 'remote';
+  /** Whether the host reports a model provider that can be called. */
+  providerConnected: boolean;
   /** Makes the engine's schedule list answer with a refusal, as a server that cannot read them would. */
   failSchedules: boolean;
   /** The agent each Bureau schedule runs, by schedule id. A schedule that is not here is not a Bureau agent schedule. */
@@ -432,6 +449,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     signalAnswer: { started: [], delivered: [], rejected: [] },
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
     hostMode: 'local',
+    providerConnected: true,
     failSchedules: false,
     scheduleAgents: {},
     scheduleInputs: {},
@@ -1063,6 +1081,15 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
 
   const restoreFetch = installFetchImplementation(async (input, init) => {
     const url = new URL(urlOf(input), 'http://localhost');
+    if (url.pathname === '/host/providers') {
+      const connected = world.providerConnected;
+      return Response.json({
+        configurationRevision: null,
+        providers: [{ name: 'anthropic', configured: connected, hasKey: connected, connected }],
+        catalog: [],
+        models: [],
+      });
+    }
     if (url.pathname === '/host/paths') {
       if (world.workflowDirectory === null) return new Response('Not found', { status: 404 });
       return Response.json(
