@@ -1032,7 +1032,11 @@ export const WORKFLOW_COPY = {
     schedulesRun: (count: number): string => `${String(count)} schedules run this workflow. `,
     pastRuns: 'Its past runs stay on Runs. ',
     /** "The file", its name and its directory, both set in monospace, follow each other. */
-    file: { before: 'The file ', middle: ' is removed from ', after: '.' },
+    file: {
+      before: 'The file ',
+      middle: ' is removed from the ',
+      after: ' directory relative to the configured Interborough home.',
+    },
     alsoDeleteSchedule: (schedule: string): string => `Also delete the ${schedule} schedule`,
     alsoDeleteSchedules: (count: number): string =>
       `Also delete the ${String(count)} schedules that run it`,

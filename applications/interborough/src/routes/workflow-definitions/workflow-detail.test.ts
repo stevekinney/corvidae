@@ -826,6 +826,9 @@ describe('pause, resume, and delete', () => {
     await ready(view.container);
 
     const dialog = await openDeleteDialog(view, 'digest');
+    expect(dialog.textContent).toContain(
+      'The file digest.json is removed from the workflows directory relative to the configured Interborough home.',
+    );
     // Nothing is deleted until it is confirmed.
     expect(stub?.callsTo('bureau.workflows.delete')).toEqual([]);
     await fireEvent.click(
