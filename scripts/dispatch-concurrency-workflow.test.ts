@@ -82,4 +82,23 @@ describe('workflow_dispatch concurrency', () => {
     // empty only for a host path.
     expect(job.indexOf(hostLane)).toBeGreaterThan(job.indexOf('UNIT_CONFIG=./bunfig.ui.toml'));
   });
+
+  // COR-2649: run 45220808853 ran the startup-failure and readiness files in one module registry,
+  // so the failed starts left readiness false and `/ready` answered 503.
+  test('a playground unit run isolates each test file and other workspaces keep one process', () => {
+    const text = workflow('targeted-checks.yml');
+    const job = text.slice(text.indexOf('\n  unit:\n'));
+    const playgroundLane =
+      'if [ "$UNIT_WORKSPACE" = applications/playground ]; then\n            bun test --isolate $config $conditions $UNIT_PATHS\n            exit\n          fi\n          bun test $config $conditions $UNIT_PATHS\n';
+    expect(job).toContain(playgroundLane);
+    expect(job.match(/bun test --isolate /gu)).toHaveLength(1);
+    expect(job.match(/^ {10}bun test \$config \$conditions \$UNIT_PATHS$/gmu)).toHaveLength(1);
+    // The playground keeps the conditions and optional configuration decided before it.
+    expect(job.indexOf(playgroundLane)).toBeGreaterThan(
+      job.indexOf('conditions="--conditions browser --conditions svelte"'),
+    );
+    expect(job.indexOf(playgroundLane)).toBeGreaterThan(
+      job.indexOf('if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi'),
+    );
+  });
 });
