@@ -33,9 +33,27 @@ export function deliveryStamp(at: number): string {
   return `${weekday} ${dayLabel(at)}, ${clockTime(at)}`;
 }
 
-/** What a delivery is about on its line: the event in words, or that it was a test. */
-export function deliverySubject(delivery: Pick<HookDelivery, 'test' | 'kind'>): string {
-  return delivery.test ? COPY.testEvent : eventOptionLabel(delivery.kind);
+/** Names the durable record an event payload refers to, after its own authorized read succeeds. */
+export type DeliveryReferenceNames = {
+  /** The workflow run a run event names. */
+  readonly run?: string;
+  /** The review a review event names. */
+  readonly review?: string;
+  /** The hook name gives a review delivery enough context in its compact line. */
+  readonly hook?: string;
+};
+
+/** What a delivery is about on its line: its durable subject when it can be read, else the event. */
+export function deliverySubject(
+  delivery: Pick<HookDelivery, 'test' | 'kind'>,
+  names: DeliveryReferenceNames = {},
+): string {
+  if (delivery.test) return COPY.testEvent;
+  if (names.run !== undefined && delivery.kind.startsWith('run.')) return names.run;
+  if (names.review !== undefined && delivery.kind.startsWith('review.')) {
+    return names.hook === undefined ? names.review : `${names.hook}, ${names.review}`;
+  }
+  return eventOptionLabel(delivery.kind);
 }
 
 /** What a try came to, short enough for the right-hand column: `410 Gone`, `No answer`. */
@@ -153,6 +171,26 @@ export type DeliveryFact = {
   readonly href?: string;
 };
 
+/** The durable identifiers in the body that a hook delivered, never a new event-payload field. */
+export type DeliveryReferences = {
+  readonly runId?: string;
+  readonly reviewId?: string;
+};
+
+/**
+ * Finds references in the already-recorded delivery body. The event catalog keeps these identifiers
+ * deliberately small; the UI reads their names through their normal authorized endpoints.
+ */
+export function deliveryReferences(delivery: Pick<HookDelivery, 'request'>): DeliveryReferences {
+  const body = deliveryBody(delivery);
+  if (!isRecord(body) || !isRecord(body['payload'])) return {};
+  const payload = body['payload'];
+  return {
+    ...(typeof payload['runId'] === 'string' ? { runId: payload['runId'] } : {}),
+    ...(typeof payload['reviewId'] === 'string' ? { reviewId: payload['reviewId'] } : {}),
+  };
+}
+
 /** The host of a receipt's address, which is how the link reads; the whole address when it has no host. */
 function receiptHost(address: string): string {
   try {
@@ -171,11 +209,21 @@ function receiptHost(address: string): string {
 export function deliveryFacts(
   delivery: HookDelivery,
   alike: ReadonlySet<string> = new Set(),
+  names: DeliveryReferenceNames = {},
 ): DeliveryFact[] {
   const copy = COPY.facts;
   const facts: DeliveryFact[] =
-    !delivery.test && alike.has(delivery.kind)
-      ? [{ label: copy.event, value: eventOptionLabel(delivery.kind), code: delivery.kind }]
+    !delivery.test &&
+    (alike.has(delivery.kind) || names.run !== undefined || names.review !== undefined)
+      ? [
+          {
+            label: copy.event,
+            value: [eventOptionLabel(delivery.kind), names.run ?? names.review]
+              .filter((value): value is string => value !== undefined)
+              .join(', '),
+            code: delivery.kind,
+          },
+        ]
       : [];
   if (delivery.request !== null) {
     facts.push({ label: copy.sentTo, value: webhookHost(delivery.request.url) });

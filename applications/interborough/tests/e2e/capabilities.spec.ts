@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { readCatalog } from './agent-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
 
@@ -90,6 +91,13 @@ test.describe('the Tools tab', () => {
       await expect(page).toHaveURL(new RegExp(`tool=${encodeURIComponent(tool.name)}`));
       // No word stands in for an empty list.
       await expect(detail).not.toContainText(/\bNone\b/);
+      await detail.getByTestId('tool-risk').hover();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/capabilities',
+        state: 'tool-chip-tooltip',
+        source: 'applications/interborough/tests/e2e/capabilities.spec.ts',
+      });
       await checkA11y(`the Tools tab with ${tool.name} open at ${width}px`);
     });
   }

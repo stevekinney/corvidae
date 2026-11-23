@@ -117,6 +117,11 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
   await expect(deliveries.getByText(copy.deliveries.none.title)).toBeVisible();
   // The secret the Bureau made is shown once, on this page, with the note that it cannot be seen again.
   await expect(page.getByTestId('hook-secret')).toContainText(copy.webhook.secretOnce);
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'one-time-signing-secret',
+    source: SOURCE,
+  });
 
   await page.getByRole('button', { name: copy.check.test }).click();
   await expect(page.getByTestId('hook-test-result')).toContainText('Test event sent.');

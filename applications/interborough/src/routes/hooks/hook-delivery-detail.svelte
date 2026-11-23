@@ -21,6 +21,7 @@
     deliveryStamp,
     payloadFieldText,
     retryKind,
+    type DeliveryReferenceNames,
   } from './hook-delivery-presentation.ts';
 
   interface Props {
@@ -32,16 +33,18 @@
     onRetry: () => void;
     /** The event kinds that read alike among the hook's events, the only ones whose raw kind shows. */
     alike?: ReadonlySet<string>;
+    /** Names read from the delivery's existing identifiers through the normal authorized endpoints. */
+    names?: DeliveryReferenceNames;
   }
 
-  let { delivery, retrying, onRetry, alike = new Set<string>() }: Props = $props();
+  let { delivery, retrying, onRetry, alike = new Set<string>(), names = {} }: Props = $props();
 
   const copy = HOOKS_COPY.editor.deliveries;
 
   let showAllTries = $state(false);
 
   const cause = $derived(deliveryCause(delivery));
-  const facts = $derived(deliveryFacts(delivery, alike));
+  const facts = $derived(deliveryFacts(delivery, alike, names));
   const tries = $derived(attemptList(delivery, showAllTries));
   const payload = $derived(deliveryPayload(delivery));
   const canRetry = $derived(retryKind(delivery) === 'retry');

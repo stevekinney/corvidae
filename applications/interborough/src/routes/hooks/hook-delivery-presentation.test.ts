@@ -19,6 +19,7 @@ import {
   deliveryFacts,
   deliveryLogFailure,
   deliveryPayload,
+  deliveryReferences,
   deliveryStamp,
   deliveryStatusWord,
   deliverySubject,
@@ -107,6 +108,16 @@ describe('a delivery’s status word', () => {
 describe('a delivery’s line', () => {
   test('says the event in words, or that it was a test', () => {
     expect(deliverySubject(gaveUp())).toBe('A run fails');
+    expect(deliverySubject(gaveUp(), { run: 'Release notes' })).toBe('Release notes');
+    expect(
+      deliverySubject(
+        { test: false, kind: 'review.requested' },
+        {
+          hook: 'Notify Slack when a review is waiting',
+          review: 'Refund order 4471 for $42.00?',
+        },
+      ),
+    ).toBe('Notify Slack when a review is waiting, Refund order 4471 for $42.00?');
     expect(deliverySubject({ test: true, kind: 'hook.test' })).toBe(COPY.testEvent);
   });
 
@@ -181,6 +192,23 @@ describe('the facts of an open delivery', () => {
       'Sent to',
       'Last response',
     ]);
+  });
+
+  test('draws the durable run name beside its event without adding it to the delivered payload', () => {
+    const sent = delivery('exhausted', [attempt(1)], {
+      request: {
+        url: PAGER,
+        headers: {},
+        body: JSON.stringify({ kind: 'run.error', payload: { runId: 'run-1', step: 2 } }),
+      },
+    });
+
+    expect(deliveryReferences(sent)).toEqual({ runId: 'run-1' });
+    expect(deliveryFacts(sent, new Set(), { run: 'Release notes' })[0]).toEqual({
+      label: 'Event',
+      value: 'A run fails, Release notes',
+      code: 'run.error',
+    });
   });
 
   test('leave out the last answer of a try still being sent, and say nothing more of a test event than its row', () => {

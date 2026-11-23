@@ -358,6 +358,9 @@ const deliverySummarySchema = z.object({
 
 const hookProblemSchema = z.discriminatedUnion('code', [
   z.object({
+    code: z.literal('workflow-unavailable'),
+  }),
+  z.object({
     code: z.literal('reaction-unavailable'),
   }),
   z.object({
@@ -398,7 +401,7 @@ const listedHookSchema = hookSchema.extend({
   problems: z
     .array(hookProblemSchema)
     .describe(
-      'Why a hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. These two are a plugin hook’s only. `event-missing`, for a hook of any action: a plugin kind it lists is missing, because its plugin is not loaded (`loadedVersion: null`) or is loaded at another version, so that kind fires nothing while the others still fire. Empty when nothing is wrong.',
+      'Why a hook cannot do what it says, as codes. `workflow-unavailable`: a start-workflow hook’s target is not currently startable for its owner, without saying whether it was deleted, paused, invalid or otherwise unavailable. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. These two are a plugin hook’s only. `event-missing`, for a hook of any action: a plugin kind it lists is missing, because its plugin is not loaded (`loadedVersion: null`) or is loaded at another version, so that kind fires nothing while the others still fire. Empty when nothing is wrong.',
     ),
 });
 
@@ -482,6 +485,8 @@ function listedHookViewOf(hook: ListedHook): z.infer<typeof listedHookSchema> {
     lastDelivery: hook.lastDelivery === null ? null : deliverySummaryViewOf(hook.lastDelivery),
     problems: hook.problems.map((problem): z.infer<typeof hookProblemSchema> => {
       switch (problem.code) {
+        case 'workflow-unavailable':
+          return { code: problem.code };
         case 'reaction-unavailable':
           return { code: problem.code };
         case 'configuration-invalid':

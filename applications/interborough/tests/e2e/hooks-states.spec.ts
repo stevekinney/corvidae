@@ -377,6 +377,34 @@ test.describe('/hooks: the hooks list states', () => {
       await captureForDesignReview(page, { route: '/hooks', state: 'gave up', source: SOURCE });
       await checkA11y(`hooks with a hook that gave up at ${width}px`);
     });
+
+    test(`a start-workflow target the Bureau cannot load reads Can’t load, at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await answerList(page, [
+        listedHook({
+          name: 'Start Weekly cleanup after a run fails',
+          events: ['run.error'],
+          action: { type: 'start-workflow', workflowId: 'weekly-cleanup' },
+          problems: [{ code: 'workflow-unavailable' }],
+          updatedAt: Date.UTC(2026, 9, 24, 20),
+        }),
+      ]);
+      await page.goto('/hooks');
+      const row = page.locator('li[data-hook="hook-stub"]');
+
+      await expect(row.locator('[data-status-word]')).toHaveAttribute(
+        'data-status-word',
+        'Can’t load',
+      );
+      await expect(row).toContainText('When a run fails, start the Weekly cleanup workflow');
+      await captureForDesignReview(page, {
+        route: '/hooks',
+        state: 'workflow-unavailable',
+        source: SOURCE,
+      });
+    });
   }
 
   test('a very long webhook address ends line two at two lines and keeps the whole of it in the tooltip', async ({

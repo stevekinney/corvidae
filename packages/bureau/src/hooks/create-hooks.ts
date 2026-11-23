@@ -1192,6 +1192,18 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   }
 
   function actionProblemsOf(hook: HookRecord): readonly HookProblem[] {
+    if (hook.action.type === 'start-workflow') {
+      const workflows = dependencies.workflows?.();
+      if (workflows === undefined) return [{ code: 'workflow-unavailable' }];
+      try {
+        workflows.assertStartable(hook.action.workflowId);
+      } catch {
+        // The list names only a bounded state. It does not disclose whether the workflow was deleted,
+        // paused, invalid, or unavailable to this owner.
+        return [{ code: 'workflow-unavailable' }];
+      }
+      return [];
+    }
     if (hook.action.type !== 'plugin') return [];
     if (reactionUnavailable(hook) || hook.declaredBy?.withdrawn === true) {
       return [{ code: 'reaction-unavailable' }];

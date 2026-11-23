@@ -168,6 +168,28 @@ async function onlyDelivery(
   return delivered[0]!;
 }
 
+it('lists a start-workflow hook with a bounded problem when its target stops being startable', async () => {
+  let startable = true;
+  const setup = fixture({
+    workflows: () => ({
+      assertStartable: () => {
+        if (!startable) throw new Error('workflow unavailable');
+      },
+      findStart: () => Promise.resolve(undefined),
+      start: () =>
+        Promise.resolve({ runId: 'run-1', workflow: 'weekly-cleanup', workflowVersion: '1' }),
+    }),
+  });
+  await setup.hooks.create({
+    events: ['run.settled'],
+    action: { type: 'start-workflow', workflowId: 'weekly-cleanup' },
+  });
+
+  startable = false;
+
+  expect((await setup.hooks.list())[0]?.problems).toEqual([{ code: 'workflow-unavailable' }]);
+});
+
 const ACTION = {
   type: 'plugin',
   plugin: 'slack',
