@@ -11,23 +11,38 @@ type Mounted = {
 };
 const contains = (parent: string, child: string) =>
   child === parent || child.startsWith(`${parent}/`);
+const canonicalSegment = (segment: string) => {
+  const decoded = decodeURIComponent(segment);
+  if (!decoded || decoded === "." || decoded === ".." || /[\\/]/.test(decoded))
+    throw new TypeError("Invalid mount segment");
+  return encodeURIComponent(decoded);
+};
+const canonicalPath = (path: string) =>
+  path
+    .split("/")
+    .map((segment) => (segment ? canonicalSegment(segment) : ""))
+    .join("/");
 
 export function validateMounts(
   options: ApplicationOptions,
   registry: ServerRegistry,
   assets: Record<string, unknown>,
 ) {
-  const paths = Object.keys(options.mounts ?? {});
-  for (const path of paths) {
+  const entries = Object.keys(options.mounts ?? {}).map((key) => {
+    if (!/^\/(?:[^/?#\\]+)(?:\/[^/?#\\]+)*$/.test(key))
+      throw new TypeError(`Invalid mount path: ${key}`);
+    try {
+      return { key, path: canonicalPath(key) };
+    } catch {
+      throw new TypeError(`Invalid mount path: ${key}`);
+    }
+  });
+  for (const [entryIndex, { path }] of entries.entries()) {
     if (
-      !/^\/(?:[^/%?#]+)(?:\/[^/%?#]+)*$/.test(path) ||
-      path.split("/").some((part) => part === "." || part === "..")
-    )
-      throw new TypeError(`Invalid mount path: ${path}`);
-    if (
-      paths.some(
-        (other) =>
-          other !== path && (contains(path, other) || contains(other, path)),
+      entries.some(
+        (other, otherIndex) =>
+          otherIndex !== entryIndex &&
+          (contains(path, other.path) || contains(other.path, path)),
       )
     )
       throw new Error(`Overlapping mount: ${path}`);
@@ -38,10 +53,12 @@ export function validateMounts(
       )
     )
       throw new Error(`Protected mount path: ${path}`);
-    const full = `${options.generation.manifest.basePath}${path}`;
+    const full = `${canonicalPath(options.generation.manifest.basePath)}${path}`;
     if (
       Object.keys(assets).some(
-        (asset) => contains(full, asset) || contains(asset, full),
+        (asset) =>
+          contains(full, canonicalPath(asset)) ||
+          contains(canonicalPath(asset), full),
       )
     )
       throw new Error(`Mount conflicts with asset: ${path}`);
@@ -56,7 +73,8 @@ export function validateMounts(
         .slice(0, common)
         .every(
           (segment, index) =>
-            segments[index] === segment || segments[index].includes("["),
+            encodeURIComponent(segments[index]) === segment ||
+            segments[index].includes("["),
         );
       if (
         overlaps &&
@@ -66,17 +84,17 @@ export function validateMounts(
         throw new Error(`Mount conflicts with route: ${route.id}`);
     }
   }
-  return paths;
+  return entries;
 }
 
 export async function startMounts(
   options: ApplicationOptions,
-  paths: string[],
+  paths: Array<{ key: string; path: string }>,
 ) {
   const mounts: Mounted[] = [];
   try {
-    for (const path of paths) {
-      const service: FetchService = await options.mounts![path]();
+    for (const { key, path } of paths) {
+      const service: FetchService = await options.mounts![key]();
       mounts.push(
         typeof service === "function"
           ? { path, fetch: service }
@@ -124,12 +142,23 @@ export function dispatchMount(
   closed: boolean,
 ) {
   const url = new URL(request.url);
-  const mount = mounts.find(({ path }) =>
-    contains(`${base}${path}`, url.pathname),
-  );
+  const rawSegments = url.pathname.split("/");
+  const mount = mounts.find(({ path }) => {
+    const prefix = `${canonicalPath(base)}${path}`.split("/");
+    if (rawSegments.length < prefix.length) return false;
+    try {
+      return prefix.every(
+        (segment, index) =>
+          !segment || canonicalSegment(rawSegments[index]) === segment,
+      );
+    } catch {
+      return false;
+    }
+  });
   if (!mount) return undefined;
   if (closed) return new Response("Application disposed", { status: 503 });
-  url.pathname = url.pathname.slice((base + mount.path).length) || "/";
+  const prefixLength = `${base}${mount.path}`.split("/").length;
+  url.pathname = `/${rawSegments.slice(prefixLength).join("/")}`;
   return mount.fetch(
     new Request(url, {
       method: request.method,

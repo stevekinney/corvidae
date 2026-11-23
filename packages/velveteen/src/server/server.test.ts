@@ -85,6 +85,85 @@ const textOf = async (promise: Promise<Response>) => {
 };
 
 describe("server application", () => {
+  test("matches canonical mount segments without decoding the request remainder", async () => {
+    const app = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      mounts: {
+        "/café space": () => (request) =>
+          new Response(new URL(request.url).pathname),
+        "/encoded%20name": () => (request) =>
+          new Response(new URL(request.url).pathname),
+      },
+    });
+    try {
+      expect(
+        await textOf(
+          app.fetch(
+            new Request("http://example.test/caf%c3%a9%20space/item%2Fid"),
+          ),
+        ),
+      ).toBe("/item%2Fid");
+      expect(
+        await textOf(
+          app.fetch(new Request("http://example.test/encoded name/%252F")),
+        ),
+      ).toBe("/%252F");
+      const adjacent = await app.fetch(
+        new Request("http://example.test/caf%C3%A9%20spaces/item"),
+      );
+      expect(adjacent.status).toBe(404);
+      await adjacent.text();
+      const encodedSeparator = await app.fetch(
+        new Request("http://example.test/caf%C3%A9%20space%2Fhidden"),
+      );
+      expect(encodedSeparator.status).toBe(404);
+      await encodedSeparator.text();
+    } finally {
+      await app.dispose();
+    }
+    let starts = 0;
+    const factory = () => {
+      starts++;
+      return () => new Response();
+    };
+    for (const mounts of [
+      { "/café": factory, "/caf%C3%A9": factory },
+      { "/api": factory, "/%61pi": factory },
+      { "/%5Fremote": factory },
+      { "/api%2Fprivate": factory },
+      { "/api%5cprivate": factory },
+    ] as Array<Record<string, typeof factory>>) {
+      expect(
+        await throwingRejectionOf(
+          createApplication({
+            generation: generation(),
+            registry: registry([]) as never,
+            mounts,
+          }),
+        ),
+      ).toThrow();
+    }
+    expect(starts).toBe(0);
+    const unicodeRegistry = registry([]);
+    unicodeRegistry.manifest = {
+      ...unicodeRegistry.manifest,
+      routes: [
+        ...unicodeRegistry.manifest.routes,
+        { ...unicodeRegistry.manifest.routes[0], id: "/café/item" },
+      ],
+    };
+    expect(
+      await throwingRejectionOf(
+        createApplication({
+          generation: generation(),
+          registry: unicodeRegistry as never,
+          mounts: { "/caf%C3%A9": factory },
+        }),
+      ),
+    ).toThrow("conflicts with route");
+    expect(starts).toBe(0);
+  });
   test("leaves websocket upgrades to the listener", async () => {
     const app = await createApplication({
       generation: generation(),
@@ -391,6 +470,24 @@ describe("server application", () => {
             generation: assetGeneration,
             registry: registry([]) as never,
             mounts,
+          }),
+        ),
+      ).toThrow("conflicts with asset");
+      await mkdir(join(directory, "static/café"), { recursive: true });
+      await Bun.write(join(directory, "static/café/logo.svg"), bytes);
+      assetGeneration.manifest.assets = [
+        {
+          ...assetGeneration.manifest.assets[0],
+          file: "static/café/logo.svg",
+          url: "/caf%C3%A9/logo.svg",
+        },
+      ];
+      expect(
+        await throwingRejectionOf(
+          createApplication({
+            generation: assetGeneration,
+            registry: registry([]) as never,
+            mounts: { "/caf%c3%a9": mounts["/api"] },
           }),
         ),
       ).toThrow("conflicts with asset");
