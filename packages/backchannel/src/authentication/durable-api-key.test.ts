@@ -40,8 +40,10 @@ it('enforces a durable service key on Fetch and the Backchannel operation pipeli
     return Response.json({ name });
   };
   const request = () => new Request('http://localhost', { headers: { 'x-api-key': key.secret } });
-  expect((await plain(request(), read)).status).toBe(200);
-  expect((await plain(request(), write)).status).toBe(403);
+  const plainRead = await plain(request(), read);
+  const plainWrite = await plain(request(), write);
+  expect(plainRead.status).toBe(200);
+  expect(plainWrite.status).toBe(403);
   const schema = z.object({});
   const output = z.object({ name: z.string() });
   const operation = (action: 'read' | 'rename') =>
@@ -85,17 +87,22 @@ it('enforces a durable service key on Fetch and the Backchannel operation pipeli
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} }),
       }),
     );
-  expect(await (await call('equipment.read')).json()).toMatchObject({ result: { name: 'Camera' } });
-  expect(await (await call('equipment.rename')).json()).toHaveProperty('error');
+  const readResponse = await call('equipment.read');
+  const renameResponse = await call('equipment.rename');
+  expect(await readResponse.json()).toMatchObject({ result: { name: 'Camera' } });
+  expect(await renameResponse.json()).toHaveProperty('error');
   expect(name).toBe('Camera');
   expect(invoked).toBe(1);
   invoked = 0;
-  expect(
-    (await call('equipment.read', { cookie: 'session=valid', 'x-api-key': 'bad' })).status,
-  ).toBe(401);
-  expect(
-    (await call('equipment.read', { 'x-api-key': key.secret, authorization: 'Bearer token' }))
-      .status,
-  ).toBe(401);
+  const invalidResponse = await call('equipment.read', {
+    cookie: 'session=valid',
+    'x-api-key': 'bad',
+  });
+  const ambiguousResponse = await call('equipment.read', {
+    'x-api-key': key.secret,
+    authorization: 'Bearer token',
+  });
+  expect(invalidResponse.status).toBe(401);
+  expect(ambiguousResponse.status).toBe(401);
   expect(invoked).toBe(0);
 });
