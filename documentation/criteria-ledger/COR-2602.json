@@ -1,0 +1,74 @@
+{
+  "issue": "COR-2602",
+  "branch": "steve/cor-2602-refund-ledger",
+  "checkedAt": "66542f5e647337d51e35dcda6584916ead3c04b5",
+  "briefVersion": "2b300432f1f5",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "demo ledger and Bureau cross-process admission tests"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "demo ledger test"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Bureau cross-process admission tests"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "demo ledger test"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test"
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test"
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "demo registered plugin test"
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "demo plugin and tools tests"
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-branch",
+      "evidence": "demo plugin and tools tests"
+    },
+    {
+      "id": "AC11",
+      "status": "met-on-branch",
+      "evidence": "demo registered plugin deny/reject tests"
+    },
+    {
+      "id": "AC12",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test"
+    },
+    {
+      "id": "AC13",
+      "status": "met-on-branch",
+      "evidence": "demo registered plugin supersession and stale-release tests"
+    }
+  ]
+}

@@ -23,6 +23,12 @@
     display: contents;
   }
 
+  /* Table's stacked sort control sits above its rows. DataTable renders both inside the
+     scroll wrapper, where the horizontal flex layout would otherwise put them side by side. */
+  .cinder-data-table.cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card]) {
+    display: block;
+  }
+
   .cinder-data-table[data-cinder-virtualized] {
     block-size: var(--cinder-data-table-height, 24rem);
     overflow: auto;
@@ -54,7 +60,8 @@
     block-size: var(--_cinder-data-table-row-height, 44px);
   }
 
-  .cinder-data-table tbody .cinder-table__row:focus-within {
+  /* An open row already carries Table's current-row tint. */
+  .cinder-data-table tbody .cinder-table__row:focus-within:where(:not([data-cinder-open])) {
     background: var(--_cinder-table-row-hover);
   }
 
@@ -65,18 +72,6 @@
 
   .cinder-data-table .cinder-table__row[data-cinder-row-opens] {
     cursor: pointer;
-  }
-
-  .cinder-data-table .cinder-table__row[data-cinder-open],
-  .cinder-data-table .cinder-table__row[data-cinder-open]:hover {
-    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
-  }
-
-  @media (forced-colors: active) {
-    .cinder-data-table .cinder-table__row[data-cinder-open] {
-      outline: 1px solid Highlight;
-      outline-offset: -1px;
-    }
   }
 
   /* A monospace column holds identifiers, keys and paths: data, in the regular weight even when it

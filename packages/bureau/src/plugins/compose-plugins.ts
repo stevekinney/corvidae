@@ -106,6 +106,10 @@ export type ComposableOptions = Omit<BureauOptions, 'agentSource' | 'agents'> & 
 
 /** What composition hands the rest of construction. */
 export interface ComposedPlugins<O extends ComposableOptions> {
+  readonly terminalReviewReleases: ReadonlyMap<
+    string,
+    { plugin: string; release: NonNullable<PluginContributions['terminalReviewReleases']>[number] }
+  >;
   /** The options with every running plugin's contributions folded in, and `memory` built. */
   readonly options: O;
   /** The contributed tools, by the `plugin:name` an agent file names them with. */
@@ -745,6 +749,10 @@ export function registersKind(kind: PluginContributionKind, options: ComposableO
 
 /** The accumulated contributions of every running plugin. */
 class Contributed {
+  readonly terminalReviewReleases = new Map<
+    string,
+    { plugin: string; release: NonNullable<PluginContributions['terminalReviewReleases']>[number] }
+  >();
   readonly tools: Record<string, Tool> = {};
   readonly activities: { plugin: string; version: string; result: PluginSetupResult }[] = [];
   readonly agentSources: { plugin: string; result: PluginSetupResult }[] = [];
@@ -781,6 +789,22 @@ class Contributed {
     tools: ReadonlyMap<string, Tool>,
     gate: PluginSecretGate | undefined,
   ): void {
+    for (const release of result.terminalReviewReleases ?? []) {
+      const key = `${plugin}:${release.name}`;
+      if (this.terminalReviewReleases.has(key))
+        throw new Error(`Duplicate terminal review release: ${key}`);
+      if (
+        [...this.terminalReviewReleases.values()].some(
+          (held) =>
+            held.plugin === plugin &&
+            held.release.agent === release.agent &&
+            held.release.tool === release.tool &&
+            held.release.toolRevision === release.toolRevision,
+        )
+      )
+        throw new Error(`Ambiguous terminal review release: ${key}`);
+      this.terminalReviewReleases.set(key, { plugin, release });
+    }
     const id = (name: string) => formatToolId({ namespace: plugin, name });
     for (const [key, tool] of tools) this.tools[key] = tool;
     if (
@@ -1638,6 +1662,7 @@ export async function composePlugins<O extends ComposableOptions>(
   return {
     options: await withModelCatalog(optionsWith(options, contributed), contributed.providers),
     tools: contributed.tools,
+    terminalReviewReleases: contributed.terminalReviewReleases,
     records,
     shippedContent: shippedContentOf(records),
     unavailableAgents,
