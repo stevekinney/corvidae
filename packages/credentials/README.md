@@ -1,5 +1,11 @@
 # Credentials
 
+`@lostgradient/credentials/api-keys` issues machine credentials against application-owned service-account and management policies. Supply storage with atomic conditional batches and current primary reads shared by every host. `authorizeManagement` receives the actor, action, workspace, subject, and requested scopes; it must check current management and delegation authority. `resolveAuthority` returns the service account's current workspace, subject, and scopes, or `null` when membership is no longer active.
+
+`issue` and `rotate` return a secret once. Store that secret in the caller's secret store; use the returned public ID for later rotation or revocation. `list` returns metadata without the secret or verifier. Rotation accepts an absolute `retiresAt` time in milliseconds, allowing both credentials until that instant. Authentication checks the committed record and current service authority on every request, intersecting the credential's scopes with current authority.
+
+`withSession` composes the verifier with an application session authenticator. An explicit `X-API-Key` is authoritative: an invalid key, an empty key, or a simultaneous `Authorization` header returns a 401 without consulting the session. Configure an OAuth-only MCP route separately and do not forward API keys as ambient credentials on nested requests.
+
 `@lostgradient/credentials/browser-sign-in` provides a server-only Fetch service for OpenID Connect sign-in. Supply an HTTPS public origin, an application-specific cookie name and workspace, an OIDC registration, shared storage with atomic conditional batches, and application-owned account and membership resolvers. The storage must provide current reads and atomic conditional writes across every host that uses it. Use a separate storage and cookie namespace for each application.
 
 ```ts

@@ -368,6 +368,7 @@
     "packages/backchannel": {
       "name": "@lostgradient/backchannel",
       "dependencies": {
+        "@lostgradient/credentials": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -487,10 +488,14 @@
         "openid-client": "6.9.1",
       },
       "devDependencies": {
+        "@lostgradient/mcp": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
+        "@lostgradient/storage-postgres": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@lostgradient/velveteen": "workspace:*",
         "@types/bun": "catalog:",
+        "armorer": "workspace:*",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },

@@ -1,3 +1,4 @@
+import { createConstantTimeApiKeyMatcher } from '@lostgradient/credentials/api-key-verification';
 import {
   createAdditionalScopeSet,
   EMPTY_SCOPE_VOCABULARY,
@@ -7,7 +8,6 @@ import {
 } from '../authorization-scope.ts';
 import { principalFromJwtClaims } from '../principal.ts';
 import { tryAdmitApiKey } from './api-key.ts';
-import { createConstantTimeApiKeyMatcher } from './constant-time-api-key.ts';
 import { importJWTKey, verifyJWT } from './crypto.ts';
 import type { AuthConfig, AuthContext, JWTConfig, MTLSConfig } from './types.ts';
 
