@@ -46,6 +46,8 @@ export type TableRowSelectionProps =
 export type TableRowProps = Omit<HTMLAttributes<HTMLTableRowElement>, 'class'> & {
   /** Additional class names merged with `.cinder-table__row`. */
   class?: string;
+  /** Marks the current row. The consumer is responsible for marking only one row current per table. */
+  current?: boolean;
   /** Cell children (TableCell or TableHeaderCell). */
   children: Snippet;
 } & TableRowSelectionProps;

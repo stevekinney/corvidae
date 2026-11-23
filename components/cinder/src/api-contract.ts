@@ -278,6 +278,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       copiedLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       textVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      appearance: { optional: true, type_kind: 'TSUnionType', default: L('default') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       onError: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
     },
@@ -290,6 +291,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     html_attrs: 'HTMLAttributes',
     props: {
       value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      breakHints: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       copiedLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
@@ -856,7 +858,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
     props: {
-      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      value: { optional: false, type_kind: 'TSUnionType', default: REQUIRED },
       status: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       statusLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },

@@ -25,7 +25,7 @@
     /** Called when the user toggles a row; receives the new set. */
     onSelectedIds?: (next: Set<string>) => void;
     columns: Array<{ key: string; label: string; sortable?: boolean }>;
-    rows: Array<{ id: string; cells: string[]; selectionDisabled?: boolean }>;
+    rows: Array<{ id: string; cells: string[]; selectionDisabled?: boolean; current?: boolean }>;
     /** Optional extra native attributes forwarded to every TableCell (for passthrough tests). */
     cellProps?: Omit<TableCellProps, 'children'>;
     /** Optional extra native attributes forwarded to TableBody (for passthrough tests). */
@@ -135,6 +135,7 @@
         </TableRow>
       {:else}
         <TableRow
+          current={row.current ?? false}
           selected={selectedIds.has(row.id)}
           onSelectedChange={(next) => onRowSelectedChange(row.id, next)}
           selectionLabel={`Select ${row.cells[0]}`}

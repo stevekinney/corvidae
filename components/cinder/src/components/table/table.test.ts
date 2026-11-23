@@ -38,6 +38,18 @@ function unsafeScrollContainerProps(props: Record<string, unknown>): TableScroll
   return props;
 }
 
+test('marks only the current row as current', () => {
+  const { container } = render(Wrapper, {
+    columns,
+    rows: [{ ...rows[0]!, current: true }, rows[1]!],
+  });
+  const [current, sibling] = container.querySelectorAll('tbody tr');
+  expect(current?.getAttribute('aria-current')).toBe('true');
+  expect(current?.hasAttribute('data-cinder-current')).toBe(true);
+  expect(sibling?.hasAttribute('aria-current')).toBe(false);
+  expect(sibling?.hasAttribute('data-cinder-current')).toBe(false);
+});
+
 describe('Table frameless', () => {
   test('frameless marks the table and its scroll wrapper, and is off by default', () => {
     const framed = render(Wrapper, { columns, rows });
