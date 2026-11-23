@@ -144,15 +144,15 @@
 
   function updateActionStack(): void {
     const actions = actionsElement;
-    const sheet = actions?.closest<HTMLDialogElement>('dialog')?.dataset.cinderSheet;
-    if (actions == null || sheet !== 'docked') {
+    const docked = actions?.closest('dialog')?.getAttribute('data-cinder-sheet') === 'docked';
+    if (actions == null || !docked) {
       if (actionsStacked) actionsStacked = false;
       return;
     }
-    const room = actions.clientWidth;
+    const room = actions.getBoundingClientRect().width;
     if (room <= 0) return;
     const buttons = Array.from(actions.querySelectorAll<HTMLButtonElement>(':scope > button'));
-    const nextStacked = buttons.length > 1 && room + 1 < naturalActionNeed(actions, buttons);
+    const nextStacked = buttons.length > 1 && room < naturalActionNeed(actions, buttons);
     if (actionsStacked !== nextStacked) actionsStacked = nextStacked;
   }
 

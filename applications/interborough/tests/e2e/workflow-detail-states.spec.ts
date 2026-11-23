@@ -8,6 +8,7 @@ import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import {
   asOutsideSchedule,
   asRefundHistory,
@@ -467,13 +468,10 @@ test.describe('workflow delete dialog action fitting', () => {
     const assertRow = async (confirmName: string) => {
       await expect(actions).not.toHaveAttribute('data-cinder-stacked');
       const confirm = dialog.getByRole('button', { name: confirmName, exact: true });
-      const [cancelBox, confirmBox] = await Promise.all([
-        cancel.boundingBox(),
-        confirm.boundingBox(),
-      ]);
-      expect(cancelBox).not.toBeNull();
-      expect(confirmBox).not.toBeNull();
-      if (cancelBox === null || confirmBox === null) return;
+      const { cancelBox, confirmBox } = await readBoxes(page, {
+        cancelBox: cancel,
+        confirmBox: confirm,
+      });
       expect(Math.abs(confirmBox.y - cancelBox.y)).toBeLessThanOrEqual(1);
       expect(cancelBox.width).toBeLessThan(confirmBox.width);
     };
@@ -484,16 +482,12 @@ test.describe('workflow delete dialog action fitting', () => {
       name: DELETE.confirmWithSchedule,
       exact: true,
     });
-    const [stackedCancelBox, stackedConfirmBox] = await Promise.all([
-      cancel.boundingBox(),
-      stackedConfirm.boundingBox(),
-    ]);
-    expect(stackedCancelBox).not.toBeNull();
-    expect(stackedConfirmBox).not.toBeNull();
-    if (stackedCancelBox !== null && stackedConfirmBox !== null) {
-      expect(stackedConfirmBox.y).toBeLessThan(stackedCancelBox.y);
-      expect(Math.abs(stackedConfirmBox.width - stackedCancelBox.width)).toBeLessThanOrEqual(1);
-    }
+    const { stackedCancelBox, stackedConfirmBox } = await readBoxes(page, {
+      stackedCancelBox: cancel,
+      stackedConfirmBox: stackedConfirm,
+    });
+    expect(stackedConfirmBox.y).toBeLessThan(stackedCancelBox.y);
+    expect(Math.abs(stackedConfirmBox.width - stackedCancelBox.width)).toBeLessThanOrEqual(1);
     await dialog.getByRole('checkbox').uncheck();
     await assertRow(DELETE.confirm);
 
