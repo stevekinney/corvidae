@@ -34,6 +34,17 @@ describe('mainCiHealth', () => {
     expect(mainCiWarning(health, 'main')).toBeUndefined();
   });
 
+  test('reads every event on the default branch, so a red scheduled run is the latest health run', () => {
+    let command: readonly string[] = [];
+    const runner: Runner = (argv) => {
+      command = argv;
+      return { code: 0, stdout: run('failure'), stderr: '' };
+    };
+    expect(mainCiHealth(runner, 'o/n', 'main').red).toBe(true);
+    expect(command).not.toContain('--event');
+    expect(command).toContain('--branch');
+  });
+
   test('a cancelled run is skipped over: the newest conclusive run decides', () => {
     const list = (...conclusions: string[]) =>
       JSON.stringify(

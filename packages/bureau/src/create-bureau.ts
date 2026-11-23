@@ -1780,6 +1780,12 @@ async function constructBureau<const D extends AgentDefinitions>(
     set outboxDrainInFlight(value) {
       outboxDrainInFlight = value;
     },
+    get outboxDrainAdmissionClosed() {
+      return outboxDrainAdmissionClosed;
+    },
+    set outboxDrainAdmissionClosed(value) {
+      outboxDrainAdmissionClosed = value;
+    },
     get maintenanceAdmissionClosed() {
       return maintenanceAdmissionClosed;
     },
@@ -4262,6 +4268,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   let outboxRetryTimerHandle: RuntimeTimeoutHandle;
   let outboxRetryTimerArmedForMs: number | undefined;
   let outboxDrainInFlight: Promise<void> | undefined;
+  // COR-2639: terminal session saves that shutdown itself starts must still
+  // trigger a drain, but once shutdown reaches its final outbox-drain
+  // snapshot no later post-commit append may start or join one against this
+  // host's closing storage.
+  let outboxDrainAdmissionClosed = false;
 
   // AB-388 (Codex review, PR #597, "Fence maintenance admission once
   // shutdown starts"): closed SYNCHRONOUSLY (no `await` in between) as the
