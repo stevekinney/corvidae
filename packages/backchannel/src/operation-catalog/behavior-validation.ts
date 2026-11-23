@@ -2,13 +2,26 @@ import { z } from 'zod';
 import type { ErasedOperation } from './types.ts';
 
 function unwrap(schema: z.ZodType): z.ZodType {
-  while (
-    schema instanceof z.ZodOptional ||
-    schema instanceof z.ZodNullable ||
-    schema instanceof z.ZodDefault
-  )
-    schema = schema.unwrap() as z.ZodType;
-  return schema;
+  for (;;) {
+    if (
+      schema instanceof z.ZodOptional ||
+      schema instanceof z.ZodNullable ||
+      schema instanceof z.ZodDefault
+    ) {
+      schema = schema.unwrap() as z.ZodType;
+      continue;
+    }
+    if (schema instanceof z.ZodUnion) {
+      const options = (schema.options as z.ZodType[]).filter(
+        (option) => !(option instanceof z.ZodNull) && !(option instanceof z.ZodUndefined),
+      );
+      if (options.length === 1) {
+        schema = options[0]!;
+        continue;
+      }
+    }
+    return schema;
+  }
 }
 
 function field(schema: z.ZodType, name: string, operation: string): z.ZodType {
@@ -20,13 +33,72 @@ function field(schema: z.ZodType, name: string, operation: string): z.ZodType {
 }
 
 function sameType(left: z.ZodType, right: z.ZodType): boolean {
-  return unwrap(left).def.type === unwrap(right).def.type;
+  if (!isComparable(unwrap(left)) || !isComparable(unwrap(right))) return false;
+  try {
+    return (
+      JSON.stringify(canonicalSchema(z.toJSONSchema(unwrap(left)))) ===
+      JSON.stringify(canonicalSchema(z.toJSONSchema(unwrap(right))))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function canonicalSchema(value: unknown, key = ''): unknown {
+  if (Array.isArray(value)) {
+    const items = value.map((entry) => canonicalSchema(entry));
+    return key === 'enum' || key === 'required'
+      ? items.toSorted((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+      : items;
+  }
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(([entryKey, entry]) => [entryKey, canonicalSchema(entry, entryKey)]),
+  );
+}
+
+function isComparable(schema: z.ZodType, seen = new Set<z.ZodType>()): boolean {
+  if (seen.has(schema)) return true;
+  seen.add(schema);
+  if (
+    schema instanceof z.ZodDefault ||
+    schema instanceof z.ZodPrefault ||
+    schema instanceof z.ZodCatch ||
+    schema instanceof z.ZodLazy ||
+    hasCallbackChecks(schema)
+  )
+    return false;
+  return childSchemas(schema).every((child) => isComparable(child, seen));
+}
+
+function hasCallbackChecks(schema: z.ZodType): boolean {
+  return (schema.def.checks ?? []).some((check) => {
+    const kind = checkKind(check);
+    return kind === 'custom' || kind === 'overwrite';
+  });
+}
+
+function hasOverwrite(schema: z.ZodType): boolean {
+  return (schema.def.checks ?? []).some((check) => checkKind(check) === 'overwrite');
+}
+
+function checkKind(check: object): string | undefined {
+  const internals = Object.getOwnPropertyDescriptor(check, '_zod')?.value as
+    { def?: { check?: string } } | undefined;
+  return internals?.def?.check;
 }
 
 function rejectTransforms(schema: z.ZodType, operation: string, seen = new Set<z.ZodType>()): void {
   if (seen.has(schema)) return;
   seen.add(schema);
-  if (schema instanceof z.ZodPipe || schema instanceof z.ZodTransform)
+  if (
+    schema instanceof z.ZodPipe ||
+    schema instanceof z.ZodTransform ||
+    schema instanceof z.ZodLazy ||
+    hasOverwrite(schema)
+  )
     throw new Error(`operation "${operation}" behavior does not support schema transforms`);
   for (const child of childSchemas(schema)) rejectTransforms(child, operation, seen);
 }
@@ -41,7 +113,11 @@ function narrowed(
   const matches = variants.filter((variant) =>
     Object.entries(when).every(([key, value]) => {
       try {
-        return field(variant, key, name).safeParse(value).success;
+        const discriminator = unwrap(field(variant, key, name));
+        if (hasCallbackChecks(discriminator)) return false;
+        if (discriminator instanceof z.ZodLiteral) return discriminator.values.has(value);
+        if (discriminator instanceof z.ZodEnum) return discriminator.options.includes(value);
+        return false;
       } catch {
         return false;
       }
@@ -53,16 +129,23 @@ function narrowed(
 }
 
 function childSchemas(schema: z.ZodType): z.ZodType[] {
-  if (schema instanceof z.ZodObject) return Object.values(schema.shape) as z.ZodType[];
-  if (schema instanceof z.ZodArray) return [schema.element as z.ZodType];
-  if (
-    schema instanceof z.ZodOptional ||
-    schema instanceof z.ZodNullable ||
-    schema instanceof z.ZodDefault
-  )
-    return [schema.unwrap() as z.ZodType];
-  if (schema instanceof z.ZodUnion) return schema.options as z.ZodType[];
-  return [];
+  const children: z.ZodType[] =
+    schema instanceof z.ZodObject ? (Object.values(schema.shape) as z.ZodType[]) : [];
+  const visited = new Set<object>();
+  const pending: unknown[] = [schema.def];
+  while (pending.length) {
+    const value = pending.pop();
+    if (value instanceof z.ZodType) {
+      children.push(value);
+      continue;
+    }
+    if (value === null || typeof value !== 'object' || visited.has(value)) continue;
+    visited.add(value);
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+      if ('value' in descriptor) pending.push(descriptor.value);
+    }
+  }
+  return children;
 }
 
 type ReadBehavior = Extract<NonNullable<ErasedOperation['behavior']>, { kind: 'read' }>;

@@ -71,6 +71,109 @@ function fixture(prefix: string) {
 }
 
 describe('declared operation behavior', () => {
+  it('rejects incompatible cursor constraints and transforms nested in containers', () => {
+    const [read] = fixture('sample');
+    const incompatible = {
+      ...read,
+      inputSchema: z.object({ id: z.string(), page: z.enum(['a']), filter: z.string() }),
+      outputSchema: z.object({
+        id: z.string(),
+        revision: z.number(),
+        items: z.array(z.object({ id: z.string(), category: z.string() })),
+        next: z.enum(['b']).nullable(),
+        total: z.number(),
+      }),
+    };
+    let transforms = 0;
+    const transformed = {
+      ...read,
+      inputSchema: z.object({
+        id: z.string(),
+        page: z.string(),
+        filter: z.string(),
+        filters: z.record(
+          z.string(),
+          z.string().transform((value) => {
+            transforms++;
+            return value.trim();
+          }),
+        ),
+      }),
+    };
+    expect(() => createOperationRegistry([incompatible])).toThrow(
+      'pagination cursors are incompatible',
+    );
+    expect(() => createOperationRegistry([incompatible])).toThrow(
+      'pagination cursors are incompatible',
+    );
+    expect(() => createOperationRegistry([transformed])).toThrow(
+      'does not support schema transforms',
+    );
+    expect(() => createOperationRegistry([transformed])).toThrow(
+      'does not support schema transforms',
+    );
+    expect(transforms).toBe(0);
+    const nested = {
+      ...read,
+      inputSchema: z.object({
+        id: z.string(),
+        page: z.string(),
+        filter: z.string(),
+        nested: z.object({ items: z.tuple([z.string().trim()]) }),
+      }),
+    };
+    expect(() => createOperationRegistry([nested])).toThrow('does not support schema transforms');
+    const compatible = {
+      ...read,
+      inputSchema: z.object({
+        id: z.string(),
+        page: z.enum(['a', 'b']).optional(),
+        filter: z.string(),
+      }),
+      outputSchema: z.object({
+        id: z.string(),
+        revision: z.number(),
+        items: z.array(z.object({ id: z.string(), category: z.string() })),
+        next: z.enum(['a', 'b']).nullable(),
+        total: z.number(),
+      }),
+    };
+    expect(() => createOperationRegistry([compatible])).not.toThrow();
+    const unionEnd = {
+      ...compatible,
+      outputSchema: compatible.outputSchema.extend({
+        next: z.union([z.enum(['b', 'a']), z.null()]),
+      }),
+    };
+    expect(() => createOperationRegistry([unionEnd])).not.toThrow();
+  });
+
+  it('never executes discriminator refinements while checking an observed variant', () => {
+    const [read, command] = fixture('sample');
+    if (command.behavior?.kind !== 'command' || !command.behavior.observedInput)
+      throw new Error('fixture behavior missing');
+    let callbacks = 0;
+    const observedRead = {
+      ...read,
+      outputSchema: read.outputSchema.extend({
+        kind: z.literal('entry').refine(() => {
+          callbacks++;
+          return true;
+        }),
+      }),
+    };
+    const observedCommand = {
+      ...command,
+      behavior: {
+        ...command.behavior,
+        observedInput: { ...command.behavior.observedInput, when: { kind: 'entry' } },
+      },
+    };
+    expect(() => createOperationRegistry([observedRead, observedCommand])).toThrow(
+      'does not select one variant',
+    );
+    expect(callbacks).toBe(0);
+  });
   it('round trips descriptors and deterministically generates without invoking a host', async () => {
     for (const prefix of ['equipment', 'inventory']) {
       const operations = fixture(prefix);
