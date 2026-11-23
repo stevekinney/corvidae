@@ -1679,10 +1679,11 @@ for (const width of WIDTHS) {
     await expect(item.getByRole('button', { name: 'Retry delivery' })).toBeVisible();
 
     const payload = item.getByTestId('hook-delivery-payload');
-    await expect(payload.getByText('Payload sent')).toBeVisible();
-    await expect(payload.getByRole('radio', { name: 'Fields' })).toBeChecked();
-    await expect(payload.getByRole('radio', { name: 'JSON' })).toBeVisible();
-    await expect(payload.getByRole('button', { name: 'Copy' })).toBeVisible();
+    await expect(payload.getByText('Payload sent', { exact: true })).toBeVisible();
+    await expect(payload.getByRole('radio', { name: 'Fields', exact: true })).toBeChecked();
+    await expect(payload.getByRole('radio', { name: 'JSON', exact: true })).toBeVisible();
+    const copyPayload = payload.getByRole('button', { name: 'Copy Payload sent', exact: true });
+    await expect(copyPayload).toBeVisible();
     await expect(payload).toContainText('upstream-unavailable');
     await expect(payload).not.toContainText('GitHub did not answer (HTTP 503)');
 
@@ -1709,7 +1710,7 @@ for (const width of WIDTHS) {
     });
 
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-    await payload.getByRole('button', { name: 'Copy Payload sent' }).click();
+    await copyPayload.click();
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
       .toBe(RUN_ERROR_DELIVERY.request.body);
