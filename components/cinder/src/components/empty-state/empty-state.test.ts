@@ -185,6 +185,12 @@ test('spaces the stack with the container gap and logical margins only', async (
   expect(css).not.toContain('margin-top:');
 });
 
+test('sets its own sans face so a monospace parent never reaches the title', () => {
+  expect(declarationsFor(emptyStateCss, '.cinder-empty-state').get('font-family')).toBe(
+    'var(--cinder-font-sans)',
+  );
+});
+
 test('breaks a long unbroken name inside the title and the sentence instead of overflowing', () => {
   expect(declarationsFor(emptyStateCss, '.cinder-empty-state-title').get('overflow-wrap')).toBe(
     'anywhere',

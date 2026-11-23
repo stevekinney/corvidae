@@ -11602,9 +11602,38 @@
     },
     "/api/v1/workflows": {
       "get": {
-        "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
+        "description": "List workflows visible to the caller, optionally filtered by status, type, originating schedule, direct parent run, tags, id prefix, failure category, failing step, whether an activity is being retried, and time range, with pagination via `limit`/`offset`. Read-only. Returns the matching workflow summaries in the engine default ordering.",
         "operationId": "weft.workflows.list",
         "parameters": [
+          {
+            "in": "query",
+            "name": "failed_step",
+            "required": false,
+            "schema": {
+              "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "failure_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ],
+              "description": "Return only failed workflows in this failure category, or in any of these categories."
+            }
+          },
           {
             "in": "query",
             "name": "include",
@@ -11665,6 +11694,15 @@
               "description": "Return only direct children of the workflow with this id.",
               "minLength": 1,
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retrying",
+            "required": false,
+            "schema": {
+              "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+              "type": "boolean"
             }
           },
           {
@@ -11927,6 +11965,50 @@
         "parameters": [
           {
             "in": "query",
+            "name": "failed_step",
+            "required": false,
+            "schema": {
+              "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "failure_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "application",
+                    "timeout",
+                    "cancellation",
+                    "resource",
+                    "system"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "enum": [
+                      "application",
+                      "timeout",
+                      "cancellation",
+                      "resource",
+                      "system"
+                    ],
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              ],
+              "description": "Return only failed workflows in this failure category, or in any of these categories."
+            }
+          },
+          {
+            "in": "query",
             "name": "group_by",
             "required": false,
             "schema": {
@@ -11980,6 +12062,15 @@
               "maximum": 10000,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retrying",
+            "required": false,
+            "schema": {
+              "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+              "type": "boolean"
             }
           },
           {
@@ -12360,6 +12451,11 @@
                     },
                     "type": "object"
                   },
+                  "failedStep": {
+                    "description": "Return only failed workflows that stopped at the step with this operation label (an activity name, for one).",
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "failureCategory": {
                     "anyOf": [
                       {
@@ -12422,6 +12518,10 @@
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "retrying": {
+                    "description": "true returns only running workflows that are retrying an activity from its second attempt on; false returns the workflows that are not.",
+                    "type": "boolean"
                   },
                   "scheduleId": {
                     "description": "Return only workflows started by the schedule with this id.",
@@ -12640,11 +12740,17 @@
                                   },
                                   "type": "array"
                                 },
+                                "failedStep": {
+                                  "type": "string"
+                                },
                                 "limit": {
                                   "type": "number"
                                 },
                                 "offset": {
                                   "type": "number"
+                                },
+                                "retrying": {
+                                  "type": "boolean"
                                 },
                                 "scheduleId": {
                                   "type": "string"
@@ -12828,11 +12934,17 @@
                                       },
                                       "type": "array"
                                     },
+                                    "failedStep": {
+                                      "type": "string"
+                                    },
                                     "limit": {
                                       "type": "number"
                                     },
                                     "offset": {
                                       "type": "number"
+                                    },
+                                    "retrying": {
+                                      "type": "boolean"
                                     },
                                     "scheduleId": {
                                       "type": "string"
@@ -13105,11 +13217,17 @@
                                   },
                                   "type": "array"
                                 },
+                                "failedStep": {
+                                  "type": "string"
+                                },
                                 "limit": {
                                   "type": "number"
                                 },
                                 "offset": {
                                   "type": "number"
+                                },
+                                "retrying": {
+                                  "type": "boolean"
                                 },
                                 "scheduleId": {
                                   "type": "string"

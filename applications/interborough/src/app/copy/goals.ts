@@ -265,7 +265,7 @@ export const GOALS_COPY = {
     noChecks: 'This installation lists no checks, so a goal can’t say when it is done.',
     /** The version, small, beside a check's name in the picker. */
     checkVersion: (version: string): string => `version ${version}`,
-    checkUnavailableDescription: 'The checks could not be listed. Reload the page to try again.',
+    checkUnavailableDescription: 'The checks could not be listed. Try again to load them.',
     /** The version beside the goal's own check once the Bureau no longer lists it. */
     checkVersionNotInstalled: (version: string): string => `version ${version}, not installed`,
     /** What the description under the picker says of a check the goal names that is not installed. */

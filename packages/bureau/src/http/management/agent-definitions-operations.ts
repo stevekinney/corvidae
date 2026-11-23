@@ -80,7 +80,7 @@ import type {
   AgentListing,
 } from '../../agent-file-catalog.ts';
 import { auditTrailAgentOwnerId } from '../../audit-trail.ts';
-import { BureauError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import { mayAccessAgents } from '../agent-access.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -1378,14 +1378,7 @@ function tryFaultOf(error: unknown): never {
       data: { reason: error.code },
     } satisfies OperationFault;
   }
-  if (error instanceof BureauError && error.code === 'CONFLICT') {
-    throw {
-      code: 'Unavailable',
-      message: error.message,
-      data: { reason: 'shutting-down' },
-    } satisfies OperationFault;
-  }
-  throw error;
+  throw bureauFaultOf(error, { forms: { CONFLICT: 'shutting-down' } });
 }
 
 export const agentsTryOperation = defineOperation<

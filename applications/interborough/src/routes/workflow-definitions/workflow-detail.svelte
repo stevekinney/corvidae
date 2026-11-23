@@ -733,12 +733,13 @@
       variant="secondary"
       size="sm"
       href={router.href(internalPath)}
-      onclick={(event) => go(event, internalPath)}>{copy.page.seeInternal}</Button
-    >
+      onclick={(event) => go(event, internalPath)}
+      label={copy.page.seeInternal}
+    />
   {:else if resolution.isPending}
     <!-- The route says what the page is, so its actions are there at once, off until the type loads. -->
-    <Button variant="secondary" size="sm" disabled>{copy.editAction}</Button>
-    <Button variant="primary" size="sm" disabled>{copy.page.startAction}</Button>
+    <Button variant="secondary" size="sm" disabled label={copy.editAction} />
+    <Button variant="primary" size="sm" disabled label={copy.page.startAction} />
   {/if}
   {#if file !== undefined && actions?.edit === true}
     <Button
@@ -747,8 +748,8 @@
       variant="secondary"
       size="sm"
       onclick={(event) => go(event, invalidFile ? editJsonPath : editPath)}
-      >{copy.editAction}</Button
-    >
+      label={copy.editAction}
+    />
   {/if}
   {#if canStart}
     <Button
@@ -756,8 +757,9 @@
       variant="primary"
       size="sm"
       href={router.href(runSetupPath)}
-      onclick={(event) => go(event, runSetupPath)}>{copy.page.startAction}</Button
-    >
+      onclick={(event) => go(event, runSetupPath)}
+      label={copy.page.startAction}
+    />
   {:else if file !== undefined && actions?.resume === true && file.paused}
     <!-- A paused file swaps Start run for Resume, and the menu does not repeat it. -->
     <Button
@@ -765,11 +767,12 @@
       variant="primary"
       size="sm"
       disabled={busy || file.hash === null}
-      onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
-    >
+      onclick={() => act(resume.mutate)}
+      label={copy.resumeAction}
+    />
   {:else if invalidFile}
     <!-- Off until the file is fixed, and the banner under the tabs says why. -->
-    <Button variant="primary" size="sm" aria-disabled="true">{copy.page.startAction}</Button>
+    <Button variant="primary" size="sm" aria-disabled="true" label={copy.page.startAction} />
   {/if}
   <WorkflowMoreMenu
     canSignal={actions?.signal === true}
@@ -860,9 +863,12 @@
     <Alert variant="warning">
       <p class="ib-workflow__alert-title">{copy.stale.title}</p>
       <p class="ib-workflow__alert-body">{copy.stale.description}</p>
-      <Button variant="secondary" size="sm" onclick={() => void reload()}
-        >{copy.stale.action}</Button
-      >
+      <Button
+        variant="secondary"
+        size="sm"
+        onclick={() => void reload()}
+        label={copy.stale.action}
+      />
     </Alert>
   {/if}
 

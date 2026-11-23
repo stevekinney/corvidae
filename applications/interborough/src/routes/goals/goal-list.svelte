@@ -55,6 +55,7 @@
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { goalHasEnded, listAllGoals, type Goal } from '../../lib/bureau-goals.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
@@ -281,12 +282,14 @@
           description={failure.description}
           {...failure.detail === undefined ? {} : { detail: failure.detail }}
           retryLabel={RETRY_LABEL}
-          onRetry={retry}
+          {...faultErrorStateAdvice(goals.error, retry)}
         >
           {#snippet secondaryAction()}
-            <Button variant="secondary" href={router.href(GOALS_COPY.failed.openHealthPath)}
-              >{GOALS_COPY.failed.openHealth}</Button
-            >
+            <Button
+              variant="secondary"
+              href={router.href(GOALS_COPY.failed.openHealthPath)}
+              label={GOALS_COPY.failed.openHealth}
+            />
           {/snippet}
         </ErrorState>
       </div>

@@ -57,6 +57,8 @@ const VIEW: TaskView = {
   usage: null,
   attention: [],
   stalledSince: null,
+  failure: null,
+  retrying: null,
 };
 
 const CALLER = { authenticated: true, userName: 'api-key:alice' };

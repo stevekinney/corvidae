@@ -395,6 +395,41 @@ describe('the segments of the list', () => {
     await waitFor(() => expect(names(container)).toEqual(['digest']));
   });
 
+  test('searches workflow titles and identifiers case-insensitively within a segment, keeps segment counts global, and clears the filtered empty state', async () => {
+    const { container, findByRole } = open({
+      files: [
+        readyFile('digest', { title: 'Daily digest', paused: true, steps: TWO_STEPS }),
+        readyFile('flaky', { paused: true }),
+        invalidFile('broken'),
+      ],
+    });
+    await waitFor(() => expect(rowCount(container)).toBe(4));
+    const view = within(container);
+    const search = await findByRole('searchbox', { name: 'Search workflows' });
+
+    await fireEvent.input(search, { target: { value: 'DAILY' } });
+    await waitFor(() => expect(names(container)).toEqual(['digest']));
+
+    await fireEvent.input(search, { target: { value: 'ORDER-PROCESSING' } });
+    await waitFor(() => expect(names(container)).toEqual(['order-processing']));
+
+    await fireEvent.click(segment(view, 'Paused', 1));
+    await fireEvent.input(search, { target: { value: 'DAILY' } });
+    await waitFor(() => expect(names(container)).toEqual(['digest']));
+    expect(segment(view, 'All', 4)).not.toBeNull();
+    expect(segment(view, 'Paused', 1)).not.toBeNull();
+    expect(segment(view, 'Problems', 2)).not.toBeNull();
+
+    await fireEvent.input(search, { target: { value: 'missing' } });
+    await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title });
+    await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.list.clearAction }));
+    await waitFor(() =>
+      expect(names(container)).toEqual(['broken', 'flaky', 'digest', 'order-processing']),
+    );
+    expect(search).toHaveValue('');
+    expect(search).toHaveFocus();
+  });
+
   test('keep the heading, the action and Internal workflows over a segment that shows nothing, and Clear filters brings the rows back', async () => {
     const { container, findByRole, findByText } = open();
     await waitFor(() => expect(rowCount(container)).toBe(4));

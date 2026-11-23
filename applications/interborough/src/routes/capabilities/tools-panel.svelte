@@ -154,7 +154,7 @@
   {:else if catalog.isPending}
     <CapabilitiesLoading label={copy.tool.loading} />
   {:else if catalog.isError && asked}
-    <ToolPageState kind="failed" onRetry={() => void catalog.refetch()} />
+    <ToolPageState kind="failed" error={catalog.error} onRetry={() => void catalog.refetch()} />
   {:else if catalog.isError}
     <Alert variant="danger">
       <p class="ib-capabilities__alert-title">{copy.tool.loadFailed.title}</p>
@@ -188,6 +188,7 @@
           key={(tool) => tool.name}
           label={copy.listLabel.tools}
           detailLabel={copy.detailLabel.tools}
+          openFirst
           selectionParameter="tool"
           {selectionLocation}
           storageKey="interborough-capabilities-tools"
@@ -261,16 +262,16 @@
           {#snippet detail(tool)}
             <ToolDetail {tool} />
           {/snippet}
+          <!-- A tool the address names that the catalog does not hold: the tool's own not-found page. -->
+          {#snippet notFound()}
+            <ToolPageState kind="not-found" />
+          {/snippet}
           {#snippet empty()}
-            {#if missing}
-              <ToolPageState kind="not-found" />
-            {:else}
-              <EmptyState
-                kind="first-use"
-                title={copy.emptyDetailTitle}
-                description={copy.emptyDetailDescription}
-              />
-            {/if}
+            <EmptyState
+              kind="first-use"
+              title={copy.emptyDetailTitle}
+              description={copy.emptyDetailDescription}
+            />
           {/snippet}
         </ListDetail>
       {/if}

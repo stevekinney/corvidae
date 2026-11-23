@@ -59,6 +59,7 @@
   import { AUDIT_ACTION_KINDS, AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';
   import { queryAudit } from '../../lib/bureau-audit.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
@@ -127,15 +128,15 @@
   const filter = $derived(filterOf(applied, now));
   const narrowing = $derived(applied.actor !== '' || applied.text.trim() !== '');
 
+  // The open event. Beside the table the newest event the filters list opens (ListDetail's
+  // `openFirst`), on load and after the filters change.
   let selectedKey = $state<string | null>(null);
-  // The box the table and the pane share, measured when the newest event is opened.
-  let frame = $state<HTMLElement>();
 
   // The search box is the person's until the address catches up with it.
   let text = $state(untrack(() => applied.text));
 
   function go(next: Partial<AuditDraft>): void {
-    // Different filters list different events, so none is open until one is chosen.
+    // Different filters list different events, so the open one gives way to the first they list.
     selectedKey = null;
     router.navigate(pathOf({ ...applied, ...next }), { replace: true });
   }
@@ -333,20 +334,6 @@
     { key: 'target', label: copy.columns.target, truncate: true, maxWidth: TARGET_COLUMN_WIDTH },
   ];
 
-  // The newest event is open when the log first shows, and no event is after the filters change.
-  let opened = false;
-  $effect(() => {
-    if (opened || trail.isPending || frame === undefined) return;
-    opened = true;
-    // Below the push breakpoint an open event would hide the table, so none opens on load there. A
-    // box that has no width yet (a page with no layout) is read as wide, as the list reads it.
-    const width = frame.getBoundingClientRect().width;
-    if (width > 0 && width < PUSH_BELOW) return;
-    if (untrack(() => router.current.search.get('record')) !== null) return;
-    const newest = untrack(() => events[0]);
-    if (newest !== undefined) selectedKey = newest.key;
-  });
-
   const selectionLocation = routerSelectionLocationFor('/health/audit');
 
   // Export reads every page the filters match, not only the ones the table has loaded. While Who or
@@ -401,6 +388,20 @@
 
   onDestroy(() => exportController?.abort());
 </script>
+
+{#snippet missingRecord(standalone: boolean)}
+  <EmptyState
+    kind="not-found"
+    headingLevel={2}
+    title={copy.recordNotFound.title}
+    description={trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
+    actions={standalone
+      ? [{ label: copy.recordNotFound.back, variant: 'secondary', onclick: () => go({}) }]
+      : []}
+  >
+    {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+  </EmptyState>
+{/snippet}
 
 <HealthFrame active="audit">
   <section class="ib-audit" aria-label={VIEW_COPY.audit.label} data-page="audit">
@@ -477,7 +478,7 @@
       {#if exportMutation.isPending}
         <div class="ib-audit__progress" data-testid="audit-export-progress">
           <InlineLoading status="active" description={copy.exportProgress(exportCount)} />
-          <Button variant="ghost-accent" onclick={cancelExport}>{copy.exportCancel}</Button>
+          <Button variant="ghost-accent" onclick={cancelExport} label={copy.exportCancel} />
         </div>
       {/if}
 
@@ -488,23 +489,17 @@
             {auditExportFailure(exportMutation.error)}
           </p>
           {#snippet actions()}
-            <Button variant="secondary" onclick={() => exportMutation.mutate()}
-              >{copy.exportFailed.again}</Button
-            >
+            <Button
+              variant="secondary"
+              onclick={() => exportMutation.mutate()}
+              label={copy.exportFailed.again}
+            />
           {/snippet}
         </Alert>
       {/if}
 
       {#if refreshFailed}
         <Banner preset="refresh-failed" dataUpdatedAt={trail.dataUpdatedAt} onRetry={retry} />
-      {/if}
-
-      {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
-        <Alert variant="info">
-          <p class="ib-audit__alert-body">
-            {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
-          </p>
-        </Alert>
       {/if}
 
       {#if failedFirstLoad && loadFailure !== undefined}
@@ -514,7 +509,7 @@
           title={loadFailure.title}
           description={loadFailure.description}
           retryLabel={RETRY_LABEL}
-          onRetry={retry}
+          {...faultErrorStateAdvice(trail.error, retry)}
         />
       {:else if stopped}
         <ErrorState
@@ -541,7 +536,9 @@
           />
         </div>
       {:else if settledEmpty}
-        {#if logIsEmpty}
+        {#if recordMissing}
+          {@render missingRecord(true)}
+        {:else if logIsEmpty}
           <EmptyState
             kind="first-use"
             headingLevel={2}
@@ -568,12 +565,13 @@
         <p class="ib-audit__footer" data-testid="audit-footer">
           {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
         </p>
-        <div class="ib-audit__frame" data-shortcut-region="list-detail" bind:this={frame}>
+        <div class="ib-audit__frame" data-shortcut-region="list-detail">
           <ListDetail
             items={events}
             key={(event: AuditEvent) => event.key}
             label={copy.caption}
             detailLabel={copy.detailLabel}
+            openFirst
             selectionParameter="record"
             {selectionLocation}
             bind:selectedKey
@@ -611,6 +609,13 @@
               {#key event.key}
                 <AuditDetail {event} lookups={lookups.current} {now} />
               {/key}
+            {/snippet}
+            {#snippet notFound()}
+              {#if !trail.isError && (trail.isFetchingNextPage || (trail.hasNextPage && searchedPages < RECORD_SEARCH_PAGES))}
+                <Skeleton lines={5} delay={LOADING_DELAY_MILLISECONDS} label={copy.loadingLabel} />
+              {:else}
+                {@render missingRecord(false)}
+              {/if}
             {/snippet}
             {#snippet empty()}
               <EmptyState

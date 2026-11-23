@@ -3,6 +3,8 @@
  * plan for publishing the folder in batches.
  */
 
+import { readFileSync } from 'node:fs';
+
 import { BUNDLE_NAMESPACE } from './bundle.ts';
 
 /** The libraries the design system loads before `components/bundle.js`: React 18, as it reads. */
@@ -111,6 +113,66 @@ export function previewReport(
   };
 }
 
+/** A creation record from a compatible, previously published Cinder files index. */
+export type CreatedOnFiles = { v: 1; at: string };
+
+function isUtcSecond(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) {
+    return false;
+  }
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && date.toISOString().replace(/\.\d{3}Z$/, 'Z') === value;
+}
+
+/**
+ * Reads the creation record from the one prior index a rebuild may retain. A missing index starts
+ * fresh; malformed or incompatible contents do too. Other read errors remain visible to the build.
+ */
+export function readCreatedOnFiles(indexPath: string): CreatedOnFiles | undefined {
+  let contents: string;
+  try {
+    contents = readFileSync(indexPath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+  let index: unknown;
+  try {
+    index = JSON.parse(contents);
+  } catch {
+    return undefined;
+  }
+  if (index === null || typeof index !== 'object') {
+    return undefined;
+  }
+  const record = index as Record<string, unknown>;
+  if (
+    !Object.hasOwn(record, 'v') ||
+    !Object.hasOwn(record, 'layout') ||
+    !Object.hasOwn(record, 'title') ||
+    !Object.hasOwn(record, 'createdOnFiles') ||
+    record['v'] !== 3 ||
+    record['layout'] !== 'files' ||
+    record['title'] !== 'Cinder'
+  ) {
+    return undefined;
+  }
+  const createdOnFiles = record['createdOnFiles'];
+  if (createdOnFiles === null || typeof createdOnFiles !== 'object') {
+    return undefined;
+  }
+  const creationRecord = createdOnFiles as Record<string, unknown>;
+  if (
+    !Object.hasOwn(creationRecord, 'v') ||
+    !Object.hasOwn(creationRecord, 'at') ||
+    creationRecord['v'] !== 1 ||
+    !isUtcSecond(creationRecord['at'])
+  ) {
+    return undefined;
+  }
+  return { v: 1, at: creationRecord['at'] };
+}
+
 /** The inputs to {@link designSystemIndex}. */
 export type IndexFacts = {
   sha: string;
@@ -118,6 +180,8 @@ export type IndexFacts = {
   note: string;
   /** An ISO 8601 time in UTC to the second, such as `2026-11-09T20:22:38Z`. */
   at: string;
+  /** The creation record from this output directory's compatible prior index, when present. */
+  createdOnFiles?: CreatedOnFiles | undefined;
 };
 
 /** The system's index, `design-system.json`, which is published last. */
@@ -125,7 +189,7 @@ export function designSystemIndex(facts: IndexFacts): Record<string, unknown> {
   return {
     v: 3,
     layout: 'files',
-    createdOnFiles: { v: 1, at: facts.at },
+    createdOnFiles: facts.createdOnFiles ?? { v: 1, at: facts.at },
     title: 'Cinder',
     // The namespace is the global `components/bundle.js` assigns. The bundle reads React 18 from
     // the page, so the libraries name it for the page to load; a design canvas supplies its own.

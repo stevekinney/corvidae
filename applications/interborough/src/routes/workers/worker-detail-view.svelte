@@ -1,23 +1,20 @@
 <script lang="ts">
   /**
-   * The open worker (rows 78k to 78m, 78w, 79g, 79i): its name with its id small and monospaced
-   * beside it, a status line (the status dot and word, then when it was last heard from), and the
+   * The open worker (rows 78k to 78m, 78w, 79g, 79i): its name and an identifier copy control,
+   * a status badge and when it was last heard from, and the
    * one action it has: Drain for a worker that takes work, Resume for one that is draining, Forget
    * for one that went away or stopped. A worker that went away and left its queue with nobody
    * under a warning notice, a facts row (the queue, what it runs now, what it serves, its
    * version), and the tasks on its queue, which the route supplies.
-   *
-   * An id too long to sit beside the heading (a generated one) wraps on its own line under it as a
-   * Cinder `CopyableValue`, with its Copy button beside the last character, and the list shows its
-   * end, which is what tells such workers apart.
    */
   import {
     Alert,
+    Badge,
     Button,
-    CopyableValue,
+    CopyButton,
     DescriptionList,
-    StatusDot,
     Tooltip,
+    type BadgeVariant,
     type DescriptionListItem,
   } from '@lostgradient/cinder';
   import { Droplets, Trash2, TriangleAlert } from '@lucide/svelte';
@@ -27,13 +24,12 @@
   import type { WorkerSummary } from './worker-catalog-types.ts';
   import { WORKER_COPY } from './worker-copy.ts';
   import {
-    hasLongId,
     humanizeWorkflowType,
     queueHasNoRunner,
-    workerName,
     workerStatusLine,
     workerStatusOf,
     workerVersion,
+    type WorkerStatusWord,
   } from './worker-model.ts';
 
   interface Props {
@@ -65,8 +61,13 @@
   }: Props = $props();
 
   const copy = WORKER_COPY.detail;
+  const badgeVariant = {
+    Connected: 'success',
+    Draining: 'warning',
+    Disconnected: 'danger',
+    Stopped: 'neutral',
+  } satisfies Record<WorkerStatusWord, BadgeVariant>;
   const status = $derived(workerStatusOf(worker));
-  const longId = $derived(hasLongId(worker));
   const version = $derived(workerVersion(worker));
   const serves = $derived(
     (worker.workflows ?? []).map((type) => humanizeWorkflowType(type)).join(', '),
@@ -123,23 +124,15 @@
   <header class="ib-worker-detail__top">
     <div class="ib-worker-detail__identity">
       <div class="ib-worker-detail__title-row">
-        <h2 class="ib-worker-detail__name">{workerName(worker)}</h2>
-        {#if !longId}
-          <code class="ib-worker-detail__id" data-testid="worker-id">{worker.id}</code>
-        {/if}
-      </div>
-      {#if longId}
-        <div class="ib-worker-detail__long-id">
-          <CopyableValue
-            value={worker.id}
-            label={copy.copyLabel}
-            copiedLabel={copy.copied}
-            data-testid="worker-id"
-          />
+        <h2 class="ib-worker-detail__name">{worker.name ?? copy.unnamed}</h2>
+        <!-- CopyButton is a tooltip wrapper beside a live region, so the flex item that must keep its
+             size is this box, not the button inside them. -->
+        <div class="ib-worker-detail__copy">
+          <CopyButton value={worker.id} label={copy.copyLabel} copiedLabel={copy.copied} />
         </div>
-      {/if}
+      </div>
       <p class="ib-worker-detail__status">
-        <StatusDot word={status} size="sm" />
+        <Badge variant={badgeVariant[status]} size="sm">{status}</Badge>
         <span data-testid="worker-status-line">{workerStatusLine(worker, now)}</span>
       </p>
     </div>
@@ -183,33 +176,36 @@
     flex: 1 1 16rem;
   }
 
+  /* The Copy button stays beside the name, on the name's first row, however many rows a long name
+   * takes (COR-2548): the row never wraps, the name shrinks and wraps inside its own box, and the
+   * button keeps its size. No Cinder component pairs a title with a trailing action that holds
+   * beside a wrapped title (`SectionHeading` and `PageHeader` move their actions to a row of their
+   * own when narrow), so the pairing is drawn here. */
   .ib-worker-detail__title-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: baseline;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
+    gap: var(--cinder-space-3);
     min-width: 0;
   }
 
   .ib-worker-detail__name {
+    flex: 0 1 auto;
+    min-inline-size: 0;
     margin: 0;
     font-size: var(--cinder-text-xl);
     font-weight: 600;
     overflow-wrap: anywhere;
   }
 
-  .ib-worker-detail__id,
+  .ib-worker-detail__copy {
+    flex: none;
+  }
+
   .ib-worker-detail__version {
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     overflow-wrap: anywhere;
-  }
-
-  /* The full id wraps inside its own column and the Copy button stays beside its last character
-     (row 79g): the value is Cinder's CopyableValue, which keeps the two together. */
-  .ib-worker-detail__long-id {
-    min-width: 0;
-    font-size: var(--cinder-text-xs);
   }
 
   .ib-worker-detail__status {

@@ -22,6 +22,7 @@ import Harness from './reviews-shell.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
 let world: BureauWorld;
+let previousViewport: { width: number; height: number };
 
 // The route's code is loaded once, under real timers, so the outlet does not wait on the module
 // system with the clock faked.
@@ -31,6 +32,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  previousViewport = { width: window.innerWidth, height: window.innerHeight };
+  // These assertions read the persistent desktop sidebar without opening the tablet drawer.
+  window.happyDOM.setViewport({ width: 1280, height: 900 });
   window.happyDOM.setURL('http://localhost/');
   jest.useFakeTimers();
 });
@@ -40,6 +44,7 @@ afterEach(() => {
   stub?.restore();
   stub = undefined;
   jest.useRealTimers();
+  if (window instanceof Window) window.happyDOM.setViewport(previousViewport);
 });
 
 function weft(id: string): ReviewListEntry {
@@ -156,6 +161,7 @@ describe('the count in the navigation', () => {
 
     await openFirst(container);
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1);
   });

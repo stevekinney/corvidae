@@ -2,7 +2,9 @@
   import { untrack } from 'svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
+  // Load JsonEditor first to preserve the order its styles and InlineConfirm's Button styles enter the layer.
   import { default as JsonEditor } from '../json-editor/index.ts';
+  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import { formatEditableArguments, parseJsonText } from './approval-card-state.ts';
@@ -19,8 +21,15 @@
     requestKey: string;
     /** The tool's name as the approver reads it, written in the checkbox label. */
     toolName: string;
+    /** Whether approving requires a second press. */
+    irreversible?: boolean;
     /** The checkbox's scope ("the rest of this chat"), or `undefined` when the tool never offers it. */
     rememberScope: string | undefined;
+    /** A host-owned decision note. */
+    reason?: string;
+    /** Whether the note field starts open. */
+    noteInitiallyOpen?: boolean;
+    noteLabel?: string;
     /** Why Deny and Approve are off, when they are. */
     disabledReason: string | undefined;
     /** The answer on its way, or `undefined` when none is. */
@@ -37,7 +46,11 @@
     idBase,
     requestKey,
     toolName,
+    irreversible = false,
     rememberScope,
+    reason = $bindable(''),
+    noteInitiallyOpen = false,
+    noteLabel,
     disabledReason,
     resolving,
     canEditArguments,
@@ -48,11 +61,15 @@
   const reasonId = $derived(`${idBase}-resolution-reason`);
   const disabledReasonId = $derived(`${idBase}-disabled-reason`);
   const editRegionId = $derived(`${idBase}-edit-region`);
+  const armHintId = $derived(`${idBase}-arm-hint`);
 
-  let resolutionReason = $state('');
   // The note waits behind "Add note"; once opened it stays open, so a typed note never hides.
   let noteOpen = $state(false);
+  $effect(() => {
+    if (noteInitiallyOpen) noteOpen = true;
+  });
   let rememberResolution = $state(false);
+  let approvalArmed = $state(false);
   let editingArguments = $state(false);
   let editedArgumentsText = $state('');
 
@@ -69,7 +86,7 @@
   $effect(() => {
     if (requestKey === previousRequestKey) return;
     previousRequestKey = requestKey;
-    resolutionReason = '';
+    reason = '';
     noteOpen = false;
     rememberResolution = false;
     // A new request must never leave a stale editor open, even if its
@@ -102,7 +119,7 @@
 
   function emitResolution(decision: ApprovalResolutionDecision, editedArgs?: unknown): void {
     if (actionsOff) return;
-    const trimmedReason = resolutionReason.trim();
+    const trimmedReason = reason.trim();
     const resolution: ApprovalResolution = {
       decision,
       remember: rememberResolution,
@@ -137,10 +154,11 @@
     <div class="cinder-approval-card__resolution-controls">
       <Textarea
         id={reasonId}
-        bind:value={resolutionReason}
-        label="Note"
+        bind:value={reason}
+        label={noteLabel ?? 'Note'}
+        optional={noteLabel === undefined}
         description="Saved with your decision. If you deny, the agent reads it as the reason."
-        placeholder="Add a note for the agent or the record"
+        placeholder="Add a note"
         rows={2}
         disabled={isBusy}
       />
@@ -171,13 +189,17 @@
       <Button
         type="button"
         variant="secondary"
+        data-cinder-approval-deny
         mutating
         disabled={isBusy && resolving !== 'deny'}
         aria-disabled={disabledReason === undefined ? undefined : 'true'}
         loading={resolving === 'deny'}
         loadingStatus="Denying…"
         aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-        onclick={() => emitResolution('deny')}
+        onclick={() => {
+          approvalArmed = false;
+          emitResolution('deny');
+        }}
       >
         {resolving === 'deny' ? 'Denying…' : 'Deny'}
       </Button>
@@ -194,19 +216,40 @@
           Approve with edits
         </Button>
       {/if}
-      <Button
-        type="button"
-        variant="primary"
-        mutating
-        disabled={isBusy && resolving !== 'approve'}
-        aria-disabled={disabledReason === undefined ? undefined : 'true'}
-        loading={resolving === 'approve'}
-        loadingStatus="Approving…"
-        aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-        onclick={() => emitResolution('approve')}
-      >
-        {resolving === 'approve' ? 'Approving…' : 'Approve'}
-      </Button>
+      {#if irreversible}
+        <InlineConfirm
+          presentation="two-press"
+          bind:armed={approvalArmed}
+          confirmLabel="Approve"
+          armedHint="Reverts in 3 seconds."
+          armedEscapeHint="Escape cancels."
+          {requestKey}
+          mutating
+          disabled={isBusy}
+          blocked={disabledReason !== undefined}
+          loading={resolving === 'approve'}
+          loadingLabel="Approving…"
+          ariaDescribedBy={disabledReason === undefined ? armHintId : disabledReasonId}
+          hintClass="cinder-approval-card__arm-hint"
+          hintId={armHintId}
+          onConfirm={() => emitResolution('approve')}
+        />
+      {:else}
+        <Button
+          type="button"
+          variant="primary"
+          data-cinder-approval-approve
+          mutating
+          disabled={isBusy && resolving !== 'approve'}
+          aria-disabled={disabledReason === undefined ? undefined : 'true'}
+          loading={resolving === 'approve'}
+          loadingStatus="Approving…"
+          aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
+          onclick={() => emitResolution('approve')}
+        >
+          {resolving === 'approve' ? 'Approving…' : 'Approve'}
+        </Button>
+      {/if}
     </div>
   </div>
   {#if editingArguments && canEditArguments}

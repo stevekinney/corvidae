@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2647",
+  "branch": "chef/cor-2647-filter-bar-fold",
+  "checkedAt": "027941b5b4ec745ef33e6ab0e632200e32e584ac",
+  "briefVersion": "d5dec53e1709",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Commit 027941b5b4 names the mechanism: since 7892dc7141 removed the 76px tablet rail the row has 720px, and under CI's Linux fonts the unfolded row fits (need 720 = available 720 at medium:0, shown in the CI trace and the CI-image browser), so form.folded stays 0."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Superseded by the coordinator's decision on the issue (fix in the test fixture): no Cinder ordering defect exists, so no Cinder test applies."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "runs-states.spec.ts --grep 'Workflow chip folds' --repeat-each=20: 20/20 in the playwright:v1.63.0-jammy browser and 20/20 on macOS; the whole spec 22/22 in the CI image."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "No deadline, timeout or retry count changed; the diff changes only the 52x test's address and comment."
+    }
+  ]
+}

@@ -78,13 +78,15 @@ import {
   validateDeliveryApproval,
   validateDeliveryCiEvidence,
   validateDeliveryVerification,
+  withDeliveryAuthorityFences,
   type DeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
-import { readExecutionSnapshot, withProviderTransitionLock } from './execution-state.ts';
+import { readExecutionSnapshot } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
+import { acceptMovedBase, describeConflicts, mergeHeadOnto } from './moved-base.ts';
 import {
   defaultRunner,
   emitResult,
@@ -142,6 +144,11 @@ export interface MergeGateReport {
   treesMatch: boolean | null;
   /** Set when `main`'s latest `main.yml` run failed or could not be read; a warning, never a refusal. */
   mainHealthWarning?: string;
+  /**
+   * The commits of `origin/<default>` that the head was merged onto after its evidence, oldest
+   * first, so the landing comment can name them. Absent when `main` had not moved.
+   */
+  mergedMainCommits?: string[];
   /** Whether the pull request was declared a repair of a red `main` (`--fixes-main`). */
   fixesMain?: boolean;
   /** The step that failed, or `null` when every step passed. */
@@ -320,17 +327,48 @@ async function mergeGateCore(
     return fail('threads', `read ${listing.seen} of ${listing.total} review threads.`);
   if (listing.unresolved > 0)
     return fail('threads', `${listing.unresolved} review thread(s) are unresolved.`);
-  const verificationTree = git('merge-tree', '--write-tree', report.base ?? '', head);
-  const integrationTree = verificationTree.stdout.split('\n')[0]?.trim() ?? '';
-  if (verificationTree.code !== 0 || !/^[0-9a-f]{40,64}$/.test(integrationTree))
-    return fail('conflict', 'could not derive the current integration tree for verification.');
+  const integration = mergeHeadOnto(git, report.base ?? '', head);
+  if ('conflicts' in integration)
+    return fail(
+      'conflict',
+      `the pull request conflicts with origin/${defaultBranch}${describeConflicts(integration.conflicts)}; merge it in, resolve the conflict, and return the new head for acceptance.`,
+    );
+  if ('failure' in integration)
+    return fail(
+      'conflict',
+      `could not derive the current integration tree for verification: ${integration.failure}`,
+    );
+  const integrationTree = integration.tree;
+  // The identity the verification chain attests: the actual base and tree, or, when main moved
+  // after the evidence and the head merges into it cleanly (the merge above), the attested ones.
+  // A moved base never needs a new evidence run: only a conflict refuses (owner decision,
+  // 2026-11-21), and `acceptMovedBase` (`moved-base.ts`) checks the attested base and tree still
+  // describe this head.
+  let attested = { base: report.base ?? '', tree: integrationTree };
+  let landed: { landedBase: string; landedTree: string } | undefined;
+  const { request } = verification;
+  if (report.base !== null && report.base !== request.base) {
+    const moved = acceptMovedBase({
+      runner,
+      worktree: options.worktree,
+      head,
+      base: report.base,
+      tree: integrationTree,
+      attested: { base: request.base, tree: request.integrationTree },
+    });
+    if ('problem' in moved)
+      return fail('verification', `verification request has a stale base: ${moved.problem}`);
+    attested = { base: request.base, tree: request.integrationTree };
+    landed = { landedBase: report.base, landedTree: integrationTree };
+    if (moved.mergedIn.length > 0) report.mergedMainCommits = moved.mergedIn;
+  }
   const verificationProblem = validateDeliveryVerification(
     verification,
     {
       repository,
       revision: head,
-      base: report.base ?? '',
-      integrationTree,
+      base: attested.base,
+      integrationTree: attested.tree,
       route: 'pull-request',
       action: 'merge',
     },
@@ -383,8 +421,9 @@ async function mergeGateCore(
       route: 'pull-request',
       pullRequest: options.pr,
       reviewedHead: head,
-      base: report.base ?? '',
-      integrationTree,
+      base: attested.base,
+      integrationTree: attested.tree,
+      ...landed,
       state: 'pending-provider-outcome',
     },
     'unknown',
@@ -447,8 +486,9 @@ async function mergeGateCore(
       route: 'pull-request',
       pullRequest: options.pr,
       reviewedHead: head,
-      base: report.base ?? '',
-      integrationTree,
+      base: attested.base,
+      integrationTree: attested.tree,
+      ...landed,
       mergeCommit,
       state: 'confirmed-merge',
     },
@@ -544,8 +584,8 @@ async function recoverPullRequestMerge(
   if (
     fetched.code !== 0 ||
     expected.code !== 0 ||
-    tree !== receipt.integrationTree ||
-    expectedTree !== receipt.integrationTree
+    tree !== (receipt.landedTree ?? receipt.integrationTree) ||
+    expectedTree !== (receipt.landedTree ?? receipt.integrationTree)
   )
     return unresolved();
   await recordDeliveryMergeObservation(
@@ -658,9 +698,9 @@ export async function mergeGate(
       lockPollIntervalMs: snapshot.lockPollIntervalMs,
     },
     () =>
-      withProviderTransitionLock(
+      withDeliveryAuthorityFences(
         partial.verification?.state ?? loaded.state,
-        loaded.request.authority.resource,
+        loaded.request,
         async () =>
           (await recoverPullRequestMerge(snapshot, partial, loaded)) ??
           mergeGateCore(snapshot, partial),
@@ -678,6 +718,10 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
   if (report.mainHealthWarning !== undefined)
     lines.push(
       `WARNING main health: ${report.mainHealthWarning}${report.fixesMain === true ? ' Merged as the declared fix.' : ''}`,
+    );
+  if (report.mergedMainCommits !== undefined)
+    lines.push(
+      `base moved, landed without a new run: merged onto main commits ${report.mergedMainCommits.map((sha) => sha.slice(0, 12)).join(', ')}`,
     );
   if (report.failedStep !== null) {
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);

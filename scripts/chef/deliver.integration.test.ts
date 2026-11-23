@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import { createDeliveryFixture, branchRunner as landingRunner } from './deliver.test-support.ts';
+import {
+  createDeliveryFixture,
+  branchRunner as landingRunner,
+  MERGE_TREE,
+} from './deliver.test-support.ts';
 import { deliver, renderDeliver, run, type DeliverOptions, type LeaseReading } from './deliver.ts';
 import { readDeliveryRequest } from './delivery-completion.ts';
 import { ledgerLine, type LedgerEntry } from './delivery-ledger.ts';
@@ -17,7 +21,7 @@ import {
 } from './delivery-verification.ts';
 import { designVerdictPath } from './design-verdict.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
-import { recordMutationIntent } from './execution-state.ts';
+import { acquireDispatch, cancelDispatch, recordMutationIntent } from './execution-state.ts';
 import {
   changedAnswer,
   greenLandingAnswers,
@@ -105,6 +109,58 @@ async function approvedMembers<T extends Partial<DeliverOptions>>(
     verification,
   );
   return { ...base, verification: binding };
+}
+
+/** An issue-only request has no project lease: every member must retain its own authenticated claim. */
+async function approvedIssueOnlyMembers(): Promise<DeliverOptions> {
+  const original = readDeliveryRequest(options.verification.file, options.verification.digest);
+  const request = structuredClone(original);
+  request.operationId = `issue-only-${++operationSequence}`;
+  const identifiers = ['COR-1', 'COR-2'];
+  const claims = await Promise.all(
+    identifiers.map(async (identifier) => {
+      const acquired = await acquireDispatch(verification.state, {
+        resource: `issue:${identifier}`,
+        runId: 'run',
+        ownerId: 'linear:run',
+      });
+      if (!acquired.granted) throw new Error(acquired.reason);
+      return acquired.authority;
+    }),
+  );
+  request.authority = claims[0]!;
+  request.members = identifiers.map((identifier, index) => {
+    const member = structuredClone(original.members[0]!);
+    member.assignment.identity.identifier = identifier;
+    member.assignment.identity.digest = digest(
+      JSON.stringify({
+        ...member.assignment,
+        identity: { ...member.assignment.identity, digest: undefined },
+      }),
+    );
+    member.plan.invalidatedBy.assignment = member.assignment.identity.digest;
+    member.authority = claims[index]!;
+    return member;
+  });
+  const text = JSON.stringify(request);
+  const binding = {
+    ...options.verification,
+    file: join(control, `${request.operationId}.json`),
+    digest: digest(text),
+  };
+  writeFileSync(binding.file, text);
+  await recordMutationIntent(verification.state, request.authority, {
+    operationId: request.operationId,
+    action: 'merge',
+    intentFingerprint: digest(text),
+  });
+  await prepareDeliveryVerification(
+    binding,
+    request.members.map((member) => member.assignment),
+    { route: 'pull-request', action: 'merge' },
+    verification,
+  );
+  return { ...options, project: undefined, verification: binding };
 }
 
 async function initializeCheckout(directory: string): Promise<void> {
@@ -924,6 +980,52 @@ scenarios.describe('run', () => {
   });
 
   scenarios.scenario(
+    'the actual CLI rejects stale and missing issue-only member claims before merging',
+    async () => {
+      const issueOnly = await approvedIssueOnlyMembers();
+      const request = readDeliveryRequest(
+        issueOnly.verification.file,
+        issueOnly.verification.digest,
+      );
+      const stale = request.members[1]?.authority;
+      if (stale === undefined) throw new Error('fixture did not retain the second issue claim');
+      expect(await cancelDispatch(verification.state, stale)).toBe(true);
+      const { partial, record } = seams();
+      options = issueOnly;
+      const issueOnlyArguments = argv(['--json']).filter(
+        (value) => value !== '--project' && value !== 'Widgets',
+      );
+      const staleError = await rejectionOf(run(issueOnlyArguments, partial));
+      expect(String(staleError)).toContain('transitions are revoked');
+      expect(record.merges).toEqual([]);
+
+      const missing = structuredClone(request);
+      missing.operationId = `issue-only-missing-${++operationSequence}`;
+      Reflect.deleteProperty(missing.members[1]!, 'authority');
+      const text = JSON.stringify(missing);
+      const binding = {
+        ...issueOnly.verification,
+        file: join(control, `${missing.operationId}.json`),
+        digest: digest(text),
+      };
+      writeFileSync(binding.file, text);
+      const missingError = await rejectionOf(
+        run(
+          [
+            ...issueOnlyArguments,
+            '--verification-file',
+            binding.file,
+            '--verification-digest',
+            binding.digest,
+          ],
+          seams().partial,
+        ),
+      );
+      expect(String(missingError)).toContain('lacks a member authority');
+    },
+  );
+
+  scenarios.scenario(
     'exits 0 with one JSON object for a merge and 1 naming the failed step otherwise',
     async () => {
       const ok = await run(argv(['--json']), seams().partial);
@@ -965,7 +1067,7 @@ function branchWorld(answers: Record<string, RunnerResult> = {}) {
     [`rev-parse -q --verify ${BASE}:a.ts`]: reply(`${OLD_BLOB}\n`),
     [`log -n 60 --since=2 days ago --format=%H ${BASE} -- a.ts`]: reply(`${EARLIER}\n`),
     [`rev-parse -q --verify ${EARLIER}^:a.ts`]: reply(`${OLDER_BLOB}\n`),
-    [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${TREE}\n`),
+    [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${TREE}\0`),
     [`rev-parse ${BASE}^{tree}`]: reply(`${BASE_TREE}\n`),
     [`commit-tree ${TREE} -p ${BASE} -F ${messageFile}`]: reply(`${SQUASH}\n`),
     [`push origin ${SQUASH}:refs/heads/main`]: reply(),
@@ -1147,10 +1249,11 @@ scenarios.describe('deliver --branch', () => {
     'a conflict with main is refused at conflict, with no commit made',
     async () => {
       const world = branchWorld({
-        [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${TREE}\nCONFLICT\n`, 1),
+        [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${TREE}\0a.ts\0`, 1),
       });
       const { report } = await deliverBranch(world);
       expect(report).toMatchObject({ merged: false, failedStep: 'conflict' });
+      expect(report.detail).toContain('conflicts with origin/main at a.ts');
       expect(world.calls.some((call) => /^(commit-tree|push)/.test(call))).toBe(false);
     },
   );
@@ -1159,7 +1262,7 @@ scenarios.describe('deliver --branch', () => {
     'a branch that changes nothing is refused rather than pushed as an empty commit',
     async () => {
       const world = branchWorld({
-        [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${BASE_TREE}\n`),
+        [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${BASE_TREE}\0`),
       });
       const { report } = await deliverBranch(world);
       expect(report).toMatchObject({ merged: false, failedStep: 'merge' });
@@ -1992,7 +2095,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
     }
   });
 
-  scenarios.scenario('--run and --project are required on the command line', async () => {
+  scenarios.scenario('--run is required on the command line', async () => {
     const argv = [
       '--branch',
       BRANCH,
@@ -2008,7 +2111,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
       'd',
     ];
     expect(await rejectionOf(run(argv, {}))).toBeInstanceOf(UsageError);
-    expect(await rejectionOf(run([...argv, '--run', 'run'], {}))).toBeInstanceOf(UsageError);
+    expect(await rejectionOf(run([...argv, '--run', 'run'], {}))).not.toBeInstanceOf(UsageError);
   });
 });
 

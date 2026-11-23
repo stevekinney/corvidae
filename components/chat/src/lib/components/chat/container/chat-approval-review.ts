@@ -405,6 +405,23 @@ export function findPendingApprovalMessageId(
   return pendingApprovalMessageIds(messages, approvalStates, now)[0];
 }
 
+/**
+ * The approval states with each call in `lapsed` (approvals the host knows no run waits on any
+ * more) read as `unavailable` where Chat holds no state of its own for it, so the approval waits on
+ * nobody. The same map comes back when nothing is lapsed.
+ */
+export function withLapsedApprovals(
+  approvalStates: ReadonlyMap<string, ApprovalState>,
+  lapsed: ReadonlySet<string> | undefined,
+): ReadonlyMap<string, ApprovalState> {
+  if (lapsed === undefined || lapsed.size === 0) return approvalStates;
+  const states = new Map(approvalStates);
+  for (const callId of lapsed) {
+    if (!states.has(callId) || states.get(callId) === 'pending') states.set(callId, 'unavailable');
+  }
+  return states;
+}
+
 /** Message ids of the cards that are waiting for a decision, in transcript order. */
 export function pendingApprovalMessageIds(
   messages: readonly Message[],

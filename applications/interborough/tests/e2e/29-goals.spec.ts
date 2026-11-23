@@ -12,6 +12,7 @@ import type { Page } from '@playwright/test';
 
 import { GOALS_COPY } from '../../src/app/copy/goals.ts';
 import { expect, test } from './fixtures.ts';
+import { pressChord } from './shortcut-support.ts';
 import { bureauCall } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -66,10 +67,11 @@ test('opens from the sidebar and from g then l, and lists the goal in the status
     'Done',
   );
 
-  await page.goto('/chats');
-  await page.getByRole('heading', { level: 1 }).first().waitFor();
-  await page.keyboard.press('g');
-  await page.keyboard.press('l');
+  // The chord is typed at the times a person presses it, so a page still painting cannot spend the
+  // chord window between its two keys (`shortcut-support.ts`).
+  await page.goto('/agents');
+  await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
+  await pressChord(page, 'l');
   await expect(page).toHaveURL(/\/goals$/);
 });
 
@@ -159,6 +161,64 @@ test('opens Edit goal from a goal’s page with its check and limit in the field
 
   await page.getByRole('link', { name: GOALS_COPY.form.cancelAction }).click();
   await expect(page).toHaveURL(/\/goals\/seeded-goal$/);
+});
+
+test.describe('Goal edit actions above the phone tab bar', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375] as const) {
+    test(`Save and Cancel keep their coarse hit areas in the ${width}px goal editor outlet`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      for (const control of ['Save', 'Cancel'] as const) {
+        await page.goto('/goals/seeded-goal/edit');
+        const action = page.getByRole(control === 'Save' ? 'button' : 'link', { name: control });
+        await action.scrollIntoViewIfNeeded();
+        await expect(action).toBeInViewport();
+        const target = await action.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const x = box.left + box.width / 2;
+          const y = box.top + box.height / 2 + 21;
+          const outlet = element.closest('main');
+          if (outlet === null) throw new Error('the goal editor outlet is drawn');
+          return {
+            x,
+            y,
+            faceHeight: box.height,
+            reachesAction: element.contains(document.elementFromPoint(x, y)),
+            remainsInOutlet: y < outlet.getBoundingClientRect().bottom,
+          };
+        });
+        expect(target.faceHeight).toBeLessThanOrEqual(36);
+        expect(target.reachesAction).toBe(true);
+        expect(target.remainsInOutlet).toBe(true);
+
+        await page.touchscreen.tap(target.x, target.y);
+        await expect(page).toHaveURL(/\/goals\/seeded-goal$/);
+      }
+
+      const tab = page.getByRole('navigation', { name: 'Main tabs' }).getByRole('link', {
+        name: 'Home',
+      });
+      await expect(tab).toBeVisible();
+      const tabHit = await tab.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        return {
+          x,
+          y,
+          height: box.height,
+          owned: element.contains(document.elementFromPoint(x, y)),
+        };
+      });
+      expect(tabHit.height).toBeGreaterThanOrEqual(44);
+      expect(tabHit.owned).toBe(true);
+      await page.touchscreen.tap(tabHit.x, tabHit.y);
+      await expect(page).toHaveURL(/\/$/);
+    });
+  }
 });
 
 // A check the Bureau does not have cannot be typed into the picker, so the `Unprocessable` for one

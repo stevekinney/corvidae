@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": false,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": [
+    "*.ts",
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "tests/**/*.ts",
+    "tests/**/*.svelte"
+  ],
+  "exclude": [
+    "node_modules",
+    ".velveteen",
+    "**/.velveteen/**",
+    "tests/reference/upstream",
+    "tests/reference/node_modules",
+    "tests/reference/.svelte-kit",
+    "tests/reference/build",
+    "tests/reference/vite-reference.config.ts",
+    "tests/reference/src",
+    "tests/types/invalid.ts",
+    "tests/types/invalid.svelte"
+  ]
+}

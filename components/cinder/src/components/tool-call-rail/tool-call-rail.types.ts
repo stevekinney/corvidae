@@ -8,7 +8,8 @@ import type { HTMLAttributes } from 'svelte/elements';
  * - `approved`: finished after a person approved it; a green dot, because the approval is what the
  *   row is about ("Approved by you 10:33 AM, $18.50 refunded").
  * - `running`: under way; a spinner in place of the dot and "Running…" in place of a result.
- * - `waiting`: parked on a person's decision; an amber shield and "Waiting on you". It never folds.
+ * - `waiting`: parked on a person's decision; an amber shield and a warning "Waiting on you" Badge
+ *   right after the name. It never folds.
  * - `expired`: an approval deadline passed before a person decided; a neutral clock and "Approval
  *   expired". It never folds and is not a tool failure.
  * - `denied`: a person refused it; a neutral prohibition glyph and neutral words, never red and

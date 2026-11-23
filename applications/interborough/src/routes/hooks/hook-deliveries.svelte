@@ -42,7 +42,7 @@
   } from '../../lib/bureau-hooks.ts';
   import { getBureauReview } from '../../lib/bureau-reviews.ts';
   import { getTask } from '../../lib/bureau-tasks.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
+  import { faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
   import { nextTryWords } from '../../lib/format/next-try.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { workflowTypeName } from '../../lib/workflow-type-name.ts';
@@ -278,7 +278,7 @@
       description={deliveryLogFailure(deliveries.error)}
       headingLevel={3}
       retryLabel={RETRY_LABEL}
-      onRetry={readAgain}
+      {...faultErrorStateAdvice(deliveries.error, readAgain)}
     />
   {:else if deliveries.data === undefined || deliveries.data.length === 0}
     <EmptyState
@@ -342,8 +342,9 @@
                 size="sm"
                 data-changes
                 disabled={retrying.isPending}
-                onclick={() => retrying.mutate(delivery)}>{copy.retryNow}</Button
-              >
+                onclick={() => retrying.mutate(delivery)}
+                label={copy.retryNow}
+              />
             </p>
           {/if}
         </li>

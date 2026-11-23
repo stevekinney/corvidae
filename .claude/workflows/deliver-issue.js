@@ -7,7 +7,8 @@ export const meta = {
 
 // The coordinator runs brief.ts with --json and the pinned repository and base. In
 // args.preparedBriefs[issue], record its process exit as exitCode, its JSON path as
-// briefPath (empty on refusal), and preserve error, needsResolvedRows and owned paths.
+// briefPath (empty on refusal), and copy the matching assignment's identity.base into base.
+// Preserve error, needsResolvedRows and owned paths.
 // Set validated only after checking the result and issue identity. After a design
 // critique, the coordinator can rerun preparation against the validated rows and
 // resume with the resulting brief. An owner-approved override similarly takes a
@@ -22,6 +23,12 @@ export const meta = {
 
 const REPOSITORY = 'stevekinney/corvidae';
 const MAXIMUM_ROUNDS = 2;
+
+function normalizeCommitSha(value) {
+  return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value)
+    ? value.toLowerCase()
+    : undefined;
+}
 
 // What the pre-build design critique returns; scripts/chef/design-rows-resolved.ts defines the
 // file and design-critique.ts validates it before writing, so the schema only shapes the answer.
@@ -97,16 +104,27 @@ const RECORD_SCHEMA = {
   required: ['recorded'],
 };
 
+const FETCH_BASE_SCHEMA = {
+  type: 'object',
+  properties: {
+    exitCode: { type: 'integer' },
+    base: { type: 'string' },
+    error: { type: 'string' },
+  },
+  required: ['exitCode'],
+};
+
 const IMPLEMENT_SCHEMA = {
   type: 'object',
   properties: {
     status: { type: 'string', enum: ['ready-for-review', 'blocked', 'needs-decision'] },
     head: { type: 'string' },
+    startingBase: { type: 'string' },
     branch: { type: 'string' },
     worktree: { type: 'string' },
     report: { type: 'string' },
   },
-  required: ['status', 'head', 'branch', 'worktree', 'report'],
+  required: ['status', 'startingBase', 'head', 'branch', 'worktree', 'report'],
 };
 
 const CHECKS_SCHEMA = {
@@ -371,6 +389,24 @@ function runChecks(issue, worktree, branch, head) {
   );
 }
 
+function fetchDispatchBase(issue) {
+  phase('brief');
+  return agent(
+    [
+      'Read the configured defaultBranch from scripts/chef/repository.json in this checkout.',
+      'Fetch it with `git fetch --no-tags origin "refs/heads/<default>:refs/remotes/origin/<default>"`, substituting that branch name in both places.',
+      'If the fetch succeeds, return exitCode 0 and base from `git rev-parse --verify refs/remotes/origin/<default>`. If either command fails, return its nonzero exitCode and error. Change no files and leave the checkout where it is.',
+    ].join('\n'),
+    {
+      label: `fetch base ${issue}`,
+      phase: 'brief',
+      schema: FETCH_BASE_SCHEMA,
+      model: 'haiku',
+      effort: 'low',
+    },
+  );
+}
+
 function dispatchEvidence(issue, worktree, branch, head) {
   phase('evidence');
   log(`${issue}: dispatching the evidence run for ${head}`);
@@ -583,6 +619,7 @@ function evidenceRequest(issue, run, built, head, evidence, verdict, override, c
     issue,
     run: run === undefined ? null : run,
     repository: REPOSITORY,
+    startingBase: normalizeCommitSha(built.startingBase),
     revision: head,
     branch: built.branch,
     ref: evidence.dispatch.ref,
@@ -667,6 +704,7 @@ async function deliverOne(issue) {
     steps.rebrief = prepared;
   }
   let briefPath = prepared.briefPath.trim();
+  let briefBase = normalizeCommitSha(prepared.base);
   let overridden = null;
   if (prepared.exitCode !== 0) {
     if (override === null) {
@@ -694,10 +732,31 @@ async function deliverOne(issue) {
       return judgment(issue, 'override produced no brief; no worker', steps);
     steps.overrideBrief = written;
     briefPath = written.briefPath;
+    briefBase = normalizeCommitSha(written.base);
     log(`${issue}: brief override recorded: ${override.reason}`);
   } else if (!briefPath.startsWith('/')) {
     return judgment(issue, 'brief exited 0 without an absolute brief path', steps);
   }
+
+  if (briefBase === undefined)
+    return judgment(issue, 'validated brief has no pinned base SHA', steps);
+  const fetched = await fetchDispatchBase(issue);
+  steps.fetchBase = fetched;
+  if (fetched === null || fetched.exitCode !== 0)
+    return judgment(
+      issue,
+      `could not fetch the default branch: ${fetched?.error || 'base fetch failed'}`,
+      steps,
+    );
+  const fetchedBase = normalizeCommitSha(fetched.base);
+  if (fetchedBase === undefined)
+    return judgment(issue, 'fetch of the default branch did not return a commit SHA', steps);
+  if (fetchedBase !== briefBase)
+    return judgment(
+      issue,
+      `validated brief pins ${briefBase}; fetched default branch is ${fetched.base}. Prepare a fresh brief.`,
+      steps,
+    );
 
   const ownedPaths = [
     ...(args && args.paths && Array.isArray(args.paths[issue]) ? args.paths[issue] : []),
@@ -708,7 +767,10 @@ async function deliverOne(issue) {
   phase('implement');
   log(`${issue}: dispatching chef-worker (${chosen.model}: ${chosen.rule}) from ${briefPath}`);
   const built = await agent(
-    `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
+    [
+      `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it differs from ${briefBase}, make no changes and return status blocked, the observed SHA as both startingBase and head, the assigned branch and worktree path, and a report explaining the mismatch.`,
+      `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return startingBase, the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
+    ].join('\n'),
     {
       label: `implement ${issue}`,
       phase: 'implement',
@@ -720,6 +782,17 @@ async function deliverOne(issue) {
   );
   if (built === null) return judgment(issue, 'implementation failed', steps);
   steps.implement = built;
+  if (normalizeCommitSha(built.startingBase) !== briefBase)
+    return judgment(
+      issue,
+      `worktree started at ${built.startingBase}; expected fetched base ${briefBase}`,
+      steps,
+      {
+        head: built.head,
+        branch: built.branch,
+        worktree: built.worktree,
+      },
+    );
   if (built.status !== 'ready-for-review')
     return judgment(issue, `worker returned ${built.status}: ${built.report}`, steps, {
       head: built.head,

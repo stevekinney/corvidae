@@ -408,7 +408,7 @@
     {#if stopped}
       <p class="ib-storage-key__note" data-testid="storage-key-stopped">{copy.valueStopped}</p>
       <div class="ib-storage-key__actions">
-        <Button variant="secondary" onclick={readAgain}>{copy.valueRetry}</Button>
+        <Button variant="secondary" onclick={readAgain} label={copy.valueRetry} />
       </div>
     {:else if valueQuery.isError}
       <Alert variant="danger">
@@ -420,7 +420,7 @@
         </p>
       </Alert>
       <div class="ib-storage-key__actions">
-        <Button variant="secondary" onclick={readAgain}>{copy.valueRetry}</Button>
+        <Button variant="secondary" onclick={readAgain} label={copy.valueRetry} />
       </div>
     {:else if valueQuery.data === null}
       <p class="ib-storage-key__note" data-testid="storage-key-gone">{copy.valueGone}</p>
@@ -464,31 +464,41 @@
       />
       {#if newer !== undefined}
         <!-- The three ways on sit in one row under the editor, as the rewritten frame draws them, not inside the alert. Small buttons keep the row on one line in the detail pane at 1280 pixels. -->
-        <div class="ib-storage-key__actions ib-storage-key__actions--end">
-          <Button size="sm" variant="secondary" onclick={discardEdit}
-            >{copy.rewritten.discard}</Button
-          >
+        <div
+          class="ib-storage-key__actions ib-storage-key__actions--end ib-storage-key__actions--conflict"
+        >
+          <Button
+            size="sm"
+            variant="secondary"
+            onclick={discardEdit}
+            label={copy.rewritten.discard}
+          />
           <Button
             size="sm"
             data-changes
             variant="secondary"
             loading={saveMutation.isPending}
-            onclick={() => (confirmSaveOver = true)}>{copy.rewritten.saveOver}</Button
-          >
-          <Button size="sm" variant="primary" onclick={showNewValue}
-            >{copy.rewritten.showNew}</Button
-          >
+            onclick={() => (confirmSaveOver = true)}
+            label={copy.rewritten.saveOver}
+          />
+          <Button
+            size="sm"
+            variant="primary"
+            onclick={showNewValue}
+            label={copy.rewritten.showNew}
+          />
         </div>
       {:else}
         <div class="ib-storage-key__actions ib-storage-key__actions--end">
-          <Button variant="secondary" onclick={stopEditing}>{copy.cancel}</Button>
+          <Button variant="secondary" onclick={stopEditing} label={copy.cancel} />
           <Button
             data-changes
             variant="primary"
             disabled={draftInvalid || draft === text}
             loading={saveMutation.isPending}
-            onclick={() => (confirmSave = true)}>{copy.save}</Button
-          >
+            onclick={() => (confirmSave = true)}
+            label={copy.save}
+          />
         </div>
       {/if}
     </div>
@@ -587,6 +597,10 @@
 
   .ib-storage-key__actions--end {
     justify-content: flex-end;
+  }
+
+  .ib-storage-key__actions--conflict {
+    column-gap: var(--cinder-space-1);
   }
 
   .ib-storage-key__lock {

@@ -50,11 +50,13 @@ import { AgUiHttpError } from './ag-ui-events.ts';
 import { questionKeyOf } from './answer-rows.ts';
 import {
   carryLiveNotes,
+  FOLLOW_UP_METADATA_KEY,
   holdStopLines,
   withHeldStopLines,
   type HeldStopLine,
 } from './event-notes.ts';
 import {
+  ApprovalNotWaitingError,
   createChatRunWiring,
   withAnnouncements,
   type ApprovalDeadline,
@@ -183,6 +185,23 @@ export class ChatSessionState {
    * again is told again.
    */
   failure = $state<string | undefined>(undefined);
+  /**
+   * Said when a decision was refused because its approval is no longer waiting (COR-2438): one
+   * sentence of its own, in place of whatever failure was showing, while the chat is read again.
+   * Cleared when the next turn begins, when another failure is told, and when it is dismissed.
+   */
+  approvalNotice = $state<string | undefined>(undefined);
+  /**
+   * The calls whose tool approval the run waits on, as the last read of what it waits on said, or
+   * `undefined` before anything was read. A call parked on an approval that is not among them is
+   * waiting on no one: it was decided elsewhere, it expired, or its run stopped (COR-2438).
+   */
+  waitingApprovals = $state.raw<ReadonlySet<string> | undefined>(undefined);
+  /**
+   * The calls a decision was refused for because no approval waits on them, until a read of what
+   * the run waits on lists them again. They offer no decision whatever else the page has read.
+   */
+  refusedApprovals = $state.raw<ReadonlySet<string>>(new Set());
 
   /**
    * Whether the last send failed because the request never got an answer (the network, or a server
@@ -280,6 +299,11 @@ export class ChatSessionState {
   #retryGeneration = 0;
   #retryFailures = 0;
   #attachedRun = false;
+  /** Every transcript replacement, so a delayed read cannot overwrite a newer live snapshot. */
+  #historyGeneration = 0;
+  /** A stale history read waits for the session to become idle, then gets one replacement read. */
+  #historyRepairPending = false;
+  #historyRepairQueued = false;
   /** The schema of each question the page has been shown, by the key its answer's row shares. */
   readonly #questionSchemas = new Map<string, Readonly<Record<string, unknown>>>();
   /**
@@ -341,11 +365,19 @@ export class ChatSessionState {
         this.usage = new Map(this.usage).set(runId, usage);
       },
       onSnapshot: (history) => {
-        if (!this.#abort.signal.aborted) this.restore(history);
+        if (!this.#abort.signal.aborted) this.#restoreKeepingLocalInput(history, true);
       },
       onApprovalDeadlines: (deadlines) => {
         this.#approvalDeadlines = deadlines;
         this.#reconcileApprovalDeadlines();
+      },
+      onWaitingApprovals: (toolCallIds) => {
+        this.waitingApprovals = toolCallIds;
+        if ([...this.refusedApprovals].some((id) => toolCallIds.has(id))) {
+          this.refusedApprovals = new Set(
+            [...this.refusedApprovals].filter((id) => !toolCallIds.has(id)),
+          );
+        }
       },
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
@@ -399,8 +431,10 @@ export class ChatSessionState {
           // turn that reads a run the page joins is nobody's attempt: it is how the page finds out
           // what to say next, and must not wipe what the refusal before it said.
           if (streaming) {
-            this.#turnsBegun += 1;
-            if (!this.attaching) this.failure = undefined;
+            if (!this.attaching) {
+              this.failure = undefined;
+              this.approvalNotice = undefined;
+            }
           }
           // A turn that ended in an error or a stop has no history to carry the assets it
           // announced, so they are put on their rows here, as a completed turn's are.
@@ -413,9 +447,21 @@ export class ChatSessionState {
             this.#stampAnnouncedAssets();
             this.#dropSettledAnswerRows();
             this.#readAgainAfterRefusal();
+            if (this.#historyRepairPending) this.#requestHistoryRepair();
           }
         },
         onError: (error) => {
+          // A decision on an approval nothing waits on any more: one plain sentence replaces the
+          // failure that was showing, and the chat is read again, so the card and the row show
+          // what became of the approval and offer nothing to press (COR-2438).
+          if (error instanceof ApprovalNotWaitingError) {
+            this.failure = undefined;
+            this.approvalNotice = CHAT_COPY.approval.notWaiting;
+            this.refusedApprovals = new Set([...this.refusedApprovals, error.toolCallId]);
+            void this.#readAfterRefusedDecision();
+            return;
+          }
+          this.approvalNotice = undefined;
           if (isNotFound(error)) options.onNotFound?.();
           const failure =
             runFailureMessage(error, { hadAttachments: this.#turnHadAttachments }) ??
@@ -609,6 +655,18 @@ export class ChatSessionState {
     void this.#readAgain();
   }
 
+  /**
+   * After a decision refused because nothing waits on the approval, reads the thread the Bureau
+   * holds and what its run waits on, once the refused decision has let go of the controller.
+   */
+  async #readAfterRefusedDecision(): Promise<void> {
+    await Promise.resolve();
+    if (this.#abort.signal.aborted) return;
+    // Nobody awaits this read (`void`), so a read that fails, or is cut off by leaving the page, is
+    // not an unhandled rejection: the next read of the chat says what became of it.
+    await this.refresh().catch(() => false);
+  }
+
   async #readAgain(): Promise<boolean> {
     const reconnected = await this.attach({ rereading: true });
     this.#dropSettledAnswerRows();
@@ -639,14 +697,21 @@ export class ChatSessionState {
     // A new chat's thread is not kept until its first run begins: there is nothing to read yet.
     if (!this.#opened) return false;
     if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
-    // A turn that began during the read, even one that has ended since (a follow-up promoted from
-    // Up next that stopped on an approval), wrote rows the read cannot hold: restoring it would
-    // drop the person's message from the transcript.
-    const turnsBegun = this.#turnsBegun;
+    const readerGeneration = this.#retryGeneration;
+    const historyToken = this.controller.captureHistoryToken();
+    const historyGeneration = this.#historyGeneration;
     const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
-    if (history === undefined || this.streaming || this.attaching) return false;
-    if (this.#turnsBegun !== turnsBegun) return false;
-    this.restore(history);
+    if (
+      history === undefined ||
+      readerGeneration !== this.#retryGeneration ||
+      this.#abort.signal.aborted
+    )
+      return false;
+    if (this.streaming || this.attaching) {
+      this.#requestHistoryRepair();
+      return false;
+    }
+    if (!this.#restoreHistory(history, historyToken, historyGeneration)) return false;
     await this.attach({ rereading: true });
     // A read that failed has not said what the run waits on, so the caller reads again.
     return !this.#attachFailed;
@@ -698,6 +763,7 @@ export class ChatSessionState {
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;
+    this.approvalNotice = undefined;
   }
 
   /**
@@ -936,6 +1002,8 @@ export class ChatSessionState {
     const readerAbort = new AbortController();
     this.#readerAbort = readerAbort;
     const signal = AbortSignal.any([this.#abort.signal, readerAbort.signal]);
+    const historyToken = this.controller.captureHistoryToken();
+    const historyGeneration = this.#historyGeneration;
     this.attaching = true;
     this.#attachFailed = false;
     try {
@@ -949,10 +1017,12 @@ export class ChatSessionState {
           return false;
         }
         // Nothing is going, so the transcript is what the Bureau holds of the thread.
+        const historyReadToken = this.controller.captureHistoryToken();
+        const historyReadGeneration = this.#historyGeneration;
         const history = await this.#wiring.history(this.sessionId, signal);
         if (generation !== this.#retryGeneration || signal.aborted) return false;
         if (history !== undefined) {
-          this.restore(history);
+          if (!this.#restoreHistory(history, historyReadToken, historyReadGeneration)) return false;
           this.disconnected = false;
         }
         // The Bureau answered: with the thread's rows, or with none for a thread it has no record of.
@@ -961,7 +1031,7 @@ export class ChatSessionState {
         this.#attachedRun = false;
         return false;
       }
-      this.restore(restored);
+      if (!this.#restoreHistory(restored, historyToken, historyGeneration)) return false;
       this.historySettled = true;
       this.readFailed = false;
       // A run was restored, so the Bureau holds the thread.
@@ -984,7 +1054,10 @@ export class ChatSessionState {
       this.#scheduleReconnect(error);
       return false;
     } finally {
-      if (this.#readerAbort === readerAbort) this.attaching = false;
+      if (this.#readerAbort === readerAbort) {
+        this.attaching = false;
+        if (this.#historyRepairPending) this.#requestHistoryRepair();
+      }
     }
   }
 
@@ -1017,7 +1090,97 @@ export class ChatSessionState {
     // What the stream told this page about the run (a wakeup, a child run), and why an earlier
     // attempt stopped, are not in the Bureau's thread, so the rows that are still there keep them.
     this.#setKeepingStopLines(carryLiveNotes(this.conversation, restored));
+    this.#historyGeneration += 1;
     this.#reconcileApprovalDeadlines();
+  }
+
+  /** Keeps local input the server cannot report. A durable row always owns its message data. */
+  #restoreKeepingLocalInput(restored: ConversationHistory, streamingSnapshot: boolean): void {
+    const before = new Map<string | undefined, string[]>();
+    let nextDurableId: string | undefined;
+    const carried = this.conversation.ids.toReversed().flatMap((id) => {
+      const durable = Object.hasOwn(restored.messages, id) ? restored.messages[id] : undefined;
+      if (durable !== undefined) nextDurableId = id;
+
+      const local = this.conversation.messages[id];
+      if (local?.role !== 'user') return [];
+      const followUp = local.metadata[FOLLOW_UP_METADATA_KEY] === true;
+      if (durable === undefined) {
+        if (followUp) {
+          if (!streamingSnapshot) return [];
+        } else {
+          if (local.metadata['_deliveryStatus'] !== 'failed') return [];
+          if (!streamingSnapshot && this.#wiring.holdsAnswerRow(id)) return [];
+        }
+        const ids = before.get(nextDurableId) ?? [];
+        ids.push(id);
+        before.set(nextDurableId, ids);
+        return [[id, local] as const];
+      }
+      if (!streamingSnapshot || !followUp || durable.role !== 'user') return [];
+
+      // A snapshot can carry the row ahead of the input receipt. Keep only the controller's
+      // local queue state until its receipt arrives, alongside the server's text and metadata.
+      const metadata = {
+        ...durable.metadata,
+        [FOLLOW_UP_METADATA_KEY]: true,
+        ...(local.metadata['_deliveryStatus'] === 'sending' ? { _deliveryStatus: 'sending' } : {}),
+      };
+      return [[id, { ...durable, metadata }] as const];
+    });
+    if (carried.length === 0) {
+      this.restore(restored);
+      return;
+    }
+    const restoredIds = restored.ids.flatMap((id) => [...(before.get(id)?.toReversed() ?? []), id]);
+    this.restore({
+      ...restored,
+      ids: [...restoredIds, ...(before.get(undefined)?.toReversed() ?? [])],
+      messages: { ...restored.messages, ...Object.fromEntries(carried) },
+    });
+  }
+
+  /** Restores only a history read that still owns the transcript it began from. */
+  #restoreHistory(
+    restored: ConversationHistory,
+    historyToken: ReturnType<ChatSessionController['captureHistoryToken']>,
+    historyGeneration: number,
+  ): boolean {
+    if (
+      !this.controller.isHistoryTokenCurrent(historyToken) ||
+      this.#historyGeneration !== historyGeneration
+    ) {
+      this.#requestHistoryRepair();
+      return false;
+    }
+    this.#restoreKeepingLocalInput(restored, false);
+    return true;
+  }
+
+  /** Coalesces a repair for a history read that lost its write or live-snapshot fence. */
+  #requestHistoryRepair(): void {
+    if (this.#abort.signal.aborted || !this.#opened) return;
+    this.#historyRepairPending = true;
+    if (this.streaming || this.attaching || this.#historyRepairQueued) return;
+    this.#historyRepairQueued = true;
+    queueMicrotask(() => {
+      if (
+        !this.#historyRepairPending ||
+        this.streaming ||
+        this.attaching ||
+        this.#abort.signal.aborted
+      ) {
+        this.#historyRepairQueued = false;
+        return;
+      }
+      this.#historyRepairPending = false;
+      void this.refresh()
+        .catch(() => undefined)
+        .finally(() => {
+          this.#historyRepairQueued = false;
+          if (this.#historyRepairPending) this.#requestHistoryRepair();
+        });
+    });
   }
 
   /**
@@ -1037,9 +1200,6 @@ export class ChatSessionState {
 
   /** Every line this page was shown of why a run stopped, by its identity, at its row. */
   #stopLines: ReadonlyMap<string, HeldStopLine> = new Map();
-
-  /** How many turns of the controller have begun, so a read can tell that one began while it ran. */
-  #turnsBegun = 0;
 
   /**
    * Shows `next`, with the lines of why an earlier run stopped that it does not give, so the
@@ -1091,7 +1251,7 @@ export class ChatSessionState {
    * because it never read one, the failure says so, and Reconnect shows what is going.
    */
   async #stopWhileReconnecting(): Promise<void> {
-    this.#retryGeneration += 1;
+    const generation = ++this.#retryGeneration;
     this.#readerAbort?.abort();
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;
@@ -1099,7 +1259,7 @@ export class ChatSessionState {
     this.stopping = true;
     try {
       const cancelled = await this.#wiring.cancelDroppedRun();
-      if (this.#abort.signal.aborted) return;
+      if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
       // No run known to cancel (the page never read one before the reads failed) is no stop either.
       if (cancelled !== true) {
         this.failure = CHAT_COPY.stopLine.stopFailed;
@@ -1108,10 +1268,17 @@ export class ChatSessionState {
       }
       this.#attachedRun = false;
       this.failure = undefined;
+      const historyToken = this.controller.captureHistoryToken();
+      const historyGeneration = this.#historyGeneration;
       const history = await this.#wiring
         .history(this.sessionId, this.#abort.signal)
         .catch(() => undefined);
-      if (history !== undefined && !this.#abort.signal.aborted) this.restore(history);
+      if (
+        history !== undefined &&
+        generation === this.#retryGeneration &&
+        !this.#abort.signal.aborted
+      )
+        this.#restoreHistory(history, historyToken, historyGeneration);
     } finally {
       this.stopping = false;
     }

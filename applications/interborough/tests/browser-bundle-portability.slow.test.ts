@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 
-import { assertCleanBuild, browserBuildOptions } from '../scripts/build.ts';
+import { assertCleanBuild, browserBuildOptions } from '../scripts/browser-build.ts';
 
 /** Compile the application for the browser, failing on any error or warning. */
 async function buildBrowserBundle(options: {

@@ -276,6 +276,18 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     ],
     EVERY_SCOPE,
   ),
+  'run.overspending': entry(
+    'run.overspending',
+    'run',
+    'A run cost more than the workspace’s spend threshold (the `runs.spendThresholdUsd` setting), found after one of its steps and recorded on the task (`attention` holds `overspending`, and keeps it after the run settles). It is published once for a run, from the write that recorded it, and the run is never stopped by it. `costUsd` is what the run had cost by then and `thresholdUsd` the threshold in force at that step, in US dollars. `since` is the instant, on the Bureau’s clock, the step found it over.',
+    [
+      ['runId', 'string'],
+      ['since', 'string'],
+      ['costUsd', 'number'],
+      ['thresholdUsd', 'number'],
+    ],
+    EVERY_SCOPE,
+  ),
   'tool.policy-denied': entry(
     'tool.policy-denied',
     'run',

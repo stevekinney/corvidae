@@ -24,6 +24,7 @@
     messagePart,
     approvalLayout = 'decision',
     markdownNode,
+    claimSources,
     quoteSource,
     expanded = false,
     onToggle,
@@ -106,7 +107,7 @@
 -->
 {#snippet renderDefault(part: BodyMessagePart)}
   {#if part.type === 'markdown'}
-    <MarkdownPart {part} {markdownNode} />
+    <MarkdownPart {part} {markdownNode} {claimSources} {labels} />
   {:else if part.type === 'tool-call'}
     <ToolCallPart
       {part}

@@ -12,10 +12,12 @@ Wraps an input, label, and helper or error text into a cohesive accessible field
   let name = $state('');
 </script>
 
-<FormField id="full-name" label="Full name">
+<FormField id="full-name" label="Full name" optional>
   <Input id="full-name" bind:value={name} placeholder="Jane Smith" />
 </FormField>
 ```
+
+Use either `optional` or `required`, never both. When both are supplied, Cinder renders the required marker.
 
 ## Errors, notes and trailing content
 
@@ -37,6 +39,7 @@ An `error` leads with a warning glyph (a triangle) and sits under the control in
 | `labelVisible` | `boolean` | no | `true` | Whether the label is visibly rendered. Set `false` to visually hide it while keeping it associated with the control. |
 | `managed` | { by?: `string`; message?: `string`; reason?: `string` } | no | — | Policy ownership metadata displayed without disabling the control. |
 | `note` | `string` | no | — | Neutral explanation drawn under the helper text and wired into `aria-describedby`, such as why a field is cleared. Not an error and not a warning. |
+| `optional` | `boolean` | no | — | Appends "Optional" to the visible label. Do not combine with `required`; required wins. |
 | `required` | `boolean` | no | — | Renders a visual required marker and exposes `required: true` on the context. |
 | `warning` | `string` | no | — | Advisory for a legal but potentially risky value; does not mark the control invalid. |
 | `children` | `(opaque)` | yes | — | Control(s) rendered inside the field. Not expressible in JSON Schema; see the component types for the signature. |

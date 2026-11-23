@@ -139,6 +139,7 @@ describe('AggregateView', () => {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('Invalid input')).not.toBeNull();
+    expect(await findByText('Couldn’t load the workflow summary')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="invalid"]')).not.toBeNull();
   });
 });

@@ -103,6 +103,8 @@ function serveEcho(
     ownTools?: string[];
     /** What the agent states as its own instructions; `null` for an agent that states none. */
     instructions?: string | null;
+    /** The agent's own model before an override is applied. */
+    model?: string;
     /** The catalog's tool names: bare ones, or the plugin's (`demo:lookup-order`) as the real host lists them. */
     catalogTools?: string[];
     /** While `held` is a promise, an answer of `definitions.get` waits for it: the overrides can land first. */
@@ -143,7 +145,7 @@ function serveEcho(
           codeDefinition: {
             name: 'echo',
             description: 'Repeats the last message it was sent.',
-            model: null,
+            model: (overrides['model'] as string | null) ?? initial.model ?? null,
             models: [],
             tools: (overrides['tools'] as string[] | null) ?? ownTools,
             skills: [],
@@ -305,6 +307,7 @@ describe('the Settings tab of a running plugin’s code agent', () => {
     await waitFor(() => expect(field.value).toBe('Old.'));
     await fireEvent.input(field, { target: { value: '' } });
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '12' } });
+    await fireEvent.blur(await findByLabelText('Step limit'));
     await fireEvent.click(await findByRole('button', { name: copy.settings.save }));
 
     await waitFor(() => expect(updates(stub)).toHaveLength(1));
@@ -346,6 +349,7 @@ describe('the Settings tab of a running plugin’s code agent', () => {
     })) as HTMLTextAreaElement;
     await waitFor(() => expect(again.value).toBe('Repeat the last message.'));
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '12' } });
+    await fireEvent.blur(await findByLabelText('Step limit'));
     await fireEvent.click(await findByRole('button', { name: copy.settings.save }));
 
     await waitFor(() => expect(updates(stub)).toHaveLength(2));
@@ -423,7 +427,7 @@ describe('what a plugin’s code agent states itself that an override would repl
     expect((box as HTMLInputElement).disabled).toBe(false);
     const spend = await findByLabelText('Spend limit per chat');
     await fireEvent.input(spend, { target: { value: '4' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
     await waitFor(() => expect(updates(stub)).toHaveLength(1));
     // A save of the spend limit alone never states the tools, which would rebuild the toolbox.
     expect(Object.keys(sentOverrides(stub))).not.toContain('tools');
@@ -476,7 +480,7 @@ describe('a plugin’s tools, which its agent states by their own names and the 
     expect(sentOverrides(stub, 1)).toEqual({ tools: ['lookup-order', 'issue-refund'] });
     const spend = await findByLabelText('Spend limit per chat');
     await fireEvent.input(spend, { target: { value: '4' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
     await waitFor(() => expect(updates(stub)).toHaveLength(3));
     expect(sentOverrides(stub, 2)).toEqual({
       tools: ['lookup-order', 'issue-refund'],
@@ -492,7 +496,7 @@ describe('a plugin’s tools, which its agent states by their own names and the 
     await findByRole('checkbox', { name: /Allow Issue refund/ });
     const spend = await findByLabelText('Spend limit per chat');
     await fireEvent.input(spend, { target: { value: '4' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
     await waitFor(() => expect(updates(stub)).toHaveLength(1));
     expect(sentOverrides(stub)).toEqual({ limits: { cost: { run: 4, chat: 4 } } });
   });
@@ -627,23 +631,27 @@ describe('Restore on a plugin’s code agent (COR-2229 AC3)', () => {
     });
   });
 
-  test('after a Restore whose overrides were read before the agent was, a form filled again writes only what the person changed', async () => {
+  test('after a Restore whose overrides were read before the agent was, the same Settings tab refills and writes only the edits', async () => {
     landAt('/agents/demo%3Aecho/settings');
     const definitionGate: { held: Promise<void> | null } = { held: null };
     const stub = serveEcho({
-      overrides: { instructions: 'Second.' },
-      // Version 1 changed only the effort, so restoring it takes the instructions override away.
+      overrides: { instructions: 'Second.', model: 'anthropic/claude-sonnet-5-5' },
+      model: 'anthropic/haiku',
+      // Version 1 overrides only the effort, so Restore removes the instructions and model overrides.
       versions: [
         saved(2, 'Second.'),
         { ...saved(1, 'First.'), overrides: { ...NONE, effort: 'high' }, changedKeys: ['effort'] },
       ],
       definitionGate,
     });
-    const { findByRole, findByLabelText, container } = mount();
+    const { findByRole, findByLabelText, getByRole } = mount();
     const field = (await findByRole('textbox', {
       name: copy.settings.instructionsLabel,
     })) as HTMLTextAreaElement;
     await waitFor(() => expect(field.value).toBe('Second.'));
+    await waitFor(() =>
+      expect(getByRole('combobox', { name: /^Model$/ }).textContent).toMatch(/sonnet/i),
+    );
 
     // The definition is read again behind the overrides: the overrides land first.
     let release = (): void => undefined;
@@ -660,26 +668,26 @@ describe('Restore on a plugin’s code agent (COR-2229 AC3)', () => {
     await waitFor(() =>
       expect(stub.callsTo('bureau.agents.overrides.get').length).toBeGreaterThan(1),
     );
-    const reads = stub.callsTo('bureau.agents.definitions.get').length;
-    release();
+    try {
+      await waitFor(() =>
+        expect(getByRole('combobox', { name: /^Effort$/ }).textContent).toMatch(/high/i),
+      );
+      expect(getByRole('textbox', { name: copy.settings.instructionsLabel })).toHaveProperty(
+        'value',
+        'Second.',
+      );
+    } finally {
+      release();
+    }
     await waitFor(() =>
-      expect(stub.callsTo('bureau.agents.definitions.get').length).toBeGreaterThanOrEqual(reads),
+      expect(getByRole('textbox', { name: copy.settings.instructionsLabel })).toHaveProperty(
+        'value',
+        'Repeat the last message.',
+      ),
     );
-    await waitFor(() =>
-      expect(
-        container.querySelector('[data-testid="agent-versions"] [data-revision="3"]'),
-      ).not.toBeNull(),
-    );
-
-    // Another tab and back: Settings is filled again, now with the agent's own instructions.
-    router.navigate('/agents/demo%3Aecho/instructions');
-    await waitFor(() => expect(router.pathname).toBe('/agents/demo%3Aecho/instructions'));
-    router.navigate('/agents/demo%3Aecho/settings');
-    const again = (await findByRole('textbox', {
-      name: copy.settings.instructionsLabel,
-    })) as HTMLTextAreaElement;
-    await waitFor(() => expect(again.value).toBe('Repeat the last message.'));
+    expect(getByRole('combobox', { name: /^Model$/ }).textContent).toMatch(/haiku/i);
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '12' } });
+    await fireEvent.blur(await findByLabelText('Step limit'));
     await fireEvent.click(await findByRole('button', { name: copy.settings.save }));
 
     await waitFor(() => expect(updates(stub)).toHaveLength(1));

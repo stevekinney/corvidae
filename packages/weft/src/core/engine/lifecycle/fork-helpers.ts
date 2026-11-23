@@ -176,9 +176,11 @@ export async function buildForkCatalogEntryCondition(
 /**
  * Build the error a lost `fork()` commit-time CAS race throws (WFT-21,
  * Codex review round 4, P2). A lost race on that commit is ALWAYS the
- * catalog-entry precondition (`forkCatalogEntryCondition`) — the only other
- * possible cause, a deposition, throws `EngineDeposedError` directly inside
- * `commitFencedEngineWrite` before ever reaching this factory — so whenever
+ * catalog-entry precondition (`forkCatalogEntryCondition`) — the other
+ * possible causes never reach this factory: a deposition throws
+ * `EngineDeposedError` inside `commitFencedEngineWrite`, and under
+ * `workflow-lease` a lost claim fold throws `WorkflowClaimUnavailableError`
+ * in `commitForkWrite` (COR-2635) — so whenever
  * `forkCatalogEntryCondition` was non-empty, this throws the SAME typed
  * `WorkflowRevisionUnavailableError('not-installed')` the pre-commit check
  * in `buildForkCatalogEntryCondition()` throws for the identical class of

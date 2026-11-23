@@ -158,6 +158,18 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+    # COR-2592 pilot: a trusted pull-request head and its bound full validation may share shard 1.
+    # GitHub's `queue: max` retains every waiting consumer FIFO; the default single pending slot
+    # would replace a waiting consumer when another eligible job arrives. A caller may still cancel
+    # its deliberately superseded parent: that canceled job produces no result, while every still-
+    # valid matching consumer keeps its place and runs this normal Turbo command after a canceled
+    # producer. Every other event and shard has an isolated group, so this does not serialize
+    # unrelated browser work or manufacture a synthetic result for a consumer.
+    concurrency:
+      group: >-
+        ${{ matrix.shard == 1 && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && format('browser-interborough-{0}-{1}-{2}-{3}', github.event.pull_request.head.sha, github.event.pull_request.base.sha, matrix.shard, 'mcr.microsoft.com/playwright:v1.63.0-jammy') || matrix.shard == 1 && github.event_name == 'workflow_dispatch' && github.event.inputs.verification_request != '' && github.event.inputs.verification_plan != '' && github.event.inputs.verification_base != '' && format('browser-interborough-{0}-{1}-{2}-{3}', github.sha, github.event.inputs.verification_base, matrix.shard, 'mcr.microsoft.com/playwright:v1.63.0-jammy') || format('browser-interborough-isolated-{0}-{1}', github.run_id, matrix.shard) }}
+      cancel-in-progress: false
+      queue: max
     env:
       # The task's hash holds the shard and the image (`//#ci:browser-interborough` in `turbo.json`).
       PLAYWRIGHT_BASE_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
@@ -179,7 +191,8 @@ jobs:
           name: browser-interborough-${{ matrix.shard }}
       # The root script `ci:browser-interborough` runs the gated runner, which picks a free block
       # of ports and never reuses a server; it passes every argument on to `playwright test`.
-      - run: bunx turbo run //#ci:browser-interborough
+      # Stream grouped task output so a job timeout still exposes the active Playwright stage.
+      - run: bunx turbo run //#ci:browser-interborough --log-order=stream
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ failure() }}
         continue-on-error: true

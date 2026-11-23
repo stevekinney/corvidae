@@ -145,6 +145,12 @@ function applyExtendedBulkFilterFields(filter: ListFilter, input: BulkListFilter
   if (input.failureCategory !== undefined) {
     filter.failureCategory = input.failureCategory;
   }
+  if (input.failedStep !== undefined) {
+    filter.failedStep = input.failedStep;
+  }
+  if (input.retrying !== undefined) {
+    filter.retrying = input.retrying;
+  }
 }
 
 function applyBulkTimeRangeFields(filter: ListFilter, input: BulkListFilterInput): void {

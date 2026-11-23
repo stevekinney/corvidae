@@ -328,16 +328,18 @@
                   variant="ghost"
                   size="sm"
                   aria-label={copy.viewLabel(version.revision)}
-                  onclick={() => (viewing = version.revision)}>{copy.viewAction}</Button
-                >
+                  onclick={() => (viewing = version.revision)}
+                  label={copy.viewAction}
+                />
                 <Button
                   data-changes
                   variant="secondary"
                   size="sm"
                   aria-label={copy.restoreLabel(version.revision)}
                   disabled={currentHash === null || restore.isPending}
-                  onclick={() => askRestore(version.revision)}>{copy.restoreAction}</Button
-                >
+                  onclick={() => askRestore(version.revision)}
+                  label={copy.restoreAction}
+                />
               </div>
             {/if}
           </li>
@@ -348,14 +350,16 @@
 </section>
 
 <!-- Restore asks first, naming what it removes (row 38z). -->
-<ConfirmDialog
-  bind:open={restoreOpen}
-  title={restoring === null ? '' : copy.restoreDialog.title(restoring)}
-  description={restoreDescription}
-  confirmLabel={restoring === null ? '' : copy.restoreDialog.confirm(restoring)}
-  busy={restore.isPending}
-  closeOnConfirm={false}
-  onConfirm={() => {
-    if (restoring !== null) restore.mutate(restoring);
-  }}
-/>
+{#if restoring !== null}
+  <ConfirmDialog
+    bind:open={restoreOpen}
+    title={copy.restoreDialog.title(restoring)}
+    description={restoreDescription}
+    confirmLabel={copy.restoreDialog.confirm(restoring)}
+    busy={restore.isPending}
+    closeOnConfirm={false}
+    onConfirm={() => {
+      if (restoring !== null) restore.mutate(restoring);
+    }}
+  />
+{/if}

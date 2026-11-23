@@ -309,8 +309,10 @@ describe('while the plugins load (COR-2513)', () => {
     });
     // The same frame the loaded page draws, holding a list pane and a detail pane.
     expect(placeholder.classList.contains('ib-plugins__frame')).toBe(true);
-    expect(placeholder.querySelector('.cinder-list-detail__list')).not.toBeNull();
-    expect(placeholder.querySelector('.cinder-list-detail__detail')).not.toBeNull();
+    const list = placeholder.querySelector('.cinder-list-detail__list');
+    const detail = placeholder.querySelector('.cinder-list-detail__detail');
+    expect(list).not.toBeNull();
+    expect(detail).not.toBeNull();
     // One card of lines across the page's width is the old placeholder.
     expect(placeholder.querySelector('.cinder-skeleton-card')).toBeNull();
     // Announced once, with the page's loading label, however many rows the placeholder draws. The
@@ -327,6 +329,9 @@ describe('while the plugins load (COR-2513)', () => {
     await loaded(container, 'linear');
     expect(container.querySelector('[data-testid="plugins-loading"]')).toBeNull();
     expect(container.querySelectorAll('.ib-plugins__frame')).toHaveLength(1);
+    expect(container.querySelector('.ib-plugins__frame') === placeholder).toBe(true);
+    expect(container.querySelector('.cinder-list-detail__list') === list).toBe(true);
+    expect(container.querySelector('.cinder-list-detail__detail') === detail).toBe(true);
   });
 });
 

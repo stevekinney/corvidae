@@ -712,6 +712,19 @@ describe('the hook editor', () => {
     expect(chosen.querySelector('code')).toBeNull();
   });
 
+  test('keeps the Check actions in one Cinder FormActions group, Save hook before Send a test event', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });
+
+    const actions = view.getByRole('group', { name: 'Form actions' });
+    expect(actions).toHaveClass('cinder-form-actions');
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.textContent?.trim()),
+    ).toEqual([HOOKS_COPY.editor.check.create, HOOKS_COPY.editor.check.test]);
+  });
+
   test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
     const { view } = open([], { path: '/hooks/new' });
     await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });
@@ -1054,9 +1067,11 @@ describe('the hook editor', () => {
     expect(actions?.querySelectorAll('a')).toHaveLength(1);
     expect(actions?.textContent?.trim()).toBe(HOOKS_COPY.editor.webhook.seePayload);
     // The result sits directly under the buttons, and Save hook is first.
-    const buttons = view.getByRole('button', { name: HOOKS_COPY.editor.check.test }).parentElement;
-    expect(buttons?.firstElementChild?.textContent).toContain(HOOKS_COPY.editor.check.save);
-    expect(buttons?.nextElementSibling).toBe(result);
+    const formActions = view.getByRole('group', { name: 'Form actions' });
+    expect(within(formActions).getAllByRole('button')[0]?.textContent?.trim()).toBe(
+      HOOKS_COPY.editor.check.save,
+    );
+    expect(formActions.nextElementSibling === result).toBe(true);
     await within(deliveries).findByText(HOOKS_COPY.editor.deliveries.testEvent);
     await waitFor(() => expect(deliveries.textContent).toContain('Delivered, 200 OK'));
   });
@@ -1506,8 +1521,8 @@ describe('the steps of a saved hook', () => {
     const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
     const sentence = await view.findByTestId('hook-sentence');
     expect(sentence.textContent).toBe('When a review is waiting, send a webhook to example.com.');
-    const save = view.getByRole('button', { name: HOOKS_COPY.editor.check.save });
-    expect(sentence.nextElementSibling).toBe(save.parentElement);
+    const formActions = view.getByRole('group', { name: 'Form actions' });
+    expect(sentence.nextElementSibling === formActions).toBe(true);
   });
 
   test('on a phone When and Then are one-line summaries that open to their fields', async () => {
@@ -1675,6 +1690,40 @@ describe('while the hook is read', () => {
     expect(view.queryByTestId('hook-header')).toBeNull();
     expect(view.container.querySelector('h2.ib-hook-step__title')).toBeNull();
     expect(view.queryByRole('button', { name: HOOKS_COPY.editor.check.save })).toBeNull();
+  });
+
+  test('retries a failed hook read and restores the editor', async () => {
+    const refuse: Record<string, StubFault> = {
+      'bureau.hooks.get': new StubFault('EngineFailure', 500, 'It broke.'),
+    };
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha', refuse });
+
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.loadFailed });
+    expect(view.getAllByText(HOOKS_COPY.editor.loadFailed)).toHaveLength(1);
+    expect(view.queryByLabelText(HOOKS_COPY.editor.check.nameLabel)).toBeNull();
+
+    const failedReads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+    delete refuse['bureau.hooks.get'];
+    await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
+
+    await view.findByLabelText(HOOKS_COPY.editor.check.nameLabel);
+    expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(failedReads);
+  });
+
+  test('keeps a stale hook header and places its failed refresh below it', async () => {
+    const refuse: Record<string, StubFault> = {};
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha', refuse });
+    await view.findByTestId('hook-header');
+
+    const reads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+    refuse['bureau.hooks.get'] = new StubFault('EngineFailure', 500, 'It broke.');
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(reads));
+    await view.findByRole('heading', { level: 2, name: HOOKS_COPY.editor.loadFailed });
+    expect(view.getByTestId('hook-header')).not.toBeNull();
+    expect(view.getAllByText(HOOKS_COPY.editor.loadFailed)).toHaveLength(1);
   });
 });
 

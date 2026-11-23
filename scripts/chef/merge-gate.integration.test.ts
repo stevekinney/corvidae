@@ -1257,4 +1257,147 @@ scenarios.describe('mergeGate landing evidence', () => {
   );
 });
 
+// The base the verification request names was current when the evidence was taken. When `main`
+// moves after that, a clean merge of the head into the current base lands, the same rule the branch
+// route follows (owner decision, 2026-11-21): the attested base is an ancestor of the current one,
+// the head merged onto it reproduces the attested tree, and the head merges into the current base
+// without a conflict. A conflict is the only refusal, and it names the paths.
+scenarios.describe('a base that moved after the evidence', () => {
+  const NEW_BASE = '1'.repeat(40);
+  const CURRENT_TREE = '8'.repeat(40);
+  const C1 = '2'.repeat(40);
+  const C2 = '3'.repeat(40);
+  const ok = (stdout: string) => ({ code: 0, stdout: `${stdout}\n`, stderr: '' });
+
+  /** `fake()` with `main` at NEW_BASE and the Git reads the moved-base checks make answered. */
+  function movedWorld(spec: {
+    gained?: string[];
+    ancestor?: boolean;
+    /** The paths the head conflicts with the current base at. */
+    conflicts?: string[];
+    /** The tree the head merged onto the attested base gives. */
+    reproduced?: string;
+    /** The tree of the squash commit. */
+    mergedTree?: string;
+  }) {
+    const world = fake({
+      base: NEW_BASE,
+      expectedTree: CURRENT_TREE,
+      ...(spec.mergedTree === undefined ? {} : { mergedTree: spec.mergedTree }),
+    });
+    const runner: Runner = (command, runnerOptions) => {
+      const [program, verb, ...rest] = command;
+      if (program === 'git') {
+        if (verb === 'merge-base' && rest[0] === '--is-ancestor')
+          return { code: spec.ancestor === false ? 1 : 0, stdout: '', stderr: '' };
+        if (verb === 'rev-list') return ok((spec.gained ?? [C1, C2]).join('\n'));
+        if (verb === 'merge-tree' && rest.at(-2) === BASE)
+          // The head merged onto the attested base.
+          return { code: 0, stdout: `${spec.reproduced ?? EXPECTED_TREE}\0`, stderr: '' };
+        if (verb === 'merge-tree' && rest.at(-2) === NEW_BASE) {
+          // The head merged onto the current base: clean, or the conflicting paths.
+          const conflicts = spec.conflicts ?? [];
+          return {
+            code: conflicts.length === 0 ? 0 : 1,
+            stdout: `${[CURRENT_TREE, ...conflicts].join('\0')}\0`,
+            stderr: '',
+          };
+        }
+      }
+      return world.runner(command, runnerOptions);
+    };
+    return { ...world, runner };
+  }
+
+  scenarios.scenario('lands on a clean merge, naming the commits it merged onto', async () => {
+    const world = movedWorld({});
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report).toMatchObject({ failedStep: null, merged: true, treesMatch: true });
+    expect(report.base).toBe(NEW_BASE);
+    expect(report.mergedMainCommits).toEqual([C1, C2]);
+    expect(renderMergeGate(report, false)).toContain(
+      `base moved, landed without a new run: merged onto main commits ${C1.slice(0, 12)}, ${C2.slice(0, 12)}`,
+    );
+    expect(world.posted() && world.merged()).toBe(true);
+    // The receipt keeps the attested identity and names the base and tree that landed.
+    const loaded = loadDeliveryVerification(options.verification, verification);
+    const observed = readExecutionSnapshot(loaded.state).operations[loaded.request.operationId]
+      ?.observed as {
+      base: string;
+      integrationTree: string;
+      landedBase: string;
+      landedTree: string;
+    };
+    expect(observed).toMatchObject({
+      base: BASE,
+      integrationTree: EXPECTED_TREE,
+      landedBase: NEW_BASE,
+      landedTree: CURRENT_TREE,
+    });
+  });
+
+  scenarios.scenario('lands without comparing the commits main gained with a plan', async () => {
+    const world = movedWorld({});
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report).toMatchObject({ failedStep: null, merged: true });
+    // The decision reads no changed-file list and no main run: only the merge, the ancestry and the
+    // commits main gained.
+    const verbs = world.calls.filter((call) => call[0] === 'git').map((call) => call[1]);
+    expect(verbs).not.toContain('diff');
+    expect(verbs).not.toContain('diff-tree');
+    expect(verbs).not.toContain('show');
+    expect(world.calls.some((call) => call[0] === 'gh' && call[1] === 'run')).toBe(false);
+  });
+
+  scenarios.scenario(
+    'refuses a conflict at conflict, naming the paths, before a post',
+    async () => {
+      const world = movedWorld({ conflicts: ['shared.txt', 'src/a.ts'] });
+      const report = await mergeGate(options, { runner: world.runner });
+      expect(report.failedStep).toBe('conflict');
+      expect(report.detail).toContain(
+        'the pull request conflicts with origin/main at shared.txt, src/a.ts',
+      );
+      expect(report.detail).not.toContain('new evidence run');
+      expect(world.posted() || world.merged()).toBe(false);
+    },
+  );
+
+  scenarios.scenario('refuses a base that the attested base is not an ancestor of', async () => {
+    const world = movedWorld({ ancestor: false });
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('verification request has a stale base');
+    expect(report.detail).toContain('is not an ancestor of main');
+    expect(world.posted() || world.merged()).toBe(false);
+  });
+
+  scenarios.scenario('refuses a head that no longer reproduces the attested tree', async () => {
+    const world = movedWorld({ reproduced: '9'.repeat(40) });
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('verification');
+    expect(report.detail).toContain('does not give the attested tree');
+    expect(world.posted() || world.merged()).toBe(false);
+  });
+
+  scenarios.scenario(
+    'a squash commit whose tree is not the clean merge is refused at confirm',
+    async () => {
+      const world = movedWorld({ mergedTree: '7'.repeat(40) });
+      const report = await mergeGate(options, { runner: world.runner });
+      expect(report).toMatchObject({ failedStep: 'confirm', merged: true, treesMatch: false });
+    },
+  );
+
+  scenarios.scenario('an unchanged base asks nothing of the moved-base check', async () => {
+    const world = fake();
+    const report = await mergeGate(options, { runner: world.runner });
+    expect(report).toMatchObject({ failedStep: null, merged: true });
+    expect(report.mergedMainCommits).toBeUndefined();
+    expect(world.calls.some((call) => call[1] === 'rev-list' || call[2] === '--is-ancestor')).toBe(
+      false,
+    );
+  });
+});
+
 await scenarios.settled();

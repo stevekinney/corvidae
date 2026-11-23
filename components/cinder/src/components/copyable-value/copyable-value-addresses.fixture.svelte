@@ -19,6 +19,15 @@
       label="Copy the address"
     />
   </p>
+  <!-- The line Settings › API reference opens with: words, then an address that fits a row. -->
+  <p data-testid="lead">
+    The API is at
+    <CopyableValue
+      data-testid="lead-value"
+      value="http://127.0.0.1:7399/api"
+      label="Copy the address"
+    />
+  </p>
 </div>
 
 <style>

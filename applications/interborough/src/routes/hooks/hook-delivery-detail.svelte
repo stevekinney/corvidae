@@ -90,15 +90,21 @@
       {#if tries.folded !== undefined}
         <p class="ib-hook-delivery__folded">
           <span class="ib-hook-delivery__muted">{tries.folded}</span>
-          <Button variant="ghost" size="sm" onclick={() => (showAllTries = true)}
-            >{copy.showAll}</Button
-          >
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => (showAllTries = true)}
+            label={copy.showAll}
+          />
         </p>
       {:else if showAllTries && delivery.attempts.length > ATTEMPTS_SHOWN}
         <p class="ib-hook-delivery__folded">
-          <Button variant="ghost" size="sm" onclick={() => (showAllTries = false)}
-            >{copy.showFewer}</Button
-          >
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => (showAllTries = false)}
+            label={copy.showFewer}
+          />
         </p>
       {/if}
     </section>

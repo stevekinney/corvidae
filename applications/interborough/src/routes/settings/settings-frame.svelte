@@ -31,6 +31,7 @@
     type SettingsSchema,
     type SettingsSnapshot,
   } from '../../lib/bureau-settings.ts';
+  import { faultAdvisingRetry, faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import SettingsSectionNav from './settings-section-nav.svelte';
   import { SettingsFollower } from './settings-follower.ts';
@@ -202,14 +203,17 @@
           description={VIEW_COPY.settings.error.description}
           headingLevel={2}
           retryLabel={RETRY_LABEL}
-          onRetry={tryAgain}
+          {...faultErrorStateAdvice(faultAdvisingRetry([schema.error, snapshot.error]), tryAgain)}
         />
       {:else if phase === 'canceled'}
         <div data-testid="settings-canceled">
           <p class="weft-settings__alert-body">{SETTINGS_COPY.general.loading.canceled}</p>
-          <Button variant="secondary" size="sm" onclick={tryAgain}
-            >{SETTINGS_COPY.general.loading.tryAgain}</Button
-          >
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={tryAgain}
+            label={SETTINGS_COPY.general.loading.tryAgain}
+          />
         </div>
       {:else if phase === 'loading'}
         <!-- The navigation and heading are real; the rows are placeholders after 300 ms, then say it is slow (row 14l). -->

@@ -18,12 +18,10 @@
   padding-block-start: 0;
 }
 
-/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+/* ListDetail scrolls each pane inside this height. Its divider separates the panes. */
 .ib-capabilities__frame {
   block-size: max(28rem, calc(100dvh - 18rem));
   min-inline-size: 0;
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
   overflow: hidden;
 }
 
@@ -142,6 +140,7 @@
   flex-direction: column;
   gap: var(--cinder-space-4);
   min-width: 0;
+  max-inline-size: var(--cinder-content-width-reading);
 }
 
 .ib-capability__name {
@@ -204,6 +203,7 @@
 
 .ib-capability__prose {
   margin: 0;
+  max-inline-size: var(--cinder-content-width-prose);
   white-space: pre-wrap;
 }
 

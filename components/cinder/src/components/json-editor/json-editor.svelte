@@ -26,6 +26,7 @@
     rows = 8,
     validFeedbackVisible = true,
     statusLabel,
+    invalidStatusLabel,
     diagnostics,
     example = '{ "key": "value" }',
     schema,
@@ -182,7 +183,7 @@
       if (parseProblem) {
         return {
           tone: 'danger',
-          text: `Line ${parseProblem.line}: ${parseProblem.summary}`,
+          text: invalidStatusLabel ?? `Line ${parseProblem.line}: ${parseProblem.summary}`,
           line: parseProblem.line,
         };
       }

@@ -136,6 +136,16 @@ describe('wrapMeta on a phone', () => {
     expect(inlineRules).toMatch(/__description\) \{\s*display: inline;/);
   });
 
+  test('a single action in its own narrow row lets inline status and meta span the real tracks', () => {
+    const singleActionRules = stylesheet.slice(
+      stylesheet.indexOf('The ordinary inline-status form stops before a trailing column'),
+    );
+    expect(singleActionRules).toMatch(
+      /--single-action:not\([\s\S]*?\)\.cinder-stacked-list-item--status-inline\s+\.cinder-stacked-list-item__line-two\s*\{[^}]*grid-column:\s*status \/ -1;/,
+    );
+    expect(singleActionRules).not.toContain('trailing-start');
+  });
+
   test('a row without wrapMeta draws no inline status, even on a phone', () => {
     const { container } = render(StatusListFixture, {
       props: {

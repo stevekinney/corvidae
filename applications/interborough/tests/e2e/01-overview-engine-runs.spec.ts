@@ -38,7 +38,7 @@ for (const viewport of VIEWPORTS) {
     const counted = Number(await failed.locator('.cinder-statistic__value').textContent());
 
     await page.goto(failedListAddress(Date.now()));
-    await expect(page.getByRole('heading', { level: 1, name: 'Workflow runs' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Workflow runs' })).toBeVisible();
     // Across types: a count spans every workflow type the engine holds.
     await expect(page.getByRole('row', { name: /payment-failing/ }).first()).toBeVisible();
     // The list is the set the count named.

@@ -74,7 +74,7 @@ function hashOf(harness: WorkflowToolsHarness, id: string): string {
 
 /** The workflow tools in an offered set: Bureau's own `requestHumanInput` rides beside them. */
 function workflowToolsOf(offered: readonly string[] | undefined): string[] {
-  return (offered ?? []).filter((name) => name.startsWith('workflows-'));
+  return (offered ?? []).filter((name) => WORKFLOW_TOOL_NAMES.some((tool) => tool === name));
 }
 
 describe('which agents are offered the tools', () => {

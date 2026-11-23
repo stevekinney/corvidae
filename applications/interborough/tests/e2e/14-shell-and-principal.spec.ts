@@ -13,6 +13,7 @@ import { ROUTE_LOAD_FAILURE_COPY } from '../../src/app/copy/views.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { chordKeyboard, type ChordKeyboard } from './shortcut-support.ts';
 
 const WIDTHS = [
   { name: '375', width: 375, height: 812 },
@@ -275,18 +276,33 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
   await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Aecho$/);
 });
 
-test('g then a letter opens a view', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
-  await page.keyboard.press('g');
-  await page.keyboard.press('a');
-  await expect(page).toHaveURL(/\/agents$/);
-  await page.keyboard.press('g');
-  await page.keyboard.press('c');
-  await expect(page).toHaveURL(/\/chats$/);
-  await page.keyboard.press('g');
-  await page.keyboard.press('h');
-  await expect(page).toHaveURL(/\/$/);
+test('g then a letter opens a view', async ({ page, request }) => {
+  const chat = newThreadId('shell-shortcut');
+  const message = 'Echo this message from the shortcut test';
+  let keyboard: ChordKeyboard | undefined;
+  try {
+    await runToEnd(request, 'demo:echo', chat, message);
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
+    // The chords are typed at the times a person presses them, so painting the chat cannot spend
+    // the chord window between the two keys (`shortcut-support.ts`).
+    keyboard = await chordKeyboard(page);
+    await keyboard.press('a');
+    await expect(page).toHaveURL(/\/agents$/);
+    await keyboard.press('c');
+    const chatUrl = new URL(`/chats/${encodeURIComponent(chat)}`, page.url()).href;
+    await expect(page).toHaveURL(chatUrl);
+    await expect(
+      page.getByRole('log', { name: 'Messages' }).getByText(message).first(),
+    ).toBeVisible();
+
+    await keyboard.press('h', 1235);
+    expect(page.url()).toBe(chatUrl);
+    await keyboard.press('h');
+    await expect(page).toHaveURL(/\/$/);
+  } finally {
+    await Promise.all([keyboard?.detach(), deleteChats([chat])]);
+  }
 });
 
 test('Health carries a dot, and the words of what it says are in the link’s name', async ({
@@ -430,19 +446,22 @@ test('a tab left open past the old idle timeout keeps its event feed, and logs n
 });
 
 test.describe('a tab opened before the host was rebuilt', () => {
+  // The alert log appends Chromium’s line number to the same asset URL.
+  const agentListChunk = /\/assets\/agent-list-[^/]+\.js(?=$|:\d+\))/;
+
   test('reloads once when a route’s chunk is gone, and shows the route', async ({
     page,
     pageErrors,
   }) => {
     pageErrors.expect({
-      pattern: loggedFailedResponse(404, /\/assets\/.*\.js/),
+      pattern: loggedFailedResponse(404, agentListChunk),
       reason: 'the test removes a route’s chunk, as a rebuild does',
     });
     await page.goto('/chats');
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
     let removed = false;
-    await page.route('**/assets/*.js', async (route) => {
+    await page.route(agentListChunk, async (route) => {
       if (removed) {
         await route.fallback();
         return;
@@ -465,24 +484,14 @@ test.describe('a tab opened before the host was rebuilt', () => {
     pageErrors,
   }) => {
     pageErrors.expect({
-      pattern: loggedFailedResponse(404, /\/assets\/.*\.js/),
+      pattern: loggedFailedResponse(404, agentListChunk),
       reason: 'the test removes a route’s chunk for good',
       count: 2,
     });
     await page.goto('/chats');
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
-    // The first chunk the Agents route asks for goes missing, and stays missing after the reload.
-    let missing: string | undefined;
-    await page.route('**/assets/*.js', async (route) => {
-      const url = route.request().url();
-      missing ??= url;
-      if (url === missing) {
-        await route.fulfill({ status: 404, body: 'gone' });
-        return;
-      }
-      await route.fallback();
-    });
+    await page.route(agentListChunk, (route) => route.fulfill({ status: 404, body: 'gone' }));
     let loads = 0;
     page.on('load', () => (loads += 1));
 

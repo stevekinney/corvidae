@@ -53,7 +53,12 @@ for (const width of WIDTHS) {
       await expect(page.getByTestId('run-step-failure')).toContainText(
         'Step 2, Collect merged changes, failed',
       );
-      await expect(page.getByTestId('run-step-failure')).toContainText('Why it failed');
+      // Why it failed is the Bureau's explanation (COR-2533): its sentence leads, and what to do
+      // next follows. The page words neither.
+      await expect(
+        page.getByTestId('run-step-failure').locator('[data-explanation="summary"]'),
+      ).toContainText(/failed (because|for) /);
+      await expect(page.getByTestId('run-step-failure')).toContainText('What to do next');
       // The words on which version each button runs on are the header's caption, under the
       // buttons, and the title keeps its line (54z).
       const beside = page.locator('[data-run-beside]');

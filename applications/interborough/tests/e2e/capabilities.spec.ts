@@ -13,6 +13,8 @@ import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { readCatalog } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
+import { touchHeight } from './hit-area.ts';
+import { pressChord } from './shortcut-support.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -191,7 +193,7 @@ test.describe('the Skills tab', () => {
     );
     await page.getByRole('tab', { name: copy.tabs.tools }).click();
     await expect(page.getByTestId('tools-panel')).toBeVisible();
-    await expect(page).toHaveURL(/\/capabilities$/);
+    await expect(page).toHaveURL(/\/capabilities(\?tool=[^&]+)?$/);
   });
 });
 
@@ -199,9 +201,8 @@ test('G P opens the page, and the sidebar marks it current', async ({ page }) =>
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/agents');
   await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible();
-  await page.keyboard.press('g');
-  await page.keyboard.press('p');
-  await expect(page).toHaveURL(/\/capabilities$/);
+  await pressChord(page, 'p');
+  await expect(page).toHaveURL(/\/capabilities(\?tool=[^&]+)?$/);
   await expect(
     page
       .getByRole('navigation', { name: 'Views' })
@@ -213,6 +214,54 @@ test('G P opens the page, and the sidebar marks it current', async ({ page }) =>
 test.describe('the Connect tools page', () => {
   const connect = copy.source.connect;
   const form = (page: Page) => page.getByTestId('connect-form');
+
+  test.describe('source and OpenAPI document choices on touch', () => {
+    test.use({ hasTouch: true });
+
+    for (const width of [320, 375] as const) {
+      test(`keeps card and segmented choices reachable at ${width} pixels (rows 33e, 33s)`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto('/capabilities/connect');
+
+        const connectForm = form(page);
+        const sourceChoices = connectForm.locator('#connect-kind [role="radio"]');
+        await expect(sourceChoices).toHaveCount(2);
+        for (const card of await sourceChoices.all())
+          expect(await touchHeight(card)).toBeGreaterThanOrEqual(44);
+        // SegmentedControl leaves room for its focus ring beyond the form's inline edge.
+        // The outlet is the surface people can scroll, and it must still fit the screen.
+        const outlet = page.locator('main.weft-shell-outlet');
+        const outletFits = () =>
+          outlet.evaluate((element) => element.scrollWidth <= element.clientWidth);
+        expect(await outletFits()).toBe(true);
+
+        await sourceChoices.filter({ hasText: connect.kind.openapi }).tap();
+        await expect(sourceChoices.filter({ hasText: connect.kind.openapi })).toHaveAttribute(
+          'aria-checked',
+          'true',
+        );
+
+        const documentChoices = connectForm.locator('#connect-specification [role="radio"]');
+        await expect(documentChoices).toHaveCount(2);
+        for (const segment of await documentChoices.all())
+          expect(await touchHeight(segment)).toBeGreaterThanOrEqual(44);
+        await documentChoices.filter({ hasText: connect.specification.file }).tap();
+        await expect(connectForm.locator('#connect-file')).toBeVisible();
+        expect(await outletFits()).toBe(true);
+        if (width === 375) {
+          await captureForDesignReview(page, {
+            route: '/capabilities/connect',
+            state: 'OpenAPI file choice',
+            source: 'capabilities.spec.ts',
+          });
+        }
+        await documentChoices.filter({ hasText: connect.specification.url }).tap();
+        await expect(connectForm.locator('#connect-specification-address')).toBeVisible();
+      });
+    }
+  });
 
   for (const width of WIDTHS) {
     test(`is a page in the reading column under Capabilities, at ${width} pixels`, async ({
@@ -260,8 +309,8 @@ test.describe('the Connect tools page', () => {
 
   /** Chooses an OpenAPI spec file holding `text`, which the host reads before anything is saved. */
   async function uploadSpec(page: Page, name: string, text: string): Promise<void> {
-    await form(page).getByRole('radio', { name: connect.kind.openapi }).check();
-    await form(page).getByRole('radio', { name: connect.specification.file }).check();
+    await form(page).getByRole('radio', { name: connect.kind.openapi }).click();
+    await form(page).getByRole('radio', { name: connect.specification.file }).click();
     await form(page)
       .locator('#connect-file')
       .setInputFiles({ name, mimeType: 'application/yaml', buffer: Buffer.from(text) });
@@ -364,7 +413,7 @@ test.describe('the Connect tools page', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/capabilities/connect');
     await form(page).getByRole('button', { name: connect.actions.cancel, exact: true }).click();
-    await expect(page).toHaveURL(/\/capabilities\?tab=sources$/);
+    await expect(page).toHaveURL(/\/capabilities\?tab=sources(&source=[^&]+)?$/);
 
     await page.goto('/capabilities/connect');
     await form(page).getByLabel(connect.name.label, { exact: true }).fill('GitHub');

@@ -47,21 +47,18 @@
     Skeleton,
     StackedListItem,
     StatusDot,
+    type ListDetailSelectionChange,
   } from '@lostgradient/cinder';
-  import {
-    Archive,
-    ChevronLeft,
-    ChevronRight,
-    MessageSquare,
-    MessageSquarePlus,
-    Plus,
-  } from '@lucide/svelte';
+  import { Archive, ChevronLeft, ChevronRight, MessageSquare, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
+  import { useChatReadiness } from '../../app/chat-readiness.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { CHAT_READINESS_PATHS } from '../../app/first-run.ts';
   import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getContext, listAgents, listContexts } from '../../lib/bureau-client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
@@ -106,8 +103,11 @@
     router.current.route?.pattern === '/chats/new' ? crypto.randomUUID() : null,
   );
   const isNew = $derived(router.current.route?.pattern === '/chats/new');
+  // The outlet can still hold Chat for a tick after navigation leaves it.
+  const onChats = $derived(router.current.route?.pattern.startsWith('/chats') === true);
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
+  let automaticallyOpened = $state<string | null>(null);
   // The chats that are not archived. The archived ones are their own list, read only while their
   // view is shown, so a chat put away leaves All, Waiting on you and Done.
   const sessions = createInfiniteQuery(
@@ -203,12 +203,14 @@
   const phone = new MediaQuery('(max-width: 639.98px)', false);
 
   const questions = $derived(pendingQuestions(reviews.data ?? []));
+  // The chats a pending review waits on: Waiting on you, as the chat's own page says it (COR-2438).
+  const waitingChats = $derived(new Set(waitingChatIds(reviews.data ?? [])));
   const failedChats = $derived(chatsWithFailedRun(tasks.data?.tasks ?? []));
   /** The open chat as a row, when it is on no loaded page: an old chat, or an archived one. */
   const openChatRow = $derived(
     open.data === undefined || openIsListed
       ? undefined
-      : sessionRow(open.data, questions, failedChats),
+      : sessionRow(open.data, questions, failedChats, waitingChats),
   );
   /**
    * Every chat the list holds that is not archived, whatever the search and the segments leave. An
@@ -224,7 +226,7 @@
         ],
         (contexts) => contexts,
         (context) => context.id,
-      ).map((context) => sessionRow(context, questions, failedChats)),
+      ).map((context) => sessionRow(context, questions, failedChats, waitingChats)),
     ),
   );
   const agentName = (row: SessionRow): string => agentLabel(row.agentName, catalog.data);
@@ -234,24 +236,21 @@
   const wide = $derived(paneWidth >= WIDE_PANE_WIDTH);
   // The segments need room for their three labels on one line. In a pane dragged narrower than
   // that, as the long turn's frame draws it (row 21p), they give way to the search, and what was
-  // chosen narrows nothing, like on a phone. An unmeasured pane shows them.
+  // chosen narrows nothing. An unmeasured pane shows them.
   const segmentsFit = $derived(paneWidth === 0 || paneWidth >= SEGMENTS_MINIMUM_WIDTH);
 
-  // A phone's list is a screen of its own with no search or segments (row 06l), so what was typed
-  // or chosen on a wider screen narrows nothing there, and comes back when the screen is wide again.
   let typed = $state('');
   let chosen = $state<ChatSegment>('all');
-  const search = $derived(phone.current ? '' : typed);
   /**
    * The archived chats are a view of the list of their own (COR-2285 V5), named in the address
    * (`?view=archived`), so it can be reloaded, opened in another tab, and kept while one of its chats
    * is opened. The status segments are not drawn there: they count the chats that are not archived.
-   * The search narrows what is shown, so in this view it searches the archived chats.
+   * Desktop search narrows the archived chats. On a phone search and status apply to active chats.
    */
   const showingArchived = $derived(router.current.search.get(VIEW_PARAMETER) === ARCHIVED_VIEW);
-  const segment = $derived<ChatSegment>(
-    phone.current || !segmentsFit || showingArchived ? 'all' : chosen,
-  );
+  const searchAvailable = $derived(!phone.current || !showingArchived);
+  const search = $derived(searchAvailable ? typed : '');
+  const segment = $derived<ChatSegment>(!segmentsFit || showingArchived ? 'all' : chosen);
   // Whether any chat is archived, for the Archived chats row at the end of the list: one chat is
   // asked for, and the archived list itself is read only when it is shown.
   const anyArchived = createQuery(
@@ -286,7 +285,7 @@
         archived.data?.pages,
         (page) => page.contexts,
         (context) => context.id,
-      ).map((context) => sessionRow(context, questions, failedChats)),
+      ).map((context) => sessionRow(context, questions, failedChats, waitingChats)),
     ),
   );
   /** The list the view reads: the archived chats, or the rest. */
@@ -301,11 +300,15 @@
   );
   const searching = $derived(search.trim() !== '');
 
-  // The open chat always has a row to open it in, so its pane is shown even when the Bureau has not
-  // (yet) said anything about it, or a search leaves it out of the list: the pane reports a chat
-  // that cannot be read in its own words.
+  // Automatic selection follows the filter. A directly opened chat, or one that just moved
+  // between the regular and archived lists, keeps its pane so the person can finish reading it.
+  const automaticChatInList = $derived(
+    openId !== null &&
+      openId === automaticallyOpened &&
+      (showingArchived ? archivedRows : allRows).some((row) => row.id === openId),
+  );
   const items = $derived<SessionRow[]>(
-    openId === null || visible.some((row) => row.id === openId)
+    openId === null || automaticChatInList || visible.some((row) => row.id === openId)
       ? visible
       : [
           allRows.find((row) => row.id === openId) ??
@@ -331,7 +334,15 @@
     if (!showingArchived && allRows.length === 0) return hasArchived ? 'all-archived' : 'first-use';
     return searching ? 'no-match' : 'none';
   });
-  const noChats = $derived(sessions.data !== undefined && allRows.length === 0);
+  // With no chat at all (none archived either) and none open there is no list pane: one empty state
+  // fills the page, and what it offers follows whether a chat can work yet (COR-2438).
+  const readiness = useChatReadiness();
+  // Only once the archived read has answered: a person whose chats are all archived has a list.
+  const firstUse = $derived(
+    listState === 'first-use' &&
+      openId === null &&
+      (anyArchived.data !== undefined || anyArchived.isError),
+  );
 
   function clearFilters(): void {
     typed = '';
@@ -341,12 +352,17 @@
   // The list pane, where the focus is put after a change of view.
   let listPane = $state<HTMLElement | undefined>();
 
-  function openNewChat(event: MouseEvent): void {
+  /** Opens a page of the application without leaving it, as a plain click on its link. */
+  function openPath(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }
     event.preventDefault();
-    router.navigate('/chats/new');
+    router.navigate(path);
+  }
+
+  function openNewChat(event: MouseEvent): void {
+    openPath(event, '/chats/new');
   }
 
   /** The query that keeps the view: the archived chats', or none. */
@@ -359,13 +375,15 @@
     return chatSessionPath(id, viewSearch(showingArchived));
   }
 
-  /** This address in the archived view, or out of it: the open chat stays open. */
+  /** Keep an explicitly chosen chat across views. An automatic selection belongs to its list. */
   function viewPath(archivedView: boolean): string {
     const parameters = new URLSearchParams(router.current.search);
     if (archivedView) parameters.set(VIEW_PARAMETER, ARCHIVED_VIEW);
     else parameters.delete(VIEW_PARAMETER);
     const query = parameters.toString();
-    return query === '' ? router.pathname : `${router.pathname}?${query}`;
+    const pathname =
+      automaticallyOpened !== null && automaticallyOpened === openId ? '/chats' : router.pathname;
+    return query === '' ? pathname : `${pathname}?${query}`;
   }
 
   /**
@@ -379,7 +397,9 @@
     }
     event.preventDefault();
     typed = '';
-    router.navigate(viewPath(archivedView));
+    const destination = viewPath(archivedView);
+    automaticallyOpened = null;
+    router.navigate(destination, { keep: true });
     await tick();
     const target = archivedView
       ? listPane?.querySelector<HTMLElement>('[data-chats-view-back]')
@@ -387,15 +407,18 @@
     target?.focus();
   }
 
-  /** Opens the chosen row's chat, or the list alone when Back clears the choice. */
-  function openChat(key: string | null): void {
+  /** Automatic selection keeps the current view and history entry. */
+  function openChat(key: string | null, change?: ListDetailSelectionChange): void {
     if (key === openId) return;
+    const automatic = change?.automatic === true;
+    automaticallyOpened = automatic ? key : null;
+    const options = automatic ? { replace: true, keep: true } : {};
     if (key !== null) {
-      router.navigate(chatPath(key));
+      router.navigate(chatPath(key), options);
       return;
     }
     const query = viewSearch(showingArchived).toString();
-    router.navigate(query === '' ? '/chats' : `/chats?${query}`);
+    router.navigate(query === '' ? '/chats' : `/chats?${query}`, options);
   }
 
   /**
@@ -430,13 +453,24 @@
   </Button>
 {/snippet}
 
-{#snippet firstUse(headingLevel: 2 | 3)}
+{#snippet firstUseState(headingLevel: 2 | 3)}
+  {@const ready = readiness()}
+  {@const missing = ready === undefined || ready === 'ready' ? undefined : ready}
+  {@const destination = missing === undefined ? '/chats/new' : CHAT_READINESS_PATHS[missing]}
   <ListPageEmpty
     view="chat"
-    title={CHAT_COPY.list.emptyTitle}
-    description={CHAT_COPY.list.emptyDescription}
+    title={missing === undefined ? CHAT_COPY.list.emptyTitle : CHAT_COPY.readiness[missing].title}
+    description={missing === undefined
+      ? CHAT_COPY.list.emptyDescription
+      : CHAT_COPY.readiness[missing].description}
     {headingLevel}
-    create={{ label: CHAT_COPY.newChat, href: router.href('/chats/new'), onclick: openNewChat }}
+    create={ready === undefined
+      ? undefined
+      : {
+          label: missing === undefined ? CHAT_COPY.newChat : CHAT_COPY.readiness[missing].action,
+          href: router.href(destination),
+          onclick: (event: MouseEvent) => openPath(event, destination),
+        }}
   />
 {/snippet}
 
@@ -461,7 +495,8 @@
       items={visible}
       key={(row: SessionRow) => row.id}
       aria-label={CHAT_COPY.sessionsTitle}
-      groupBy={(row: SessionRow) => chatDayGroup(row, clock(), zone, wide, phone.current)}
+      groupBy={(row: SessionRow) =>
+        chatDayGroup(row, clock(), zone, wide, phone.current, row.id === visible[0]?.id)}
     >
       {#snippet children(row: SessionRow)}
         {@const agent = agentName(row)}
@@ -505,10 +540,13 @@
       headingLevel={3}
       title={CHAT_COPY.list.failedTitle}
       description={CHAT_COPY.list.failedDescription}
-      onRetry={() => void shownList.refetch()}
+      {...faultErrorStateAdvice(shownList.error, () => void shownList.refetch())}
     />
+  {:else if listState === 'first-use' && isNew}
+    <!-- The first chat is being started beside it: the new chat's pane is the one thing to say
+         (its greeting, or why a chat cannot work yet), never a second empty state here (COR-2438). -->
   {:else if listState === 'first-use'}
-    {@render firstUse(3)}
+    {@render firstUseState(3)}
   {:else if listState === 'all-archived'}
     {@const empty = CHAT_COPY.list.allArchived}
     <EmptyState
@@ -524,9 +562,8 @@
           href={router.href('/chats/new')}
           variant="secondary"
           onclick={openNewChat}
-        >
-          {CHAT_COPY.newChat}
-        </Button>
+          label={CHAT_COPY.newChat}
+        />
       {/snippet}
     </EmptyState>
   {:else if listState === 'no-match'}
@@ -537,9 +574,7 @@
       description={CHAT_COPY.list.noMatchDescription}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.clearSearch}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.clearSearch} />
       {/snippet}
     </EmptyState>
   {:else if showingArchived}
@@ -569,9 +604,7 @@
       description={empty.description}
     >
       {#snippet action()}
-        <Button variant="secondary" onclick={clearFilters}>
-          {CHAT_COPY.list.showAll}
-        </Button>
+        <Button variant="secondary" onclick={clearFilters} label={CHAT_COPY.list.showAll} />
       {/snippet}
     </EmptyState>
   {/if}
@@ -610,20 +643,14 @@
   {/if}
 {/snippet}
 
-<!-- On a phone the top bar's "‹ Chat" is the way back to the list (design rows 04y, 06m), so the pane
-     draws no second Back of its own; between 640px and the width a pane stacks at, it still does. -->
-{#if listState === 'first-use' && openId === null}
-  <section class="ib-records" aria-label={CHAT_COPY.sessionsTitle} data-chat-first-use>
+<!-- On a phone the top bar's Chat link is the way back to the list. -->
+{#if firstUse}
+  <section class="ib-records" data-chat-first-use data-testid="chats-first-use">
     <PageHeader
       title={phone.current ? CHAT_COPY.sessionsTitlePhone : CHAT_COPY.sessionsTitle}
       description={CHAT_COPY.list.description}
-      createAction={{
-        label: CHAT_COPY.newChat,
-        href: router.href('/chats/new'),
-        onclick: openNewChat,
-      }}
     />
-    {@render firstUse(2)}
+    {@render firstUseState(2)}
   </section>
 {:else}
   <div class="ib-chats" data-shortcut-region="list-detail" bind:this={listPane}>
@@ -634,6 +661,7 @@
       detailLabel={CHAT_COPY.list.detailLabel}
       selectedKey={openId}
       onSelectedKeyChange={openChat}
+      openFirst={onChats && !isNew}
       selectionParameter={null}
       storageKey="interborough-chats"
       listCollapsible
@@ -645,7 +673,7 @@
     >
       {#snippet header()}
         <!-- The header's rows are ListDetail's own column (the title row, then the search and the
-           status segments), so it starts the first row after its list toggle. -->
+           status segments), each starting on one edge: the list toggle is a handle on the divider. -->
         {#if showingArchived}
           <!-- The archived view's way back to the chats, above its title. Its label says where it
                goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
@@ -672,14 +700,15 @@
                 : CHAT_COPY.sessionsTitle}
           >
             {#snippet actions()}
-              <!-- New chat alone: the toggle that hides the list is ListDetail's, on its rail. -->
+              <!-- The hide-list control is on the divider. -->
               {@render newChatButton()}
             {/snippet}
           </SectionHeading>
         </div>
         <!-- No search or segments over nothing: they come with the first chat (owner report, 2026-11-19). -->
-        {#if !phone.current && listState !== 'first-use'}
+        {#if searchAvailable && listState !== 'first-use'}
           <SearchField
+            class="ib-chats__search"
             size="md"
             aria-label={CHAT_COPY.list.searchLabel}
             placeholder={CHAT_COPY.list.searchPlaceholder}
@@ -714,39 +743,14 @@
         />
       {/snippet}
       {#snippet empty()}
-        {#if listState === 'first-use'}
-          <!-- The list's first use is the page's one empty state; the open chat's pane stays blank
-             rather than say "No chat open" beside it (owner report, 2026-11-19). -->
-        {:else if noChats}
-          <EmptyState
-            kind="first-use"
-            headingLevel={2}
-            title={CHAT_COPY.list.noChatTitle}
-            description={CHAT_COPY.list.noChatDescription}
-          >
-            {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
-          </EmptyState>
-        {:else}
-          <EmptyState
-            kind="first-use"
-            headingLevel={2}
-            title={listState === 'failed' ? CHAT_COPY.list.noChatTitle : CHAT_COPY.list.pickTitle}
-            description={listState === 'failed'
-              ? CHAT_COPY.list.noChatDescription
-              : CHAT_COPY.list.pickDescription}
-          >
-            {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
-            {#snippet action()}
-              <Button
-                data-changes
-                href={router.href('/chats/new')}
-                variant="primary"
-                onclick={openNewChat}
-              >
-                {CHAT_COPY.newChat}
-              </Button>
-            {/snippet}
-          </EmptyState>
+        {#if listState === 'loading'}
+          <div class="ib-chats__loading-detail" data-chats-loading-detail aria-hidden="true">
+            <Skeleton lines={5} delay={300} />
+          </div>
+        {:else if listState === 'rows' || listState === 'failed'}
+          <p class="ib-chats__no-chat" data-testid="chats-no-chat-open">
+            {CHAT_COPY.list.noChatTitle}
+          </p>
         {/if}
       {/snippet}
     </ListDetail>

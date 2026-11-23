@@ -12,13 +12,14 @@ import type { APIRequestContext, Page } from '@playwright/test';
 
 import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
-const WIDTHS = [375, 1280] as const;
+const WIDTHS = designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
 const SOURCE = 'agent-plugin-editing.spec.ts';
 const ECHO = 'demo:echo';
 const settings = AGENT_PAGE_COPY.settings;
@@ -37,6 +38,76 @@ async function resetOverrides(request: APIRequestContext): Promise<void> {
 
 test.afterEach(async ({ request }) => {
   await resetOverrides(request);
+});
+
+test('commits a German decimal spend limit after typing its separator without writing an interim value', async ({
+  page,
+  request,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+  });
+  const read = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  const { hash } = read.result as { hash: string };
+  await bureau(request, 'bureau.agents.overrides.update', {
+    id: ECHO,
+    expectedHash: hash,
+    overrides: { limits: { cost: { run: 7, chat: 7 } } },
+  });
+
+  await page.goto(`/agents/${encodeURIComponent(ECHO)}/access`);
+  const spend = page.getByRole('spinbutton', { name: AGENT_PAGE_COPY.access.spendLabel });
+  await expect(spend).toHaveValue('7');
+  await spend.click();
+  await spend.press('ControlOrMeta+A');
+  await spend.pressSequentially('0,5');
+  await expect(spend).toHaveValue('0,5');
+
+  const write = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/jsonrpc') &&
+      (request.postDataJSON() as { method?: string }).method === 'bureau.agents.overrides.update',
+  );
+  await spend.press('Tab');
+  const submitted = await write;
+  expect(submitted.postDataJSON()).toMatchObject({
+    params: { overrides: { limits: { cost: { run: 7, chat: 0.5 } } } },
+  });
+  const response = await submitted.response();
+  expect(response?.ok()).toBe(true);
+  const persisted = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  expect(persisted.result).toMatchObject({
+    overrides: { limits: { cost: { run: 7, chat: 0.5 } } },
+  });
+});
+
+test('keeps a German decimal step limit intact until Settings is intentionally saved', async ({
+  page,
+  request,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+  });
+  const read = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  const { hash } = read.result as { hash: string };
+  await bureau(request, 'bureau.agents.overrides.update', {
+    id: ECHO,
+    expectedHash: hash,
+    overrides: { limits: { steps: 7 } },
+  });
+
+  await page.goto(`/agents/${encodeURIComponent(ECHO)}/settings`);
+  const steps = page.getByRole('spinbutton', { name: settings.stepLimitLabel });
+  await expect(steps).toHaveValue('7');
+  await steps.click();
+  await steps.press('ControlOrMeta+A');
+  await steps.pressSequentially('1,5');
+  await expect(steps).toHaveValue('1,5');
+  await steps.press('Tab');
+  await page.getByRole('button', { name: settings.save }).click();
+  await expect(page.getByText(settings.stepLimitError(100))).toBeVisible();
+  const persisted = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  expect(persisted.result).toMatchObject({ overrides: { limits: { steps: 7 } } });
 });
 
 /**
@@ -182,6 +253,14 @@ for (const width of WIDTHS) {
     await expect(
       page.locator(`[data-testid="agent-versions"] [data-revision="${String(first + 2)}"]`),
     ).toBeVisible();
+    await expect(page.getByRole('textbox', { name: settings.instructionsLabel })).toHaveValue(
+      'Answer in one short line.',
+    );
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/settings (a plugin’s code agent, Restore)',
+      state: 'restored settings form',
+      source: SOURCE,
+    });
   });
 
   test(`the Instructions tab of a plugin's code agent says where its instructions are changed, and the Access tab holds the Asks the agent states itself, at ${width} pixels`, async ({
@@ -426,12 +505,12 @@ for (const width of WIDTHS) {
     // Access: the spend limit saves when the field is left.
     const access = AGENT_PAGE_COPY.access;
     await page.goto(`/agents/${encodeURIComponent(ECHO)}/access`);
-    const spend = page.getByLabel(access.spendLabel);
+    const spend = page.getByRole('spinbutton', { name: access.spendLabel });
     await expect(spend).toBeEnabled();
     await refuse(page, 'bureau.agents.overrides.update', STALE);
     await spend.fill('4');
     await spend.press('Tab');
-    await expect(page.locator('[data-failed="spend"]')).toBeVisible();
+    await expect(page.locator('[data-failed="spend-chat"]')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/agents/:agent/access (a plugin’s code agent)',
       state: 'stale write',

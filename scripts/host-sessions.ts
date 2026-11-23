@@ -78,14 +78,18 @@ import {
   type OwnerRecord,
 } from './run-exclusively.ts';
 
-/** How many places the host has: implementation workers and their coordinators together. */
-export const hostPlaceCap = 3;
+/**
+ * How many places the host has: implementation workers and their coordinators together. There is
+ * no cap (owner decision, 2026-11-21): the ledger still records every dispatch for `status`, the
+ * leases and the session fences, but no dispatch waits for a place or is refused one.
+ */
+const hostPlaceCap = Number.POSITIVE_INFINITY;
 
 /** How long a dispatch waits for a place before it is denied. */
 export const placeWaitLimitMilliseconds = 20 * 60 * 1000;
 
 /** How often a waiting dispatch looks again. */
-export const placePollIntervalMilliseconds = 5_000;
+const placePollIntervalMilliseconds = 5_000;
 
 /** How often a hook looks again for the admission lock, which is held only while deciding. */
 export const admissionLockRetryMilliseconds = 100;
@@ -93,11 +97,11 @@ export const admissionLockRetryMilliseconds = 100;
 /** Set to text in one dispatch's description or prompt to admit that dispatch past the cap. */
 export const capBypassVariable = 'CORVIDAE_AGENT_CAP_BYPASS';
 
-/** How many Opus agents the host runs at once, whatever the place cap leaves free. */
-export const opusAgentCap = 1;
+/** How many Opus agents the host runs at once: no limit (owner decision, 2026-11-21). */
+export const opusAgentCap = Number.POSITIVE_INFINITY;
 
-/** How many read-only agents the host runs at once. They take no place under the host cap. */
-export const readOnlyAgentCap = 6;
+/** How many read-only agents the host runs at once: no limit (owner decision, 2026-11-21). */
+export const readOnlyAgentCap = Number.POSITIVE_INFINITY;
 
 /**
  * The agent types that are read-only when no definition says otherwise: Claude Code's built-in
@@ -482,7 +486,7 @@ export function describeSession(
 }
 
 /** The places as lines: a summary, then each session's. */
-export function describePlaces(
+function describePlaces(
   ledgers: readonly SessionLedger[],
   cap: number,
   now: number,
@@ -637,7 +641,12 @@ export type Admission =
       /** The places when the dispatch started waiting, when it waited. */
       readonly heldWhenWaiting?: readonly string[];
     }
-  | { readonly admitted: false; readonly waitedMilliseconds: number; readonly held: string[] };
+  | {
+      readonly admitted: false;
+      readonly waitedMilliseconds: number;
+      readonly held: string[];
+      readonly ledgerLost?: true;
+    };
 
 function ownerFor(
   holderProcess: ProcessIdentity,
@@ -734,15 +743,22 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
   const limit = options.waitLimitMilliseconds ?? placeWaitLimitMilliseconds;
   const started = now();
   const holder = ownerFor(request.holder, 'claude session', request.cwd, started);
+  const ledgerLost = (): Admission => ({
+    admitted: false,
+    waitedMilliseconds: now() - started,
+    held: [],
+    ledgerLost: true,
+  });
   await mkdir(directory, { recursive: true });
   if (options.bypass === true) {
     // Past the cap, but counted like any other, and recorded under the admission lock like every
     // write of a holder, so a survey cannot remove the ledger it has just made live.
     const hook = ownerFor(request.waiter, `bypass ${request.toolUseId}`, request.cwd, started);
-    await withAdmissionLock(directory, hook, options, async () => {
+    const recorded = await withAdmissionLock(directory, hook, options, async () => {
       await recordHolder(directory, request.sessionId, holder);
-      await appendEvent(directory, request.sessionId, admitEvent(request, now(), true));
+      return appendEvent(directory, request.sessionId, admitEvent(request, now(), true));
     });
+    if (!recorded) return ledgerLost();
     return { admitted: true, bypassed: true, waitedMilliseconds: 0 };
   }
   const queue = queueDirectory(directory);
@@ -786,8 +802,12 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
         );
         if (plan.has(ticket)) {
           await recordHolder(directory, request.sessionId, holder);
-          await appendEvent(directory, request.sessionId, admitEvent(request, now(), false));
-          return undefined;
+          const recorded = await appendEvent(
+            directory,
+            request.sessionId,
+            admitEvent(request, now(), false),
+          );
+          return recorded ? undefined : 'ledger-lost';
         }
         return describePlaces(ledgers, cap, now(), table);
       });
@@ -799,6 +819,7 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
           ...(heldWhenWaiting === undefined ? {} : { heldWhenWaiting }),
         };
       }
+      if (outcome === 'ledger-lost') return ledgerLost();
       if (heldWhenWaiting === undefined) {
         heldWhenWaiting = outcome;
         options.report?.(outcome);
@@ -910,6 +931,16 @@ function minutes(milliseconds: number): string {
   return `${Math.round(milliseconds / 60_000)} minute(s)`;
 }
 
+function denyDispatch(reason: string): HookOutput {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason,
+    },
+  };
+}
+
 function identity(pid: number, entry: ProcessEntry | undefined): ProcessIdentity {
   return entry === undefined ? { pid } : { pid, pidStartedAt: entry.startedAt };
 }
@@ -972,18 +1003,17 @@ async function admitDispatch(
     bypass,
   });
   if (!admission.admitted) {
+    if (admission.ledgerLost === true) {
+      return denyDispatch(
+        'The host could not record this dispatch because its session ledger disappeared. Retry the dispatch.',
+      );
+    }
     const reason = [
       `Host place cap: this ${opus ? 'Opus ' : ''}${agentType === '' ? 'agent' : agentType} dispatch waited ${minutes(admission.waitedMilliseconds)} for ${readOnly ? `one of the host's ${readOnlyAgentCap} read-only agent slots` : `one of the host's ${cap} places for implementation agents and their coordinators`}${opus ? `, or for the host's only Opus agent (${opusAgentCap} at a time)` : ''} (AGENTS.md "Parallel runs"), and none came free. The places:`,
       ...admission.held,
       `Retry the dispatch later, once a holder finishes; \`bun scripts/host-sessions.ts status\` lists the holders, and \`bun scripts/host-sessions.ts release <session, dispatch or agent>\` frees one that is stuck. On the owner's instruction only, a session started with ${capBypassVariable} set to text in a dispatch's description or prompt, such as its issue, admits that dispatch past the cap.`,
     ].join('\n');
-    return {
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason: reason,
-      },
-    };
+    return denyDispatch(reason);
   }
   let message: string | undefined;
   if (admission.bypassed) {
