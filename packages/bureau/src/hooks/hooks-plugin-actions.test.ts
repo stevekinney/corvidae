@@ -187,7 +187,9 @@ it('lists a start-workflow hook with a bounded problem when its target stops bei
 
   startable = false;
 
-  expect((await setup.hooks.list())[0]?.problems).toEqual([{ code: 'workflow-unavailable' }]);
+  const listedHooks = await setup.hooks.list();
+
+  expect(listedHooks[0]?.problems).toEqual([{ code: 'workflow-unavailable' }]);
 });
 
 const ACTION = {
