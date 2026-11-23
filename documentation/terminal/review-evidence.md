@@ -233,7 +233,7 @@ The following proofs are merged into `main`. They are the automated record the r
 
 | Issue | Pull request | Merge SHA on `main` | What it proves |
 | --- | --- | --- | --- |
-| COR-474 | [#292](https://github.com/stevekinney/corvidae/pull/292) | `9aca57e8d31bf32e97191822e1a73b413bbeca97` | Browser proof of rendering and input in Chromium, Firefox and WebKit through `bun run test:browser:terminal`: 407 tests per run (the pull request records 3 of 3 passing runs at its head `c803d0eb`) with accepted visual baselines. |
+| COR-474 | [#292](https://github.com/stevekinney/corvidae/pull/292) | `9aca57e8d31bf32e97191822e1a73b413bbeca97` | Browser proof of rendering and input in Chromium, Firefox and WebKit through `bun run test:browser:terminal` (since replaced by `bun run --cwd components/terminal test:browser:engines`): 407 tests per run (the pull request records 3 of 3 passing runs at its head `c803d0eb`) with accepted visual baselines. |
 | COR-473 | [#280](https://github.com/stevekinney/corvidae/pull/280) | `5c02d5e876bf77f68db5092963700f2e5bfbc06b` | Terminal transport conformance, resource bounds, and process cleanup. |
 | COR-1522 | [#289](https://github.com/stevekinney/corvidae/pull/289) | `b64021a2a1acf45bd08888049faa0147b209efdf` | Terminal process output pauses when the output budget is full. |
 | COR-407 | [#296](https://github.com/stevekinney/corvidae/pull/296) | `0cd6a952010f6e395f5b891c13c2e64aed056799` | The terminal example application and its integration documentation. |
@@ -243,4 +243,4 @@ The following proofs are merged into `main`. They are the automated record the r
 | COR-479 | [#228](https://github.com/stevekinney/corvidae/pull/228) | `15e23bb233a3618c81e77e85d376228c88200555` | Bun pipe and PTY process helpers with verified lifecycle behavior. |
 | COR-1540 | [#306](https://github.com/stevekinney/corvidae/pull/306) | `7ef388ce1ce4df20b9acd9aa318167c6a55a3228` | Input to a process that is not reading is held in backpressure instead of failing the session; `Cancel` is hidden there (findings A and B). |
 
-The COR-474 baselines are Chromium on Linux; there is no committed Safari or macOS visual baseline, which is part of why the human review exists. Re-run the browser proof at the reviewed SHA with `bun run test:browser:terminal` and record its exit code in the Acceptance block if the reviewer wants it attached to the decision.
+The COR-474 baselines are Chromium on Linux; there is no committed Safari or macOS visual baseline, which is part of why the human review exists. Re-run the browser proof at the reviewed SHA with `bun run test:browser:terminal`, which now is `bun run --cwd components/terminal test:browser:engines` (the Chromium-only suite is `bun run --cwd components/terminal test:browser`), and record its exit code in the Acceptance block if the reviewer wants it attached to the decision.
