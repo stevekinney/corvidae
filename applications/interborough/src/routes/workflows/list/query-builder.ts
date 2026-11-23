@@ -184,16 +184,97 @@ export function queryConditionRowsToRawPreview(
   return { and };
 }
 
+/**
+ * The two built-in fields beside the search attributes (COR-2535): the step a failed run stopped
+ * at, and whether a run is retrying an activity. They are not search attributes: each is a field of
+ * Weft's list itself (`failedStep`, `retrying`). The `@` in front keeps them apart from a search
+ * attribute that has the same name, which no attribute's name starts with.
+ */
+const FAILED_STEP_FIELD = '@failedStep';
+const RETRYING_FIELD = '@retrying';
+
+/** What the two built-in fields hold, as the list's own filter has them. */
+export interface QueryFailureFilters {
+  readonly failedStep?: string;
+  readonly retrying?: boolean;
+}
+
+/**
+ * The built-in fields as the builder offers them. Retrying is a boolean, so its value is a choice
+ * of true and false; Failed at step takes the name of the step as typed.
+ */
+export const QUERY_FAILURE_FIELD_OPTIONS: readonly {
+  readonly value: string;
+  readonly label: string;
+  readonly type?: 'boolean';
+}[] = [
+  { value: FAILED_STEP_FIELD, label: 'Failed at step' },
+  { value: RETRYING_FIELD, label: 'Retrying', type: 'boolean' },
+];
+
 /** Converts URL-backed filters into Cinder's flat-conditions model. */
 export function attributeFiltersToInvocationConditions(
   filters: readonly AttributeFilter[],
+  failure: QueryFailureFilters = {},
 ): InvocationRuleCondition[] {
-  return attributeFiltersToQueryConditionRows(filters).map(({ id, key, operator, value }) => ({
-    id,
-    field: key,
-    operator,
-    value,
-  }));
+  const failureRows: InvocationRuleCondition[] = [
+    ...(failure.failedStep === undefined
+      ? []
+      : [
+          {
+            id: nextQueryConditionRowId(),
+            field: FAILED_STEP_FIELD,
+            operator: 'eq',
+            value: failure.failedStep,
+          },
+        ]),
+    ...(failure.retrying === undefined
+      ? []
+      : [
+          {
+            id: nextQueryConditionRowId(),
+            field: RETRYING_FIELD,
+            operator: 'eq',
+            value: String(failure.retrying),
+          },
+        ]),
+  ];
+  return [
+    ...failureRows,
+    ...attributeFiltersToQueryConditionRows(filters).map(({ id, key, operator, value }) => ({
+      id,
+      field: key,
+      operator,
+      value,
+    })),
+  ];
+}
+
+function isFailureField(field: string): boolean {
+  return field === FAILED_STEP_FIELD || field === RETRYING_FIELD;
+}
+
+/**
+ * The built-in fields out of Cinder's conditions. A built-in field means "is", so a row that tests
+ * it with another operator, has no value yet, or (Retrying) holds anything but true or false is
+ * not applied, as a blank row is not. A later row of the same field wins.
+ */
+export function invocationConditionsToFailureFilters(
+  conditions: readonly InvocationRuleCondition[],
+): QueryFailureFilters {
+  let failedStep: string | undefined;
+  let retrying: boolean | undefined;
+  for (const { field, operator, value } of conditions) {
+    if (operator !== 'eq') continue;
+    if (field === FAILED_STEP_FIELD && value.trim() !== '') failedStep = value.trim();
+    if (field === RETRYING_FIELD && (value === 'true' || value === 'false')) {
+      retrying = value === 'true';
+    }
+  }
+  return {
+    ...(failedStep === undefined ? {} : { failedStep }),
+    ...(retrying === undefined ? {} : { retrying }),
+  };
 }
 
 /** Converts Cinder's flat conditions back to the URL-backed filter shape. */
@@ -201,12 +282,14 @@ export function invocationConditionsToAttributeFilters(
   conditions: readonly InvocationRuleCondition[],
 ): AttributeFilter[] {
   return queryConditionRowsToAttributeFilters(
-    conditions.map(({ id, field, operator, value }) => ({
-      id,
-      key: field,
-      operator: isQueryConditionOperator(operator) ? operator : 'eq',
-      value,
-    })),
+    conditions
+      .filter(({ field }) => !isFailureField(field))
+      .map(({ id, field, operator, value }) => ({
+        id,
+        key: field,
+        operator: isQueryConditionOperator(operator) ? operator : 'eq',
+        value,
+      })),
   );
 }
 
@@ -214,12 +297,22 @@ export function invocationConditionsToAttributeFilters(
 export function invocationConditionsToRawPreview(
   conditions: readonly InvocationRuleCondition[],
 ): Readonly<{ and: Record<string, RawPreviewOperatorMap>[] }> {
-  return queryConditionRowsToRawPreview(
-    conditions.map(({ id, field, operator, value }) => ({
-      id,
-      key: field,
-      operator: isQueryConditionOperator(operator) ? operator : 'eq',
-      value,
-    })),
+  const { and } = queryConditionRowsToRawPreview(
+    conditions
+      .filter(({ field }) => !isFailureField(field))
+      .map(({ id, field, operator, value }) => ({
+        id,
+        key: field,
+        operator: isQueryConditionOperator(operator) ? operator : 'eq',
+        value,
+      })),
   );
+  const { failedStep, retrying } = invocationConditionsToFailureFilters(conditions);
+  return {
+    and: [
+      ...(failedStep === undefined ? [] : [{ failedStep: { eq: failedStep } }]),
+      ...(retrying === undefined ? [] : [{ retrying: { eq: retrying } }]),
+      ...and,
+    ],
+  };
 }

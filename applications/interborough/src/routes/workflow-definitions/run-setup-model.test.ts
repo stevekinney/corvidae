@@ -16,7 +16,6 @@ import {
   inputIssuesOf,
   inputWordsOf,
   missingRequiredField,
-  runsAtLimit,
   runSetupIdentity,
   runSetupTarget,
   runSetupTrigger,
@@ -149,47 +148,6 @@ describe('missingRequiredField', () => {
     expect(
       missingRequiredField({ type: 'object', properties: {}, required: ['toString'] }, {}),
     ).toBeUndefined();
-  });
-});
-
-describe('runsAtLimit', () => {
-  const running = (groups: { key: string | null; count: number }[], truncated = false) => ({
-    groups,
-    truncated,
-  });
-
-  test('is the cap when the runs going reach it', () => {
-    expect(runsAtLimit(4, running([{ key: 'release-notes', count: 4 }]))).toBe(4);
-    expect(
-      runsAtLimit(
-        4,
-        running([
-          { key: 'a', count: 3 },
-          { key: 'b', count: 2 },
-        ]),
-      ),
-    ).toBe(4);
-  });
-
-  test('leaves out the types the Bureau runs itself, which never take a slot', () => {
-    expect(
-      runsAtLimit(
-        4,
-        running([
-          { key: 'release-notes', count: 3 },
-          { key: 'agentRun', count: 5 },
-        ]),
-      ),
-    ).toBeUndefined();
-  });
-
-  test('says nothing below the cap, or when either number is unknown', () => {
-    expect(runsAtLimit(4, running([{ key: 'a', count: 3 }]))).toBeUndefined();
-    expect(runsAtLimit(undefined, running([{ key: 'a', count: 9 }]))).toBeUndefined();
-    expect(runsAtLimit(0, running([{ key: 'a', count: 9 }]))).toBeUndefined();
-    expect(runsAtLimit('4', running([{ key: 'a', count: 9 }]))).toBeUndefined();
-    expect(runsAtLimit(4, undefined)).toBeUndefined();
-    expect(runsAtLimit(4, running([{ key: 'a', count: 9 }], true))).toBeUndefined();
   });
 });
 

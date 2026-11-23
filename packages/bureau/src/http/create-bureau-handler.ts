@@ -265,9 +265,18 @@ import {
   runsTimelineOperation,
 } from './management/runs-timeline-operation.ts';
 import {
+  type BureauRunsCompareOperationHost,
+  runsCompareOperation,
+} from './management/runs-compare-operation.ts';
+import {
   type BureauTasksExplainOperationHost,
   tasksExplainOperation,
 } from './management/tasks-explain-operation.ts';
+import {
+  type BureauTasksModelExplanationOperationHost,
+  tasksExplanationGenerateOperation,
+  tasksExplanationGetOperation,
+} from './management/tasks-model-explanation-operation.ts';
 import {
   type BureauEventsCatalogOperationHost,
   eventsCatalogOperation,
@@ -441,7 +450,9 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
   BureauRunsTimelineOperationHost &
+  BureauRunsCompareOperationHost &
   BureauTasksExplainOperationHost &
+  BureauTasksModelExplanationOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
@@ -869,7 +880,10 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksGetOperation,
   tasksInspectOperation,
   runsTimelineOperation,
+  runsCompareOperation,
   tasksExplainOperation,
+  tasksExplanationGetOperation,
+  tasksExplanationGenerateOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -1365,6 +1379,19 @@ export function buildBureauHandlerHost(
     inspect: (id, options) => bureau.tasks.inspect(id, options),
     // The engine's own timeline of a run, read by `bureau.runs.timeline` after it has authorized.
     runTimeline: async (runId) => bureau.durableEngine()?.getTimeline(runId),
+    // The engine's own lineage and comparison of a run, read by `bureau.runs.compare` after it has
+    // authorized the fork and, once it knows it, the source.
+    runForkSource: async (runId) => {
+      const engine = bureau.durableEngine();
+      if (engine === undefined) return undefined;
+      const state = await engine.get(runId);
+      return { forkedFrom: state?.forkedFrom?.workflowId };
+    },
+    runComparison: async (runId, compareOptions) =>
+      bureau.durableEngine()?.compare(runId, {
+        ...(compareOptions.limit === undefined ? {} : { limit: compareOptions.limit }),
+        ...(compareOptions.cursor === undefined ? {} : { cursor: compareOptions.cursor }),
+      }),
     // What `bureau.tasks.explain` reads of a run it has authorized: the engine's state of it, and the
     // guardrails the audit trail holds for it (and, for a workflow instance, for its steps).
     runState: async (runId) => {
@@ -1384,6 +1411,15 @@ export function buildBureauHandlerHost(
         runId,
         kind,
       ),
+    // COR-2534: where a model's longer explanation of a failed run is kept and dated, and the
+    // catalog that prices the model that wrote it. `decisions` is the Bureau's configured model.
+    modelExplanations: {
+      record: (taskId) => bureau.internals.taskRegistry.record(taskId),
+      recordModelExplanation: (taskId, explanation, fence) =>
+        bureau.internals.taskRegistry.recordModelExplanation(taskId, explanation, fence),
+      now: () => bureau.runtimeServices.clock.nowISO(),
+    },
+    catalog: () => bureau.models.catalog().descriptors,
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),
@@ -1448,6 +1484,7 @@ export function buildBureauHandlerHost(
     },
     dryRun: dryRunEffectsOf(bureau),
     workflows: bureau.workflows,
+    workflowConcurrency: () => bureau.durableEngine()?.runConcurrency() ?? undefined,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);
       const engine = bureau.durableEngine();

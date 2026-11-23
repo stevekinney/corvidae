@@ -14,6 +14,8 @@ export type DurationFieldProps = {
   label?: string | undefined;
   /** Helper text announced with the field. */
   description?: string | undefined;
+  /** Text shown while the duration is empty. */
+  placeholder?: string | undefined;
   /** Validation error; marks the field invalid. */
   error?: string | undefined;
   /** Marks the field required. */

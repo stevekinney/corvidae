@@ -53,6 +53,7 @@ const panelTools = new Set([
   'bureau.reviews.resolve',
   'bureau.workflows.get',
   'bureau.workflows.update',
+  'bureau.runs.compare',
 ]);
 
 /** The model-only tool the by-hand step asks Claude Desktop's panel to call, and see refused. */

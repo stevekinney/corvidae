@@ -69,7 +69,13 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(page.locator('header').getByText('Storage', { exact: true })).toBeVisible();
     await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
     await expect(main.getByText('Live', { exact: true })).toBeVisible();
-    await expect(main.getByRole('tab')).toHaveText(['Overview', 'Workers', 'Storage', 'Audit log']);
+    await expect(main.getByRole('tab')).toHaveText([
+      'Overview',
+      'Runs',
+      'Workers',
+      'Storage',
+      'Audit log',
+    ]);
     await expect(main.getByRole('tab', { name: 'Storage' })).toHaveAttribute(
       'aria-selected',
       'true',

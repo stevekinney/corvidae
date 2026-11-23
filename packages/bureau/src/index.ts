@@ -256,6 +256,9 @@ export type {
   MissedRunsAttentionItem,
   PluginAttentionItem,
   ProviderAttentionItem,
+  RunLoopingAttentionItem,
+  RunOverspendingAttentionItem,
+  RunStalledAttentionItem,
   WorkerAttentionItem,
 } from './attention-feed';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
@@ -533,6 +536,7 @@ export {
   RunFailedOutcomeEvent,
   RunGuardrailRecordedEvent,
   RunLoopingEvent,
+  RunOverspendingEvent,
   RunRegisteredEvent,
   RunStalledEvent,
   RunTripwireRecordedEvent,

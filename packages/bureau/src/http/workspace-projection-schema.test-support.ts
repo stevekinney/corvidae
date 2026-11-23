@@ -205,6 +205,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The abort receipt contains only the upload identity and whether an upload was aborted (upload abort output schema).',
   'bureau.workflows.signal':
     'The signal receipt contains started run identifiers and delivered or rejected counts, not the signal payload (workflow signal output schema).',
+  'bureau.workflows.concurrency':
+    'The concurrency snapshot contains only the configured maximum and a running count, not workflow input or result (workflowsConcurrencyOperation).',
   'bureau.goals.cancel':
     'The cancellation receipt contains the goal identifier, outcome, status and revision; it does not return the cancellation reason (goals cancel output schema).',
   'bureau.goals.update':
@@ -269,7 +271,11 @@ export const WORKSPACE_PROJECTION_CONFORMANCE = (() => {
                     'bureau.tasks.list',
                     'bureau.tasks.cancel',
                     'bureau.tasks.inspect',
+                    'bureau.runs.compare',
                     'bureau.tasks.respond',
+                    // A model's explanation is written from the failed run's own error message.
+                    'bureau.tasks.explanation.get',
+                    'bureau.tasks.explanation.generate',
                     'bureau.reviews.resolve',
                     'bureau.audit.query',
                     'bureau.checks.list',

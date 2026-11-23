@@ -78,7 +78,7 @@ export type JsonEditorProps = Omit<
   validFeedbackVisible?: boolean;
   /** Replaces the "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status. */
   statusLabel?: string;
-  /** Replaces the syntax error status text. Activating the status still moves focus to the marked line. */
+  /** Replaces parse feedback’s status word while preserving its danger tone and line marker, for a caller that needs a stable invalid-state name such as "Invalid JSON". */
   invalidStatusLabel?: string;
   /** Include the parser's stop line in the marked diagnostic when it follows the line to fix. @default false */
   parserStopVisible?: boolean;

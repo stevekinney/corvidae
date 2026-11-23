@@ -118,6 +118,18 @@ describe('the form', () => {
     expect(form.error('decisions.maximumPerTask')).toBeUndefined();
   });
 
+  test('will not send a spend threshold of 0 or less, as the Bureau refuses it, and sends a positive one (COR-2527)', () => {
+    const form = loaded();
+    for (const refused of [0, -1, -0.5]) {
+      form.set('runs.spendThresholdUsd', refused);
+      expect(form.error('runs.spendThresholdUsd')).toBe('Enter more than 0.');
+      expect(form.canSave).toBe(false);
+    }
+    form.set('runs.spendThresholdUsd', 0.5);
+    expect(form.error('runs.spendThresholdUsd')).toBeUndefined();
+    expect(form.patch()).toEqual({ 'runs.spendThresholdUsd': 0.5 });
+  });
+
   test('checks a text key against the pattern its schema gives', () => {
     const form = loaded();
     form.set('workflowVersion', undefined);

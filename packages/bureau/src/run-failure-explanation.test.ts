@@ -34,6 +34,7 @@ function factsOf(overrides: Partial<RunFailureFacts> = {}): RunFailureFacts {
     step: { index: 2, label: 'charge-card' },
     tries: 3,
     verdicts: [],
+    retryable: false,
     ...overrides,
   };
 }
@@ -149,6 +150,9 @@ describe('explainRunFailure', () => {
       factsOf({ verdicts: [{ name: 'pii', kind: 'tripwire', outcome: 'tripwire', step: 0 }] }),
     ).remediation;
     expect(halted).toContain('A guardrail halted this run');
+    // Said to a person: no field name of the answer in code font.
+    expect(halted).not.toContain('`');
+    for (const remediation of remediations) expect(remediation).not.toContain('`');
     const warned = explainRunFailure(
       factsOf({ verdicts: [{ name: 'tone', kind: 'guardrail', outcome: 'warn', step: 0 }] }),
     ).remediation;
@@ -170,5 +174,26 @@ describe('nextCommands (AC5)', () => {
     expect(explainRunFailure(factsOf({ runId: "it's a run; rm" })).nextCommands).toEqual([
       `interborough runs get --kind task 'it'\\''s a run; rm'`,
     ]);
+  });
+
+  it('adds `runs retry` for a workflow instance a retry accepts, and for no other run (COR-2533)', () => {
+    expect(explainRunFailure(factsOf({ kind: 'workflow', retryable: true })).nextCommands).toEqual([
+      'interborough runs get --kind workflow run-1',
+      'interborough runs retry run-1',
+    ]);
+    expect(explainRunFailure(factsOf({ kind: 'workflow', retryable: false })).nextCommands).toEqual(
+      ['interborough runs get --kind workflow run-1'],
+    );
+    // An agent run has nothing to retry in place, whatever the facts say.
+    expect(explainRunFailure(factsOf({ kind: 'agent', retryable: true })).nextCommands).toEqual([
+      'interborough runs get --kind task run-1',
+    ]);
+  });
+
+  it('quotes the identifier in the retry command too (COR-2533)', () => {
+    expect(
+      explainRunFailure(factsOf({ kind: 'workflow', retryable: true, runId: "it's a run; rm" }))
+        .nextCommands[1],
+    ).toBe(`interborough runs retry 'it'\\''s a run; rm'`);
   });
 });

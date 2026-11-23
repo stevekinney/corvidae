@@ -91,7 +91,8 @@ describe('RevisionDetail', () => {
 
     const { findByText } = renderDetail();
 
-    expect(await findByText('Not found')).not.toBeNull();
+    expect(await findByText('Couldn’t load this revision')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="not-found"]')).not.toBeNull();
     expect(await findByText('Revision order-processing-rev-1 is not installed.')).not.toBeNull();
   });
 
@@ -105,7 +106,8 @@ describe('RevisionDetail', () => {
 
     const { findByText } = renderDetail();
 
-    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(await findByText('Couldn’t load this revision')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
   });
 
   test('shows a malformed-response alert, and no fields, for a payload that is not a revision record', async () => {

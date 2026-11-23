@@ -1,4 +1,10 @@
-import { request, stream, type CliTarget } from './cli-client-transport.ts';
+import { formatCost } from '../lib/format/cost.ts';
+import {
+  faultRefusedBeforeAnyEffect,
+  request,
+  stream,
+  type CliTarget,
+} from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { isDryRun } from './cli-destructive.ts';
 
@@ -341,7 +347,45 @@ async function getOrInspect(
   if (inspect && option(parsed, 'step') !== undefined)
     params['step'] = numberOption(parsed, 'step');
   const response = await rpc(target, parsed, dependencies, method, params);
-  return { ...response, data: withIdentifier(kind, response.data, rawId) };
+  const data = withIdentifier(kind, response.data, rawId);
+  // A task read as text says how it stands, and what it used and cost (COR-2525); as JSON it is the
+  // task as the Bureau answered it, `usage.costUsd` and all.
+  if (kind === 'task' && !inspect && parsed.output === 'text') {
+    return { ...response, data: taskText(data) };
+  }
+  return { ...response, data };
+}
+
+/** The tokens a task used, as a count with thousands separators. */
+const TOKEN_COUNT = new Intl.NumberFormat('en-US');
+
+/**
+ * A task as `runs get --kind task` prints it as text: its identifier, status, agent, times and why
+ * it ended, then its tokens and its cost when the Bureau counted them. `--output json` is the task
+ * whole, as the Bureau answered it. A task with no priced request has no cost line,
+ * never `Cost: $0.00`.
+ */
+function taskText(task: RecordValue): string {
+  const usage = record(task['usage']);
+  const totalTokens = usage?.['totalTokens'];
+  const costUsd = usage?.['costUsd'];
+  const cost = formatCost(typeof costUsd === 'number' ? costUsd : null);
+  const lines = [
+    `Run: ${String(task['id'])}`,
+    ...(typeof task['status'] === 'string' ? [`Status: ${task['status']}`] : []),
+    ...(typeof task['agentName'] === 'string' ? [`Agent: ${task['agentName']}`] : []),
+    ...(typeof task['createdAt'] === 'string' ? [`Started: ${task['createdAt']}`] : []),
+    ...(typeof task['updatedAt'] === 'string' ? [`Updated: ${task['updatedAt']}`] : []),
+    ...(typeof task['finishReason'] === 'string' ? [`Finish reason: ${task['finishReason']}`] : []),
+    ...(typeof task['statusMessage'] === 'string' && task['statusMessage'] !== ''
+      ? [`Message: ${task['statusMessage']}`]
+      : []),
+    ...(typeof totalTokens === 'number' && totalTokens > 0
+      ? [`Tokens: ${TOKEN_COUNT.format(totalTokens)}`]
+      : []),
+    ...(cost === undefined ? [] : [`Cost: ${cost}`]),
+  ];
+  return lines.join('\n');
 }
 
 async function cancel(
@@ -382,7 +426,154 @@ async function cancel(
   return { ...response, data: { kind, id: qualified(kind, rawId), ...body } };
 }
 
-/** Execute task or workflow listing, inspection, event watching, and cancellation commands. */
+/** A run's explanation as the lines a person reads: the sentence, then each fact, then what to do. */
+function explanationText(explanation: RecordValue): string {
+  const words = (value: unknown): string => (typeof value === 'string' ? value : '');
+  const cause = record(explanation['cause']) ?? {};
+  const step = record(explanation['step']);
+  const lines = [words(explanation['summary'])];
+  const category = cause['category'];
+  lines.push(`Cause: ${typeof category === 'string' ? category : 'not classified'}`);
+  for (const [label, key] of [
+    ['Code', 'code'],
+    ['Kind', 'kind'],
+  ] as const) {
+    if (typeof cause[key] === 'string') lines.push(`${label}: ${cause[key]}`);
+  }
+  if (step !== undefined && typeof step['index'] === 'number')
+    lines.push(`Step: ${step['index']} ${words(step['label'])}`);
+  if (typeof explanation['tries'] === 'number') lines.push(`Tries: ${explanation['tries']}`);
+  const verdicts = Array.isArray(explanation['verdicts']) ? explanation['verdicts'] : [];
+  for (const verdict of verdicts.map(record)) {
+    if (verdict === undefined) continue;
+    const at = typeof verdict['step'] === 'number' ? ` at step ${verdict['step']}` : '';
+    lines.push(`Guardrail: ${words(verdict['name'])} (${words(verdict['outcome'])})${at}`);
+  }
+  lines.push(`Next: ${words(explanation['remediation'])}`);
+  const commands = Array.isArray(explanation['nextCommands']) ? explanation['nextCommands'] : [];
+  for (const command of commands) lines.push(`  ${words(command)}`);
+  return lines.join('\n');
+}
+
+/**
+ * What a model wrote about a failed run, as the lines a person reads: the text, then which model
+ * wrote it, when, and what it cost (COR-2534). A model with no price has no cost line, never
+ * `Cost: $0.00`.
+ */
+function modelExplanationText(explanation: RecordValue): string {
+  const words = (value: unknown): string => (typeof value === 'string' ? value : '');
+  const costUsd = explanation['costUsd'];
+  const cost = formatCost(typeof costUsd === 'number' ? costUsd : null);
+  return [
+    words(explanation['text']),
+    '',
+    `Written by ${words(explanation['model'])} at ${words(explanation['generatedAt'])}`,
+    ...(cost === undefined ? [] : [`Cost of this explanation: ${cost}`]),
+  ].join('\n');
+}
+
+/**
+ * Why a run failed, from what Bureau stored: `bureau.tasks.explain`, which takes either kind of run
+ * by its identifier, so no `--kind` is needed. A run that did not fail is the server's
+ * `Unprocessable` fault with its message and remediation, which is a misuse of the command, so it
+ * exits with the usage status (2) and says what the server said (COR-2533).
+ *
+ * With `--model`, a model writes the longer explanation of a failed agent run instead
+ * (`bureau.tasks.explanation.generate`): it spends tokens, stores the text on the task, and prints it
+ * with the model's name and what it cost (COR-2534).
+ */
+async function explain(
+  target: CliTarget,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+): Promise<CliCommandResult> {
+  const rawId = identifier(parsed);
+  try {
+    if (parsed.options.get('model') === true) {
+      const response = await rpc(
+        target,
+        parsed,
+        dependencies,
+        'bureau.tasks.explanation.generate',
+        {
+          runId: rawId,
+        },
+      );
+      const written = record(record(response.data)?.['explanation']);
+      if (written === undefined || parsed.output !== 'text') return response;
+      return { ...response, data: modelExplanationText(written) };
+    }
+    const response = await rpc(target, parsed, dependencies, 'bureau.tasks.explain', {
+      runId: rawId,
+    });
+    const explanation = record(response.data);
+    if (explanation === undefined || parsed.output !== 'text') return response;
+    return { ...response, data: explanationText(explanation) };
+  } catch (error) {
+    if (error instanceof Error && Reflect.get(error, 'faultCode') === 'Unprocessable')
+      throw Object.assign(error, { usage: true });
+    // `--model` writes the task's record and spends tokens, so a failure the CLI cannot read is an
+    // unknown outcome (exit 7); a fault that guarantees nothing ran (no provider connected, for
+    // one) is a plain refusal (exit 1), as for `runs retry`.
+    if (
+      parsed.options.get('model') === true &&
+      error instanceof Error &&
+      faultRefusedBeforeAnyEffect(error)
+    ) {
+      const status: unknown = Reflect.get(error, 'status');
+      if (status !== 401 && status !== 403 && status !== 409)
+        throw Object.assign(error, { exitCode: 1 });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Run a failed instance of a workflow file again from the step it failed at:
+ * `bureau.workflows.runs.retry`, which runs that step when `--step` names none (COR-2533). An agent
+ * run has no step to run again, so `--kind task` is a usage error. A retry changes a run, so an
+ * outcome the CLI cannot know is exit 7 (see `executeCli`).
+ */
+async function retry(
+  target: CliTarget,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+): Promise<CliCommandResult> {
+  const kind = option(parsed, 'kind');
+  if (kind !== undefined && kind !== 'workflow')
+    throw Object.assign(new Error('runs retry supports --kind workflow only.'), { usage: true });
+  const rawId = identifier(parsed);
+  const step = numberOption(parsed, 'step');
+  if (step === 0) throw Object.assign(new Error('Option --step counts from 1.'), { usage: true });
+  let response: CliCommandResult;
+  try {
+    response = await rpc(target, parsed, dependencies, 'bureau.workflows.runs.retry', {
+      runId: rawId,
+      ...(step === undefined ? {} : { step }),
+    });
+  } catch (error) {
+    // Only a fault that guarantees nothing ran is a refusal (exit 1, or the authorization and
+    // conflict statuses `executeCli` already gives a 401, 403 or 409). `EngineFailure`,
+    // `Unavailable` and `Timeout` can come after the retry committed, for example when a later
+    // write of its receipt fails, so they stay an unknown outcome (exit 7), as does a request that
+    // got no answer.
+    if (error instanceof Error && faultRefusedBeforeAnyEffect(error)) {
+      const status: unknown = Reflect.get(error, 'status');
+      if (status !== 401 && status !== 403 && status !== 409)
+        throw Object.assign(error, { exitCode: 1 });
+    }
+    throw error;
+  }
+  return {
+    ...response,
+    data: { kind: 'workflow', ...record(response.data), id: qualified('workflow', rawId) },
+  };
+}
+
+/**
+ * Execute task or workflow listing, inspection, explanation, retry, event watching, and
+ * cancellation commands.
+ */
 export async function executeRuns(
   target: CliTarget,
   parsed: Parsed,
@@ -394,9 +585,14 @@ export async function executeRuns(
   if (action === 'inspect') return getOrInspect(target, parsed, dependencies, true);
   if (action === 'watch' || action === 'events') return watch(target, parsed, dependencies);
   if (action === 'cancel') return cancel(target, parsed, dependencies);
-  throw Object.assign(new Error('Usage: runs list|get|inspect|watch|cancel [options].'), {
-    usage: true,
-  });
+  if (action === 'explain') return explain(target, parsed, dependencies);
+  if (action === 'retry') return retry(target, parsed, dependencies);
+  throw Object.assign(
+    new Error('Usage: runs list|get|inspect|explain|retry|watch|cancel [options].'),
+    {
+      usage: true,
+    },
+  );
 }
 
 /** Execute the redacted, paginated audit listing command. */

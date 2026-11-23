@@ -5,8 +5,8 @@
    * `ThemeSwitch`), whether the sidebar is expanded or collapsed to its rail, and a link to every
    * setting. There is no density switch: one density everywhere.
    *
-   * The Sidebar choice is the person's preference and applies at 1024px and wider; below that the
-   * rail or the drawer rules win (design row 04b, `../shell/shell-navigation.svelte.ts`). The
+   * The Sidebar choice governs the desktop column at 1200px and wider. The drawer governs smaller
+   * screens (design row 04b, `../shell/shell-navigation.svelte.ts`). The
    * theme is the `ThemeStore`'s and the preference is the shell's `LayoutPreferences`, so each is
    * remembered across reloads.
    */

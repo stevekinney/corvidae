@@ -224,7 +224,10 @@
             : {
                 reviewId: review.id,
                 tone: 'danger',
-                title: REVIEWS_COPY.decisionFailed,
+                title:
+                  review.kind === 'tool-approval'
+                    ? REVIEWS_COPY.approvalFailed[decision === 'approve' ? 'approve' : 'deny']
+                    : REVIEWS_COPY.decisionFailed,
                 message: faultTreatment(error).message,
               };
         },
@@ -286,7 +289,7 @@
   {/if}
 
   {#each faults as fault, index (index)}
-    <QueryFaultBanner error={fault.error} onRetry={fault.retry} />
+    <QueryFaultBanner error={fault.error} subject="reviews" onRetry={fault.retry} />
   {/each}
 
   <!-- The segments stay through every state, so the page never loses its place while a list is read,

@@ -13,8 +13,8 @@
  * still waits, the row keeps that later value for the later write to carry, and the failed change
  * is undone only if that later write fails too, so a late failure never overwrites a newer choice.
  *
- * The spend limit is written as last applied (`spendApplied`), never as the field's text, so an
- * amount typed and refused is never written by another row's save.
+ * The spend limits are written as last applied, never as either field's text, so an amount typed
+ * and refused is never written by another row's save.
  *
  * Every write sends a whole definition, because `bureau.agents.definitions.update` removes `tools`
  * and `models` when they are left out. The keys the tab does not edit (`limits.steps`,
@@ -259,6 +259,10 @@ export class AgentAccessState {
    * goes back to.
    */
   spendApplied = $state('');
+  /** The spend limit per run as typed, in US dollars; empty for none. */
+  spendPerRun = $state('');
+  /** The spend limit per run as last applied, which every write carries and a failed save returns to. */
+  spendRunApplied = $state('');
   /** Each row's own save, by the row's key; a row with no entry is at rest. */
   readonly saves = new SvelteMap<string, RowSave>();
 
@@ -319,6 +323,9 @@ export class AgentAccessState {
     const chat = definition?.limits.cost?.chat;
     this.spendPerChat = chat === undefined ? '' : String(chat);
     this.spendApplied = this.spendPerChat;
+    const run = definition?.limits.cost?.run;
+    this.spendPerRun = run === undefined ? '' : String(run);
+    this.spendRunApplied = this.spendPerRun;
     if (detail.hash !== null) this.#written.add(detail.hash);
     if (definition !== null) this.#committed = JSON.stringify(this.toDefinition());
   }
@@ -454,6 +461,11 @@ export class AgentAccessState {
     return parseLimit(this.spendPerChat, false, LIMIT_BOUNDS.spendUsd);
   }
 
+  /** The per-run spend limit as typed: no limit (`null`), an amount, or `undefined` when invalid. */
+  get spendRunLimit(): number | null | undefined {
+    return parseLimit(this.spendPerRun, false, LIMIT_BOUNDS.spendUsd);
+  }
+
   /** Whether a write is in flight or waiting. */
   get busy(): boolean {
     return this.#pending > 0;
@@ -565,7 +577,8 @@ export class AgentAccessState {
   /**
    * The spend limits to write. A chat limit sits on a run limit in the file, so one set where the
    * file has no run limit writes the run limit at the same amount, which a run inside that chat can
-   * never pass anyway. Clearing the chat limit keeps the file's run limit.
+   * never pass anyway. Clearing the chat limit keeps the file's run limit; clearing an unlimited
+   * chat and its run limit removes the whole cost record, warnings included.
    *
    * The chat limit is the one last applied, never the field's text, which may hold an amount the
    * Bureau would refuse; an applied text the tab cannot read keeps the file's own chat limit.
@@ -573,10 +586,13 @@ export class AgentAccessState {
   #costToWrite(file: Definition): Exclude<AgentLimitsInput['cost'], undefined> {
     const kept = file.limits.cost;
     const warn = kept?.warn === undefined ? {} : { warn: kept.warn };
-    const applied = parseLimit(this.spendApplied, false, LIMIT_BOUNDS.spendUsd);
-    const chat = applied === undefined ? (kept?.chat ?? null) : applied;
-    if (chat === null) return kept === null ? null : { run: kept.run, ...warn };
-    return { run: kept?.run ?? chat, chat, ...warn };
+    const appliedChat = parseLimit(this.spendApplied, false, LIMIT_BOUNDS.spendUsd);
+    const chat = appliedChat === undefined ? (kept?.chat ?? null) : appliedChat;
+    const appliedRun = parseLimit(this.spendRunApplied, false, LIMIT_BOUNDS.spendUsd);
+    const run = appliedRun === undefined ? (kept?.run ?? null) : appliedRun;
+    if (chat === null && run === null) return null;
+    if (chat === null) return { run: run ?? kept?.run ?? 0, ...warn };
+    return { run: run ?? kept?.run ?? chat, chat, ...warn };
   }
 
   /** The definition to write: the file's own, with the access this tab edits. */

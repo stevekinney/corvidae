@@ -176,7 +176,8 @@ describe('HealthTab', () => {
     });
     await queryClient.refetchQueries({ queryKey: queryKeys.systemLease() });
     expect(queryClient.getQueryData(queryKeys.systemLease())).toBeDefined();
-    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(await findByText('Couldn’t load the server lease')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     expect(queryByText('Healthy')).toBeNull();
     expect(queryByText('engine-a')).toBeNull();
     unmount();
@@ -191,7 +192,8 @@ describe('HealthTab', () => {
     });
     routeBaseline(scripted);
     const { findByText, unmount } = await renderHealthTab();
-    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(await findByText('Couldn’t load the server lease')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     unmount();
   });
 
@@ -264,7 +266,8 @@ describe('HealthTab', () => {
     // Later routes win: keep the lease read healthy so only the registry panel faults.
     scripted.routeJsonRpcMethod('weft.system.lease', DISABLED_LEASE);
     const { findByText, unmount } = await renderHealthTab();
-    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(await findByText('Couldn’t load the registry')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     unmount();
   });
 

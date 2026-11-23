@@ -84,6 +84,11 @@ export type BureauFaultContext = {
   readonly invalidPath?: readonly string[];
   /** The capability a `NOT_CONFIGURED` names, in place of the one its subject says. */
   readonly capability?: string;
+  /**
+   * The operation's own words for a `NOT_CONFIGURED`, in place of the error's message and the
+   * policy's generic remediation: what is missing, and the one step that supplies it (COR-2534).
+   */
+  readonly notConfigured?: { readonly message: string; readonly remediation: string };
   /** Codes this operation answers in their other form. */
   readonly forms?: Readonly<Partial<Record<BureauErrorCode, BureauRefusalForm>>>;
   /**
@@ -144,9 +149,9 @@ function bureauFault(error: BureauError, context: BureauFaultContext = {}): Oper
     case 'NOT_CONFIGURED':
       return {
         code: 'UnsupportedCapability',
-        message: error.message,
+        message: context.notConfigured?.message ?? error.message,
         data: { capability: context.capability ?? error.subject ?? 'unknown' },
-        remediation,
+        remediation: context.notConfigured?.remediation ?? remediation,
       };
     case 'BAD_REQUEST':
       return {
@@ -178,7 +183,9 @@ function refines(code: BureauErrorCode, context: BureauFaultContext): boolean {
   if (context.forms?.[code] !== undefined || context.answers?.includes(code) === true) return true;
   if (code === 'NOT_FOUND') return context.notFound !== undefined;
   if (code === 'BAD_REQUEST') return context.invalidPath !== undefined;
-  if (code === 'NOT_CONFIGURED') return context.capability !== undefined;
+  if (code === 'NOT_CONFIGURED') {
+    return context.capability !== undefined || context.notConfigured !== undefined;
+  }
   return false;
 }
 

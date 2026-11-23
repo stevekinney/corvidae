@@ -139,10 +139,15 @@ describe('NavigationBar responsive CSS', () => {
     // vertically. navigation-item's focus ring is a box-shadow painted OUTSIDE the
     // tab, so without block padding to sit in, enabling the scroll would have traded
     // an unreachable tab for an invisible focus ring. The negative margin cancels the
-    // padding so the bar's height is unchanged.
+    // padding so the bar's height is unchanged, while the row itself yields taps in
+    // that canceled padding to the outlet behind it.
     expect(bottomItemsRule).toContain('padding-block: var(--_cinder-navigation-bar-tab-ring-room)');
     expect(bottomItemsRule).toContain(
       'margin-block: calc(-1 * var(--_cinder-navigation-bar-tab-ring-room))',
+    );
+    expect(bottomItemsRule).toContain('pointer-events: none');
+    expect(navigationBarCss).toMatch(
+      /\.cinder-navigation-bar\[data-cinder-placement='bottom'\] \.cinder-navigation-bar__items > \*\s*\{\s*pointer-events:\s*auto;/,
     );
   });
 

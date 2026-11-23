@@ -4,6 +4,7 @@ import {
   TOUCH_TARGET_MIN,
 } from '@lostgradient/testing/playwright/editors-complex-support';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { freezePageTimers } from '@lostgradient/testing/playwright/page-timers';
 import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 const CHAT_ROUTE = fixtureRoute('chat');
@@ -97,6 +98,9 @@ test.describe('chat action buttons', () => {
       await expect(emptyToolRow.locator('.chat-message-actions > *')).toHaveCount(0);
       await expect(emptyToolRow).toHaveCSS('margin-block-end', '0px');
 
+      // The copied state lasts 2s on a page timer; under load it can clear before the first poll
+      // below, so the timers stop before the click (COR-2644).
+      await freezePageTimers(page);
       await copyButton.click();
       // CopyButton signals the copied state via `data-cinder-copied` attribute.
       const successButton = page.locator('.chat-message-copy[data-cinder-copied]').first();

@@ -17,11 +17,13 @@
 
   interface PanelFaultProps {
     readonly error: unknown;
+    /** What failed to load, for the title ("Couldn’t load the task ledger"). */
+    readonly subject?: string | undefined;
     /** Reads again; the banner offers it when given. */
     readonly onRetry?: (() => void) | undefined;
   }
 
-  let { error, onRetry = undefined }: PanelFaultProps = $props();
+  let { error, subject = undefined, onRetry = undefined }: PanelFaultProps = $props();
 
   const malformed = $derived(
     error instanceof MalformedWorkerDiagnosticsError ||
@@ -37,5 +39,5 @@
     <p>{error.message}</p>
   </Callout>
 {:else}
-  <QueryFaultBanner {error} {onRetry} />
+  <QueryFaultBanner {error} {subject} {onRetry} />
 {/if}

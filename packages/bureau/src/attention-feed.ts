@@ -5,7 +5,7 @@
  * otherwise. Reviews that wait on a person are never on it: those are the person's work, not a
  * problem with the system.
  *
- * The Bureau finds four kinds itself:
+ * The Bureau finds these kinds itself:
  *
  * - `alert`: a rule of {@link BureauOptions.alerts} that is firing, since it last fired.
  * - `missed-runs`: a schedule that missed occurrences in the last seven days and has not fired
@@ -14,6 +14,10 @@
  *   (`gaveUp`), at the end of its last attempt.
  * - `plugin-not-loaded`: a plugin the Bureau skipped, at the time the plugins were composed. A
  *   plugin that only waits for a secret (`needs-setup`) is not on the list.
+ * - `run-stalled` and `run-looping` (COR-2526): a run that is alive but makes no progress, and a
+ *   run whose toolbox reported a loop, each while it lasts.
+ * - `run-overspending` (COR-2527): a run that cost more than the `runs.spendThresholdUsd` setting,
+ *   while it runs and for seven days after it settles. It is a flag only; the run is never stopped.
  *
  * A host adds what only it can see through {@link BureauOptions.attention}, such as `no-provider`
  * when no model provider is connected, and `worker-disconnected` for a remote worker that stopped
@@ -32,6 +36,7 @@ import type {
 
 import type { ListedHook } from './hooks/hook-types';
 import type { PluginListing } from './plugins/plugin-types';
+import type { TaskAttentionRun } from './task-registry';
 
 /** The areas a problem belongs to, in the order the checks list them. */
 export const ATTENTION_AREAS = [
@@ -164,6 +169,57 @@ export interface WorkerAttentionItem {
   readonly failedForGood: number;
 }
 
+/** A run that is alive but making no progress outside a declared wait (COR-2526), while it lasts. */
+export interface RunStalledAttentionItem {
+  /** Discriminant. */
+  readonly kind: 'run-stalled';
+  /** Always `runs`. */
+  readonly area: 'runs';
+  /** When the Bureau saw the run stall, in epoch milliseconds. */
+  readonly at: number;
+  /** The run. */
+  readonly runId: string;
+  /** The agent the run is of, or `null` when it has none. */
+  readonly agentName: string | null;
+}
+
+/** A run whose toolbox reported a loop (COR-2526), until the run settles. */
+export interface RunLoopingAttentionItem {
+  /** Discriminant. */
+  readonly kind: 'run-looping';
+  /** Always `runs`. */
+  readonly area: 'runs';
+  /** When the Bureau recorded the first loop report, in epoch milliseconds. */
+  readonly at: number;
+  /** The run. */
+  readonly runId: string;
+  /** The agent the run is of, or `null` when it has none. */
+  readonly agentName: string | null;
+}
+
+/**
+ * A run that cost more than the workspace's spend threshold (COR-2527), while it runs and for seven
+ * days after it settles. The run is never stopped by it.
+ */
+export interface RunOverspendingAttentionItem {
+  /** Discriminant. */
+  readonly kind: 'run-overspending';
+  /** Always `runs`. */
+  readonly area: 'runs';
+  /** When a step found the run over the threshold, in epoch milliseconds. */
+  readonly at: number;
+  /** The run. */
+  readonly runId: string;
+  /** The agent the run is of, or `null` when it has none. */
+  readonly agentName: string | null;
+  /** What the run has cost so far, or in total once it settled, in US dollars; `null` when not known. */
+  readonly costUsd: number | null;
+  /** The threshold in force when the step found the run over, in US dollars. */
+  readonly thresholdUsd: number;
+  /** When the run settled, in epoch milliseconds, or `null` while it runs. */
+  readonly settledAt: number | null;
+}
+
 /** One problem that needs attention. */
 export type BureauAttentionItem =
   | AlertAttentionItem
@@ -171,7 +227,10 @@ export type BureauAttentionItem =
   | HookAttentionItem
   | PluginAttentionItem
   | ProviderAttentionItem
-  | WorkerAttentionItem;
+  | WorkerAttentionItem
+  | RunStalledAttentionItem
+  | RunLoopingAttentionItem
+  | RunOverspendingAttentionItem;
 
 /** How many problems one area has; only areas with at least one are listed. */
 export interface AttentionCheck {
@@ -215,6 +274,8 @@ export interface AttentionSources {
   readonly plugins?: () => Promise<readonly PluginListing[]>;
   /** When the plugins were composed, in epoch milliseconds. */
   readonly pluginsComposedAt?: number;
+  /** Every task that asks for attention now: stalled, looping or over the spend threshold. */
+  readonly runs?: () => Promise<readonly TaskAttentionRun[]>;
   /** What the host reports that the Bureau cannot see. */
   readonly contributed?: () =>
     Promise<readonly BureauAttentionItem[]> | readonly BureauAttentionItem[];
@@ -328,6 +389,59 @@ function pluginItems(
   );
 }
 
+/** A time the registry stored as ISO 8601, in epoch milliseconds; `fallback` when it does not parse. */
+function epochOf(instant: string | null, fallback: number): number {
+  const parsed = instant === null ? Number.NaN : Date.parse(instant);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+/**
+ * The runs that ask for attention (COR-2526, COR-2527): a stalled run and a looping run while they
+ * are one, and an overspending run while it runs and for seven days after it settled, the window a
+ * schedule's missed runs use. A run that is over the threshold and still stalled is listed once for
+ * each reason, each naming the run.
+ */
+function runItems(runs: readonly TaskAttentionRun[], now: number): BureauAttentionItem[] {
+  const items: BureauAttentionItem[] = [];
+  for (const run of runs) {
+    if (run.attention.includes('stalled')) {
+      items.push({
+        kind: 'run-stalled',
+        area: 'runs',
+        at: epochOf(run.stalledSince, now),
+        runId: run.taskId,
+        agentName: run.agentName,
+      });
+    }
+    if (run.attention.includes('looping')) {
+      items.push({
+        kind: 'run-looping',
+        area: 'runs',
+        at: epochOf(run.loopingSince, now),
+        runId: run.taskId,
+        agentName: run.agentName,
+      });
+    }
+    if (run.attention.includes('overspending') && run.overspending !== null) {
+      const settledAt = run.settledAt === null ? null : epochOf(run.settledAt, now);
+      if (settledAt !== null && settledAt < now - MISSED_RUNS_ATTENTION_WINDOW_MILLISECONDS) {
+        continue;
+      }
+      items.push({
+        kind: 'run-overspending',
+        area: 'runs',
+        at: epochOf(run.overspending.since, now),
+        runId: run.taskId,
+        agentName: run.agentName,
+        costUsd: run.costUsd,
+        thresholdUsd: run.overspending.thresholdUsd,
+        settledAt,
+      });
+    }
+  }
+  return items;
+}
+
 /** Most recent first; an item whose time is not known comes first, then by area order. */
 function compareItems(left: BureauAttentionItem, right: BureauAttentionItem): number {
   const leftAt = left.at ?? Number.POSITIVE_INFINITY;
@@ -349,12 +463,14 @@ export async function readAttention(sources: AttentionSources): Promise<BureauAt
   const now = sources.now();
   const hooks = sources.hooks === undefined ? [] : await sources.hooks();
   const plugins = sources.plugins === undefined ? [] : await sources.plugins();
+  const runs = sources.runs === undefined ? [] : await sources.runs();
   const contributed = sources.contributed === undefined ? [] : await sources.contributed();
   const found = [
     ...alertItems(sources.activeAlerts?.() ?? []),
     ...(await missedRunItems(sources, now)),
     ...hooks.flatMap((hook) => hookItem(hook) ?? []),
     ...pluginItems(plugins, sources.pluginsComposedAt),
+    ...runItems(runs, now),
   ];
   // A plugin the host also reports is listed once, as the Bureau found it.
   const reportedPlugins = new Set(

@@ -15,6 +15,8 @@ import { Window, type DetachedWindowAPI } from 'happy-dom';
 import { routes } from '../app/routes.ts';
 import { chatSessionPath } from './identifier-paths.ts';
 import {
+  FAILURE_EXPLANATION_ANCHOR,
+  failureExplanationPath,
   LeaveGuard,
   matchRoute,
   router,
@@ -166,6 +168,16 @@ describe('router singleton', () => {
     expect(router.current.params['run']).toBe('~legacy-link');
     router.navigate(workflowDetailPath('~new-link'));
     expect(router.current.params['run']).toBe('~new-link');
+  });
+
+  test('a failed run’s explanation is its own page at the failure section (COR-2533)', () => {
+    expect(failureExplanationPath('task-1')).toBe('/runs/task-1#failure-explanation');
+    expect(FAILURE_EXPLANATION_ANCHOR).toBe('failure-explanation');
+    // The fragment never reaches the route: the page is the run's, with the same escapes.
+    router.navigate(failureExplanationPath('wf_123'));
+    expect(router.match).toEqual({ pattern: '/runs/:run', params: { run: 'wf_123' } });
+    router.navigate(failureExplanationPath('..'));
+    expect(router.current.params['run']).toBe('..');
   });
 
   test('a run under its workflow is the same page by another address, with the same escapes', () => {

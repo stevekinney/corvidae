@@ -52,7 +52,9 @@
     Chip,
     ConfirmDialog,
     EmptyState,
+    Link,
     PageHeader,
+    Stack,
     ToolCallPanel,
     VisuallyHidden,
     type ApprovalResolution,
@@ -129,7 +131,7 @@
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { failureExplanationPath, router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import { downloadText } from '../audit/audit-export.ts';
   import { useMinuteClock } from '../home/home-clock.svelte.ts';
@@ -184,6 +186,7 @@
     toolInfoByName,
     type ToolCallEntry,
   } from './tool-activity.ts';
+  import { stoppedRunIdOf } from './event-notes.ts';
   import { failedStopNoteId, withEndedLine, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import { lapsedChats } from './lapsed-chats.svelte.ts';
@@ -897,7 +900,7 @@
 
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {
-    let focused = false;
+    let approvalOwnedFocus = false;
     for (let frame = 0; frame < ARRIVAL_FRAMES; frame += 1) {
       await tick();
       const row = route?.querySelector<HTMLElement>('[data-approval-decision]');
@@ -905,15 +908,20 @@
         // The row is drawn again when its state or deadline arrives with the joined run, which
         // drops the focus it held. Chat then parks the focus on the transcript (its scroller holds
         // every row, so it is a place focus rests, not one a person chose). While focus is on
-        // nothing, or on something that holds the row, the new row takes it back; once the person
-        // has moved focus to anything else, it is theirs.
+        // nothing, on the list row that opened this chat, or on something that holds the row, the
+        // new row takes it back. The opening row is navigation focus, not a choice inside the
+        // conversation; it is only an arrival exception before the approval has owned focus. Once
+        // the person has moved focus anywhere else, it is theirs.
         const active = document.activeElement;
         const lost =
           active === null || active === document.body || (active !== row && active.contains(row));
-        if (!focused || lost) {
+        const openedFromThisChat =
+          !approvalOwnedFocus &&
+          active?.closest('[data-chat]')?.getAttribute('data-chat') === sessionId;
+        if (lost || openedFromThisChat) {
           bringApprovalIntoView(row);
           row.focus({ preventScroll: true });
-          focused = true;
+          approvalOwnedFocus = true;
         } else if (!row.isConnected || document.activeElement !== row) {
           return;
         }
@@ -2465,16 +2473,38 @@
             {/if}
           {/snippet}
           {#snippet noteAction(note: MessageNoteInfo)}
-            {#if note.id === retryNoteId}
-              <Button
-                data-changes
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!session.canRetryTurn}
-                onclick={() => void retryTurn()}
-                label={CHAT_COPY.stopLine.retry}
-              />
+            <!-- A failed run's line says why it stopped in a few words, and leads to the Run page's
+                 explanation of the failure (COR-2533), for every failed attempt on record. -->
+            <!-- The link and Retry are one group a Cinder space apart, never touching. -->
+            {#if (note.kind === 'stopped' && note.failed === true) || note.id === retryNoteId}
+              <Stack direction="row" align="center" wrap gap="var(--cinder-space-3)">
+                {#if note.kind === 'stopped' && note.failed === true}
+                  {@const failedRunId = stoppedRunIdOf(note.id)}
+                  {#if failedRunId !== undefined}
+                    <!-- `data-chat-note-link` opens it inside the app (`openNoteLink`). -->
+                    <Link
+                      color="inherit"
+                      underline="always"
+                      data-chat-note-link
+                      data-chat-explain-link
+                      href={router.href(failureExplanationPath(failedRunId))}
+                    >
+                      {CHAT_COPY.stopLine.explain}
+                    </Link>
+                  {/if}
+                {/if}
+                {#if note.id === retryNoteId}
+                  <Button
+                    data-changes
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!session.canRetryTurn}
+                    onclick={() => void retryTurn()}
+                    label={CHAT_COPY.stopLine.retry}
+                  />
+                {/if}
+              </Stack>
             {/if}
           {/snippet}
           {#snippet row({ message }, renderDefault)}
@@ -2566,7 +2596,8 @@
                 {#each notes as note (note.id)}
                   <ChatNote
                     {note}
-                    action={note.kind === 'stopped' && note.id === retryNoteId
+                    action={note.kind === 'stopped' &&
+                    (note.id === retryNoteId || note.failed === true)
                       ? noteAction
                       : undefined}
                   />

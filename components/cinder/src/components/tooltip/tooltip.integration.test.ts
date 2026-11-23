@@ -760,6 +760,32 @@ describe('Tooltip', () => {
     });
   });
 
+  test('a mouse leave does not dismiss the focused trigger’s tooltip', async () => {
+    const { container } = render(Tooltip, {
+      props: {
+        text: 'Focused tooltip',
+        children: triggerSnippet,
+      },
+    });
+    const wrapper = requiredInstance(
+      container.querySelector('.cinder-tooltip-wrapper'),
+      HTMLElement,
+    );
+    const trigger = requiredInstance(wrapper.querySelector('button'), HTMLButtonElement);
+
+    trigger.focus();
+    await waitFor(() => {
+      expect(queryTooltip()?.getAttribute('aria-hidden')).toBe('false');
+    });
+    await fireEvent.mouseLeave(wrapper);
+    expect(queryTooltip()?.getAttribute('aria-hidden')).toBe('false');
+
+    trigger.blur();
+    await waitFor(() => {
+      expect(queryTooltip()?.getAttribute('aria-hidden')).toBe('true');
+    });
+  });
+
   test('Escape hides a visible tooltip (WAI-ARIA APG dismiss requirement)', async () => {
     const { container } = render(Tooltip, {
       props: {

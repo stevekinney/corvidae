@@ -52,4 +52,26 @@ describe('FaultBanner', () => {
     await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
     expect(retried).toBe(true);
   });
+
+  test('shows the remediation, and offers Retry only when the fault is not retryable: false', async () => {
+    const treatment: FaultTreatment = {
+      kind: 'conflict',
+      message: 'The schedule changed.',
+      isSpentIdempotencyKey: false,
+      remediation: 'Open the schedule again, then change it.',
+    };
+
+    const retryable = render(FaultBanner, {
+      props: { treatment: { ...treatment, retryable: true }, onRetry: () => {} },
+    });
+    expect(retryable.getByText('Open the schedule again, then change it.')).not.toBeNull();
+    expect(retryable.getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    retryable.unmount();
+
+    const permanent = render(FaultBanner, {
+      props: { treatment: { ...treatment, retryable: false }, onRetry: () => {} },
+    });
+    expect(permanent.getByText('Open the schedule again, then change it.')).not.toBeNull();
+    expect(permanent.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
 });

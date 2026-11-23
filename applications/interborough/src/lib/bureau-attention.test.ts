@@ -192,6 +192,34 @@ describe('listAttentionItems', () => {
     expect(items[2]).toEqual({ ...missed, kind: 'missed-runs', area: 'schedules' } as const);
   });
 
+  test('keeps the three kinds of run item, which Needs attention words (COR-2528)', async () => {
+    const items = await listAttentionItems({
+      fetch: answering({
+        items: [
+          { kind: 'run-stalled', area: 'runs', at: 3, runId: 'r-1', agentName: null },
+          { kind: 'run-looping', area: 'runs', at: 2, runId: 'r-2', agentName: 'tool-runner' },
+          {
+            kind: 'run-overspending',
+            area: 'runs',
+            at: 1,
+            runId: 'r-3',
+            agentName: null,
+            costUsd: 12.5,
+            thresholdUsd: 10,
+            settledAt: null,
+          },
+        ],
+        count: 3,
+        checks: [{ area: 'runs', count: 3 }],
+      }),
+    });
+    expect(items.map((item) => item.kind)).toEqual([
+      'run-stalled',
+      'run-looping',
+      'run-overspending',
+    ]);
+  });
+
   test('leaves out a kind it has no words for, which the Health dot still counts', async () => {
     const items = await listAttentionItems({
       fetch: answering({

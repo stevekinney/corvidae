@@ -6,7 +6,7 @@
    * one abort button whose name says what it does. A poll updates the page in place, so the focused
    * control keeps focus.
    */
-  import { Button, DescriptionList, Section, Text } from '@lostgradient/cinder';
+  import { Button, Callout, DescriptionList, Section, Text } from '@lostgradient/cinder';
 
   import type { InspectorView } from './view.svelte.ts';
 
@@ -106,5 +106,12 @@
         onclick={onAbort}
       />
     </Section>
+  </main>
+{:else if view.notice !== undefined}
+  <main class="panel-page">
+    <Text as="h1" variant="h3">Run inspector</Text>
+    <Callout variant="info">
+      <p data-inspector-notice>{view.notice}</p>
+    </Callout>
   </main>
 {/if}

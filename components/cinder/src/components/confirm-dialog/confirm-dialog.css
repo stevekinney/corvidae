@@ -73,6 +73,19 @@
     gap: var(--cinder-space-3);
   }
 
+  /* A typed destructive sheet puts both actions on their own line. Cancel keeps initial focus. */
+  .cinder-modal[data-cinder-sheet='docked'].cinder-confirm-dialog
+    .cinder-confirm-dialog__actions[data-cinder-typed-destructive] {
+    flex-flow: column-reverse nowrap;
+    align-items: stretch;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'].cinder-confirm-dialog
+    .cinder-confirm-dialog__actions[data-cinder-typed-destructive]
+    > button {
+    flex: none;
+    inline-size: 100%;
+  }
   /* As a sheet the actions row takes Modal's one docked footer rule (modal.css): a compact Cancel
    * and the confirmation filling the rest. The one exception to its "a lone action fills the row",
    * for a failure that carries its own action, is in modal.css beside the rule

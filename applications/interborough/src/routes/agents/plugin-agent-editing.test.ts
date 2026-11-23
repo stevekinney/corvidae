@@ -307,6 +307,7 @@ describe('the Settings tab of a running plugin’s code agent', () => {
     await waitFor(() => expect(field.value).toBe('Old.'));
     await fireEvent.input(field, { target: { value: '' } });
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '12' } });
+    await fireEvent.blur(await findByLabelText('Step limit'));
     await fireEvent.click(await findByRole('button', { name: copy.settings.save }));
 
     await waitFor(() => expect(updates(stub)).toHaveLength(1));
@@ -348,6 +349,7 @@ describe('the Settings tab of a running plugin’s code agent', () => {
     })) as HTMLTextAreaElement;
     await waitFor(() => expect(again.value).toBe('Repeat the last message.'));
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '12' } });
+    await fireEvent.blur(await findByLabelText('Step limit'));
     await fireEvent.click(await findByRole('button', { name: copy.settings.save }));
 
     await waitFor(() => expect(updates(stub)).toHaveLength(2));
@@ -425,7 +427,7 @@ describe('what a plugin’s code agent states itself that an override would repl
     expect((box as HTMLInputElement).disabled).toBe(false);
     const spend = await findByLabelText('Spend limit per chat');
     await fireEvent.input(spend, { target: { value: '4' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
     await waitFor(() => expect(updates(stub)).toHaveLength(1));
     // A save of the spend limit alone never states the tools, which would rebuild the toolbox.
     expect(Object.keys(sentOverrides(stub))).not.toContain('tools');
@@ -478,7 +480,7 @@ describe('a plugin’s tools, which its agent states by their own names and the 
     expect(sentOverrides(stub, 1)).toEqual({ tools: ['lookup-order', 'issue-refund'] });
     const spend = await findByLabelText('Spend limit per chat');
     await fireEvent.input(spend, { target: { value: '4' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
     await waitFor(() => expect(updates(stub)).toHaveLength(3));
     expect(sentOverrides(stub, 2)).toEqual({
       tools: ['lookup-order', 'issue-refund'],
@@ -494,7 +496,7 @@ describe('a plugin’s tools, which its agent states by their own names and the 
     await findByRole('checkbox', { name: /Allow Issue refund/ });
     const spend = await findByLabelText('Spend limit per chat');
     await fireEvent.input(spend, { target: { value: '4' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
     await waitFor(() => expect(updates(stub)).toHaveLength(1));
     expect(sentOverrides(stub)).toEqual({ limits: { cost: { run: 4, chat: 4 } } });
   });
@@ -685,6 +687,7 @@ describe('Restore on a plugin’s code agent (COR-2229 AC3)', () => {
     );
     expect(getByRole('combobox', { name: /^Model$/ }).textContent).toMatch(/haiku/i);
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '12' } });
+    await fireEvent.blur(await findByLabelText('Step limit'));
     await fireEvent.click(await findByRole('button', { name: copy.settings.save }));
 
     await waitFor(() => expect(updates(stub)).toHaveLength(1));
