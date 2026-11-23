@@ -4,7 +4,7 @@ An Interborough plugin that contributes the OpenAI model provider (`openaiProvid
 
 | Setting | Default | What it is |
 | --- | --- | --- |
-| `models` | every current model | An optional allowlist, each entry a model or one of its aliases. The host reads it from `plugins.openai.configuration.models` on every catalog load, so a change applies without a restart. An entry that matches no current model fails startup and names the field. |
+| `models` | every current model | An optional allowlist, each entry a model or one of its aliases. The host reads it from `plugins.openai.configuration.models` on every catalog load, so a change applies without a restart. An empty list, or an entry that matches no current model, skips the plugin at startup with a `configuration-invalid` problem that names the field (for example `models[1]`); the host still starts, and the problem shows in the plugin's row in Settings > Plugins. |
 
 The plugin declares the Bungalow secret `openai-api-key`, the key the host has always used. Until it is saved the plugin is `needs-setup`, the host offers none of its models, and its embedder is unavailable. The embedder reads the key each time it embeds, so saving it needs no restart.
 

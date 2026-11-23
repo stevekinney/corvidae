@@ -85,10 +85,10 @@ With the default zero offset the two-stop recipe paints one tight ring; the firs
 
 **Representative call sites:**
 
-- `src/styles/components/button.css` — `.cinder-button:focus-visible`, uses `--_cinder-button-ring` per-variant override hook.
-- `src/styles/components/input.css` — `.cinder-input:focus-visible`, uses `--_cinder-input-ring`.
-- `src/styles/components/checkbox.css` — `.cinder-checkbox:focus-visible`, uses `--_cinder-checkbox-ring`.
-- `src/styles/components/dropdown.css` — `.cinder-dropdown-trigger:focus-visible`, uses `--_cinder-dropdown-trigger-ring`.
+- `src/components/button/button.css` — `.cinder-button:focus-visible`, uses `--_cinder-button-ring` per-variant override hook.
+- `src/components/input/input.css` — `.cinder-input:focus-visible`, uses `--_cinder-input-ring`.
+- `src/components/checkbox/checkbox.css` — `.cinder-checkbox:focus-visible`, uses `--_cinder-checkbox-ring`.
+- `src/components/dropdown/dropdown.css` — `.cinder-dropdown-trigger:focus-visible`, uses `--_cinder-dropdown-trigger-ring`.
 
 ## Strategy B-inset — Inset single-band ring (constrained sub-variant of B)
 
@@ -118,7 +118,7 @@ The offset color band is intentionally omitted — there is no usable space insi
 
 **Approved call sites today:**
 
-- `.cinder-dropdown-item[data-cinder-variant='default']:focus-visible` and `.cinder-dropdown-item[data-cinder-variant='danger']:focus-visible` in `src/styles/components/dropdown.css` — items live inside `.cinder-dropdown__menu` (`overflow: hidden`).
+- `.cinder-dropdown-item[data-cinder-variant='default']:focus-visible` and `.cinder-dropdown-item[data-cinder-variant='danger']:focus-visible` in `src/components/dropdown/dropdown.css` — items live inside `.cinder-dropdown__menu` (`overflow: hidden`).
 - `.cinder-tab:focus-visible` in `src/components/tabs/tabs.css` — the tab sits inside `.cinder-tab-list`, whose `overflow-x: auto` forces both-axis clipping (per the CSS Overflow spec, an `auto`/`scroll` value on one axis promotes the other axis's `visible` to `auto`), so an outset ring is clipped on every edge. Uses the `--_cinder-tab-ring` hook.
 - `.cinder-side-navigation-group__trigger:focus-visible` in `src/components/side-navigation-group/side-navigation-group.css` and `.cinder-navigation-item[data-variant='vertical']:focus-visible` in `src/components/navigation-item/navigation-item.css` — full-bleed rows inside the grouped-navigation container; an outset ring stretches/bleeds across the container boundary. Use the `--_cinder-side-navigation-group-trigger-ring` / `--_cinder-navigation-item-ring` hooks.
 - `.cinder-collapsible__trigger:focus-visible` in `src/components/collapsible/collapsible.css` — the trigger is a full-bleed row whose rounded outer edge coincides with the bordered `.cinder-collapsible` root. The root intentionally preserves visible overflow for public descendants, but an outset trigger ring would paint beyond that shared component boundary and over adjacent layout instead of remaining attached to the full-bleed row. The inset ring stays inside the trigger and preserves both the root boundary and the 44 px minimum touch target.

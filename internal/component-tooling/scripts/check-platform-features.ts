@@ -22,8 +22,8 @@
  *     same known sites" from "a new one"). Pass `--update-baseline` to rewrite
  *     the baseline after an intentional change.
  *
- * Run via `bun run --filter=@lostgradient/cinder platform:audit` (report) or
- * `platform:audit --strict` (gate; wired into `lint`).
+ * Run from `components/cinder` as `bun ../../internal/component-tooling/scripts/check-platform-features.ts`
+ * (report) or with `--strict` (gate; wired into `lint` through `lint:checks`).
  *
  * oxlint cannot express this (cross-file inventory, the `@media` vs
  * `@container` distinction, and the grandfathered baseline), so a scanned report
@@ -378,7 +378,7 @@ function tierLabel(tier: 1 | 2 | 3): string {
 
 function renderInventory(counts: FeatureCount[]): string {
   let report =
-    'platform:audit — modern feature inventory (see src/_internal/PLATFORM-POLICY.md)\n\n';
+    'check-platform-features — modern feature inventory (see src/_internal/PLATFORM-POLICY.md)\n\n';
   for (const tier of [1, 2, 3] as const) {
     const tierCounts = counts.filter((entry) => entry.tier === tier);
     if (tierCounts.length === 0) continue;
@@ -417,7 +417,7 @@ async function main(): Promise<void> {
     await Bun.write(baselinePath, JSON.stringify(entries, null, 2) + '\n');
     const total = entries.reduce((sum, entry) => sum + entry.allowedCount, 0);
     process.stdout.write(
-      `platform:audit — wrote baseline: ${entries.length} unique site${entries.length === 1 ? '' : 's'} (${total} occurrences).\n`,
+      `check-platform-features — wrote baseline: ${entries.length} unique site${entries.length === 1 ? '' : 's'} (${total} occurrences).\n`,
     );
     return;
   }
@@ -458,9 +458,9 @@ async function main(): Promise<void> {
   }
 
   process.stderr.write(
-    `platform:audit — ${regressions.length} viewport @media(width) site${regressions.length === 1 ? '' : 's'} exceed the baseline.\n` +
+    `check-platform-features — ${regressions.length} viewport @media(width) site${regressions.length === 1 ? '' : 's'} exceed the baseline.\n` +
       '  A component reacting to its own box width must use @container, not a viewport @media (RESPONSIVE-POLICY.md).\n' +
-      '  If this viewport query is genuinely viewport-owned, run `platform:audit --update-baseline` to grandfather it.\n\n' +
+      '  If this viewport query is genuinely viewport-owned, run `bun ../../internal/component-tooling/scripts/check-platform-features.ts --update-baseline` from `components/cinder` to grandfather it.\n\n' +
       regressions
         .map(
           (reg) =>

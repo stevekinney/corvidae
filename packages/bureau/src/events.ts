@@ -1549,6 +1549,7 @@ export interface BureauEventMap extends EventMap {
   [RunStalledEvent.type]: RunStalledEvent;
   /** A run's toolbox reported a loop (COR-2526). */
   [RunLoopingEvent.type]: RunLoopingEvent;
+  /** A run cost more than the workspace's spend threshold (COR-2527). */
   [RunOverspendingEvent.type]: RunOverspendingEvent;
   [RunRegisteredEvent.type]: RunRegisteredEvent;
   [RunSettledEvent.type]: RunSettledEvent;
