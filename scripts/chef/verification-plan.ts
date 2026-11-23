@@ -4,6 +4,7 @@ import {
   reachesPlaygroundDeployment,
   readWorkspaces,
 } from '../../applications/playground/scripts/ignore-build.ts';
+import { computedPathTests } from '../computed-path-tests.ts';
 
 export const assignmentVersion = 1 as const;
 
@@ -330,13 +331,12 @@ export interface EvidencePlan {
   full_run_rules: FullRunRule[];
 }
 
-export const COMPONENT_DIRECTORIES = [
+const COMPONENT_DIRECTORIES = [
   /^components\/cinder\/src\/components\/([\w-]+)\//,
   /^components\/chat\/src\/lib\/components\/([\w-]+)\//,
   /^scripts\/browser-fixtures\/src\/fixtures\/([\w-]+)\.svelte$/,
 ];
 
-const CINDER = 'components/cinder/';
 const CINDER_SOURCE = 'components/cinder/src/';
 const FIXTURE_TESTS = 'scripts/browser-fixtures/tests/';
 const E2E_DIRECTORY = 'applications/interborough/tests/e2e/';
@@ -344,6 +344,17 @@ const INTERBOROUGH_ROUTES = 'applications/interborough/src/routes/';
 const ROUTES_FILE = 'applications/interborough/src/app/routes.ts';
 const FIXTURE_SPEC_PATH = /^scripts\/browser-fixtures\/tests\/[\w.-]+\.playwright\.ts$/;
 const ISOLATED = /\.(?:slow|integration)\.test\.ts$/;
+/**
+ * A Playwright specification. Every `*.spec.*` file in the repository is one (Interborough's
+ * `tests/e2e` and `tests/panels`, the browser fixtures' `smoke.spec.ts`), and Playwright's `test`
+ * calls throw under `bun test` ("did not expect test.beforeAll() to be called here"), so the unit
+ * lanes of a dispatch never name one: the import graph selects it as a test file, but the e2e
+ * lanes run it.
+ */
+const PLAYWRIGHT_SPEC = /\.spec\.[cm]?[jt]sx?$/;
+/** Whether a selected test file can run under `bun test`: not a specification, not isolated. */
+const runsUnderBunTest = (path: string): boolean =>
+  !PLAYWRIGHT_SPEC.test(path) && !ISOLATED.test(path);
 const TEST_FILE = /\.(?:test|test-support|spec|playwright|bench)\.[cm]?[jt]sx?$/;
 const SOURCE_TEST_ID = /data-testid=(?:\{\s*)?["'`]([\w:.-]+)["'`]/g;
 
@@ -591,15 +602,12 @@ function unitTestsFor(changed: readonly string[], context: EvidenceContext): Pla
     const target = lane(selection.directory);
     if (selection.mode === 'full') target.full = true;
     for (const test of selection.tests)
-      if (!ISOLATED.test(test)) target.paths.add(strip(selection.directory, test));
+      if (runsUnderBunTest(test)) target.paths.add(strip(selection.directory, test));
   }
-  // The import graph misses `api-contract.test.ts`, which reads component files by a computed path.
-  if (changed.some((path) => path.startsWith(CINDER))) {
-    const target = lane('components/cinder');
-    for (const path of context.paths)
-      if (/^components\/cinder\/src\/[^/]+\.test\.ts$/.test(path) && !ISOLATED.test(path))
-        target.paths.add(strip('components/cinder', path));
-  }
+  // The import graph misses tests that read workspace files by a computed path, such as Cinder's
+  // `api-contract.test.ts`; `scripts/computed-path-tests.ts` lists them for both planners.
+  for (const { path, workspace } of computedPathTests(changed, context.paths))
+    if (runsUnderBunTest(path)) lane(workspace).paths.add(strip(workspace, path));
   return [...byWorkspace]
     .filter(([, { paths, full }]) => paths.size > 0 || full)
     .map(([workspace, { paths, full }]) => ({ workspace, paths: [...paths].toSorted(), full }))

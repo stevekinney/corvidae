@@ -359,9 +359,9 @@ export function createShutdown<D extends AgentDefinitions>(
       // simply awaiting first avoids it entirely.
       //
       // AB-388 (Codex review, PR #597, "Fence maintenance admission once
-      // shutdown starts"): closed HERE, synchronously, before anything
-      // below this line awaits — see `maintenanceAdmissionClosed`'s own
-      // doc comment for why the ordering matters.
+      // shutdown starts"): close general maintenance before the remaining
+      // shutdown settlements, while the separate outbox-drain cutoff below
+      // stays open long enough to land terminal session saves.
       core.maintenanceAdmissionClosed = true;
       // COR-772 — land every child-settlement write the run teardown above
       // produced before the audit trail and storage below go away. Only
@@ -422,6 +422,13 @@ export function createShutdown<D extends AgentDefinitions>(
         runtimeServices.timers.clearTimeout(core.outboxRetryTimerHandle);
         core.outboxRetryTimerArmedForMs = undefined;
       }
+      // COR-2639: terminal session saves above are allowed to trigger and
+      // join a drain, because this shutdown awaits that work below. Once the
+      // snapshot boundary is reached, close admission synchronously before
+      // reading it: a later post-commit append remains durable for the next
+      // host and cannot join an already-settling drain that would outlive
+      // this host's storage.
+      core.outboxDrainAdmissionClosed = true;
       // Codex P2 review finding, PR #599, "Await retry drains that have
       // already fired during shutdown": `clearTimeout` above only prevents
       // a NOT-YET-FIRED retry timer from firing — it cannot un-fire one

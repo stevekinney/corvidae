@@ -5,7 +5,7 @@
    * for the replay scope gate) around `<CheckpointsTab>`.
    */
   import { HttpClient } from '@lostgradient/weft';
-  import type { WorkflowReplay, WorkflowTimelineEntry } from '@lostgradient/weft';
+  import type { WorkflowReplay } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { Principal } from '../../../../lib/scopes.svelte.ts';
@@ -16,14 +16,19 @@
     ForkClient,
     ForkSourceClient,
   } from './checkpoints-data.ts';
+  import type { ForkComparisonClient, ForkPreviewClient } from './fork-comparison-data.ts';
+  import { forkOperations } from './fork-comparison.test-support.ts';
   import type { WorkflowRevisionListClient } from './fork-revision-picker.ts';
 
   interface Props {
-    client: CheckpointsOperationsClient &
+    client: Omit<CheckpointsOperationsClient, 'operations'> &
       ForkClient &
-      WorkflowRevisionListClient & {
+      Omit<WorkflowRevisionListClient, 'operations'> & {
+        /** The comparison and the fork's dry run (COR-2538) default to an empty comparison and a one-step preview. */
+        operations: CheckpointsOperationsClient['operations'] &
+          WorkflowRevisionListClient['operations'] &
+          Partial<ForkComparisonClient['operations'] & ForkPreviewClient['operations']>;
         replayTo: (id: string, step: number) => Promise<WorkflowReplay | null>;
-        getTimeline: (id: string) => Promise<WorkflowTimelineEntry[]>;
         /** The fork dialog's open-time source refetch (COR-15); defaults to "purged" so tests that don't care keep the page-load revision. */
         get?: ForkSourceClient['get'];
       };
@@ -53,7 +58,11 @@
 
 <WorkflowRouteHarness client={contextClient} {principal} {queryClient}>
   <CheckpointsTab
-    client={{ get: async () => null, ...client }}
+    client={{
+      get: async () => null,
+      ...client,
+      operations: { ...forkOperations(), ...client.operations },
+    }}
     {workflowId}
     {workflowType}
     {sourceRevision}

@@ -207,8 +207,8 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(list.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
     await expect(list.locator('.cinder-data-list-group__header')).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday, Sunday, Nov 1\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday, Sunday, Nov 1',
+      'Thursday, Oct 29',
     ]);
     const parcelly = chatRow(page, TOOL_CALL_TURN_TITLE);
     await expect(parcelly).toContainText('9:52 AM');
@@ -243,16 +243,14 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(list).not.toContainText('Look up order 4468');
   });
 
-  test('shows the heading and its status, the message, the reply, the summary and the rail (21q)', async ({
+  test('shows the heading, the message, the reply, and the approval status on the rail (21q)', async ({
     page,
     request,
   }) => {
     await openLongTurn(page, request);
     const heading = page.getByRole('heading', { level: 1, name: TOOL_CALL_TURN_TITLE });
     await expect(heading).toBeVisible();
-    await expect(heading.locator('..')).toContainText('Waiting on you');
-    const status = heading.locator('..').locator('.cinder-status-dot').first();
-    await expect(status).toHaveAttribute('data-cinder-status', 'warning');
+    await expect(page.getByTestId('chat-header')).not.toContainText('Waiting on you');
 
     const conversation = openChat(page);
     const message = conversation.locator('.chat-message--user, [data-role="user"]').first();
@@ -281,10 +279,15 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(railRows(page).nth(1)).toContainText('→ $42.00, delivered Mon');
     await expect(railRows(page).nth(2)).toContainText('4476');
     await expect(rail(page).locator('.cinder-tool-call-rail__more')).toHaveText('Show 24 more');
+    await expect(rail(page).locator('.cinder-tool-call-rail__more')).toHaveCSS(
+      'border-top-style',
+      'none',
+    );
     await expect(railRows(page).nth(3)).toContainText('Send email');
     await expect(railRows(page).nth(3)).toContainText('→ SMTP timeout after 10s');
     await expect(railRows(page).nth(4)).toContainText('Approved by you 9:58 AM');
-    await expect(railRows(page).nth(5)).toContainText('Waiting on you');
+    const waiting = railRows(page).nth(5).getByText('Waiting on you', { exact: true });
+    await expect(waiting).toHaveAttribute('data-cinder-variant', 'warning');
     // The approval is the waiting row's content, with Deny and Approve at its right.
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('heading', { level: 4 })).toHaveText(TOOL_CALL_TURN_QUESTION);
@@ -367,7 +370,10 @@ test.describe('the shipped turn display is B’s rail with E’s panel (21a, 21b
     await expect(rail(page).locator('.cinder-chip, [data-cinder-chip]')).toHaveCount(0);
     await rail(page).locator('.cinder-tool-call-rail__more').click();
     const shown = await railRows(page).evaluateAll((rows) =>
-      rows.map((row) => row.querySelector('.cinder-tool-call-rail__name')?.textContent?.trim()),
+      // The name's own words, without the Waiting on you badge after it (COR-2438).
+      rows.map((row) =>
+        row.querySelector('.cinder-tool-call-rail__name-text')?.textContent?.trim(),
+      ),
     );
     // A call's state is written before its name for a screen reader ("Failed: Send email").
     const names = shown.map((name) => name?.replace(/^(Failed|Approved|Denied|Interrupted): /, ''));

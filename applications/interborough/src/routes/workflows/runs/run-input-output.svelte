@@ -9,17 +9,8 @@
    * holds has its input and result here, and a run of a workflow file the engine does not hold has
    * the Bureau's record of its trigger, result and error.
    */
-  import {
-    Badge,
-    Button,
-    Collapsible,
-    Markdown,
-    Section,
-    Stack,
-    VisuallyHidden,
-  } from '@lostgradient/cinder';
+  import { Alert, Button, Markdown, Section, Stack, VisuallyHidden } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { CircleX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
@@ -30,8 +21,8 @@
   import { dayAndTime } from '../../../lib/format/clock.ts';
   import { oneLine } from '../../../lib/one-line.ts';
   import type { WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
-  import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { threadIdForTask } from './run-activity.ts';
+  import RunFailureExplanation from './run-failure-explanation.svelte';
   import { messageInOfRun } from './run-message-in.ts';
   import RunPayloadCards from './run-payload-cards.svelte';
   import { payloadViewPreference } from './run-payload-view.svelte.ts';
@@ -252,39 +243,35 @@
      the step that failed (`failureOnStep`) is told there instead. -->
 {#snippet failure()}
   {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
-    <div class="weft-overview-tab__failure" data-run-failure>
-      <div class="weft-overview-tab__failure-title">
-        <CircleX aria-hidden="true" size={18} />
-        <span>Failed</span>
-        {#if workflow.failureCategory !== undefined}
-          <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
-        {/if}
-      </div>
-      {#if workflow.failureCategory !== undefined}
-        <p class="weft-overview-tab__failure-explanation">
-          {failureCategoryExplanation(workflow.failureCategory)}
-        </p>
-      {/if}
+    <Alert variant="danger" class="weft-overview-tab__failure" data-run-failure heading="Failed">
       {#if workflow.error}
         <!-- In its own words, never the error's JSON; the stack below says the rest. -->
         <p class="weft-overview-tab__failure-explanation">
           {oneLine(workflow.error, { keepParenthetical: true }) || workflow.error}
         </p>
       {/if}
-      {#if errorStack.length > 0}
-        <Collapsible variant="flat" trigger="Show full stack trace">
-          <pre class="weft-send-tab__result">{errorStack}</pre>
-        </Collapsible>
-      {/if}
-    </div>
-  {:else if task !== undefined && workflow === undefined && task.status === 'failed' && bureauFailure !== ''}
-    <!-- A run only the Bureau holds says why in its own words, here and not only in the rail, which
-         sits under everything on a phone (COR-2489). -->
+      <!-- What the Bureau stored about the failure (COR-2533), with the stack behind a disclosure. -->
+      <RunFailureExplanation
+        runId={task?.id ?? workflow.id}
+        category={workflow.failureCategory}
+        {errorStack}
+        explainFurther={task?.status === 'failed'}
+        framed={false}
+      />
+    </Alert>
+  {:else if task !== undefined && task.status === 'failed'}
+    <!-- A failed agent run says why in its own words, here and not only in the rail, which sits
+         under everything on a phone (COR-2489), and what the Bureau stored about the failure
+         (COR-2533). Whether the engine holds the run too does not matter: an agent run ends as a
+         completed engine run that carries a failed result, so its engine state is not `failed`. -->
     <Section
       title={RUN_DETAIL_COPY.instance.whyItFailed}
-      description={bureauFailure}
+      {...bureauFailure === '' ? {} : { description: bureauFailure }}
       data-run-failure
-    />
+    >
+      <!-- A model writes a longer explanation on request, kept on the task (COR-2534). -->
+      <RunFailureExplanation runId={task.id} explainFurther />
+    </Section>
   {:else if record !== undefined && workflow === undefined && !failureOnStep}
     {#if record.error !== undefined && record.error !== null}
       <Section

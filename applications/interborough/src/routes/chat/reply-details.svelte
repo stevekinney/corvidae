@@ -1,17 +1,20 @@
 <script lang="ts">
   /**
    * The popover on an agent's reply (COR-1983): why the reply ran on its model, what the model saw,
-   * and the tokens its run used. The first two come from `bureau.tasks.inspect` for the reply's step,
-   * read when the popover opens; the third from the run's terminal event, which the page holds only
-   * for a run it watched end. A part with no source is left out, never estimated: the model's name,
-   * the effort, the cost and the time are not carried by either.
+   * and the tokens and cost its run used. The first two come from `bureau.tasks.inspect` for the
+   * reply's step, read when the popover opens; the third from the run's terminal event, which the
+   * page holds only for a run it watched end. A part with no source is left out, never estimated: the
+   * model's name, the effort and the time are not carried by either, and a run that was not priced
+   * has no cost line, never "$0.00".
    */
   import { Button, EmptyState, ErrorState, Popover, Skeleton } from '@lostgradient/cinder';
   import { ChevronDown } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { COST_COPY } from '../../app/copy/cost.ts';
   import { inspectTaskStep } from '../../lib/bureau-tasks.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { isEmptyDetails, replyDetailsOf } from './reply-details.ts';
   import type { RunUsage } from './run-wiring.ts';
@@ -70,7 +73,7 @@
         description={COPY.failed.description}
         headingLevel={3}
         retryLabel={COPY.retry}
-        onRetry={() => void inspected.refetch()}
+        {...faultErrorStateAdvice(inspected.error, () => void inspected.refetch())}
       />
     {:else if isEmptyDetails(details)}
       <EmptyState
@@ -112,7 +115,7 @@
           {/if}
         </section>
       {/if}
-      {#if details.usage.length > 0}
+      {#if details.usage.length > 0 || details.cost !== undefined}
         <section class="weft-reply-details__part" data-part="usage">
           <h3 class="weft-reply-details__heading">{COPY.usage}</h3>
           <dl class="weft-reply-details__usage">
@@ -120,6 +123,10 @@
               <dt>{entry.kind}</dt>
               <dd>{entry.tokens}</dd>
             {/each}
+            {#if details.cost !== undefined}
+              <dt>{COST_COPY.label}</dt>
+              <dd data-testid="reply-cost">{details.cost}</dd>
+            {/if}
           </dl>
           <p class="weft-reply-details__note">{COPY.usageNote}</p>
         </section>

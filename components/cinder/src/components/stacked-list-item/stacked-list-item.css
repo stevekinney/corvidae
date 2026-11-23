@@ -143,9 +143,19 @@
     flex: 0 1 auto;
   }
 
+  /* A mark of several badges (a run's states) is wider than a word: where it does not fit beside
+   * the title it drops whole to a line under it, so the title keeps the row's width instead of
+   * being crushed to a few letters. A single badge never wraps, as above. */
+  .cinder-stacked-list-item__title-row:has(> .cinder-stacked-list-item__badge > :nth-child(2)) {
+    flex-wrap: wrap;
+    row-gap: var(--cinder-space-1);
+  }
+
+  /* The mark is one badge or several side by side (a run's states): the gap spaces them. */
   .cinder-stacked-list-item__badge {
     display: inline-flex;
     flex: none;
+    gap: var(--cinder-space-1);
     white-space: nowrap;
   }
 
@@ -271,7 +281,7 @@
     row-gap: var(--cinder-space-0-5);
     grid-template-columns:
       [status] var(--_cinder-status-track) [leading] auto [title] minmax(0, 1fr) [time] auto
-      [trailing] auto;
+      [trailing] var(--cinder-stacked-list-item-trailing-track, auto);
     grid-template-areas:
       'status leading title time trailing'
       'status leading line line trailing'
@@ -435,6 +445,30 @@
     white-space: nowrap;
   }
 
+  /* `metaLines={2}`: on a phone, line two takes a second line before it ends in an ellipsis. The
+     row's own width decides, as it does for the phone form (a row that follows the window takes
+     the same rule from the script's phone mark, as the title rule below does); wider, line two
+     stays one line. */
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item--lines:not([data-cinder-phone-width='viewport'])
+      .cinder-stacked-list-item__meta[data-cinder-meta-lines='2'] {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      white-space: normal;
+    }
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone]
+    .cinder-stacked-list-item__meta[data-cinder-meta-lines='2'] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+  }
+
   /* `wrapMeta`: line two carries a control, so it wraps and nothing on it is cut. */
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--wrap-meta
     .cinder-stacked-list-item__meta {
@@ -525,9 +559,39 @@
     flex: none;
   }
 
-  /* The trailing region spans both lines and stays beside them. */
+  /*
+   * The trailing region spans both lines and stays beside them. A list whose rows carry a figure
+   * there (a cost, a count) passes `trailingTrack` to its DataList, which sets
+   * `--cinder-stacked-list-item-trailing-track` on the list to the width of
+   * its widest figure, so the track is the same in every row, with or without a trailing region, and
+   * the times before it end at one edge. It sets `--cinder-stacked-list-item-trailing-align` to
+   * `baseline` to hold the figure on the first line's baseline instead of centering it on both
+   * lines. Both default to the row's own: a track sized by its content, and centered.
+   */
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__trailing {
     margin-inline-start: var(--cinder-space-3);
+    align-self: var(--cinder-stacked-list-item-trailing-align, center);
+  }
+
+  /*
+   * A narrow two-line row (the row's own width, 448px or less) that draws its actions as buttons
+   * gives them a line of their own under the text, at the start of the text's column, instead of
+   * a column beside it that would leave the title and the meta a few words wide. The title then
+   * has the row's width and wraps to its two lines before it is cut. A phone's one menu button
+   * (`--collapsed-actions`), a trailing glyph and the full-width buttons (`--phone-buttons`) are
+   * not this class, and a row's trailing control that is not an action (a switch) stays beside.
+   */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--action-buttons:not(
+        .cinder-stacked-list-item--single-action.cinder-stacked-list-item--status-leading
+      )
+      .cinder-stacked-list-item__trailing {
+      grid-row: 4;
+      grid-column: title / -1;
+      align-self: start;
+      margin-inline-start: 0;
+      margin-block-start: var(--cinder-space-2);
+    }
   }
 
   /* The chat list's exception: the pane is too narrow for a leading column, so line one is the
@@ -537,7 +601,7 @@
     > .cinder-stacked-list-item__layout {
     grid-template-columns:
       [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
-      [trailing] auto;
+      [trailing] var(--cinder-stacked-list-item-trailing-track, auto);
     grid-template-areas:
       'leading title title time trailing'
       'leading status line line trailing'
@@ -681,11 +745,101 @@
     padding-inline-end: 0;
   }
 
+  /* A viewport-width phone row gives the status its full word. Its timestamp must then reflow at
+     large text rather than widening the list past the viewport; the run list uses a time snippet,
+     so this belongs on the time cell rather than only on the text-value form below. */
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--group
+    )
+    .cinder-stacked-list-item__time {
+    text-align: end;
+    white-space: normal;
+  }
+
   .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
       .cinder-stacked-list-item--no-line-two
     )
     .cinder-stacked-list-item__status:has(*) {
     margin-inline-end: var(--cinder-space-1-5);
+  }
+
+  /* The generic narrow rule predates lines, whose body wrapper is flattened into this grid. Keep a
+     single action below the real title and line cells rather than creating an implicit `body` row.
+     This comes after both phone-width forms so an ordinary action gets the same usable text tracks
+     whether its phone state follows the row or the viewport. Menus, glyphs, and explicit phone
+     buttons each retain their compact or full-width arrangements. */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns:
+        [status] var(--_cinder-status-track) [leading] auto [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto);
+      grid-template-areas:
+        'status leading title time'
+        'status leading line line'
+        'trailing trailing trailing trailing'
+        '. . details details';
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns:
+        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto);
+      grid-template-areas:
+        'leading title title time'
+        'leading status line line'
+        'trailing trailing trailing trailing'
+        '. . details details';
+    }
+
+    /* These specialized third-row layouts retain the generic action's compact spacing, but their
+       text starts at different named columns. A leading tile makes the visual title begin at the
+       status line; without one it begins at the actual title line. */
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--has-leading,
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__trailing {
+      grid-column: title / -1;
+      align-self: start;
+      margin-inline-start: 0;
+      margin-block-start: var(--cinder-space-2);
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__trailing {
+      grid-column: status / -1;
+      align-self: start;
+      margin-inline-start: 0;
+      margin-block-start: var(--cinder-space-2);
+    }
+
+    /* The ordinary inline-status form stops before a trailing column. These dedicated action
+       layouts instead put the action in their third row, so that generated line starts at column
+       one. Let line two span the real row tracks without sending it back to that line. */
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-inline
+      .cinder-stacked-list-item__line-two {
+      grid-column: status / -1;
+    }
   }
 
   /* The chat list's line-two status gives up its fixed column on a phone only (COR-2016): the
@@ -1036,6 +1190,20 @@
   }
 
   @media (any-pointer: coarse) {
+    /* The disclosure's painted word stays compact in a run/schedule row. Its hit region reaches
+       44px outside normal layout, like the compact actions menu below, so it neither widens nor
+       makes the row taller. */
+    .cinder-stacked-list-item__disclosure {
+      min-block-size: 0;
+    }
+
+    .cinder-stacked-list-item__disclosure::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
     .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger::before {
       content: '';
       position: absolute;

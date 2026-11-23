@@ -417,7 +417,7 @@ function raceRequestAuthorityValidation(
   const deadline = options.requestContext?.deadline;
   const now = options.now ?? runtimeServices.clock.now;
   if (signal?.aborted) {
-    return Promise.reject(new Error(String(signal.reason ?? 'Cancelled')));
+    return Promise.reject(new Error(String(signal.reason ?? 'Canceled')));
   }
   if (deadline !== undefined && deadline <= now()) {
     return Promise.reject(new Error('Execution deadline exceeded'));
@@ -439,7 +439,7 @@ function raceRequestAuthorityValidation(
   let timer: unknown;
   let onAbort: (() => void) | undefined;
   const interruption = new Promise<boolean>((_resolve, reject) => {
-    onAbort = () => reject(new Error(String(signal?.reason ?? 'Cancelled')));
+    onAbort = () => reject(new Error(String(signal?.reason ?? 'Canceled')));
     signal?.addEventListener('abort', onAbort, { once: true });
     const scheduleDeadline = () => {
       if (deadline === undefined) return;

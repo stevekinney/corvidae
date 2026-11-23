@@ -49,6 +49,7 @@
   import { listAgents } from '../../lib/bureau-client.ts';
   import { listChecks, type CheckRow } from '../../lib/bureau-checks.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -283,16 +284,15 @@
         detail={failure.detail}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={retry}
+        {...faultErrorStateAdvice(failure.fault, retry)}
       >
         {#snippet secondaryAction()}
           <Button
             variant="secondary"
             href={router.href(TASK_COPY.list.loadFailed.healthPath)}
             onclick={(event) => open(event, TASK_COPY.list.loadFailed.healthPath)}
-          >
-            {TASK_COPY.list.loadFailed.checkHealth}
-          </Button>
+            label={TASK_COPY.list.loadFailed.checkHealth}
+          />
         {/snippet}
       </ErrorState>
     {:else if loading}

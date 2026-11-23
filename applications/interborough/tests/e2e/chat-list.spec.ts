@@ -18,6 +18,7 @@ import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -78,23 +79,22 @@ test.describe('the chat list on the sample world', () => {
     await expect(plus).toHaveText('New chat');
     await expect(plus).toHaveAttribute('href', '/chats/new');
     const field = header.getByRole('searchbox', { name: 'Search chats' });
-    const plusBox = await plus.boundingBox();
-    const fieldBox = await field.boundingBox();
-    expect(fieldBox!.y, 'the field sits under the title row').toBeGreaterThan(
-      plusBox!.y + plusBox!.height,
+    const { plus: plusBox, field: fieldBox } = await readBoxes(page, { plus, field });
+    expect(fieldBox.y, 'the field sits under the title row').toBeGreaterThan(
+      plusBox.y + plusBox.height,
     );
   });
 
-  test('lists the chats under their days, each band naming Central time (16f, 16g, 11g)', async ({
+  test('lists chats by day and names the time zone once (16f, 16g, 11g, COR-2451)', async ({
     page,
   }) => {
     await openChats(page);
     const bands = list(page).locator('.cinder-data-list-group__header');
     await expect(bands).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday, Sunday, Nov 1\s*Central time$/,
-      /^Friday, Oct 30\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday, Sunday, Nov 1',
+      'Friday, Oct 30',
+      'Thursday, Oct 29',
     ]);
     const refund = row(page, 'Refund order 4471');
     await expect(refund).toContainText('10:42 AM');
@@ -196,15 +196,16 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
   test('hides with Hide chats, leaves Show chats on a rail, and stays hidden across a reload', async ({
     page,
     checkA11y,
-  }) => {
+  }, testInfo) => {
     const refund = 'Refund order 4471';
     await openChats(page);
     await row(page, refund).getByRole('link').first().click();
     const detail = page.getByRole('region', { name: 'Open chat' });
     await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
-    const detailBefore = await detail.boundingBox();
+    const { detail: beforeBox } = await readBoxes(page, { detail });
+    const detailBefore = beforeBox.width;
 
-    // One control in one place: on the rail at the start edge, not beside the list's "+".
+    // One control: a handle on the divider, never in the header beside the list's "+" (COR-2438).
     const hide = page.getByRole('button', { name: 'Hide chats' });
     await expect(hide).toBeVisible();
     await expect(list(page).getByRole('button', { name: 'Hide chats' })).toHaveCount(0);
@@ -215,8 +216,52 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     const show = page.getByRole('button', { name: 'Show chats' });
     // The same control, in the same rail, now saying what it does next.
     await expect(show).toBeFocused();
-    const detailAfter = await detail.boundingBox();
-    expect(detailAfter!.width).toBeGreaterThan(detailBefore!.width + 150);
+    const readCollapseGeometry = () =>
+      page.locator('.cinder-list-detail').evaluate((root) => {
+        const rect = root.getBoundingClientRect();
+        const listPane = root.querySelector<HTMLElement>(
+          '.cinder-resizable-panels__pane:first-child',
+        );
+        const detailPane = root.querySelector<HTMLElement>(
+          '.cinder-resizable-panels__pane:last-child',
+        );
+        const rail = root.querySelector<HTMLElement>('.cinder-list-detail__rail');
+        return {
+          collapsed: root.hasAttribute('data-cinder-list-collapsed'),
+          layout: root.getAttribute('data-cinder-layout'),
+          listPaneDisplay: listPane === null ? null : getComputedStyle(listPane).display,
+          listRendered: root.querySelector('.cinder-list-detail__list') !== null,
+          railWidth: rail?.getBoundingClientRect().width ?? null,
+          rootWidth: rect.width,
+          detailWidth: detailPane?.getBoundingClientRect().width ?? null,
+        };
+      });
+    const immediateGeometry = await readCollapseGeometry();
+    await testInfo.attach('chat-list-collapse-immediate.json', {
+      body: JSON.stringify({ detailBefore, geometry: immediateGeometry }),
+      contentType: 'application/json',
+    });
+    expect(immediateGeometry.collapsed).toBe(true);
+    expect(immediateGeometry.listRendered).toBe(false);
+    expect(immediateGeometry.listPaneDisplay).toBe('none');
+    expect(immediateGeometry.railWidth).toBeGreaterThan(0);
+
+    // Hiding removes a flex pane. In a loaded host Chromium can expose the changed DOM before its
+    // next layout pass, so wait for the same expansion contract before reading its stable geometry.
+    const readDetailWidth = async () => {
+      const { detail: box } = await readBoxes(page, { detail });
+      return box.width;
+    };
+    await expect.poll(readDetailWidth).toBeGreaterThan(detailBefore + 150);
+    const detailAfter = await readDetailWidth();
+    await testInfo.attach('chat-list-collapse-settled.json', {
+      body: JSON.stringify({
+        detailBefore,
+        geometry: await readCollapseGeometry(),
+      }),
+      contentType: 'application/json',
+    });
+    expect(detailAfter).toBeGreaterThan(detailBefore + 150);
     // The capture is of the chat as it is, with its history in (COR-2327 B3): its waiting approval.
     await expect(detail.locator('[data-approval-decision]')).toBeVisible();
     await checkA11y('the chat list hidden beside an open chat');
@@ -234,6 +279,48 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await page.getByRole('button', { name: 'Show chats' }).click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
     await expect(page.getByRole('button', { name: 'Hide chats' })).toBeFocused();
+  });
+
+  test('puts Hide chats on the divider inside the list pane, with its own icon, and starts the title on the search field’s edge, at 1280 pixels (COR-2438)', async ({
+    page,
+  }) => {
+    await openChats(page, 1280, `/chats/${SAMPLE_WORLD_THREADS.sayHello}`);
+    await expect(
+      page.getByRole('region', { name: 'Open chat' }).getByRole('heading', { name: 'Say hello' }),
+    ).toBeVisible();
+    const read = await page.evaluate(() => {
+      const pane = document.querySelector('.cinder-list-detail__list');
+      const title = pane?.querySelector('.ib-chats__title h1, .ib-chats__title h2');
+      const search = pane?.querySelector('.cinder-search-field, input[type="search"]');
+      const toggle = document.querySelector('.cinder-list-detail__list-toggle');
+      if (!pane || !title || !search || !toggle) return undefined;
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const words = [...range.getClientRects()].find((rect) => rect.width > 0);
+      const box = (element: Element) => element.getBoundingClientRect();
+      return {
+        pane: box(pane).toJSON(),
+        titleLeft: words?.left ?? box(title).left,
+        searchLeft: box(search).left,
+        toggle: box(toggle).toJSON(),
+        inHeader: toggle.closest('.cinder-list-detail__header') !== null,
+        icon: toggle.querySelector('svg')?.getAttribute('class') ?? '',
+      };
+    });
+    expect(read).toBeDefined();
+    expect(Math.abs(read!.titleLeft - read!.searchLeft)).toBeLessThanOrEqual(1);
+    expect(read!.inHeader).toBe(false);
+    expect(read!.toggle.left).toBeGreaterThanOrEqual(read!.pane.left - 0.5);
+    expect(read!.toggle.right).toBeLessThanOrEqual(read!.pane.right + 0.5);
+    expect(read!.toggle.top).toBeGreaterThanOrEqual(read!.pane.top - 0.5);
+    expect(read!.toggle.bottom).toBeLessThanOrEqual(read!.pane.bottom + 0.5);
+    // Its own icon, not the sidebar's panel icon.
+    expect(read!.icon).not.toMatch(/panel-left/);
+    // Reachable by keyboard, and shown once it has focus.
+    const hide = page.getByRole('button', { name: 'Hide chats' });
+    await hide.focus();
+    await expect(hide).toBeFocused();
+    await expect(page.locator('.cinder-list-detail__toggle')).toHaveCSS('opacity', '1');
   });
 });
 
@@ -262,7 +349,7 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
         composer: left(region.querySelector('.chat-input-area'), true),
       };
       region
-        .querySelectorAll('.weft-chat-head > .cinder-alert, .weft-chat-head > [role="alert"]')
+        .querySelectorAll('.weft-chat-alerts > .cinder-alert, .weft-chat-alerts > [role="alert"]')
         .forEach((alert, index) => (edges[`alert ${index}`] = left(alert)));
       return edges;
     });
@@ -278,7 +365,7 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
     await expect(page.locator('.chat-timeline').first()).toBeVisible();
     if (expected.includes('runs')) await expect(open.locator('.weft-chat-strip')).toBeVisible();
     if (expected.includes('alert 0')) {
-      await expect(open.locator('.weft-chat-head > .cinder-alert').first()).toBeVisible();
+      await expect(open.locator('.weft-chat-alerts > .cinder-alert').first()).toBeVisible();
     }
     const edges = await leftEdges(page);
     const drawn = Object.entries(edges).filter(
@@ -395,27 +482,110 @@ test.describe('the chat list at other widths', () => {
     });
   });
 
-  test('on a phone is its own screen: "Chat", New chat, day bands and rows, with no search (06l)', async ({
+  test('/chats phone search and status filters use their own list screen (06l)', async ({
     page,
   }) => {
     await openChats(page, 375);
-    const header = list(page).locator('header');
+    const phoneList = list(page);
+    const header = phoneList.locator('header');
     await expect(header.getByRole('heading', { level: 1, name: 'Chat' })).toBeVisible();
     await expect(header.getByRole('link', { name: 'New chat' })).toContainClass(
       'button-variant-primary',
     );
-    await expect(header.getByRole('searchbox')).toHaveCount(0);
-    await expect(list(page).locator('.cinder-data-list-group__header')).toHaveText([
+    const search = header.getByRole('searchbox', { name: 'Search chats' });
+    expect(await search.count()).toBe(1);
+    await expect(search).toBeVisible();
+    await expect(phoneList.locator('.cinder-data-list-group__header')).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday\s*Central time$/,
-      /^Friday, Oct 30\s*Central time$/,
-      /^Thursday, Oct 29\s*Central time$/,
+      'Yesterday',
+      'Friday, Oct 30',
+      'Thursday, Oct 29',
     ]);
-    const scrolls = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    );
-    expect(scrolls, 'the page never scrolls sideways').toBe(false);
+    const segments = header.getByRole('radiogroup', { name: 'Status' });
+    const all = segments.getByRole('radio', { name: /^All/ });
+    const waiting = segments.getByRole('radio', { name: /^Waiting on you/ });
+    const done = segments.getByRole('radio', { name: /^Done/ });
+    await expect(segments.getByRole('radio')).toHaveText([
+      /^\s*All\s*,?\s*6\s*$/,
+      /^\s*Waiting on you\s*,?\s*2\s*$/,
+      /^\s*Done\s*,?\s*3\s*$/,
+    ]);
+    await expect(all).toBeChecked();
+    const widths = await phoneList.evaluate((region) => ({
+      page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      list: region.scrollWidth - region.clientWidth,
+    }));
+    expect(widths.page, 'the page fits the phone').toBeLessThanOrEqual(0);
+    expect(widths.list, 'the list fits the phone').toBeLessThanOrEqual(0);
     await captureForDesignReview(page, { route: '/chats', state: 'ready', source: SOURCE });
+    await captureForDesignReview(page, {
+      route: '/chats',
+      state: 'phone search and status filters',
+      source: SOURCE,
+      ready: async () => {
+        await expect(search).toBeVisible();
+        await expect(all).toBeChecked();
+      },
+    });
+
+    await waiting.press('Space');
+    await expect(waiting).toBeChecked();
+    await expect(waiting).toBeFocused();
+    await expect(page.locator('[data-chat]')).toHaveCount(2);
+    await done.click();
+    await expect(done).toBeChecked();
+    await expect(page.locator('[data-chat]')).toHaveCount(3);
+    await search.fill('Say hello');
+    await expect(search).toBeFocused();
+    await expect(page.locator('[data-chat]')).toHaveCount(1);
+    const matching = row(page, 'Say hello').getByRole('link');
+    await expect(matching).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/chats',
+      state: 'phone Done filtered by search',
+      source: SOURCE,
+      ready: async () => {
+        await expect(search).toHaveValue('Say hello');
+        await expect(done).toBeChecked();
+        await expect(matching).toBeVisible();
+      },
+    });
+
+    await search.clear();
+    await expect(page.locator('[data-chat]')).toHaveCount(3);
+    await all.click();
+    await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
+    await expect(row(page, 'Rename the billing tables')).toBeVisible();
+    await search.fill('parcelly');
+    await expect(
+      phoneList.getByRole('heading', { name: 'No chats match “parcelly”' }),
+    ).toBeVisible();
+    await search.fill('Say hello');
+    await matching.click();
+    await expect(page.getByRole('region', { name: 'Open chat' })).toContainText('Say hello');
+    await expect(phoneList).toHaveCount(0);
+    await expect(page.getByRole('searchbox', { name: 'Search chats' })).toHaveCount(0);
+    await page
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      .getByRole('link', { name: 'Chat' })
+      .click();
+    await expect(phoneList.getByRole('heading', { name: 'Chat', exact: true })).toBeVisible();
+  });
+
+  test('the archived Chat list keeps search on desktop and no status selectors at either width', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto('/chats?view=archived');
+    const archived = list(page);
+    await expect(
+      archived.getByRole('heading', { level: 1, name: 'Archived chats', exact: true }),
+    ).toBeVisible();
+    await expect(archived.getByRole('searchbox', { name: 'Search chats' })).toHaveCount(0);
+    await expect(archived.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(archived.getByRole('searchbox', { name: 'Search chats' })).toBeVisible();
+    await expect(archived.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
   });
 
   test('on a tablet sits beside the open chat', async ({ page }) => {
@@ -433,8 +603,31 @@ test.describe('the chat list at other widths', () => {
   });
 });
 
+test.describe('the Chat list on a touch phone', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test('/chats phone search and status filters leave the New chat hit area reachable', async ({
+    page,
+  }) => {
+    for (const width of [320, 375]) {
+      await openChats(page, width);
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+      const button = list(page).getByRole('link', { name: 'New chat' });
+      const verticalHits = await button.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
+        return [-21.5, 21.5].map((offset) =>
+          element.contains(document.elementFromPoint(centerX, centerY + offset)),
+        );
+      });
+      expect(verticalHits, `New chat hit area at ${width}px`).toEqual([true, true]);
+    }
+  });
+});
+
 test.describe('the states of the chat list', () => {
-  test('first use is the one list-page state "No chats yet" with New chat, and the header’s New chat is labelled (17u)', async ({
+  test('first use is one page with "No chats yet" and the only primary New chat, with no list pane (17u, COR-2438 21a)', async ({
     page,
   }) => {
     // Nothing is waiting on anyone either: a chat a pending review names is listed on its own.
@@ -449,22 +642,105 @@ test.describe('the states of the chat list', () => {
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/chats');
-    const state = list(page).locator('.cinder-empty-state');
+    const state = page.getByTestId('chats-first-use');
     await expect(state.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
-    await expect(state).not.toHaveAttribute('data-cinder-layout', /.*/);
     await expect(state).toContainText('Start one with an agent.');
     await expect(state.getByRole('link', { name: 'New chat' })).toContainClass(
       'button-variant-primary',
     );
-    const header = list(page)
-      .locator('.cinder-page-header')
-      .getByRole('link', { name: 'New chat' });
-    await expect(header).toHaveText('New chat');
-    await expect(header).toContainClass('button-variant-primary');
-    // No search or segments over nothing (owner report, 2026-11-19).
-    await expect(list(page).getByRole('searchbox')).toHaveCount(0);
+    await expect(page.locator('main .button-variant-primary')).toHaveCount(1);
+    // One empty state: no list pane and no "No chat open" beside it.
+    await expect(list(page)).toHaveCount(0);
+    await expect(page.locator('main .cinder-empty-state')).toHaveCount(1);
+    await expect(page.getByText('No chat open')).toHaveCount(0);
     await captureForDesignReview(page, { route: '/chats', state: 'first use', source: SOURCE });
+    await page.setViewportSize({ width: 375, height: 900 });
+    await expect(state.getByRole('heading', { name: 'No chats yet' })).toBeVisible();
+    await expect(list(page).getByRole('searchbox')).toHaveCount(0);
+    await expect(list(page).getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
   });
+
+  // COR-2438 21b, 21e: with no chat, the page follows whether a chat can work: no provider asks for
+  // one first, a provider with no agent asks for an agent, and New chat is never offered then.
+  for (const theme of ['light', 'dark'] as const) {
+    for (const width of [1280, 375]) {
+      for (const setup of [
+        {
+          name: 'no provider',
+          connected: false,
+          title: 'Connect a provider first',
+          action: 'Connect a provider',
+          href: '/settings/models',
+        },
+        {
+          name: 'no agent',
+          connected: true,
+          title: 'Create an agent first',
+          action: 'Create an agent',
+          href: '/agents/new',
+        },
+      ] as const) {
+        test(`first use with ${setup.name} says so and links to the missing step, at ${width} pixels (${theme})`, async ({
+          page,
+          checkA11y,
+        }) => {
+          await page.addInitScript((selected) => {
+            localStorage.setItem('weft-ui-theme', selected);
+          }, theme);
+          await answerOperation(page, 'bureau.reviews.list', (route, id) =>
+            route.fulfill({ json: { jsonrpc: '2.0', id, result: { reviews: [] } } }),
+          );
+          await answerOperation(page, 'bureau.contexts.list', (route, id) =>
+            route.fulfill({
+              json: { jsonrpc: '2.0', id, result: { contexts: [], nextOffset: null } },
+            }),
+          );
+          await answerOperation(page, 'bureau.agents.list', (route, id) =>
+            route.fulfill({ json: { jsonrpc: '2.0', id, result: { agents: [] } } }),
+          );
+          await page.route('**/host/providers', (route) =>
+            route.fulfill({
+              json: {
+                configurationRevision: null,
+                providers: [
+                  {
+                    name: 'anthropic',
+                    configured: setup.connected,
+                    hasKey: setup.connected,
+                    connected: setup.connected,
+                  },
+                ],
+                catalog: [],
+                models: [],
+              },
+            }),
+          );
+          await page.clock.setFixedTime(SAMPLE_NOW);
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto('/chats');
+
+          const state = page.getByTestId('chats-first-use');
+          await expect(state.getByRole('heading', { level: 1 })).toHaveText(
+            width === 375 ? 'Chat' : 'Chats',
+          );
+          await expect(state.getByRole('heading', { level: 2, name: setup.title })).toBeVisible();
+          await expect(state.getByRole('link', { name: setup.action })).toHaveAttribute(
+            'href',
+            setup.href,
+          );
+          await expect(page.locator('main a[href="/chats/new"]')).toHaveCount(0);
+          await expect(list(page)).toHaveCount(0);
+          await expect(page.locator('main .cinder-empty-state')).toHaveCount(1);
+          await checkA11y(`chat first use with ${setup.name} at ${width}px (${theme})`);
+          await captureForDesignReview(page, {
+            route: '/chats',
+            state: `first use with ${setup.name} at ${width} (${theme})`,
+            source: SOURCE,
+          });
+        });
+      }
+    }
+  }
 
   test('a search with no results says what was searched and offers Clear search (17v)', async ({
     page,

@@ -149,6 +149,32 @@ describe('DurationField', () => {
     expect(container.querySelector('.cinder-number-input__adornment')?.textContent).toBe('seconds');
   });
 
+  test('shows a placeholder for an empty duration in either unit mode without committing it', async () => {
+    const onValueChange = mock();
+    const { container, rerender } = render(DurationField, {
+      props: {
+        id: 'claim-renew',
+        label: 'Renew interval',
+        value: null,
+        placeholder: '15',
+        unit: 's',
+        unitSelectable: false,
+        onValueChange,
+      },
+    });
+    const input = numberOf(container);
+    expect(input.value).toBe('');
+    expect(input.placeholder).toBe('15');
+    await fireEvent.focus(input);
+    await fireEvent.blur(input);
+    expect(onValueChange).not.toHaveBeenCalled();
+
+    await rerender({ unitSelectable: true });
+    expect(numberOf(container).placeholder).toBe('15');
+    await fireEvent.change(unitOf(container), { target: { value: 'min' } });
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
   test('the unit select has its own id and name, apart from the number', () => {
     const { container } = render(DurationField, {
       props: { id: 'timeout', label: 'Timeout', value: 1000 },

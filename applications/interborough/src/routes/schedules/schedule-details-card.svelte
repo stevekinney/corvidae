@@ -6,7 +6,7 @@
    * Interborough was off, and which workflow version a run starts on) and when it was created. A
    * run that is going, and the runs queued behind it, are said here only while there are any.
    */
-  import { Card, formatDate, Link, Tooltip } from '@lostgradient/cinder';
+  import { Button, Card, formatDate, Link, Tooltip } from '@lostgradient/cinder';
   import { Info } from '@lucide/svelte';
 
   import type { ScheduleSummary } from '@lostgradient/weft';
@@ -134,13 +134,9 @@
             <dt>
               {copy.revision}
               <Tooltip text={pinned ? copy.revisionInfoPinned : copy.revisionInfo}>
-                <button
-                  type="button"
-                  class="ib-schedule-card__info"
-                  aria-label={copy.revisionInfoLabel}
+                <Button variant="ghost" size="sm" iconOnly aria-label={copy.revisionInfoLabel}
+                  ><Info aria-hidden="true" size={14} /></Button
                 >
-                  <Info aria-hidden="true" size={14} />
-                </button>
               </Tooltip>
             </dt>
             <dd data-testid="schedule-revision">{revision}</dd>

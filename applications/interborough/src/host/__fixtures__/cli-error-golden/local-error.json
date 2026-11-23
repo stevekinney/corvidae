@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "CLI_AUTHORIZATION",
+    "exitCode": 3,
+    "message": "Non-loopback management endpoints require --credential-reference.",
+    "retryable": false
+  },
+  "schemaVersion": 2
+}

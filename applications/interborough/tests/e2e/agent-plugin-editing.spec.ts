@@ -40,6 +40,76 @@ test.afterEach(async ({ request }) => {
   await resetOverrides(request);
 });
 
+test('commits a German decimal spend limit after typing its separator without writing an interim value', async ({
+  page,
+  request,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+  });
+  const read = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  const { hash } = read.result as { hash: string };
+  await bureau(request, 'bureau.agents.overrides.update', {
+    id: ECHO,
+    expectedHash: hash,
+    overrides: { limits: { cost: { run: 7, chat: 7 } } },
+  });
+
+  await page.goto(`/agents/${encodeURIComponent(ECHO)}/access`);
+  const spend = page.getByRole('spinbutton', { name: AGENT_PAGE_COPY.access.spendLabel });
+  await expect(spend).toHaveValue('7');
+  await spend.click();
+  await spend.press('ControlOrMeta+A');
+  await spend.pressSequentially('0,5');
+  await expect(spend).toHaveValue('0,5');
+
+  const write = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/jsonrpc') &&
+      (request.postDataJSON() as { method?: string }).method === 'bureau.agents.overrides.update',
+  );
+  await spend.press('Tab');
+  const submitted = await write;
+  expect(submitted.postDataJSON()).toMatchObject({
+    params: { overrides: { limits: { cost: { run: 7, chat: 0.5 } } } },
+  });
+  const response = await submitted.response();
+  expect(response?.ok()).toBe(true);
+  const persisted = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  expect(persisted.result).toMatchObject({
+    overrides: { limits: { cost: { run: 7, chat: 0.5 } } },
+  });
+});
+
+test('keeps a German decimal step limit intact until Settings is intentionally saved', async ({
+  page,
+  request,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+  });
+  const read = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  const { hash } = read.result as { hash: string };
+  await bureau(request, 'bureau.agents.overrides.update', {
+    id: ECHO,
+    expectedHash: hash,
+    overrides: { limits: { steps: 7 } },
+  });
+
+  await page.goto(`/agents/${encodeURIComponent(ECHO)}/settings`);
+  const steps = page.getByRole('spinbutton', { name: settings.stepLimitLabel });
+  await expect(steps).toHaveValue('7');
+  await steps.click();
+  await steps.press('ControlOrMeta+A');
+  await steps.pressSequentially('1,5');
+  await expect(steps).toHaveValue('1,5');
+  await steps.press('Tab');
+  await page.getByRole('button', { name: settings.save }).click();
+  await expect(page.getByText(settings.stepLimitError(100))).toBeVisible();
+  const persisted = await bureau(request, 'bureau.agents.overrides.get', { id: ECHO });
+  expect(persisted.result).toMatchObject({ overrides: { limits: { steps: 7 } } });
+});
+
 /**
  * Answers one method of the Bureau with a refusal, as the host answers one it will not do (a
  * JSON-RPC error with the fault's code in its data), and sends every other call on. The error rides
@@ -435,12 +505,12 @@ for (const width of WIDTHS) {
     // Access: the spend limit saves when the field is left.
     const access = AGENT_PAGE_COPY.access;
     await page.goto(`/agents/${encodeURIComponent(ECHO)}/access`);
-    const spend = page.getByLabel(access.spendLabel);
+    const spend = page.getByRole('spinbutton', { name: access.spendLabel });
     await expect(spend).toBeEnabled();
     await refuse(page, 'bureau.agents.overrides.update', STALE);
     await spend.fill('4');
     await spend.press('Tab');
-    await expect(page.locator('[data-failed="spend"]')).toBeVisible();
+    await expect(page.locator('[data-failed="spend-chat"]')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/agents/:agent/access (a plugin’s code agent)',
       state: 'stale write',

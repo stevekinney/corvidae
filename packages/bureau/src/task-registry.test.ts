@@ -22,6 +22,7 @@ import {
   type TaskRegistryHost,
   type TaskView,
 } from './task-registry';
+import { modelExplanationFenceOf } from './task-model-explanation';
 import type { TaskOrigin } from './task-origin';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -1245,6 +1246,18 @@ describe('a task record with a malformed field', () => {
     ['a pending wakeup that is not an object', { pendingWakeup: 'soon' }],
     ['a pending wakeup without a time', { pendingWakeup: {} }],
     ['a pending wakeup with a time that is not a number', { pendingWakeup: { wakeAt: null } }],
+    ['a model explanation with no text', { modelExplanation: { model: 'a/b', costUsd: null } }],
+    [
+      'a model explanation with a cost that is not a number',
+      {
+        modelExplanation: {
+          text: 't',
+          model: 'a/b',
+          generatedAt: '2026-09-01T00:00:00.000Z',
+          costUsd: 'free',
+        },
+      },
+    ],
   ];
 
   it.each(MALFORMED)(
@@ -2322,6 +2335,304 @@ describe('attention: stalled and looping (COR-2526)', () => {
     const stored = JSON.parse((await kv.get(key)) as string);
     await kv.set(key, JSON.stringify({ ...stored, attention: { stalledSince: 'not a time' } }));
     expect(await registry.get('run-1')).toBeUndefined();
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe('a model’s explanation of a failed task (COR-2534)', () => {
+  const EXPLANATION = {
+    text: 'The card was declined.',
+    model: 'anthropic/claude-haiku-5-5',
+    generatedAt: '2026-10-18T02:00:00.000Z',
+    costUsd: 0.002,
+  };
+  const USAGE = { promptTokens: 10, completionTokens: 5, totalTokens: 15, costUsd: 0.5 };
+  const settle = (status: 'failed' | 'completed') => ({
+    at: '2026-10-18T01:00:00.000Z',
+    status,
+    finishReason: status === 'failed' ? 'error' : 'stop-condition',
+    message: status === 'failed' ? 'the card was declined' : null,
+    usage: USAGE,
+  });
+
+  /** The fence a request takes when it reads the failure, before it asks the model. */
+  async function fenceOf(registry: ReturnType<typeof build>['registry'], taskId: string) {
+    const fence = modelExplanationFenceOf(await registry.record(taskId));
+    if (fence === undefined) throw new Error(`${taskId} has not failed`);
+    return fence;
+  }
+
+  it('is kept on a failed task, replaced by the next, and leaves the run’s usage and revision as they were', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    const before = await registry.record('run-1');
+    const fence = await fenceOf(registry, 'run-1');
+
+    expect(await registry.recordModelExplanation('run-1', EXPLANATION, fence)).toBe('stored');
+    const stored = await registry.record('run-1');
+    expect(stored?.modelExplanation).toEqual(EXPLANATION);
+    expect(stored?.usage).toEqual(USAGE);
+    expect(stored?.revision).toBe(before?.revision);
+
+    const second = { ...EXPLANATION, text: 'Again.', costUsd: null };
+    // Writing moves no revision, so the same fence still holds for the next explanation.
+    expect(await registry.recordModelExplanation('run-1', second, fence)).toBe('stored');
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toEqual(second);
+    // The view the operations serve carries none of it: it is read from the record alone.
+    expect(JSON.stringify(await registry.get('run-1'))).not.toContain('Again.');
+  });
+
+  it('writes nothing for a task that did not fail, is still going, or does not exist', async () => {
+    const { registry } = build();
+    await admit(registry, 'done');
+    await registry.recordSettled('done', settle('completed'));
+    await admit(registry, 'going');
+
+    const fence = {
+      revision: 0,
+      settledAt: settle('failed').at,
+      finishReason: 'error',
+      message: null,
+    };
+    expect(await registry.recordModelExplanation('done', EXPLANATION, fence)).toBe('stale');
+    expect(await registry.recordModelExplanation('going', EXPLANATION, fence)).toBe('stale');
+    expect(await registry.recordModelExplanation('nope', EXPLANATION, fence)).toBe('stale');
+    expect(await recordField(registry, 'done', 'modelExplanation')).toBeUndefined();
+    expect(await recordField(registry, 'going', 'modelExplanation')).toBeUndefined();
+  });
+
+  it('stays through a later writer of the same failure, and goes when the run’s real end replaces the failure it explained', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    await registry.recordModelExplanation('run-1', EXPLANATION, await fenceOf(registry, 'run-1'));
+    // The catalog hook writes the same failure again, with the answer.
+    await registry.recordSettled('run-1', { ...settle('failed'), message: 'later' });
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toEqual(EXPLANATION);
+
+    // An owner-lost inference is replaced by the owner's real end: the explanation was of a failure
+    // that did not happen.
+    await admit(registry, 'run-2');
+    await registry.recordSettled('run-2', {
+      ...settle('failed'),
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+    });
+    await registry.recordModelExplanation('run-2', EXPLANATION, await fenceOf(registry, 'run-2'));
+    await registry.recordSettled('run-2', settle('completed'));
+    expect(await recordField(registry, 'run-2', 'modelExplanation')).toBeUndefined();
+  });
+
+  it('is dropped with the settlement’s text when a chat’s content is purged', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    await registry.recordModelExplanation('run-1', EXPLANATION, await fenceOf(registry, 'run-1'));
+
+    expect(await registry.redactSettlement('run-1')).toBe(true);
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
+    expect(await registry.redactSettlement('run-1')).toBe(false);
+  });
+
+  it('is not stored when a purge lands between reading the failure and writing the text', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', settle('failed'));
+    // The request read the failure, with its message, and is now waiting on the model.
+    const fence = await fenceOf(registry, 'run-1');
+    expect(fence.message).toBe('the card was declined');
+
+    // The chat's content is purged: the status stays failed, the message goes.
+    expect(await registry.redactSettlement('run-1')).toBe(true);
+
+    expect(await registry.recordModelExplanation('run-1', EXPLANATION, fence)).toBe('stale');
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
+  });
+
+  it('is not stored when the run’s real end replaces the failure it was asked about', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', {
+      ...settle('failed'),
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+    });
+    const fence = await fenceOf(registry, 'run-1');
+
+    // The owner's real end replaces the inference, here with a failure of its own.
+    await registry.recordSettled('run-1', {
+      ...settle('failed'),
+      at: '2026-10-18T03:00:00.000Z',
+      finishReason: 'error',
+      message: 'the real failure',
+    });
+    const replaced = await fenceOf(registry, 'run-1');
+    expect(replaced.message).toBe('the real failure');
+
+    expect(await registry.recordModelExplanation('run-1', EXPLANATION, fence)).toBe('stale');
+    expect(await recordField(registry, 'run-1', 'modelExplanation')).toBeUndefined();
+  });
+});
+
+describe('failure and retrying (COR-2531)', () => {
+  const FAILED_AT = '2026-10-18T01:00:00.000Z';
+  const FAILURE = {
+    step: { index: 2, label: 'charge-card' },
+    errorCode: 'UNKNOWN',
+    errorKind: 'tool',
+    toolCall: { name: 'charge-card', callId: 'call-1' },
+  };
+  const failed = (extra: object = {}) => ({
+    at: FAILED_AT,
+    status: 'failed' as const,
+    finishReason: 'error',
+    message: 'it failed',
+    ...extra,
+  });
+
+  it('keeps the failure on the record beside the settlement, not inside it, and shows it for a failed task', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', failed({ failure: FAILURE }));
+
+    const record = await registry.record('run-1');
+    expect(record?.failure).toEqual(FAILURE);
+    expect(record?.settled).toEqual({
+      at: FAILED_AT,
+      status: 'failed',
+      finishReason: 'error',
+      message: 'it failed',
+    });
+    expect(await viewField(registry, 'run-1', 'failure')).toEqual({
+      step: { index: 2, label: 'charge-card' },
+      errorCode: 'UNKNOWN',
+      errorKind: 'tool',
+      toolCall: { name: 'charge-card', callId: 'call-1' },
+    });
+  });
+
+  it('shows each unknown part of a stored failure as null, and no failure for a failure that names nothing', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await admit(registry, 'run-2');
+    await registry.recordSettled('run-1', failed({ failure: { errorCode: 'UNKNOWN' } }));
+    await registry.recordSettled('run-2', failed());
+
+    expect(await viewField(registry, 'run-1', 'failure')).toEqual({
+      step: null,
+      errorCode: 'UNKNOWN',
+      errorKind: null,
+      toolCall: null,
+    });
+    expect(await viewField(registry, 'run-2', 'failure')).toBeNull();
+  });
+
+  it('leaves a stored failure standing when a later writer of the failed settlement knows none, and drops it when the settlement that stands is not a failure', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', failed({ failure: FAILURE }));
+    // The catalog hook writes the same failure, with the answer and no failure of its own.
+    await registry.recordSettled('run-1', failed({ message: 'later' }));
+    expect(await recordField(registry, 'run-1', 'failure')).toEqual(FAILURE);
+
+    // An owner-lost inference is replaced by the owner's real end: a completion has no failure.
+    await admit(registry, 'run-2');
+    await registry.recordSettled('run-2', {
+      at: FAILED_AT,
+      status: 'failed',
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+      message: 'lost',
+    });
+    await registry.recordSettled('run-2', {
+      at: FAILED_AT,
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+    expect(await recordField(registry, 'run-2', 'failure')).toBeUndefined();
+    expect(await viewField(registry, 'run-2', 'failure')).toBeNull();
+
+    // A failure stored for a task whose settlement then says canceled is not shown for it.
+    await admit(registry, 'run-3');
+    await registry.recordSettled('run-3', failed({ failure: FAILURE }));
+    await registry.recordSettled('run-3', {
+      at: FAILED_AT,
+      status: 'canceled',
+      finishReason: 'aborted',
+      message: null,
+    });
+    expect(await recordField(registry, 'run-3', 'failure')).toBeUndefined();
+  });
+
+  it('keeps the failure when the settlement’s text is redacted', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', failed({ failure: FAILURE }));
+
+    expect(await registry.redactSettlement('run-1')).toBe(true);
+    expect(await recordField(registry, 'run-1', 'failure')).toEqual(FAILURE);
+  });
+
+  it('records a step on its second or later try while the task runs, and clears it', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 2 })).toBe(true);
+    // The same attempt again changes nothing; the next attempt does.
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 2 })).toBe(false);
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 2 });
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 3 })).toBe(true);
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 3 });
+    expect(await recordField(registry, 'run-1', 'revision')).toBeUndefined();
+
+    expect(await registry.recordRetrying('run-1', null)).toBe(true);
+    expect(await registry.recordRetrying('run-1', null)).toBe(false);
+    expect(await viewField(registry, 'run-1', 'retrying')).toBeNull();
+    expect(await recordField(registry, 'run-1', 'retrying')).toBeUndefined();
+  });
+
+  it('shows no retry for a task waiting on a person, and drops it at the settlement, which a late write cannot restore', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordRetrying('run-1', { label: 'model', attempt: 2 });
+
+    held.reviews = [humanWait('run-1')];
+    expect(await viewField(registry, 'run-1', 'retrying')).toBeNull();
+    held.reviews = [];
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 2 });
+
+    await registry.recordSettled('run-1', failed());
+    expect(await recordField(registry, 'run-1', 'retrying')).toBeUndefined();
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 4 })).toBe(false);
+    expect(await recordField(registry, 'run-1', 'retrying')).toBeUndefined();
+  });
+
+  it('takes no retry from a process another live claim has replaced', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordRetrying('run-1', { label: 'model', attempt: 2 });
+
+    held.claimedElsewhere.add('run-1');
+    expect(await registry.recordRetrying('run-1', null)).toBe(false);
+    expect(await registry.recordRetrying('run-1', { label: 'model', attempt: 3 })).toBe(false);
+    expect(await viewField(registry, 'run-1', 'retrying')).toEqual({ label: 'model', attempt: 2 });
+  });
+
+  it('reads a record whose failure or retry is malformed as unreadable, like any other bad field', async () => {
+    const { registry, kv, diagnostics } = build();
+    await admit(registry, 'run-1');
+    await admit(registry, 'run-2');
+    for (const [taskId, change] of [
+      ['run-1', { failure: { step: { index: -1, label: 'x' } } }],
+      ['run-2', { retrying: { label: 'model', attempt: 1 } }],
+    ] as const) {
+      const key = `${TASK_RECORD_KEY_PREFIX}${taskId}`;
+      const stored = JSON.parse((await kv.get(key)) as string);
+      await kv.set(key, JSON.stringify({ ...stored, ...change }));
+      expect(await registry.get(taskId)).toBeUndefined();
+    }
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 });

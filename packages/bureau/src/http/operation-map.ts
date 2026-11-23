@@ -118,6 +118,25 @@ export const OPERATION_MAP = {
     exempt:
       'composed from the task registry, the workflow runtime’s run read, and the durable engine’s timeline',
   },
+  'bureau.runs.compare': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, and the durable engine’s fork comparison',
+  },
+  'bureau.tasks.explain': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, the durable engine’s state and timeline, and the audit trail’s guardrail records',
+  },
+  'bureau.tasks.explanation.get': {
+    workspaceClass: 'private-owned',
+    exempt: 'composed from the task registry’s record of the run, which keeps the explanation',
+  },
+  'bureau.tasks.explanation.generate': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the durable engine’s state and timeline, the audit trail’s guardrail records, and the decision model',
+  },
   'bureau.tasks.events': { workspaceClass: 'private-owned', member: 'tasks.events' },
   'bureau.tasks.respond': { workspaceClass: 'private-owned', member: 'tasks.respond' },
 
@@ -192,6 +211,10 @@ export const OPERATION_MAP = {
   },
   'bureau.workflows.history': { workspaceClass: 'member-shared-read', member: 'workflows.history' },
   'bureau.workflows.impact': { workspaceClass: 'member-shared-read', member: 'workflows.impact' },
+  'bureau.workflows.concurrency': {
+    workspaceClass: 'member-shared-read',
+    member: 'workflows.list',
+  },
   'bureau.workflows.runs.list': { workspaceClass: 'private-owned', member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { workspaceClass: 'private-owned', member: 'workflows.getRun' },
   'bureau.workflows.runs.cancel': { workspaceClass: 'private-owned', member: 'workflows.cancel' },

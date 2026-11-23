@@ -50,6 +50,7 @@
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { listAgents, wireCodeOf } from '../../lib/bureau-client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { cancelGoal, getGoal, goalHasEnded, type Goal } from '../../lib/bureau-goals.ts';
   import { getBureauReview } from '../../lib/bureau-reviews.ts';
   import { getTask, isTerminalState, type TaskView } from '../../lib/bureau-tasks.ts';
@@ -312,8 +313,9 @@
             variant="secondary"
             href={router.href(goalEditPath(found.goalRunId))}
             onclick={(event) => go(event, goalEditPath(found.goalRunId))}
-            mutating>{copy.editAction}</Button
-          >
+            mutating
+            label={copy.editAction}
+          />
           {#if actions.startAgain}
             <span class="ib-goal__start-again">
               <Button
@@ -444,7 +446,7 @@
         title={copy.loadFailed.title}
         description={copy.loadFailed.description}
         retryLabel={RETRY_LABEL}
-        onRetry={() => void goal.refetch()}
+        {...faultErrorStateAdvice(goal.error, () => void goal.refetch())}
       />
     {:else if loadStopped}
       <ErrorState

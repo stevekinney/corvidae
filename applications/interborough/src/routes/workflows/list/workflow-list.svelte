@@ -53,9 +53,20 @@
      * ignored and the list offers no filter for it.
      */
     scopedType?: string | undefined;
+    /** The enclosing page already owns the level-one heading. */
+    headingLevel?: 1 | 2;
+    /** Health Run rows stack with Cinder's fitted-table layout on a phone. */
+    stackTable?: boolean;
+    /** The Health frame owns the page-level connection indicator. */
+    showConnectionIndicator?: boolean;
   }
 
-  let { scopedType = undefined }: WorkflowListProps = $props();
+  let {
+    scopedType = undefined,
+    headingLevel = 1,
+    stackTable = false,
+    showConnectionIndicator = true,
+  }: WorkflowListProps = $props();
 
   const client = getClient();
   const principalStore = getPrincipalStore();
@@ -81,6 +92,8 @@
       (filter.tags && filter.tags.length > 0) ||
       filter.idPrefix ||
       (filter.attributes && filter.attributes.length > 0) ||
+      filter.failedStep !== undefined ||
+      filter.retrying !== undefined ||
       filter.createdAt ||
       filter.updatedAt,
     ),
@@ -194,13 +207,26 @@
   // Seeded once from the initial URL (`untrack` makes that explicit); the
   // user's own open/close toggle afterward should not snap shut just
   // because a later edit changes `filter.attributes.length`.
-  let queryBuilderOpen = $state(untrack(() => (filter.attributes?.length ?? 0) > 0));
+  // The conditions it holds are the search attributes and the two built-in fields (COR-2535).
+  const conditionCount = $derived(
+    (filter.attributes?.length ?? 0) +
+      (filter.failedStep === undefined ? 0 : 1) +
+      (filter.retrying === undefined ? 0 : 1),
+  );
+  let queryBuilderOpen = $state(untrack(() => conditionCount > 0));
   const knownAttributeKeys = $derived(Array.from(new Set(rows.flatMap((row) => row.tags ?? []))));
 
-  function onAttributesChange(nextAttributes: AttributeFilter[]): void {
+  function onAttributesChange(
+    nextAttributes: AttributeFilter[],
+    failure: { readonly failedStep?: string; readonly retrying?: boolean },
+  ): void {
     const next: WorkflowListQuery = { ...filter };
     if (nextAttributes.length > 0) next.attributes = nextAttributes;
     else delete next.attributes;
+    if (failure.failedStep === undefined) delete next.failedStep;
+    else next.failedStep = failure.failedStep;
+    if (failure.retrying === undefined) delete next.retrying;
+    else next.retrying = failure.retrying;
     navigateToFilter(next, true);
   }
 
@@ -290,7 +316,7 @@
       </div>
     {/if}
   {/snippet}
-  <PageHeader title={heading} headingLevel={1} description={snapshot} actions={headerActions} />
+  <PageHeader title={heading} {headingLevel} description={snapshot} actions={headerActions} />
 
   {#if listGate.disabled}
     <EmptyState kind="first-use" title="Access restricted" description={deniedDescription}>
@@ -303,22 +329,26 @@
       onFilterChange={(next) => navigateToFilter(next, true)}
       {queryBuilderOpen}
       onQueryBuilderOpenChange={(open) => (queryBuilderOpen = open)}
-      activeConditionCount={filter.attributes?.length ?? 0}
+      activeConditionCount={conditionCount}
     />
 
     {#if queryBuilderOpen}
       <QueryBuilder
         attributes={filter.attributes ?? []}
+        failedStep={filter.failedStep}
+        retrying={filter.retrying}
         {onAttributesChange}
         {knownAttributeKeys}
       />
     {/if}
 
     <div class="weft-workflow-list__toolbar">
-      <ConnectionIndicator
-        status={liveController.enabled ? liveController.status : 'closed'}
-        {...liveController.enabled ? {} : { label: 'Live off' }}
-      />
+      {#if showConnectionIndicator}
+        <ConnectionIndicator
+          status={liveController.enabled ? liveController.status : 'closed'}
+          {...liveController.enabled ? {} : { label: 'Live off' }}
+        />
+      {/if}
       <Button
         size="sm"
         variant={liveController.enabled ? 'primary' : 'secondary'}
@@ -352,7 +382,11 @@
         <Skeleton height="2.5rem" />
       </div>
     {:else if listQuery.isError}
-      <QueryFaultBanner error={listQuery.error} onRetry={() => void listQuery.refetch()} />
+      <QueryFaultBanner
+        error={listQuery.error}
+        subject="workflows"
+        onRetry={() => void listQuery.refetch()}
+      />
     {:else if rows.length === 0 && !hasActiveFilter}
       <EmptyState
         kind="first-use"
@@ -376,12 +410,13 @@
       <EmptyState
         kind="filtered"
         title="No workflows match"
-        description="No results for the current filter set. Try widening the status or date range."
+        description="No results for the current filter set. Try widening the status or date range, or the step and retrying filters."
         onClearFilters={clearFilters}
       />
     {:else}
       <WorkflowTable
         {rows}
+        {stackTable}
         {workflowOrigins}
         {selectedIds}
         onSelectionChange={(next) => (selectedIds = next)}

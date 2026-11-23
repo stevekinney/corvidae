@@ -216,11 +216,11 @@
   {/snippet}
   {#snippet footer()}
     {#if connected}
-      <Button variant="primary" onclick={close}>{copy.done}</Button>
+      <Button variant="primary" onclick={close} label={copy.done} />
     {:else}
-      <Button variant="secondary" onclick={close} disabled={flow.saving}>{copy.cancel}</Button>
+      <Button variant="secondary" onclick={close} disabled={flow.saving} label={copy.cancel} />
       {#if !flow.busy}
-        <Button variant="secondary" onclick={() => void flow.test()}>{copy.test}</Button>
+        <Button variant="secondary" onclick={() => void flow.test()} label={copy.test} />
       {/if}
       <Button data-changes variant="primary" disabled={flow.busy} onclick={() => void flow.submit()}
         >{flow.busy ? copy.connecting : copy.connect}</Button

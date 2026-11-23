@@ -86,7 +86,8 @@ describe('WorkerDiagnosticsSection', () => {
 
     const view = renderSection();
 
-    expect(await view.findByText('Not authorized')).not.toBeNull();
+    expect(await view.findByText('Couldn’t load diagnostics')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     scripted.routeJsonRpcMethod('weft.tasks.diagnostics', {
       items: [],
       summary: EMPTY_DIAGNOSTICS_SUMMARY,

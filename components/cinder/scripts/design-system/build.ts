@@ -66,6 +66,7 @@ import {
   fillBrandBook,
   planPublishBatches,
   previewReport,
+  readCreatedOnFiles,
   replacementCharacterPositions,
 } from './publish.ts';
 import { bundleSources, readManifestSources } from './sources.ts';
@@ -155,6 +156,7 @@ function listFiles(directory: string, root: string): Array<{ path: string; bytes
 }
 
 async function main(): Promise<number> {
+  const createdOnFiles = readCreatedOnFiles(join(projectDirectory, 'design-system.json'));
   rmSync(outputRoot, { recursive: true, force: true });
   mkdirSync(componentsDirectory, { recursive: true });
   mkdirSync(previewsDirectory, { recursive: true });
@@ -350,6 +352,7 @@ async function main(): Promise<number> {
         author: git('config', 'user.name') || 'Corvidae',
         note,
         at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+        createdOnFiles,
       }),
       null,
       1,

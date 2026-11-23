@@ -366,9 +366,12 @@ describe('CodeBlock — static structure', () => {
       /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \{([^}]*)\}/.exec(
         css,
       )?.[1];
-    expect(reserve).toContain('min-block-size: var(--_cinder-code-block-float-reserve);');
+    expect(reserve).toContain('min-block-size: var(--_cinder-code-block-float-target-size);');
     expect(css).toContain(
-      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset) );',
+      '--_cinder-code-block-float-target-size: calc( var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset) );',
+    );
+    expect(css).toContain(
+      '--_cinder-code-block-float-reserve: max( var(--_cinder-code-block-float-target-size), var(--_cinder-code-block-float-meta-width, 0px) );',
     );
     const button =
       /\.cinder-code-block--floating-meta \.cinder-code-block__meta \.cinder-copy-button \{([^}]*)\}/.exec(
@@ -398,7 +401,10 @@ describe('CodeBlock — static structure', () => {
       /--_cinder-code-block-float-inset:\s*max\(\s*var\(--cinder-space-2\),\s*calc\(\s*\(var\(--cinder-touch-target-min\) - var\(--_cinder-code-block-float-size\)\) \/ 2\s*\)\s*\);/,
     );
     expect(css).toContain(
-      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset) );',
+      '--_cinder-code-block-float-target-size: calc( var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset) );',
+    );
+    expect(css).toContain(
+      '--_cinder-code-block-float-reserve: max( var(--_cinder-code-block-float-target-size), var(--_cinder-code-block-float-meta-width, 0px) );',
     );
     const meta = /\.cinder-code-block--floating-meta \.cinder-code-block__meta \{([^}]*)\}/.exec(
       css,

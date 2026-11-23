@@ -10,6 +10,9 @@
    * middle of a tall window. It is never boxed, and the words hold a reading measure of about 60
    * characters however wide the region is. */
   .cinder-empty-state {
+    /* Prose, in the interface's own face, whatever it is placed inside: a state set in a
+     * monospace well (a JSON or source viewer) would otherwise inherit that font. */
+    font-family: var(--cinder-font-sans);
     display: flex;
     flex-direction: column;
     align-items: center;

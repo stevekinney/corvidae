@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { ChatContext } from '../../lib/bureau-client.ts';
 import { contextFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
+import { lapsedChats } from './lapsed-chats.svelte.ts';
 import {
   agentAvatarName,
   agentTone,
@@ -197,6 +198,38 @@ describe('the status word of a chat', () => {
     expect(word({ activity: 'idle', endReason: 'host-stopped' })).toBe('Ended');
     expect(word({ activity: 'idle' })).toBe('Done');
   });
+
+  // COR-2438: an approval does not park its run, so the list said Done (and counted the chat under
+  // Done) beside a chat whose own page said Waiting on you.
+  test('is Waiting on you while the Bureau holds a pending review of the chat, as the chat says', () => {
+    const idle = contextFixture('c', { activity: 'idle' });
+    expect(chatStatusWord(idle, new Set(), new Set(['c']))).toBe('Waiting on you');
+    expect(chatStatusWord(idle, new Set(['c']), new Set(['c']))).toBe('Waiting on you');
+    expect(chatStatusWord(idle, new Set(), new Set(['other']))).toBe('Done');
+    expect(sessionRow(idle, new Map(), new Set(), new Set(['c'])).status).toBe('Waiting on you');
+    // Once the approval is settled the review is no longer pending, and both say what it became.
+    expect(sessionRow(idle, new Map(), new Set(), new Set()).status).toBe('Done');
+  });
+
+  // COR-2438: after a decision refused because nothing waits, the open chat said the run stopped
+  // while the list (and its Waiting on you count) still said Waiting on you from the Bureau's parked
+  // activity and its pending review.
+  test('waits on no one once the open chat found its approval lapsed, as the chat says', () => {
+    const parked = contextFixture('c', { activity: 'awaiting-input' });
+    expect(chatStatusWord(parked, new Set(), new Set(['c']), new Set())).toBe('Waiting on you');
+    expect(chatStatusWord(parked, new Set(), new Set(['c']), new Set(['c']))).toBe('Done');
+    expect(chatStatusWord(parked, new Set(), new Set(['c']), new Set(['other']))).toBe(
+      'Waiting on you',
+    );
+    // The list reads the shared set the open chat writes, by default.
+    lapsedChats.add('c');
+    try {
+      expect(sessionRow(parked, new Map(), new Set(), new Set(['c'])).status).toBe('Done');
+    } finally {
+      lapsedChats.delete('c');
+    }
+    expect(sessionRow(parked, new Map(), new Set(), new Set(['c'])).status).toBe('Waiting on you');
+  });
 });
 
 describe('the chats as the list orders them', () => {
@@ -232,11 +265,22 @@ describe('the day band of a row', () => {
   const group = (at: string | null, wide = false) =>
     chatDayGroup({ updatedAt: at === null ? null : Date.parse(at) }, now, ZONE, wide);
 
-  test('names Today alone in a narrow pane and the zone the times are in', () => {
+  test('shows the time zone once across the groups of a chat list', () => {
+    const rows = [
+      { id: 'one', updatedAt: now },
+      { id: 'two', updatedAt: Date.parse('2026-11-01T16:12:00-06:00') },
+      { id: 'three', updatedAt: Date.parse('2026-10-30T11:00:00-05:00') },
+    ];
+    const details = (visible: typeof rows) =>
+      visible.map((row, index) => chatDayGroup(row, now, ZONE, false, false, index === 0).detail);
+    expect(details(rows)).toEqual(['Central time', undefined, undefined]);
+    expect(details(rows.slice(1))).toEqual(['Central time', undefined]);
+  });
+
+  test('names Today alone in a narrow pane', () => {
     expect(group('2026-11-02T10:42:00-06:00')).toEqual({
       key: 'today',
       label: 'Today',
-      detail: 'Central time',
     });
   });
 
@@ -248,7 +292,6 @@ describe('the day band of a row', () => {
     expect(group('2026-11-01T16:12:00-06:00')).toEqual({
       key: 'yesterday',
       label: 'Yesterday, Sunday, Nov 1',
-      detail: 'Central time',
     });
     const older = group('2026-10-29T11:05:00-05:00');
     expect(older.label).toBe('Thursday, Oct 29');
@@ -262,12 +305,10 @@ describe('the day band of a row', () => {
     expect(phone('2026-11-02T10:42:00-06:00')).toEqual({
       key: 'today',
       label: 'Today',
-      detail: 'Central time',
     });
     expect(phone('2026-11-01T16:12:00-06:00')).toEqual({
       key: 'yesterday',
       label: 'Yesterday',
-      detail: 'Central time',
     });
     expect(phone('2026-10-29T11:05:00-05:00').label).toBe('Thursday, Oct 29');
   });
@@ -279,7 +320,7 @@ describe('the day band of a row', () => {
   });
 
   test('puts a chat with no readable time in Earlier', () => {
-    expect(group(null)).toEqual({ key: 'earlier', label: 'Earlier', detail: 'Central time' });
+    expect(group(null)).toEqual({ key: 'earlier', label: 'Earlier' });
   });
 });
 

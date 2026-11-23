@@ -52,6 +52,7 @@
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -358,7 +359,7 @@
         description={SCHEDULE_COPY.loadFailed.description}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={retry}
+        {...faultErrorStateAdvice(listQuery.error, retry)}
       />
     {:else if listQuery.isPending}
       <ScheduleListLoading

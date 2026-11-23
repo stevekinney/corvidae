@@ -370,16 +370,22 @@ describe('transcript presentation', () => {
     });
     const toggle = getByRole('button', { name: 'Instructions' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    const body = container.querySelector('.chat-message-body');
-    expect(body?.hasAttribute('hidden')).toBe(true);
+    // COR-2438: Cinder's disclosure, a chevron and the one word, never "Instructions" and "Show"
+    // joined by a middle dot.
+    expect(toggle.closest('.cinder-collapsible')).not.toBeNull();
+    expect(toggle.querySelector('.cinder-collapsible__chevron')).not.toBeNull();
+    expect(container.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(container.textContent).not.toMatch(/\bShow\b/);
+    expect(container.querySelector('.chat-message-body')).toBeNull();
     // No time, Copy or other line: the instructions are not a message anyone sent.
     expect(container.querySelector('.chat-message-line')).toBeNull();
     await fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     // The toggle names what it opens; its state is aria-expanded and the chevron, not a word.
     expect(toggle.textContent?.trim()).toBe('Instructions');
-    expect(body?.hasAttribute('hidden')).toBe(false);
+    const body = container.querySelector('.chat-message-body');
     expect(body?.textContent).toContain('You are a refund helper');
+    expect(toggle.getAttribute('aria-controls')).toBe(body?.closest('[role="region"]')?.id ?? null);
   });
 
   test('the default presentation is unchanged: no line, and notes stay in the bubble', () => {

@@ -7,8 +7,14 @@
   let selected = $state(['banana']);
 </script>
 
-<section aria-label="Overview preview">
+<section aria-label="Overview preview" data-density="comfortable">
   <div id="overview-mount-basic" data-example-preview-ready="">
-    <MultiSelect id="fruit" label="Fruits" {items} bind:selectedIds={selected} />
+    <MultiSelect
+      id="fruit"
+      label="Fruits"
+      {items}
+      appearance="filled"
+      bind:selectedIds={selected}
+    />
   </div>
 </section>

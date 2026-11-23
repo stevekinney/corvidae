@@ -19,6 +19,7 @@ setupHappyDom();
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { flushSync } = await import('svelte');
 const { default: FilterBar } = await import('./filter-bar.svelte');
+const { foldableFacetKeys, isCollapsible } = await import('./filter-bar.utilities.ts');
 
 const filterBarCss = readFileSync(new URL('./filter-bar.css', import.meta.url), 'utf8');
 
@@ -756,6 +757,159 @@ describe('FilterBar select facets (row 45u)', () => {
     });
     expect(container.querySelector('[data-testid="custom"]')).not.toBeNull();
     expect(received[0]).toMatchObject({ value: 'week', disabled: true });
+  });
+});
+
+describe('FilterBar menu-only facets (COR-2535)', () => {
+  const control = createRawSnippet(() => ({
+    render: () => '<input data-testid="custom" />',
+    setup: () => {},
+  }));
+  const STEP = {
+    type: 'custom' as const,
+    key: 'step',
+    label: 'Failed at step',
+    menuOnly: true,
+    control,
+  };
+  const RETRYING = { type: 'toggle' as const, key: 'retrying', label: 'Retrying', menuOnly: true };
+
+  function menuRows(): string[] {
+    return [...document.querySelectorAll('.cinder-filter-bar__menu-row')].map((row) =>
+      textOf(row.querySelector('.cinder-filter-bar__menu-label')),
+    );
+  }
+
+  test.each(['wide', 'medium'] as const)(
+    'in the %s layout they draw no control in the row, only one Filter icon button, and the menu holds them',
+    async (layout) => {
+      const { container } = render(FilterBar, {
+        layout,
+        searchVisible: false,
+        segments: RUN_SEGMENTS,
+        facets: [STARTED_BY, STEP, RETRYING],
+      });
+      // The chip is still in the row; the menu-only toggle and custom control are not.
+      expect(chipTrigger(container, 'Started by')).toBeTruthy();
+      expect(container.querySelector('[data-testid="custom"]')).toBeNull();
+      expect(container.querySelector('.cinder-filter-bar__toggle')).toBeNull();
+      const buttons = container.querySelectorAll('.cinder-filter-bar__menu-button');
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]?.getAttribute('aria-label')).toBe('Filter');
+
+      await fireEvent.click(buttons[0]!);
+      flushSync();
+      expect(menuRows()).toEqual(['Failed at step', 'Retrying']);
+    },
+  );
+
+  test('no menu-only facet means no Filter button in the wide row, and none of them is foldable', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [STARTED_BY],
+    });
+    expect(container.querySelector('.cinder-filter-bar__menu-button')).toBeNull();
+    expect(foldableFacetKeys([STARTED_BY, STEP, RETRYING], new Set(), [])).toEqual(['startedBy']);
+  });
+
+  test('a menu-only facet that has a value is a removable chip in the row, named with its value', async () => {
+    const removed: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [STEP, RETRYING],
+      appliedFilters: [
+        { key: 'step', value: 'charge-card', label: 'Failed at step' },
+        { key: 'retrying', value: 'Yes', label: 'Retrying' },
+      ],
+      onFilterRemove: (key: string) => removed.push(key),
+    });
+    const chips = [...container.querySelectorAll('.cinder-filter-bar__chip[data-cinder-applied]')];
+    expect(chips.map((chip) => textOf(chip))).toEqual([
+      'Failed at step: charge-card',
+      'Retrying: Yes',
+    ]);
+    await fireEvent.click(
+      container.querySelector('[aria-label="Remove filter: Failed at step: charge-card"]')!,
+    );
+    expect(removed).toEqual(['step']);
+  });
+
+  test('the narrow form keeps every facet in its one menu, menu-only or not', async () => {
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      searchVisible: false,
+      facets: [STARTED_BY, STEP, RETRYING],
+    });
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('[aria-label="Filter"]')!);
+    flushSync();
+    expect(menuRows()).toEqual(['Started by', 'Failed at step', 'Retrying']);
+    await fireEvent.click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__menu-row')].find(
+        (row) => textOf(row).includes('Failed at step'),
+      )!,
+    );
+    flushSync();
+    expect(document.querySelector('[data-testid="custom"]')).not.toBeNull();
+  });
+
+  test('a bar whose only chips are menu-only does not collapse by its chips', () => {
+    expect(isCollapsible({ segments: [], facets: [STEP, RETRYING] })).toBe(false);
+    expect(isCollapsible({ segments: [], facets: [STARTED_BY, RETRYING] })).toBe(true);
+  });
+});
+
+describe('FilterBar custom facets', () => {
+  test('a custom facet is a row of its own in the Filter menu, which names it by its row', async () => {
+    const control = createRawSnippet(() => ({
+      render: () => '<input data-testid="custom" />',
+      setup: () => {},
+    }));
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      searchVisible: false,
+      facets: [{ type: 'custom', key: 'step', label: 'Failed at step', control }],
+    });
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('[aria-label="Filter"]')!);
+    flushSync();
+    await fireEvent.click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__menu-row')].find(
+        (row) => textOf(row).includes('Failed at step'),
+      )!,
+    );
+    flushSync();
+    expect(document.querySelector('[data-testid="custom"]')).not.toBeNull();
+  });
+});
+
+describe('FilterBar pressed toggle (COR-2535)', () => {
+  test('is a quiet tint with its tone dot as the one mark, and no check', () => {
+    const rule =
+      /\.cinder-filter-bar \.cinder-chip\.cinder-filter-bar__toggle\[aria-pressed='true'\]\s*\{([^}]*)\}/.exec(
+        filterBarCss,
+      );
+    expect(rule).not.toBeNull();
+    expect(rule?.[1]).toMatch(/background:\s*var\(--cinder-status-warning-background\)/);
+    expect(rule?.[1]).toMatch(/border-color:\s*var\(--cinder-status-warning-border\)/);
+    expect(rule?.[1]).not.toMatch(/-solid|-contrast/);
+    expect(filterBarCss).toMatch(
+      /\.cinder-filter-bar \.cinder-filter-bar__toggle\[aria-pressed='true'\] \.cinder-chip__check\s*\{\s*display:\s*none/,
+    );
+    // The dot keeps its tone while pressed, instead of taking the fill's text colour.
+    expect(filterBarCss).not.toMatch(/__toggle\[aria-pressed='true'\] \.cinder-filter-bar__dot/);
+  });
+
+  test('a pressed toggle still carries aria-pressed and its dot', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [MISSED],
+      appliedFilters: [{ key: 'missed', value: 'true', label: 'Missed runs' }],
+    });
+    const toggle = container.querySelector('.cinder-filter-bar__toggle');
+    expect(toggle?.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle?.querySelector('.cinder-filter-bar__dot')).not.toBeNull();
   });
 });
 

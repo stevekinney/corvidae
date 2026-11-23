@@ -14,6 +14,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { requireElement } from '../../../tests/dom.test-support.ts';
+import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
@@ -111,6 +112,18 @@ async function page(name: string = 'Edit Daily summary') {
 const SAVE = 'Save changes';
 
 describe('editing a chat', () => {
+  test('names the schedule in the edit breadcrumb', async () => {
+    const path = `/schedules/${AGENT_SCHEDULE}/edit`;
+    open(path);
+    await page();
+
+    expect(breadcrumbTrail(path).map(({ label }) => label)).toEqual([
+      'Schedules',
+      'Daily summary',
+      'Edit',
+    ]);
+  });
+
   test('opens as the new schedule form filled in, with the note, the footer and the buttons the design draws (74r, 74t)', async () => {
     open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const form = await page();

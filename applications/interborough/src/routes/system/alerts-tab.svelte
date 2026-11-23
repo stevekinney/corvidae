@@ -148,7 +148,7 @@
   const EDGE_COLOR: Readonly<Record<AlertRowState, string>> = {
     firing: 'var(--cinder-status-danger-solid)',
     resolved: 'var(--cinder-border)',
-    warning: 'var(--cinder-status-warning-solid)',
+    warning: 'var(--cinder-status-warning-indicator)',
     info: 'var(--cinder-border)',
   };
 
@@ -173,7 +173,11 @@
       <Skeleton height="52px" />
     </div>
   {:else if activeAlertsQuery.isError}
-    <QueryFaultBanner error={activeAlertsQuery.error} onRetry={() => activeAlertsQuery.refetch()} />
+    <QueryFaultBanner
+      error={activeAlertsQuery.error}
+      subject="active alerts"
+      onRetry={() => activeAlertsQuery.refetch()}
+    />
   {:else if activeAlertsQuery.data.items.length === 0}
     <EmptyState
       kind="done"

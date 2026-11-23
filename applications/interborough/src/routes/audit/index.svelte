@@ -59,6 +59,7 @@
   import { AUDIT_ACTION_KINDS, AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';
   import { queryAudit } from '../../lib/bureau-audit.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
@@ -477,7 +478,7 @@
       {#if exportMutation.isPending}
         <div class="ib-audit__progress" data-testid="audit-export-progress">
           <InlineLoading status="active" description={copy.exportProgress(exportCount)} />
-          <Button variant="ghost-accent" onclick={cancelExport}>{copy.exportCancel}</Button>
+          <Button variant="ghost-accent" onclick={cancelExport} label={copy.exportCancel} />
         </div>
       {/if}
 
@@ -488,9 +489,11 @@
             {auditExportFailure(exportMutation.error)}
           </p>
           {#snippet actions()}
-            <Button variant="secondary" onclick={() => exportMutation.mutate()}
-              >{copy.exportFailed.again}</Button
-            >
+            <Button
+              variant="secondary"
+              onclick={() => exportMutation.mutate()}
+              label={copy.exportFailed.again}
+            />
           {/snippet}
         </Alert>
       {/if}
@@ -506,7 +509,7 @@
           title={loadFailure.title}
           description={loadFailure.description}
           retryLabel={RETRY_LABEL}
-          onRetry={retry}
+          {...faultErrorStateAdvice(trail.error, retry)}
         />
       {:else if stopped}
         <ErrorState

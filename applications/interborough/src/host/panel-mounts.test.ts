@@ -1,4 +1,10 @@
 import type { PluginPanel } from '@lostgradient/interborough-plugin';
+import {
+  pendingReview,
+  runInspector,
+  scheduleEditor,
+  workflowRevisionReview,
+} from '@lostgradient/plugin-inspectors';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -14,6 +20,7 @@ import {
   type PanelBuildCache,
   type PanelBuildInputs,
 } from './panel-build-cache.ts';
+import { stubPanelBuild } from './panel-build-stub.test-support.ts';
 import {
   PANEL_BUILD_DEADLINE_MILLISECONDS,
   digestOf,
@@ -243,6 +250,43 @@ describe('the MCP apps the host serves', () => {
       ui: { resourceUri: 'ui://test/two/v1', visibility: ['model', 'app'] },
     });
     expect(defaultToolMeta).toEqual({ ui: { visibility: ['model'] } });
+  });
+
+  it('adds the schedule editor and changes the marking of exactly the tools it lists (COR-2545)', async () => {
+    const inspectors = (...panels: PluginPanel[]): ContributedPanels =>
+      panels.map((each) => ({ plugin: 'inspectors', version: '1.0.1', app: each }));
+    const without = await mountOnly(
+      inspectors(runInspector, pendingReview, workflowRevisionReview),
+      new MemoryStorage(),
+      { build: stubPanelBuild },
+    );
+    const withEditor = await mountOnly(
+      inspectors(runInspector, pendingReview, workflowRevisionReview, scheduleEditor),
+      new MemoryStorage(),
+      { build: stubPanelBuild },
+    );
+    // A tool the editor lists, which no other panel listed, is now shown to apps. Every other
+    // tool's marking, the opener links included, is what it was.
+    const changed = Object.keys(withEditor.toolMeta)
+      .filter(
+        (tool) =>
+          JSON.stringify(withEditor.toolMeta[tool]) !== JSON.stringify(without.toolMeta[tool]),
+      )
+      .toSorted();
+    expect(changed).toEqual(scheduleEditor.allowedTools.toSorted());
+    for (const tool of Object.keys(without.toolMeta)) {
+      expect(withEditor.toolMeta[tool], tool).toEqual(without.toolMeta[tool]);
+    }
+    // The tools the editor made newly app-visible are its reads and its four writes. The writes are
+    // not MCP tools, so the marking names no tool a client lists.
+    expect(changed.filter((tool) => !without.toolMeta[tool])).toEqual(changed);
+    expect(withEditor.defaultToolMeta).toEqual({ ui: { visibility: ['model'] } });
+    // The editor links no tool to its page.
+    expect(
+      Object.values(withEditor.toolMeta).filter((meta) =>
+        JSON.stringify(meta).includes(scheduleEditor.uri),
+      ),
+    ).toEqual([]);
   });
 
   it('lists each built app with its plugin, its declared tools, and its page, for the panel routes', async () => {

@@ -547,6 +547,8 @@ export interface BureauCore<D extends AgentDefinitions> {
   outboxRetryTimerArmedForMs: number | undefined;
   /** The outbox drain in flight. */
   outboxDrainInFlight: Promise<void> | undefined;
+  /** Whether shutdown has stopped admitting new outbox drains. */
+  outboxDrainAdmissionClosed: boolean;
   /** Whether shutdown has closed maintenance admission. */
   maintenanceAdmissionClosed: boolean;
   /** The automatic run ownership prune timer. */

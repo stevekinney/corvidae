@@ -250,6 +250,11 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       .getByRole('heading', { level: 2, name: 'Needs attention' })
       .boundingBox();
     expect(listBox!.y).toBeLessThan(attentionTop!.y);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/',
+      state: 'open reviews link',
+      source: SOURCE,
+    });
   });
 
   test('lists the three system problems, each with one button, and no provider banner (01h, 01i, 01j)', async ({
@@ -789,7 +794,6 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     expect(await animation()).not.toBe('none');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await captureForDesignReviewWithPhone(page, { route: '/', state: 'loading', source: SOURCE });
     // COR-2329: the Spotlight's and the count's placeholders were taller than the text they stand
     // for, so every section moved up about 7px when the data arrived. Measured while the clock is
     // still stopped, before the slow-load line can appear above the placeholders.
@@ -802,6 +806,9 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
         ].map(async (locator) => (await locator.boundingBox())!.y),
       );
     const topsWhileLoading = await sectionTops();
+    // Captures resize the viewport for their phone/full-height screenshots, so sample the loading
+    // geometry before that observer-only work changes the shell's scroll position.
+    await captureForDesignReviewWithPhone(page, { route: '/', state: 'loading', source: SOURCE });
     // The page settles its paint on animation frames, which a stopped clock never delivers.
     await page.clock.resume();
     await checkA11y('Home loading');
@@ -1231,19 +1238,16 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
 });
 
 test.describe('Home on a tablet (05s)', () => {
-  test('keeps the 76px rail, the full top bar, the Spotlight and the buttons trailing their rows', async ({
+  test('keeps the tablet menu, full search, Spotlight and the buttons trailing their rows', async ({
     page,
     checkA11y,
   }) => {
     await openHome(page, 768);
-    const rail = page.locator('aside.weft-shell-sidebar');
-    expect(Math.round((await rail.boundingBox())!.width)).toBe(76);
+    await expect(page.locator('aside.weft-shell-sidebar')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open navigation' })).toBeVisible();
     await expect(
       page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
     ).toContainText('⌘K');
-    await expect(
-      page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
-    ).toContainText('2');
     await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
       '2 need you',
     );

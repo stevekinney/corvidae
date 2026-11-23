@@ -186,6 +186,7 @@
     {:else if aggregateQuery.isError}
       <QueryFaultBanner
         error={aggregateQuery.error}
+        subject="the workflow summary"
         onRetry={() => void aggregateQuery.refetch()}
       />
     {:else if groups.length === 0}

@@ -227,8 +227,10 @@ describe('every list page’s empty state', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
       );
 
-      // Its create action is a labelled primary button, never a "+" alone.
-      if (page.create !== null) {
+      // Chat keeps its one readiness action in the state. Other create headers use words.
+      if (page.view === 'chat') {
+        expect(frame?.querySelector('.cinder-page-header .button-variant-primary')).toBeNull();
+      } else if (page.create !== null) {
         const create = [
           ...(frame?.querySelectorAll('.cinder-page-header .cinder-button') ?? []),
         ].find((button) => button.textContent?.trim() === page.create);

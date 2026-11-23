@@ -64,6 +64,21 @@ import {
   type TaskListingSiblings,
 } from './task-list-snapshots';
 import { isTryAgentName } from './agent-try';
+import {
+  failureViewOf,
+  isTaskFailure,
+  isTaskRetrying,
+  truncateFailureText,
+  type TaskFailure,
+  type TaskFailureView,
+  type TaskRetrying,
+} from './task-failure';
+import {
+  isTaskModelExplanation,
+  modelExplanationFenceOf,
+  type ModelExplanationFence,
+  type TaskModelExplanation,
+} from './task-model-explanation';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import {
   isStoredTaskOrigin,
@@ -168,6 +183,12 @@ export interface TaskSettlement {
    * it (another process's cancellation), which keeps the last figure the record holds.
    */
   readonly usage?: TaskUsage | undefined;
+  /**
+   * COR-2531 — why a failed run failed, written in the same compare-and-swap as the settlement and
+   * kept on the record, not in `settled`. Left out by a settlement that does not know it (another
+   * process's, or one the Bureau wrote), which keeps what the record holds.
+   */
+  readonly failure?: TaskFailure | undefined;
 }
 
 /**
@@ -183,14 +204,52 @@ export interface TaskUsage {
 }
 
 /**
- * COR-2526 — what asks for a person's attention on a task that has not ended: `stalled` while
- * Operative assesses its run as alive but making no progress outside a declared wait, and `looping`
- * once its toolbox has reported a loop (a warning or a block) until the run settles.
+ * COR-2526 — what asks for a person's attention on a task: `stalled` while Operative assesses its
+ * run as alive but making no progress outside a declared wait, and `looping` once its toolbox has
+ * reported a loop (a warning or a block) until the run settles. COR-2527 — `overspending` once a
+ * step found the run's cost over the workspace's spend threshold, which stays after the run settles:
+ * it is a fact about what the run cost, not a state the run is in.
  */
-export type TaskAttention = 'stalled' | 'looping';
+export type TaskAttention = 'stalled' | 'looping' | 'overspending';
 
 /** Every {@link TaskAttention}, in the order a view lists them. */
-export const TASK_ATTENTION_KINDS: readonly TaskAttention[] = ['stalled', 'looping'];
+export const TASK_ATTENTION_KINDS: readonly TaskAttention[] = [
+  'stalled',
+  'looping',
+  'overspending',
+];
+
+/**
+ * COR-2527 — the instant (ISO 8601, on the Bureau's clock) a step found a run's cost over the spend
+ * threshold, and the threshold in force then, in US dollars. A later change of the setting never
+ * rewrites it: the mark records what was true when the run crossed.
+ */
+interface TaskOverspending {
+  readonly since: string;
+  readonly thresholdUsd: number;
+}
+
+/**
+ * COR-2527 — one task that asks for attention, as {@link TaskRegistry.attentionRuns} reads it for
+ * the attention feed: the task's view of it, and the instants its records hold.
+ */
+export interface TaskAttentionRun {
+  readonly taskId: string;
+  readonly agentName: string | null;
+  readonly status: TaskState;
+  /** Which kinds ask for attention now; never empty. */
+  readonly attention: readonly TaskAttention[];
+  /** When the run stalled, while `attention` holds `stalled`. */
+  readonly stalledSince: string | null;
+  /** When the run's toolbox first reported a loop, while `attention` holds `looping`. */
+  readonly loopingSince: string | null;
+  /** The mark a step wrote when the run crossed the spend threshold. */
+  readonly overspending: TaskOverspending | null;
+  /** What the run cost so far, or in total once it ended; `null` when no request was priced. */
+  readonly costUsd: number | null;
+  /** When the run settled, or `null` while it has not. */
+  readonly settledAt: string | null;
+}
 
 /**
  * COR-2526 — the attention kinds a record holds, each with the wall-clock instant (ISO 8601, on the
@@ -299,6 +358,35 @@ export interface TaskRecord {
    * hold the run reads it. Absent when neither holds, and in a record written before it was kept.
    */
   readonly attention?: StoredTaskAttention | undefined;
+  /**
+   * COR-2527 — the mark a step wrote when it found the run's cost over the spend threshold. It is
+   * written once and kept: the settlement, a cancel and an owner-lost sweep leave it, and a later
+   * change of the setting does not touch it. Absent when no step found the run over, and in a
+   * record written before it was kept.
+   */
+  readonly overspending?: TaskOverspending | undefined;
+  /**
+   * COR-2531 — why the run failed, kept on the record, not in `settled`: written in the same
+   * compare-and-swap as the settlement and left standing by a later writer of the settlement that
+   * knows none of it. Absent for a task that did not fail, for a failure no live run event
+   * described (another process's, or a settlement the Bureau wrote), and in a record written before
+   * it was kept.
+   */
+  readonly failure?: TaskFailure | undefined;
+  /**
+   * COR-2531 — the model step the run is on a second or later try of, kept on the record so a
+   * process that does not hold the run reads it. Absent when no step is retrying, once the task has
+   * settled, and in a record written before it was kept.
+   */
+  readonly retrying?: TaskRetrying | undefined;
+  /**
+   * COR-2534 — the longer explanation of why the run failed that a model wrote when the owner asked
+   * for it, kept so reopening the page costs nothing. Only a failed task holds one, and writing a
+   * new one replaces it. It is dropped with the settlement's text when a chat's content is purged,
+   * because it was written from the failure's message. Absent for a task nobody asked a model about,
+   * and in a record written before it was kept.
+   */
+  readonly modelExplanation?: TaskModelExplanation | undefined;
 }
 
 /**
@@ -407,12 +495,26 @@ export interface TaskView {
    * COR-2526 — what asks for attention: `stalled` while the run is alive but making no progress
    * outside a declared wait (Operative's own `alive-but-stalled` assessment, which the Bureau
    * stores and applies no threshold to), and `looping` once the run's toolbox reported a loop.
-   * Always empty for a task that has ended, so a settled task is never listed as stuck; `stalled`
-   * is empty too while a person is asked something, which is a wait and not a stall.
+   * Neither of those is listed for a task that has ended, so a settled task is never listed as
+   * stuck; `stalled` is empty too while a person is asked something, which is a wait and not a
+   * stall. COR-2527 — `overspending` is the exception: once a step found the run's cost over the
+   * spend threshold it stays, running or settled, because the cost does not go away.
    */
   readonly attention: readonly TaskAttention[];
   /** COR-2526 — the instant the Bureau saw the run stall, while `attention` holds `stalled`; else `null`. */
   readonly stalledSince: string | null;
+  /**
+   * COR-2531 — why a failed task failed (see {@link TaskFailure}), read from its record in any
+   * process and after a restart, or from the engine for a workflow run; `null` for a task that did
+   * not fail and for a failure nothing described. Each field of it is `null` when not known.
+   */
+  readonly failure: TaskFailureView | null;
+  /**
+   * COR-2531 — the step the run is on a second or later try of, while it runs: `model` and the
+   * attempt, or for a workflow run the engine's retrying activity and attempt. `null` when no step
+   * is retrying and for a task that has ended.
+   */
+  readonly retrying: TaskRetrying | null;
 }
 
 /** What a context is doing, from its latest live task. */
@@ -466,7 +568,8 @@ export interface TaskRegistryHost {
    * which have no record. `bureau.tasks.list` shows them beside the tasks that do; no other
    * operation reaches one. Absent for a Bureau without a durable engine.
    */
-  readonly engineRuns?: (() => Promise<readonly TaskView[]>) | undefined;
+  readonly engineRuns?:
+    ((filter?: TaskEngineRunFilter) => Promise<readonly TaskView[]>) | undefined;
   /** COR-2423 — whether the engine still holds `runId` as one of those runs, so a page keeps it. */
   readonly holdsEngineRun?: ((runId: string) => Promise<boolean>) | undefined;
   /**
@@ -481,6 +584,16 @@ export interface TaskRegistryHost {
    * engine. A rejection propagates to the write's caller.
    */
   readonly claimFence?: ((taskId: string) => Promise<TaskClaimFence>) | undefined;
+}
+
+/**
+ * COR-2531 — what a listing asks the engine to match, beside the runs it lists: the engine's own
+ * `ListFilter.failedStep` and `ListFilter.retrying`, so a type's newest runs are not read first and
+ * filtered after, which would hide a match behind the page limit.
+ */
+export interface TaskEngineRunFilter {
+  readonly failedStep?: string | undefined;
+  readonly retrying?: boolean | undefined;
 }
 
 /** The claim a live write is fenced on ({@link TaskRegistryHost.claimFence}). */
@@ -559,6 +672,18 @@ export interface TaskListQuery<T = TaskView> {
   /** COR-2526 — only tasks whose view lists this attention; an engine run lists none. */
   readonly attention?: TaskAttention | undefined;
   /**
+   * COR-2531 — only tasks that failed at the step with this label (`failure.step.label`): a tool's
+   * name, `model`, or for a workflow run the engine's `failedStep.label`. A label longer than
+   * 200 characters is compared as the characters kept. The engine is
+   * asked for it too, so its page limit cannot hide a match.
+   */
+  readonly failedStep?: string | undefined;
+  /**
+   * COR-2531 — `true`: only tasks with a step on a second or later try; `false`: only tasks with
+   * none. The engine is asked for it too.
+   */
+  readonly retrying?: boolean | undefined;
+  /**
    * COR-2423 — whether the engine's own runs (schedule ticks, instances of workflow files) are
    * listed beside the tasks that have records. Defaults to `true`; the management operation sets it
    * to whether the caller may read the deployment's workflows.
@@ -603,6 +728,10 @@ export interface TaskQuery {
   readonly workflow?: string | undefined;
   /** See {@link TaskListQuery.attention}. */
   readonly attention?: TaskAttention | undefined;
+  /** See {@link TaskListQuery.failedStep}. */
+  readonly failedStep?: string | undefined;
+  /** See {@link TaskListQuery.retrying}. */
+  readonly retrying?: boolean | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -648,6 +777,21 @@ export interface TaskRegistry {
    */
   recordUsage(taskId: string, usage: TaskUsage): Promise<void>;
   /**
+   * COR-2534 — stores the text a model wrote about why a task failed, replacing the one it held. It
+   * writes only a task that has failed, and does not count as a change of the record: it moves no
+   * `revision` and leaves the run's `usage` as it was. The write is fenced on `fence`, the identity
+   * of the failure the model was asked about (`modelExplanationFenceOf`, read before the model was
+   * called): the model call takes time, and a purge of the chat's content, or the real end of a run
+   * inferred `owner-lost`, can land in it. Resolves `stored` when the explanation is stored, and
+   * `stale` when it is not: no record, a task that has not failed, or a record that changed since
+   * the fence was read. A stale explanation is never stored.
+   */
+  recordModelExplanation(
+    taskId: string,
+    explanation: TaskModelExplanation,
+    fence: ModelExplanationFence,
+  ): Promise<'stored' | 'stale'>;
+  /**
    * COR-2526 — records that the Bureau saw a task's run stall (`stalledAt`, an ISO 8601 instant on
    * the Bureau's clock), or that it no longer does (`null`). It writes only a task that has a record
    * and has not settled, so a stall never outlives or resurrects a terminal state, applies in the
@@ -663,6 +807,26 @@ export interface TaskRegistry {
    * report changes nothing.
    */
   recordLooping(taskId: string, at: string): Promise<boolean>;
+  /**
+   * COR-2527 — records that a step found a run's cost over the spend threshold. Unlike a stall or a
+   * loop it is written to a task that has settled too, because a run's last step can be judged
+   * after its settlement landed. It is the run's holder's write, applies in the order it was asked
+   * for the task, does not count as a change of the record, and resolves `true` only the first
+   * time: a task is `overspending` from then on, and a repeated report changes nothing.
+   */
+  recordOverspending(taskId: string, overspending: TaskOverspending): Promise<boolean>;
+  /**
+   * COR-2527 — every task that asks for attention now (`stalled`, `looping` or `overspending`), for
+   * the attention feed. The tasks of a tried agent are left out, as a listing leaves them out.
+   */
+  attentionRuns(): Promise<readonly TaskAttentionRun[]>;
+  /**
+   * COR-2531 — records the step the task's run is on a second or later try of, or that none is
+   * (`null`). It writes only a task that has a record and has not settled (the settlement drops it),
+   * only for the process that holds the run, and applies in the order it was asked for the task; it
+   * does not count as a change of the record. Resolves `true` when the record changed.
+   */
+  recordRetrying(taskId: string, retrying: TaskRetrying | null): Promise<boolean>;
   /** Removes a record whose task never started. */
   discard(taskId: string): Promise<void>;
   /**
@@ -1076,6 +1240,15 @@ function isStoredTaskAttention(value: unknown): boolean {
   );
 }
 
+function isTaskOverspending(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isTimestamp(value['since']) &&
+    typeof value['thresholdUsd'] === 'number' &&
+    Number.isFinite(value['thresholdUsd'])
+  );
+}
+
 /** Whether a stored value is a task record in every field a reader depends on. */
 function isTaskRecord(value: unknown): value is TaskRecord {
   return (
@@ -1092,6 +1265,11 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['pendingWakeup'] === undefined || isPendingWakeup(value['pendingWakeup'])) &&
     (value['usage'] === undefined || isTaskUsage(value['usage'])) &&
     (value['attention'] === undefined || isStoredTaskAttention(value['attention'])) &&
+    (value['overspending'] === undefined || isTaskOverspending(value['overspending'])) &&
+    (value['failure'] === undefined || isTaskFailure(value['failure'])) &&
+    (value['retrying'] === undefined || isTaskRetrying(value['retrying'])) &&
+    (value['modelExplanation'] === undefined ||
+      isTaskModelExplanation(value['modelExplanation'])) &&
     (value['workflow'] === undefined || isStoredTaskWorkflow(value['workflow'])) &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
@@ -1113,6 +1291,21 @@ function parseRecord(key: string, raw: string): TaskRecord {
   }
   if (!isTaskRecord(parsed)) throw new Error(`The value at "${key}" is not a task record.`);
   return parsed;
+}
+
+/**
+ * Whether a view passes the `failedStep` and `retrying` filters (COR-2531). A label is compared as
+ * the characters a failure keeps (`truncateFailureText`), as the engine compares its own.
+ */
+function matchesFailureFilters(
+  view: Pick<TaskView, 'failure' | 'retrying'>,
+  query: Pick<TaskQuery, 'failedStep' | 'retrying'>,
+): boolean {
+  return (
+    (query.failedStep === undefined ||
+      view.failure?.step?.label === truncateFailureText(query.failedStep)) &&
+    (query.retrying === undefined || (view.retrying !== null) === query.retrying)
+  );
 }
 
 function truncate(text: string, limit: number): string {
@@ -1325,7 +1518,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const attention: TaskAttention[] = [
       ...(stalledSince === null ? [] : (['stalled'] as const)),
       ...(open && record.attention?.loopingSince !== undefined ? (['looping'] as const) : []),
+      // COR-2527 — a cost over the threshold stays after the run ends.
+      ...(record.overspending === undefined ? [] : (['overspending'] as const)),
     ];
+    // COR-2531 — a step on its second or later try shows only while the task runs, and why a task
+    // failed only once it has: a settled task is never retrying, and a running one has not failed.
+    const retrying = open && status === 'working' ? (record.retrying ?? null) : null;
+    const failure = status === 'failed' ? failureViewOf(record.failure) : null;
     return {
       id: record.taskId,
       contextId: record.contextId,
@@ -1349,6 +1548,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       usage: record.usage ?? null,
       attention,
       stalledSince,
+      failure,
+      retrying,
     };
   }
 
@@ -1400,6 +1601,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       | 'topLevelOnly'
       | 'workflow'
       | 'attention'
+      | 'failedStep'
+      | 'retrying'
     >,
     siblings: TaskListingSiblings | null,
   ): Promise<TaskView[]> {
@@ -1448,7 +1651,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       (view) =>
         (query.status === undefined || view.status === query.status) &&
         (query.workflow === undefined || view.workflow.type === query.workflow) &&
-        (query.attention === undefined || view.attention.includes(query.attention)),
+        (query.attention === undefined || view.attention.includes(query.attention)) &&
+        matchesFailureFilters(view, query),
     );
   }
 
@@ -1483,7 +1687,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
     const grouped = reviewsByRun(host.pendingReviews());
     const views: TaskView[] = [];
-    for (const run of await host.engineRuns()) {
+    // The engine matches `failedStep` and `retrying` itself, beside its own page limit; the same
+    // judgement is made again below, on the views, so the two can never disagree about a run.
+    const engineFilter: TaskEngineRunFilter = {
+      ...(query.failedStep === undefined ? {} : { failedStep: query.failedStep }),
+      ...(query.retrying === undefined ? {} : { retrying: query.retrying }),
+    };
+    for (const run of await host.engineRuns(engineFilter)) {
       if (query.owner !== undefined && run.owner !== query.owner) continue;
       if (query.origin !== undefined && run.origin?.kind !== query.origin) continue;
       if (query.workflow !== undefined && run.workflow.type !== query.workflow) continue;
@@ -1500,7 +1710,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
             ),
           }
         : run;
-      if (query.status === undefined || view.status === query.status) views.push(view);
+      if (
+        (query.status === undefined || view.status === query.status) &&
+        matchesFailureFilters(view, query)
+      ) {
+        views.push(view);
+      }
     }
     return views;
   }
@@ -1533,6 +1748,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       topLevelOnly: query.topLevelOnly === true,
       workflow: query.workflow ?? null,
       attention: query.attention ?? null,
+      failedStep: query.failedStep ?? null,
+      retrying: query.retrying ?? null,
       engineRuns: query.engineRuns !== false && query.topLevelOnly !== true,
       statusTimestampAfter:
         query.statusTimestampAfter === undefined ? null : Date.parse(query.statusTimestampAfter),
@@ -1816,14 +2033,36 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       record.incarnation === '' || record.kind === 'schedule-fire'
         ? (settlement.answer ?? record.settled?.answer)
         : undefined;
-    const { answer: _ignored, usage, ...rest } = settlement;
-    // COR-2526: an ended task is neither stalled nor looping, so the settlement drops both.
-    const { attention: _ended, ...kept } = record;
+    const { answer: _ignored, usage, failure, ...rest } = settlement;
+    // COR-2526: an ended task is neither stalled nor looping, so the settlement drops both. COR-2531:
+    // nor is it retrying, and a failure the record held belongs to the settlement it replaces.
+    const {
+      attention: _ended,
+      retrying: _stopped,
+      failure: held,
+      modelExplanation: heldExplanation,
+      ...kept
+    } = record;
+    // COR-2534: a model's explanation is of the failure it was written for. A later writer of the
+    // same failed settlement (the catalog hook) leaves it; a settlement that replaces the failure
+    // with another end, such as the real end of a run that was inferred `owner-lost`, drops it.
+    const keptExplanation =
+      rest.status === 'failed' &&
+      record.settled?.status === 'failed' &&
+      record.settled.finishReason === rest.finishReason
+        ? heldExplanation
+        : undefined;
+    // COR-2531: the failure the settlement carries, else the one an earlier writer of a failed
+    // settlement left (the later writer, such as the catalog hook, knows none of it). A settlement
+    // that is not a failure, such as the real end that replaces an `owner-lost` inference, has none.
+    const keptFailure = rest.status === 'failed' ? (failure ?? held) : undefined;
     return {
       ...kept,
       // COR-2524: the run's own total replaces the last per-step figure in the same write as the
       // settlement; a settlement that carries none (another process's) leaves the figure standing.
       ...(usage === undefined ? {} : { usage }),
+      ...(keptFailure === undefined ? {} : { failure: keptFailure }),
+      ...(keptExplanation === undefined ? {} : { modelExplanation: keptExplanation }),
       settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
     };
   }
@@ -2028,6 +2267,28 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       });
     },
 
+    async recordModelExplanation(taskId, explanation, fence) {
+      let stored = false;
+      await update(
+        taskId,
+        (record) => {
+          // Re-judged on every compare-and-swap attempt: only the attempt that commits counts. The
+          // record must still be the failure the model was asked about: a purge or a replacing end
+          // changes its revision, and a message a purge emptied is no longer what was read.
+          const now = modelExplanationFenceOf(record);
+          stored =
+            now !== undefined &&
+            now.revision === fence.revision &&
+            now.settledAt === fence.settledAt &&
+            now.finishReason === fence.finishReason &&
+            now.message === fence.message;
+          return stored ? { ...record, modelExplanation: { ...explanation } } : undefined;
+        },
+        false,
+      );
+      return stored ? 'stored' : 'stale';
+    },
+
     recordStall(taskId, stalledAt) {
       return queueLiveWrite(taskId, async () => {
         let changed = false;
@@ -2071,6 +2332,84 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           undefined,
           true,
         );
+        return committed && changed;
+      });
+    },
+
+    recordOverspending(taskId, overspending) {
+      return queueLiveWrite(taskId, async () => {
+        let changed = false;
+        const committed = await update(
+          taskId,
+          (record) => {
+            // Re-judged on every compare-and-swap attempt: only the attempt that commits counts.
+            // A task that has settled is marked too: the settlement can land before the run's last
+            // step is judged, and the cost it carries is the run's own.
+            changed = false;
+            if (record.overspending !== undefined) return undefined;
+            changed = true;
+            return { ...record, overspending };
+          },
+          false,
+          undefined,
+          true,
+        );
+        return committed && changed;
+      });
+    },
+
+    async attentionRuns() {
+      const grouped = reviewsByRun(host.pendingReviews());
+      const runs: TaskAttentionRun[] = [];
+      for (const record of await allRecords()) {
+        if (isTryAgentName(record.agentName ?? '')) continue;
+        const view = viewOf(record, grouped.get(record.taskId));
+        if (view.attention.length === 0) continue;
+        runs.push({
+          taskId: record.taskId,
+          agentName: record.agentName,
+          status: view.status,
+          attention: view.attention,
+          stalledSince: view.stalledSince,
+          loopingSince: view.attention.includes('looping')
+            ? (record.attention?.loopingSince ?? null)
+            : null,
+          overspending: record.overspending ?? null,
+          costUsd: record.usage?.costUsd ?? null,
+          settledAt: record.settled?.at ?? null,
+        });
+      }
+      return runs;
+    },
+
+    recordRetrying(taskId, retrying) {
+      return queueLiveWrite(taskId, async () => {
+        let changed = false;
+        const committed = await update(
+          taskId,
+          (record) => {
+            // Re-judged on every compare-and-swap attempt: only the attempt that commits counts.
+            changed = false;
+            // The settlement drops a retry in progress, so one that lands after it is stale.
+            if (record.settled !== undefined) return undefined;
+            const held = record.retrying;
+            if (retrying === null) {
+              if (held === undefined) return undefined;
+              changed = true;
+              const { retrying: _cleared, ...rest } = record;
+              return rest;
+            }
+            if (held?.label === retrying.label && held.attempt === retrying.attempt) {
+              return undefined;
+            }
+            changed = true;
+            return { ...record, retrying: { label: retrying.label, attempt: retrying.attempt } };
+          },
+          false,
+          undefined,
+          true,
+        );
+        // A takeover can fail the swap after the mutation judged a change: report only a committed one.
         return committed && changed;
       });
     },
@@ -2277,17 +2616,20 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         // A task that has not settled is still being written to: its text is not dropped.
         if (settled === undefined) return undefined;
         // A chat's own tasks have their history emptied with the context (COR-1481); a delegated
-        // child's task is a context of its own, so it is emptied here.
+        // child's task is a context of its own, so it is emptied here. A model's explanation was
+        // written from the failure's message, so it goes with it (COR-2534).
         if (
           settled.message === null &&
           settled.answer === undefined &&
-          current.history.length === 0
+          current.history.length === 0 &&
+          current.modelExplanation === undefined
         ) {
           return undefined;
         }
         changed = true;
+        const { modelExplanation: _dropped, ...kept } = current;
         return {
-          ...current,
+          ...kept,
           history: [],
           settled: {
             at: settled.at,
@@ -2478,8 +2820,14 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
             };
             const recorded = await update(taskId, (current) => {
               canceled.newlySettled = current.settled === undefined;
-              // COR-2526: a stop is an end, so the stall the holder recorded goes with it.
-              const { attention: _ended, ...kept } = current;
+              // COR-2526: a stop is an end, so the stall the holder recorded goes with it, and
+              // COR-2531: so does a retry in progress and a failure the record held.
+              const {
+                attention: _ended,
+                retrying: _stopped,
+                failure: _replaced,
+                ...kept
+              } = current;
               const next: TaskRecord = {
                 ...kept,
                 settled: {

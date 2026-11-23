@@ -17,6 +17,12 @@
       "code": "<script lang=\"ts\">\n  import { Autocomplete } from '@lostgradient/cinder';\n\n  const fruits = [\n    { value: 'apple', label: 'Apple', description: 'Classic pie filling' },\n    { value: 'apricot', label: 'Apricot', description: 'Stone fruit' },\n    { value: 'banana', label: 'Banana', description: 'Tropical staple' },\n    { value: 'blackberry', label: 'Blackberry', description: 'Late-summer berry' },\n    { value: 'blueberry', label: 'Blueberry', description: 'Breakfast favorite' },\n    { value: 'grapefruit', label: 'Grapefruit', description: 'Tart citrus' },\n  ];\n\n  let value = $state('');\n</script>\n\n<Autocomplete\n  id=\"field\"\n  label=\"Favorite fruit\"\n  placeholder=\"Type a fruit\"\n  suggestionSource={(query: string) =>\n    fruits.filter((fruit) => fruit.label?.toLowerCase().includes(query.toLowerCase()))}\n  bind:value\n/>\n"
     },
     {
+      "id": "filled",
+      "title": "Filled appearance",
+      "description": "Autocomplete passes the shared Input appearance through to its editable field.",
+      "code": "<script lang=\"ts\">\n  import { Autocomplete } from '@lostgradient/cinder';\n\n  let value = $state('');\n  const suggestions = [{ value: 'Denver' }, { value: 'Detroit' }];\n</script>\n\n<Autocomplete\n  id=\"city\"\n  label=\"City\"\n  appearance=\"filled\"\n  suggestionSource={(query: string) => suggestions.filter((item) => item.value.startsWith(query))}\n  bind:value\n/>\n"
+    },
+    {
       "id": "inside-form-field",
       "title": "Inside FormField",
       "description": "Uses FormField for the label, hint text, and required-state wiring.",

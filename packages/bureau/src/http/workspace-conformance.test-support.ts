@@ -146,6 +146,28 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [['bureau.runs.timeline', 'owner']],
   },
   {
+    testFile: 'management/runs-compare-operation.test.ts',
+    inputFixture: 'A workflow instance with private step input, and a fork of it',
+    sentinel: 'PRIVATE-COMPARE-INPUT-5b8e',
+    operations: [['bureau.runs.compare', 'owner']],
+  },
+  {
+    testFile: 'management/tasks-explain-operation.test.ts',
+    inputFixture: 'An owned failed agent run whose error message holds private text',
+    sentinel: 'PRIVATE-EXPLAIN-ERROR-3b9e',
+    operations: [['bureau.tasks.explain', 'owner']],
+  },
+  {
+    testFile: 'management/tasks-model-explanation-operation.test.ts',
+    inputFixture:
+      'An owned failed agent run whose error message holds private text, explained by a model',
+    sentinel: 'PRIVATE-MODEL-EXPLANATION-2f7d',
+    operations: [
+      ['bureau.tasks.explanation.get', 'owner'],
+      ['bureau.tasks.explanation.generate', 'owner'],
+    ],
+  },
+  {
     testFile: 'workspace-context-privacy.test.ts',
     inputFixture: 'Independent owned context per actor and mutation',
     sentinel: 'PRIVATE-CONTEXT-HISTORY-b0ca',
@@ -237,6 +259,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.workflows.revisions', 'shared'],
       ['bureau.workflows.history', 'shared'],
       ['bureau.workflows.impact', 'shared'],
+      ['bureau.workflows.concurrency', 'shared'],
       ['bureau.workflows.runs.list', 'owner-collection'],
       ['bureau.workflows.runs.get', 'owner'],
       ['bureau.workflows.runs.cancel', 'owner'],

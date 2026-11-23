@@ -2,9 +2,9 @@
 //
 // Usage:
 //   bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file> --verification-file <file> --verification-digest <sha256>
-//       --run <id> --project <linear-project> [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--intended <path> ...]
+//       --run <id> [--project <linear-project>] [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--intended <path> ...]
 //   bun scripts/chef/deliver.ts --pr <number> --head <sha> --worktree <path> --comment-file <file> --verification-file <file> --verification-digest <sha256>
-//       --run <id> --project <linear-project> [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--fixes-main]
+//       --run <id> [--project <linear-project>] [--config <file>] [--keep-worktree] [--usage-log <file> --transcript <file> ...] [--json] [--fixes-main]
 //
 // Landing refuses (exit 1, failed step `lease` or `verification`) unless `--run` holds the Linear
 // lease of `--project` (`linear.ts lease`) and the head carries its evidence (`landing-evidence.ts`).
@@ -63,7 +63,7 @@ export interface DeliverOptions {
   /** The chef run delivering; it must hold `project`'s Linear lease for a merge to start. */
   run: string;
   /** The Linear project (name, slug or id) whose lease `run` must hold. */
-  project: string;
+  project?: string | undefined;
   verification: DeliveryVerification;
 }
 
@@ -95,6 +95,11 @@ export interface DeliverReport {
   issues: { identifier: string; state: string }[];
   /** The revert findings accepted because `--intended` named their path (a branch merge only). */
   acceptedReverts: string[];
+  /**
+   * The commits of main that the head was merged onto after its evidence, oldest first, so the
+   * landing comment can name them (a branch merge only). Absent when main had not moved.
+   */
+  mergedMainCommits?: string[];
   /** The issues commented on whose state was left alone, in order. */
   leftOpen: string[];
   /** What happened to the delivered worktree; `null` when the step did not run. */
@@ -138,20 +143,20 @@ function absolute(path: string | undefined): string | undefined {
 async function leaseRefusal(
   options: DeliverOptions,
   partial: Partial<DeliverDependencies>,
+  project: string | undefined = options.project,
 ): Promise<string | undefined> {
   if (partial.readLease === undefined) return 'no lease reader was provided.';
+  if (project === undefined) return undefined;
   let lease: LeaseReading | null;
   try {
-    lease = await partial.readLease(options.project);
+    lease = await partial.readLease(project);
   } catch (error) {
-    return `the lease of ${options.project} could not be read: ${error instanceof Error ? error.message : String(error)}`;
+    return `the lease of ${project} could not be read: ${error instanceof Error ? error.message : String(error)}`;
   }
-  if (lease === null)
-    return `${options.project} has no lease; run ${options.run} does not hold it.`;
+  if (lease === null) return `${project} has no lease; run ${options.run} does not hold it.`;
   if (lease.run !== options.run)
-    return `${options.project} is leased to run ${lease.run}, not run ${options.run}.`;
-  if (!lease.live)
-    return `run ${options.run}'s lease on ${options.project} is released or expired.`;
+    return `${project} is leased to run ${lease.run}, not run ${options.run}.`;
+  if (!lease.live) return `run ${options.run}'s lease on ${project} is released or expired.`;
   return undefined;
 }
 
@@ -182,7 +187,6 @@ export async function deliver(
   if (options.branch === undefined && (options.intended ?? []).length > 0)
     throw new UsageError('--intended applies only with --branch.');
   if (!options.run) throw new UsageError('--run is required: the run that holds the lease.');
-  if (!options.project) throw new UsageError('--project is required: the leased Linear project.');
   const verification = loadDeliveryVerification(options.verification, partial.verification);
   if (resolve(options.worktree) !== resolve(verification.request.worktree))
     throw new UsageError('worktree differs from the coordinator-approved ownership');
@@ -254,7 +258,10 @@ export async function deliver(
   if (!existsSync(options.worktree))
     return fail('worktree', 'delivery worktree is absent before closeout completed');
   // lease: only the coordinator run that holds the project's lease lands through here.
-  const leaseProblem = await leaseRefusal(options, partial);
+  const authorityProject = verification.request.authority.resource.startsWith('project:')
+    ? verification.request.authority.resource.slice('project:'.length)
+    : undefined;
+  const leaseProblem = await leaseRefusal(options, partial, options.project ?? authorityProject);
   if (leaseProblem !== undefined) return fail('lease', leaseProblem);
   // merge
   const usageFields =
@@ -283,6 +290,7 @@ export async function deliver(
     report.mainHealthWarning = direct.mainHealthWarning ?? null;
     report.guardsAlreadyFailing = direct.guardsAlreadyFailing ?? [];
     report.acceptedReverts = direct.acceptedReverts ?? [];
+    if (direct.mergedMainCommits !== undefined) report.mergedMainCommits = direct.mergedMainCommits;
     if (direct.failedStep !== null) {
       fail(direct.failedStep, direct.detail ?? '');
       return report.merged &&
@@ -347,6 +355,10 @@ export function renderDeliver(report: DeliverReport): string {
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
   if (report.acceptedReverts.length > 0)
     lines.push(`revert accepted as intended: ${report.acceptedReverts.join('; ')}`);
+  if (report.mergedMainCommits !== undefined)
+    lines.push(
+      `base moved, landed without a new run: merged onto main commits ${report.mergedMainCommits.map((sha) => sha.slice(0, 12)).join(', ')}`,
+    );
   if (report.guardsAlreadyFailing.length > 0)
     lines.push(
       `WARNING guards: already failing on main, with no finding of this change's own: ${report.guardsAlreadyFailing.map((one) => `${one.guard} (${one.findings} output lines)`).join(', ')}`,
@@ -423,7 +435,7 @@ export async function run(
       messageFile: absolute(parsed.values['message-file']),
       expectedHead,
       run: requireOption(parsed, 'run'),
-      project: requireOption(parsed, 'project'),
+      ...(parsed.values['project'] === undefined ? {} : { project: parsed.values['project'] }),
       intended: parsed.repeated['intended'] ?? [],
       usageLog: absolute(usageLog),
       transcripts: transcripts.map((path) => resolve(path)),

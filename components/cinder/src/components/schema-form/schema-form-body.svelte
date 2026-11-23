@@ -240,6 +240,14 @@
     return current === undefined || current === null ? '' : String(current);
   }
 
+  /** The first string example is a hint, never a draft value or a substitute for required input. */
+  function placeholderFor(field: SchemaFormField): string | undefined {
+    const examples = field.schema['examples'];
+    if (!Array.isArray(examples)) return undefined;
+    const first = examples.find((example): example is string => typeof example === 'string');
+    return first === undefined || first.trim() === '' ? undefined : first;
+  }
+
   function numberValue(field: SchemaFormField): number | undefined {
     const current = getValueAtPath(formState.formValue, field.path);
     return typeof current === 'number' ? current : undefined;
@@ -873,6 +881,7 @@
         <Input
           {id}
           {...labelledProps}
+          placeholder={placeholderFor(field)}
           {...hosted ? { size: 'sm' } : {}}
           type={field.schema['writeOnly'] === true ? 'password' : 'text'}
           autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}

@@ -45,6 +45,7 @@
     maxVisibleOptions = 200,
     customValueAllowed = false as AllowCustom,
     size = 'md',
+    appearance,
     sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     presentation = 'input',
     searchPlaceholder = 'Search',
@@ -910,6 +911,7 @@
         role="combobox"
         class="cinder-combobox__input cinder-combobox__trigger"
         data-cinder-size={size}
+        data-cinder-appearance={appearance}
         data-cinder-open={open || undefined}
         disabled={resolvedDisabled}
         aria-haspopup="listbox"
@@ -952,6 +954,7 @@
         role="combobox"
         class="cinder-combobox__input"
         data-cinder-size={size}
+        data-cinder-appearance={appearance}
         autocomplete="off"
         autocorrect="off"
         spellcheck="false"

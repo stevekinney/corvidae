@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { uploadAttachment } from './cli-chat-assets.ts';
 import { request, stream, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
+import { isDryRun } from './cli-destructive.ts';
 
 type RecordValue = Record<string, unknown>;
 
@@ -414,6 +415,9 @@ export async function executeChat(
       const taskId = option(parsed, 'task-id') ?? option(parsed, 'run') ?? parsed.arguments[1];
       if (taskId === undefined)
         throw Object.assign(new Error('chats cancel requires --task-id <id>.'), { usage: true });
+      // The cancel route goes through `bureau.tasks.cancel`, which answers a dry run itself.
+      if (isDryRun(parsed))
+        return rpc(target, parsed, dependencies, 'bureau.tasks.cancel', { taskId, dryRun: true });
       return request(
         target,
         `/bureau/ag-ui/runs/${encodeURIComponent(taskId)}/cancel`,
@@ -437,7 +441,10 @@ export async function executeChat(
       params['throughMessageId'] = option(parsed, 'through-message-id') ?? null;
     }
     if (action === 'rename') params['title'] = option(parsed, 'title') ?? null;
-    if (action === 'delete') params['waitMilliseconds'] = Number(option(parsed, 'wait') ?? 0);
+    if (action === 'delete') {
+      params['waitMilliseconds'] = Number(option(parsed, 'wait') ?? 0);
+      if (isDryRun(parsed)) params['dryRun'] = true;
+    }
     if (action === 'configure') {
       params['commandId'] = option(parsed, 'command-id') ?? id('steer');
       if (option(parsed, 'expected-revision') !== undefined)

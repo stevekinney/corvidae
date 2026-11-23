@@ -51,7 +51,7 @@ describe('toolCallsOfRun', () => {
       ['issue-refund', 'needs-you'],
     ]);
     expect(calls[0]?.arguments).toEqual({ orderId: 'o1' });
-    expect(calls[0]?.summary).toBe('status delivered');
+    expect(calls[0]?.summary).toBe('Status delivered');
   });
 
   test('a call with no result is running, and a failed one says why', () => {

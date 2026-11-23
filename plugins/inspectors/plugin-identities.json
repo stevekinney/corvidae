@@ -10,15 +10,39 @@
     },
     {
       "kind": "panel",
+      "id": "inspectors:failure-explanation",
+      "version": "1.0.1",
+      "schema": "sha256:b88501c82407d9ec86b97e902dbc8a2637b61ea51450dc0aeaf92b84446c7893"
+    },
+    {
+      "kind": "panel",
       "id": "inspectors:pending-review",
       "version": "1.0.1",
       "schema": "sha256:5c2158263a82973eba08b2a376c393ce14548bfedf504935d75b6d840b2eb964"
     },
     {
       "kind": "panel",
+      "id": "inspectors:run-comparison",
+      "version": "1.0.1",
+      "schema": "sha256:bba91bcbe00efa13996896e62571d46e77cd5103e9fc95001767d71144d59f75"
+    },
+    {
+      "kind": "panel",
       "id": "inspectors:run-inspector",
       "version": "1.0.1",
       "schema": "sha256:94fd4bcd7495d850b5a56631bb7edc5e331cbd1f2174fc04d93b695376b4f8e0"
+    },
+    {
+      "kind": "panel",
+      "id": "inspectors:run-timeline",
+      "version": "1.0.1",
+      "schema": "sha256:ab2d8191bdeec6f6185c3a3b60be038ecffc3f76bcc8ae19eec6a25bcb46c264"
+    },
+    {
+      "kind": "panel",
+      "id": "inspectors:schedule-editor",
+      "version": "1.0.1",
+      "schema": "sha256:4436363a45ecc8a9962a799ddd25244db5c17535676ee6f1afcb7711c91e1346"
     },
     {
       "kind": "panel",

@@ -50,7 +50,7 @@ describe('DiffStatistics', () => {
     expect(status?.textContent).not.toContain('0');
   });
 
-  test('all-zero with zeroVisible renders the "No changes" fallback, not zero-value stats', () => {
+  test('all-zero with zeroVisible renders the "No differences" fallback, not zero-value stats', () => {
     // zeroVisible is REQUIRED to reach the {:else} branch — showAdded/showRemoved/showModified
     // default to true unconditionally, so a plain all-zero render without zeroVisible still
     // renders the (zero-value) stat spans instead of the fallback.
@@ -59,7 +59,7 @@ describe('DiffStatistics', () => {
     });
 
     const fallback = container.querySelector('.cinder-diff-statistics__stat--none');
-    expect(fallback?.textContent?.trim()).toBe('No changes');
+    expect(fallback?.textContent?.trim()).toBe('No differences');
     expect(container.querySelector('.cinder-diff-statistics__stat--added')).toBeNull();
     expect(container.querySelector('.cinder-diff-statistics__stat--removed')).toBeNull();
     expect(container.querySelector('.cinder-diff-statistics__stat--modified')).toBeNull();

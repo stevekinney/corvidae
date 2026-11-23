@@ -50,6 +50,7 @@
     metaCompact,
     metaTooltip,
     wrapMeta = false,
+    metaLines = 1,
     detail,
     error,
     onRetryClick,
@@ -171,6 +172,9 @@
       (description !== undefined || lineMeta !== undefined),
   );
   const hasActions = $derived(actions !== undefined && actions.length > 0);
+  // The documented narrow action row is for one data action without a trailing snippet. A snippet
+  // can instead be a switch or an icon control that needs to remain beside its text.
+  const hasSingleAction = $derived(trailing === undefined && (actions?.length ?? 0) === 1);
   // On a phone two or more actions are one menu button, unless the row asks to keep them as
   // buttons. One action stays its own compact secondary button: a menu holding one item is a
   // glyph that hides the only thing the row can do.
@@ -178,6 +182,9 @@
     hasActions && phone && phoneActions !== 'buttons' && (actions?.length ?? 0) >= 2,
   );
   const actionsAsPhoneButtons = $derived(hasActions && phone && phoneActions === 'buttons');
+  // Actions drawn as buttons beside the text (the default off a phone, and a phone's one action).
+  // In a narrow row they take a line of their own under the text (`--action-buttons`, below).
+  const actionsAsButtons = $derived(hasActions && !actionsAsMenu && !actionsAsPhoneButtons);
   const detailsId = $derived(`${generatedId}-details`);
   const errorId = $derived(`${generatedId}-error`);
 
@@ -278,8 +285,10 @@
     statusInline && 'cinder-stacked-list-item--status-inline',
     isLines && `cinder-stacked-list-item--status-${statusPlacement}`,
     linkHref !== undefined && 'cinder-stacked-list-item--linked',
+    hasSingleAction && 'cinder-stacked-list-item--single-action',
     actionsAsMenu && 'cinder-stacked-list-item--collapsed-actions',
     actionsAsPhoneButtons && 'cinder-stacked-list-item--phone-buttons',
+    actionsAsButtons && 'cinder-stacked-list-item--action-buttons',
     className,
   )}
   data-cinder-density={resolvedDensity}
@@ -409,6 +418,7 @@
                 <div
                   class="cinder-stacked-list-item__meta"
                   data-cinder-meta-compact={lineMeta === metaCompact ? '' : undefined}
+                  data-cinder-meta-lines={metaLines === 2 ? '2' : undefined}
                 >
                   {@render lineMeta()}
                 </div>

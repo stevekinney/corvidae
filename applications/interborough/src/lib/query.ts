@@ -298,6 +298,10 @@ export const queryKeys = {
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
     /** One run's hook plan and the hooks that threw (`bureau.tasks.inspect`, COR-2115). */
     hooks: (taskId: string) => ['bureau-tasks', 'hooks', taskId] as const,
+    /** Why one failed run failed (`bureau.tasks.explain`, COR-2533), for an agent run or an instance. */
+    explanation: (runId: string) => ['bureau-tasks', 'explanation', runId] as const,
+    /** What a model wrote about why one failed agent run failed, when asked (COR-2534). */
+    modelExplanation: (runId: string) => ['bureau-tasks', 'model-explanation', runId] as const,
     /** How many runs are running now: working or not yet started, never waiting on a person. */
     running: () => ['bureau-tasks', 'running'] as const,
     /**

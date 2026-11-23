@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2639",
+  "branch": "codex/cor-2639-outbox-shutdown",
+  "checkedAt": "82c25a8f798699eab2b2c2ac36b9bd097d11109b",
+  "briefVersion": "b7477f3cfce3",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "create-bureau.test.ts holds event-history disposal after shutdown's outbox-drain await, appends a session entry through a barrier, and proves no post-cutoff drain starts."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The same barrier test leaves the entry pending, completes shutdown with no post-commit drain diagnostic, then recovers one session.created event and an empty outbox on a new host."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The dedicated cutoff prevents the post-commit drain from accessing closed host storage; the existing Postgres host suite is prohibited locally and remains for branch CI."
+    }
+  ]
+}

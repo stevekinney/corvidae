@@ -82,8 +82,8 @@
   {/snippet}
   {#snippet footer()}
     {#if hasKey}
-      <Button variant="secondary" onclick={() => hand(onRemove)}>{copy.removeKey}</Button>
-      <Button variant="secondary" onclick={() => hand(onReplace)}>{copy.replaceKey}</Button>
+      <Button variant="secondary" onclick={() => hand(onRemove)} label={copy.removeKey} />
+      <Button variant="secondary" onclick={() => hand(onReplace)} label={copy.replaceKey} />
     {/if}
     {#if configuration.dirty || configuration.saving}
       <Button
@@ -93,7 +93,7 @@
         >{configuration.saving ? copy.saving : copy.save}</Button
       >
     {:else}
-      <Button variant="primary" onclick={close}>{copy.done}</Button>
+      <Button variant="primary" onclick={close} label={copy.done} />
     {/if}
   {/snippet}
 </Modal>
