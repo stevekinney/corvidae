@@ -48,6 +48,17 @@ export { error, redirect } from "../data/errors.ts";
 
 type ServerHandle = NonNullable<ServerHooks["handle"]>;
 const adoptMounts = Symbol("adopt mounts");
+type Application = {
+  fetch(request: Request): Promise<Response>;
+  routes: ReturnType<typeof createProductionAssetRoutes>;
+  replaceGeneration(
+    generation: ApplicationOptions["generation"],
+    registry?: ServerRegistry,
+  ): Promise<Application>;
+  retire(): Promise<void>;
+  dispose(): Promise<void>;
+  [adoptMounts](): void;
+};
 
 /** Compose server middleware in declaration order with nested post-processing. */
 export function sequence(...handlers: ServerHandle[]): ServerHandle {
@@ -95,7 +106,7 @@ export async function createApplication(options: ApplicationOptions) {
 async function createGeneration(
   options: ApplicationOptions,
   inherited?: Awaited<ReturnType<typeof startMounts>>,
-) {
+): Promise<Application> {
   const { generation, hooks } = options;
   const registry: ServerRegistry =
     options.registry ??
