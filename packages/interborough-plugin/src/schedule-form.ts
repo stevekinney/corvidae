@@ -29,16 +29,21 @@ export type ScheduleTargetKind = 'agent' | 'workflow';
 
 /** The parts of a `bureau.schedules.get` or `list` view a form reads. */
 export type ScheduleFormSource = {
+  /** The schedule's identifier. */
   readonly id: string;
   /** The revision to pass back as `expectedRevision`. */
   readonly revision: number;
+  /** Whether the schedule fires (`active`), is held (`paused`) or has ended (`cancelled`). */
   readonly status: 'active' | 'paused' | 'cancelled';
+  /** The text that says what the schedule is for, or `null` when it has none. */
   readonly description: string | null;
   /** Set for a cron schedule, `null` for an interval one. */
   readonly cronExpression: string | null;
   /** Set for an interval schedule, `null` for a cron one. */
   readonly intervalMs: number | null;
+  /** The IANA time zone a cron expression is read in. */
   readonly timeZone: string;
+  /** What each fire runs: a catalog agent by name, or a workflow by type. */
   readonly target:
     | { readonly kind: 'agent'; readonly agentName: string }
     | { readonly kind: 'workflow'; readonly workflowType: string };
@@ -50,6 +55,7 @@ export type ScheduleDraft = {
   spec: string;
   /** An IANA time zone; empty to keep the schedule's, or for the Bureau's default on a new one. */
   timeZone: string;
+  /** Whether the schedule runs an agent or a workflow. */
   targetKind: ScheduleTargetKind;
   /** The catalog agent's name, or the workflow's identifier (`plugin:name`, or a file's id). */
   target: string;
@@ -57,7 +63,9 @@ export type ScheduleDraft = {
   input: string;
   /** The JSON each fire starts a workflow with; empty for none. */
   workflowInput: string;
+  /** The text that says what the schedule is for; empty for none. */
   description: string;
+  /** Whether a new schedule is held (paused) as soon as it is made. */
   paused: boolean;
 };
 
@@ -187,9 +195,11 @@ export function scheduleCreateArguments(draft: ScheduleDraft): Record<string, un
 
 /** The values a form changes of a schedule, which `bureau.schedules.update` is sent only where they differ. */
 export type ScheduleUpdateSnapshot = {
+  /** The cadence as the form shows it: a cron expression or a duration such as `6h`. */
   readonly spec: string;
   /** The zone of a cron schedule; `undefined` for an interval, which has none to change. */
   readonly timeZone: string | undefined;
+  /** The description as the form holds it, before it is trimmed; empty for none. */
   readonly description: string;
   /** The overlap policy, for a form that edits it. */
   readonly overlap?: ScheduleOverlapChoice | undefined;
@@ -197,9 +207,13 @@ export type ScheduleUpdateSnapshot = {
 
 /** What an update is sent beside the schedule it names. */
 export type ScheduleUpdateFields = {
+  /** The cadence, always sent: the Bureau replaces it wholesale. */
   readonly spec: string;
+  /** The new zone, present only when it differs from the schedule's. */
   readonly timeZone?: string;
+  /** The new description, trimmed, present only when it differs. */
   readonly description?: string;
+  /** The new overlap policy, present only when the form edits it and it differs. */
   readonly overlap?: ScheduleOverlapChoice;
 };
 

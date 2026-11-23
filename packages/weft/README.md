@@ -579,7 +579,7 @@ The scope each operation requires:
 | `weft.workflows.attributes.get`, `weft.workflows.attributes.set` | `attributes:read`, `attributes:write` |
 | `weft.workflows.streams.chunks`, `weft.workflows.streams.sse` | `streams:read` |
 | `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.skipnext`, `weft.schedules.unskip`, `weft.schedules.runnow`, `weft.schedules.cancel` | `schedules:write` |
-| `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
+| `weft.reviews.list`, `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
 | `weft.retention.get` | `system:read` |
 | `weft.workflows.definitions.list`, `weft.workflows.definitions.get` | `system:read` or `workflows:read` (either one) |
 | `weft.system.principal` | none (public) |

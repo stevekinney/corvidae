@@ -25,7 +25,7 @@ A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.t
 
 ## Exit codes
 
-`bun scripts/chef/deliver.ts` exits 0 merged, 1 at a named step, and 2 on usage; its header defines every step. The skill covers `threads`, `conflict`, `revert`, `guards`, `head`, and `merge`. The rest:
+`bun scripts/chef/deliver.ts` exits 0 when done, 1 at a named step, 2 on bad usage; steps: `merge-gate.ts`, `direct-merge.ts`, `delivery-closeout.ts`. The skill covers `threads`, `conflict`, `revert`, `guards`, `head`, and `merge`. The rest:
 
 - `mergeable`: GitHub's mergeability stayed `UNKNOWN`; launch it again shortly.
 - `issue`: merged, but a Linear write failed for the named issue; repair it with `bun scripts/chef/linear.ts comment <ID> --file <md>` or `bun scripts/chef/linear.ts state <ID> Done`, and do not relaunch.

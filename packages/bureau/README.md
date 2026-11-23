@@ -319,6 +319,39 @@ The engine fields tune admission, guardrails, ownership, and versioning.
 
 `flowControl` applies uniformly to `tasks.start` and durable schedule fires, so one policy instance tracks state across both. `concurrency` and `rateLimit` group by the run's `agentName` unless you give a key function, and `singleton` requires an explicit key. `sessionInput` limits default to `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT` (32) and `DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT` (128), and an invalid value throws `BureauError` (`BAD_REQUEST`) at construction; reaching a cap makes `input` answer `backlog-exhausted`. `workflowVersion` is a pin-and-warn signal: recovery reports `'reattach-version-mismatch'` instead of `'reattach'`, and omitting it disables version tracking.
 
+The plugin fields load plugins and carry what a host reports about them.
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `plugins` | `readonly BureauPluginEntry[]` | The plugins to load. Each enabled plugin's `setup` runs once; a plugin whose configuration does not parse, whose `setup` fails, or that claims a name already held is skipped and the Bureau still starts. `bureau.plugins` reports each. |
+| `pluginConfiguration` | `Record<string, BureauPluginSettings>` | The owner's `{ enabled, configuration }` for each plugin, by plugin name. |
+| `pluginSecrets` | `BureauPluginSecrets` | Reads the secrets plugins declare; a plugin reads only the keys it declared. |
+| `hostEvents` | `BureauHostEvents` | Where the host reports the changes it commits. Bureau publishes them as `secret.set`, `secret.removed`, `plugin.settings-changed` and `plugin.status-changed`; without it those four kinds are never published. |
+
+The workspace and attention fields say who may use the Bureau and what needs a person.
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `workspace` | `WorkspaceMembershipOptions` | The trusted workspace directory that run and tool authorization use. See [the external control plane](./documentation/external-control-plane.md). |
+| `alerts` | `AlertingOptions` | Alert rules the durable engine evaluates against its own metrics. What is firing is read through `bureau.attention()` and `bureau.health.attention`. Needs a durable engine. |
+| `storageSizeReportIntervalMs` | `number` | How often the durable engine reports its storage's size, the metric `alerts` reads. Defaults to every minute; `0` turns the periodic report off. |
+| `attention` | `() => readonly BureauAttentionItem[] \| Promise<…>` | The problems the host can see and the Bureau cannot, such as `no-provider`. Merged into the list `bureau.attention()` returns. |
+
+The hook and event fields add user-defined webhooks and the formatters that describe events.
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `hooks` | `BureauHooksOptions` | User-defined, owner-scoped hooks over the published events, exposed as `bureau.hooks` and the `bureau.hooks.*` operations. Needs durable storage and `answerEncryption`. `hooks.secrets` (a `HookSecretStore`) says where the sealed signing secrets are kept. See [Hooks](./documentation/hooks.md). |
+| `formatters` | `readonly EventFormatterRegistration[]` | The event formatters plugins contribute, used by `bureau.formatEvent`. Two formatters that claim one event kind are refused at construction. |
+
+The catalog and source fields say where deployments, validators and guardrails come from.
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `workerDeployments` | `WorkerDeploymentCatalog` | Weft's worker deployment catalog. With it `bureau.deployments` and the `bureau.deployments.*` operations work; without it they answer `UnsupportedCapability`. |
+| `validatorSource` | `ValidatorSource` | Where the owner's validator files are. A goal may name one beside `validators`, which are looked up first. |
+| `guardrailSource` | `GuardrailSource` | Where the owner's guardrail files are. An agent file lists one in `guardrails` by the file's stem. |
+
 ### Per-agent guardrails and skills
 
 `createAgent` accepts `guardrails` and `skills`. Guardrails a run applies resolve from the agent itself:
