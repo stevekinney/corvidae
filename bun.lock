@@ -552,6 +552,16 @@
         "typescript": "catalog:",
       },
     },
+    "packages/mcp": {
+      "name": "@lostgradient/mcp",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/memory": {
       "name": "@lostgradient/memory",
       "dependencies": {
@@ -1498,6 +1508,8 @@
     "@lostgradient/lifecycle": ["@lostgradient/lifecycle@workspace:packages/lifecycle"],
 
     "@lostgradient/markdown": ["@lostgradient/markdown@workspace:packages/markdown"],
+
+    "@lostgradient/mcp": ["@lostgradient/mcp@workspace:packages/mcp"],
 
     "@lostgradient/memory": ["@lostgradient/memory@workspace:packages/memory"],
 
