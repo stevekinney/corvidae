@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { throwingRejectionOf } from "@lostgradient/testing/promise-outcome";
 import { createApplication, sequence } from "./index.ts";
 import { validateMounts } from "./mounts.ts";
 import type { ProductionGeneration } from "../build/manifest-types.ts";
@@ -76,6 +77,11 @@ const registry = (seen: string[]) => ({
   }),
 });
 
+const textOf = async (promise: Promise<Response>) => {
+  const response = await promise;
+  return response.text();
+};
+
 describe("server application", () => {
   test("leaves websocket upgrades to the listener", async () => {
     const app = await createApplication({
@@ -104,8 +110,12 @@ describe("server application", () => {
     try {
       const received = Promise.withResolvers<string>();
       const socket = new WebSocket(`ws://127.0.0.1:${server.port}/api`);
-      socket.onmessage = (event) => received.resolve(String(event.data));
-      socket.onerror = () => received.reject(new Error("websocket failed"));
+      socket.addEventListener("message", (event) =>
+        received.resolve(String(event.data)),
+      );
+      socket.addEventListener("error", () =>
+        received.reject(new Error("websocket failed")),
+      );
       expect(await received.promise).toBe("upgraded");
       socket.close();
     } finally {
@@ -167,20 +177,23 @@ describe("server application", () => {
     });
     try {
       const readers = await Promise.all(
-        ["/api/stream", "/internal"].map(async (path) =>
-          (
-            await app.fetch(new Request(`http://example.test${path}`))
-          ).body!.getReader(),
-        ),
+        ["/api/stream", "/internal"].map(async (path) => {
+          const response = await app.fetch(
+            new Request(`http://example.test${path}`),
+          );
+          return response.body!.getReader();
+        }),
       );
-      for (const reader of readers)
-        expect(new TextDecoder().decode((await reader.read()).value)).toBe(
-          "first",
-        );
+      for (const reader of readers) {
+        const chunk = await reader.read();
+        expect(new TextDecoder().decode(chunk.value)).toBe("first");
+      }
       authorized = false;
       resume.resolve();
-      for (const reader of readers)
-        expect((await reader.read()).done).toBe(true);
+      for (const reader of readers) {
+        const chunk = await reader.read();
+        expect(chunk.done).toBe(true);
+      }
     } finally {
       resume.resolve();
       await app.dispose();
@@ -245,9 +258,10 @@ describe("server application", () => {
         "POST /item?value=1 body",
         "POST /item?value=1 body",
       ]);
-      expect(
-        (await app.fetch(new Request("http://example.test/internal"))).status,
-      ).toBe(403);
+      const denied = await app.fetch(
+        new Request("http://example.test/internal"),
+      );
+      expect(denied.status).toBe(403);
       expect(observed).toHaveLength(2);
       const abort = new AbortController();
       const response = await app.fetch(
@@ -265,23 +279,25 @@ describe("server application", () => {
   });
   test("mount startup failure closes previously started services", async () => {
     let closes = 0;
-    await expect(
-      createApplication({
-        generation: generation(),
-        registry: registry([]) as never,
-        mounts: {
-          "/first": () => ({
-            fetch: () => new Response(),
-            close: () => {
-              closes++;
+    expect(
+      await throwingRejectionOf(
+        createApplication({
+          generation: generation(),
+          registry: registry([]) as never,
+          mounts: {
+            "/first": () => ({
+              fetch: () => new Response(),
+              close: () => {
+                closes++;
+              },
+            }),
+            "/second": () => {
+              throw new Error("startup");
             },
-          }),
-          "/second": () => {
-            throw new Error("startup");
           },
-        },
-      }),
-    ).rejects.toThrow("startup");
+        }),
+      ),
+    ).toThrow("startup");
     expect(closes).toBe(1);
   });
 
@@ -296,13 +312,15 @@ describe("server application", () => {
       { "/_remote": factory },
       { "/_assets": factory },
     ]) {
-      await expect(
-        createApplication({
-          generation: generation(),
-          registry: registry([]) as never,
-          mounts,
-        }),
-      ).rejects.toThrow();
+      expect(
+        await throwingRejectionOf(
+          createApplication({
+            generation: generation(),
+            registry: registry([]) as never,
+            mounts,
+          }),
+        ),
+      ).toThrow();
     }
     expect(starts).toBe(0);
   });
@@ -324,13 +342,15 @@ describe("server application", () => {
           { ...conflictingRegistry.manifest.routes[0], id },
         ],
       };
-      await expect(
-        createApplication({
-          generation: generation(),
-          registry: conflictingRegistry as never,
-          mounts,
-        }),
-      ).rejects.toThrow("conflicts with route");
+      expect(
+        await throwingRejectionOf(
+          createApplication({
+            generation: generation(),
+            registry: conflictingRegistry as never,
+            mounts,
+          }),
+        ),
+      ).toThrow("conflicts with route");
     }
     expect(() =>
       validateMounts(
@@ -377,11 +397,13 @@ describe("server application", () => {
         { ...badRegistry.manifest.routes[0], id: "/api/item" },
       ],
     };
-    await expect(
-      app.replaceGeneration(invalid, badRegistry as never),
-    ).rejects.toThrow("conflicts with route");
     expect(
-      await (await app.fetch(new Request("http://example.test/api"))).text(),
+      await throwingRejectionOf(
+        app.replaceGeneration(invalid, badRegistry as never),
+      ),
+    ).toThrow("conflicts with route");
+    expect(
+      await textOf(app.fetch(new Request("http://example.test/api"))),
     ).toBe("1");
     const held = app.fetch(new Request("http://example.test/api/held"));
     await entered.promise;
@@ -390,15 +412,54 @@ describe("server application", () => {
       registry([]) as never,
     );
     resume.resolve();
-    expect(await (await held).text()).toBe("1");
+    expect(await textOf(held)).toBe("1");
     await app.retire();
     await app.dispose();
     expect(
-      await (await next.fetch(new Request("http://example.test/api"))).text(),
+      await textOf(next.fetch(new Request("http://example.test/api"))),
     ).toBe("1");
     await next.dispose();
     await next.dispose();
     expect([starts, closes]).toEqual([1, 1]);
+  });
+  test("retired requests cannot invoke mounts after owner shutdown", async () => {
+    const ready = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    let calls = 0;
+    const app = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      hooks: {
+        handle: async ({ event, resolve }) => {
+          if (event.url.pathname === "/held") {
+            ready.resolve();
+            await resume.promise;
+            return event.fetch("/api");
+          }
+          return resolve();
+        },
+      },
+      mounts: {
+        "/api": () => () => {
+          calls++;
+          return new Response("mounted");
+        },
+      },
+    });
+    const held = app.fetch(new Request("http://example.test/held"));
+    await ready.promise;
+    const next = await app.replaceGeneration(
+      generation(),
+      registry([]) as never,
+    );
+    const retiring = app.retire();
+    await next.dispose();
+    resume.resolve();
+    const response = await held;
+    expect(response.status).toBe(503);
+    await response.text();
+    await retiring;
+    expect(calls).toBe(0);
   });
   test("starts mounted services once and dispatches relative requests", async () => {
     let starts = 0;
@@ -420,25 +481,21 @@ describe("server application", () => {
     });
     try {
       expect(
-        await (
-          await app.fetch(new Request("http://example.test/app/api/a%2Fb"))
-        ).text(),
+        await textOf(
+          app.fetch(new Request("http://example.test/app/api/a%2Fb")),
+        ),
       ).toBe("/a%2Fb");
       expect(
-        await (
-          await app.fetch(new Request("http://example.test/app/api/second"))
-        ).text(),
+        await textOf(
+          app.fetch(new Request("http://example.test/app/api/second")),
+        ),
       ).toBe("/second");
       expect(starts).toBe(1);
       expect(
-        await (
-          await app.fetch(new Request("http://example.test/app/async"))
-        ).text(),
+        await textOf(app.fetch(new Request("http://example.test/app/async"))),
       ).toBe("1");
       expect(
-        await (
-          await app.fetch(new Request("http://example.test/app/async"))
-        ).text(),
+        await textOf(app.fetch(new Request("http://example.test/app/async"))),
       ).toBe("1");
       expect(asyncStarts).toBe(1);
     } finally {

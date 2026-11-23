@@ -1,5 +1,8 @@
-import type { ApplicationOptions, FetchService } from "./types.ts";
-import type { ServerRegistry } from "./types.ts";
+import type {
+  ApplicationOptions,
+  FetchService,
+  ServerRegistry,
+} from "./types.ts";
 
 type Mounted = {
   path: string;
@@ -93,6 +96,9 @@ export async function startMounts(
   return {
     mounts,
     active,
+    get closed() {
+      return closing !== undefined;
+    },
     close() {
       if (closing) return closing;
       const completion = Promise.withResolvers<void>();
@@ -115,12 +121,14 @@ export function dispatchMount(
   base: string,
   request: Request,
   signal: AbortSignal,
+  closed: boolean,
 ) {
   const url = new URL(request.url);
   const mount = mounts.find(({ path }) =>
     contains(`${base}${path}`, url.pathname),
   );
   if (!mount) return undefined;
+  if (closed) return new Response("Application disposed", { status: 503 });
   url.pathname = url.pathname.slice((base + mount.path).length) || "/";
   return mount.fetch(
     new Request(url, {

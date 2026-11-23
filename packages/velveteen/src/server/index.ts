@@ -336,6 +336,7 @@ async function createGeneration(
           base,
           event.request,
           controller.signal,
+          owner.closed,
         );
         if (mounted !== undefined) {
           owner.active.add(controller);
@@ -525,15 +526,15 @@ async function createGeneration(
     fetch: (request: Request) => dispatch(request),
     routes: assets,
     async replaceGeneration(
-      generation: ApplicationOptions["generation"],
-      registry?: ServerRegistry,
+      nextGeneration: ApplicationOptions["generation"],
+      nextRegistry?: ServerRegistry,
     ) {
       if (!ownsMounts || disposed || retirement || replacing)
         throw new Error("Application cannot replace generation");
       replacing = true;
       try {
         const next = await createGeneration(
-          { ...options, generation, registry },
+          { ...options, generation: nextGeneration, registry: nextRegistry },
           owner,
         );
         if (disposed || retirement)
