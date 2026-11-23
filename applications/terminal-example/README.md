@@ -34,7 +34,7 @@ The Ctrl+C that stops the server first revokes every session and waits for each 
 
 ## What is in the page
 
-The page renders the `Terminal` component and offers six server-owned profiles. The page picks an identifier and whether it wants to be read-only, and nothing else: it never sends an executable, an argument, a working directory or an environment, and the server refuses a request that carries any of them.
+The page renders the `Terminal` component and offers eight server-owned profiles. The page picks an identifier and whether it wants to be read-only, and nothing else: it never sends an executable, an argument, a working directory or an environment, and the server refuses a request that carries any of them.
 
 - `shell`: your login shell, `$SHELL -l` (or the shell your account records when `$SHELL` is unset), on a pseudo-terminal, started in your home directory. Its environment is explicit rather than inherited: `TERM`, `COLORTERM`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG` and `PATH` from the host. There is no fallback shell: a missing one is reported as unavailable.
 - `fullscreen`: a small committed `sh` program that takes over the alternate screen, counts the keys it is given and leaves on `q`. A committed script rather than `vi` or `less` so it behaves the same on every host.

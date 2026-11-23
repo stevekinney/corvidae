@@ -57,6 +57,25 @@ describe('computeNextFires', () => {
     expect(fires[0]?.label).toMatch(/^Mon Jul 20, 9:00\sAM$/);
   });
 
+  test('design correction 2, row 65q: with `zone`, a cron fire names its zone after the time, and an interval names none', () => {
+    const from = new Date('2026-11-02T12:00:00.000Z');
+    const fires = computeNextFires({ cron: '0 11 * * 5', timeZone: 'America/Chicago' }, 3, from, {
+      zone: true,
+    });
+    expect(fires.map((fire) => fire.label.replace(/\s/g, ' '))).toEqual([
+      'Fri Nov 6, 11:00 AM CST',
+      'Fri Nov 13, 11:00 AM CST',
+      'Fri Nov 20, 11:00 AM CST',
+    ]);
+    const every = computeNextFires(
+      { every: { count: 2, unit: 'hours' }, timeZone: 'America/Chicago' },
+      1,
+      from,
+      { zone: true },
+    );
+    expect(every[0]?.label).not.toMatch(/CST/);
+  });
+
   test('cron mode: daily at a fixed time', () => {
     const from = new Date('2026-07-20T10:00:00.000Z');
     const fires = computeNextFires({ cron: '0 9 * * *', timeZone: 'UTC' }, 3, from);
