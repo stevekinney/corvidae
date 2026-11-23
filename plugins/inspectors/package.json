@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/plugin.ts",
-    "./failure-explanation.svelte": "./src/failure-explanation/failure-explanation.svelte"
+    "./failure-explanation": "./src/failure-explanation/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",

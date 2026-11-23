@@ -14,8 +14,11 @@
 
 /** One guardrail that fired in the run. */
 export interface ExplanationVerdict {
+  /** The guardrail's name. */
   readonly name: string;
+  /** Whether a guardrail's own check or a tripwire raised it. */
   readonly kind: 'guardrail' | 'tripwire';
+  /** What the verdict did to the run: stop it as a tripwire, block, warn, sanitize or redact. */
   readonly outcome: 'tripwire' | 'block' | 'warn' | 'sanitize' | 'redact';
   /** The step it fired at, counted from zero, or `null`. */
   readonly step: number | null;
@@ -23,17 +26,26 @@ export interface ExplanationVerdict {
 
 /** What `bureau.tasks.explain` answers for a failed run. */
 export interface Explanation {
+  /** The Bureau's sentence about why the run failed, which leads. */
   readonly summary: string;
+  /** What the Bureau knows of the error, each part `null` when it recorded none. */
   readonly cause: {
+    /** The failure category the engine classified the error as, or `null` when none fits. */
     readonly category: string | null;
+    /** The error's code; `UNKNOWN` is the engine saying it has none. */
     readonly code: string | null;
+    /** The kind of error, such as its class name. */
     readonly kind: string | null;
   };
   /** The step the run failed at, counted from zero, or `null` when none was recorded. */
   readonly step: { readonly index: number; readonly label: string } | null;
+  /** How many times the engine tried that step, or `null` when it kept no history. */
   readonly tries: number | null;
+  /** The guardrails that fired in the run, in the order read. */
   readonly verdicts: readonly ExplanationVerdict[];
+  /** The Bureau's next step, in a sentence. */
   readonly remediation: string;
+  /** Commands that carry out the next step, each ready to run; empty when there are none. */
   readonly nextCommands: readonly string[];
 }
 
@@ -70,7 +82,9 @@ export function failureExplanationHeading(refusalReason: string | null | undefin
 export interface ExplanationRefusal {
   /** The fault's `data.reason`, or `null` when it sent none. */
   readonly reason: string | null;
+  /** The fault's message, in the Bureau's words. */
   readonly message: string;
+  /** What the fault says to do about it, or `null` when it said nothing. */
   readonly remediation: string | null;
 }
 
