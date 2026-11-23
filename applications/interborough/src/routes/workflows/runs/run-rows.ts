@@ -1022,21 +1022,21 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   // true (row 53l); any other is said by what it did.
   const onWorkflowPage = instance && context.workflowPage === true;
   const person = onWorkflowPage && row.origin.kind === 'person' ? row.origin : null;
+  const plugin = row.origin.kind === 'trigger' ? row.origin.plugin : null;
   const agent =
     row.origin.kind === 'system'
       ? tick?.whileStopped === true
         ? copy.interboroughStarted
         : null
-      : instance
-        ? // A failed instance gives the room to where and why it failed (rows 09r, 52i: "Schedule,
-          // Release notes digest, failed at step 2 of 4, …"); any other names its agent (53l).
-          row.agentName === null || row.status === 'failed'
+      : row.agentName !== null
+        ? // A failed instance gives the room to where and why it failed (rows 09r, 52i).
+          instance && row.status === 'failed'
           ? null
           : context.agentLabel(row.agentName)
-        : row.agentName !== null
-          ? context.agentLabel(row.agentName)
-          : row.origin.kind === 'trigger' && row.origin.plugin !== null
-            ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
+        : plugin !== null
+          ? (context.pluginTitle?.(plugin) ?? plugin)
+          : instance
+            ? null
             : TASK_COPY.unknownAgent;
   // A run of a workflow file that nothing recorded an origin for is still a workflow's.
   const kind =
