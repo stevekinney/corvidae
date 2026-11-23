@@ -455,7 +455,7 @@
   <PageHeader
     title={editor.heading(name)}
     headingLevel={1}
-    description={phoneViewport.current && editable ? copy.builder.readOnlyOnScreen : undefined}
+    {...phoneViewport.current && editable ? { description: copy.builder.readOnlyOnScreen } : {}}
   />
   <p class="weft-workflow-editor__path">
     <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
