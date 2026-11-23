@@ -107,6 +107,14 @@ try {
     );
   observations.packageResolution = resolvedPackage;
 
+  const installedManifest = JSON.parse(await readFile(join(application, "node_modules", packageName.name, "package.json"), "utf8")) as { dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
+  const dependencies = Object.keys({ ...installedManifest.dependencies, ...installedManifest.peerDependencies });
+  if (dependencies.some((name) => /(?:backchannel|armorer|bureau|modelcontextprotocol)/i.test(name))) throw new Error("Velveteen has a provider dependency");
+  const serverSource = join(application, "src/server.ts");
+  const serverText = await readFile(serverSource, "utf8");
+  if (!serverText.includes("createApplication({ generation })")) throw new Error("starter application entry changed");
+  await writeFile(serverSource, serverText.replace("createApplication({ generation })", "createApplication({ generation, mounts: { '/service': () => () => new Response('mounted') } })"));
+
   const checked = run([process.execPath, "run", "check"], application);
   assertSuccess("generated application check", checked);
   const pageLoad = join(application, "src/routes/+page.ts");
@@ -188,6 +196,7 @@ try {
   };
 
   const dev = await start("dev");
+  if (await (await fetch(new URL("/service/item", dev.value.url))).text() !== "mounted") throw new Error("development mount failed");
   if (dev.value.mode !== "development")
     throw new Error(`dev mode mismatch: ${dev.value.mode}`);
   browser = await chromium.launch({ headless: true });
@@ -222,6 +231,7 @@ try {
   assertSuccess("generated application build", built);
   await rename(join(application, "src/routes"), join(directory, "routes"));
   const production = await start("start", { NODE_ENV: "production" });
+  if (await (await fetch(new URL("/service/item", production.value.url))).text() !== "mounted") throw new Error("production mount failed");
   if (production.value.mode !== "production")
     throw new Error(`start mode mismatch: ${production.value.mode}`);
   const productionResponse = await fetch(production.value.url);

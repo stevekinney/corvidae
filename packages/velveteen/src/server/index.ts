@@ -27,6 +27,7 @@ import { preparePage, runServerLoads } from "./loads.ts";
 import { dataResponse, documentResponse } from "./responses.ts";
 import { renderPage, resolveDeferred } from "./render.ts";
 import { createRequestTrace } from "./tracing.ts";
+import { dispatchMount, startMounts, validateMounts } from "./mounts.ts";
 import type {
   ApplicationOptions,
   RequestEvent,
@@ -38,12 +39,15 @@ export type {
   RequestEvent,
   ServerHooks,
   ServerLoadEvent,
+  FetchHandler,
+  FetchService,
 } from "./types.ts";
 export type { RequestTraceSpan } from "./tracing.ts";
 export { getRequestEvent } from "./context.ts";
 export { error, redirect } from "../data/errors.ts";
 
 type ServerHandle = NonNullable<ServerHooks["handle"]>;
+const adoptMounts = Symbol("adopt mounts");
 
 /** Compose server middleware in declaration order with nested post-processing. */
 export function sequence(...handlers: ServerHandle[]): ServerHandle {
@@ -82,15 +86,34 @@ const htmlRequest = (request: Request) =>
 
 /** The host owns its listener and injected ModuleGraph; the application owns requests until their bodies finish. */
 export async function createApplication(options: ApplicationOptions) {
+  return createGeneration({
+    ...options,
+    mounts: options.mounts && { ...options.mounts },
+  });
+}
+
+async function createGeneration(
+  options: ApplicationOptions,
+  inherited?: Awaited<ReturnType<typeof startMounts>>,
+) {
   const { generation, hooks } = options;
   const registry: ServerRegistry =
     options.registry ??
     (await import(join(generation.directory, generation.manifest.server.file)));
   const assets = createProductionAssetRoutes(generation);
+  const paths = validateMounts(options, registry, assets);
+  const owner = inherited ?? (await startMounts(options, paths));
+  let ownsMounts = !inherited;
+  let replacing = false;
   const active = new Set<AbortController>();
   let disposed = false;
   let retirement: PromiseWithResolvers<void> | undefined;
-  await hooks?.init?.();
+  try {
+    await hooks?.init?.();
+  } catch (error) {
+    if (ownsMounts) await owner.close().catch(() => {});
+    throw error;
+  }
   const dispatch = async (
     input: RequestInfo | URL,
     init?: RequestInit,
@@ -128,6 +151,7 @@ export async function createApplication(options: ApplicationOptions) {
     else request.signal.addEventListener("abort", abort, { once: true });
     const release = () => {
       active.delete(controller);
+      owner.active.delete(controller);
       if (active.size === 0) retirement?.resolve();
       request.signal.removeEventListener("abort", abort);
     };
@@ -307,6 +331,16 @@ export async function createApplication(options: ApplicationOptions) {
       event: RequestEvent = context.event,
     ): Promise<Response> => {
       try {
+        const mounted = dispatchMount(
+          owner.mounts,
+          base,
+          event.request,
+          controller.signal,
+        );
+        if (mounted !== undefined) {
+          owner.active.add(controller);
+          return await mounted;
+        }
         if (event.url.pathname.startsWith(`${base}/_remote/`)) {
           return dispatchRemote(options.remotes ?? {}, request, event, {
             publicError,
@@ -490,6 +524,30 @@ export async function createApplication(options: ApplicationOptions) {
   return {
     fetch: (request: Request) => dispatch(request),
     routes: assets,
+    async replaceGeneration(
+      generation: ApplicationOptions["generation"],
+      registry?: ServerRegistry,
+    ) {
+      if (!ownsMounts || disposed || retirement || replacing)
+        throw new Error("Application cannot replace generation");
+      replacing = true;
+      try {
+        const next = await createGeneration(
+          { ...options, generation, registry },
+          owner,
+        );
+        if (disposed || retirement)
+          throw new Error("Application cannot replace generation");
+        ownsMounts = false;
+        next[adoptMounts]();
+        return next;
+      } finally {
+        replacing = false;
+      }
+    },
+    [adoptMounts]() {
+      ownsMounts = true;
+    },
     retire() {
       retirement ??= Promise.withResolvers<void>();
       if (active.size === 0) retirement.resolve();
@@ -501,6 +559,7 @@ export async function createApplication(options: ApplicationOptions) {
         controller.abort(
           new DOMException("Application disposed", "AbortError"),
         );
+      if (ownsMounts) await owner.close();
     },
   };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createApplication, sequence } from "./index.ts";
+import { validateMounts } from "./mounts.ts";
 import type { ProductionGeneration } from "../build/manifest-types.ts";
 
 const generation = (basePath = ""): ProductionGeneration => ({
@@ -76,6 +77,374 @@ const registry = (seen: string[]) => ({
 });
 
 describe("server application", () => {
+  test("leaves websocket upgrades to the listener", async () => {
+    const app = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      mounts: { "/api": () => () => new Response("http") },
+    });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request, server) {
+        if (
+          request.headers.get("upgrade") === "websocket" &&
+          server.upgrade(request)
+        )
+          return;
+        return app.fetch(request);
+      },
+      websocket: {
+        open(socket) {
+          socket.send("upgraded");
+        },
+        message() {},
+      },
+    });
+    try {
+      const received = Promise.withResolvers<string>();
+      const socket = new WebSocket(`ws://127.0.0.1:${server.port}/api`);
+      socket.onmessage = (event) => received.resolve(String(event.data));
+      socket.onerror = () => received.reject(new Error("websocket failed"));
+      expect(await received.promise).toBe("upgraded");
+      socket.close();
+    } finally {
+      await server.stop(true);
+      await app.dispose();
+    }
+  });
+  test("host stream release policy applies to external and internal mounts", async () => {
+    let authorized = true;
+    const resume = Promise.withResolvers<void>();
+    const app = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      hooks: {
+        handle: async ({ event, resolve }) => {
+          if (event.url.pathname === "/internal")
+            return event.fetch("/api/stream");
+          const response = await resolve();
+          if (event.url.pathname !== "/api/stream") return response;
+          const reader = response.body!.getReader();
+          return new Response(
+            new ReadableStream(
+              {
+                async pull(output) {
+                  const chunk = await reader.read();
+                  if (!authorized) {
+                    await reader.cancel();
+                    output.close();
+                    return;
+                  }
+                  if (chunk.done) output.close();
+                  else output.enqueue(chunk.value);
+                },
+                cancel: () => reader.cancel(),
+              },
+              { highWaterMark: 0 },
+            ),
+          );
+        },
+      },
+      mounts: {
+        "/api": () => () =>
+          new Response(
+            new ReadableStream(
+              {
+                start(output) {
+                  output.enqueue(new TextEncoder().encode("first"));
+                },
+                async pull(output) {
+                  await resume.promise;
+                  output.enqueue(new TextEncoder().encode("private"));
+                  output.close();
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+          ),
+      },
+    });
+    try {
+      const readers = await Promise.all(
+        ["/api/stream", "/internal"].map(async (path) =>
+          (
+            await app.fetch(new Request(`http://example.test${path}`))
+          ).body!.getReader(),
+        ),
+      );
+      for (const reader of readers)
+        expect(new TextDecoder().decode((await reader.read()).value)).toBe(
+          "first",
+        );
+      authorized = false;
+      resume.resolve();
+      for (const reader of readers)
+        expect((await reader.read()).done).toBe(true);
+    } finally {
+      resume.resolve();
+      await app.dispose();
+    }
+  });
+  test("applies admission to external and internal mounted requests and forwards cancellation", async () => {
+    const observed: string[] = [];
+    let mountedSignal: AbortSignal | undefined;
+    const app = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      hooks: {
+        handle: async ({ event, resolve }) => {
+          if (event.url.pathname === "/internal")
+            return event.fetch("/api/item?value=1", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: "body",
+            });
+          if (event.request.headers.get("authorization") !== "allow")
+            return new Response("denied", { status: 403 });
+          return resolve();
+        },
+      },
+      mounts: {
+        "/api": () => async (request) => {
+          mountedSignal = request.signal;
+          observed.push(
+            `${request.method} ${new URL(request.url).pathname}${new URL(request.url).search} ${await request.text()}`,
+          );
+          return new Response("result", {
+            status: 404,
+            headers: { "x-service": "yes" },
+          });
+        },
+      },
+    });
+    try {
+      const external = await app.fetch(
+        new Request("http://example.test/api/item?value=1", {
+          method: "POST",
+          headers: {
+            authorization: "allow",
+            "content-type": "application/json",
+          },
+          body: "body",
+        }),
+      );
+      const internal = await app.fetch(
+        new Request("http://example.test/internal", {
+          headers: { authorization: "allow" },
+        }),
+      );
+      expect([
+        external.status,
+        internal.status,
+        external.headers.get("x-service"),
+        await external.text(),
+        await internal.text(),
+      ]).toEqual([404, 404, "yes", "result", "result"]);
+      expect(observed).toEqual([
+        "POST /item?value=1 body",
+        "POST /item?value=1 body",
+      ]);
+      expect(
+        (await app.fetch(new Request("http://example.test/internal"))).status,
+      ).toBe(403);
+      expect(observed).toHaveLength(2);
+      const abort = new AbortController();
+      const response = await app.fetch(
+        new Request("http://example.test/api/abort", {
+          headers: { authorization: "allow" },
+          signal: abort.signal,
+        }),
+      );
+      abort.abort();
+      expect(mountedSignal?.aborted).toBe(true);
+      await response.body?.cancel();
+    } finally {
+      await app.dispose();
+    }
+  });
+  test("mount startup failure closes previously started services", async () => {
+    let closes = 0;
+    await expect(
+      createApplication({
+        generation: generation(),
+        registry: registry([]) as never,
+        mounts: {
+          "/first": () => ({
+            fetch: () => new Response(),
+            close: () => {
+              closes++;
+            },
+          }),
+          "/second": () => {
+            throw new Error("startup");
+          },
+        },
+      }),
+    ).rejects.toThrow("startup");
+    expect(closes).toBe(1);
+  });
+
+  test("rejects overlapping and protected mounts before startup", async () => {
+    let starts = 0;
+    const factory = () => {
+      starts++;
+      return () => new Response();
+    };
+    for (const mounts of [
+      { "/api": factory, "/api/nested": factory },
+      { "/_remote": factory },
+      { "/_assets": factory },
+    ]) {
+      await expect(
+        createApplication({
+          generation: generation(),
+          registry: registry([]) as never,
+          mounts,
+        }),
+      ).rejects.toThrow();
+    }
+    expect(starts).toBe(0);
+  });
+
+  test("rejects page, endpoint, and asset collisions before startup", async () => {
+    let starts = 0;
+    const mounts = {
+      "/api": () => {
+        starts++;
+        return () => new Response();
+      },
+    };
+    for (const id of ["/api/item", "/[...path]"]) {
+      const conflictingRegistry = registry([]);
+      conflictingRegistry.manifest = {
+        ...conflictingRegistry.manifest,
+        routes: [
+          ...conflictingRegistry.manifest.routes,
+          { ...conflictingRegistry.manifest.routes[0], id },
+        ],
+      };
+      await expect(
+        createApplication({
+          generation: generation(),
+          registry: conflictingRegistry as never,
+          mounts,
+        }),
+      ).rejects.toThrow("conflicts with route");
+    }
+    expect(() =>
+      validateMounts(
+        { generation: generation(), mounts },
+        registry([]) as never,
+        { "/api/logo.svg": {} },
+      ),
+    ).toThrow("conflicts with asset");
+    expect(starts).toBe(0);
+  });
+
+  test("retains a service through generation replacement and closes once", async () => {
+    let starts = 0,
+      closes = 0;
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const app = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      mounts: {
+        "/api": () => {
+          starts++;
+          return {
+            fetch: async (request) => {
+              if (new URL(request.url).pathname === "/held") {
+                entered.resolve();
+                await resume.promise;
+              }
+              return new Response(String(starts));
+            },
+            close: () => {
+              closes++;
+            },
+          };
+        },
+      },
+    });
+    const invalid = generation();
+    const badRegistry = registry([]);
+    badRegistry.manifest = {
+      ...badRegistry.manifest,
+      routes: [
+        ...badRegistry.manifest.routes,
+        { ...badRegistry.manifest.routes[0], id: "/api/item" },
+      ],
+    };
+    await expect(
+      app.replaceGeneration(invalid, badRegistry as never),
+    ).rejects.toThrow("conflicts with route");
+    expect(
+      await (await app.fetch(new Request("http://example.test/api"))).text(),
+    ).toBe("1");
+    const held = app.fetch(new Request("http://example.test/api/held"));
+    await entered.promise;
+    const next = await app.replaceGeneration(
+      generation(),
+      registry([]) as never,
+    );
+    resume.resolve();
+    expect(await (await held).text()).toBe("1");
+    await app.retire();
+    await app.dispose();
+    expect(
+      await (await next.fetch(new Request("http://example.test/api"))).text(),
+    ).toBe("1");
+    await next.dispose();
+    await next.dispose();
+    expect([starts, closes]).toEqual([1, 1]);
+  });
+  test("starts mounted services once and dispatches relative requests", async () => {
+    let starts = 0;
+    let asyncStarts = 0;
+    const app = await createApplication({
+      generation: generation("/app"),
+      registry: registry([]) as never,
+      mounts: {
+        "/api": () => {
+          starts++;
+          return (request: Request) =>
+            new Response(new URL(request.url).pathname);
+        },
+        "/async": async () => {
+          asyncStarts++;
+          return { fetch: () => new Response(String(asyncStarts)) };
+        },
+      },
+    });
+    try {
+      expect(
+        await (
+          await app.fetch(new Request("http://example.test/app/api/a%2Fb"))
+        ).text(),
+      ).toBe("/a%2Fb");
+      expect(
+        await (
+          await app.fetch(new Request("http://example.test/app/api/second"))
+        ).text(),
+      ).toBe("/second");
+      expect(starts).toBe(1);
+      expect(
+        await (
+          await app.fetch(new Request("http://example.test/app/async"))
+        ).text(),
+      ).toBe("1");
+      expect(
+        await (
+          await app.fetch(new Request("http://example.test/app/async"))
+        ).text(),
+      ).toBe("1");
+      expect(asyncStarts).toBe(1);
+    } finally {
+      await app.dispose();
+    }
+  });
   test("waits for parent server loads before child parent()", async () => {
     const seen: string[] = [];
     const app = await createApplication({

@@ -77,7 +77,11 @@ export type ServerRegistry = RuntimeRegistry & {
     options: { props: RootProps },
   ): { body: string; head: string };
 };
+export type FetchHandler = (request: Request) => Response | Promise<Response>;
+export type FetchService =
+  FetchHandler | { fetch: FetchHandler; close?: () => void | Promise<void> };
 export type ApplicationOptions = {
+  mounts?: Readonly<Record<string, () => FetchService | Promise<FetchService>>>;
   prerendering?: boolean;
   remotes?: RemoteDefinitions;
   remoteForms?: RemoteForms;
