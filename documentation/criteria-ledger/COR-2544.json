@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2544",
+  "branch": "worktree-agent-a1e66e5258d991376",
+  "checkedAt": "5aa4b9252cdc5e0d12e1394a958d2bf47691e564",
+  "briefVersion": "bdf0e93b22ae",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bureau.runs.compare (packages/bureau/src/http/management/runs-compare-operation.ts, mcpExposable) over a real Bureau: runs-compare-operation.test.ts, 11 tests, returns the engine's alignment for a fixture fork to a workflows reader and the deployment owner, pages by cursor, answers a caller who may read the fork and not its source (workspace member, ownerOf spied) with NotFound without reading the engine, and serves nothing when the engine reads another source than the one authorized. The authorization fault is NotFound, as bureau.runs.timeline answers a run the caller may not read. Wire goldens, MCP snapshot, operation map, workspace conformance row and projection fields updated. A fork whose source id was replaced by a start-new restart (the engine throws WorkflowNotFoundError for the source's old execution) is answered NotFound with 'The source run <id> is no longer available', not an opaque EngineFailure; runs-compare-operation.test.ts covers the replaced source and the fork the engine no longer finds. The fork preview (weft.workflows.fork dryRun) already maps a missing workflow to NotFound through resolveForkAccess."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "ui://inspectors/run-comparison/v1 (plugins/inspectors/src/run-comparison): comparison.test.ts opens a differing step of a fork and reads the changed value 1 -> 2 in JsonDiffViewer (DOM test, passes). Design round 1: the steps are Cinder's ListDetail over SelectableRow (open row aria-current, 'Differs in' as the row's description, kind Badge in meta), the detail under the list under the shared 40rem page cap, one word Same for a kept and an unchanged step, no run id in the title. tests/panels/run-comparison.spec.ts is the Playwright version of the same read and is written, NOT RUN on this host (browser suites barred). The design-review states are tests/panels/run-comparison-states.spec.ts, captured at 1280, 375 and the helper's 320 and 1920 (also not run here)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "plugins/inspectors/src/plugin.test.ts asserts placements [{kind:'run'}], opensFromTool bureau.runs.compare and allowedTools ['bureau.runs.compare'] (passes). Owner, 2026-11-22: run-page panels mount on workflow runs, refined by the design review of #1219: a card mounts only when it has something to say. run-panel-scope.ts holds the rules; run-panels.test.ts and run-detail-engine-runs.test.ts test each mount: a fork gets the run comparison and neither the run inspector nor the schedule editor; a workflow instance that is not a fork gets none of the three; an agent run gets the run inspector and the schedule editor and no comparison; a panel with no rule (the run timeline among them) shows on every run, the run placement's when: 'failed' (#1225) and the scope table are one mounting rule in run-panels.svelte, both required (run-panels-failed-only.test.ts: a failed fork shows the comparison and the failure explanation, a fork that did not fail only the comparison, an agent run never the comparison), and the Inspector spec asserts per panel (data-app) so the timeline never changes a count. Each panel is given { runId, runKind: 'workflow' } on a workflow run and { taskId } on an agent run. The host's run panel frame has no duplicate card title and no 'From the plugin' line (region named by aria-label)."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "comparison.test.ts shows the server's message as written for a refused run and model.test.ts reads a Bureau fault's message from structuredContent; the panel's spec 'shows the server's message for a run that is not a fork' is written and NOT RUN on this host."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "bun scripts/check-plugin-identities.ts passes inside lint:root (exit 0) with inspectors:run-comparison and inspectors:run-timeline in plugin-identities.json; plugins/inspectors/README.md and packages/bureau/README.md each hold a row for ui://inspectors/run-comparison/v1."
+    }
+  ]
+}

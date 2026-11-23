@@ -25,7 +25,7 @@ const placementSchema = z.discriminatedUnion('kind', [
       })
       .optional(),
   }),
-  z.object({ kind: z.literal('run') }),
+  z.object({ kind: z.literal('run'), when: z.literal('failed').optional() }),
   z.object({ kind: z.literal('chat-tool'), agentTool: z.string() }),
 ]);
 

@@ -14,6 +14,7 @@
    */
   import {
     CopyableValue,
+    Collapsible,
     FormSection,
     Segment,
     SegmentedControl,
@@ -43,6 +44,7 @@
   import { agentLabel } from '../../lib/agent-label.ts';
   import { defaultAgentQuery, listAgentsWithReadiness } from '../../lib/default-agent.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { readPreferredAgent, writePreferredAgent } from '../../lib/preferred-agent.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { storageFacts } from '../storage/storage-location.ts';
@@ -209,7 +211,7 @@
     <SettingRow
       id="weft-setting-storage-backend"
       label={copy.label}
-      identifier={copy.identifier}
+      {...phoneViewport.current ? {} : { identifier: copy.identifier }}
       description={remoteMode ? copy.remoteDescription : copy.description}
       {...remoteMode ? { managed: { message: copy.setByDeployment } } : {}}
     >
@@ -255,22 +257,36 @@
 
 <div class="weft-general__content" role="group" aria-label={SETTINGS_COPY.formLabel}>
   {#each sections as section (section.id)}
-    <FormSection
-      grouped
-      heading={SETTINGS_COPY.general.sections[section.id].title}
-      {...section.id === 'runs'
-        ? { description: SETTINGS_COPY.general.sections.runs.description }
-        : {}}
-    >
-      {#if section.id === 'storage'}
-        {@render backendRow(false)}
-      {:else if section.id === 'remote'}
-        {@render backendRow(true)}
-      {/if}
-      {#each section.keys as key (key)}
-        {@render field(key, section.id === 'remote')}
-      {/each}
-    </FormSection>
+    {#if section.id === 'advanced'}
+      <Collapsible
+        trigger={SETTINGS_COPY.general.sections.advanced.title}
+        chevron="start"
+        variant="flat"
+        idBase="weft-settings-advanced"
+        data-testid="settings-advanced"
+      >
+        {#each section.keys as key (key)}
+          {@render field(key, false)}
+        {/each}
+      </Collapsible>
+    {:else}
+      <FormSection
+        grouped
+        heading={SETTINGS_COPY.general.sections[section.id].title}
+        {...section.id === 'runs'
+          ? { description: SETTINGS_COPY.general.sections.runs.description }
+          : {}}
+      >
+        {#if section.id === 'storage'}
+          {@render backendRow(false)}
+        {:else if section.id === 'remote'}
+          {@render backendRow(true)}
+        {/if}
+        {#each section.keys as key (key)}
+          {@render field(key, section.id === 'remote')}
+        {/each}
+      </FormSection>
+    {/if}
   {/each}
 
   <FormSection
@@ -284,7 +300,7 @@
         <SettingRow
           id="weft-setting-theme"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}
@@ -309,7 +325,7 @@
         <SettingRow
           id="weft-setting-sidebar"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}
@@ -335,7 +351,7 @@
         <SettingRow
           id="weft-setting-default-agent"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}
@@ -362,7 +378,7 @@
         <SettingRow
           id="weft-settings-single-key-shortcuts"
           label={copy.label}
-          identifier={copy.identifier}
+          {...phoneViewport.current ? {} : { identifier: copy.identifier }}
           description={copy.description}
         >
           {#snippet control()}

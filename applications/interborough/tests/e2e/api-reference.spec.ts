@@ -13,6 +13,7 @@ import type { Page } from '@playwright/test';
 
 import { API_REFERENCE_COPY } from '../../src/app/copy/api-reference.ts';
 import { API_SCOPE_CATALOG } from '../../src/lib/api-scopes.ts';
+import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -198,6 +199,54 @@ test('Workflow sources lists the workflow files read-only, with no Open file', a
   );
   await expect(panel.getByRole('button', { name: /open file/i })).toHaveCount(0);
   await captureAtEveryWidth(page, 'workflow-sources', 'Workflow sources');
+});
+
+// COR-2548: the rule that every empty state is the one EmptyState layout is read on these screens,
+// which the sample world never leaves empty: the host answers with nothing to list.
+test('Workflow sources with no workflow file is the one EmptyState and nothing else on the tab', async ({
+  page,
+}) => {
+  await rewriteBureauAnswer(page, 'bureau.workflows.list', (result) => ({
+    ...result,
+    // The code workflows plugins contributed stay: the tab lists files only.
+    workflows: Array.isArray(result['workflows'])
+      ? result['workflows'].filter(
+          (entry) => typeof entry === 'object' && entry !== null && 'kind' in entry,
+        )
+      : [],
+    nextOffset: null,
+  }));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}?group=sources`);
+
+  const empty = page.getByTestId('api-sources-empty');
+  await expect(empty).toContainText(API_REFERENCE_COPY.sources.empty.title);
+  await expect(empty).toContainText(API_REFERENCE_COPY.sources.empty.description);
+  // The state stands alone: no intro above it and no list beside it.
+  await expect(page.getByTestId('api-sources').locator('ul')).toHaveCount(0);
+  await expect(page.getByText(API_REFERENCE_COPY.sources.intro)).toHaveCount(0);
+  await captureAtEveryWidth(page, 'workflow-sources-empty', 'Workflow sources');
+});
+
+test('Operations with none listed is the one EmptyState alone, with no group select or count', async ({
+  page,
+}) => {
+  await page.route('**/api/openapi.json', async (route) => {
+    const response = await route.fetch();
+    const document = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...document, paths: {} } });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
+
+  const panel = page.getByTestId('api-operations');
+  await expect(panel).toContainText(API_REFERENCE_COPY.operations.empty.title);
+  await expect(panel).toContainText(API_REFERENCE_COPY.operations.empty.none);
+  // The state stands alone: no group select or count over a list with nothing in it.
+  await expect(page.getByTestId('api-operations-count')).toHaveCount(0);
+  await expect(panel.getByRole('combobox', { name: 'Group' })).toHaveCount(0);
+  await expect(panel.getByRole('table')).toHaveCount(0);
+  await captureAtEveryWidth(page, 'operations-empty', 'Operations');
 });
 
 test('loading shows skeleton rows with the tab row live, then a status line with Cancel, and a failure says so with Try again', async ({

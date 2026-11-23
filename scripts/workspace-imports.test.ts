@@ -12,6 +12,12 @@ import {
 import { declaresImportSpecifier } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
+const standaloneFixtures = ['packages/velveteen/tests/reference'];
+// A standalone application owns its source and framework configuration. Its
+// enclosing workspace owns the orchestration scripts that create and run it.
+function isStandaloneFixtureSource(file: string): boolean {
+  return file.startsWith('src/') || /(?:^|\/)[^/]+\.config\.ts$/.test(file);
+}
 type Manifest = {
   name: string;
   exports?: unknown;
@@ -154,9 +160,23 @@ function isModuleLoadingCall(expression: ts.LeftHandSideExpression): boolean {
 }
 
 async function readWorkspaceSources(directory: string, sourceDirectory = directory) {
+  const nestedFixtures = standaloneFixtures
+    .filter((fixture) => fixture.startsWith(`${sourceDirectory}/`))
+    .map((fixture) => fixture.slice(sourceDirectory.length + 1));
+  const insideStandaloneFixture = standaloneFixtures.includes(sourceDirectory);
   const files = Array.from(
     new Bun.Glob('**/*.{ts,tsx,svelte}').scanSync({ cwd: join(root, sourceDirectory) }),
-  ).filter((file) => !/(^|\/)(node_modules|build|dist|coverage|\.svelte-kit)\//.test(file));
+  ).filter(
+    (file) =>
+      !/(^|\/)(node_modules|build|dist|coverage|\.svelte-kit)\//.test(file) &&
+      (insideStandaloneFixture
+        ? isStandaloneFixtureSource(file)
+        : !nestedFixtures.some(
+            (fixture) =>
+              file.startsWith(`${fixture}/`) &&
+              isStandaloneFixtureSource(file.slice(fixture.length + 1)),
+          )),
+  );
   const pendingFiles = files.entries();
   const sources: { file: string; source: string }[] = [];
   await Promise.all(
@@ -237,6 +257,7 @@ describe('workspace imports', () => {
     './package.json',
     'scripts/browser-fixtures/package.json',
     'scripts/groom/package.json',
+    ...standaloneFixtures.map((fixture) => `${fixture}/package.json`),
     ...new Bun.Glob(`${directoryGlob(workspaceParentDirectories)}/*/package.json`).scanSync({
       cwd: root,
     }),

@@ -22,6 +22,30 @@
       "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"Couldn’t load runs\"\n  description=\"Interborough didn’t answer. Your runs are safe; they’re stored on this machine.\"\n  retryStatus=\"Retrying in 8 s (attempt 3 of 8)\"\n  retryLabel=\"Try again\"\n  detail=\"HTTP 500 from /api/runs\"\n  onRetry={() => {}}\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" label=\"Open Health\" />\n  {/snippet}\n</ErrorState>\n"
     },
     {
+      "id": "with-remediation",
+      "title": "With remediation and retry",
+      "description": "A fault that names its next step and can be retried: the remediation is its own line after the description, and Try again stays the one primary action.",
+      "code": "<script lang=\"ts\">\n  import { ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"Couldn’t load runs\"\n  description=\"Interborough didn’t answer. Your runs are safe; they’re stored on this machine.\"\n  remediation=\"Check that Interborough is running, then try again.\"\n  detail=\"E_UNREACHABLE\"\n  onRetry={() => {}}\n/>\n"
+    },
+    {
+      "id": "remediation-not-retryable",
+      "title": "With remediation, not retryable",
+      "description": "A fault that asking again cannot fix: omit onRetry, so the remediation is the only next step and no Try again button is drawn.",
+      "code": "<script lang=\"ts\">\n  import { ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"Couldn’t start this run\"\n  description=\"The workflow refers to a step that no longer exists. Nothing you did caused it.\"\n  remediation=\"Open the workflow and remove or replace the missing step, then start the run again.\"\n  detail=\"E_STEP_MISSING\"\n/>\n"
+    },
+    {
+      "id": "bordered-row-with-action",
+      "title": "Bordered row with a way forward",
+      "description": "A row for a fault that cannot be retried: a quiet hairline in the tone's border color, the remediation under the description, and a secondary action in place of Try again.",
+      "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  variant=\"row\"\n  bordered\n  title=\"Couldn’t load reviews\"\n  description=\"The server answered with an error (503).\"\n  remediation=\"Open Health to see which part of the server stopped, then start it.\"\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" href=\"/health\" label=\"Open Health\" />\n  {/snippet}\n</ErrorState>\n"
+    },
+    {
+      "id": "warning",
+      "title": "Warning tone",
+      "description": "The warning tone for a problem the person can resolve, such as a conflicting change: amber instead of red, announced as a status. Add announce when the state replaces the content they came for and should interrupt like an alert.",
+      "code": "<script lang=\"ts\">\n  import { ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  tone=\"warning\"\n  announce\n  title=\"Someone else changed this workflow\"\n  description=\"Your edit was not saved because the workflow changed while you were editing.\"\n  remediation=\"Read the workflow again, then make your change on the new revision.\"\n  onRetry={() => {}}\n/>\n"
+    },
+    {
       "id": "not-found",
       "title": "Not found",
       "description": "The neutral tone for a thing that doesn’t exist: nothing failed, so it is not announced as an alert.",

@@ -23,6 +23,7 @@
     RelativeTime,
     SelectableRow,
     StatusDot,
+    type ApprovalResolution,
     type DataListGroup,
   } from '@lostgradient/cinder';
   import { Check } from '@lucide/svelte';
@@ -72,6 +73,13 @@
     readonly remember: boolean;
     /** Called when the Bureau took the decision, so the list can move on to the next review. */
     readonly onDone: () => void;
+  }
+
+  /** The approval action currently sent from this panel, held only for its review round. */
+  interface InFlightApproval {
+    readonly reviewId: string;
+    readonly round: number;
+    readonly decision: 'approve' | 'deny';
   }
 
   interface ReviewsPanelProps {
@@ -139,6 +147,12 @@
   let selectedKey = $state<string | null>(null);
   let frameElement = $state<HTMLElement | undefined>();
   let detailElement = $state<HTMLElement | undefined>();
+  let inFlightApproval = $state<InFlightApproval | undefined>();
+  let wasResolving = false;
+  $effect(() => {
+    if ((wasResolving && !resolving) || outcome !== undefined) inFlightApproval = undefined;
+    wasResolving = resolving;
+  });
   /** The note typed with a denial, by review, so it stays with its review while another is open. */
   const notes = new SvelteMap<string, string>();
 
@@ -361,13 +375,19 @@
   /** Sends a decision on the open approval, then opens the review after it. */
   function decide(
     review: Extract<BureauReview, { kind: 'tool-approval' }>,
-    action: 'approve' | 'deny' | 'remember',
+    resolution: ApprovalResolution,
   ): void {
     if (mode !== 'waiting' || resolving || decisionSent || review.status !== 'pending') return;
+    if (resolution.decision !== 'approve' && resolution.decision !== 'deny') return;
     decisionSent = true;
-    const note = (notes.get(review.id) ?? '').trim();
-    const word =
-      action === 'deny' ? REVIEWS_COPY.announced.denied : REVIEWS_COPY.announced.approved;
+    inFlightApproval = {
+      reviewId: review.id,
+      round: review.round,
+      decision: resolution.decision,
+    };
+    const note = resolution.reason;
+    const denied = resolution.decision === 'deny';
+    const word = denied ? REVIEWS_COPY.announced.denied : REVIEWS_COPY.announced.approved;
     const advance = advancer(
       `bureau:${review.id}`,
       REVIEWS_COPY.announce(word, reviewTitle(review)),
@@ -377,12 +397,12 @@
       notes.delete(review.id);
       advance();
     };
-    if (action === 'deny') {
+    if (denied) {
       // A denial with a note is a rejection with that reason, which the agent reads.
       onResolve({
         review,
-        decision: note === '' ? 'deny' : 'reject',
-        reason: note === '' ? undefined : note,
+        decision: note === undefined ? 'deny' : 'reject',
+        reason: note,
         remember: false,
         onDone,
       });
@@ -390,22 +410,27 @@
       onResolve({
         review,
         decision: 'approve',
-        reason: note === '' ? undefined : note,
-        remember: action === 'remember',
+        reason: note,
+        remember: resolution.remember,
         onDone,
       });
     }
   }
 
-  function approvalOpen(): Extract<BureauReview, { kind: 'tool-approval' }> | undefined {
-    const review = selected?.review;
-    return review?.kind === 'tool-approval' ? review : undefined;
+  /** Uses the same controls for keys and pointer input, including the confirmation step. */
+  function pressApprovalControl(action: 'approve' | 'deny'): void {
+    if (!decisionKeysArmed || selected?.review.kind !== 'tool-approval') return;
+    const selector =
+      action === 'approve'
+        ? 'button[data-cinder-approval-approve], .cinder-inline-confirm__two-press button'
+        : 'button[data-cinder-approval-deny]';
+    detailElement?.querySelector<HTMLButtonElement>(selector)?.click();
   }
 
   /** Moves focus to the first control of the open review's decision or answer, and presses none. */
   function focusDecision(): void {
     const region = detailElement?.querySelector<HTMLElement>(
-      '.ib-review-pane__decision, .ib-review-pane__answer',
+      '.cinder-approval-card__actions, .ib-review-detail__decision, .ib-review-detail__answer',
     );
     region
       ?.querySelector<HTMLElement>(
@@ -444,20 +469,14 @@
         label: REVIEWS_COPY.approveShortcut,
         group,
         scope,
-        handler: () => {
-          const review = approvalOpen();
-          if (review !== undefined && decisionKeysArmed) decide(review, 'approve');
-        },
+        handler: () => pressApprovalControl('approve'),
       }),
       shortcuts.register({
         keys: ['d'],
         label: REVIEWS_COPY.denyShortcut,
         group,
         scope,
-        handler: () => {
-          const review = approvalOpen();
-          if (review !== undefined && decisionKeysArmed) decide(review, 'deny');
-        },
+        handler: () => pressApprovalControl('deny'),
       }),
       ...Array.from({ length: 9 }, (_, index) =>
         shortcuts.register({
@@ -515,7 +534,7 @@
       <Check aria-hidden="true" size={18} />
       <span>{REVIEWS_COPY.noLongerWaiting.message}</span>
     </p>
-    <Button variant="primary" onclick={openNext}>{REVIEWS_COPY.noLongerWaiting.next}</Button>
+    <Button variant="primary" onclick={openNext} label={REVIEWS_COPY.noLongerWaiting.next} />
   </div>
 {/snippet}
 
@@ -644,9 +663,12 @@
                   bind:note={
                     () => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)
                   }
-                  deciding={resolving}
+                  deciding={inFlightApproval?.reviewId === review.id &&
+                  inFlightApproval.round === review.round
+                    ? inFlightApproval.decision
+                    : undefined}
                   outcome={outcome?.reviewId === review.id ? outcome : undefined}
-                  onDecide={(action) => decide(review, action)}
+                  onDecide={(resolution) => decide(review, resolution)}
                 />
               {:else if item.review.kind === 'human-wait'}
                 {@const review = item.review}

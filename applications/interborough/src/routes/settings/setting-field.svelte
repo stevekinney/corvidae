@@ -17,6 +17,7 @@
     Select,
     SettingRow,
     Toggle,
+    fromMilliseconds,
     type SelectOption,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -25,6 +26,7 @@
   import { SETTINGS_COPY } from '../../app/copy/settings.ts';
   import { getAgentCatalog, isAvailableModel } from '../../lib/agent-definitions.ts';
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { inlineSegments } from './inline-markdown.ts';
   import { modelDisplayName } from './models/format-model.ts';
@@ -261,7 +263,7 @@
   <SettingRow
     {id}
     {label}
-    identifier={name}
+    {...phoneViewport.current ? {} : { identifier: name }}
     {description}
     {...descriptionAction === undefined ? {} : { descriptionAction }}
     {...status === undefined ? {} : { status }}
@@ -368,6 +370,9 @@
             value={typeof draft === 'number' ? draft : null}
             unit={duration.unit}
             unitSelectable={duration.selectable}
+            {...!duration.selectable && typeof inForce === 'number'
+              ? { placeholder: String(fromMilliseconds(inForce, duration.unit)) }
+              : {}}
             disabled={inert}
             onValueChange={(next) => change(next ?? undefined)}
           />
@@ -386,9 +391,12 @@
       {:else if spec.kind === 'form' && !hasValue && !revealed && !locked}
         <div class="weft-setting__unset">
           <span>{SETTINGS_COPY.notSet}</span>
-          <Button variant="secondary" size="sm" onclick={() => (revealed = true)}>
-            {SETTINGS_COPY.setAction}
-          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => (revealed = true)}
+            label={SETTINGS_COPY.setAction}
+          />
         </div>
       {:else if spec.kind === 'form' || spec.kind === 'json'}
         <span class="weft-setting__unset">{hasValue ? '' : SETTINGS_COPY.notSet}</span>

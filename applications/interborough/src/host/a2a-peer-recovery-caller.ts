@@ -1,5 +1,6 @@
 import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { createEgressPolicy } from '@lostgradient/weft/a2a';
+import { rename } from 'node:fs/promises';
 
 import { processEnvironment } from './environment-configuration.ts';
 import { startHost, type HostOptions } from './host.ts';
@@ -29,6 +30,13 @@ const value = (key: string): string => {
   if (result === undefined) throw new Error(`caller fixture environment is missing ${key}`);
   return result;
 };
+
+async function writeJsonMarker(path: string, marker: unknown): Promise<void> {
+  const pending = `${path}.${crypto.randomUUID()}.tmp`;
+  await Bun.write(pending, JSON.stringify(marker));
+  await rename(pending, path);
+}
+
 function isPeerCallKey(candidate: unknown): candidate is {
   parentRunId: string;
   operationKey: string;
@@ -107,14 +115,11 @@ const peerFetch = Object.assign(
       recoveryTaskId !== undefined &&
       (method === 'GetTask' || method === 'SubscribeToTask' || requestMethod === 'POST')
     ) {
-      await Bun.write(
-        value('AUTH_ATTACH_FILE'),
-        JSON.stringify({
-          method: method ?? requestMethod,
-          taskId: requestTaskId,
-          status: response.status,
-        }),
-      );
+      await writeJsonMarker(value('AUTH_ATTACH_FILE'), {
+        method: method ?? requestMethod,
+        taskId: requestTaskId,
+        status: response.status,
+      });
     }
     return response;
   },
@@ -180,7 +185,7 @@ const host = await startHost({
       update.state !== 'canceled' &&
       update.state !== 'rejected'
     ) {
-      void Bun.write(value('ATTACH_FILE'), JSON.stringify(update));
+      void writeJsonMarker(value('ATTACH_FILE'), update);
     }
   },
 });
@@ -188,7 +193,7 @@ const peerCalls = host.bureau.peerCalls;
 const originalWrite = peerCalls.write.bind(peerCalls);
 peerCalls.write = async (key, entry) => {
   await originalWrite(key, entry);
-  await Bun.write(value('KEY_FILE'), JSON.stringify(key));
+  await writeJsonMarker(value('KEY_FILE'), key);
 };
 await Bun.write(value('READY_FILE'), 'ready');
 await Bun.write(environment['URL_FILE'] ?? `${home}/caller-url`, host.url.href);
@@ -203,11 +208,11 @@ if (environment['RESTART'] === '1') {
   if (sessionStore === undefined)
     throw new Error('recovery fixture requires a durable session store');
   const session = await sessionStore.load(sessionId);
-  await Bun.write(value('SESSION_FILE'), JSON.stringify(session ?? null));
+  await writeJsonMarker(value('SESSION_FILE'), session ?? null);
   const result = await host.bureau.tasks.wait(runId);
-  await Bun.write(value('RESULT_FILE'), JSON.stringify(result));
+  await writeJsonMarker(value('RESULT_FILE'), result);
   const audit = await host.bureau.internals.auditTrail?.query({ runId });
-  await Bun.write(value('AUDIT_FILE'), JSON.stringify(audit ?? []));
+  await writeJsonMarker(value('AUDIT_FILE'), audit ?? []);
 } else {
   try {
     const run = await host.bureau.tasks.start('caller', 'Delegate the work.', {
@@ -238,7 +243,7 @@ if (environment['RESTART'] === '1') {
         if (!isPeerCallKey(key)) throw new Error('caller fixture journal key is malformed');
         const entry = await peerCalls.read(key);
         if (entry !== undefined) {
-          await Bun.write(value('JOURNAL_FILE'), JSON.stringify({ key, entry }));
+          await writeJsonMarker(value('JOURNAL_FILE'), { key, entry });
           break;
         }
       }

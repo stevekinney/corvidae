@@ -276,6 +276,7 @@ const SIDEBAR_BASELINE = [
   'inspector',
   'inspector-row',
   'invocation-rule-builder',
+  'json-diff-viewer',
   'json-editor',
   'json-schema-editor',
   'json-viewer',

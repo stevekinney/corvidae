@@ -50,7 +50,7 @@ test('expanded trigger clears its bottom radii at the panel seam', async () => {
   const css = await Bun.file(new URL('./collapsible.css', import.meta.url)).text();
   const expandedTriggerBlock =
     css.match(
-      /\.cinder-collapsible\[data-cinder-expanded\]\s+\.cinder-collapsible__trigger\s*\{[^}]*\}/,
+      /\.cinder-collapsible\[data-cinder-expanded\]\s*>\s*\.cinder-collapsible__trigger\s*\{[^}]*\}/,
     )?.[0] ?? '';
 
   expect(expandedTriggerBlock).toContain('border-end-start-radius: 0');
@@ -449,12 +449,18 @@ describe('Collapsible variant', () => {
     const root = declarationsFor(css, flat);
     expect(root.get('border')).toBe('0');
     expect(root.get('background')).toBe('transparent');
-    const triggerRule = declarationsFor(css, `${flat} .cinder-collapsible__trigger`);
+    const triggerRule = declarationsFor(css, `${flat} > .cinder-collapsible__trigger`);
     expect(triggerRule.get('background')).toBe('transparent');
     expect(triggerRule.get('padding')).toBe('var(--cinder-space-2) 0');
-    const label = declarationsFor(css, `${flat} .cinder-collapsible__label`);
+    const label = declarationsFor(
+      css,
+      `${flat} > .cinder-collapsible__trigger > .cinder-collapsible__label`,
+    );
     expect(label.get('font-weight')).toBe('var(--cinder-font-semibold)');
-    const panel = declarationsFor(css, `${flat} .cinder-collapsible__panel-inner`);
+    const panel = declarationsFor(
+      css,
+      `${flat} > .cinder-collapsible__panel > .cinder-collapsible__panel-inner`,
+    );
     expect(panel.get('padding')).toBe('var(--cinder-space-2) 0 var(--cinder-space-3)');
     expect(panel.get('background')).toBe('transparent');
   });
@@ -484,12 +490,12 @@ describe('Collapsible variant', () => {
     // Closed it points right, and opened it points down.
     const closed = declarationsFor(
       css,
-      ".cinder-collapsible[data-cinder-chevron='start'] .cinder-collapsible__chevron",
+      ".cinder-collapsible[data-cinder-chevron='start'] > .cinder-collapsible__trigger > .cinder-collapsible__chevron",
     );
     expect(closed.get('transform')).toBe('rotate(-90deg)');
     const opened = declarationsFor(
       css,
-      ".cinder-collapsible[data-cinder-chevron='start'][data-cinder-expanded] .cinder-collapsible__chevron",
+      ".cinder-collapsible[data-cinder-chevron='start'][data-cinder-expanded] > .cinder-collapsible__trigger > .cinder-collapsible__chevron",
     );
     expect(opened.get('transform')).toBe('rotate(0deg)');
     await fireEvent.click(row);

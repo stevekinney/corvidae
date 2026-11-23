@@ -109,13 +109,15 @@
       <Button
         variant="secondary"
         disabled={configuration.saving}
-        onclick={() => requestLeave('remove')}>{copy.removeKey}</Button
-      >
+        onclick={() => requestLeave('remove')}
+        label={copy.removeKey}
+      />
       <Button
         variant="secondary"
         disabled={configuration.saving}
-        onclick={() => requestLeave('replace')}>{copy.replaceKey}</Button
-      >
+        onclick={() => requestLeave('replace')}
+        label={copy.replaceKey}
+      />
     {/if}
     {#if configuration.dirty || configuration.saving}
       <Button
@@ -125,7 +127,7 @@
         >{configuration.saving ? copy.saving : copy.save}</Button
       >
     {:else}
-      <Button variant="primary" onclick={() => requestLeave('close')}>{copy.done}</Button>
+      <Button variant="primary" onclick={() => requestLeave('close')} label={copy.done} />
     {/if}
   {/snippet}
 </Modal>

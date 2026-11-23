@@ -231,9 +231,12 @@
         <Alert variant="warning">
           <p class="weft-agent-try__alert-title">{CHAT_COPY.disconnected.title}</p>
           <p class="weft-agent-try__alert-body">{CHAT_COPY.disconnected.description}</p>
-          <Button size="sm" variant="secondary" onclick={() => void chat.reconnect()}
-            >{CHAT_COPY.disconnected.reconnect}</Button
-          >
+          <Button
+            size="sm"
+            variant="secondary"
+            onclick={() => void chat.reconnect()}
+            label={CHAT_COPY.disconnected.reconnect}
+          />
         </Alert>
       {/if}
       <div class="weft-agent-try__chat" role="region" aria-label={copy.chatLabel}>

@@ -100,11 +100,10 @@ jobs:
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH (as in `main.yml`).
       - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
-      # `--isolated` adds the serial slow and integration lanes, narrowed to the selection: a
-      # change that reaches no such test runs none, so a broken integration test fails before merge
-      # at the cost of only the tests the change reaches. The `main` workflow's slow job runs them
-      # all, but only after the merge.
-      - run: bun scripts/affected-tests.ts run --isolated --base "$TURBO_SCM_BASE"
+      - name: Run affected tests
+        env:
+          TEST_LANES: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '--fast-only' || '--isolated' }}
+        run: bun scripts/affected-tests.ts run "$TEST_LANES" --base "$TURBO_SCM_BASE"
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
 
@@ -119,15 +118,22 @@ jobs:
       fixtures: ${{ steps.select.outputs.fixtures }}
       interborough: ${{ steps.select.outputs.interborough }}
     steps:
+      - name: Report paused browser suites
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' }}
+        run: echo 'Automatic browser suites are paused. Use the Main workflow to run them manually.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
       - id: select
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
         run: |
           affected="$(bunx turbo ls --affected --output=json | jq -r '.packages.items[].name')"
           workflow=false

@@ -86,7 +86,7 @@ describe('a refused answer', () => {
 });
 
 describe('an approval', () => {
-  test('given no input says so, rather than showing an empty list', async () => {
+  test('keeps the shared approval card free of an empty Input section', async () => {
     const approval = toolApprovalFixture({
       requestedAt: Date.now() - 1_000,
       approval: { ...toolApprovalFixture().approval, arguments: {} },
@@ -94,7 +94,7 @@ describe('an approval', () => {
     const { container, findByText } = open({ reviews: [approval] });
     await openFirst(container);
     await findByText('This call was given no input.');
-    expect(container.querySelector('.ib-tool__details')).toBeNull();
+    expect(container.querySelector('.cinder-payload-inspector')).toBeNull();
   });
 });
 
@@ -171,7 +171,8 @@ describe('a list that failed', () => {
         scopes: AUTHORIZATION_SCOPES,
       },
     } as never);
-    await findByText('The Bureau broke.');
+    // The stub says "Bureau"; the page reads "the server".
+    await findByText('The server broke.');
     failing = false;
     await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(rows(container).length).toBe(1));

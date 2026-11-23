@@ -671,7 +671,7 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     });
     const { getByText } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
 
-    expect(getByText('Cancelled, no worker acknowledgement recorded')).not.toBeNull();
+    expect(getByText('Canceled, no worker acknowledgement recorded')).not.toBeNull();
     expect(getByText('No record for attempt 2 yet')).not.toBeNull();
   });
 
@@ -748,7 +748,7 @@ describe('TaskLedgerPanel — query states', () => {
         now: NOW,
       },
     });
-    expect(getByText('Something went wrong')).not.toBeNull();
+    expect(getByText('Couldn’t load the task ledger')).not.toBeNull();
     expect(getByText('Internal server error')).not.toBeNull();
   });
 

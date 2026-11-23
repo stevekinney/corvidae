@@ -4,6 +4,7 @@
  * app declared the tool. Every refusal is tested with a double for the Bureau's handler, so the
  * assertion that nothing ran is "the double was never called".
  */
+import { hostPanelUriOfCall } from '@lostgradient/bureau';
 import { describe, expect, mock, test } from 'bun:test';
 
 import type { ServedPanel } from './panel-mounts.ts';
@@ -246,6 +247,61 @@ describe('POST a panel’s tool call', () => {
     });
     expect(bureau).not.toHaveBeenCalled();
   });
+
+  test('runs a host-only call in the scope of the panel it came through, and no other call (COR-2545)', async () => {
+    const seen: Array<string | undefined> = [];
+    const bureau = mock(async (_request: Request) => {
+      seen.push(hostPanelUriOfCall());
+      return Response.json({ jsonrpc: '2.0', id: 1, result: RESULT });
+    });
+    const panel = app({
+      name: 'schedule-editor',
+      uri: 'ui://inspectors/schedule-editor/v1',
+      allowedTools: ['bureau.schedules.get', 'bureau.schedules.update'],
+      hostOnlyTools: ['bureau.schedules.update'],
+    });
+    const path = '/host/plugins/inspectors/apps/schedule-editor/tool-calls';
+    await call(routes(bureau, [panel]), 'call', {
+      path,
+      // Whatever the page sends, the panel is the one the host served: a page cannot name another.
+      headers: { 'x-panel-uri': 'ui://inspectors/other/v1' },
+      body: {
+        name: 'bureau.schedules.update',
+        arguments: { scheduleId: 's', spec: '1h', panelUri: 'ui://inspectors/other/v1' },
+      },
+    });
+    await call(routes(bureau, [panel]), 'call', {
+      path,
+      body: { name: 'bureau.schedules.get', arguments: { scheduleId: 's' } },
+    });
+    expect(seen).toEqual(['ui://inspectors/schedule-editor/v1', undefined]);
+    // Nothing of the scope leaks to the next call, or to this test.
+    expect(hostPanelUriOfCall()).toBeUndefined();
+    const sent = bureau.mock.calls[0]?.[0] as Request;
+    expect(sent.headers.get('x-panel-uri')).toBeNull();
+  });
+
+  test.each([
+    'bureau.schedules.create',
+    'bureau.schedules.update',
+    'bureau.schedules.pause',
+    'bureau.schedules.resume',
+  ])(
+    'refuses %s from a panel that does not declare it, and never calls the Bureau (COR-2545)',
+    async (name) => {
+      const bureau = bureauDouble();
+      // The run inspector declares the tasks tools only, so a schedule write is not in its allowedTools.
+      const response = await call(routes(bureau), 'call', {
+        body: { name, arguments: { scheduleId: 's', spec: '1h' } },
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        error: 'forbidden-tool',
+        message: 'This panel may not call that tool.',
+      });
+      expect(bureau).not.toHaveBeenCalled();
+    },
+  );
 
   test('normalizes a host-only JSON-RPC fault for the panel', async () => {
     const bureau = bureauDouble({

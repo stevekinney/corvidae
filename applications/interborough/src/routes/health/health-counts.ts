@@ -17,9 +17,6 @@ const MINUTE_MS = 60_000;
 /** The statuses a person reads as failed: the run broke, or it ran out of time. */
 export const FAILED_STATUSES: readonly WorkflowStatus[] = ['failed', 'timed-out'];
 
-/** Runs the engine is executing now. */
-export const WORKING_NOW_FILTER: WorkflowListQuery = { status: 'running' };
-
 /**
  * Runs that failed in the last 24 hours, judged by when they last changed: a failed run does not
  * change again until someone retries it. The window starts on a whole minute, so the count's query

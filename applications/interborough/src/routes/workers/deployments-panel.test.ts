@@ -138,7 +138,7 @@ describe('DeploymentsPanel — states', () => {
             'authentication required',
             'Unauthorized',
           ),
-        'Not authorized',
+        'Couldn’t load deployments',
       ],
     ];
     for (const [route, text] of cases) {

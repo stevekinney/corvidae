@@ -13,6 +13,7 @@ import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalHasEnded, type Goal, type GoalStatus } from '../../lib/bureau-goals.ts';
 import { checkText } from '../../lib/check-text.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
+import { attemptsCost, type AttemptsCost } from '../../lib/format/cost.ts';
 import { goalName } from '../workflows/runs/run-rows.ts';
 
 /** The segments of the filter bar. `all` holds every goal. */
@@ -101,6 +102,11 @@ export type GoalRow = {
   readonly made: number;
   /** Attempts allowed. */
   readonly allowed: number;
+  /**
+   * What the goal's attempts cost together (COR-2525): the sum of the attempts that have a cost,
+   * partial when an attempt has none, and `null` when none has one.
+   */
+  readonly cost: AttemptsCost | null;
   /** Epoch milliseconds the goal began, or `null` when the Bureau's time is unreadable. */
   readonly startedAt: number | null;
 };
@@ -119,6 +125,7 @@ export function goalRow(goal: Goal): GoalRow {
     check: checkText(goal.validator.name, goal.validatorConfiguration),
     made: goal.usage.attempts,
     allowed: goal.bounds.maximumAttempts,
+    cost: attemptsCost(goal.attempts),
     startedAt: Number.isNaN(started) ? null : started,
   };
 }

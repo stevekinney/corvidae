@@ -8,7 +8,7 @@ import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import { VIEW_COPY } from '../../app/copy/view-pages.ts';
 import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
@@ -221,9 +221,15 @@ describe('a file deleted on disk while the editor is open', () => {
       throw faults.notFound('researcher');
     });
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: AGENT_EDITOR_COPY.deleteDialog.title });
+    const dialog = await findByRole('dialog', {
+      name: AGENT_PAGE_COPY.settings.deleteDialog.title('Researcher'),
+    });
+    await fireEvent.input(
+      within(dialog).getByLabelText(AGENT_PAGE_COPY.settings.deleteDialog.typeLabel('researcher')),
+      { target: { value: 'researcher' } },
+    );
     await fireEvent.click(
-      within(dialog).getByRole('button', { name: AGENT_EDITOR_COPY.deleteDialog.confirm }),
+      within(dialog).getByRole('button', { name: AGENT_PAGE_COPY.settings.deleteDialog.confirm }),
     );
 
     expect(await findByRole('heading', { level: 1, name: NOT_FOUND?.title ?? '' })).not.toBeNull();

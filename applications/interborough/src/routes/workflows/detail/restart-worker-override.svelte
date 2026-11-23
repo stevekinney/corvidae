@@ -158,9 +158,8 @@
             onclick={requestPreview}
             loading={previewMutation.isPending}
             disabled={adminGate.disabled}
-          >
-            Preview worker upgrade
-          </Button>
+            label="Preview worker upgrade"
+          />
         </Tooltip>
         {#if adminGate.disabled}
           <span class="weft-restart-override__reason">

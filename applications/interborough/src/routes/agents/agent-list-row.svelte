@@ -174,8 +174,9 @@
       size="sm"
       onclick={onEnable}
       data-changes
-      data-testid="agent-enable-row">{AGENTS_COPY.enable.action}</Button
-    >
+      data-testid="agent-enable-row"
+      label={AGENTS_COPY.enable.action}
+    />
   </span>
 {/snippet}
 

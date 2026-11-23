@@ -9,7 +9,8 @@
         "scripts/**/*.slow.test.ts",
         "scripts/**/*.bench.ts",
         "scripts/**/*.playwright.ts",
-        "scripts/chef/evaluate-outcomes.ts"
+        "scripts/chef/evaluate-outcomes.ts",
+        "scripts/cinder-release-consumer.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -92,6 +93,21 @@
         "!src/{scope-vocabulary,transport-conformance-framed,transport-conformance-http}.test-support.ts!"
       ]
     },
+    "packages/velveteen": {
+      "entry": [
+        "bun-primitives.test.ts",
+        "src/**/*.test.ts",
+        "tests/**/*.test.ts",
+        "tests/fixtures/candidate/server.ts",
+        "src/actions/server.ts!",
+        "src/client/index.ts!",
+        "src/client/navigation-context.ts!",
+        "src/development/index.ts!",
+        "src/prerender/{index,serve,service-worker}.ts!",
+        "src/routing/synchronize.ts!"
+      ],
+      "project": ["src/**/*.ts!", "!src/**/*.test.ts!"]
+    },
     "internal/*": {
       "entry": [
         "**/*.test.ts",
@@ -135,7 +151,7 @@
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
     "scripts/browser-fixtures": {
-      "entry": ["tests/**/*.playwright.ts"],
+      "entry": ["tests/**/*.playwright.ts", "src/fixtures/tool-call-rail.svelte"],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
     },
     "scripts/groom": {
@@ -151,6 +167,7 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
+        "scripts/browser-build.ts!",
         "src/host/{cli,dev,serve}.ts!"
       ],
       "project": [

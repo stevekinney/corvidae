@@ -220,8 +220,9 @@
         variant={connected ? 'primary' : 'secondary'}
         size="sm"
         href={router.href(returnPath)}
-        onclick={goBack}>{MODELS_COPY.returnNotice.action}</Button
-      >
+        onclick={goBack}
+        label={MODELS_COPY.returnNotice.action}
+      />
     </Alert>
   {/if}
   {#if providers.data !== undefined}

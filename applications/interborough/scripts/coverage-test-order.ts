@@ -114,7 +114,6 @@ export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/workflows/detail/timeline/timeline-step-state.test.ts',
   'src/routes/workflows/detail/timeline/finalizer-strip.test.ts',
   'src/routes/workflows/detail/timeline/timeline-mapping.test.ts',
-  'src/routes/workflows/detail/timeline/run-step-timeline-selection.test.ts',
   'src/routes/workflows/detail/timeline/timeline-filters.test.ts',
   'src/routes/workflows/detail/timeline/timeline-selection-store.test.ts',
   'src/routes/workflows/detail/timeline/workflow-live-observations.test.ts',
@@ -122,7 +121,6 @@ export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/workflows/detail/async-activity/async-activity-drawer.test.ts',
   'src/routes/workflows/detail/async-activity/async-activity-query.test.ts',
   'src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts',
-  'src/routes/workflows/detail/checkpoints/divergence.test.ts',
   'src/routes/workflows/detail/checkpoints/checkpoints-tab.test.ts',
   // WFC-10 (PR #14): frozen in the exact lexical order they ran in when the
   // recorded Linux baseline was measured — see the matching comment at the

@@ -69,7 +69,13 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(page.locator('header').getByText('Storage', { exact: true })).toBeVisible();
     await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
     await expect(main.getByText('Live', { exact: true })).toBeVisible();
-    await expect(main.getByRole('tab')).toHaveText(['Overview', 'Workers', 'Storage', 'Audit log']);
+    await expect(main.getByRole('tab')).toHaveText([
+      'Overview',
+      'Runs',
+      'Workers',
+      'Storage',
+      'Audit log',
+    ]);
     await expect(main.getByRole('tab', { name: 'Storage' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -711,14 +717,25 @@ test.describe('Health › Storage writes and states', () => {
     // The alert only says it. The three ways on are one row under the editor: Discard my edit and
     // Save over it are secondary, Show new value is the primary, left to right.
     await expect(banner.getByRole('button')).toHaveCount(0);
-    const buttons = pane.locator('.ib-storage-key__actions').getByRole('button');
+    const actions = pane.locator('.ib-storage-key__actions');
+    const buttons = actions.getByRole('button');
     const editorBox = await editor.boundingBox();
-    const rowBox = await pane.locator('.ib-storage-key__actions').boundingBox();
+    const rowBox = await actions.boundingBox();
     expect(rowBox?.y ?? 0).toBeGreaterThan((editorBox?.y ?? 0) + (editorBox?.height ?? 0) - 1);
-    const boxes = await buttons.evaluateAll((all) =>
-      all.map((button) => button.getBoundingClientRect().top),
-    );
-    expect(new Set(boxes.map(Math.round)).size).toBe(1);
+    const geometry = await actions.evaluate((row) => ({
+      width: row.clientWidth,
+      scrollWidth: row.scrollWidth,
+      columnGap: getComputedStyle(row).columnGap,
+      buttons: [...row.querySelectorAll('button')].map((button) => {
+        const { top, width } = button.getBoundingClientRect();
+        return { top, width };
+      }),
+    }));
+    expect(
+      new Set(geometry.buttons.map(({ top }) => Math.round(top))).size,
+      JSON.stringify(geometry),
+    ).toBe(1);
+    expect(geometry.scrollWidth - geometry.width).toBeLessThanOrEqual(1);
     await expect(buttons).toHaveText(['Discard my edit', 'Save over it…', 'Show new value']);
     await expect(buttons.nth(0)).toContainClass('button-variant-secondary');
     await expect(buttons.nth(1)).toContainClass('button-variant-secondary');

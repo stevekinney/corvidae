@@ -23,6 +23,10 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'health-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 
+interface WarningFixtureWindow extends Window {
+  emitCheckpointSizeWarning?: () => void;
+}
+
 /** The problems `bureau.health.attention` lists, as the page reads them. */
 interface AttentionAnswer {
   items: { kind: string; area: string; at: number | null }[];
@@ -195,6 +199,66 @@ async function answerStorageSizes(
   }, reports);
 }
 
+/** Opens the shared fleet feed and exposes an operational-warning event for the mounted Alerts tab. */
+async function answerCheckpointSizeWarning(page: Page): Promise<void> {
+  await page.route('**/jsonrpc', async (route) => {
+    const request = JSON.parse(route.request().postData() ?? '{}') as {
+      id?: unknown;
+      method?: string;
+    };
+    if (request.method !== 'weft.alerts.list') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ json: { jsonrpc: '2.0', id: request.id, result: { items: [] } } });
+  });
+  await page.addInitScript(() => {
+    const fixtureWindow: WarningFixtureWindow = window;
+    const { preconnect } = window.fetch;
+    const original = window.fetch.bind(window);
+    window.fetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const address =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!new URL(address, location.href).pathname.endsWith('/v1/events/sse')) {
+          return original(input, init);
+        }
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode('event: ping\ndata: {"replayComplete":true}\n\n'));
+            fixtureWindow.emitCheckpointSizeWarning = () => {
+              const envelope = {
+                kind: 'checkpoint:size-warning',
+                sequence: 1,
+                cursor: 'checkpoint-size-warning',
+                emittedAtMs: Date.now(),
+                payload: { message: 'Checkpoint crossed 80% of its limit.' },
+              };
+              controller.enqueue(
+                encoder.encode(
+                  `id: 1\nevent: checkpoint:size-warning\ndata: ${JSON.stringify(envelope)}\n\n`,
+                ),
+              );
+            };
+            init?.signal?.addEventListener('abort', () => {
+              try {
+                controller.close();
+              } catch {
+                // Already closed.
+              }
+            });
+          },
+        });
+        return Promise.resolve(
+          new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }),
+        );
+      },
+      { preconnect },
+    );
+  });
+}
+
 /** The runs the engine lists for Health's cards: `count` done runs that each took `seconds`. */
 async function answerRunsStarted(
   page: Page,
@@ -248,6 +312,31 @@ const attentionCount = (page: Page) =>
 /** The sidebar's row for a destination. */
 const sidebarRow = (page: Page, name: RegExp | string) =>
   page.getByRole('navigation').getByRole('link', { name });
+
+test('Warning indicator in System alerts', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await answerCheckpointSizeWarning(page);
+  await page.goto('/health?advanced=alerts');
+
+  await expect(page.getByText('No alert activity since page load')).toBeVisible();
+  await page.evaluate(() => {
+    const fixtureWindow: WarningFixtureWindow = window;
+    const emitCheckpointSizeWarning = fixtureWindow.emitCheckpointSizeWarning;
+    if (emitCheckpointSizeWarning === undefined) {
+      throw new Error('The test alert feed has not connected.');
+    }
+    emitCheckpointSizeWarning();
+  });
+  const row = page.locator('.weft-alerts-tab__row').filter({ hasText: 'Checkpoint size warning' });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Warning');
+  await captureForDesignReview(page, {
+    route: '/health?advanced=alerts',
+    state: 'checkpoint size warning',
+    tab: 'Alerts',
+    source: SOURCE,
+  });
+});
 
 for (const width of WIDTHS) {
   test(`all clear: Needs attention is one green row, the sidebar has no count and a green dot, at ${width} pixels`, async ({

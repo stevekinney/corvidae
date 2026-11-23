@@ -22,6 +22,7 @@ const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'backchannel',
   'backchannel-mcp',
+  'cinder-mcp',
   'bureau',
   'interborough-plugin',
   'operative',
@@ -64,7 +65,9 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/backchannel',
   '@lostgradient/backchannel-mcp',
   '@lostgradient/weft',
+  '@lostgradient/velveteen',
   '@lostgradient/cinder',
+  '@lostgradient/cinder-mcp',
   '@lostgradient/chat',
   '@lostgradient/editor',
   '@lostgradient/markdown',
@@ -123,6 +126,7 @@ type Manifest = {
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   catalog?: Record<string, string>;
+  catalogs?: Record<string, Record<string, string>>;
   workspaces?: string[];
   publishConfig?: unknown;
   main?: string;
@@ -136,14 +140,21 @@ async function readManifest(path: string): Promise<Manifest> {
 }
 
 async function libraryApplicationConfigurations(): Promise<string[]> {
-  const paths: string[] = [];
-  const configurations = new Bun.Glob(
-    `${directoryGlob(workspaceParentDirectories.filter((directory) => !['applications', 'internal'].includes(directory)))}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}`,
+  const libraries = workspaceParentDirectories.filter(
+    (directory) => !['applications', 'internal'].includes(directory),
   );
-  for await (const path of configurations.scan({ cwd: root, onlyFiles: true })) {
-    if (!path.split('/').includes('node_modules')) paths.push(path);
-  }
-  return paths;
+  const configurations = new Bun.Glob(
+    `${directoryGlob(libraries)}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}`,
+  );
+  const files = await runWithHangGuard(
+    ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...libraries],
+    { cwd: root },
+  );
+  expect(files.exitCode).toBe(0);
+  return files.stdout
+    .toString()
+    .split('\0')
+    .filter((path) => configurations.match(path));
 }
 
 async function workspaceManifests(): Promise<Map<string, Manifest>> {
@@ -205,6 +216,7 @@ async function listVersionedFixtureSource() {
   }
 }
 const versionedFixtureSource = await listVersionedFixtureSource();
+const libraryConfigurations = await libraryApplicationConfigurations();
 
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
@@ -834,13 +846,17 @@ describe('internal workspace architecture', () => {
         const declarations = versions.get(name) ?? [];
         declarations.push(version);
         versions.set(name, declarations);
-        if (version === 'catalog:') expect(manifest.catalog?.[name], name).toBeString();
+        if (version.startsWith('catalog:')) {
+          const catalogName = version.slice('catalog:'.length);
+          const catalog = catalogName === '' ? manifest.catalog : manifest.catalogs?.[catalogName];
+          expect(catalog?.[name], name).toBeString();
+        }
       }
     }
     for (const [name, declarations] of versions) {
       if (declarations.length > 1) {
         expect(
-          declarations.every((version) => version === 'catalog:'),
+          declarations.every((version) => version.startsWith('catalog:')),
           name,
         ).toBe(true);
       }
@@ -848,7 +864,7 @@ describe('internal workspace architecture', () => {
   });
 
   test('only applications build, with no phantom upstream builds or cached watchers', async () => {
-    expect(await libraryApplicationConfigurations()).toEqual([]);
+    expect(libraryConfigurations).toEqual([]);
     const configuration: {
       tasks: Record<
         string,

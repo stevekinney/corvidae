@@ -28,6 +28,7 @@ const VIEWPORTS = [
 ] as const;
 
 const [, HAIKU] = MODEL_SWITCHER_MODELS;
+const HAIKU_LABEL = 'Claude Haiku 4.5';
 const ASSISTANT_ROW = '[data-message-role="assistant"]';
 const USER_ROW = '[data-message-role="user"]';
 
@@ -91,8 +92,8 @@ for (const viewport of VIEWPORTS) {
     await expect(page.locator(USER_ROW)).toContainText('First question');
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(1);
     // It runs on the model its parent was switched to.
-    await showModelPicker(page, HAIKU.model);
-    await expect(modelPicker(page)).toContainText(HAIKU.model);
+    await showModelPicker(page, HAIKU_LABEL);
+    await expect(modelPicker(page)).toContainText(HAIKU_LABEL);
     // A folded composer showed it in a popover, which is closed before the page is used again.
     await page.keyboard.press('Escape');
     // Its header says where it came from, and links back.

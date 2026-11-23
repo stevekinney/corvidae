@@ -12,6 +12,7 @@
   import { usePageLeaf } from '../../app/breadcrumbs.svelte.ts';
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { NOT_FOUND_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { router } from '../../lib/router.svelte.ts';
 
   interface Props {
@@ -21,9 +22,11 @@
     onCancel?: (() => void) | undefined;
     /** Asks for the tool again; the primary Try again of the error state. */
     onRetry?: (() => void) | undefined;
+    /** What the read failed with, for the failed state's remediation and whether it offers Try again. */
+    error?: unknown;
   }
 
-  let { kind, onCancel, onRetry }: Props = $props();
+  let { kind, onCancel, onRetry, error }: Props = $props();
 
   const copy = CAPABILITIES_COPY.tool.page;
   const CAPABILITIES_PATH = '/capabilities';
@@ -61,7 +64,7 @@
     description={copy.failed.description}
     headingLevel={3}
     retryLabel={RETRY_LABEL}
-    {...onRetry === undefined ? {} : { onRetry }}
+    {...faultErrorStateAdvice(error, onRetry)}
     data-testid="tool-load-failed"
   />
 {:else}
@@ -73,9 +76,12 @@
     data-testid="tool-not-found"
   >
     {#snippet action()}
-      <Button variant="secondary" href={router.href(CAPABILITIES_PATH)} onclick={back}
-        >{copy.notFound.back}</Button
-      >
+      <Button
+        variant="secondary"
+        href={router.href(CAPABILITIES_PATH)}
+        onclick={back}
+        label={copy.notFound.back}
+      />
     {/snippet}
   </EmptyState>
 {/if}

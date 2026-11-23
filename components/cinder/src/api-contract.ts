@@ -235,6 +235,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
       density: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      trailingTrack: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      trailingAlign: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       insertionAnnouncement: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
@@ -735,6 +737,9 @@ export const CONTRACT: Record<string, ComponentContract> = {
       narrowActions: { optional: true, type_kind: 'TSTypeReference', default: L('own-row') },
       compactActions: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       titleText: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      // COR-2438: a title of one line, ending in an ellipsis, with an inline status that drops under
+      // it when there is no room beside it (a chat's conversation pane).
+      titleLines: { optional: true, type_kind: 'TSUnionType', default: L(2) },
       // COR-2423: a short caption under the actions' row (`string | Snippet`, as `description`
       // is), and the id a button's `aria-describedby` names it by.
       actionsNote: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },

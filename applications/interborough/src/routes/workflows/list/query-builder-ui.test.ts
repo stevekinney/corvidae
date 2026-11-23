@@ -71,6 +71,50 @@ describe('QueryBuilder', () => {
     expect(latest).toEqual([{ key: 'custom.owner', value: 'gold' }]);
   });
 
+  test('a seeded Failed at step and Retrying show by their names, with their values (COR-2535)', async () => {
+    const { getByLabelText } = render(QueryBuilder, {
+      props: {
+        attributes: [] satisfies AttributeFilter[],
+        failedStep: 'charge-card',
+        retrying: false,
+        onAttributesChange: () => {},
+        knownAttributeKeys: ['customerTier'],
+      },
+    });
+
+    expect(
+      requireElement(getByLabelText('Field for condition 1 of Conditions'), HTMLInputElement).value,
+    ).toBe('Failed at step');
+    expect(
+      requireElement(getByLabelText('Value for condition 1 of Conditions'), HTMLInputElement).value,
+    ).toBe('charge-card');
+    expect(
+      requireElement(getByLabelText('Field for condition 2 of Conditions'), HTMLInputElement).value,
+    ).toBe('Retrying');
+  });
+
+  test('choosing Failed at step for a condition reports the step as the list’s own filter, not an attribute (COR-2535)', async () => {
+    const reported: Array<[AttributeFilter[], { failedStep?: string; retrying?: boolean }]> = [];
+    const { getByLabelText } = render(QueryBuilder, {
+      props: {
+        attributes: [{ key: 'customerTier', value: 'gold' }] satisfies AttributeFilter[],
+        onAttributesChange: (next, failure) => {
+          reported.push([next, failure]);
+        },
+        knownAttributeKeys: ['customerTier'],
+      },
+    });
+
+    const fieldInput = requireElement(
+      getByLabelText('Field for condition 1 of Conditions'),
+      HTMLInputElement,
+    );
+    await fireEvent.input(fieldInput, { target: { value: 'Failed at step' } });
+    await fireEvent.keyDown(fieldInput, { key: 'Enter' });
+
+    expect(reported.at(-1)).toEqual([[], { failedStep: 'gold' }]);
+  });
+
   test('Cinder renders a numeric value control for an observed numeric attribute', async () => {
     const { getByLabelText } = render(QueryBuilder, {
       props: {

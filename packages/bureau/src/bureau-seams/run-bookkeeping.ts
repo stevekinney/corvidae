@@ -9,8 +9,9 @@ import type { BureauCore } from './core';
 import { BureauError } from '../bureau-errors';
 import type { BureauToolbox } from '../runtime-composition-types';
 import { detachBestEffortPromise } from '../bureau-construction-support';
+import { peekTaskFailure } from '../run-outcome-details';
 import { serializeUnknownError } from '../serialization';
-import { RunLoopingEvent, RunStalledEvent } from '../events';
+import { RunLoopingEvent, RunOverspendingEvent, RunStalledEvent } from '../events';
 import { settledTaskState, type TaskUsage } from '../task-registry';
 
 /** The callables run bookkeeping reads from elsewhere in `constructBureau`. */
@@ -130,6 +131,38 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
         cause: error,
       });
     });
+    judgeRunSpend(action.runId, usage.costUsd);
+  }
+
+  /**
+   * COR-2527 — marks a run `overspending` when its cost is over the workspace's spend threshold
+   * (the `runs.spendThresholdUsd` setting), and announces `run.overspending` once, from the write
+   * that recorded the mark. The threshold is read here, at the step, and nowhere else: a changed
+   * setting applies only to the steps that follow, a run already marked stays marked whatever the
+   * setting says now, and a run that settled under the old amount is never judged again. With no
+   * threshold set, or a run with no priced request, nothing is judged. The flag informs and never
+   * stops the run (`limits.cost` stays the way to do that).
+   */
+  function judgeRunSpend(runId: string, costUsd: number | null): void {
+    const thresholdUsd = core.currentSettings()['runs.spendThresholdUsd'];
+    if (thresholdUsd === undefined || costUsd === null || !(costUsd > thresholdUsd)) return;
+    const since = core.runtimeServices.clock.nowISO();
+    core.tasks
+      .recordOverspending(runId, { since, thresholdUsd })
+      .then((changed) => {
+        if (changed) {
+          core.emitter.dispatch(new RunOverspendingEvent(runId, since, costUsd, thresholdUsd));
+        }
+        return changed;
+      })
+      .catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record that task "${runId}" is over the spend threshold: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
   }
 
   /**
@@ -263,10 +296,15 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
       recordOf(detail['usage']),
       recordOf(detail['costEstimate'])['totalCost'],
     );
+    // COR-2531 — why the run failed, from what its own events said, kept on the task with the
+    // settlement. Read, not taken: the announcement of the settlement takes it for `run.error`.
+    const failedBecause =
+      status === 'failed' ? peekTaskFailure(core.runOutcomeDetails, action.runId) : undefined;
     void core.tasks
       .recordSettled(action.runId, {
         at: new Date(action.timestamp).toISOString(),
         status,
+        ...(failedBecause === undefined ? {} : { failure: failedBecause }),
         finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
         message:
           status === 'failed' && failure !== undefined && failure !== null
@@ -282,6 +320,9 @@ export function createRunBookkeeping<D extends AgentDefinitions>(
           cause: error,
         });
       });
+    // COR-2527 — the settlement carries the run's own total: a run whose last step was judged
+    // after, or whose settlement beat that step's write, is still judged against what it cost.
+    if (usage !== undefined) judgeRunSpend(action.runId, usage.costUsd);
   }
 
   return {

@@ -122,7 +122,8 @@
      *
      * Pad the block axis by enough to clear the larger of the two, then pull the
      * padding straight back out with a matching negative margin so the bar's own
-     * height is unchanged.
+     * height is unchanged. The canceled padding overlaps outlet content, so the
+     * row itself cannot own pointer events there; only real tab children can.
      *
      * Derived from the ring recipe itself rather than from a spacing token that merely
      * happened to be big enough: `max()` picks whichever of the two focus treatments
@@ -137,6 +138,11 @@
     padding-block: var(--_cinder-navigation-bar-tab-ring-room);
     padding-inline: var(--cinder-space-1);
     margin-block: calc(-1 * var(--_cinder-navigation-bar-tab-ring-room));
+    pointer-events: none;
+  }
+
+  .cinder-navigation-bar[data-cinder-placement='bottom'] .cinder-navigation-bar__items > * {
+    pointer-events: auto;
   }
 
   /* The bar is chrome, not content — a visible scrollbar would sit on top of the tab

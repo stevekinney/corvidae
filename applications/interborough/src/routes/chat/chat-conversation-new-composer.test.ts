@@ -362,3 +362,43 @@ describe('a narrow composer', () => {
     expect(queryByRole('button', { name: /^Settings/ })).toBeNull();
   });
 });
+
+// COR-2438 21c: every New chat lands here, so a chat that cannot work says why and links to the
+// missing step instead of drawing a composer that cannot send.
+describe('a new chat that cannot work yet', () => {
+  function serveNotReady(agents: readonly unknown[], connected: boolean): void {
+    restore = bureau({ 'bureau.agents.list': () => ({ agents }) }, (url) =>
+      url.endsWith('/host/providers') ? provider(connected) : undefined,
+    ).restore;
+  }
+
+  test('asks for a provider when every agent needs a model and none can be called', async () => {
+    serveNotReady([RUNNER], false);
+    const { findByTestId, container } = mount();
+
+    const state = await findByTestId('new-chat-not-ready');
+    expect(state.textContent).toContain(CHAT_COPY.readiness['needs-provider'].title);
+    expect(state.querySelector('a[href="/settings/models"]')?.textContent?.trim()).toBe(
+      CHAT_COPY.readiness['needs-provider'].action,
+    );
+    expect(editor(container)).toBeNull();
+  });
+
+  test('asks for an agent when a provider is connected and no agent is offered', async () => {
+    serveNotReady([], true);
+    const { findByTestId, container } = mount({ agentName: '' });
+
+    const state = await findByTestId('new-chat-not-ready');
+    expect(state.textContent).toContain(CHAT_COPY.readiness['needs-agent'].title);
+    expect(state.querySelector('a[href="/agents/new"]')).not.toBeNull();
+    expect(editor(container)).toBeNull();
+  });
+
+  test('draws the composer with a scripted agent and no provider, since that chat works', async () => {
+    serveNotReady([RUNNER, AGENT], false);
+    const { container, queryByTestId } = mount({ agentName: AGENT.name });
+
+    await waitFor(() => expect(editor(container)).not.toBeNull());
+    expect(queryByTestId('new-chat-not-ready')).toBeNull();
+  });
+});

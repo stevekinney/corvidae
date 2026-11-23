@@ -240,7 +240,7 @@ test.describe('the runs of a caller who may not read the engine', () => {
     await expect(
       page.getByRole('heading', { level: 1, name: 'Your sign-in can’t open Runs' }),
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: 'See your scopes' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Back to Home' })).toBeVisible();
     await expect(page.locator('main')).not.toContainText('workflows:read');
   });
 });

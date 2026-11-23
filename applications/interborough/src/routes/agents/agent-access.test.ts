@@ -7,9 +7,10 @@
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import type { AgentDefinitionInput, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import {
@@ -18,6 +19,8 @@ import {
   readyAgent,
   StubFault,
 } from '../../lib/bureau-stub.test-support.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
+import { LIMIT_BOUNDS } from '../agent-editor/agent-editor-state.svelte.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
 import {
@@ -44,9 +47,9 @@ const UPDATE = 'bureau.agents.definitions.update';
 const updatesOf = (served: { calls: { method: string; params: Record<string, unknown> }[] }) =>
   served.calls.filter((call) => call.method === UPDATE);
 
-const mount = (connection?: ConnectionMonitor) =>
+const mount = (connection?: ConnectionMonitor, client = createQueryClient()) =>
   render(QueryPage, {
-    props: { page: AgentDetail, ...(connection === undefined ? {} : { connection }) },
+    props: { page: AgentDetail, client, ...(connection === undefined ? {} : { connection }) },
   } as never);
 
 const FILE_AGENT = { ...AGENT, name: 'researcher', displayName: 'Researcher', kind: 'file' };
@@ -561,12 +564,160 @@ describe('guardrails and spend', () => {
     const spend = await findByLabelText(copy.spendLabel);
     expect(spend.getAttribute('placeholder')).toBe(copy.spendPlaceholder);
     await fireEvent.input(spend, { target: { value: '5' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
 
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
       limits: { cost: { run: 5, chat: 5 } },
     });
+  });
+
+  test('renders distinct numeric controls for the chat and run spend limits', async () => {
+    landAt('/agents/researcher/access');
+    serve(
+      {},
+      detailWith({ limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null } }),
+    );
+    const { findByLabelText } = mount();
+
+    const chatLimit = await findByLabelText(copy.spendLabel);
+    const runLimit = await findByLabelText(copy.spendRunLabel);
+    expect(chatLimit.getAttribute('role')).toBe('spinbutton');
+    expect(runLimit.getAttribute('role')).toBe('spinbutton');
+  });
+
+  test('leaves precise stored spend limits untouched until a deliberate edit', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({
+        limits: { steps: null, cost: { run: 0.0005, chat: 0.0006, warn: [0.5] }, tools: null },
+      }),
+    );
+    const { findByLabelText } = mount();
+
+    const chat = await findByLabelText(copy.spendLabel);
+    const run = await findByLabelText(copy.spendRunLabel);
+    expect(chat).toHaveValue('0.0006');
+    expect(run).toHaveValue('0.0005');
+
+    await fireEvent.focus(chat);
+    await fireEvent.blur(chat);
+    await fireEvent.focus(run);
+    await fireEvent.blur(run);
+
+    expect(updatesOf(served)).toHaveLength(0);
+    expect(chat).toHaveValue('0.0006');
+    expect(run).toHaveValue('0.0005');
+
+    await fireEvent.input(run, { target: { value: '0.0007' } });
+    await fireEvent.blur(run);
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params).toMatchObject({
+      expectedHash: 'hash-1',
+      definition: { limits: { cost: { run: 0.0007, chat: 0.0006, warn: [0.5] } } },
+    });
+  });
+
+  test('commits a German decimal amount after its separator is typed without writing an interim value', async () => {
+    const originalLanguage = Object.getOwnPropertyDescriptor(navigator, 'language');
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+    try {
+      landAt('/agents/researcher/access');
+      const served = serve(
+        { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+        detailWith({ limits: { steps: null, cost: { run: 7, chat: 7 }, tools: null } }),
+      );
+      const { findByLabelText } = mount();
+
+      const chat = await findByLabelText(copy.spendLabel);
+      await fireEvent.input(chat, { target: { value: '0,' } });
+      await tick();
+      expect(chat).toHaveValue('0,');
+      expect(updatesOf(served)).toHaveLength(0);
+
+      await fireEvent.input(chat, { target: { value: '0,5' } });
+      await fireEvent.blur(chat);
+
+      await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+      expect(updatesOf(served)[0]?.params).toMatchObject({
+        expectedHash: 'hash-1',
+        definition: { limits: { cost: { run: 7, chat: 0.5 } } },
+      });
+    } finally {
+      if (originalLanguage === undefined) delete (navigator as { language?: string }).language;
+      else Object.defineProperty(navigator, 'language', originalLanguage);
+    }
+  });
+
+  test('drops a German decimal draft when an authoritative refresh clears its spend limit', async () => {
+    const originalLanguage = Object.getOwnPropertyDescriptor(navigator, 'language');
+    Object.defineProperty(navigator, 'language', { configurable: true, value: 'de-DE' });
+    try {
+      landAt('/agents/researcher/access');
+      let current = detailWith({ limits: { steps: null, cost: { run: 7, chat: 7 }, tools: null } });
+      const served = serve({ 'bureau.agents.definitions.get': () => current });
+      const client = createQueryClient();
+      const { findByLabelText, queryByText } = mount(undefined, client);
+
+      const chat = await findByLabelText(copy.spendLabel);
+      expect(chat).toHaveValue('7');
+      await fireEvent.focus(chat);
+      await fireEvent.input(chat, { target: { value: '0,' } });
+      await tick();
+      expect(chat).toHaveValue('0,');
+      current = {
+        ...detailWith({ limits: { steps: null, cost: null, tools: null } }),
+        hash: 'hash-2',
+      };
+      await client.refetchQueries({ queryKey: queryKeys.agents.definition('researcher') });
+      await tick();
+      expect(chat).toHaveValue('');
+
+      await fireEvent.blur(chat);
+      expect(chat).toHaveValue('');
+      expect(chat.getAttribute('aria-invalid')).not.toBe('true');
+      expect(queryByText(AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd))).toBeNull();
+      expect(updatesOf(served)).toHaveLength(0);
+    } finally {
+      if (originalLanguage === undefined) delete (navigator as { language?: string }).language;
+      else Object.defineProperty(navigator, 'language', originalLanguage);
+    }
+  });
+
+  test('saves an independent run limit without changing the chat limit or warnings', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null } }),
+    );
+    const { findByLabelText } = mount();
+
+    const run = await findByLabelText(copy.spendRunLabel);
+    await fireEvent.input(run, { target: { value: '7.25' } });
+    await fireEvent.blur(run);
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      limits: { cost: { run: 7.25, chat: 21, warn: [0.5] } },
+    });
+  });
+
+  test('does not clear the run limit while the chat limit remains', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null } }),
+    );
+    const { findByLabelText, findByText } = mount();
+
+    const run = await findByLabelText(copy.spendRunLabel);
+    await fireEvent.input(run, { target: { value: '' } });
+    await fireEvent.blur(run);
+
+    await findByText(copy.spendRunRequiresChatClear);
+    expect(updatesOf(served)).toHaveLength(0);
   });
 
   test('refuses an amount the Bureau would refuse, and sends nothing', async () => {
@@ -576,7 +727,7 @@ describe('guardrails and spend', () => {
 
     const spend = await findByLabelText(copy.spendLabel);
     await fireEvent.input(spend, { target: { value: 'lots' } });
-    await fireEvent.change(spend);
+    await fireEvent.blur(spend);
 
     await findByText(/Use an amount above 0/);
     expect(updatesOf(served)).toHaveLength(0);
@@ -979,6 +1130,25 @@ describe('the state', () => {
     });
   }
 
+  /** Applies a typed per-run spend limit, as leaving its field does. */
+  function spendRun(state: AgentAccessState, next: string) {
+    const before = state.spendRunApplied;
+    state.spendPerRun = next;
+    return state.change({
+      key: 'spend-run',
+      subject: 'the per-run spend limit',
+      restored: before,
+      apply: () => {
+        state.spendPerRun = next;
+        state.spendRunApplied = next;
+      },
+      undo: () => {
+        state.spendPerRun = before;
+        state.spendRunApplied = before;
+      },
+    });
+  }
+
   test('marks a row saving until its write answers, and names the hash the last write returned', async () => {
     const { state, writes } = stateWith();
     const first = allow(state, 'triage-refunds', true);
@@ -1086,6 +1256,20 @@ describe('the state', () => {
     expect(state.spendLimit).toBeUndefined();
   });
 
+  test('preserves independent per-run and per-chat spend limits, warnings, and an unlimited cost record', () => {
+    const { state } = stateWith({
+      limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null },
+    });
+    expect(state.spendPerRun).toBe('7');
+    expect(state.spendPerChat).toBe('21');
+    state.spendRunApplied = '7.25';
+    expect(state.toDefinition().limits).toEqual({ cost: { run: 7.25, chat: 21, warn: [0.5] } });
+    state.spendApplied = '';
+    expect(state.toDefinition().limits).toEqual({ cost: { run: 7.25, warn: [0.5] } });
+    state.spendRunApplied = '';
+    expect(state.toDefinition().limits).toEqual({ cost: null });
+  });
+
   test('writes the spend limit as last applied, never an amount typed and refused', async () => {
     const { state, writes } = stateWith({
       limits: { steps: null, cost: { run: 10, chat: 5 }, tools: null },
@@ -1178,6 +1362,42 @@ describe('the state', () => {
     const save = state.saves.get('spend');
     if (save?.kind !== 'failed') throw new Error('expected a failed row');
     expect(save.restored).toBe('5');
+  });
+
+  test('rolls back a failed run limit without overwriting a later chat limit, preserving hash order', async () => {
+    const { state, writes } = stateWith({
+      limits: { steps: null, cost: { run: 7, chat: 21, warn: [0.5] }, tools: null },
+    });
+    const first = spendRun(state, '8');
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({
+      hash: 'hash-1',
+      definition: { limits: { cost: { run: 8, chat: 21, warn: [0.5] } } },
+    });
+    const second = spend(state, '26');
+
+    writes[0]?.fail(new Error('down'));
+    const failedRunSave = await first;
+    expect(failedRunSave.kind).toBe('failed');
+    expect(state.spendPerRun).toBe('7');
+    expect(state.spendPerChat).toBe('26');
+
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]).toMatchObject({
+      hash: 'hash-1',
+      definition: { limits: { cost: { run: 7, chat: 26, warn: [0.5] } } },
+    });
+    writes[1]?.answer('hash-2');
+    expect(await second).toEqual({ kind: 'saved', hash: 'hash-2' });
+
+    const followUp = allow(state, 'triage-refunds', true);
+    await waitFor(() => expect(writes).toHaveLength(3));
+    expect(writes[2]).toMatchObject({
+      hash: 'hash-2',
+      definition: { limits: { cost: { run: 7, chat: 26, warn: [0.5] } } },
+    });
+    writes[2]?.answer('hash-3');
+    expect(await followUp).toEqual({ kind: 'saved', hash: 'hash-3' });
   });
 
   test('keeps a configured guardrail’s configuration (COR-2118)', () => {

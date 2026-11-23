@@ -55,8 +55,9 @@
       data-changes
       disabled={replacing}
       aria-label={`${copy.secretReplace} ${copy.secretLabel.toLowerCase()}`}
-      onclick={onReplace}>{copy.secretReplace}</Button
-    >
+      onclick={onReplace}
+      label={copy.secretReplace}
+    />
   </div>
   {#if failure !== null}
     <Alert variant="danger" data-testid="hook-secret-failure">{failure}</Alert>

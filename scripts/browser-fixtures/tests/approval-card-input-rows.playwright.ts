@@ -10,6 +10,7 @@ import { expect, test } from '@lostgradient/testing/playwright/component-page-fi
 import type { Page } from '@playwright/test';
 
 const narrowPhone = { name: 'mobile', width: 320, height: 640 } as const satisfies Viewport;
+const phone = { name: 'mobile', width: 375, height: 812 } as const satisfies Viewport;
 const desktop = { name: 'desktop', width: 1280, height: 900 } as const satisfies Viewport;
 const DENSITIES = ['default', 'compact', 'comfortable'] as const;
 
@@ -20,6 +21,26 @@ function requiredEntry(slug: string) {
 }
 
 const approvalEntry = requiredEntry('approval-card');
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const viewport of [phone, desktop]) {
+    test(`reads the canceled approval state at ${viewport.width}px in ${theme}`, async ({
+      componentPage,
+    }, testInfo) => {
+      const page = await componentPage.open({ entry: approvalEntry, theme, viewport });
+      const route = new URL(page.url());
+      route.searchParams.set('canceled', '1');
+      await page.goto(route.toString(), { waitUntil: 'load' });
+      const canceled = page.locator('#approval-card-canceled');
+      await expect(canceled).toHaveAttribute('data-cinder-layout', 'row');
+      await expect(canceled.getByText('Canceled', { exact: true })).toBeVisible();
+      await testInfo.attach(`canceled-approval-${theme}-${viewport.width}`, {
+        body: await canceled.screenshot(),
+        contentType: 'image/png',
+      });
+    });
+  }
+}
 
 /** Sets the page's density the way a host does, on the root, or leaves the default. */
 async function useDensity(page: Page, density: (typeof DENSITIES)[number]): Promise<void> {

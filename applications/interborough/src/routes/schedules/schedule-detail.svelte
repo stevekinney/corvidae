@@ -50,7 +50,7 @@
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getClient } from '../../lib/client.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
+  import { faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
   import {
@@ -255,7 +255,7 @@
   {#if readGate.disabled}
     <EmptyState kind="first-use" title={copy.locked.title} description={readGate.title ?? ''}>
       {#snippet action()}
-        <Button variant="secondary" onclick={backToList}>{SCHEDULE_COPY.backToList}</Button>
+        <Button variant="secondary" onclick={backToList} label={SCHEDULE_COPY.backToList} />
       {/snippet}
     </EmptyState>
   {:else if detailQuery.isPending}
@@ -270,7 +270,7 @@
       description={faultTreatment(detailQuery.error).message}
       headingLevel={1}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void detailQuery.refetch()}
+      {...faultErrorStateAdvice(detailQuery.error, () => void detailQuery.refetch())}
     />
   {:else if schedule === null || target === undefined || row === undefined}
     <NotFoundState

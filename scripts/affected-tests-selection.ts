@@ -27,6 +27,7 @@ import {
   type SourceTree,
   type WorkspaceDescription,
 } from './affected-tests-graph.ts';
+import { computedPathTests } from './computed-path-tests.ts';
 
 export type Reason =
   { kind: 'changed' } | { kind: 'imports'; chain: string[] } | { kind: 'fallback'; rule: string };
@@ -360,6 +361,11 @@ export function selectTests(input: SelectionInput): Selection {
     const rule = `${path} is data the graph cannot attribute to an importer`;
     if (workspace.directory === '') widenRepository(rule);
     else widenWorkspace(workspace.directory, rule);
+  }
+
+  // Tests that read workspace files by a computed path have no edge to what they read.
+  for (const { path, reason } of computedPathTests(changed, tree.paths)) {
+    seed(path, { kind: 'fallback', rule: reason });
   }
 
   // Code that reads the tree or loads code the graph cannot see depends on changes in its scope.

@@ -60,7 +60,7 @@ async function openRow(container: HTMLElement, index: number): Promise<void> {
 /** The field the open question is answered in. */
 function answerField(container: HTMLElement): HTMLInputElement | HTMLTextAreaElement {
   const field = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-    '.ib-review-pane__answer input:not([type="radio"]):not([type="checkbox"]), .ib-review-pane__answer textarea',
+    '.ib-review-detail__answer input:not([type="radio"]):not([type="checkbox"]), .ib-review-detail__answer textarea',
   );
   if (field === null) throw new Error('The open question has no field to answer in.');
   return field;
@@ -172,15 +172,22 @@ describe('a draft stays with the review it was typed on', () => {
 });
 
 describe('a key never decides a review the person has not seen', () => {
+  // These cases isolate the shortcut guard from the irreversible approval's confirmation.
+  const approval = {
+    ...toolApprovalFixture().approval,
+    action: { type: 'approval', risk: 'medium', operation: { kind: 'other' } },
+  } as const;
   const first = toolApprovalFixture({
     id: 'approval:run-1:call-1',
     runId: 'run-1',
     requestedAt: OLDER,
+    approval,
   });
   const second = toolApprovalFixture({
     id: 'approval:run-2:call-2',
     runId: 'run-2',
     requestedAt: NEWER,
+    approval,
   });
 
   test('a held key decides once at most, and not on its repeats', async () => {
@@ -200,7 +207,7 @@ describe('a key never decides a review the person has not seen', () => {
   test('a second press behind the first waits for the next review to be seen', async () => {
     const frames: FrameRequestCallback[] = [];
     globalThis.requestAnimationFrame = (callback) => frames.push(callback);
-    const { container, findByRole } = open({ reviews: [first, second] });
+    const { container, findByRole, getByRole } = open({ reviews: [first, second] });
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
 
@@ -211,9 +218,7 @@ describe('a key never decides a review the person has not seen', () => {
     );
     // The first decision is settled, so only the wait for the next review to be seen holds the key.
     await waitFor(() =>
-      expect(container.querySelector('.ib-review-pane button')?.hasAttribute('disabled')).toBe(
-        false,
-      ),
+      expect(getByRole('button', { name: /^Approve$/ }).hasAttribute('disabled')).toBe(false),
     );
     await waitFor(() => expect(frames.length).toBeGreaterThan(0));
     // The next review is open but has not been painted: the key acts on nothing.

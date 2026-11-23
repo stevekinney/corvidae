@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2548",
+  "branch": "chef/cor-2548-settings-mcp-follow-up",
+  "checkedAt": "44518d8a77e7099341a13824686823de2235f416",
+  "briefVersion": "2fb3bb285c65",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "CodeBlock wrap breaks a long URL only at a slash, dot, colon or hyphen: a word with those is one inline-block box with a wbr after each part. code-block-breaks.test.ts passes and the Chromium spec code-block-breaks.playwright.ts passes (run narrowly this round, 645 specs passed). The design review confirmed AC1 met. Visual baselines for the new breaks fixture and the changed rail fixture were regenerated in the arm64 jammy renderer container and committed. The copyable-value baselines (the addresses fixture and the inline-block assertion fixture) were regenerated and committed; no other Cinder component renders CopyableValue, so no other sweep baseline moves."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-main",
+      "evidence": "The workflow Code tab shows workflows/<id>.json (106ca0b75d) and the Health header says Running on SQLite (owner 2026-11-19); tests added in workflow-detail-tabs.test.ts and workers/index-visible-paths.test.ts pass."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "/settings/mcp has no empty state, so rule-empty-state does not apply there. api-reference.spec.ts captures workflow-sources-empty and operations-empty; round 1 changed Operations so a server that lists none shows only the EmptyState with 'The server lists no operations.' and no group select or count (operationsEmptiness in api-operations.ts; operations-panel.svelte); the in-this-group copy and select stay for a chosen group with none. Tested in api-operations.test.ts (both cases) and api-reference-page.test.ts (none case). 1920 repeats cover rule-wide-widths."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Capture state long-name in health-workers-states.spec.ts at 375 (and 320), now also at 1280 (and 1920). Round 2 cause: CopyButton renders a tooltip wrapper span and a live-region div beside the button, so the row's flex items were the wrapper (shrunk to 13.7px while the 34px button overflowed it, edge at 363 against the pane's right edge 343) and the sr-only div; flex none on the button's class never reached the wrapper. The button now sits in its own .ib-worker-detail__copy box with flex none; the spec passes alone. Round 1: .ib-worker-detail__title-row is flex-wrap nowrap, the name flex 0 1 auto with min-inline-size 0, the Copy button flex none, so the button stays beside the name on its first row; the spec asserts the button is beside the name, on its first row, inside the pane. No Cinder component pairs a title with a trailing action that holds beside a wrapped title (SectionHeading and PageHeader move actions to their own row), so the row is drawn locally."
+    }
+  ]
+}
