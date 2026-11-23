@@ -71,6 +71,67 @@ function fixture(prefix: string) {
 }
 
 describe('declared operation behavior', () => {
+  it('checks cursor compatibility from output to input', () => {
+    const [read] = fixture('sample');
+    const catalog = (input: z.ZodType, output: z.ZodType) => ({
+      ...read,
+      inputSchema: read.inputSchema.extend({ page: input }),
+      outputSchema: read.outputSchema.extend({ next: output }),
+    });
+    const narrow = catalog(z.string().optional(), z.string().min(1).nullable());
+    const reverse = catalog(z.string().min(1).optional(), z.string().nullable());
+    const subset = catalog(z.enum(['a', 'b']).optional(), z.enum(['a']).nullable());
+    const mismatch = catalog(z.enum(['a']).optional(), z.enum(['a', 'b']).nullable());
+    expect(() => createOperationRegistry([narrow])).not.toThrow();
+    expect(() => createOperationRegistry([subset])).not.toThrow();
+    expect(() => createOperationRegistry([reverse])).toThrow('pagination cursors are incompatible');
+    expect(() => createOperationRegistry([mismatch])).toThrow(
+      'pagination cursors are incompatible',
+    );
+  });
+
+  it('checks observed and replayed values toward their consumers', () => {
+    const [read, command] = fixture('sample');
+    const narrowRead = {
+      ...read,
+      outputSchema: read.outputSchema.extend({ id: z.string().min(1) }),
+    };
+    const narrowCommand = {
+      ...command,
+      inputSchema: command.inputSchema.extend({ id: z.string().min(1) }),
+    };
+    const narrowOutput = {
+      ...command,
+      outputSchema: command.outputSchema.extend({ id: z.string().min(1) }),
+    };
+    expect(() => createOperationRegistry([narrowRead, command])).not.toThrow();
+    expect(() => createOperationRegistry([read, narrowCommand])).toThrow('observation field');
+    expect(() => createOperationRegistry([read, narrowOutput])).not.toThrow();
+    const narrowReadInput = {
+      ...read,
+      inputSchema: read.inputSchema.extend({ id: z.string().min(1) }),
+    };
+    expect(() => createOperationRegistry([narrowReadInput, command])).toThrow('observation key');
+    const replayOnly = {
+      ...command,
+      behavior: {
+        kind: 'command' as const,
+        replay: { key: 'request', resource: 'id', read: 'sample.get' },
+      },
+    };
+    expect(() =>
+      createOperationRegistry([
+        read,
+        { ...replayOnly, outputSchema: command.outputSchema.extend({ id: z.string().min(1) }) },
+      ]),
+    ).not.toThrow();
+    expect(() => createOperationRegistry([narrowReadInput, replayOnly])).toThrow('replay resource');
+    const nullableRead = {
+      ...read,
+      outputSchema: read.outputSchema.extend({ id: z.string().nullable() }),
+    };
+    expect(() => createOperationRegistry([nullableRead, command])).toThrow('observation field');
+  });
   it('rejects incompatible cursor constraints and transforms nested in containers', () => {
     const [read] = fixture('sample');
     const incompatible = {

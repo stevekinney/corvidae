@@ -32,16 +32,82 @@ function field(schema: z.ZodType, name: string, operation: string): z.ZodType {
   return object.shape[name] as z.ZodType;
 }
 
-function sameType(left: z.ZodType, right: z.ZodType): boolean {
-  if (!isComparable(unwrap(left)) || !isComparable(unwrap(right))) return false;
+function accepts(producer: z.ZodType, consumer: z.ZodType, pagination = false): boolean {
+  if (!pagination && !acceptsAbsence(producer, consumer)) return false;
+  if (!isComparable(unwrap(producer)) || !isComparable(unwrap(consumer))) return false;
   try {
-    return (
-      JSON.stringify(canonicalSchema(z.toJSONSchema(unwrap(left)))) ===
-      JSON.stringify(canonicalSchema(z.toJSONSchema(unwrap(right))))
-    );
+    const source = z.toJSONSchema(unwrap(producer));
+    const target = z.toJSONSchema(unwrap(consumer));
+    if (JSON.stringify(canonicalSchema(source)) === JSON.stringify(canonicalSchema(target)))
+      return true;
+    return stringSubset(source, target);
   } catch {
     return false;
   }
+}
+
+function acceptsAbsence(producer: z.ZodType, consumer: z.ZodType): boolean {
+  return (['null', 'undefined'] as const).every(
+    (kind) => !allows(producer, kind) || allows(consumer, kind),
+  );
+}
+
+function allows(schema: z.ZodType, kind: 'null' | 'undefined'): boolean {
+  const terminatingTypes =
+    kind === 'null' ? [z.ZodNull, z.ZodNullable] : [z.ZodUndefined, z.ZodOptional];
+  if (terminatingTypes.some((type) => schema instanceof type)) return true;
+  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable)
+    return allows(schema.unwrap() as z.ZodType, kind);
+  if (schema instanceof z.ZodUnion)
+    return (schema.options as z.ZodType[]).some((option) => allows(option, kind));
+  return false;
+}
+
+function stringValues(schema: Record<string, unknown>): readonly string[] | undefined {
+  if (typeof schema['const'] === 'string') return [schema['const']];
+  if (Array.isArray(schema['enum']) && schema['enum'].every((value) => typeof value === 'string'))
+    return schema['enum'];
+  return undefined;
+}
+
+function stringSubset(source: Record<string, unknown>, target: Record<string, unknown>): boolean {
+  if (source['type'] !== 'string' || target['type'] !== 'string') return false;
+  const supported = new Set([
+    '$schema',
+    'type',
+    'enum',
+    'const',
+    'minLength',
+    'maxLength',
+    'pattern',
+    'format',
+  ]);
+  if (Object.keys(target).some((key) => !supported.has(key))) return false;
+  const values = stringValues(source);
+  const accepted = stringValues(target);
+  if (accepted && (!values || values.some((value) => !accepted.includes(value)))) return false;
+  for (const key of ['pattern', 'format'] as const)
+    if (target[key] !== undefined && source[key] !== target[key]) return false;
+  return lengthSubset(source, target, values);
+}
+
+function lengthSubset(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>,
+  values: readonly string[] | undefined,
+): boolean {
+  for (const [key, compare] of [
+    ['minLength', (left: number, right: number) => left >= right],
+    ['maxLength', (left: number, right: number) => left <= right],
+  ] as const) {
+    const bound = target[key];
+    if (bound === undefined) continue;
+    if (typeof bound !== 'number') return false;
+    if (values) {
+      if (values.some((value) => !compare(value.length, bound))) return false;
+    } else if (typeof source[key] !== 'number' || !compare(source[key], bound)) return false;
+  }
+  return true;
 }
 
 function canonicalSchema(value: unknown, key = ''): unknown {
@@ -164,9 +230,10 @@ function validatePage(
   if (!(unwrap(field(operation.outputSchema, page.total, name)) instanceof z.ZodNumber))
     throw new Error(`operation "${name}" pagination total must be a number`);
   if (
-    !sameType(
-      field(operation.inputSchema, page.cursorInput, name),
+    !accepts(
       field(operation.outputSchema, page.nextCursor, name),
+      field(operation.inputSchema, page.cursorInput, name),
+      true,
     )
   )
     throw new Error(`operation "${name}" pagination cursors are incompatible`);
@@ -211,13 +278,13 @@ function validateObservation(
   const read = lookupRead(byName, observed.read, name);
   const output = narrowed(read.outputSchema, observed.when, name);
   for (const key of [observed.key, observed.revision]) {
-    if (!sameType(field(operation.inputSchema, key, name), field(output, key, name)))
+    if (!accepts(field(output, key, name), field(operation.inputSchema, key, name)))
       throw new Error(`operation "${name}" observation field "${key}" is incompatible`);
   }
   if (!read.behavior.key?.includes(observed.key))
     throw new Error(`operation "${name}" observation key is not declared by its read`);
   if (
-    !sameType(
+    !accepts(
       field(operation.inputSchema, observed.key, name),
       field(read.inputSchema, observed.key, name),
     )
@@ -236,7 +303,7 @@ function validateReplay(
   const read = lookupRead(byName, replay.read, name);
   if (
     !read.behavior.key?.includes(replay.resource) ||
-    !sameType(resource, field(read.inputSchema, replay.resource, name))
+    !accepts(resource, field(read.inputSchema, replay.resource, name))
   )
     throw new Error(`operation "${name}" replay resource is incompatible with its read`);
 }
