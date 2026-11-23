@@ -187,13 +187,14 @@
     align-items: baseline;
     gap: var(--cinder-space-3);
     min-width: 0;
+    font-size: var(--cinder-text-xl);
   }
 
   .ib-worker-detail__name {
     flex: 0 1 auto;
     min-inline-size: 0;
     margin: 0;
-    font-size: var(--cinder-text-xl);
+    font-size: inherit;
     font-weight: 600;
     overflow-wrap: anywhere;
   }

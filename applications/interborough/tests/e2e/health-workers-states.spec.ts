@@ -680,7 +680,8 @@ test('a worker name longer than the heading wraps and keeps its Copy button insi
   const fits = await detail(page).evaluate((root) => {
     const heading = root.querySelector('h2');
     const button = root.querySelector('.cinder-copy-button');
-    if (heading === null || button === null)
+    const icon = button?.querySelector('svg');
+    if (heading === null || button === null || icon == null)
       throw new Error('The name or its Copy button is missing.');
     const pane = root.getBoundingClientRect();
     const box = button.getBoundingClientRect();
@@ -696,6 +697,10 @@ test('a worker name longer than the heading wraps and keeps its Copy button insi
         })(),
       ).size,
       inside: box.left >= pane.left && box.right <= pane.right,
+      textSize: Number.parseFloat(getComputedStyle(heading).fontSize),
+      iconHeight: icon.getBoundingClientRect().height,
+      buttonHeight: box.height,
+      borderWidth: getComputedStyle(button).borderBlockStartWidth,
       // What the failure prints: the pane's edges, the button's and the name's.
       numbers: JSON.stringify({
         pane: [pane.left, pane.right],
@@ -713,6 +718,9 @@ test('a worker name longer than the heading wraps and keeps its Copy button insi
   expect(fits.besideTheName).toBe(true);
   expect(fits.onTheFirstRow).toBe(true);
   expect(fits.pageFits).toBe(true);
+  expect(fits.iconHeight).toBeCloseTo(fits.textSize, 1);
+  expect(fits.buttonHeight).toBeCloseTo(fits.textSize, 1);
+  expect(fits.borderWidth).toBe('0px');
   await captureForDesignReview(page, {
     route: '/health/workers',
     state: 'long-name',
