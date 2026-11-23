@@ -2,6 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { createProbeClientWithFetch } from '../src/__fixtures__/probe-client/fetch-operation-client.generated.ts';
+import { createProbeClientWithTransport } from '../src/__fixtures__/probe-client/portable-operation-client.generated.ts';
+import { CatalogClientError } from '../src/client/index.ts';
 import { createOperationClientSources } from './generate-operation-client.ts';
 import { FIXTURE_CLIENT_DIRECTORY, fixtureClientSources } from './operation-client-fixture.ts';
 import { fixtureOptions, fixtureSnapshot } from './operation-client-test-support.ts';
@@ -191,5 +194,87 @@ describe('the checked-in fixture client', () => {
     }
     expect([...onDisk.keys()].toSorted()).toEqual([...sources.keys()].toSorted());
     for (const [fileName, source] of sources) expect(onDisk.get(fileName)).toBe(source);
+  });
+});
+
+describe('portable generated entries', () => {
+  it('regenerates deterministically when an operation is added', async () => {
+    const snapshot = fixtureSnapshot();
+    const options = fixtureOptions({ portableEntries: true });
+    const initial = {
+      ...snapshot,
+      operations: snapshot.operations.filter((operation) => operation.name !== 'probe.jobs.cancel'),
+    };
+    const before = await createOperationClientSources(initial, options);
+    const after = await createOperationClientSources(snapshot, options);
+    expect([...after]).toEqual([...(await createOperationClientSources(snapshot, options))]);
+    expect(before.get('portable-operation-client.generated.ts')).not.toContain('probe.jobs.cancel');
+    expect(after.get('portable-operation-client.generated.ts')).toContain('probe.jobs.cancel');
+    expect(before.get('fetch-operation-client.generated.ts')).toBe(
+      after.get('fetch-operation-client.generated.ts'),
+    );
+  });
+
+  it('forwards calls, cancellation, and structured faults through the supplied transport', async () => {
+    const calls: unknown[] = [];
+    const controller = new AbortController();
+    const client = createProbeClientWithTransport(async (name, input, options) => {
+      calls.push([name, input]);
+      if (options?.signal) {
+        return new Promise((_resolve, reject) => {
+          options.signal!.addEventListener('abort', () => reject(options.signal!.reason), {
+            once: true,
+          });
+        });
+      }
+      return null;
+    });
+    await client['probe.jobs.list']({ limit: 3 });
+    await client['probe.jobs.cancel']({ id: 'job' });
+    expect(calls).toEqual([
+      ['probe.jobs.list', { limit: 3 }],
+      ['probe.jobs.cancel', { id: 'job' }],
+    ]);
+    const pending = client['probe.jobs.list']({}, { signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toBe(controller.signal.reason);
+    expect(calls).toHaveLength(3);
+    const fault = new CatalogClientError('probe.jobs.list', {
+      code: -32001,
+      message: 'Denied',
+      data: { remediation: 'Sign in' },
+    });
+    const failing = createProbeClientWithTransport(async () => {
+      throw fault;
+    });
+    await expect(failing['probe.jobs.list']({})).rejects.toBe(fault);
+    expect(fault.data).toEqual({ remediation: 'Sign in' });
+  });
+
+  it('sends a Fetch call without mutating its input or headers', async () => {
+    const input = { id: 'job' };
+    const headers = { authorization: 'Bearer test' };
+    const originalInput = structuredClone(input);
+    const originalHeaders = structuredClone(headers);
+    const requests: [string | URL | Request, RequestInit | undefined][] = [];
+    const client = createProbeClientWithFetch({
+      baseUrl: '/api/',
+      headers,
+      fetch: async (url, init) => {
+        requests.push([url, init]);
+        return Response.json({ jsonrpc: '2.0', id: 'catalog-client', result: null });
+      },
+    });
+    await client['probe.jobs.cancel'](input);
+    expect(requests[0]?.[0]).toBe('/api/jsonrpc');
+    expect(requests[0]?.[1]?.headers).toEqual({ 'content-type': 'application/json', ...headers });
+    expect(JSON.parse(requests[0]?.[1]?.body as string)).toEqual({
+      jsonrpc: '2.0',
+      id: 'catalog-client',
+      method: 'probe.jobs.cancel',
+      params: input,
+    });
+    expect(input).toEqual(originalInput);
+    expect(headers).toEqual(originalHeaders);
   });
 });

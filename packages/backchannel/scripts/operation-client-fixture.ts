@@ -25,6 +25,7 @@ export function fixtureClientSources(): Promise<ReadonlyMap<string, string>> {
     fixtureOptions({
       outputDirectory: 'src/__fixtures__/probe-client',
       runtimeSpecifier: '../../client/index.ts',
+      portableEntries: true,
       subscriptions: 'generic',
       subscriptionRoutes: { include: (operation) => !operation.name.startsWith('other.') },
     }),

@@ -16,6 +16,20 @@ describe('the client entry on the browser target', () => {
     expect(modules.filter((module) => !module.includes('client/'))).toEqual([]);
     expect(text).not.toContain('zod');
   });
+
+  it('builds the generated Fetch and injected bridge entries without server dependencies', async () => {
+    for (const entry of [
+      './__fixtures__/generated-fetch-page.ts',
+      './__fixtures__/generated-bridge.ts',
+    ]) {
+      const text = await bundle(entry);
+      const modules = [...text.matchAll(/^\/\/ (\S+\.ts)$/gmu)].map((match) => match[1]!);
+      expect(modules.length).toBeGreaterThan(0);
+      expect(modules.join('\n')).not.toMatch(
+        /(?:node:|bun:|armorer|velveteen|svelte|credentials|modelcontextprotocol|bureau-transport)/iu,
+      );
+    }
+  });
 });
 
 async function bundle(entry: string): Promise<string> {
