@@ -108,7 +108,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);
-    padding-block-start: var(--cinder-space-4);
   }
 
   .weft-workflow-revisions__failure {
@@ -131,11 +130,18 @@
     border-block-end: 1px solid var(--cinder-border-faint);
   }
 
+  .weft-workflow-revisions__row:first-child {
+    padding-block-start: 0;
+  }
+
   .weft-workflow-revisions__row:last-child {
     border-block-end: 0;
   }
 
   .weft-workflow-revisions__version {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
     min-width: 0;
     margin: 0;
     font-weight: 600;

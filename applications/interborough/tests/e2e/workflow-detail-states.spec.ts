@@ -169,6 +169,15 @@ for (const width of WIDTHS) {
       for (const version of expected) {
         await expect(versions.filter({ hasText: version })).toBeVisible();
       }
+      const current = versions.filter({ hasText: '1.3.0' });
+      const { tabs, title, label, copy } = await readBoxes(page, {
+        tabs: detail(page).getByRole('tablist', { name: WORKFLOW_COPY.page.tabsLabel }),
+        title: current,
+        label: current.getByText('Version 1.3.0, current version', { exact: true }),
+        copy: current.getByRole('button', { name: WORKFLOW_COPY.revisions.copyVersion('1.3.0') }),
+      });
+      expect(title.y - (tabs.y + tabs.height)).toBeCloseTo(24, 0);
+      expect(copy.x - (label.x + label.width)).toBeCloseTo(8, 0);
       await expect(detail(page).getByTestId('workflow-revisions-footnote')).toContainText(
         'Scheduled and chat runs always start on the current version.',
       );
