@@ -1,4 +1,4 @@
-name: Cinder npm release
+name: npm library release
 
 on:
   workflow_dispatch:
@@ -11,6 +11,8 @@ on:
           - cinder
           - editor
           - cinder-mcp
+          - armorer
+          - conversationalist
         required: true
       version:
         description: Version to pack or publish, without build metadata.
@@ -21,6 +23,9 @@ on:
         type: string
       cinder-version:
         description: Published Cinder dependency version for Editor and Cinder MCP.
+        type: string
+      armorer-version:
+        description: Published Armorer dependency version for Conversationalist.
         type: string
       publish:
         description: Publish the tested tarball from protected main.
@@ -42,20 +47,32 @@ jobs:
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      npm-name: ${{ steps.inputs.outputs.npm-name }}
+      tarball: ${{ steps.inputs.outputs.tarball }}
     env:
       MARKDOWN_VERSION: ${{ inputs.markdown-version }}
       CINDER_VERSION: ${{ inputs.cinder-version }}
+      ARMORER_VERSION: ${{ inputs.armorer-version }}
     steps:
       - name: Validate release inputs
+        id: inputs
         env:
           PUBLISH: ${{ inputs.publish }}
         run: |
           case "$PACKAGE" in
-            markdown|cinder|editor|cinder-mcp) ;;
+            markdown|cinder|editor|cinder-mcp)
+              npm_name="@lostgradient/$PACKAGE"
+              tarball="lostgradient-$PACKAGE-$VERSION.tgz"
+              ;;
+            armorer|conversationalist)
+              npm_name="$PACKAGE"
+              tarball="$PACKAGE-$VERSION.tgz"
+              ;;
             *) exit 1 ;;
           esac
-          if [[ "$VERSION" == *+* ]]; then
-            echo '::error::Use a version without SemVer build metadata. npm removes it when publishing.'
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo '::error::Use an exact SemVer version without build metadata.'
             exit 1
           fi
           if [[ "$PACKAGE" == cinder || "$PACKAGE" == editor ]] && [[ -z "$MARKDOWN_VERSION" ]]; then
@@ -66,6 +83,11 @@ jobs:
             echo '::error::Set cinder-version to the published Cinder version.'
             exit 1
           fi
+          if [[ "$PACKAGE" == conversationalist && -z "$ARMORER_VERSION" ]]; then
+            echo '::error::Set armorer-version to the published Armorer version.'
+            exit 1
+          fi
+          printf 'npm-name=%s\ntarball=%s\n' "$npm_name" "$tarball" >> "$GITHUB_OUTPUT"
           if [ "$PUBLISH" = true ]; then
             test "$GITHUB_REF" = refs/heads/main
             test "$GITHUB_REF_PROTECTED" = true
@@ -83,6 +105,9 @@ jobs:
           package-manager-cache: false
       - run: bun install --frozen-lockfile
       - name: Pack and verify
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          TARBALL: ${{ steps.inputs.outputs.tarball }}
         run: |
           output="$RUNNER_TEMP/cinder-npm-package"
           mkdir "$output"
@@ -96,11 +121,25 @@ jobs:
             cinder-mcp)
               bun packages/cinder-mcp/scripts/pack-release.ts --version "$VERSION" --cinder-version "$CINDER_VERSION" --outdir "$output" > "$output/receipt.json"
               ;;
+            armorer|conversationalist)
+              bun scripts/pack-agent-library-release.ts --package "$PACKAGE" --version "$VERSION" --armorer-version "$ARMORER_VERSION" --outdir "$output" > "$output/receipt.json"
+              ;;
           esac
-          tarball="$output/lostgradient-$PACKAGE-$VERSION.tgz"
+          tarball="$output/$TARBALL"
           bunx publint run --strict "$tarball"
           bunx attw --profile esm-only "$tarball"
-          bun scripts/verify-cinder-release.ts "$PACKAGE" "$tarball"
+          case "$PACKAGE" in
+            armorer|conversationalist)
+              dependencies=()
+              if [[ "$PACKAGE" == conversationalist && "$PUBLISH" != true ]]; then
+                staging="$RUNNER_TEMP/armorer-dependency"
+                bun scripts/pack-agent-library-release.ts --package armorer --version "$ARMORER_VERSION" --outdir "$staging"
+                dependencies+=("$staging/armorer-$ARMORER_VERSION.tgz")
+              fi
+              bun scripts/verify-agent-library-release.ts "$PACKAGE" "$tarball" "${dependencies[@]}"
+              ;;
+            *) bun scripts/verify-cinder-release.ts "$PACKAGE" "$tarball" ;;
+          esac
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cinder-npm-tarball
@@ -127,19 +166,21 @@ jobs:
           path: ${{ runner.temp }}/cinder-npm-package
       - name: Verify tarball and publish using npm trusted publishing
         working-directory: ${{ runner.temp }}/cinder-npm-package
+        env:
+          NPM_NAME: ${{ needs.package.outputs.npm-name }}
+          TARBALL: ${{ needs.package.outputs.tarball }}
         run: |
-          tarball="lostgradient-$PACKAGE-$VERSION.tgz"
-          local_integrity="$(jq -er --arg name "@lostgradient/$PACKAGE" --arg version "$VERSION" --arg tarball "$tarball" '.[0] | select(.name == $name and .version == $version and .filename == $tarball) | .integrity' receipt.json)"
-          actual_integrity="sha512-$(openssl dgst -sha512 -binary "$tarball" | openssl base64 -A)"
+          local_integrity="$(jq -er --arg name "$NPM_NAME" --arg version "$VERSION" --arg tarball "$TARBALL" '.[0] | select(.name == $name and .version == $version and .filename == $tarball) | .integrity' receipt.json)"
+          actual_integrity="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
           test "$local_integrity" = "$actual_integrity"
           case "$VERSION" in
             *-*) tag=next ;;
             *) tag=latest ;;
           esac
-          npm publish "$tarball" --ignore-scripts --provenance --access public --tag "$tag"
+          npm publish "$TARBALL" --ignore-scripts --provenance --access public --tag "$tag"
 
   verify:
-    needs: publish
+    needs: [package, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions: {}
@@ -155,11 +196,12 @@ jobs:
       - name: Verify public bytes, provenance and install
         working-directory: ${{ runner.temp }}/cinder-npm-package
         env:
+          NPM_NAME: ${{ needs.package.outputs.npm-name }}
           NPM_TOKEN: ''
           NODE_AUTH_TOKEN: ''
           NPM_CONFIG_USERCONFIG: /dev/null
         run: |
-          package="@lostgradient/$PACKAGE@$VERSION"
+          package="$NPM_NAME@$VERSION"
           local_integrity="$(jq -er '.[0].integrity' receipt.json)"
           npm view "$package" dist --json > registry-dist.json
           test "$local_integrity" = "$(jq -er '.integrity' registry-dist.json)"
@@ -169,4 +211,4 @@ jobs:
           printf '{"private":true,"type":"module"}\n' > package.json
           npm install --ignore-scripts --no-audit --no-fund --save-exact "$package"
           npm audit signatures
-          node --input-type=module -e 'await import("@lostgradient/" + process.env.PACKAGE);'
+          node --input-type=module -e 'await import(process.env.NPM_NAME);'
