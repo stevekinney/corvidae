@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { sveltePlugin } from '../testing/testing/src/svelte-plugin.ts';
 
 const [name, tarball, ...upstreamTarballs] = process.argv.slice(2);
-if (!name || !['markdown', 'cinder', 'editor', 'cinder-mcp'].includes(name) || !tarball) {
+if (!name || !['markdown', 'cinder', 'editor', 'chat', 'cinder-mcp'].includes(name) || !tarball) {
   throw new Error(
     'Usage: bun scripts/verify-cinder-release.ts <package> <tarball> [upstream-tarballs...]',
   );
@@ -20,13 +20,16 @@ try {
   await copyFile(join(import.meta.dir, 'cinder-release-consumer.ts'), consumer);
   await $`node ${consumer} ${name}`.cwd(scratch);
   if (name === 'markdown') await $`bun ${consumer} ${name}`.cwd(scratch);
-  if (name === 'cinder' || name === 'editor') {
+  if (name === 'cinder' || name === 'editor' || name === 'chat') {
     const entry = join(scratch, 'browser.ts');
     await Bun.write(
       entry,
-      name === 'cinder'
-        ? 'export { default as Button } from "@lostgradient/cinder/button"; import "@lostgradient/cinder/styles";'
-        : 'export { default as MarkdownEditor } from "@lostgradient/editor/markdown-editor";',
+      {
+        cinder:
+          'export { default as Button } from "@lostgradient/cinder/button"; import "@lostgradient/cinder/styles";',
+        editor: 'export { default as MarkdownEditor } from "@lostgradient/editor/markdown-editor";',
+        chat: 'export { default as Chat } from "@lostgradient/chat"; import "@lostgradient/chat/styles";',
+      }[name],
     );
     const result = await Bun.build({
       entrypoints: [entry],
