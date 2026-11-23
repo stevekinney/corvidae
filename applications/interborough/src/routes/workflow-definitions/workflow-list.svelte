@@ -43,7 +43,6 @@
   import { getClient } from '../../lib/client.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
-  import { getHostPaths } from '../../lib/host-paths.ts';
   import { getProviders } from '../../lib/host-providers.ts';
   import { newChatFromWorkflowsPath } from '../../lib/new-chat-address.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -105,18 +104,6 @@
     }),
     undefined,
   );
-
-  // Where the files are, for the hint of the empty state. A host that does not say is not asked
-  // again, and the hint names the usual place.
-  const hostPaths = createQuery(
-    () => ({
-      queryKey: queryKeys.hostPaths(),
-      queryFn: ({ signal }) => getHostPaths({ signal }),
-      retry: false,
-    }),
-    undefined,
-  );
-  const directory = $derived(hostPaths.data?.workflowDirectory ?? copy.empty.hintDirectory);
 
   const providers = createQuery(
     () => ({
@@ -268,7 +255,7 @@
           </Text>
         {/if}
         <Text class="ib-workflows__hint" data-testid="workflows-file-hint">
-          {copy.empty.addFileHint(directory)}
+          {copy.empty.fileHint}
         </Text>
       </ListPageEmpty>
     {:else}

@@ -578,7 +578,7 @@ describe('a host with no workflow of its own', () => {
     expect(testId(container, 'internal-workflows-action')).toBeNull();
     expect(state?.querySelectorAll('.cinder-empty-state-action > a')).toHaveLength(2);
     expect(testId(container, 'workflows-file-hint')?.textContent).toBe(
-      WORKFLOW_COPY.list.empty.addFileHint(STUB_WORKFLOW_DIRECTORY),
+      WORKFLOW_COPY.list.empty.fileHint,
     );
   });
 
@@ -602,32 +602,17 @@ describe('a host with no workflow of its own', () => {
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
   });
 
-  test('puts the host directory in the small first-use file hint', async () => {
+  test('uses the human-only first-use file hint without exposing the host directory', async () => {
     const { container, findByRole } = open({ definitions: [], files: [] });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
       'empty',
     );
     const state = testId(container, 'workflows-empty');
-    expect(testId(state as HTMLElement, 'workflows-file-hint')?.textContent).toBe(
-      WORKFLOW_COPY.list.empty.addFileHint(STUB_WORKFLOW_DIRECTORY),
-    );
-  });
-
-  test('names the usual directory when the host does not say, and the host’s location when it keeps its files in a bucket', async () => {
-    const usual = open({ definitions: [], files: [], workflowDirectory: null });
-    await usual.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
-    expect(testId(usual.container, 'workflows-file-hint')?.textContent).toBe(
-      WORKFLOW_COPY.list.empty.addFileHint(WORKFLOW_COPY.list.empty.hintDirectory),
-    );
-    cleanup();
-    stub?.restore();
-
-    const remote = open({ definitions: [], files: [], hostMode: 'remote' });
-    await remote.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
-    expect(testId(remote.container, 'workflows-file-hint')?.textContent).toBe(
-      WORKFLOW_COPY.list.empty.addFileHint(STUB_REMOTE_WORKFLOW_DIRECTORY),
-    );
+    const hint = testId(state as HTMLElement, 'workflows-file-hint')?.textContent;
+    expect(hint).toBe(WORKFLOW_COPY.list.empty.fileHint);
+    expect(hint).not.toContain(STUB_WORKFLOW_DIRECTORY);
+    expect(hint).not.toContain(STUB_REMOTE_WORKFLOW_DIRECTORY);
   });
 });
 

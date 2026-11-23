@@ -310,21 +310,20 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
         await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
-        // The header and state each offer a way to internal workflows alongside New workflow.
+        // The header carries the internal-workflows affordance; first use has only its two actions.
         await expect(
           page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
         ).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
         ).toHaveCount(0);
-        await expect(
-          empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.internalAction }),
-        ).toHaveAttribute('href', '/internal-workflows');
         await expect(area(page).getByTestId('internal-workflows-action')).toBeVisible();
         const directory = await workflowDirectory(request);
         await expect(empty).not.toContainText(directory);
-        await empty.getByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }).click();
-        await expect(area(page).getByTestId('file-location-directory')).toContainText(directory);
+        await expect(empty.locator('.cinder-empty-state-action > a')).toHaveCount(2);
+        await expect(empty.getByTestId('workflows-file-hint')).toHaveText(
+          WORKFLOW_COPY.list.empty.fileHint,
+        );
         // First use is the page: no filter row.
         await expect(page.getByRole('radio')).toHaveCount(0);
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);

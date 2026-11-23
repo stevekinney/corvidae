@@ -94,10 +94,8 @@ export const WORKFLOW_COPY = {
       checkingProvider: 'Checking for a model provider.',
       needsProvider: 'Ask an agent to write one needs a model provider.',
       connectProvider: 'Connect a provider',
-      /** Where the files are when the host does not say. */
-      hintDirectory: '~/.interborough/workflows',
-      /** The small, direct path hint under the two first-use actions. */
-      addFileHint: (directory: string): string => `Or add a file to ${directory}.`,
+      /** The small, human-only hint under the two first-use actions. */
+      fileHint: 'Or add a file to the workflows folder.',
     },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */
