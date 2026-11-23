@@ -83,7 +83,13 @@ function sampleWorld(overrides: Partial<World> = {}): World {
         steps: TWO_STEPS,
         runs: {
           active: 1,
-          current: { status: 'running', step: 2, totalSteps: 2, waitingForSignal: null },
+          current: {
+            startedAt: new Date(NOW - 6 * MINUTE).toISOString(),
+            status: 'running',
+            step: 2,
+            totalSteps: 2,
+            waitingForSignal: null,
+          },
           last: { status: 'completed', failedStep: null },
           last24Hours: 12,
           lastRunAt: new Date(NOW - 3 * MINUTE).toISOString(),

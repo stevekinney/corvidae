@@ -204,6 +204,8 @@ const runCountsSchema = z.object({
     .nullable(),
   current: z
     .object({
+      /** When this unfinished instance was created. */
+      startedAt: z.string(),
       status: z.enum(['pending', 'running', 'suspended']),
       /** The most recently started document step, counted from one, or `null` before one starts. */
       step: z.number().int().positive().nullable(),

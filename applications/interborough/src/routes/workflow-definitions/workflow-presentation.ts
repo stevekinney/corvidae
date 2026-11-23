@@ -134,9 +134,13 @@ function rowDate(
   const at = Date.parse(runs.lastRunAt);
   if (Number.isNaN(at)) return null;
   if (kind === 'code') return WORKFLOW_COPY.list.latestRunAt(formatRelativeTime(at, now));
-  return hasBureauRunReceipts(runs) && runs.current !== null
-    ? WORKFLOW_COPY.list.started(rowTime(at, now, zone))
-    : listDate(at, now, zone);
+  if (hasBureauRunReceipts(runs) && runs.current !== null) {
+    const startedAt = Date.parse(runs.current.startedAt);
+    return Number.isNaN(startedAt)
+      ? null
+      : WORKFLOW_COPY.list.started(rowTime(startedAt, now, zone));
+  }
+  return listDate(at, now, zone);
 }
 
 /** The active run's own state. It never changes the workflow's status column. */

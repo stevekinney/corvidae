@@ -237,6 +237,7 @@ export type WorkflowsOperationTypes = {
             readonly runs: {
               readonly active: number;
               readonly current: {
+                readonly startedAt: string;
                 readonly status: 'pending' | 'running' | 'suspended';
                 readonly step: number | null;
                 readonly totalSteps: number | null;

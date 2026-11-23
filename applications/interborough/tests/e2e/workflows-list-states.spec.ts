@@ -52,6 +52,7 @@ async function releaseRun(
           lastRunAt: '2026-11-02T10:45:00-06:00',
           last: { status, failedStep: null },
           current: {
+            startedAt: '2026-11-02T10:00:00-06:00',
             status,
             step: 2,
             totalSteps: 4,
@@ -138,9 +139,9 @@ for (const width of [1280, 768, 375]) {
     const refund = row(page, 'order-refund');
     const triage = row(page, 'triage-inbox');
     expect(
-      await page.locator('[data-workflow]').evaluateAll((rows) =>
-        rows.map((entry) => entry.getAttribute('data-workflow')),
-      ),
+      await page
+        .locator('[data-workflow]')
+        .evaluateAll((rows) => rows.map((entry) => entry.getAttribute('data-workflow'))),
     ).toEqual(['release-notes', 'order-refund', 'triage-inbox']);
     await expect(notes.getByTestId('workflow-identifier')).toHaveText('release-notes');
     await expect(notes.getByTestId('workflow-last-run')).toHaveText('Oct 30');
@@ -195,7 +196,7 @@ for (const width of [1280, 768, 375]) {
       const notes = row(page, 'release-notes');
       await expect(notes.getByText(words, { exact: true })).toBeVisible();
       await expect(notes).not.toHaveAttribute('data-status', /.+/);
-      await expect(notes.getByTestId('workflow-last-run')).toHaveText('Started 10:45 AM');
+      await expect(notes.getByTestId('workflow-last-run')).toHaveText('Started 10:00 AM');
       await expect(notes.getByTestId('workflow-run-counts')).toHaveText('2 runs');
       await captureForDesignReview(page, { route: '/workflows', state: words, source: SOURCE });
     });

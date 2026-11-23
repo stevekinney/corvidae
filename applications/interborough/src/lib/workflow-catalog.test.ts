@@ -166,7 +166,13 @@ describe('the list', () => {
   test('carries a file’s trigger and the Bureau’s counts of its instances, and none for a code type', () => {
     const runs = {
       active: 2,
-      current: { status: 'running' as const, step: 2, totalSteps: 4, waitingForSignal: null },
+      current: {
+        startedAt: '2026-10-23T10:00:00.000Z',
+        status: 'running' as const,
+        step: 2,
+        totalSteps: 4,
+        waitingForSignal: null,
+      },
       last: { status: 'failed' as const, failedStep: 2 },
       last24Hours: 9,
       lastRunAt: '2026-10-23T11:00:00.000Z',

@@ -887,6 +887,7 @@ describe('results', () => {
           last24Hours: 1,
           last: { status: 'running', failedStep: null },
           current: {
+            startedAt: expect.any(String),
             status: 'running',
             step: 1,
             totalSteps: 1,
@@ -895,6 +896,60 @@ describe('results', () => {
         },
       },
     ]);
+  });
+
+  it('keeps the active run’s start separate from a newer completed run', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('waiting', {
+      trigger: FAST_SCHEDULE,
+      steps: [{ kind: 'await-signal', signal: 'never-sent' }],
+    });
+    const engine = served.bureau.durableEngine()!;
+    await engine.start('waiting', null, { id: 'older-active' });
+    await waitForCondition(async () => {
+      const state = await engine.get('older-active');
+      return state?.waitingForSignals?.includes('never-sent') === true;
+    }, 'the older workflow run reaches its signal wait');
+    const initial = await engine.list({ type: 'waiting', limit: 1 });
+    const [active] = initial.items;
+    if (active === undefined) throw new Error('Expected the active workflow run.');
+    const activeAt = Date.parse('2026-11-02T10:00:00-06:00');
+    const completedAt = Date.parse('2026-11-02T10:30:00-06:00');
+    const completed = {
+      ...active,
+      id: 'newer-completed',
+      status: 'completed' as const,
+      createdAt: completedAt,
+    };
+    const olderActive = { ...active, createdAt: activeAt };
+    const list = spyOn(engine, 'list').mockImplementation(async (filter) => {
+      if (filter?.type !== 'waiting') return { items: [], total: 0 } as never;
+      if (filter?.status !== undefined) return { items: [olderActive], total: 1 } as never;
+      return { items: [completed], total: 2 } as never;
+    });
+    try {
+      const response = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+      expect(response.result?.['workflows']).toMatchObject([
+        {
+          id: 'waiting',
+          runs: {
+            total: 2,
+            active: 1,
+            lastRunAt: '2026-11-02T16:30:00.000Z',
+            last: { status: 'completed', failedStep: null },
+            current: {
+              startedAt: '2026-11-02T16:00:00.000Z',
+              status: 'running',
+              step: 1,
+              totalSteps: 1,
+              waitingForSignal: 'never-sent',
+            },
+          },
+        },
+      ]);
+    } finally {
+      list.mockRestore();
+    }
   });
 
   it('still lists every file, with no counts for the one whose engine read fails', async () => {

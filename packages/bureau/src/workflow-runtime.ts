@@ -439,6 +439,8 @@ export interface WorkflowRunCounts {
   readonly last: { readonly status: WorkflowStatus; readonly failedStep: number | null } | null;
   /** The newest unfinished instance's progress and signal wait, or `null` when none is active. */
   readonly current: {
+    /** When this unfinished instance was created. */
+    readonly startedAt: string;
     readonly status: Extract<WorkflowStatus, 'pending' | 'running' | 'suspended'>;
     readonly step: number | null;
     readonly totalSteps: number | null;
@@ -3239,6 +3241,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
                 );
                 const index = startedStep?.data['step'];
                 return {
+                  startedAt: new Date(newestActive.createdAt).toISOString(),
                   status: state.status as Extract<
                     WorkflowStatus,
                     'pending' | 'running' | 'suspended'

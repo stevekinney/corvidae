@@ -114,11 +114,9 @@ describe('the segments of the list', () => {
   });
 
   test('places a broken workflow after ready rows and before paused rows', () => {
-    expect(sortListRows([named('stopped'), named('broken'), named('plain')]).map((row) => row.name)).toEqual([
-      'plain',
-      'broken',
-      'stopped',
-    ]);
+    expect(
+      sortListRows([named('stopped'), named('broken'), named('plain')]).map((row) => row.name),
+    ).toEqual(['plain', 'broken', 'stopped']);
   });
 });
 
@@ -184,7 +182,13 @@ describe('a row of the list', () => {
           steps: STEPS,
           runs: {
             active: 1,
-            current: { status: 'running', step: 2, totalSteps: 4, waitingForSignal: null },
+            current: {
+              startedAt: '2026-11-02T10:00:00-06:00',
+              status: 'running',
+              step: 2,
+              totalSteps: 4,
+              waitingForSignal: null,
+            },
             last: { status: 'completed', failedStep: null },
             last24Hours: 2,
             lastRunAt: '2026-11-02T10:45:00-06:00',
@@ -196,7 +200,7 @@ describe('a row of the list', () => {
       NOW,
       ZONE,
     );
-    expect(model.date).toBe('Started 10:45 AM');
+    expect(model.date).toBe('Started 10:00 AM');
     expect(model.line.map((part) => part.status)).toEqual([
       'Running, step 2 of 4',
       undefined,
@@ -333,7 +337,13 @@ describe('a row of the list', () => {
           steps: STEPS,
           runs: {
             active: 1,
-            current: { status: 'suspended', step: 2, totalSteps: 4, waitingForSignal: 'approve' },
+            current: {
+              startedAt: '2026-11-02T10:00:00-06:00',
+              status: 'suspended',
+              step: 2,
+              totalSteps: 4,
+              waitingForSignal: 'approve',
+            },
             last: { status: 'completed', failedStep: null },
             last24Hours: 1,
             lastRunAt: '2026-11-02T10:45:00-06:00',
@@ -356,7 +366,13 @@ describe('a row of the list', () => {
           steps: STEPS,
           runs: {
             active: 1,
-            current: { status: 'suspended', step: 2, totalSteps: 4, waitingForSignal: null },
+            current: {
+              startedAt: '2026-11-02T10:00:00-06:00',
+              status: 'suspended',
+              step: 2,
+              totalSteps: 4,
+              waitingForSignal: null,
+            },
             last: null,
             last24Hours: 1,
             lastRunAt: '2026-11-02T10:45:00-06:00',
