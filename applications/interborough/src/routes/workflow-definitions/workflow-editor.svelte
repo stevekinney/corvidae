@@ -544,7 +544,6 @@
           jsonId="workflow-editor-text"
           jsonLabel={editor.textLabel}
           jsonDescription={editor.textDescription}
-          backHref={workflowTypePath(type)}
           {...footerStatus === undefined ? {} : { status: footerStatus }}
           {...changedOnDisk ? { notice: changedNotice } : {}}
           {...saveImpact === undefined ? {} : { aboveFooter: impactSnippet }}

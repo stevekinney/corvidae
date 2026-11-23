@@ -635,7 +635,8 @@ export const WORKFLOW_COPY = {
     idFixedOnCreate: 'Can’t be changed after you create it.',
     /** Beside an existing workflow's ID. */
     idFixed: 'Can’t be changed',
-    useDerivedId: 'Use the ID made from the title',
+    resetId: 'Reset ID',
+    readOnly: 'Read-only',
     descriptionLabel: 'Description',
     descriptionPlaceholder: 'What does this workflow do?',
     startsHeading: 'Starts',
@@ -894,12 +895,6 @@ export const WORKFLOW_COPY = {
         }`,
       other: 'run a step the builder can’t describe',
       next: 'then',
-    },
-    /** Below 640 pixels the builder is read-only (board ResponsiveAndDark, row 05n). */
-    phone: {
-      message: 'Open on a larger screen',
-      backToWorkflow: 'Back to the workflow',
-      backToWorkflows: 'Back to Workflows',
     },
     /**
      * What the builder says when the JSON tab holds text it cannot draw: the Builder tab is off, and

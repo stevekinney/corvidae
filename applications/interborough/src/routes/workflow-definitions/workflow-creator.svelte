@@ -214,7 +214,6 @@
       jsonId="workflow-creator-text"
       jsonLabel={creator.textLabel}
       jsonDescription={creator.textDescription}
-      backHref="/workflows"
       onTextChange={(next) => {
         text = next;
         documentProblem = null;
