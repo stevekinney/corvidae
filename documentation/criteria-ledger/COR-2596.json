@@ -1,7 +1,7 @@
 {
   "issue": "COR-2596",
   "branch": "steve/cor-2596-composable",
-  "checkedAt": "1c664c85511abb4a72a2ca42880a1653b5c1b6b9",
+  "checkedAt": "9fe44e608c05c845da92610b8b2432925def1e40",
   "briefVersion": "b0ed2a5278ae",
   "status": "READY",
   "criteria": [
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "behavior-validation.test.ts checks deterministic invalid catalog diagnostics, constrained cursor schemas and nested transforms without executing callbacks"
+      "evidence": "behavior-validation.test.ts verifies directional paging, observation and replay compatibility, nested transforms and deterministic invalid catalog diagnostics without callbacks"
     },
     {
       "id": "AC5",
