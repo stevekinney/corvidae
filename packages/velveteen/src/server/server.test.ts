@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { throwingRejectionOf } from "@lostgradient/testing/promise-outcome";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createApplication, sequence } from "./index.ts";
-import { validateMounts } from "./mounts.ts";
 import type { ProductionGeneration } from "../build/manifest-types.ts";
 
 const generation = (basePath = ""): ProductionGeneration => ({
@@ -353,13 +355,36 @@ describe("server application", () => {
         ),
       ).toThrow("conflicts with route");
     }
-    expect(() =>
-      validateMounts(
-        { generation: generation(), mounts },
-        registry([]) as never,
-        { "/api/logo.svg": {} },
-      ),
-    ).toThrow("conflicts with asset");
+    const directory = await mkdtemp(join(tmpdir(), "velveteen-mount-"));
+    try {
+      await mkdir(join(directory, "static/api"), { recursive: true });
+      const bytes = new TextEncoder().encode("asset");
+      await Bun.write(join(directory, "static/api/logo.svg"), bytes);
+      const assetGeneration = generation();
+      assetGeneration.directory = directory;
+      assetGeneration.manifest.assets = [
+        {
+          file: "static/api/logo.svg",
+          target: "static",
+          url: "/api/logo.svg",
+          bytes: bytes.byteLength,
+          sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"),
+          contentType: "image/svg+xml",
+          immutable: false,
+        },
+      ];
+      expect(
+        await throwingRejectionOf(
+          createApplication({
+            generation: assetGeneration,
+            registry: registry([]) as never,
+            mounts,
+          }),
+        ),
+      ).toThrow("conflicts with asset");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
     expect(starts).toBe(0);
   });
 
