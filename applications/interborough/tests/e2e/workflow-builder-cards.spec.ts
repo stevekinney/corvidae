@@ -451,6 +451,11 @@ test.describe('the workflow builder’s read-only step cards', () => {
     await root.getByLabel(BUILDER.idLabel, { exact: true }).fill('custom-briefing');
     const reset = root.getByRole('button', { name: BUILDER.resetId });
     await expect(reset).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/workflows/new (step cards)',
+      state: 'workflow-id-reset',
+      source: 'workflow-builder-cards.spec.ts',
+    });
     await reset.click();
     const change = root.getByRole('button', { name: BUILDER.idChange });
     await expect(change).toBeFocused();
@@ -464,14 +469,16 @@ test.describe('the workflow builder’s read-only step cards', () => {
     );
 
     await page.setViewportSize({ width: 375, height: 900 });
-    const phoneTablist = await desktopTablist.boundingBox();
     const status = root.locator('.weft-workflow-builder__read-only');
     await expect(status).toHaveText(BUILDER.readOnly);
+    const phoneTablist = await desktopTablist.boundingBox();
     const phoneStatus = await status.boundingBox();
-    expect(Math.round(phoneTablist?.y ?? 0)).toBe(Math.round(phoneStatus?.y ?? 0));
-    expect((phoneTablist?.x ?? 0) + (phoneTablist?.width ?? 0)).toBeLessThan(
-      phoneStatus?.x ?? 0,
-    );
+    expect(phoneTablist).not.toBeNull();
+    expect(phoneStatus).not.toBeNull();
+    const tabsCenter = (phoneTablist?.y ?? 0) + (phoneTablist?.height ?? 0) / 2;
+    const statusCenter = (phoneStatus?.y ?? 0) + (phoneStatus?.height ?? 0) / 2;
+    expect(Math.abs(tabsCenter - statusCenter)).toBeLessThanOrEqual(1);
+    expect((phoneTablist?.x ?? 0) + (phoneTablist?.width ?? 0)).toBeLessThan(phoneStatus?.x ?? 0);
     await expect(root.getByRole('link', { name: /Back to (the workflow|Workflows)/ })).toHaveCount(
       0,
     );
