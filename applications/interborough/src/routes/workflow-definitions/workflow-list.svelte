@@ -5,8 +5,8 @@
    * are joined; `workflow-row.svelte` says a row). The header is "Workflows", its subtitle, and the
    * labelled primary New workflow. Segments (All, Paused, Problems) partition the rows, each with the
    * number of rows it shows, counted from the same rows (`workflow-presentation.ts`). A workflow that
-   * cannot load is listed first with its file and its problem, so a broken workflow is never silently
-   * missing, and a source that failed to load shows the category of the failure.
+   * cannot load follows ready files and comes before paused files, with its file and problem, so a
+   * broken workflow is never silently missing, and a source that failed to load shows its category.
    *
    * The types Interborough registers itself to run agents, goals and its heartbeat are not
    * workflows a person starts, so a secondary "Internal workflows (N)" in the header, beside New

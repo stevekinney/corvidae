@@ -150,12 +150,12 @@ function segment(view: ReturnType<typeof within>, word: string, count: number): 
 }
 
 describe('the list of workflows', () => {
-  test('has a row for each definition and file, by name, problems first, and leaves out a source with no file and the engine’s own types', async () => {
+  test('has a row for each definition and file in ready-problem-paused order, and leaves out a source with no file and the engine’s own types', async () => {
     const { container, findByRole } = open();
     await findByRole('heading', { level: 1, name: 'Workflows' });
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
-    expect(names(container)).toEqual(['broken', 'flaky', 'digest', 'order-processing']);
+    expect(names(container)).toEqual(['digest', 'order-processing', 'broken', 'flaky']);
     expect(container.querySelector('[data-workflow="deleted-yesterday"]')).toBeNull();
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
@@ -266,7 +266,7 @@ describe('the list of workflows', () => {
     await waitFor(() => expect(rowCount(container)).toBe(4));
     // Wait for the query to settle with nothing to show, not merely for the request: until then the
     // page has no counts either way, and a check made before proves nothing.
-    const activityKey = queryKeys.workflowCatalog.activity(['broken', 'order-processing']);
+    const activityKey = queryKeys.workflowCatalog.activity(['order-processing', 'broken']);
     await waitFor(() =>
       expect(
         queryClient
@@ -442,7 +442,7 @@ describe('the segments of the list', () => {
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title });
     await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.list.clearAction }));
     await waitFor(() =>
-      expect(names(container)).toEqual(['broken', 'flaky', 'digest', 'order-processing']),
+      expect(names(container)).toEqual(['order-processing', 'broken', 'flaky', 'digest']),
     );
     expect(search).toHaveValue('');
     expect(search).toHaveFocus();

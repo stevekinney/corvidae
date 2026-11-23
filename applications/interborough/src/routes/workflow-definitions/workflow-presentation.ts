@@ -54,9 +54,14 @@ export function segmentCounts(rows: readonly CatalogRow[]): Record<ListSegment, 
   };
 }
 
-/** The rows in the order the list shows them: those that cannot load first, the rest as the catalog sorts them. */
+/** The rows in the order the list shows them: ready, then a file problem, then a paused file. */
 export function sortListRows(rows: readonly CatalogRow[]): CatalogRow[] {
-  return rows.toSorted((first, second) => Number(hasProblem(second)) - Number(hasProblem(first)));
+  return rows.toSorted((first, second) => listOrder(first) - listOrder(second));
+}
+
+function listOrder(row: CatalogRow): number {
+  if (hasProblem(row)) return 1;
+  return row.file?.paused === true ? 2 : 0;
 }
 
 /** One part of the line under a row's title. */

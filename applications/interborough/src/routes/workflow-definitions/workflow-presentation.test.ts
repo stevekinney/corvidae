@@ -113,12 +113,10 @@ describe('the segments of the list', () => {
     expect(rowSegment(named('stopped'))).toBe('paused');
   });
 
-  test('list a workflow that cannot load first, and keep the catalog’s order for the rest', () => {
-    expect(sortListRows(workflows).map((row) => row.name)).toEqual([
-      'broken',
-      'flaky',
-      'order-processing',
+  test('places a broken workflow after ready rows and before paused rows', () => {
+    expect(sortListRows([named('stopped'), named('broken'), named('plain')]).map((row) => row.name)).toEqual([
       'plain',
+      'broken',
       'stopped',
     ]);
   });
