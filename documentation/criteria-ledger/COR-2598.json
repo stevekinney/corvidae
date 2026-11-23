@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2598",
+  "branch": "steve/cor-2598-composable",
+  "checkedAt": "fec60209ad9d448bfb91ae3ca82ddcc019035712",
+  "briefVersion": "7b9e8a74db34",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Server regression: synchronous and asynchronous factories start once and serve repeated requests."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover base, encoded path, request properties, adjacent fallback and service 404."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Server regression covers external and internal admission, forwarded values and cancellation."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Server regression verifies collisions including a valid static asset before startup."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "Unit lifecycle and failed startup pass; real page-publication browser suite pending coordinator execution."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover host stream release after revocation and listener-owned WebSocket upgrade."
+    },
+    {
+      "id": "AC7",
+      "status": "not-met",
+      "evidence": "Installed starter mount and dependency checks added; browser-backed clean-consumer suite pending coordinator execution."
+    }
+  ]
+}
