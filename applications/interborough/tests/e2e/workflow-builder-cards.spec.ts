@@ -19,6 +19,7 @@ import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
+import { readBoxes } from './read-boxes.ts';
 import { openJsonTab, openTab } from './workflow-support.ts';
 
 const BUILDER = WORKFLOW_COPY.builder;
@@ -460,25 +461,21 @@ test.describe('the workflow builder’s read-only step cards', () => {
     const change = root.getByRole('button', { name: BUILDER.idChange });
     await expect(change).toBeFocused();
 
-    const tabs = root.locator('.weft-workflow-builder__tabs');
-    const desktopTablist = root.locator('[role="tablist"]');
-    const desktopTabs = await desktopTablist.boundingBox();
-    const desktopRow = await tabs.boundingBox();
-    expect(Math.round((desktopTabs?.x ?? 0) + (desktopTabs?.width ?? 0))).toBe(
-      Math.round((desktopRow?.x ?? 0) + (desktopRow?.width ?? 0)),
+    const tabRow = root.locator('.weft-workflow-builder__tabs');
+    const tabList = root.getByRole('tablist');
+    const desktop = await readBoxes(page, { tabRow, tabList });
+    expect(Math.round(desktop.tabList.x + desktop.tabList.width)).toBe(
+      Math.round(desktop.tabRow.x + desktop.tabRow.width),
     );
 
     await page.setViewportSize({ width: 375, height: 900 });
     const status = root.locator('.weft-workflow-builder__read-only');
     await expect(status).toHaveText(BUILDER.readOnly);
-    const phoneTablist = await desktopTablist.boundingBox();
-    const phoneStatus = await status.boundingBox();
-    expect(phoneTablist).not.toBeNull();
-    expect(phoneStatus).not.toBeNull();
-    const tabsCenter = (phoneTablist?.y ?? 0) + (phoneTablist?.height ?? 0) / 2;
-    const statusCenter = (phoneStatus?.y ?? 0) + (phoneStatus?.height ?? 0) / 2;
+    const phone = await readBoxes(page, { tabList, status });
+    const tabsCenter = phone.tabList.y + phone.tabList.height / 2;
+    const statusCenter = phone.status.y + phone.status.height / 2;
     expect(Math.abs(tabsCenter - statusCenter)).toBeLessThanOrEqual(1);
-    expect((phoneTablist?.x ?? 0) + (phoneTablist?.width ?? 0)).toBeLessThan(phoneStatus?.x ?? 0);
+    expect(phone.tabList.x + phone.tabList.width).toBeLessThan(phone.status.x);
     await expect(root.getByRole('link', { name: /Back to (the workflow|Workflows)/ })).toHaveCount(
       0,
     );
