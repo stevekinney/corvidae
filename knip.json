@@ -79,7 +79,8 @@
         "**/*.slow.test.ts",
         "**/*.bench.ts",
         "src/authentication/credential-stores.test-d.ts",
-        "src/client/__fixtures__/remote-client-entry.ts"
+        "src/client/__fixtures__/remote-client-entry.ts",
+        "src/__fixtures__/probe-client/{fetch,portable}-operation-client.generated.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -90,6 +91,7 @@
         "!src/**/*.bench.ts!",
         "!src/authentication/credential-stores.test-d.ts!",
         "!src/client/__fixtures__/remote-client-entry.ts!",
+        "!src/__fixtures__/probe-client/{fetch,portable}-operation-client.generated.ts!",
         "!src/{scope-vocabulary,transport-conformance-framed,transport-conformance-http}.test-support.ts!"
       ]
     },
