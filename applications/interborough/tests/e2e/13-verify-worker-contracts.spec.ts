@@ -17,6 +17,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator reads a worker’s contract verification status', async ({ page, checkA11y }) => {
@@ -67,7 +68,7 @@ test('operator reads a worker’s contract verification status', async ({ page, 
   await checkA11y('workers — contract verification');
 });
 
-test('worker verification command Copy targets fit beside their labels at tablet width', async ({
+test('/health/workers: verification command Copy targets fit beside their labels at tablet width', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 768, height: 900 });
@@ -76,6 +77,14 @@ test('worker verification command Copy targets fit beside their labels at tablet
   await expect(
     panel.getByRole('button', { name: 'Copy weft worker verify command' }),
   ).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/health/workers',
+    state: 'verification commands',
+    source: '13-verify-worker-contracts.spec.ts',
+    ready: async () => {
+      await panel.getByRole('heading').scrollIntoViewIfNeeded();
+    },
+  });
 
   const geometry = await panel.evaluate((section) => {
     const rows = section.querySelectorAll('.weft-verification-commands__row');
