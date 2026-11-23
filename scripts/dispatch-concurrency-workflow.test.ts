@@ -46,6 +46,23 @@ describe('workflow_dispatch concurrency', () => {
     expect(rootScript).toContain('verify-curated-build.ts');
   });
 
+  test('targeted Playground unit files run in isolated Bun scopes', () => {
+    const text = workflow('targeted-checks.yml');
+    const job = text.slice(text.indexOf('\n  unit:\n'));
+    const start = job.indexOf('if [ "$UNIT_WORKSPACE" = applications/playground ]; then');
+    expect(start).toBeGreaterThan(-1);
+    const end = job.indexOf('\n          fi', start);
+    expect(end).toBeGreaterThan(start);
+    const lane = job.slice(start, end);
+    expect(lane).toContain('read -r -a playground_conditions <<< "$conditions"');
+    expect(lane).toContain('read -r -a playground_paths <<< "$UNIT_PATHS"');
+    expect(lane).toContain('playground_options+=("$config")');
+    expect(lane).toContain(
+      'bun test --isolate "${playground_options[@]}" "${playground_conditions[@]}" "${playground_paths[@]}"',
+    );
+    expect(job.slice(end)).toContain('bun test $config $conditions $UNIT_PATHS');
+  });
+
   // Two faults reached main because a targeted run did no type-check.
   test('targeted-checks.yml lints and type-checks the workspaces changed against main', () => {
     const text = workflow('targeted-checks.yml');

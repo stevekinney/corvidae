@@ -250,6 +250,16 @@ jobs:
           if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then
             conditions=""
           fi
+          # Playground startup-failure tests leave their server instance unready. Give each
+          # selected file its own module state, as the normal playground runner does.
+          if [ "$UNIT_WORKSPACE" = applications/playground ]; then
+            read -r -a playground_conditions <<< "$conditions"
+            read -r -a playground_paths <<< "$UNIT_PATHS"
+            playground_options=()
+            if [ -n "$config" ]; then playground_options+=("$config"); fi
+            bun test --isolate "${playground_options[@]}" "${playground_conditions[@]}" "${playground_paths[@]}"
+            exit
+          fi
           bun test $config $conditions $UNIT_PATHS
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
