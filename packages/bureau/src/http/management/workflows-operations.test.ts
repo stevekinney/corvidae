@@ -685,9 +685,12 @@ describe('results', () => {
     const stub = spyOn(engine, 'list').mockImplementation(async (filter, options) => {
       if (filter?.type !== 'digest') return list(filter, options);
       const offset = filter.offset ?? 0;
+      const limit = filter.limit ?? 100;
       return {
-        items: retained.slice(offset, Math.min(total, offset + (filter.limit ?? 100))),
+        items: retained.slice(offset, Math.min(total, offset + limit)),
         total,
+        offset,
+        limit,
       };
     });
     try {
