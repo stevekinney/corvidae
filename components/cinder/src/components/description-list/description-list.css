@@ -40,6 +40,10 @@
     gap: var(--cinder-space-2);
   }
 
+  .cinder-description-list__row[data-cinder-linked] > dd {
+    flex-wrap: nowrap;
+  }
+
   /* A value can be any string a record holds (an identifier, an address, a chat's title), and one
    * unbroken word of it must break inside the list rather than widen every variant's columns. */
   .cinder-description-list__definition {
@@ -393,19 +397,13 @@
   .cinder-description-list__identifier-group {
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
   }
 
   .cinder-description-list__identifier {
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-default);
-  }
-
-  /* The copy action is a quiet glyph here, not a bordered button. */
-  .cinder-description-list__identifier-group .cinder-copy-button {
-    border-color: transparent;
-    padding: var(--cinder-space-1);
   }
 
   .cinder-description-list__tags {
