@@ -307,11 +307,12 @@ describe("server application", () => {
       starts++;
       return () => new Response();
     };
-    for (const mounts of [
+    const cases: Array<Record<string, typeof factory>> = [
       { "/api": factory, "/api/nested": factory },
       { "/_remote": factory },
       { "/_assets": factory },
-    ]) {
+    ];
+    for (const mounts of cases) {
       expect(
         await throwingRejectionOf(
           createApplication({
@@ -491,6 +492,11 @@ describe("server application", () => {
         ),
       ).toBe("/second");
       expect(starts).toBe(1);
+      const adjacent = await app.fetch(
+        new Request("http://example.test/app/apix"),
+      );
+      expect(adjacent.status).toBe(404);
+      await adjacent.text();
       expect(
         await textOf(app.fetch(new Request("http://example.test/app/async"))),
       ).toBe("1");
