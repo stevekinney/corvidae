@@ -130,9 +130,7 @@ for (const mounted of [false, true]) {
       undefined,
       { execute: [client.allowInsecureRequests, client.enableNonRepudiationChecks] },
     );
-    const directory = mkdtempSync(
-      join(process.env['CREDENTIALS_TEST_DIRECTORY'] ?? tmpdir(), 'credentials-'),
-    );
+    const directory = mkdtempSync(join(tmpdir(), 'credentials-'));
     using cleanup = { [Symbol.dispose]: () => rmSync(directory, { recursive: true, force: true }) };
     void cleanup;
     let storage = new BunSQLiteStorage(join(directory, 'sessions.sqlite'));
