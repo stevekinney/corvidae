@@ -26,6 +26,7 @@ By default the button is the Copy icon, the one copy glyph used across the inter
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"default"` \| `"inline"` | no | — | Use the borderless, text-sized face for a copy control that follows a value. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-copy-button`. |
 | `confirmDuration` | `number` | no | — | Duration in ms to show the confirmation state. Default 1500. |
 | `copiedLabel` | `string` | no | — | Accessible label for the copied state — what `aria-live="polite"` announces when the copy succeeds. Defaults to "Copied". Override this when `label` is customized so the live-region announcement reflects what just happened (e.g. label="Copy code" + copiedLabel="Code copied"). |

@@ -4,7 +4,7 @@
 
   type FixtureProps = Omit<
     DataTableProps<DataTableRow>,
-    'cell' | 'rowMessage' | 'footer' | 'hasRowMessage'
+    'cell' | 'rowMessage' | 'footer' | 'hasRowMessage' | 'fit'
   > & {
     /** Draws every cell through the `cell` snippet, with a checkbox in the `on` column. */
     withCell?: boolean;

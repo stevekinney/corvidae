@@ -6,7 +6,8 @@
   "tags": ["table", "row"],
   "useWhen": [
     "Grouping table-cell or table-header-cell children into a single horizontal record.",
-    "Wiring per-row selection by passing the selection prop in a selectable table."
+    "Wiring per-row selection by passing the selection prop in a selectable table.",
+    "Marking the single row that represents the current record."
   ],
   "avoidWhen": [
     { "reason": "Standing alone outside a table — it requires the table section context." }

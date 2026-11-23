@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { requiredInstance, setupHappyDom, trackTimers } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { DataTableSelectionMode as RootDataTableSelectionMode } from '../../index.ts';
-import type { DataTableRow } from './data-table.types.ts';
+import type { DataTableProps, DataTableRow } from './data-table.types.ts';
 import type { DataTableSelectionMode } from './index.ts';
 
 setupHappyDom();
@@ -34,6 +34,14 @@ const rowsWithIds = [
   { id: 'grace', name: 'Grace Hopper', role: 'Computer Scientist', commits: 98 },
   { id: 'alan', name: 'Alan Turing', role: 'Cryptanalyst', commits: 76 },
 ];
+
+// DataTable preserves Table's layout constraints on its public props.
+const fit: DataTableProps = { columns, rows, fit: true, selectable: 'multiple' };
+// @ts-expect-error Fit layout cannot resize columns.
+const resizableFit: DataTableProps = { columns, rows, fit: true, resizable: true };
+// @ts-expect-error Fit layout cannot virtualize rows.
+const virtualizedFit: DataTableProps = { columns, rows, fit: true, virtualized: true };
+void [fit, resizableFit, virtualizedFit];
 
 function makeRows(count: number) {
   return Array.from({ length: count }, (_, index) => ({
