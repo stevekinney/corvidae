@@ -564,6 +564,47 @@ describe('ErrorState neutral tone', () => {
     expect(glyph.get('margin-block-start')).toContain('1lh');
   });
 
+  test('a row’s glyph and words are one start-aligned group the row centres with its action (COR-2648)', async () => {
+    const { container } = render(ErrorState, {
+      props: { variant: 'row', title: 'Failed', description: 'Nope.', onRetry: () => {} },
+    });
+    const lead = container.querySelector('.cinder-error-state-lead');
+    expect(lead?.querySelector('.cinder-error-state-glyph')).not.toBeNull();
+    expect(lead?.querySelector('.cinder-error-state-title')).not.toBeNull();
+    // The action is the group's sibling, not inside it.
+    expect(lead?.querySelector('.cinder-error-state-action')).toBeNull();
+    expect(
+      lead?.parentElement?.querySelector(':scope > .cinder-error-state-action'),
+    ).not.toBeNull();
+
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const group = declarationsFor(css, '.cinder-error-state-lead');
+    expect(group.get('display')).toBe('flex');
+    expect(group.get('align-items')).toBe('flex-start');
+    // The body centres the group and the action on the row's one centre line.
+    expect(
+      declarationsFor(
+        css,
+        ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-body",
+      ).get('align-items'),
+    ).toBe('center');
+  });
+
+  test('a title-only row’s title is its last child and has no trailing margin (COR-2648)', async () => {
+    const { container } = render(ErrorState, {
+      props: { variant: 'row', title: 'Failed', description: '', onRetry: () => {} },
+    });
+    const title = container.querySelector('.cinder-error-state-title');
+    expect(title?.matches(':last-child')).toBe(true);
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    expect(
+      declarationsFor(
+        css,
+        ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title:last-child",
+      ).get('margin-block-end'),
+    ).toBe('0');
+  });
+
   test('announce raises a neutral state to an alert', () => {
     const { container, queryByRole } = render(ErrorState, {
       props: { title: 'Gone', description: 'Deleted.', tone: 'neutral', announce: true },

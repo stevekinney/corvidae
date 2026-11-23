@@ -312,12 +312,23 @@
     color: var(--cinder-status-warning-text);
   }
 
-  .cinder-error-state-text {
+  /* The row's glyph and words: one start-aligned group, so the row's centring (the body's
+   * align-items) places the group and the retry on one centre line, and the glyph stays on the
+   * title's first line however many lines the words take. */
+  .cinder-error-state-lead {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
     flex: 1 1 12rem;
     min-inline-size: 0;
     font-size: var(--cinder-text-base);
     line-height: var(--cinder-leading-snug);
     color: var(--cinder-text-default);
+  }
+
+  .cinder-error-state-text {
+    flex: 1 1 auto;
+    min-inline-size: 0;
   }
 
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title,
@@ -337,6 +348,12 @@
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title {
     margin-block-end: var(--cinder-space-1);
     font-weight: var(--cinder-font-semibold);
+  }
+
+  /* A title that is the whole sentence has nothing under it to space from, so the gap would only
+   * push the title and glyph above the action's centre line. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title:last-child {
+    margin-block-end: 0;
   }
 
   /* A bordered row is a quiet hairline in its tone's border token, never the centred box's grey
