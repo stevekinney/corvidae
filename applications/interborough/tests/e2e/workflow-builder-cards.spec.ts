@@ -439,6 +439,44 @@ test.describe('the workflow builder’s nested and missing states', () => {
 });
 
 test.describe('the workflow builder’s read-only step cards', () => {
+  test('workflow builder cards: reset stays reachable on desktop and the phone status shares its tab row', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/workflows/new');
+    await expect(page.locator('[data-view="workflows"]')).toHaveAttribute('data-state', 'ready');
+    const root = page.locator('[data-page="workflow-creator"]');
+    await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('Morning briefing');
+    await root.getByRole('button', { name: BUILDER.idChange }).click();
+    await root.getByLabel(BUILDER.idLabel, { exact: true }).fill('custom-briefing');
+    const reset = root.getByRole('button', { name: BUILDER.resetId });
+    await expect(reset).toBeVisible();
+    await reset.click();
+    const change = root.getByRole('button', { name: BUILDER.idChange });
+    await expect(change).toBeFocused();
+
+    const tabs = root.locator('.weft-workflow-builder__tabs');
+    const desktopTablist = root.locator('[role="tablist"]');
+    const desktopTabs = await desktopTablist.boundingBox();
+    const desktopRow = await tabs.boundingBox();
+    expect(Math.round((desktopTabs?.x ?? 0) + (desktopTabs?.width ?? 0))).toBe(
+      Math.round((desktopRow?.x ?? 0) + (desktopRow?.width ?? 0)),
+    );
+
+    await page.setViewportSize({ width: 375, height: 900 });
+    const phoneTablist = await desktopTablist.boundingBox();
+    const status = root.locator('.weft-workflow-builder__read-only');
+    await expect(status).toHaveText(BUILDER.readOnly);
+    const phoneStatus = await status.boundingBox();
+    expect(Math.round(phoneTablist?.y ?? 0)).toBe(Math.round(phoneStatus?.y ?? 0));
+    expect((phoneTablist?.x ?? 0) + (phoneTablist?.width ?? 0)).toBeLessThan(
+      phoneStatus?.x ?? 0,
+    );
+    await expect(root.getByRole('link', { name: /Back to (the workflow|Workflows)/ })).toHaveCount(
+      0,
+    );
+  });
+
   test('workflow builder cards: read-only below 640 pixels, at 375 pixels', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 900 });
     await openWith(page, EVERY_KIND);

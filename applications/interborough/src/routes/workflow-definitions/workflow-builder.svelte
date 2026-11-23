@@ -175,6 +175,7 @@
 
   /** The footer's sentence, which a disabled Builder tab points at as its reason. */
   const READ_BACK_ID = 'workflow-builder-read-back';
+  const ID_CHANGE_ID = 'workflow-builder-id-change';
   /** A new schedule's cadence: weekdays at 9:00 AM (row 65d). */
   const DEFAULT_SCHEDULE_SPEC = '0 9 * * 1-5';
   /** A fire that comes while a run is going is skipped, unless the file says otherwise. */
@@ -521,9 +522,11 @@
     write(mode === 'create' ? setTitleDerivingName(text, next) : setTitle(text, next));
   }
 
-  function resetId(): void {
+  async function resetId(): Promise<void> {
     write(setName(text, derivedId));
     idOpen = false;
+    await tick();
+    document.getElementById(ID_CHANGE_ID)?.focus();
   }
 
   /** The agents a step's select offers: the catalog, and the one the file names when it is not there. */
@@ -719,6 +722,7 @@
                 <span class="weft-workflow-builder__id-label">{copy.idLabel}</span>
                 <code class="weft-workflow-builder__id">{view.name}</code>
                 <Button
+                  id={ID_CHANGE_ID}
                   variant="ghost-accent"
                   size="sm"
                   onclick={() => (idOpen = true)}
@@ -999,15 +1003,22 @@
   }
 
   .weft-workflow-builder__tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--cinder-space-2);
     align-items: center;
+    min-width: 0;
+  }
+
+  .weft-workflow-builder__tabs :global(.cinder-tab-list) {
+    inline-size: 100%;
+    min-inline-size: 0;
   }
 
   .weft-workflow-builder__read-only {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
+    white-space: nowrap;
   }
 
   /* A read-only builder offers nothing to type: its fields show their values, never a prompt. */

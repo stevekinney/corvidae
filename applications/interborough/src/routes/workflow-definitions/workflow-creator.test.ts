@@ -462,6 +462,7 @@ describe('the builder', () => {
     await waitFor(() =>
       expect(container.querySelector('[data-testid="workflow-builder-id-line"]')).toBeTruthy(),
     );
+    expect(document.activeElement?.id).toBe('workflow-builder-id-change');
 
     await openJson(container);
     expect(JSON.parse(textarea(container).value)).toMatchObject({
