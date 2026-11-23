@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2648",
+  "branch": "chef/cor-2648-error-state-glyph",
+  "checkedAt": "4daea0bb3a51f8ffae713c00b672e611ba75a3a7",
+  "briefVersion": "ff0daf09bc52",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Implemented (glyph and words grouped in .cinder-error-state-lead, body centres group and action); the measured design-review capture is the coordinator's and has not run"
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Implemented (glyph stays flex-start in the group); before/after capture of the /reviews fault row, run-hooks C3-16 and Home activity band is the coordinator's and has not run"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "error-state.test.ts: a row's glyph and words are one start-aligned group (COR-2648); focused checks pass"
+    }
+  ]
+}
