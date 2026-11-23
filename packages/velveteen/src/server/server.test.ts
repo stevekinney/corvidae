@@ -346,7 +346,7 @@ describe("server application", () => {
     };
     for (const route of [
       { id: "/api/item" },
-      { id: "/api/endpoint", endpoint: "+server.ts" },
+      { id: "/api/endpoint", endpoint: true as const },
       { id: "/[...path]" },
     ]) {
       const conflictingRegistry = registry([]);
