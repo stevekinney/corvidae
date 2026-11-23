@@ -415,7 +415,6 @@
   description={copy.workflowCard.replaceInput.description}
   cancelLabel={copy.workflowCard.replaceInput.cancel}
   confirmLabel={copy.workflowCard.replaceInput.confirm}
-  destructive
   onCancel={() => (pendingWorkflow = null)}
   onConfirm={() => {
     if (pendingWorkflow === null) return;

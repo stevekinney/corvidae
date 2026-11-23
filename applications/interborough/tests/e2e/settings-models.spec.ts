@@ -711,7 +711,8 @@ test.describe('Settings › Models, connect dialogs', () => {
     await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
     await dialog.getByRole('button', { name: copy.connect }).click();
 
-    await expect(dialog).toContainText('baseURL must be a URL.');
+    await expect(dialog.getByText('must be a URL.', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('baseURL must be a URL.', { exact: true })).toHaveCount(0);
     await expect(dialog.getByLabel(/base ?url/i)).toHaveAttribute('aria-invalid', 'true');
     await expect(dialog.getByTestId('provider-connect-success')).toHaveCount(0);
     await checkA11y('settings models, connect with a refused setting, at 1280px');

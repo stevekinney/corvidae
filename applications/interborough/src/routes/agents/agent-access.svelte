@@ -656,14 +656,16 @@
     {#if overrides !== undefined}
       <AgentPluginNote {plugin} title={pluginTitle} mode="editable" kept={overrides.keptOwn} />
       {#if overrides.keptOwn.includes('approvals') && !form.approvalsReplaced}
-        <Button
-          variant="secondary"
-          size="sm"
-          data-changes
-          onclick={() => {
-            if (form !== undefined) replaceAsks(form);
-          }}>{AGENT_PAGE_COPY.plugin.replaceAsks}</Button
-        >
+        <div class="ib-agent-replace-asks">
+          <Button
+            variant="secondary"
+            size="sm"
+            data-changes
+            onclick={() => {
+              if (form !== undefined) replaceAsks(form);
+            }}>{AGENT_PAGE_COPY.plugin.replaceAsks}</Button
+          >
+        </div>
       {/if}
     {:else if plugin !== null}
       <AgentPluginNote
