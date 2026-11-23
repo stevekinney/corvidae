@@ -179,6 +179,21 @@
     display: contents;
   }
 
+  /* "Add a field" is compact at the start of the column on every page, never stretched to the
+     list's width (row 65s). */
+  .cinder-jse-property-list__add-property-reference > .cinder-button {
+    align-self: flex-start;
+  }
+
+  /* The table never grows past its container (row 65s): Table's `min-inline-size: max-content`
+     would let a long description push a row's actions past the column, so it is dropped here, and
+     the selector outweighs Table's `.cinder-table-scroll > .cinder-table` whichever loads first. */
+  .cinder-table-scroll > .cinder-table.cinder-jse-property-table,
+  .cinder-table.cinder-jse-property-table {
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+
   .cinder-jse-enum-editor {
     display: grid;
     gap: var(--cinder-space-3);
@@ -228,18 +243,94 @@
     color: var(--cinder-text-subtle);
   }
 
+  /* The description is the one column that wraps: it takes the room the others leave, so a long
+     one grows the row downward, never past the column (row 65s). */
+  .cinder-table .cinder-jse-property-row__description {
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* Type, Required and the actions are as narrow as what they hold. */
+  .cinder-jse-property-table__type-heading,
+  .cinder-jse-property-row__type,
+  .cinder-jse-property-table__required-heading,
+  .cinder-jse-property-row__required,
+  .cinder-jse-property-table__actions-heading,
   .cinder-jse-property-row__actions {
-    display: flex;
-    flex-wrap: wrap;
+    inline-size: 1%;
+    white-space: nowrap;
+  }
+
+  .cinder-jse-property-row__actions {
+    text-align: end;
+  }
+
+  .cinder-jse-property-row__inline-actions {
+    display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    text-align: end;
+  }
+
+  /* The one icon menu that holds a row's actions in a narrow container, and the type and
+     description under the field's name there: both wait for the container to be narrow. */
+  .cinder-jse-property-row__menu,
+  .cinder-jse-property-row__key-meta {
+    display: none;
+  }
+
+  /* The table measures its own container, not the viewport, so a schema in a narrow column of a
+     wide page fits the same way as one on a phone. */
+  .cinder-jse-property-list {
+    container-type: inline-size;
+    container-name: cinder-jse-properties;
+  }
+
+  /* Narrow (row 65s): every row fits its box. The type and the description move under the
+     field's name, starting where the name starts, and move up, move down and delete go into one
+     icon menu, so Field keeps the room its names need: a name breaks only when it cannot fit its
+     line at all, and the table never scrolls sideways to reach a row's own actions. */
+  @container cinder-jse-properties (max-width: 36rem) {
+    .cinder-jse-property-table__type-heading,
+    .cinder-jse-property-row__type,
+    .cinder-jse-property-table__description-heading,
+    .cinder-jse-property-row__description,
+    .cinder-jse-property-row__inline-actions {
+      display: none;
+    }
+
+    .cinder-jse-property-row__menu {
+      display: inline-flex;
+    }
+
+    .cinder-jse-property-row__key {
+      white-space: normal;
+      overflow-wrap: break-word;
+    }
+
+    .cinder-jse-property-row__key-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cinder-space-0-5) var(--cinder-space-2);
+      margin-block-start: var(--cinder-space-0-5);
+      /* Past the chevron and its gap, under the name's first letter. */
+      padding-inline-start: calc(0.875rem + var(--cinder-space-2));
+      font-size: var(--cinder-text-xs);
+      font-weight: var(--cinder-font-normal);
+      color: var(--cinder-text-subtle);
+    }
+
+    .cinder-jse-property-row__key-type {
+      font-family: var(--cinder-font-mono);
+    }
   }
 
   /* The chevron + name form a single clickable disclosure trigger. Action
    buttons live in their own cell so they keep the single-baseline layout
    without nesting interactive elements inside the trigger. */
   .cinder-jse-property-row__trigger {
+    --_cinder-jse-property-target: 1.5rem;
+
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-2);
@@ -251,6 +342,20 @@
     font-family: inherit;
     color: inherit;
     text-align: left;
+  }
+
+  /* Give the disclosure room to press without adding space to the field's line. */
+  .cinder-jse-property-row__trigger::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--_cinder-jse-property-target)) / 2));
+    inset-inline: min(0px, calc((100% - var(--_cinder-jse-property-target)) / 2));
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-jse-property-row__trigger {
+      --_cinder-jse-property-target: var(--cinder-touch-target-min);
+    }
   }
 
   .cinder-jse-property-row__trigger:focus-visible {

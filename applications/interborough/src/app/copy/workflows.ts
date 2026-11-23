@@ -660,6 +660,9 @@ export const WORKFLOW_COPY = {
     retryTriggers: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
+    /** Under the When block of a file that names its schedule, on Edit (row 65q). */
+    scheduleDefinedNote: (name: string): string =>
+      `This file defines the ${name} schedule, so saving changes that schedule. You can also start the workflow yourself.`,
     signalNameLabel: 'Signal name',
     /** Under the signal a "When a signal arrives" start waits for (board PageWorkflowBuilder, "Signal start"). */
     signalNameDescription:
@@ -670,7 +673,10 @@ export const WORKFLOW_COPY = {
     stepsUnreadable:
       'This file’s steps are not a list the builder can read. Fix them in the JSON tab.',
     notAnObject: 'This is not an object',
-    otherStepNote: 'The builder cannot edit this step. Change it in the JSON tab.',
+    /** A step of a kind the builder can't draw: read-only, kept as written (row 66a). */
+    otherStepLine: 'The builder can’t show this kind of step',
+    otherStepNote: 'It is kept exactly as written and saved unchanged.',
+    editInJson: 'Edit in JSON',
     /**
      * What each card is, at its top beside its number. A card for an activity reads the activity's
      * own title; `activity` is what it reads before the catalog says.
@@ -840,6 +846,8 @@ export const WORKFLOW_COPY = {
       fillIn: (position: number): string =>
         `Fill in step ${String(position)} to see what this workflow does.`,
       manual: 'Run it when you press Start run',
+      /** After a schedule's or a plugin trigger's sentence, while the file is not paused (row 65j). */
+      startItYourself: 'You can also start it yourself.',
       signal: (name: string): string => `Each time ${name} is sent`,
       anySignal: 'Each time a signal is sent',
       contributed: (id: string): string => `When ${id} fires`,
@@ -894,6 +902,8 @@ export const WORKFLOW_COPY = {
     json: {
       /** The footer's sentence, once. The Builder tab's reason is the same sentence. */
       fixLine: (line: number): string => `Fix line ${String(line)} to return to the builder.`,
+      /** The toolbar's status for JSON with a syntax error. */
+      invalid: 'Invalid JSON',
       /** The toolbar's status for JSON that parses but is not a JSON object. */
       notWorkflow: 'Valid JSON, not a valid workflow',
       /** Under the line a value that is not an object starts on. */
@@ -1078,8 +1088,9 @@ export const WORKFLOW_COPY = {
     /** The heading: the workflow's title, or its identifier for a file with none. */
     heading: (name: string): string => `Edit ${name}`,
     textLabel: 'Workflow file',
+    /** The note under Edit's JSON tab (row 65j). */
     textDescription:
-      'The file’s JSON. Its name is the file’s identifier, so it is not sent when you save.',
+      'Every field the builder writes is here, including the schedule trigger, each title and the Input and Output schemas. Keys the builder doesn’t show are saved exactly as written.',
     saveAction: 'Save',
     /** The primary button while the file is written; the whole form is read-only meanwhile. */
     savingAction: 'Saving…',
