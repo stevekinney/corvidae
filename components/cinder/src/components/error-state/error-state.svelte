@@ -75,29 +75,32 @@
   <!-- A failure is announced as an alert; a neutral state (nothing failed) is a plain group. -->
   <div class="cinder-error-state-body" {role} aria-labelledby={titleId}>
     {#if row}
-      <span class="cinder-error-state-glyph" aria-hidden="true">
-        {#if icon}
-          {@render icon()}
-        {:else if safeTone === 'neutral'}
-          <Search />
-        {:else}
-          <TriangleAlert />
-        {/if}
-      </span>
-      <div class="cinder-error-state-text">
-        <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
-          {title}
-        </svelte:element>
-        <!-- A row whose title is its whole sentence passes no description, and draws no empty line. -->
-        {#if description !== ''}
-          <p class="cinder-error-state-description">{description}</p>
-        {/if}
-        {#if remediation}
-          <p class="cinder-error-state-remediation">{remediation}</p>
-        {/if}
-        {#if retryStatus}
-          <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
-        {/if}
+      <!-- The glyph and the words are one start-aligned group, so the row centres the group, not the glyph. -->
+      <div class="cinder-error-state-lead">
+        <span class="cinder-error-state-glyph" aria-hidden="true">
+          {#if icon}
+            {@render icon()}
+          {:else if safeTone === 'neutral'}
+            <Search />
+          {:else}
+            <TriangleAlert />
+          {/if}
+        </span>
+        <div class="cinder-error-state-text">
+          <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
+            {title}
+          </svelte:element>
+          <!-- A row whose title is its whole sentence passes no description, and draws no empty line. -->
+          {#if description !== ''}
+            <p class="cinder-error-state-description">{description}</p>
+          {/if}
+          {#if remediation}
+            <p class="cinder-error-state-remediation">{remediation}</p>
+          {/if}
+          {#if retryStatus}
+            <p class="cinder-error-state-status" aria-live="off">{retryStatus}</p>
+          {/if}
+        </div>
       </div>
       {#if onRetry || secondaryAction}
         <div class="cinder-error-state-action">
