@@ -151,6 +151,17 @@ export async function openHowItRan(page: Page): Promise<Locator> {
   return section;
 }
 
+/** Opens the update disclosure without depending on its position during timeline layout changes. */
+export async function openSendUpdate(root: Locator): Promise<Locator> {
+  const trigger = root.getByRole('button', { name: 'Send an update' });
+  await expect(trigger).toBeEnabled();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await trigger.focus();
+  await trigger.press('Enter');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  return trigger;
+}
+
 /** Opens the tab `name` of the tab bar in `root`, from the select at the phone width. */
 export async function openTab(root: Locator, name: string): Promise<void> {
   if (!(await tabsAreCollapsed(root))) {

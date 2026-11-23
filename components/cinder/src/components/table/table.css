@@ -889,4 +889,17 @@
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
+
+  /* The row itself carries the tint in either the table or its stacked cards. */
+  .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]),
+  .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]):hover {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]) {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
 }

@@ -22,6 +22,7 @@
     label,
     copiedLabel,
     textVisible = false,
+    appearance = 'default',
     class: className,
     children,
     confirmation,
@@ -83,6 +84,7 @@
     {...rest}
     type="button"
     data-cinder-copied={copied || undefined}
+    data-cinder-appearance={appearance === 'inline' ? appearance : undefined}
     aria-label={accessibleName}
     data-cinder-icon-only={textFace ? undefined : ''}
     onclick={handleClick}

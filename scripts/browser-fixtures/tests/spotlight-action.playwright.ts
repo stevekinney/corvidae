@@ -48,3 +48,25 @@ test.describe('Spotlight action', () => {
     expect(long.action.y).toBeGreaterThanOrEqual(long.value.y + long.value.height - 1);
   });
 });
+
+test('a status badge fits the first line of a snippet headline on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto(`${fixtureRoute('spotlight')}&headline=1`, { waitUntil: 'load' });
+  const value = page.getByTestId('spotlight-headline').locator('.cinder-spotlight__value');
+  await expect(value.locator('.cinder-badge')).toHaveText('Failed');
+  const measured = await value.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const badge = node.querySelector('.cinder-badge')!.getBoundingClientRect();
+    return {
+      top: rect.top,
+      firstLineBottom: rect.top + Number.parseFloat(getComputedStyle(node).lineHeight),
+      badgeTop: badge.top,
+      badgeBottom: badge.bottom,
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+    };
+  });
+  expect(measured.badgeTop).toBeGreaterThanOrEqual(measured.top);
+  expect(measured.badgeBottom).toBeLessThanOrEqual(measured.firstLineBottom);
+  expect(measured.scrollWidth).toBeLessThanOrEqual(measured.clientWidth);
+});
