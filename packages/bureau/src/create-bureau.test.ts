@@ -21928,10 +21928,11 @@ describe('AB-390 — outbox claim lease', () => {
       // durable until a new host recovers it.
       const pending = sessionStore.outbox.pending.bind(sessionStore.outbox);
       let postCutoffDrainStarted = false;
-      (sessionStore.outbox as { pending: typeof sessionStore.outbox.pending }).pending = async () => {
-        postCutoffDrainStarted = true;
-        return pending();
-      };
+      (sessionStore.outbox as { pending: typeof sessionStore.outbox.pending }).pending =
+        async () => {
+          postCutoffDrainStarted = true;
+          return pending();
+        };
       const session = createAgentSession({
         id: 'cor-2639-post-cutoff-session',
         agentName: 'triage',
