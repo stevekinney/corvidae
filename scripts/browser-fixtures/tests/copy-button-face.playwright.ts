@@ -77,3 +77,20 @@ test('a stretched 32px text face gives its label enough real side room without m
   expect(geometry.sideRoom / geometry.verticalRoom).toBeGreaterThanOrEqual(1.5);
   expect(Math.abs(geometry.glyphCenter - geometry.labelCenter)).toBeLessThanOrEqual(0.5);
 });
+
+test('the ColorPicker format buttons keep their unpadded text faces', async ({ page }) => {
+  await page.goto(fixtureRoute('color-picker'), { waitUntil: 'load' });
+  const formats = page.getByRole('group', { name: 'Copy color formats' }).getByRole('button');
+  await expect(formats).toHaveCount(3);
+  const padding = await formats.evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const { paddingInlineStart, paddingInlineEnd } = getComputedStyle(button);
+      return [paddingInlineStart, paddingInlineEnd];
+    }),
+  );
+  expect(padding).toEqual([
+    ['0px', '0px'],
+    ['0px', '0px'],
+    ['0px', '0px'],
+  ]);
+});

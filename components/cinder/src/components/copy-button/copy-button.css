@@ -27,7 +27,8 @@
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .cinder-copy-button:not([data-cinder-icon-only]) {
+  /* Keep the base specificity so composed controls can still set their own padding. */
+  .cinder-copy-button:where(:not([data-cinder-icon-only])) {
     padding-inline: var(--cinder-space-3);
   }
 

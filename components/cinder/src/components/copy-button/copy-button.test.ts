@@ -216,7 +216,7 @@ describe('CopyButton', () => {
       /\.cinder-copy-button \{[^}]*padding: var\(--cinder-space-1\) var\(--cinder-space-2\);/,
     );
     expect(css).toMatch(
-      /\.cinder-copy-button:not\(\[data-cinder-icon-only\]\) \{[^}]*padding-inline: var\(--cinder-space-3\);/,
+      /\.cinder-copy-button:where\(:not\(\[data-cinder-icon-only\]\)\) \{[^}]*padding-inline: var\(--cinder-space-3\);/,
     );
     expect(css).not.toMatch(/\.cinder-copy-button\[data-cinder-icon-only\] \{[^}]*padding/);
     // A coarse pointer reaches it through a pseudo-element that takes no layout space.
