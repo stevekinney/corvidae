@@ -250,6 +250,13 @@ jobs:
           if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then
             conditions=""
           fi
+          # The playground's startup-failure tests leave `playground-server.ts`'s module-level
+          # readiness false, so its files run in fresh module registries, as its `test` runner
+          # isolates them (COR-2649).
+          if [ "$UNIT_WORKSPACE" = applications/playground ]; then
+            bun test --isolate $config $conditions $UNIT_PATHS
+            exit
+          fi
           bun test $config $conditions $UNIT_PATHS
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
