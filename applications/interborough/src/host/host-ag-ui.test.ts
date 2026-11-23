@@ -158,6 +158,9 @@ describe('the tool-runner approval over the mount', () => {
     const host = await start();
     const first = await streamOf(host, 'demo:tool-runner', body('thread-refund'));
     expect(first).toContain('"type":"interrupt"');
+    expect(first).toContain('Refund order order-1001 for 4200 minor units (USD)');
+    expect(first).toContain('(mode: always)');
+    expect(first).not.toContain('provider-pending');
 
     const approved = await streamOf(
       host,
@@ -169,7 +172,8 @@ describe('the tool-runner approval over the mount', () => {
         ],
       }),
     );
-    expect(approved).toContain('Order order-1001 was refunded.');
+    expect(approved).toContain('The refund for order order-1001 is pending with the processor.');
+    expect(approved).toContain('provider-pending');
     expect(approved).toContain('"type":"success"');
 
     // The next turn's calls are its own: a call identifier names one call in a conversation.

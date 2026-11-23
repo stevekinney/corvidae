@@ -36,16 +36,27 @@ export function createAdmittedRefundTool(
     policy: {
       async beforeAdmission(context) {
         const decision = await hostPolicy?.beforeExecute?.(context);
+        const reason = 'Tool "issue-refund" (mutating tier) requires approval (mode: always).';
+        if (
+          typeof decision === 'object' &&
+          decision !== null &&
+          decision.status === 'needs_approval'
+        )
+          return {
+            ...decision,
+            reason:
+              decision.reason === undefined
+                ? reason
+                : `${reason} [host policy: ${decision.reason}]`,
+          };
         if (
           decision === false ||
           (typeof decision === 'object' &&
             decision !== null &&
-            (decision.status === 'deny' ||
-              decision.status === 'needs_approval' ||
-              decision.allow === false))
+            (decision.status === 'deny' || decision.allow === false))
         )
           return decision;
-        return { allow: false, status: 'needs_approval', reason: 'Each refund requires approval.' };
+        return { allow: false, status: 'needs_approval', reason };
       },
     },
     execute: async ({ refundId, orderId, cents, currency }, context) => {

@@ -90,9 +90,9 @@ const rowOf = (page: Page, review: WaitingReview) =>
 /** The open review detail, whether it is a shared approval card or a question/workflow pane. */
 const paneOf = (page: Page) => page.locator('.ib-reviews__detail');
 
-/** Whether a tool result in a conversation carries `refundedCents`, which only a refund that ran does. */
+/** Whether the processor has accepted a refund and its result reached the conversation. */
 function refundRan(messages: unknown[]): boolean {
-  return JSON.stringify(messages).includes('refundedCents');
+  return JSON.stringify(messages).includes('provider-pending');
 }
 
 /** Supplies the board's sample copy and arguments on the real review's read response. */
@@ -126,6 +126,12 @@ async function useApprovalCaptureFixture(
               ...candidate,
               approval: {
                 ...candidate.approval,
+                ...(fixture === TRIAGE_APPROVAL
+                  ? {
+                      reason:
+                        'Tool "triage-refunds" (mutating tier) requires approval (mode: on-changes).',
+                    }
+                  : {}),
                 toolName: fixture.toolName,
                 arguments: fixture.arguments,
                 action: {
@@ -187,7 +193,7 @@ async function waitingRefund(
   if (fixture !== undefined) await useApprovalCaptureFixture(page, review, fixture);
   await page.goto(inboxAt(review));
   await expect(paneOf(page)).toContainText(
-    fixture?.question ?? 'Refund order order-1001 for $42.00?',
+    fixture?.question ?? 'Refund order order-1001 for 4200 minor units (USD)?',
   );
   return { threadId, review };
 }
@@ -245,14 +251,16 @@ test.describe('a tool approval', () => {
     await page.goto('/reviews');
     // The list is the question itself, longest waiting first, and the oldest waiting review is
     // open on arrival (COR-2017); a row opens its own review.
-    await expect(rowOf(page, review)).toContainText('Refund order order-1001 for $42.00?');
+    await expect(rowOf(page, review)).toContainText(
+      'Refund order order-1001 for 4200 minor units (USD)?',
+    );
     await expect(paneOf(page)).toHaveCount(1);
     await rowOf(page, review).click();
     // The click opened this review: its id is the one in the address.
     await expect(page).toHaveURL(inboxAt(review));
 
     // The pane says what is asked, who asked it, and what the call was given, and where from.
-    await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
+    await expect(paneOf(page)).toContainText('Refund order order-1001 for 4200 minor units (USD)?');
     const source = paneOf(page).getByRole('paragraph').filter({ hasText: 'Asked by' });
     await expect(source).toContainText('Asked by');
     await expect(source.getByRole('link', { name: /tool runner/i })).toBeVisible();
@@ -333,7 +341,12 @@ test.describe('a tool approval', () => {
     page,
     request,
   }) => {
-    const { threadId, review } = await waitingRefund(page, request, 'reviews-remember');
+    const { threadId, review } = await waitingRefund(
+      page,
+      request,
+      'reviews-remember',
+      TRIAGE_APPROVAL,
+    );
     const resolves = recordResolves(page);
     const remember = paneOf(page).getByRole('checkbox', {
       name: /allow .* for the rest of this chat/i,
@@ -345,6 +358,13 @@ test.describe('a tool approval', () => {
     await expect(rowOf(page, review)).toHaveCount(0);
     expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
     await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+  });
+
+  test('the real refund does not offer a remembered bypass', async ({ page, request }) => {
+    await waitingRefund(page, request, 'reviews-refund-each-call');
+    await expect(
+      paneOf(page).getByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
+    ).toHaveCount(0);
   });
 
   test('shared Reviews approval detail captures a pending On changes approval', async ({
@@ -463,7 +483,11 @@ test.describe('a tool approval', () => {
     await page.goto(`/chats/${threadId}`);
     await page.locator('[data-approval-decision]').getByRole('button', { name: 'Approve' }).click();
     // The run goes on after the approval and reports what it did.
-    await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
+    await expect(
+      conversation(page).getByText(
+        'The refund for order order-1001 is pending with the processor.',
+      ),
+    ).toBeVisible();
 
     await page.goto('/reviews');
     await expect(page.getByRole('heading', { level: 1, name: 'Reviews' })).toBeVisible();
@@ -489,12 +513,16 @@ test.describe('a tool approval', () => {
     // The refund shows as a tool call that succeeded, with its result in the call's panel.
     const refund = page.locator('[data-cinder-tool-call-row]').filter({ hasText: 'Issue refund' });
     await expect(refund).toBeVisible();
+    await expect(refund).toContainText('$42.00 refund pending');
     await refund.click();
     const result = page
       .getByRole('complementary', { name: /Issue refund/ })
       .getByRole('region', { name: 'Result' });
-    await expect(result.getByRole('term').filter({ hasText: 'Refunded cents' })).toBeVisible();
+    await expect(result.getByRole('term').filter({ hasText: 'Cents' })).toBeVisible();
     await expect(result.getByRole('definition').filter({ hasText: '4200' })).toBeVisible();
+    await expect(
+      result.getByRole('definition').filter({ hasText: 'provider-pending' }),
+    ).toBeVisible();
   });
 
   test('decided in the inbox updates a chat that is already open, with no reload', async ({
@@ -507,7 +535,7 @@ test.describe('a tool approval', () => {
     const review = await waitingReviewOf(request, threadId);
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-approval-decision]')).toContainText(
-      'Refund order order-1001 for $42.00?',
+      'Refund order order-1001 for 4200 minor units (USD)?',
     );
 
     const inbox = await context.newPage();
