@@ -301,9 +301,10 @@
    */
   function naturalWidth(element: HTMLElement): number {
     const { flex, inlineSize } = element.style;
+    const overflowWidth = element.scrollWidth;
     element.style.flex = 'none';
     element.style.inlineSize = 'max-content';
-    let width = element.getBoundingClientRect().width;
+    let width = Math.max(element.getBoundingClientRect().width, overflowWidth);
     for (const descendant of element.querySelectorAll<HTMLElement>('*')) {
       // A visually hidden element is clipped to a pixel on purpose and draws nothing.
       if (descendant.clientWidth <= 1) continue;

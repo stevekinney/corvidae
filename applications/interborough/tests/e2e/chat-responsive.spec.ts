@@ -885,6 +885,21 @@ test.describe('The composer at desktop width', () => {
         .map((element) => element.textContent?.trim()),
     );
     expect(clipped).toEqual([]);
+    // A full control may overflow its left flex group without ellipsizing. It must fold before it
+    // reaches the meter or Send, rather than merely painting its value underneath them.
+    const controlsPastMeter = await composer.locator('.chat-input-footer').evaluate((footer) => {
+      const right = footer.querySelector<HTMLElement>('.chat-input-footer-right')!;
+      const rightEdge = right.getBoundingClientRect().left;
+      return [
+        ...footer.querySelectorAll<HTMLElement>(
+          '.chat-input-attach, [role="combobox"], [data-testid="composer-settings"]',
+        ),
+      ]
+        .filter((control) => control.getBoundingClientRect().width > 0)
+        .filter((control) => control.getBoundingClientRect().right > rightEdge + 0.5)
+        .map((control) => control.getAttribute('aria-label') ?? control.textContent?.trim());
+    });
+    expect(controlsPastMeter).toEqual([]);
     if ((await composer.getAttribute('data-controls-folded')) !== null) {
       await expect(settings).toBeVisible();
       await expect(page.getByRole('combobox', { name: /Permissions/ })).toHaveCount(0);
