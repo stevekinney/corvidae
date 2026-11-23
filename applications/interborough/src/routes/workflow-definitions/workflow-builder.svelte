@@ -668,7 +668,7 @@
 <div class="weft-workflow-builder" data-testid="workflow-builder">
   <Tabs bind:value={tab}>
     <div class="weft-workflow-builder__tabs">
-      <Tabs.List label={copy.tabsLabel}>
+      <Tabs.List label={copy.tabsLabel} class="weft-workflow-builder__tab-list">
         <Tabs.Trigger
           value="builder"
           disabled={blocked}
@@ -1010,7 +1010,7 @@
     min-width: 0;
   }
 
-  .weft-workflow-builder__tabs :global(.cinder-tab-list) {
+  .weft-workflow-builder__tabs :global(.weft-workflow-builder__tab-list) {
     inline-size: 100%;
     min-inline-size: 0;
   }

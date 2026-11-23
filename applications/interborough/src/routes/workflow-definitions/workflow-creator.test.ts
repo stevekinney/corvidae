@@ -62,19 +62,27 @@ function open(agents: ReadonlyArray<Record<string, unknown>> = [], overrides: Pa
   return render(Harness, { props: { client: stub.client, scopes: AUTHORIZATION_SCOPES } } as never);
 }
 
-/** Makes the viewport a phone, which is what `phoneViewport` reads. */
-function phone(): void {
+/** Sets the initial viewport and returns a resize that notifies the existing media query. */
+function phone(initial = true): (matches: boolean) => void {
   const original = window.matchMedia;
+  const events = new window.EventTarget();
+  let matches = initial;
   window.matchMedia = ((query: string) => ({
-    matches: query === '(width < 640px)',
+    get matches() {
+      return query === '(width < 640px)' && matches;
+    },
     media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
     addListener: () => {},
     removeListener: () => {},
   })) as unknown as typeof window.matchMedia;
   restoreViewport = () => {
     window.matchMedia = original;
+  };
+  return (next) => {
+    matches = next;
+    events.dispatchEvent(new window.Event('change'));
   };
 }
 
@@ -1002,6 +1010,7 @@ describe('the builder', () => {
   });
 
   test('keeps a seeded custom ID read-only on a phone without an inert Change or Reset ID action', async () => {
+    const resize = phone(false);
     const { container } = open();
     await ready(container);
     await fireEvent.input(field(container, 'workflow-builder-title'), {
@@ -1012,10 +1021,7 @@ describe('the builder', () => {
       target: { value: 'custom-briefing' },
     });
 
-    phone();
-    await fireEvent.input(field(container, 'workflow-builder-description'), {
-      target: { value: 'The phone redraw makes the builder read-only.' },
-    });
+    resize(true);
     await waitFor(() =>
       expect(container.querySelector('.weft-workflow-builder__read-only')?.textContent).toBe(
         BUILDER.readOnly,
