@@ -264,6 +264,14 @@ describe("server application", () => {
         new Request("http://example.test/internal"),
       );
       expect(denied.status).toBe(403);
+      const deniedExternal = await app.fetch(
+        new Request("http://example.test/api/item?value=1", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "body",
+        }),
+      );
+      expect(deniedExternal.status).toBe(403);
       expect(observed).toHaveLength(2);
       const abort = new AbortController();
       const response = await app.fetch(
@@ -336,13 +344,17 @@ describe("server application", () => {
         return () => new Response();
       },
     };
-    for (const id of ["/api/item", "/[...path]"]) {
+    for (const route of [
+      { id: "/api/item" },
+      { id: "/api/endpoint", endpoint: "+server.ts" },
+      { id: "/[...path]" },
+    ]) {
       const conflictingRegistry = registry([]);
       conflictingRegistry.manifest = {
         ...conflictingRegistry.manifest,
         routes: [
           ...conflictingRegistry.manifest.routes,
-          { ...conflictingRegistry.manifest.routes[0], id },
+          { ...conflictingRegistry.manifest.routes[0], ...route },
         ],
       };
       expect(
