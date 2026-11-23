@@ -110,45 +110,61 @@
   });
 
   // A sheet's Cancel stays compact only while it and the confirmation actually fit one row. CSS
-  // can wrap the row, but cannot tell the wrapped state to make both buttons equal width. Remember
-  // the width that wrapped, then switch to an intentional vertical group until the available room
-  // grows enough again. This follows the component-width policy instead of guessing from a viewport
-  // breakpoint, so a translated or otherwise long confirmation gets the same treatment.
+  // can wrap the row, but cannot tell the wrapped state to make both buttons equal width. Measure
+  // the labels' natural widths on every content or container reflow, then switch to an intentional
+  // vertical group only while the row needs it. This follows the component-width policy instead of
+  // guessing from a viewport breakpoint, so a translated or otherwise long confirmation gets the
+  // same treatment.
   let actionsStacked = $state(false);
-  let actionsStackNeed = 0;
+
+  /** The width an inline row needs, without a stretched confirmation feeding its own threshold. */
+  function naturalActionNeed(actions: HTMLElement, buttons: readonly HTMLButtonElement[]): number {
+    const previous = buttons.map((button) => ({
+      button,
+      flex: button.style.flex,
+      inlineSize: button.style.inlineSize,
+    }));
+    for (const { button } of previous) {
+      button.style.flex = '0 0 auto';
+      button.style.inlineSize = 'max-content';
+    }
+    const gap =
+      Number.parseFloat(
+        actions.ownerDocument.defaultView?.getComputedStyle(actions).columnGap ?? '',
+      ) || 0;
+    const need =
+      buttons.reduce((total, button) => total + button.getBoundingClientRect().width, 0) +
+      gap * Math.max(0, buttons.length - 1);
+    for (const { button, flex, inlineSize } of previous) {
+      button.style.flex = flex;
+      button.style.inlineSize = inlineSize;
+    }
+    return need;
+  }
 
   function updateActionStack(): void {
     const actions = actionsElement;
     const sheet = actions?.closest<HTMLDialogElement>('dialog')?.dataset.cinderSheet;
-    if (actions === undefined || sheet !== 'docked') {
+    if (actions == null || sheet !== 'docked') {
       if (actionsStacked) actionsStacked = false;
-      if (actionsStackNeed !== 0) actionsStackNeed = 0;
       return;
     }
     const room = actions.clientWidth;
     if (room <= 0) return;
-    if (actionsStacked) {
-      if (room + 1 >= actionsStackNeed) actionsStacked = false;
-      return;
-    }
     const buttons = Array.from(actions.querySelectorAll<HTMLButtonElement>(':scope > button'));
-    const firstTop = buttons[0]?.offsetTop;
-    if (firstTop === undefined || buttons.every((button) => button.offsetTop === firstTop)) return;
-    const gap = Number.parseFloat(getComputedStyle(actions).columnGap) || 0;
-    actionsStackNeed =
-      buttons.reduce((total, button) => total + button.getBoundingClientRect().width, 0) + gap;
-    actionsStacked = true;
+    const nextStacked = buttons.length > 1 && room + 1 < naturalActionNeed(actions, buttons);
+    if (actionsStacked !== nextStacked) actionsStacked = nextStacked;
   }
 
   $effect(() => {
     const node = actionsElement;
-    if (node === undefined) return;
+    if (node == null) return;
     const view = node.ownerDocument.defaultView;
-    const observer = view?.ResizeObserver
-      ? new view.ResizeObserver(updateActionStack)
-      : undefined;
+    const observer = view?.ResizeObserver ? new view.ResizeObserver(updateActionStack) : undefined;
     observer?.observe(node);
-    const mutations = view?.MutationObserver ? new view.MutationObserver(updateActionStack) : undefined;
+    const mutations = view?.MutationObserver
+      ? new view.MutationObserver(updateActionStack)
+      : undefined;
     mutations?.observe(node, { childList: true, characterData: true, subtree: true });
     const fonts = node.ownerDocument.fonts;
     fonts?.addEventListener('loadingdone', updateActionStack);

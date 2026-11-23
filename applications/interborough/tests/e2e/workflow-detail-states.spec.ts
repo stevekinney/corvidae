@@ -451,39 +451,55 @@ for (const width of WIDTHS) {
 }
 
 test.describe('workflow delete dialog action fitting', () => {
-  for (const [width, stacked] of [
-    [320, true],
-    [375, false],
-  ] as const) {
-    test(`keeps Delete workflow and schedule with Cancel at ${String(width)} pixels`, async ({ page }) => {
-      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
-      const id = world.workflows.triageInbox;
-      await triageAsDrawn(page, id);
-      await openWorkflow(page, `/workflows/${encodeURIComponent(id)}`, width);
-      await detail(page).getByRole('button', { name: MENU.label }).click();
-      await page.getByRole('menuitem', { name: MENU.delete }).click();
+  test('restores an inline compact Cancel row when the checked label shortens or the sheet grows', async ({
+    page,
+  }) => {
+    const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+    const id = world.workflows.triageInbox;
+    await triageAsDrawn(page, id);
+    await openWorkflow(page, `/workflows/${encodeURIComponent(id)}`, 320);
+    await detail(page).getByRole('button', { name: MENU.label }).click();
+    await page.getByRole('menuitem', { name: MENU.delete }).click();
 
-      const dialog = page.getByRole('dialog');
-      await dialog.getByRole('checkbox').check();
-      const actions = dialog.locator('.cinder-confirm-dialog__actions');
-      if (stacked) {
-        await expect(actions).toHaveAttribute('data-cinder-stacked', '');
-      } else {
-        await expect(actions).not.toHaveAttribute('data-cinder-stacked');
-      }
-      const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true });
-      const confirm = dialog.getByRole('button', { name: DELETE.confirmWithSchedule, exact: true });
-      const [cancelBox, confirmBox] = await Promise.all([cancel.boundingBox(), confirm.boundingBox()]);
+    const dialog = page.getByRole('dialog');
+    const actions = dialog.locator('.cinder-confirm-dialog__actions');
+    const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true });
+    const assertRow = async (confirmName: string) => {
+      await expect(actions).not.toHaveAttribute('data-cinder-stacked');
+      const confirm = dialog.getByRole('button', { name: confirmName, exact: true });
+      const [cancelBox, confirmBox] = await Promise.all([
+        cancel.boundingBox(),
+        confirm.boundingBox(),
+      ]);
       expect(cancelBox).not.toBeNull();
       expect(confirmBox).not.toBeNull();
       if (cancelBox === null || confirmBox === null) return;
-      if (stacked) {
-        expect(confirmBox.y).toBeLessThan(cancelBox.y);
-        expect(Math.abs(confirmBox.width - cancelBox.width)).toBeLessThanOrEqual(1);
-      } else {
-        expect(Math.abs(confirmBox.y - cancelBox.y)).toBeLessThanOrEqual(1);
-        expect(cancelBox.width).toBeLessThan(confirmBox.width);
-      }
+      expect(Math.abs(confirmBox.y - cancelBox.y)).toBeLessThanOrEqual(1);
+      expect(cancelBox.width).toBeLessThan(confirmBox.width);
+    };
+
+    await dialog.getByRole('checkbox').check();
+    await expect(actions).toHaveAttribute('data-cinder-stacked', '');
+    const stackedConfirm = dialog.getByRole('button', {
+      name: DELETE.confirmWithSchedule,
+      exact: true,
     });
-  }
+    const [stackedCancelBox, stackedConfirmBox] = await Promise.all([
+      cancel.boundingBox(),
+      stackedConfirm.boundingBox(),
+    ]);
+    expect(stackedCancelBox).not.toBeNull();
+    expect(stackedConfirmBox).not.toBeNull();
+    if (stackedCancelBox !== null && stackedConfirmBox !== null) {
+      expect(stackedConfirmBox.y).toBeLessThan(stackedCancelBox.y);
+      expect(Math.abs(stackedConfirmBox.width - stackedCancelBox.width)).toBeLessThanOrEqual(1);
+    }
+    await dialog.getByRole('checkbox').uncheck();
+    await assertRow(DELETE.confirm);
+
+    await dialog.getByRole('checkbox').check();
+    await expect(actions).toHaveAttribute('data-cinder-stacked', '');
+    await page.setViewportSize({ width: 375, height: 900 });
+    await assertRow(DELETE.confirmWithSchedule);
+  });
 });
