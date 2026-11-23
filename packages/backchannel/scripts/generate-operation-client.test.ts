@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -237,7 +238,7 @@ describe('portable generated entries', () => {
     ]);
     const pending = client['probe.jobs.list']({}, { signal: controller.signal });
     controller.abort();
-    await expect(pending).rejects.toBe(controller.signal.reason);
+    expect(await rejectionOf(pending)).toBe(controller.signal.reason);
     expect(calls).toHaveLength(3);
     const fault = new CatalogClientError('probe.jobs.list', {
       code: -32001,
@@ -247,7 +248,7 @@ describe('portable generated entries', () => {
     const failing = createProbeClientWithTransport(async () => {
       throw fault;
     });
-    await expect(failing['probe.jobs.list']({})).rejects.toBe(fault);
+    expect(await rejectionOf(failing['probe.jobs.list']({}))).toBe(fault);
     expect(fault.data).toEqual({ remediation: 'Sign in' });
   });
 
