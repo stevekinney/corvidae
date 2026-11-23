@@ -84,17 +84,21 @@ test('the inline copy face fits the text and keeps a visible keyboard ring', asy
   await expect(button).not.toHaveCSS('box-shadow', 'none');
 });
 
-test('a DescriptionList identifier uses the same proportional copy padding', async ({ page }) => {
+test('a DescriptionList identifier has a text-sized ghost copy icon', async ({ page }) => {
   await page.goto(`${fixtureRoute('description-list')}&wrapping=1`, { waitUntil: 'load' });
   const button = page.getByRole('button', { name: 'Copy Run ID' });
-  const { fontSize, padding } = await button.evaluate((node) => {
-    const style = getComputedStyle(node);
+  const { fontSize, face, glyph } = await button.evaluate((node) => {
+    const icon = node.querySelector('svg');
+    if (icon === null) throw new Error('Missing CopyButton glyph.');
     return {
-      fontSize: Number.parseFloat(style.fontSize),
-      padding: Number.parseFloat(style.paddingTop),
+      fontSize: Number.parseFloat(getComputedStyle(node).fontSize),
+      face: node.getBoundingClientRect().height,
+      glyph: icon.getBoundingClientRect().height,
     };
   });
-  expect(Math.abs(padding - fontSize * 0.1)).toBeLessThanOrEqual(0.5);
+  expect(face).toBeCloseTo(fontSize, 1);
+  expect(glyph).toBeCloseTo(fontSize, 1);
+  await expect(button).toHaveCSS('border-top-width', '0px');
 });
 
 test('a stretched 32px text face gives its label enough real side room without moving the icon', async ({
