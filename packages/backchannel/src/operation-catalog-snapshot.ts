@@ -1,6 +1,11 @@
 import type { FaultCode } from './fault-code.ts';
 import { compareStrings, normalizeJsonObject } from './json-schema-utilities.ts';
-import type { ErasedOperation, OperationKind, TransportAvailability } from './operation-catalog.ts';
+import type {
+  ErasedOperation,
+  OperationBehavior,
+  OperationKind,
+  TransportAvailability,
+} from './operation-catalog.ts';
 import type { ParamSource, ResponseShape, RestBindingDescription } from './rest-binding.ts';
 import { zodToJsonSchema } from './zod-json-schema.ts';
 
@@ -104,6 +109,9 @@ export type CatalogAccessSnapshot =
 export type CatalogOperationSnapshot = {
   /** The operation's name. */
   readonly name: string;
+  readonly mcpExposable?: boolean;
+  readonly behavior?: OperationBehavior;
+  readonly conflictReasonTokens?: readonly string[];
   /** Whether the operation is unary, a stream or a subscription. */
   readonly kind: OperationKind;
   /** A one-line description of the operation. */
@@ -244,6 +252,11 @@ function operationToSnapshot(
   const eventSchema = operation.eventSchema;
   return {
     name: operation.name,
+    mcpExposable: operation.mcpExposable,
+    ...(operation.behavior === undefined ? {} : { behavior: operation.behavior }),
+    ...(operation.conflictReasonTokens === undefined
+      ? {}
+      : { conflictReasonTokens: operation.conflictReasonTokens }),
     kind: operation.kind ?? 'unary',
     summary: operation.summary,
     ...(operation.description === undefined ? {} : { description: operation.description }),

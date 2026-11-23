@@ -15,6 +15,7 @@ import { compareStrings } from '../src/internals.ts';
 
 import { join } from 'node:path';
 
+import { renderOperationBehaviors } from './operation-behaviors.ts';
 import { renderAliasDeclarations, selectAliases } from './operation-client-aliases.ts';
 import {
   GENERATED_HEADER,
@@ -266,6 +267,8 @@ export async function createOperationClientSources(
     restOnlyOperations,
     subscriptionOperations,
   );
+  const behaviors = renderOperationBehaviors(snapshot.operations);
+  if (behaviors !== undefined) sources.set('operation-behaviors.generated.ts', behaviors);
   sources.set(
     outputFile,
     mainSource({
