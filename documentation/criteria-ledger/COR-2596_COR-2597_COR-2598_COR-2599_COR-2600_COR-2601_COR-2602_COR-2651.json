@@ -1,7 +1,7 @@
 {
   "issue": "COR-2596_COR-2597_COR-2598_COR-2599_COR-2600_COR-2601_COR-2602_COR-2651",
   "branch": "steve/composable-portable-credentials-refunds",
-  "checkedAt": "bd9552eb0ece94bfb233004868e2087ce909b890",
+  "checkedAt": "ed622bf88a37a33606c921d450b027b4c20246bc",
   "briefVersion": "4be05d6acd48",
   "status": "READY",
   "criteria": [
