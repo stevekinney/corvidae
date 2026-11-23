@@ -138,10 +138,12 @@ for (const width of [1280, 768, 375]) {
     const notes = row(page, 'release-notes');
     const refund = row(page, 'order-refund');
     const triage = row(page, 'triage-inbox');
+    const rows = page.locator('[data-workflow]');
+    await expect(rows).toHaveCount(3);
     expect(
-      await page
-        .locator('[data-workflow]')
-        .evaluateAll((rows) => rows.map((entry) => entry.getAttribute('data-workflow'))),
+      await rows.evaluateAll((entries) =>
+        entries.map((entry) => entry.getAttribute('data-workflow')),
+      ),
     ).toEqual(['release-notes', 'order-refund', 'triage-inbox']);
     await expect(notes.getByTestId('workflow-identifier')).toHaveText('release-notes');
     await expect(notes.getByTestId('workflow-last-run')).toHaveText('Oct 30');
