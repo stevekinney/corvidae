@@ -21,7 +21,7 @@ import {
 } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
+import { expect, goOffline, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
 
 test.describe('/hooks: the hooks list states', () => {
   test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
@@ -321,6 +321,44 @@ test.describe('/hooks: the hooks list states', () => {
 
       await banner.getByRole('button', { name: 'Try again' }).click();
       await expect(banner).toHaveCount(0);
+    });
+
+    test(`offline Hooks keeps its filters and links live while writes are held, at ${width} pixels`, async ({
+      page,
+      context,
+      pageErrors,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/hooks');
+      const main = page.locator('main');
+      const rows = main.locator('li[data-hook]');
+      await expect(rows).toHaveCount(5);
+
+      await goOffline(context, pageErrors);
+      try {
+        await page.evaluate(() => {
+          window.dispatchEvent(new Event('offline'));
+          window.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect(page.getByRole('region', { name: 'Connection problem' })).toBeVisible();
+        const create = headerCreate(page);
+        const firstSwitch = rows.first().getByRole('switch');
+        await expect(create).toHaveAttribute('aria-disabled', 'true');
+        await expect(firstSwitch).toHaveAttribute('aria-disabled', 'true');
+        await expect(firstSwitch).toHaveAccessibleDescription('Off until it’s back');
+        await create.focus();
+        await expect(create).toBeFocused();
+        await expect(rows).toHaveCount(5);
+        await expect(rows.first().getByRole('link').first()).toHaveAttribute('href', /^\/hooks\//);
+        await expect(main.getByRole('searchbox', { name: 'Search hooks' })).toBeEnabled();
+        await captureForDesignReview(page, {
+          route: '/hooks',
+          state: 'offline with held writes',
+          source: SOURCE,
+        });
+      } finally {
+        await context.setOffline(false);
+      }
     });
 
     test(`a hook that gave up sorts first and reads Gave up in red, at ${width} pixels`, async ({

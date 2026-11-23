@@ -40,6 +40,7 @@ function fixture(
     readonly keys?: Awaited<ReturnType<typeof generateEncryptionKey>>;
     readonly kv?: ReturnType<typeof textValueStore>;
     readonly workflows?: Parameters<typeof createHooks>[0]['workflows'];
+    readonly mayStartWorkflows?: Parameters<typeof createHooks>[0]['mayStartWorkflows'];
     /** The reaction's own `timeoutMilliseconds`. */
     readonly timeoutMilliseconds?: number;
   } = {},
@@ -123,6 +124,7 @@ function fixture(
     },
     actionKinds: registrations,
     ...(options.workflows === undefined ? {} : { workflows: options.workflows }),
+    mayStartWorkflows: options.mayStartWorkflows,
   });
   return {
     hooks: created.hooks,
@@ -190,6 +192,36 @@ it('lists a start-workflow hook with a bounded problem when its target stops bei
   const listedHooks = await setup.hooks.list();
 
   expect(listedHooks[0]?.problems).toEqual([{ code: 'workflow-unavailable' }]);
+});
+
+it('lists the workflow problem after its owner loses current start authority', async () => {
+  let ownerMayStart = true;
+  const checkedOwners: string[] = [];
+  const setup = fixture({
+    mayStartWorkflows: (owner) => {
+      checkedOwners.push(owner);
+      return Promise.resolve(ownerMayStart);
+    },
+    workflows: () => ({
+      assertStartable: () => undefined,
+      findStart: () => Promise.resolve(undefined),
+      start: () =>
+        Promise.resolve({ runId: 'run-1', workflow: 'weekly-cleanup', workflowVersion: '1' }),
+    }),
+  });
+  const saved = await setup.hooks.create({
+    events: ['run.settled'],
+    action: { type: 'start-workflow', workflowId: 'weekly-cleanup' },
+  });
+  const initial = await setup.hooks.list();
+  expect(initial[0]?.problems).toEqual([]);
+
+  ownerMayStart = false;
+  checkedOwners.length = 0;
+
+  const afterRevocation = await setup.hooks.list();
+  expect(afterRevocation[0]?.problems).toEqual([{ code: 'workflow-unavailable' }]);
+  expect(checkedOwners).toEqual([saved.owner]);
 });
 
 const ACTION = {

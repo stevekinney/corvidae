@@ -1602,6 +1602,44 @@ const RUN_ERROR_DELIVERY = {
   updatedAt: Date.UTC(2026, 9, 30, 11, 7),
 };
 
+const TEST_EVENT_DELIVERY = {
+  ...RUN_ERROR_DELIVERY,
+  id: 'delivery-test-event',
+  kind: 'hook.test',
+  test: true,
+  status: 'delivered',
+  request: {
+    ...RUN_ERROR_DELIVERY.request,
+    body: JSON.stringify({ kind: 'hook.test', payload: {} }),
+  },
+  attempts: [{ ...RUN_ERROR_DELIVERY.attempts[0], status: 200 }],
+};
+
+const RETRYING_REVIEW_HOOK = hookRecord('retrying-review-hook', {
+  name: 'Notify Slack when a review is waiting',
+  action: { type: 'webhook', url: 'https://hooks.slack.example/services/refund' },
+  events: ['review.requested'],
+  declaredBy: null,
+});
+const RETRY_TIME = Date.UTC(2026, 9, 30, 11, 4);
+const RETRYING_REVIEW_DELIVERY = {
+  ...RUN_ERROR_DELIVERY,
+  id: 'delivery-review-retry',
+  hookId: 'retrying-review-hook',
+  kind: 'review.requested',
+  status: 'pending',
+  nextAttemptAt: RETRY_TIME + 40_000,
+  request: {
+    url: 'https://hooks.slack.example/services/refund',
+    headers: {},
+    body: JSON.stringify({
+      kind: 'review.requested',
+      payload: { reviewId: 'review-refund-4471', reviewKind: 'tool-approval' },
+    }),
+  },
+  attempts: RUN_ERROR_DELIVERY.attempts.slice(0, 3),
+};
+
 const RUN_ERROR_HOOK = hookRecord('run-error-hook', {
   name: 'Page on-call when a run fails',
   action: { type: 'webhook', url: 'https://events.pagerduty.com/v2/enqueue' },
@@ -1615,7 +1653,9 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await openHooks(page, '/hooks/run-error-hook', [RUN_ERROR_HOOK], {
-      'bureau.hooks.deliveries': () => ({ deliveries: [RUN_ERROR_DELIVERY] }),
+      'bureau.hooks.deliveries': () => ({
+        deliveries: [RUN_ERROR_DELIVERY, TEST_EVENT_DELIVERY],
+      }),
       'bureau.tasks.get': () => ({
         id: 'run-1',
         workflow: { type: 'release-notes' },
@@ -1627,6 +1667,16 @@ for (const width of WIDTHS) {
       .getByTestId('hook-deliveries')
       .locator('li[data-delivery="delivery-run-error"]');
     await item.locator('button[aria-expanded]').first().click();
+    const testEvent = page
+      .getByTestId('hook-deliveries')
+      .locator('li[data-delivery="delivery-test-event"]');
+    await expect(testEvent.getByText('Test event', { exact: true })).toBeVisible();
+    await expect(testEvent.getByRole('img', { name: 'Delivered, 200 OK' })).toBeVisible();
+    await expect(testEvent.locator('button[aria-expanded]')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    await expect(item.getByRole('button', { name: 'Retry delivery' })).toBeVisible();
 
     const payload = item.getByTestId('hook-delivery-payload');
     await expect(payload.getByText('Payload sent')).toBeVisible();
@@ -1663,6 +1713,40 @@ for (const width of WIDTHS) {
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
       .toBe(RUN_ERROR_DELIVERY.request.body);
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`[hook-delivery-review-retry] /hooks/:hook: a retrying review names its hook and request, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.clock.setFixedTime(new Date(RETRY_TIME));
+    await openHooks(page, '/hooks/retrying-review-hook', [RETRYING_REVIEW_HOOK], {
+      'bureau.hooks.deliveries': () => ({ deliveries: [RETRYING_REVIEW_DELIVERY] }),
+      'bureau.reviews.get': () => ({
+        id: 'review-refund-4471',
+        kind: 'tool-approval',
+        approval: {
+          toolName: 'issue_refund',
+          arguments: {},
+          action: { type: 'approval', message: 'Refund order 4471 for $42.00?' },
+        },
+      }),
+    });
+    const item = page
+      .getByTestId('hook-deliveries')
+      .locator('li[data-delivery="delivery-review-retry"]');
+    await expect(item).toContainText(
+      'Notify Slack when a review is waiting, Refund order 4471 for $42.00?',
+    );
+    await expect(item.getByRole('img', { name: 'Retrying, try 3 of 8' })).toBeVisible();
+    await expect(item).toContainText('Next try in 40 seconds');
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'retrying review delivery',
+      source: SOURCE,
+    });
   });
 }
 
