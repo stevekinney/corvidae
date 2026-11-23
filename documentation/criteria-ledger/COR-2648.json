@@ -1,24 +1,24 @@
 {
   "issue": "COR-2648",
   "branch": "chef/cor-2648-error-state-glyph",
-  "checkedAt": "4daea0bb3a51f8ffae713c00b672e611ba75a3a7",
+  "checkedAt": "c01291bffc82e69e41638a012dfd74aa182c2939",
   "briefVersion": "ff0daf09bc52",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
-      "status": "not-met",
-      "evidence": "Implemented (glyph and words grouped in .cinder-error-state-lead, body centres group and action); the measured design-review capture is the coordinator's and has not run"
+      "status": "met-on-branch",
+      "evidence": "Coordinator design review round 1: glyph centre 0.5px from the title's ink centre on the one-line no-provider row (was 4.5px); title-only row gap fixed in c01291bf"
     },
     {
       "id": "AC2",
-      "status": "not-met",
-      "evidence": "Implemented (glyph stays flex-start in the group); before/after capture of the /reviews fault row, run-hooks C3-16 and Home activity band is the coordinator's and has not run"
+      "status": "met-on-branch",
+      "evidence": "Coordinator design review round 1: only the glyph's own box moved on /reviews, run-hooks C3-16 and Home"
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "error-state.test.ts: a row's glyph and words are one start-aligned group (COR-2648); focused checks pass"
+      "evidence": "error-state.test.ts asserts the glyph and title share the start-aligned .cinder-error-state-lead group, and that a title-only row's title has no trailing margin"
     }
   ]
 }
