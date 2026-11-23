@@ -11,6 +11,8 @@
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
 
+import { setFixtureWidth } from './layout-fixture.ts';
+
 type Layer = {
   list: number;
   term: number;
@@ -144,3 +146,27 @@ test('a framed group takes the raised fill below 700px of its own width and the 
   expect(wide.width).toBeGreaterThanOrEqual(700);
   expect(wide.fill).toBe(await inset());
 });
+
+for (const fixture of ['wrap-with-link', 'wrap-with-actions']) {
+  test(`the chevron stays beside a wrapped definition in ${fixture}`, async ({ page }) => {
+    await page.goto(`${fixtureRoute('description-list')}&wrapping=1`, { waitUntil: 'load' });
+    const wrapper = page.getByTestId(fixture);
+    await setFixtureWidth(wrapper, '15rem');
+    const { value, chevron, lineHeight } = await wrapper.evaluate((element) => {
+      const value = element.querySelector('.cinder-description-list__definition')!;
+      return {
+        value: value.getBoundingClientRect().toJSON() as DOMRect,
+        chevron: element
+          .querySelector('.cinder-description-list__link')!
+          .getBoundingClientRect()
+          .toJSON() as DOMRect,
+        lineHeight: Number.parseFloat(getComputedStyle(value).lineHeight),
+      };
+    });
+    expect(value.height).toBeGreaterThanOrEqual(2 * lineHeight - 1);
+    const chevronCenter = chevron.top + chevron.height / 2;
+    expect(chevronCenter).toBeGreaterThanOrEqual(value.top);
+    expect(chevronCenter).toBeLessThanOrEqual(value.bottom);
+    expect(chevron.left).toBeGreaterThan(value.right);
+  });
+}

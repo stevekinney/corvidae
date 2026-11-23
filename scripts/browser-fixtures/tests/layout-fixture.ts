@@ -1,5 +1,6 @@
 import type { ComponentEntry } from '@lostgradient/testing';
 import { loadManifest } from '@lostgradient/testing';
+import type { Locator } from '@playwright/test';
 
 export function fixtureEntry(slug: string): ComponentEntry {
   const entry = loadManifest().find((candidate) => candidate.slug === slug);
@@ -17,4 +18,12 @@ export function fixtureRoute(slug: string): string {
     fixtureContentHash: fixture.fixtureContentHash,
   });
   return `${entry.route}?${query.toString()}`;
+}
+
+/** Set the space available to a fixture when measuring a particular layout threshold. */
+export async function setFixtureWidth(wrapper: Locator, inlineSize: string): Promise<void> {
+  await wrapper.evaluate((element, size) => {
+    if (!(element instanceof HTMLElement)) throw new Error('Expected an HTML fixture wrapper');
+    element.style.inlineSize = size;
+  }, inlineSize);
 }
