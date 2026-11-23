@@ -501,7 +501,7 @@ describe('results', () => {
     expect(runs.items).toHaveLength(1);
   });
 
-  it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
+  it('shares definitions but keeps run resources private and aggregates operator-only in a workspace', async () => {
     const binding = workspaceAdministratorDirectory();
     const runtime = createManualRuntimeServices();
     const served = await serveWorkflows(cleanups, { workspace: binding, runtime });
@@ -513,9 +513,7 @@ describe('results', () => {
       { includeRuns: true },
       'operator-key',
     );
-    expect(listOf(listed, 'workflows')).toMatchObject([
-      { id: 'digest', runs: { total: 0, active: 0, last: null, current: null } },
-    ]);
+    expect(listOf(listed, 'workflows')).toMatchObject([{ id: 'digest', runs: null }]);
     const readByMember = await rpc(
       workspace,
       'bureau.workflows.get',
@@ -571,7 +569,7 @@ describe('results', () => {
       { includeRuns: true },
       'operator-key',
     );
-    expect(listOf(ownActivity, 'workflows')).toMatchObject([{ id: 'digest', runs: { total: 2 } }]);
+    expect(listOf(ownActivity, 'workflows')).toMatchObject([{ id: 'digest', runs: null }]);
     const ownGet = await rpc(
       workspace,
       'bureau.workflows.runs.get',

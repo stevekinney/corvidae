@@ -927,6 +927,7 @@ export const workflowsListOperation = defineOperation<
     const workflows = workflowsOf(host);
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
+    const mayReadRunSummaries = authorizeWorkspaceClass('deployment-operator', principal).allowed;
     // The files, then the code workflows plugins contributed; the files' entries are unchanged.
     const files = workflows.list();
     const code = workflows.codeList();
@@ -941,19 +942,8 @@ export const workflowsListOperation = defineOperation<
                 ...listingView(listing),
                 // A file the Bureau cannot use is never registered, so it has had no instance to count.
                 runs:
-                  input.includeRuns === true && listing.state === 'ready'
-                    ? await workflows.runCounts(
-                        listing.id,
-                        authorizeWorkspaceClass('deployment-operator', principal).allowed
-                          ? undefined
-                          : async (runId) => {
-                              const owner = ownerOfPrincipal(principal);
-                              return (
-                                owner !== undefined &&
-                                (await host.ownership.runOwner(runId)) === owner
-                              );
-                            },
-                      )
+                  input.includeRuns === true && listing.state === 'ready' && mayReadRunSummaries
+                    ? await workflows.runCounts(listing.id)
                     : null,
               },
         ),

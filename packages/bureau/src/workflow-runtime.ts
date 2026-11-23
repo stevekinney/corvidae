@@ -668,10 +668,7 @@ export interface BureauWorkflows {
    * The counts of `id`'s instances, read from the engine's own totals, or `null` when the engine
    * could not be read (the failure is reported through the Bureau's diagnostics).
    */
-  readonly runCounts: (
-    id: string,
-    mayReadRun?: (runId: string) => Promise<boolean>,
-  ) => Promise<WorkflowRunCounts | null>;
+  readonly runCounts: (id: string) => Promise<WorkflowRunCounts | null>;
   /**
    * Start an instance of the ready, unpaused workflow `id` (COR-1812): the one start that names a
    * workflow. `input` is checked against the file's `inputSchema` first, and an input that fails
@@ -3169,46 +3166,24 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
     },
 
-    async runCounts(id, mayReadRun) {
+    async runCounts(id) {
       try {
         // The Bureau's clock, which the engine stamps each run's `createdAt` by (COR-2009).
         const now = options.runtime.clock.now();
         const type = weftNameOf(id);
-        const visible = [] as Array<{
-          id: string;
-          status: WorkflowStatus;
-          createdAt: number;
-          version: string;
-          failedStep?: { readonly index: number } | undefined;
-        }>;
-        if (mayReadRun !== undefined) {
-          // An owner-scoped list cannot trust the engine's unscoped totals. Read this type once,
-          // then filter its retained rows before deriving every count and status from the same set.
-          for (let offset = 0; ;) {
-            const page = await engine.list({ type, limit: 100, offset });
-            for (const run of page.items) {
-              if (await mayReadRun(run.id)) visible.push(run);
-            }
-            offset += page.items.length;
-            if (page.items.length === 0 || offset >= page.total) break;
-          }
-        }
         // Two index-narrowed reads answer the counts. The engine intersects the type index with the
         // status or created-at index before it loads any state, so each read loads only the
         // instances it counts, and `limit: 1` bounds the reply.
-        const [all, active, recent] =
-          mayReadRun === undefined
-            ? await Promise.all([
-                engine.list({ type, limit: 1 }),
-                engine.list({ type, status: [...IN_FLIGHT_STATUSES], limit: 1 }),
-                engine.list({ type, createdAt: { gte: now - RECENT_RUN_WINDOW_MS }, limit: 1 }),
-              ])
-            : [undefined, undefined, undefined];
+        const [all, active, recent] = await Promise.all([
+          engine.list({ type, limit: 1 }),
+          engine.list({ type, status: [...IN_FLIGHT_STATUSES], limit: 1 }),
+          engine.list({ type, createdAt: { gte: now - RECENT_RUN_WINDOW_MS }, limit: 1 }),
+        ]);
         // The engine lists newest first, so the first item of a page is the newest in its window.
         // A workflow that ran today already has its newest instance; only a quiet one widens the
         // window, and an unfiltered read of its whole history is the last resort.
-        let newest = mayReadRun === undefined ? all?.items[0] : visible[0];
-        if (mayReadRun === undefined && newest === undefined) {
+        let newest = all.items[0];
+        if (newest === undefined) {
           for (const windowMs of [QUIET_RUN_WINDOW_MS, undefined]) {
             const page = await engine.list({
               type,
@@ -3219,10 +3194,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             if (newest !== undefined) break;
           }
         }
-        const newestActive =
-          mayReadRun === undefined
-            ? active?.items[0]
-            : visible.find((run) => IN_FLIGHT_STATUSES.includes(run.status));
+        const newestActive = active.items[0];
         const current =
           newestActive === undefined
             ? null
@@ -3255,15 +3227,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
                 };
               })();
         return {
-          total: mayReadRun === undefined ? all!.total : visible.length,
-          active:
-            mayReadRun === undefined
-              ? active!.total
-              : visible.filter((run) => IN_FLIGHT_STATUSES.includes(run.status)).length,
-          last24Hours:
-            mayReadRun === undefined
-              ? recent!.total
-              : visible.filter((run) => run.createdAt >= now - RECENT_RUN_WINDOW_MS).length,
+          total: all.total,
+          active: active.total,
+          last24Hours: recent.total,
           lastRunAt: newest === undefined ? null : new Date(newest.createdAt).toISOString(),
           last:
             newest === undefined
