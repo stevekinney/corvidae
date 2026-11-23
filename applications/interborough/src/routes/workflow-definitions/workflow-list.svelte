@@ -34,6 +34,7 @@
   } from '@lostgradient/cinder';
   import { Search } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
+  import { tick } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';
   import FileLocationDetail from '../../app/file-location-detail.svelte';
@@ -42,6 +43,7 @@
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { getClient } from '../../lib/client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { getProviders } from '../../lib/host-providers.ts';
@@ -147,20 +149,29 @@
   });
 
   let segment = $state<ListSegment>('all');
+  let search = $state('');
+  let filterBar = $state<HTMLElement>();
   const counts = $derived(segmentCounts(workflows));
   const segments = $derived([
     { value: 'all', label: copy.segments.all, count: counts.all },
     { value: 'paused', label: copy.segments.paused, count: counts.paused },
     { value: 'problems', label: copy.segments.problems, count: counts.problems },
   ]);
-  const visible = $derived(
-    workflows
-      .filter((row) => inSegment(row, segment))
+  const visible = $derived.by(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return workflows
+      .filter(
+        (row) =>
+          inSegment(row, segment) &&
+          (query === '' ||
+            row.name.toLocaleLowerCase().includes(query) ||
+            row.file?.title?.toLocaleLowerCase().includes(query) === true),
+      )
       .map((row) => ({
         row,
         model: workflowListRow(row, activity.data?.get(row.name), now),
-      })),
-  );
+      }));
+  });
 
   const newPath = workflowNewPath();
   const internalPath = internalWorkflowsPath();
@@ -169,6 +180,24 @@
 
   function chooseSegment(value: string): void {
     segment = value === 'paused' || value === 'problems' ? value : 'all';
+  }
+
+  async function clearFilters(): Promise<void> {
+    search = '';
+    segment = 'all';
+    await tick();
+    const localSearch = filterBar?.querySelector<HTMLInputElement>('input[type="search"]');
+    if (localSearch) {
+      localSearch.focus();
+      return;
+    }
+    // The narrow and medium searches live in portalled popovers. Once a page-level Clear filters
+    // button disappears, put focus on FilterBar's persistent local trigger instead.
+    filterBar
+      ?.querySelector<HTMLButtonElement>(
+        '.cinder-filter-bar__menu-button, .cinder-filter-bar__search-button',
+      )
+      ?.focus();
   }
 
   function go(event: MouseEvent, path: string): void {
@@ -208,7 +237,7 @@
         description={VIEW_COPY.workflows.error.description}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={() => void catalog.refetch()}
+        {...faultErrorStateAdvice(catalog.error, () => void catalog.refetch())}
       />
     {:else if catalog.isPending}
       <Skeleton variant="list" rows={5} label={VIEW_COPY.workflows.loading.title} />
@@ -261,13 +290,18 @@
         />
       </ListPageEmpty>
     {:else}
-      <FilterBar
-        aria-label={copy.segmentsLabel}
-        searchVisible={false}
-        {segments}
-        segmentValue={segment}
-        onSegmentChange={chooseSegment}
-      />
+      <div bind:this={filterBar}>
+        <FilterBar
+          aria-label={copy.segmentsLabel}
+          searchQuery={search}
+          searchPlaceholder={copy.searchPlaceholder}
+          searchAriaLabel={copy.searchLabel}
+          {segments}
+          segmentValue={segment}
+          onSegmentChange={chooseSegment}
+          onSearchChange={(query) => (search = query)}
+        />
+      </div>
 
       {#if visible.length === 0}
         <EmptyState
@@ -276,7 +310,7 @@
           description={copy.noMatch.description}
           headingLevel={2}
           clearFiltersLabel={copy.clearAction}
-          onClearFilters={() => (segment = 'all')}
+          onClearFilters={clearFilters}
         >
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>

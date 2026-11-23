@@ -24,16 +24,6 @@ import { expectEngineMissesForRuns } from './task-support.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
-/**
- * The chat list's New chat: the labelled primary button in the list's header, which the first-use
- * state repeats (owner report, 2026-11-19).
- */
-const newChatAction = (page: Page) =>
-  page
-    .getByRole('region', { name: 'Chats' })
-    .locator('.cinder-page-header')
-    .getByRole('link', { name: 'New chat' });
-
 // A new chat with no `?agent=` starts with the host's default agent, the barrier agent
 // (`E2E_DEFAULT_AGENT`), which holds its run until the barrier is released. A spec that sends to it
 // leaves that run held, and a later spec that counts the runs held would read it.
@@ -113,10 +103,12 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       await expect(page).toHaveURL(/\/chats$/);
       // The page shows first use once the list has loaded.
       await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-      const list = page.getByRole('region', { name: 'Chats' });
-      await expect(list.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
-      await expect(list).toContainText('Start one with an agent.');
-      await expect(newChatAction(page)).toBeVisible();
+      // No chat at all: one empty state for the page, with no list pane beside it (COR-2438).
+      const state = page.getByTestId('chats-first-use');
+      await expect(state.getByRole('heading', { level: 2, name: 'No chats yet' })).toBeVisible();
+      await expect(state).toContainText('Start one with an agent.');
+      await expect(page.getByRole('region', { name: 'Chats' })).toHaveCount(0);
+      await expect(state.getByRole('link', { name: 'New chat' })).toBeVisible();
       await checkA11y(`chat — the first use at ${width}px`);
     });
   }
@@ -125,7 +117,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     page,
   }) => {
     await page.goto('/chats');
-    await newChatAction(page).click();
+    await page.getByTestId('chats-first-use').getByRole('link', { name: 'New chat' }).click();
     await expect(page).toHaveURL(/\/chats\/new$/);
     // The host's default agent is the first it lists, which here is the chat proof's parent
     // (`e2e-server.ts`); this case needs the assistant's scripted reply.
@@ -296,12 +288,17 @@ test.describe('the list of sessions', () => {
     // A page is twenty rows. The list loads the next page as the end comes into view, or when
     // Load more is pressed, so keep asking for it until the oldest of these chats is there.
     const oldest = list.getByRole('link', { name: new RegExp(`${label} chat 01`) });
-    await expect(async () => {
-      const more = list.getByRole('button', { name: 'Load more' });
-      if (await more.isVisible()) await more.click();
-      // load-proof: a miss only presses Load more again and tries again, so a slow host adds attempts, never a failure.
-      await expect(oldest).toBeVisible({ timeout: 1_000 });
-    }).toPass();
+    await expect
+      .poll(async () => {
+        if (await oldest.isVisible()) return true;
+        // The scroll sentinel can load the final page and remove the button while a pointer click
+        // waits for it. Find and activate the button in one browser turn, if it is still there.
+        await list.evaluate((pane) => {
+          pane.querySelector<HTMLButtonElement>('button.cinder-load-more__button')?.click();
+        });
+        return false;
+      })
+      .toBe(true);
     expect(await rows.count()).toBeGreaterThan(20);
   });
 

@@ -140,9 +140,15 @@ export const WORKFLOW_LIFECYCLE_KEYS_EXTENDED = {
    * checkpoint batch that records the retry decision and adds no write of its own; it is put when
    * an activity reaches attempt 2 or later, replaced as the attempt advances, and deleted in the
    * checkpoint that records the activity settling. Deleted too when the run is reactivated, on
-   * terminal cleanup, and on purge. It is not top level: the `wf:` listing skips it.
+   * terminal cleanup, and on purge. It lives under its own prefix, never under `wf:`, so a scan of
+   * {@link activityRetryingPrefix} names exactly the runs that hold a record: the index behind
+   * `ListFilter.retrying` (COR-2530). A run that ends while retrying leaves its record until
+   * terminal cleanup, so the index can name a run that is no longer retrying; the list verifies
+   * each candidate against its state and the record's run token.
    */
-  activityRetrying: (workflowId: string) => `wf:${encodeStorageKeyComponent(workflowId)}:retrying`,
+  activityRetrying: (workflowId: string) => `wf-retrying:${encodeStorageKeyComponent(workflowId)}`,
+  /** Prefix over every {@link activityRetrying} record: the `ListFilter.retrying` index. */
+  activityRetryingPrefix: () => 'wf-retrying:',
   /**
    * Durable audit record written when a workflow's finalizer permanently fails — the
    * retry horizon is reached, or the recorded resource state vanished so the finalizer

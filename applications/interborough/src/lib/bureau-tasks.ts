@@ -59,8 +59,19 @@ export type TaskOpenWait = TaskView['openWaits'][number];
 /** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
 export type TaskView = Omit<
   BureauOutput<'bureau.tasks.get'>,
-  'origin' | 'wakeAt' | 'workflow' | 'usage' | 'attention' | 'stalledSince'
+  'origin' | 'wakeAt' | 'workflow' | 'usage' | 'attention' | 'stalledSince' | 'failure' | 'retrying'
 > & {
+  /**
+   * Why a failed task failed (COR-2531): the step (`index` and `label`, the failing tool's name or
+   * `model`), the error's code and kind, and the tool call that failed. `null` for a task that did
+   * not fail and for a failure nothing described; absent from a Bureau that does not report it.
+   */
+  readonly failure?: BureauOutput<'bureau.tasks.get'>['failure'] | undefined;
+  /**
+   * The step a running task is on a second or later try of (COR-2531): its `label` and `attempt`.
+   * `null` when none is, and absent from a Bureau that does not report it.
+   */
+  readonly retrying?: BureauOutput<'bureau.tasks.get'>['retrying'] | undefined;
   /**
    * What the run has used and cost so far, or in total once it ended (COR-2524): tokens, and
    * `costUsd` in US dollars, `null` rather than `0` when nothing was priced. Absent from a Bureau
@@ -68,9 +79,11 @@ export type TaskView = Omit<
    */
   readonly usage?: BureauOutput<'bureau.tasks.get'>['usage'] | undefined;
   /**
-   * What asks for attention on a task that has not ended (COR-2526): `stalled` for a run that is
-   * alive but making no progress outside a declared wait, `looping` for a run whose toolbox
-   * reported a loop. Absent from a Bureau that does not report it, which reads as none.
+   * What asks for attention on a task (COR-2526): `stalled` for a run that is alive but making no
+   * progress outside a declared wait, `looping` for a run whose toolbox reported a loop, both only
+   * while the task has not ended; and `overspending` (COR-2527) for a run a step found over the
+   * workspace's spend threshold, which stays after the run settles. Absent from a Bureau that does
+   * not report it, which reads as none.
    */
   readonly attention?: BureauOutput<'bureau.tasks.get'>['attention'] | undefined;
   /** The instant (ISO 8601) the Bureau saw the run stall, while `attention` holds `stalled`. */
@@ -140,6 +153,22 @@ export type TaskFilter = {
   /** Only the tasks that ran on this workflow type (COR-2423); a task's `workflow.type` says which. */
   readonly workflow?: string;
   /**
+   * Only the tasks whose `attention` lists this kind (COR-2528). One kind at a time: the Bureau
+   * takes no list, so {@link listAllTasksNeedingAttention} asks for each.
+   */
+  readonly attention?: TaskAttention;
+  /**
+   * Only the tasks that failed at the step with this label (COR-2531, `failure.step.label`): a
+   * tool's name, `model` for a model step, or a workflow run's failed step. The Bureau compares the
+   * first 200 characters and refuses a value past 1,000.
+   */
+  readonly failedStep?: string;
+  /**
+   * `true` lists only the tasks with a step on a second or later try (COR-2531, `retrying` on the
+   * task); `false` only the tasks with none.
+   */
+  readonly retrying?: boolean;
+  /**
    * `false` lists only the tasks that have records (COR-2424): the schedule tick's runs and the
    * instances of workflow files, which the engine holds, are left out so a reader of the newest
    * tasks (the chat list, the command palette) is not given its slots to them.
@@ -188,6 +217,32 @@ export async function listAllTasks(
     pageToken = page.nextPageToken ?? undefined;
   } while (pageToken !== undefined);
   return tasks;
+}
+
+/** What can ask for attention on a task (COR-2526, COR-2527), in the order a row says them. */
+export const TASK_ATTENTION_KINDS = ['stalled', 'looping', 'overspending'] as const;
+
+/** One of {@link TASK_ATTENTION_KINDS}. */
+export type TaskAttention = (typeof TASK_ATTENTION_KINDS)[number];
+
+/**
+ * Every task that carries at least one attention state (COR-2528), asked of the Bureau one kind at
+ * a time and merged by task, so a task that is stalled and over the threshold is listed once. The
+ * Bureau keeps `overspending` on a task after it settles, so this lists a run that the Needs
+ * attention feed dropped after seven days.
+ */
+export async function listAllTasksNeedingAttention(
+  filter: Omit<TaskFilter, 'attention'> = {},
+  options?: Options,
+): Promise<TaskView[]> {
+  const lists = await Promise.all(
+    TASK_ATTENTION_KINDS.map((attention) => listAllTasks({ ...filter, attention }, options)),
+  );
+  const merged = new Map<string, TaskView>();
+  for (const task of lists.flat()) {
+    if (!merged.has(task.id)) merged.set(task.id, task);
+  }
+  return [...merged.values()];
 }
 
 /** The states of a task that is going: it has started, or it is about to. A waiting task is neither. */
@@ -359,6 +414,59 @@ export type TaskHooks = TaskInspection['hooks'];
 export async function inspectTaskHooks(taskId: string, options?: Options): Promise<TaskHooks> {
   const answer = await bureauClient['bureau.tasks.inspect']({ taskId }, options);
   return answer.hooks;
+}
+
+/**
+ * Why a failed run failed, from what the Bureau stored about it (`bureau.tasks.explain`, COR-2533):
+ * a sentence, the cause, the step, how often it was tried, the guardrails that fired, what to do
+ * next and the commands that read it. The browser words none of it: the Run page shows this answer,
+ * and so do the CLI and the failure explanation panel.
+ */
+export type RunFailureExplanation = BureauOutput<'bureau.tasks.explain'>;
+
+/**
+ * The explanation of the failed run `runId`, an agent run's task or an instance of a workflow file.
+ * A run that did not fail is an `Unprocessable` fault with a message and a remediation, and a run the
+ * caller may not read is a not-found fault.
+ */
+export async function explainRunFailure(
+  runId: string,
+  options?: Options,
+): Promise<RunFailureExplanation> {
+  return bureauClient['bureau.tasks.explain']({ runId }, options);
+}
+
+/**
+ * The longer explanation of a failed agent run that a model wrote when the owner asked
+ * (`bureau.tasks.explanation.generate`, COR-2534): the text, the model that wrote it
+ * (`<provider>/<model>`), when, and what it cost, which is its own and not part of the run's usage.
+ */
+export type ModelExplanation = BureauOutput<'bureau.tasks.explanation.generate'>['explanation'];
+
+/**
+ * The explanation a model wrote of the failed agent run `runId`, or `null` when nobody asked one.
+ * It calls no model, so reading it again costs nothing.
+ */
+export async function readModelExplanation(
+  runId: string,
+  options?: Options,
+): Promise<ModelExplanation | null> {
+  const answer = await bureauClient['bureau.tasks.explanation.get']({ runId }, options);
+  return answer.explanation;
+}
+
+/**
+ * Asks the Bureau's model to explain the failed agent run `runId` at more length, and stores the
+ * text on the task, replacing the one it held. It spends a model's tokens, so it is called only
+ * when the person asks. With no provider connected it is a fault whose remediation says to connect
+ * one.
+ */
+export async function generateModelExplanation(
+  runId: string,
+  options?: Options,
+): Promise<ModelExplanation> {
+  const answer = await bureauClient['bureau.tasks.explanation.generate']({ runId }, options);
+  return answer.explanation;
 }
 
 /**

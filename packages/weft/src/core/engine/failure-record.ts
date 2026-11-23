@@ -16,7 +16,8 @@ function labelText(label: unknown): string {
   return String(label);
 }
 
-function truncateLabel(label: string): string {
+/** A label cut to {@link FAILED_STEP_LABEL_MAX_LENGTH}, the way a failed run stores it. */
+export function truncateLabel(label: string): string {
   if (label.length <= FAILED_STEP_LABEL_MAX_LENGTH) return label;
   const cut = label.slice(0, FAILED_STEP_LABEL_MAX_LENGTH);
   // Never end on half of a surrogate pair.

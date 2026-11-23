@@ -71,7 +71,7 @@
       </div>
     {/snippet}
     {#snippet footer()}
-      <Button variant="secondary" onclick={onClose}>{copy.cancel}</Button>
+      <Button variant="secondary" onclick={onClose} label={copy.cancel} />
     {/snippet}
   </Modal>
 {/if}

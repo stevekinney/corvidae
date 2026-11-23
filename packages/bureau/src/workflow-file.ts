@@ -361,7 +361,11 @@ export interface WorkflowFileDefinition {
 
 export type ParsedWorkflowFile =
   | { readonly ok: true; readonly file: WorkflowFileContents }
-  | { readonly ok: false; readonly problem: WorkflowFileProblem };
+  | {
+      readonly ok: false;
+      readonly problem: WorkflowFileProblem;
+      readonly readableTrigger?: WorkflowFileTrigger;
+    };
 
 /**
  * Why `id` cannot be a workflow identifier, or `undefined` when it can: an owner file's bare stem,
@@ -730,8 +734,21 @@ export function parseWorkflowFile(
     issues.push(...scheduleInputIssues(document, written['trigger']));
   }
   if (issues.length > 0 || document === undefined) {
+    const trigger = written['trigger'];
+    let readableTrigger: WorkflowFileTrigger | undefined;
+    if (
+      isPlainObject(trigger) &&
+      !issues.some(({ path }) => path === 'trigger' || path.startsWith('trigger.'))
+    ) {
+      if (trigger['kind'] === 'signal' && typeof trigger['name'] === 'string') {
+        readableTrigger = { kind: 'signal', name: trigger['name'] };
+      } else if (trigger['kind'] === 'schedule' && typeof trigger['spec'] === 'string') {
+        readableTrigger = { kind: 'schedule', spec: trigger['spec'] };
+      }
+    }
     return {
       ok: false,
+      ...(readableTrigger === undefined ? {} : { readableTrigger }),
       problem: {
         code: 'invalid-document',
         message: `Invalid workflow file: ${issues

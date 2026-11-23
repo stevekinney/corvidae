@@ -7,12 +7,16 @@
  * place. What was decided is under Done. Sessions are started through the AG-UI mount, the way a
  * client other than the page would.
  */
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
+import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import {
+  approveReview,
   bureauCall,
   taskOfSession,
   threadMessages,
@@ -21,6 +25,19 @@ import {
 } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
+const REFUND_APPROVAL = {
+  toolName: 'issue-refund',
+  question: 'Refund order 4471 for $42.00?',
+  arguments: { orderId: '4471', amount: '$42.00', reason: 'Arrived damaged' },
+  risk: 'high',
+} as const;
+const TRIAGE_APPROVAL = {
+  toolName: 'triage-refunds',
+  question: 'Triage refund request for order 4398?',
+  arguments: { orderId: '4398', amount: '$27.25', reason: 'Arrived damaged' },
+  risk: 'medium',
+} as const;
+type ApprovalCaptureFixture = typeof REFUND_APPROVAL | typeof TRIAGE_APPROVAL;
 
 // Wide enough that the list and the open review show side by side (ListDetail shows one pane at a
 // time below 900 pixels of its own width), so a row is on the page while its review is open.
@@ -70,12 +87,90 @@ const inboxAt = (review: WaitingReview, tab?: 'done'): string =>
 const rowOf = (page: Page, review: WaitingReview) =>
   page.locator(`[data-review-row="bureau:${review.id}"]`);
 
-/** The open review's pane. */
-const paneOf = (page: Page) => page.locator('.ib-review-pane');
+/** The open review detail, whether it is a shared approval card or a question/workflow pane. */
+const paneOf = (page: Page) => page.locator('.ib-reviews__detail');
 
 /** Whether a tool result in a conversation carries `refundedCents`, which only a refund that ran does. */
 function refundRan(messages: unknown[]): boolean {
   return JSON.stringify(messages).includes('refundedCents');
+}
+
+/** Supplies the board's sample copy and arguments on the real review's read response. */
+async function useApprovalCaptureFixture(
+  page: Page,
+  review: WaitingReview,
+  fixture: ApprovalCaptureFixture,
+): Promise<void> {
+  await page.route('**/jsonrpc', async (route) => {
+    const call = route.request().postDataJSON() as { method?: string };
+    if (call.method !== 'bureau.reviews.list') return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      result?: {
+        reviews?: Array<{
+          id: string;
+          approval?: { action: Record<string, unknown> };
+        }>;
+      };
+    };
+    if (body.result?.reviews === undefined) return route.fulfill({ response });
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        result: {
+          ...body.result,
+          reviews: body.result.reviews.map((candidate) => {
+            if (candidate.id !== review.id || candidate.approval === undefined) return candidate;
+            return {
+              ...candidate,
+              approval: {
+                ...candidate.approval,
+                toolName: fixture.toolName,
+                arguments: fixture.arguments,
+                action: {
+                  ...candidate.approval.action,
+                  message: fixture.question,
+                  risk: fixture.risk,
+                },
+              },
+            };
+          }),
+        },
+      },
+    });
+  });
+}
+
+/** Set the actual demo tool's policy and restore its versioned override afterwards. */
+async function withAlwaysRefundMode(
+  request: APIRequestContext,
+  exercise: () => Promise<void>,
+): Promise<void> {
+  const id = 'demo:tool-runner';
+  const tool = 'issue-refund';
+  const { hash, overrides, ownTools } = (await bureauCall(request, 'bureau.agents.overrides.get', {
+    id,
+  })) as { hash: string; overrides: Record<string, unknown>; ownTools: string[] };
+  expect(ownTools).toContain(tool);
+  const { hash: appliedHash } = (await bureauCall(request, 'bureau.agents.overrides.update', {
+    id,
+    expectedHash: hash,
+    overrides: { ...overrides, approvals: { [tool]: 'always' } },
+  })) as { hash: string };
+  try {
+    const readback = (await bureauCall(request, 'bureau.agents.overrides.get', { id })) as {
+      overrides: Record<string, unknown>;
+    };
+    expect(readback.overrides['approvals']).toMatchObject({ [tool]: 'always' });
+    await exercise();
+  } finally {
+    await bureauCall(request, 'bureau.agents.overrides.update', {
+      id,
+      expectedHash: appliedHash,
+      overrides,
+    });
+  }
 }
 
 /** Starts a refund run that waits on its approval, and opens the inbox on it. */
@@ -83,14 +178,57 @@ async function waitingRefund(
   page: Page,
   request: APIRequestContext,
   name: string,
+  fixture?: ApprovalCaptureFixture,
 ): Promise<{ threadId: string; review: WaitingReview }> {
   const threadId = newThreadId(name);
   await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
   expect(refundRan(await threadMessages(request, threadId))).toBe(false);
   const review = await waitingReviewOf(request, threadId);
+  if (fixture !== undefined) await useApprovalCaptureFixture(page, review, fixture);
   await page.goto(inboxAt(review));
-  await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
+  await expect(paneOf(page)).toContainText(
+    fixture?.question ?? 'Refund order order-1001 for $42.00?',
+  );
   return { threadId, review };
+}
+
+/** Captures an approval in the two board widths, restoring the suite's desktop viewport afterwards. */
+async function captureApprovalAtWidths(
+  page: Page,
+  state: string,
+  actions: readonly string[] = ['Deny', 'Approve'],
+): Promise<void> {
+  const originalViewport = page.viewportSize();
+  if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
+  try {
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width === 375) {
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        ).toBe(true);
+      }
+      for (const name of actions) {
+        const action = paneOf(page).getByRole('button', { name, exact: true });
+        await expect(action).toBeVisible();
+        if (width === 375) {
+          await expect
+            .poll(async () => {
+              const box = await action.boundingBox();
+              return box === null ? 0 : Math.min(box.height, box.width);
+            })
+            .toBeGreaterThanOrEqual(44);
+        }
+      }
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state,
+        source: '31-reviews.spec.ts',
+      });
+    }
+  } finally {
+    await page.setViewportSize(originalViewport);
+  }
 }
 
 test.describe('a tool approval', () => {
@@ -115,7 +253,7 @@ test.describe('a tool approval', () => {
 
     // The pane says what is asked, who asked it, and what the call was given, and where from.
     await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
-    const source = paneOf(page).getByTestId('review-source');
+    const source = paneOf(page).getByRole('paragraph').filter({ hasText: 'Asked by' });
     await expect(source).toContainText('Asked by');
     await expect(source.getByRole('link', { name: /tool runner/i })).toBeVisible();
     await expect(source).toContainText(/waiting \d+ (min|h|days?)/);
@@ -125,7 +263,7 @@ test.describe('a tool approval', () => {
     await expect(page.locator('main').getByLabel('Live', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Workflow reviews', { exact: true })).toHaveCount(0);
     await checkA11y('a tool approval in the inbox');
-    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(page));
 
     await expect(rowOf(page, review)).toHaveCount(0);
     // The row going is not the evidence: the tool ran, and its result is in the conversation.
@@ -135,7 +273,9 @@ test.describe('a tool approval', () => {
   test('denied from the inbox with a note never runs the tool', async ({ page, request }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-reject');
     const resolves = recordResolves(page);
-    await paneOf(page).getByLabel('Note (optional)', { exact: true }).fill('Wrong customer.');
+    await paneOf(page)
+      .getByRole('textbox', { name: 'Note (optional)', exact: true })
+      .fill('Wrong customer.');
     await paneOf(page).getByRole('button', { name: 'Deny' }).click();
 
     await expect(rowOf(page, review)).toHaveCount(0);
@@ -153,7 +293,7 @@ test.describe('a tool approval', () => {
   }) => {
     const approved = await waitingRefund(page, request, 'reviews-key-approve');
     // Typing an "a" or a "d" into the note is typing, not a decision.
-    const note = paneOf(page).getByLabel('Note (optional)', { exact: true });
+    const note = paneOf(page).getByRole('textbox', { name: 'Note (optional)', exact: true });
     await note.fill('');
     await note.press('a');
     await note.press('d');
@@ -163,6 +303,11 @@ test.describe('a tool approval', () => {
     await note.fill('');
     await paneOf(page).getByRole('heading', { level: 2 }).click();
     await page.keyboard.press('a');
+    await expect(rowOf(page, approved.review)).toBeVisible();
+    await expect(
+      paneOf(page).getByRole('button', { name: 'Press again to approve' }),
+    ).toBeVisible();
+    await page.keyboard.press('a');
     await expect(rowOf(page, approved.review)).toHaveCount(0);
     await expect
       .poll(async () => refundRan(await threadMessages(request, approved.threadId)))
@@ -170,7 +315,9 @@ test.describe('a tool approval', () => {
 
     const denied = await waitingRefund(page, request, 'reviews-key-deny');
     const resolves = recordResolves(page);
-    await paneOf(page).getByLabel('Note (optional)', { exact: true }).fill('Not this one.');
+    await paneOf(page)
+      .getByRole('textbox', { name: 'Note (optional)', exact: true })
+      .fill('Not this one.');
     await paneOf(page).getByRole('heading', { level: 2 }).click();
     await page.keyboard.press('d');
     await expect(rowOf(page, denied.review)).toHaveCount(0);
@@ -182,18 +329,125 @@ test.describe('a tool approval', () => {
     expect(refundRan(await threadMessages(request, denied.threadId))).toBe(false);
   });
 
-  test('Allow for the rest of this chat approves the tool and sends remember', async ({
+  test('shared Reviews approval detail remembers an On changes approval only when approved', async ({
     page,
     request,
   }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-remember');
     const resolves = recordResolves(page);
-    await paneOf(page).getByRole('button', { name: 'Allow for the rest of this chat' }).click();
+    const remember = paneOf(page).getByRole('checkbox', {
+      name: /allow .* for the rest of this chat/i,
+    });
+    await remember.check();
+    await expect.poll(() => resolves).toHaveLength(0);
+    await approveReview(paneOf(page));
 
     await expect(rowOf(page, review)).toHaveCount(0);
     expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
     await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
   });
+
+  test('shared Reviews approval detail captures a pending On changes approval', async ({
+    page,
+    request,
+  }) => {
+    await waitingRefund(page, request, 'reviews-capture-on-changes', TRIAGE_APPROVAL);
+    await captureApprovalAtWidths(page, 'pending On changes approval');
+  });
+
+  test('shared Reviews approval detail captures a pending Always approval', async ({
+    page,
+    request,
+  }) => {
+    await withAlwaysRefundMode(request, async () => {
+      await waitingRefund(page, request, 'reviews-capture-always', REFUND_APPROVAL);
+      const pane = paneOf(page);
+      await expect(pane.getByRole('heading', { level: 2 })).toHaveText(REFUND_APPROVAL.question);
+      for (const label of ['Order ID', 'Amount', 'Reason']) {
+        await expect(pane.getByText(label, { exact: true })).toBeVisible();
+      }
+      await expect(pane).toContainText('Arrived damaged');
+      await expect(pane).toContainText("Can't be undone.");
+      await expect(pane.getByRole('checkbox')).toHaveCount(0);
+      await captureApprovalAtWidths(page, 'pending Always approval');
+    });
+  });
+
+  for (const [decision, active, other] of [
+    ['Approve', 'Approving…', 'Deny'],
+    ['Deny', 'Denying…', 'Approve'],
+  ] as const) {
+    test(`/reviews shared Reviews approval detail captures ${decision} held and failing`, async ({
+      page,
+      request,
+    }) => {
+      await withAlwaysRefundMode(request, async () => {
+        const { review, threadId } = await waitingRefund(
+          page,
+          request,
+          'reviews-capture-held',
+          REFUND_APPROVAL,
+        );
+        const requests = recordResolves(page);
+        const release = Promise.withResolvers<void>();
+        let failedOnce = false;
+        const failureTitle =
+          REVIEWS_COPY.approvalFailed[decision === 'Approve' ? 'approve' : 'deny'];
+        // The first decision is rejected here before reaching the Bureau. This fixture can say
+        // what did not happen. The page relies on the actual failure message for live responses.
+        const reason =
+          decision === 'Approve'
+            ? 'Interborough couldn’t reach the agent. Nothing was refunded.'
+            : 'Interborough couldn’t reach the agent. Nothing changed.';
+        await page.route('**/jsonrpc', async (route) => {
+          const call = route.request().postDataJSON() as {
+            method?: string;
+            id?: string;
+            params?: { id?: string };
+          };
+          if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id) {
+            return route.fallback();
+          }
+          if (failedOnce) return route.fallback();
+          failedOnce = true;
+          await release.promise;
+          await route.fulfill({
+            json: { jsonrpc: '2.0', id: call.id, error: { code: -32603, message: reason } },
+          });
+        });
+        const pane = paneOf(page);
+        await expect(pane.getByRole('checkbox')).toHaveCount(0);
+        try {
+          if (decision === 'Approve') await approveReview(pane);
+          else await pane.getByRole('button', { name: decision, exact: true }).click();
+          await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
+            'aria-busy',
+            'true',
+          );
+          await expect(pane.getByRole('button', { name: other, exact: true })).toBeDisabled();
+          await expect(pane.getByRole('checkbox')).toHaveCount(0);
+          await page.keyboard.press(decision === 'Approve' ? 'd' : 'a');
+          expect(requests).toHaveLength(1);
+          await captureApprovalAtWidths(page, `${decision} in flight`, [active, other]);
+        } finally {
+          release.resolve();
+        }
+        await expect(pane.getByText(failureTitle, { exact: true })).toBeVisible();
+        await expect(pane).toContainText(reason);
+        await expect(page.locator('.cinder-toast-region').getByText(reason)).toHaveCount(0);
+        await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
+        await expect(pane.getByRole('checkbox')).toHaveCount(0);
+        await expect(rowOf(page, review)).toBeVisible();
+        expect(refundRan(await threadMessages(request, threadId))).toBe(false);
+        expect(requests).toHaveLength(1);
+        await captureApprovalAtWidths(page, `${decision} failing`);
+        if (decision === 'Approve') await approveReview(pane);
+        else await pane.getByRole('button', { name: decision, exact: true }).click();
+        await expect(rowOf(page, review)).toHaveCount(0);
+        expect(requests).toHaveLength(2);
+      });
+    });
+  }
 
   test('decided in the chat is gone from the inbox once the run goes on', async ({
     page,
@@ -225,7 +479,7 @@ test.describe('a tool approval', () => {
     request,
   }) => {
     const { threadId, review } = await waitingRefund(page, request, 'reviews-inbox-first');
-    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(page));
     await expect(rowOf(page, review)).toHaveCount(0);
 
     // A chat opened afterwards reads the conversation the decision wrote into.
@@ -258,7 +512,7 @@ test.describe('a tool approval', () => {
 
     const inbox = await context.newPage();
     await inbox.goto(inboxAt(review));
-    await paneOf(inbox).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(inbox));
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
     // The page that was already open reads the decision within five seconds.
@@ -266,23 +520,128 @@ test.describe('a tool approval', () => {
     await expect(page.getByText('1 run is waiting on you')).toHaveCount(0);
   });
 
-  test('is listed under Done once it is decided, with who decided it, and cannot be decided again', async ({
+  test('/reviews shared Reviews approval detail is listed under Done with its decision and note', async ({
     page,
     request,
   }) => {
-    const { review } = await waitingRefund(page, request, 'reviews-done');
-    await paneOf(page).getByRole('button', { name: 'Approve' }).click();
+    const { review } = await waitingRefund(page, request, 'reviews-done', REFUND_APPROVAL);
+    const note = 'Confirmed with the customer.';
+    await paneOf(page).getByRole('textbox', { name: 'Note (optional)' }).fill(note);
+    await approveReview(paneOf(page));
     await expect(rowOf(page, review)).toHaveCount(0);
 
     await page.goto(inboxAt(review, 'done'));
     await expect(rowOf(page, review)).toContainText('Approved');
-    await expect(paneOf(page).getByTestId('review-resolution')).toContainText('Approved');
+    await expect(paneOf(page)).toContainText('Approved');
+    await expect(paneOf(page)).toContainText(note);
     await expect(paneOf(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(paneOf(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
+    await captureApprovalAtWidths(page, 'Done with decision and note', []);
     // Done is read through the same list, asked for what was resolved.
     await page.getByRole('radio', { name: /^Waiting/ }).click();
     await expect(page).not.toHaveURL(/tab=done/);
     await expect(rowOf(page, review)).toHaveCount(0);
+  });
+});
+
+test.describe('a phone tool approval', () => {
+  test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('shared Reviews approval detail shows full Fields values and keeps the actions docked on a phone', async ({
+    page,
+    request,
+  }) => {
+    await withAlwaysRefundMode(request, async () => {
+      await waitingRefund(page, request, 'reviews-phone-approval', REFUND_APPROVAL);
+      const pane = paneOf(page);
+      const input = pane.getByRole('group', { name: 'Input', exact: true });
+      const reason = input.getByText('Arrived damaged', { exact: true });
+      const { input: inputBounds, reason: reasonBounds } = await readBoxes(page, {
+        input,
+        reason,
+      });
+      expect
+        .soft(reasonBounds.x + reasonBounds.width)
+        .toBeLessThanOrEqual(inputBounds.x + inputBounds.width);
+
+      const actions = pane.getByRole('group', { name: 'Approval actions' });
+      const targets = await actions.evaluate((group) => {
+        const buttons = Array.from(group.querySelectorAll('button'));
+        return buttons.map((button) => {
+          const { x, y, width, height } = button.getBoundingClientRect();
+          const centerX = x + width / 2;
+          const centerY = y + height / 2;
+          const halfTarget = 21.5;
+          const target = [
+            [centerX, centerY],
+            [centerX - halfTarget, centerY - halfTarget],
+            [centerX + halfTarget, centerY - halfTarget],
+            [centerX - halfTarget, centerY + halfTarget],
+            [centerX + halfTarget, centerY + halfTarget],
+          ] as const;
+          return {
+            width,
+            reachable: target.every(([pointX, pointY]) => {
+              const hit = document.elementFromPoint(pointX, pointY);
+              return hit !== null && button.contains(hit);
+            }),
+          };
+        });
+      });
+      expect(targets).toHaveLength(2);
+      const [deny, approve] = targets;
+      if (deny === undefined || approve === undefined) throw new Error('Both actions are required');
+      expect.soft(Math.abs(deny.width - approve.width)).toBeLessThanOrEqual(1);
+      expect.soft(deny.reachable, 'Deny owns a 44px touch target').toBe(true);
+      expect.soft(approve.reachable, 'Approve owns a 44px touch target').toBe(true);
+
+      const note = pane.getByRole('textbox', { name: 'Note (optional)', exact: true });
+      await note.scrollIntoViewIfNeeded();
+      await expect(note).toBeInViewport();
+      await expect(actions).toBeInViewport();
+    });
+  });
+
+  test('/reviews keeps every approval argument reachable above the dock at 320px', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await withAlwaysRefundMode(request, async () => {
+      await waitingRefund(page, request, 'reviews-320-approval-input', REFUND_APPROVAL);
+      const pane = paneOf(page);
+      const input = pane.getByRole('group', { name: 'Input', exact: true });
+      const actions = pane.getByRole('group', { name: 'Approval actions' });
+
+      async function readAboveActions(value: Locator): Promise<void> {
+        await value.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+        await expect(value).toBeInViewport({ ratio: 1 });
+        const boxes = await readBoxes(page, { actions, value });
+        expect(boxes.value.y + boxes.value.height).toBeLessThanOrEqual(boxes.actions.y);
+        await expect(actions).toBeInViewport();
+      }
+
+      for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
+        await readAboveActions(input.getByText(argument, { exact: true }));
+      }
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'approval Fields above dock',
+        source: '31-reviews.spec.ts',
+      });
+
+      await input.getByText('JSON', { exact: true }).tap();
+      const tree = input.getByRole('tree', { name: 'JSON tree' });
+      await expect(tree).toContainText('reason');
+      for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
+        await readAboveActions(tree.getByText(argument, { exact: false }).last());
+      }
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'approval JSON above dock',
+        source: '31-reviews.spec.ts',
+      });
+    });
   });
 });
 
@@ -302,7 +661,7 @@ test.describe('a decision made in the inbox', () => {
 
     const inbox = await context.newPage();
     await inbox.goto(inboxAt(review));
-    await paneOf(inbox).getByRole('button', { name: 'Approve' }).click();
+    await approveReview(paneOf(inbox));
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
@@ -345,7 +704,7 @@ test.describe('a decision made in the inbox', () => {
   });
 });
 
-test.describe('a question a run asks', () => {
+test.describe('/reviews: a question a run asks', () => {
   test('is answered in the inbox in the shape it asks for, and the run goes on', async ({
     page,
     request,
@@ -363,6 +722,19 @@ test.describe('a question a run asks', () => {
     );
     await expect(paneOf(page)).toContainText('The agent continues as soon as you answer.');
     await checkA11y('a question in the inbox');
+    const originalViewport = page.viewportSize();
+    if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(paneOf(page).getByLabel('Your answer')).toBeVisible();
+      await expect(paneOf(page).getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'pending human question',
+        source: '31-reviews.spec.ts',
+      });
+    }
+    await page.setViewportSize(originalViewport);
     await paneOf(page).getByLabel('Your answer').fill('staging');
     await paneOf(page).getByRole('button', { name: 'Send', exact: true }).click();
 
@@ -463,43 +835,65 @@ test.describe('a scheduled run’s human wait', () => {
   });
 });
 
-test.describe('a Bureau that fails', () => {
-  test('says so with a banner on a page that is up, and does not claim nothing is waiting', async ({
-    page,
-    checkA11y,
-    pageErrors,
-  }) => {
-    // Each read of the review list the page makes on arrival fails once; none retries, and the
-    // feed's catch-up is held. The view's probe and the notification feed read the Bureau's own
-    // list once each, the Done tab once, and the merged waiting list once for the navigation's
-    // count. The count is not exact: the page draws its own loading and mounts beside the probe
-    // (row 26a), so whether its own query shares that read in flight or makes one more follows
-    // the order the network answers in (5 or 6 seen). It is bounded, so a page that kept asking
-    // after a failure would still fail the test.
-    pageErrors.expect({
-      pattern: loggedFailedResponse(500, /\/jsonrpc/),
-      reason:
-        'the test answers each read of the Bureau’s review list the page makes on arrival with a 500',
-      count: 5,
-      atMost: 8,
-    });
-    // The feed's catch-up would ask the lists again while the page is open, so it is held.
-    await holdBureauFeed(page);
-    await page.route('**/jsonrpc', async (route) => {
-      if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
+test.describe('/reviews: a Bureau that fails', () => {
+  for (const delivery of ['immediate', 'held'] as const) {
+    test(`renders the Reviews failure with exactly two pending reads (${delivery})`, async ({
+      page,
+      checkA11y,
+      pageErrors,
+    }) => {
+      const time = Date.parse('2026-11-10T15:00:00Z');
+      await page.clock.install({ time: time - 1_000 });
+      await page.clock.pauseAt(time);
+      await holdBureauFeed(page);
+      const release = Promise.withResolvers<void>();
+      const counts = { waiting: 0, resolved: 0 };
+      pageErrors.expect({
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
+        reason: 'the two pending reads and the independent resolved read receive a 500',
+        count: 3,
+      });
+      await page.route('**/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as {
+          method?: string;
+          params?: { status?: string };
+        };
+        if (call.method !== 'bureau.reviews.list') return route.fallback();
+        if (call.params?.status === 'resolved') counts.resolved += 1;
+        else if (call.params?.status === undefined || call.params.status === 'pending') {
+          counts.waiting += 1;
+        } else return route.fallback();
+        if (delivery === 'held') await release.promise;
         await route.fulfill({ status: 500, json: { error: 'The Bureau broke.' } });
-        return;
+      });
+
+      try {
+        await page.goto('/reviews');
+        if (delivery === 'held') {
+          await expect(page.getByRole('heading', { level: 1, name: 'Reviews' })).toBeVisible();
+          await expect.poll(() => counts.waiting).toBeGreaterThanOrEqual(2);
+        }
+      } finally {
+        release.resolve();
       }
-      await route.fallback();
+      await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
+      await expect(
+        page.getByRole('alert').filter({ hasText: 'Couldn’t load reviews' }),
+      ).toBeVisible();
+      await expect(page.getByText('Nothing waiting on you')).toHaveCount(0);
+      await expect.poll(() => counts.resolved).toBeGreaterThanOrEqual(1);
+      expect(counts).toEqual({ waiting: 2, resolved: 1 });
+      // The fake clock stops animation frames; resume only after the exact read assertion so the
+      // accessibility and capture helpers can observe a painted frame without driving a poll.
+      await page.clock.resume();
+      await checkA11y(`the inbox with the Bureau failing (${delivery})`);
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: `waiting list failed, ${delivery} response`,
+        source: '31-reviews.spec.ts',
+      });
     });
-
-    await page.goto('/reviews');
-
-    await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
-    await expect(page.getByRole('alert').filter({ hasText: 'Something went wrong' })).toBeVisible();
-    await expect(page.getByText('Nothing waiting on you')).toHaveCount(0);
-    await checkA11y('the inbox with the Bureau failing');
-  });
+  }
 });
 
 /** What is waiting, as the two services say it: the Bureau's reviews and the engine's pending ones. */

@@ -131,6 +131,8 @@ export type CliCommand =
       profile?: string;
       type?: string;
       status?: string;
+      failedStep?: string;
+      retrying?: boolean;
       limit?: number;
       help: boolean;
       json: boolean;

@@ -38,6 +38,7 @@ import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import {
   pending,
   responsiveAddresses,
@@ -356,7 +357,16 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     ).toBeVisible();
   },
   '/health/runs': async (page) => {
-    await expect(page.locator('.cinder-badge__label', { hasText: LONG_TAG }).first()).toBeVisible();
+    const table = page.locator('table.weft-workflows-table');
+    const tag = table.locator('.cinder-badge__label', { hasText: LONG_TAG }).first();
+    await expect(tag).toBeAttached();
+    // The long tag still seeds the desktop overflow check. Stacked rows deliberately omit detail.
+    await expect
+      .poll(async () => {
+        const stacked = (await table.getAttribute('data-cinder-stacked')) !== null;
+        return (await tag.isVisible()) === !stacked;
+      })
+      .toBe(true);
   },
   // The test delivery's line opens to the tries, each of which got no answer from the address.
   '/hooks/:hook': async (page) => {
@@ -552,8 +562,9 @@ let variantAddresses: Readonly<Record<string, string>>;
 
 /**
  * The routes that print the waiting review. A tool approval stops waiting a few minutes after it is
- * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes; each
- * asks for a fresh one first when it is.
+ * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes. Each
+ * viewport therefore reads the pending list and rebinds the deep link to this thread's current
+ * review before it opens the route.
  */
 const NEEDS_WAITING_REVIEW = new Set([
   '/reviews',
@@ -562,12 +573,16 @@ const NEEDS_WAITING_REVIEW = new Set([
 ]);
 
 async function ensureWaitingReview(request: APIRequestContext): Promise<void> {
-  const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+  const listed = (await bureauCall(request, 'bureau.reviews.list', { status: 'pending' })) as {
     reviews: { id: string; sessionId?: string }[];
   };
-  if (listed.reviews.some((review) => review.sessionId === REVIEW_THREAD)) return;
-  const waitingReview = await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE);
-  seed = { ...seed, review: `bureau:${waitingReview}` };
+  const current = listed.reviews.find((review) => review.sessionId === REVIEW_THREAD);
+  const review = current ?? {
+    id: await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE),
+    sessionId: REVIEW_THREAD,
+  };
+  if (seed.review === `bureau:${review.id}`) return;
+  seed = { ...seed, review: `bureau:${review.id}` };
   addresses = responsiveAddresses(seed);
   variantAddresses = responsiveVariants(seed);
 }
@@ -748,6 +763,33 @@ test('gives every route in the table an address, and every pending route an owne
     expect(entry.issue, entry.pattern).toMatch(/^COR-\d+$/);
   }
   expect(new Set(pending.map((entry) => entry.pattern)).size).toBe(pending.length);
+});
+
+test('/agents/:agent/hooks keeps the last switch reachable above the phone tabs at 320px', async ({
+  page,
+}) => {
+  const route = '/agents/:agent/hooks';
+  await settle(page, route, 320);
+  await page.setViewportSize({ width: 320, height: 640 });
+  const outlet = page.locator('main.weft-shell-outlet');
+  const tabBar = page.getByRole('navigation', { name: 'Main tabs', exact: true });
+  const toggle = page.getByTestId('agent-hooks').getByRole('switch').last();
+  await expect(toggle).toBeVisible();
+  await outlet.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  const boxes = await readBoxes(page, { outlet, tabBar, toggle });
+  expect(boxes.toggle.y).toBeGreaterThanOrEqual(boxes.outlet.y);
+  expect(boxes.toggle.y + boxes.toggle.height).toBeLessThanOrEqual(boxes.tabBar.y);
+  expect(boxes.toggle.y + boxes.toggle.height).toBeLessThanOrEqual(
+    boxes.outlet.y + boxes.outlet.height,
+  );
+  await toggle.click({ trial: true });
+  await captureForDesignReview(page, {
+    route,
+    state: 'last hook switch at scroll end',
+    source: 'responsive.spec.ts',
+  });
 });
 
 test.describe('the measurement', () => {
@@ -960,8 +1002,8 @@ for (const route of routes) {
 
   if (owner === undefined) {
     test(`${route.pattern} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
-      if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
       for (const width of WIDTHS) {
+        if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
         expect(
           await problemsAt(page, route.pattern, width),
           `${route.pattern} at ${width}px`,
@@ -1135,10 +1177,10 @@ for (const width of [320, 375]) {
   });
 }
 
-test('the engine workflow table keeps its table layout and header at 320 pixels', async ({
+test('the scoped engine workflow table keeps its table layout and header at 320 pixels', async ({
   page,
 }) => {
-  await settle(page, '/health/runs', 320);
+  await settle(page, '/workflows/:workflow/runs', 320);
   const table = page.locator('table.weft-workflows-table');
   await expect(table).toBeVisible();
   expect(await table.evaluate((element) => getComputedStyle(element).display)).toBe('table');
@@ -1150,8 +1192,8 @@ test('the engine workflow table keeps its table layout and header at 320 pixels'
 const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));
 for (const variant of VARIANTS) {
   test(`${variant} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
-    if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
     for (const width of WIDTHS) {
+      if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
       expect(await problemsAt(page, variant, width), `${variant} at ${width}px`).toEqual([]);
     }
   });

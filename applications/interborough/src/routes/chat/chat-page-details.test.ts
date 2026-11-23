@@ -6,6 +6,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 
+import { readyAgent } from '../../lib/bureau-stub.test-support.ts';
 import { clockTime, dayAndTime } from '../../lib/format/clock.ts';
 import { router } from '../../lib/router.svelte.ts';
 import Harness from './chat-page.test-harness.svelte';
@@ -112,7 +113,14 @@ describe('the details popover (16u, 16v)', () => {
     return { ...view, details };
   }
 
-  test('lists the session with a copy button, the agent as a link, and when it started', async () => {
+  /** Each row of the popover as "Label: value". */
+  const rows = (details: HTMLElement): string[] =>
+    [...details.querySelectorAll('.weft-chat-details__row')].map(
+      (row) =>
+        `${row.querySelector('dt')?.textContent?.trim() ?? ''}: ${row.querySelector('dd')?.textContent?.trim() ?? ''}`,
+    );
+
+  test('lists the agent as a link by name alone, when it started and was last active, and copies the session ID from the bottom (16d, 16e)', async () => {
     // Midday in the host's zone, so both moments fall on today whatever the hour the suite runs at
     // (COR-2374: run just after midnight, the start fell on yesterday and the day was named again).
     setSystemTime(new Date(2026, 10, 12, 12, 0));
@@ -125,17 +133,36 @@ describe('the details popover (16u, 16v)', () => {
     landAt('/chats/session-1');
     const { details } = await open();
 
-    expect(within(details).getByTestId('chat-details-session').textContent).toBe('session-1');
-    expect(
-      within(details).getByRole('button', { name: 'Copy session ID', hidden: true }),
-    ).not.toBeNull();
     const agent = within(details).getByRole('link', { name: 'Tool runner', hidden: true });
     expect(agent.getAttribute('href')).toBe('/agents/tool-runner');
-    expect(within(details).getByText('tool-runner').tagName).toBe('CODE');
-    expect(details.textContent).toContain(
-      `Started ${dayAndTime(started, Date.now())}, last active ${clockTime(active)}`,
-    );
+    // No machine identifier beside a name, and the session's identifier is not a row.
+    expect(details.querySelectorAll('code')).toHaveLength(0);
+    expect(details.textContent).not.toContain('tool-runner');
+    expect(details.textContent).not.toContain('session-1');
+    expect(details.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(rows(details).slice(0, 3)).toEqual([
+      'Agent: Tool runner',
+      `Started: ${dayAndTime(started, Date.now())}`,
+      `Last active: ${clockTime(active)}`,
+    ]);
     expect(details.textContent).toContain('Today, ');
+    // The copy action is the popover's last control.
+    const buttons = within(details).getAllByRole('button', { hidden: true });
+    expect(buttons.at(-1)?.textContent).toContain('Copy session ID');
+  });
+
+  test('says no last active time when it reads the same as the start (16e)', async () => {
+    setSystemTime(new Date(2026, 10, 12, 12, 0));
+    const started = new Date(2026, 10, 12, 6, 29, 5).getTime();
+    serve({
+      createdAt: new Date(started).toISOString(),
+      updatedAt: new Date(started + 20_000).toISOString(),
+    });
+    landAt('/chats/session-1');
+    const { details } = await open();
+
+    expect(rows(details)).toContain(`Started: ${dayAndTime(started, Date.now())}`);
+    expect(details.textContent).not.toContain('Last active');
   });
 
   test('names both days when the chat started before midnight and was last active after it', async () => {
@@ -149,9 +176,8 @@ describe('the details popover (16u, 16v)', () => {
     landAt('/chats/session-1');
     const { details } = await open();
 
-    expect(details.textContent).toContain(
-      `Started Yesterday, ${clockTime(started)}, last active Today, ${clockTime(active)}`,
-    );
+    expect(rows(details)).toContain(`Started: Yesterday, ${clockTime(started)}`);
+    expect(rows(details)).toContain(`Last active: Today, ${clockTime(active)}`);
   });
 
   test('names the day again when the chat was last active on a later day', async () => {
@@ -162,32 +188,69 @@ describe('the details popover (16u, 16v)', () => {
     landAt('/chats/session-1');
     const { details } = await open();
 
-    expect(details.textContent).toContain(
-      `${dayAndTime(Date.parse('2026-10-19T08:00:00.000Z'), Date.now())}, last active ${dayAndTime(Date.parse('2026-10-21T09:00:00.000Z'), Date.now())}`,
+    expect(rows(details)).toContain(
+      `Started: ${dayAndTime(Date.parse('2026-10-19T08:00:00.000Z'), Date.now())}`,
+    );
+    expect(rows(details)).toContain(
+      `Last active: ${dayAndTime(Date.parse('2026-10-21T09:00:00.000Z'), Date.now())}`,
     );
   });
 
-  test('groups what the chat ran with under As run, in display names with the model’s identifier small', async () => {
+  test('lists the settings plainly, with no As run heading and the model by its name alone (16d, 16f)', async () => {
     serve();
     landAt('/chats/session-1');
     const { details } = await open();
 
-    const group = within(details).getByRole('region', { name: 'As run', hidden: true });
-    expect(group.textContent).toContain('Model Claude Sonnet 5.5 claude-sonnet-5-5');
-    expect(within(group).getByText('claude-sonnet-5-5').tagName).toBe('CODE');
-    expect(group.textContent).toContain('Effort Medium');
-    expect(group.textContent).toContain('Permissions On changes asks');
+    expect(details.textContent).not.toContain('As run');
+    expect(rows(within(details).getByTestId('chat-details-settings'))).toEqual([
+      'Model: Claude Sonnet 5.5',
+      'Effort: Medium',
+      'Permissions: On changes asks',
+    ]);
   });
 
-  test('says Agent default for the effort and the model a chat and its agent leave unset', async () => {
-    serve({ effort: null, model: { provider: 'anthropic', model: 'claude-haiku-5-5' } });
+  test('says what an unset effort resolves to: the agent’s own effort (16f)', async () => {
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => ({
+          ...CONTEXT,
+          agentName: 'tool-runner',
+          title: TITLE,
+          effort: null,
+          model: { provider: 'anthropic', model: 'claude-haiku-5-5' },
+        }),
+        'bureau.agents.list': () => ({ agents: [TOOL_RUNNER] }),
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: null }),
+        'bureau.agents.definitions.get': () => {
+          const ready = readyAgent({ id: 'tool-runner' });
+          return { ...ready, definition: { ...ready.definition!, effort: 'medium' } };
+        },
+      },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        return undefined;
+      },
+    ).restore;
     landAt('/chats/session-1');
     const { details } = await open();
 
-    const group = within(details).getByRole('region', { name: 'As run', hidden: true });
-    expect(group.textContent).toContain('Effort Agent default');
+    const settings = within(details).getByTestId('chat-details-settings');
+    await waitFor(() => expect(rows(settings)).toContain('Effort: Medium, the agent’s default'));
     // The chat's own model shows, in the product's name when the agent does not list it.
-    expect(group.textContent).toContain('Model Claude Haiku 5.5 claude-haiku-5-5');
+    expect(rows(settings)).toContain('Model: Claude Haiku 5.5');
+  });
+
+  test('says the agent’s default for an unset effort while the agent cannot be read (16f)', async () => {
+    serve({ effort: null });
+    landAt('/chats/session-1');
+    const { details } = await open();
+
+    const settings = within(details).getByTestId('chat-details-settings');
+    await waitFor(() => expect(rows(settings)).toContain('Effort: The agent’s default'));
   });
 
   test('names the model that wrote the latest reply when neither the chat nor its agent names one', async () => {
@@ -233,10 +296,8 @@ describe('the details popover (16u, 16v)', () => {
     landAt('/chats/session-1');
     const { details } = await open();
 
-    const group = within(details).getByRole('region', { name: 'As run', hidden: true });
-    await waitFor(() =>
-      expect(group.textContent).toContain('Model Claude Sonnet 5.5 claude-sonnet-5-5'),
-    );
+    const settings = within(details).getByTestId('chat-details-settings');
+    await waitFor(() => expect(rows(settings)).toContain('Model: Claude Sonnet 5.5'));
   });
 
   test('opens the agent’s page once, without leaving the application', async () => {
@@ -251,7 +312,7 @@ describe('the details popover (16u, 16v)', () => {
     expect(window.history.length - before).toBe(1);
   });
 
-  test('leaves the As run group out until the session has been read', async () => {
+  test('leaves the settings out until the session has been read', async () => {
     restore = bureau({ 'bureau.contexts.get': () => new Promise(() => undefined) }, (url) => {
       if (url.endsWith('/messages')) return Response.json({ threadId: 's', messages: [] });
       if (url.includes('/threads/')) {
@@ -264,9 +325,11 @@ describe('the details popover (16u, 16v)', () => {
     await fireEvent.click(await view.findByRole('button', { name: 'Plan the week' }));
     const details = await view.findByTestId('chat-details');
 
-    expect(within(details).getByTestId('chat-details-session').textContent).toBe('session-1');
-    // The session is never answered, so there is nothing to wait for: the group is simply absent.
-    expect(details.textContent).not.toContain('As run');
+    expect(
+      within(details).getByRole('button', { name: 'Copy session ID', hidden: true }),
+    ).not.toBeNull();
+    // The session is never answered, so there is nothing to wait for: the settings are absent.
+    expect(within(details).queryByTestId('chat-details-settings')).toBeNull();
   });
 });
 
@@ -325,8 +388,8 @@ describe('the details popover, copying and an unset model', () => {
     landAt('/chats/session-1');
     const { details } = await open();
 
-    const group = within(details).getByRole('region', { name: 'As run', hidden: true });
-    expect(group.textContent).toContain('Model Agent default');
+    const settings = within(details).getByTestId('chat-details-settings');
+    expect(settings.textContent).toContain('Agent default');
   });
 });
 

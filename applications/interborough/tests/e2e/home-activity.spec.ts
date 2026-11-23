@@ -21,6 +21,7 @@ import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
+import { expectReviewsSettled } from './review-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -336,8 +337,10 @@ test.describe('Home activity bands (COR-2227)', () => {
 
     // F7-26: a row opens its link inside the application (the run above is the script's own, so
     // the review row, whose page the sample world has, is the one followed).
-    await review.getByRole('link').click();
-    await expect(page).toHaveURL(/\/reviews$/);
+    const reviewLink = review.getByRole('link');
+    await expect(reviewLink).toHaveAttribute('href', '/reviews');
+    await reviewLink.click();
+    await expectReviewsSettled(page);
     await page.goBack();
     await bandsReady(page);
     await checkA11y('Home with both activity bands');

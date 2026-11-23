@@ -117,10 +117,14 @@
     </form>
   {/snippet}
   {#snippet footer()}
-    <Button variant="secondary" onclick={onClose}>{WORKFLOW_COPY.page.menu.closeSignal}</Button>
-    <Button data-changes variant="primary" disabled={!canSend} onclick={submit}
-      >{copy.sendAction}</Button
-    >
+    <Button variant="secondary" onclick={onClose} label={WORKFLOW_COPY.page.menu.closeSignal} />
+    <Button
+      data-changes
+      variant="primary"
+      disabled={!canSend}
+      onclick={submit}
+      label={copy.sendAction}
+    />
   {/snippet}
 </Modal>
 

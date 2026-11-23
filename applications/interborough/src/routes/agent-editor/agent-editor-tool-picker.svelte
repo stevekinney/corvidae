@@ -89,7 +89,7 @@
   </div>
 
   {#snippet footer()}
-    <Button type="button" variant="primary" onclick={() => (open = false)}>{copy.done}</Button>
+    <Button type="button" variant="primary" onclick={() => (open = false)} label={copy.done} />
   {/snippet}
 </Drawer>
 

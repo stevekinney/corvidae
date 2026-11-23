@@ -58,7 +58,7 @@ export function inheritSideEffectCapture(
   const capture = CAPTURES.get(parent);
   if (capture === undefined) return;
   for (const child of children) {
-    if (!CAPTURES.has(child)) CAPTURES.set(child, capture);
+    if (CAPTURES.get(child)?.open !== true) CAPTURES.set(child, capture);
   }
 }
 

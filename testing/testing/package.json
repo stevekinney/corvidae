@@ -1,5 +1,6 @@
 {
   "name": "@lostgradient/testing",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -27,6 +28,7 @@
     "./playwright/editor-fixture": "./src/playwright/editor-fixture.ts",
     "./playwright/editors-complex-support": "./src/playwright/editors-complex-support.ts",
     "./playwright/overlay-fixture": "./src/playwright/overlay-fixture.ts",
+    "./playwright/page-timers": "./src/playwright/page-timers.ts",
     "./playwright/review-editor-browser-errors": "./src/playwright/review-editor-browser-errors.ts",
     "./postgres-server": "./src/postgres-server.ts",
     "./promise-outcome": "./src/helpers/promise-outcome.ts",

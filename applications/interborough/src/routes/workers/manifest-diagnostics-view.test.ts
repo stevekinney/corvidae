@@ -87,6 +87,6 @@ describe('ManifestDiagnosticsView', () => {
     const fault = render(ManifestDiagnosticsView, {
       props: { diagnostics: [], rejections: [], error: new Error('server fault') },
     });
-    expect(fault.getByText('Something went wrong')).not.toBeNull();
+    expect(fault.getByText('Couldn’t load diagnostics')).not.toBeNull();
   });
 });

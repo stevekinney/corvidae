@@ -21,15 +21,22 @@ test.afterEach(async ({ request }) => {
 });
 const transcript = (page: Page) => page.getByRole('region', { name: 'Chat conversation' });
 
-/** Opens the chat's details from the breadcrumb and checks the identifier of the agent it names, then closes them. */
+/**
+ * Opens the chat's details from the breadcrumb and checks the agent it names, then closes them. The
+ * details name the agent by its name alone, a link to its page (COR-2438, criterion 16d), so the
+ * identifier is read from where the link goes, never from a monospaced identifier beside it.
+ */
 async function expectAgent(page: Page, title: string, identifier: string): Promise<void> {
   await page
     .getByRole('navigation', { name: 'Breadcrumb' })
     .getByRole('button', { name: title })
     .click();
-  await expect(
-    page.getByTestId('chat-details').locator('code', { hasText: new RegExp(`^${identifier}$`) }),
-  ).toBeVisible();
+  const details = page.getByTestId('chat-details');
+  await expect(details.locator('a.weft-chat-details__agent')).toHaveAttribute(
+    'href',
+    new RegExp(`/agents/${encodeURIComponent(identifier)}$`),
+  );
+  await expect(details.locator('code')).toHaveCount(0);
   await page.keyboard.press('Escape');
 }
 

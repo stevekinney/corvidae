@@ -265,7 +265,7 @@ describe('TaskDeadLetterPanel', () => {
     );
     const view = renderPanel();
     await fireEvent.click(view.getByRole('button', { name: 'Inspect retained result' }));
-    expect(await view.findByText('Not authorized')).not.toBeNull();
+    expect(await view.findByText('Couldn’t load the dead letter')).not.toBeNull();
 
     scripted.routeJsonRpcMethod('weft.tasks.deadletters.get', {
       ...RETAINED,
@@ -313,7 +313,7 @@ describe('TaskDeadLetterPanel', () => {
             'authentication required',
             'Unauthorized',
           ),
-        'Not authorized',
+        'Couldn’t load the dead letter',
       ],
     ];
     for (const [route, title] of cases) {

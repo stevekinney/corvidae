@@ -124,7 +124,7 @@
       {#if changed}
         <Alert variant="warning" data-testid="chat-rename-changed">
           <p class="ib-chat-rename__note">{copy.changed}</p>
-          <Button size="sm" variant="secondary" onclick={useNewTitle}>{copy.reload}</Button>
+          <Button size="sm" variant="secondary" onclick={useNewTitle} label={copy.reload} />
         </Alert>
       {/if}
       {#if failure !== ''}
@@ -135,10 +135,14 @@
     </form>
   {/snippet}
   {#snippet footer()}
-    <Button variant="secondary" onclick={close} disabled={sending}>{copy.cancel}</Button>
-    <Button data-changes variant="primary" onclick={() => void submit()} loading={sending}
-      >{copy.save}</Button
-    >
+    <Button variant="secondary" onclick={close} disabled={sending} label={copy.cancel} />
+    <Button
+      data-changes
+      variant="primary"
+      onclick={() => void submit()}
+      loading={sending}
+      label={copy.save}
+    />
   {/snippet}
 </Modal>
 

@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2573",
+  "branch": "steve/cor-2573-delivery-preflight",
+  "checkedAt": "a03aedffc0f977adca63bdca732a39cc49d46924",
+  "briefVersion": "df17796cf23b",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Issue-only members retain and validate individual held authorities; project route remains covered by the existing controls."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Operation freeze rejects changed accepted batches; concurrent two-member callers dispatch once."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "load/check/landing verification re-requires every stored issue authority alongside existing request, CI, and runner evidence bindings."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "One-member/two-member authority and concurrent dispatch controls pass; operational freeze rule is documented."
+    }
+  ]
+}

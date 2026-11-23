@@ -26,6 +26,7 @@
   import NotFoundState from '../../app/not-found-state.svelte';
   import { showToast } from '../../app/toast-host.svelte';
   import { getPanels, loadPluginApp, pluginToolCaller } from '../../lib/host-panels.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { findPluginPage } from '../../lib/plugin-pages.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -139,7 +140,7 @@
         title={PLUGIN_PAGE_COPY.failed.title(undefined)}
         description={PLUGIN_PAGE_COPY.failed.description(pluginTitle)}
         headingLevel={1}
-        onRetry={tryAgain}
+        {...faultErrorStateAdvice(panels.error, tryAgain)}
       />
     {:else}
       <!-- The host stopped serving the page after the view frame found it, such as a plugin turned off. -->
@@ -166,9 +167,12 @@
         {#snippet action()}
           {#if missing.length === 1 && missing[0] !== undefined}
             {@const key = missing[0].key}
-            <Button variant="secondary" size="sm" onclick={() => (secret = { plugin, key })}
-              >{PLUGIN_PAGE_COPY.needsSetup.addKey}</Button
-            >
+            <Button
+              variant="secondary"
+              size="sm"
+              onclick={() => (secret = { plugin, key })}
+              label={PLUGIN_PAGE_COPY.needsSetup.addKey}
+            />
           {:else}
             {@render settingsLink()}
           {/if}
@@ -180,7 +184,7 @@
         title={PLUGIN_PAGE_COPY.failed.title(page.title)}
         description={PLUGIN_PAGE_COPY.failed.description(pluginTitle)}
         headingLevel={2}
-        onRetry={tryAgain}
+        {...faultErrorStateAdvice(resource.error, tryAgain)}
       >
         {#snippet secondaryAction()}{@render settingsLink()}{/snippet}
       </ErrorState>

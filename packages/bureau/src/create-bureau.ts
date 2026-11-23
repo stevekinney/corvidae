@@ -197,7 +197,7 @@ import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
 import { recordedRunEvent as recordedRunEventOf } from './recorded-run-events.ts';
 import { announceRunOutcome } from './run-outcome-announcement.ts';
-import { createRunOutcomeDetails } from './run-outcome-details.ts';
+import { createRunOutcomeDetails, peekTaskFailure } from './run-outcome-details.ts';
 import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
@@ -247,6 +247,10 @@ import {
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
+import { readRunVerdicts } from './run-failure-verdicts';
+import { createRunTimelineTool } from './run-timeline-tool';
+import { runStatusOfTask, serveRunTimeline } from './run-timeline';
+import { createTasksExplainTool } from './tasks-explain-tool';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
@@ -589,6 +593,60 @@ async function constructBureau<const D extends AgentDefinitions>(
             }),
           }),
         )),
+    // COR-2543: why a run failed is a read of the run, not workflow management, so the tool does
+    // not wait for a workflow directory. An agent run is a task with a record, and an id the
+    // registry does not hold is read as an instance of a workflow file, as `bureau.tasks.explain`
+    // reads it.
+    createTasksExplainTool({
+      workspace: workspace,
+      ownerOfRun: (runId) => ownerOf({ kind: 'run', id: runId }),
+      task: async (runId) => taskRegistryHolder.current?.get(runId),
+      workflowInstance: async (runId) =>
+        (await workflowRuntime?.workflows.getRun(runId)) !== undefined,
+      runState: async (runId) => {
+        const state = await durableEngine()?.get(runId);
+        return state === null || state === undefined
+          ? undefined
+          : {
+              status: state.status,
+              failureCategory: state.failureCategory,
+              errorCode: state.errorCode,
+              failedStep: state.failedStep,
+            };
+      },
+      runTimeline: async (runId) => durableEngine()?.getTimeline(runId),
+      runVerdicts: async (runId, kind) =>
+        taskRegistryHolder.current === undefined
+          ? []
+          : readRunVerdicts(
+              { trail: auditTrailInstance, tasks: taskRegistryHolder.current },
+              runId,
+              kind,
+            ),
+    }),
+    // COR-2542: a run's timeline is a read of the run, not workflow management, so the tool does
+    // not wait for a workflow directory. An agent run is a task with a record, and an id the
+    // registry does not hold is read as an instance of a workflow file, as `bureau.runs.timeline`
+    // reads it.
+    createRunTimelineTool({
+      workspace: workspace,
+      ownerOfRun: (runId) => ownerOf({ kind: 'run', id: runId }),
+      runTimeline: async (runId) => {
+        const task = await taskRegistryHolder.current?.get(runId);
+        if (task !== undefined) {
+          const entries = await durableEngine()?.getTimeline(runId);
+          return entries === undefined
+            ? 'unsupported'
+            : serveRunTimeline('agent', runStatusOfTask(task.status), entries);
+        }
+        const workflowRun = await workflowRuntime?.workflows.getRun(runId);
+        if (workflowRun === undefined) return undefined;
+        const entries = await durableEngine()?.getTimeline(runId);
+        return entries === undefined
+          ? 'unsupported'
+          : serveRunTimeline('workflow', workflowRun.status, entries);
+      },
+    }),
   ];
   // COR-2009 — the code-defined agents built from Bureau's own tools join `agents` before any
   // plugin is composed, so a plugin agent of the same name is a clash, as with any host agent.
@@ -755,7 +813,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   // is registered and reaped when it is removed. See
   // `run-event-feed-attachment.ts`.
   const runEventFeeds = createAgentRunEventRegistry();
-  const runOutcomeDetails = createRunOutcomeDetails();
+  const runOutcomeDetails = createRunOutcomeDetails({
+    // COR-2531: the step a run is on a second or later try of is written to its task, so a process
+    // that does not hold the run reads it. The registry is built below, before any run starts.
+    onRetrying: (runId, retrying) => {
+      tasks.recordRetrying(runId, retrying).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record whether task "${runId}" is retrying: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+    },
+  });
   // Snapshot `agents` synchronously, before the first `await` below — the
   // "fixed at createBureau() call time" catalog contract otherwise has a
   // real mutation window: a caller that mutates the SAME `agents` object it
@@ -3764,7 +3835,16 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1868: a child run's task is stopped by the topology that owns the child.
       cancelChild: async (child) => {
         const cancelled = await childTopology.children.cancel(child);
-        if (cancelled.outcome === 'failed') throw new BureauError(cancelled.reason, 'CONFLICT');
+        if (cancelled.outcome === 'failed') {
+          // The engine's own words describe its internals: they go to the operator's log, and the
+          // caller is told only that the child run could not be stopped (COR-2518).
+          diagnose({
+            level: 'warn',
+            scope: 'tasks',
+            message: `[bureau] Could not cancel a child run: ${cancelled.reason}`,
+          });
+          throw new BureauError('The child run could not be cancelled. Try again.', 'CONFLICT');
+        }
         return cancelled.outcome;
       },
       sleep: (milliseconds) =>
@@ -3772,7 +3852,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           runtimeServices.timers.setTimeout(resolve, milliseconds);
         }),
       // COR-2423: the schedule tick and the instances of workflow files, which have no task record.
-      engineRuns: () => engineRunTasks.list(),
+      engineRuns: (filter) => engineRunTasks.list(filter),
       holdsEngineRun: (runId) => engineRunTasks.holds(runId),
       // COR-2526: a live claim another process holds is the same read recovery makes of a run
       // "preparing elsewhere"; a lapsed or absent claim leaves the writer the holder. The holder
@@ -3908,6 +3988,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       now: runtimeServices.clock.nowISO,
       ownerOf: ownerOrLocal,
       originatingMessage: originatingMessageText,
+      // COR-2531: what the run's own events said of its failure, kept on the task with the settlement.
+      failureOf: (runId) => peekTaskFailure(runOutcomeDetails, runId),
     }),
   );
 
@@ -4894,6 +4976,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         hooks: async () => (await hooksInstance?.hooks.list()) ?? [],
         plugins: () => pluginRegistry.plugins.list(),
         pluginsComposedAt: constructedAtMilliseconds,
+        runs: () => tasks.attentionRuns(),
         ...(options.attention === undefined ? {} : { contributed: options.attention }),
       }),
     reviews,

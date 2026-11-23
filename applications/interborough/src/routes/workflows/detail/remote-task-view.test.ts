@@ -56,6 +56,15 @@ describe('remoteTaskState', () => {
     ]);
   });
 
+  test('keeps terminal resolved and cancelled copy explicit', () => {
+    expect(remoteTaskState(task({ state: 'terminal', disposition: 'resolved' })).label).toBe(
+      'Resolved',
+    );
+    expect(remoteTaskState(task({ state: 'terminal', disposition: 'cancelled' })).label).toBe(
+      'Canceled',
+    );
+  });
+
   test('no label presents a remote task as having run locally', () => {
     for (const label of Object.values(REMOTE_TASK_STATE_LABELS)) {
       expect(label).not.toMatch(/local|in-process|inline/i);

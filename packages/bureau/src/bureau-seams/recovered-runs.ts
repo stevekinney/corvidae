@@ -433,6 +433,10 @@ export function createRecoveredRuns<D extends AgentDefinitions>(
       },
     });
 
+    // COR-2531: a record the dead holder left saying a step was on a retry is stale now that this
+    // process drives the run from its checkpoint; it is written again if the step retries again.
+    runOutcomeDetails.recordRetrying(runId, null);
+
     // Persist terminal session status from the recovered run's OWN terminal
     // events — the same fields the live-run listeners write. The conversation
     // comes from `event.conversation`, which the reattach adapter reconstructs

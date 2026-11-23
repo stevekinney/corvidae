@@ -34,6 +34,15 @@ export type ListDetailSelectionLocation = {
   write: (parameter: string, key: string | null) => void;
 };
 
+/** How the selection changed, as `onSelectedKeyChange` reports it. */
+export type ListDetailSelectionChange = {
+  /**
+   * True when ListDetail chose the item itself (`openFirst` opening the first item, or the new first
+   * one after the open item left the list), false when the person or the address did.
+   */
+  automatic: boolean;
+};
+
 /** The slice of `Storage` that ListDetail uses to remember the divider width. */
 export type ListDetailStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -105,25 +114,58 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    * List header, above the rows: the title, the count, the create action, the search and the
    * filter. Put the title and the create action on their own row and the filter below at full
    * width, so the action never reads as the filter's submit button. The toggle that hides the list
-   * (`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and the
-   * header's first row, whatever it holds, starts after it.
+   * (`listCollapsible`) is not part of it: ListDetail draws it as a handle on the divider, so the
+   * header keeps its whole width.
    */
   header?: Snippet;
   /**
-   * Opens the first item when none is open and the panes sit side by side, so the detail beside the
-   * list is never empty. An item named by the URL, or by `selectedKey`, wins. Nothing opens while
-   * the component shows one pane at a time (below `pushBelow`): there the list is where it starts.
+   * Opens the first item drawn when none is open and the panes sit side by side, so the detail beside
+   * the list is never empty: the first row on screen, after the host's filter, search and sort, which
+   * for a table that sorts its own rows is not always `items[0]`. An item named by the URL, or by
+   * `selectedKey`, wins, and one that names nothing in the list shows `notFound` rather than the
+   * first item. When the open item leaves the list (a filter hides it), the new first item opens
+   * (see `reopenFirst`), and when the list empties the selection is cleared. Nothing opens while the
+   * component shows one pane at a time or one above the other (below `pushBelow` or `stackBelow`):
+   * there the list is where it starts. An item it opens is reported to `onSelectedKeyChange` as
+   * `automatic`, and focus stays where it was.
    * @default false
    */
   openFirst?: boolean;
+  /**
+   * With `openFirst`, whether the new first item opens when the open one, which the list showed,
+   * leaves it. Turn it off for a host that says in the open item's place that it left (a review the
+   * agent moved on from) and offers the way on itself; `notFound` is drawn there instead.
+   * @default true
+   */
+  reopenFirst?: boolean;
+  /**
+   * With `openFirst`, drawn in the detail pane when the open key names nothing in the list: a link
+   * to an item that was removed, or one the list never had. It receives the key. A default message
+   * (`notFoundTitle`, `notFoundDescription`) is shown when omitted.
+   */
+  notFound?: Snippet<[key: string]>;
+  /**
+   * Title of the default not-found detail, used when `notFound` is omitted.
+   * @default 'Not found'
+   */
+  notFoundTitle?: string;
+  /**
+   * Description of the default not-found detail, used when `notFound` is omitted.
+   * @default 'This item is not in the list. It may have been removed.'
+   */
+  notFoundDescription?: string;
   /**
    * Key of the open item, or `null` when none is open. Bindable. When it is `null` on mount, the
    * item named by the URL's search parameter opens.
    * @default null
    */
   selectedKey?: string | null;
-  /** Called with the new key when an item opens, and with `null` when the selection is cleared. */
-  onSelectedKeyChange?: (key: string | null) => void;
+  /**
+   * Called with the new key when an item opens, and with `null` when the selection is cleared. The
+   * second argument says whether ListDetail chose it (`openFirst`) rather than the person, so a host
+   * that navigates on a change replaces the history entry for it instead of adding one.
+   */
+  onSelectedKeyChange?: (key: string | null, change: ListDetailSelectionChange) => void;
   /**
    * Name of the search parameter that holds the open item's key. Pass `null` to keep the
    * selection out of the URL.
@@ -173,12 +215,13 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   maximumListWidth?: number;
   /**
    * Offers a toggle that hides the list pane while the panes sit side by side or one above the
-   * other, so the detail takes the whole width. The toggle is one control in one place, the start
-   * corner of the list's header, which is also where a narrow rail holds it once the list is hidden
-   * (no rail is drawn while the list shows), so it is always on screen, never beside the header's
-   * own actions, and does not move or lose focus as it flips. It is drawn with or without an open
-   * item, so its corner is never empty; hidden with nothing open, the detail shows its empty state.
-   * Below `pushBelow`, where one pane shows at a time, there is nothing to hide.
+   * other, so the detail takes the whole width. The toggle is one control: while the list shows, a
+   * handle on the divider inside the list pane, shown on hover and focus (always on a touch screen)
+   * and always reachable by keyboard, never in the header beside its title or its actions; once the
+   * list is hidden, the top of a narrow rail that holds its place, so the way back is always on
+   * screen. It stays mounted, so it keeps focus as it flips. It is drawn with or without an open
+   * item; hidden with nothing open, the detail shows its empty state. Below `pushBelow`, where one
+   * pane shows at a time, there is nothing to hide.
    * @default false
    */
   listCollapsible?: boolean;

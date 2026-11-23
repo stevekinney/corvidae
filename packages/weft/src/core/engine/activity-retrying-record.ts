@@ -1,7 +1,8 @@
 /**
- * The `wf:{id}:retrying` record behind `WorkflowSummary.retrying` (COR-2529): which activity a
+ * The `wf-retrying:{id}` record behind `WorkflowSummary.retrying` (COR-2529): which activity a
  * running workflow is retrying and on which attempt, kept in a small record of its own so a list
- * answers it without loading a checkpoint.
+ * answers it without loading a checkpoint. Under its own prefix, a scan of the records is also the
+ * index behind `ListFilter.retrying` (COR-2530).
  *
  * It is derived at the checkpoint commit, never written by the retry loop: the retry decision
  * already lives in the checkpoint's locals (`activity-retry-state.ts`) and commits with the
@@ -12,7 +13,7 @@
  *
  * @module core/engine/activity-retrying-record
  */
-import type { BatchOperation } from '@lostgradient/storage';
+import { tryDecodeStorageKeyComponent, type BatchOperation } from '@lostgradient/storage';
 import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { readRetryingActivity } from '../context/activity-retry-state.ts';
@@ -82,7 +83,7 @@ export function activityRetryingOperation(
   return { type: 'put', key, value: encode(record) };
 }
 
-/** What the `wf:{id}:retrying` record holds: the retrying activity and the run it belongs to. */
+/** What the `wf-retrying:{id}` record holds: the retrying activity and the run it belongs to. */
 type ActivityRetryingRecord = WorkflowRetrying & { workflowExecutionToken?: string };
 
 /**
@@ -103,6 +104,22 @@ export function decodeActivityRetrying(
     return undefined;
   }
   return { activity, attempt };
+}
+
+/**
+ * The ids of every run that holds a retrying record: the candidate source for
+ * `ListFilter.retrying: true`. A superset of the runs retrying now, since a run that ends while
+ * retrying keeps its record until terminal cleanup; the list verifies each candidate against its
+ * loaded state and the record's run token (`matchesListFilterAndRecords`).
+ */
+export async function queryRetryingIndex(internals: EngineInternals): Promise<Set<string>> {
+  const prefix = KEYS.activityRetryingPrefix();
+  const ids = new Set<string>();
+  for await (const [key] of internals.storage.scan(prefix)) {
+    const workflowId = tryDecodeStorageKeyComponent(key.slice(prefix.length));
+    if (workflowId !== null) ids.add(workflowId);
+  }
+  return ids;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

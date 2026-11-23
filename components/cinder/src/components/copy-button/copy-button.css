@@ -27,6 +27,11 @@
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* Keep the base specificity so composed controls can still set their own padding. */
+  .cinder-copy-button:where(:not([data-cinder-icon-only])) {
+    padding-inline: var(--cinder-space-3);
+  }
+
   /* The text face's two words share one grid cell; only the current one shows, so the button is as
    * wide as the longer word in both states. */
   .cinder-copy-button__words {

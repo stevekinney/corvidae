@@ -63,7 +63,7 @@
   import { createAgentSchedule, updateAgentSchedule } from '../../lib/bureau-schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { defaultAgentQuery } from '../../lib/default-agent.ts';
-  import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
+  import { faultErrorStateAdvice, faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
@@ -370,7 +370,7 @@
   /** Rejects when `signal` aborts, so a Cancel returns the form even though a request cannot be recalled. */
   function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const stop = (): void => reject(new DOMException('Cancelled', 'AbortError'));
+      const stop = (): void => reject(new DOMException('Canceled', 'AbortError'));
       if (signal.aborted) {
         stop();
         return;
@@ -898,7 +898,7 @@
             description={faultTreatment(resolution.error).message}
             headingLevel={3}
             retryLabel={RETRY_LABEL}
-            onRetry={() => void resolution.refetch()}
+            {...faultErrorStateAdvice(resolution.error, () => void resolution.refetch())}
           />
         {:else if unavailable}
           <SectionHeading level={2} title={copy.inputHeading} />
@@ -1017,9 +1017,12 @@
   <div class="ib-schedule-new__footer" data-testid="new-schedule-footer">
     <p class="ib-schedule-new__summary" data-testid="new-schedule-summary">{footerLine}</p>
     <div class="ib-schedule-new__actions">
-      <Button variant="secondary" href={router.href(LIST_PATH)} onclick={cancel}
-        >{copy.cancel}</Button
-      >
+      <Button
+        variant="secondary"
+        href={router.href(LIST_PATH)}
+        onclick={cancel}
+        label={copy.cancel}
+      />
       <Button
         data-changes
         variant="primary"

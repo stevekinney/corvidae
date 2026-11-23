@@ -218,7 +218,7 @@ describe('WorkerTechnicalDetails — server-reported session', () => {
       error: new HttpClientError(500, 'Internal server error'),
     });
     const session = sessionRegion(container);
-    expect(session.getByText('Something went wrong')).not.toBeNull();
+    expect(session.getByText('Couldn’t load the worker session')).not.toBeNull();
     expect(session.getByText('Internal server error')).not.toBeNull();
   });
 });

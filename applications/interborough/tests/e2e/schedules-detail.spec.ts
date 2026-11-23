@@ -155,6 +155,103 @@ for (const width of WIDTHS) {
   });
 }
 
+test.describe('the workflow-version explanation on a coarse phone', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375] as const) {
+    test(`a ${width}px phone reaches the compact info button without taking its linked run`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await answerGoingRun(page);
+      await openSchedule(page, 'Release notes digest');
+      const main = page.locator('main');
+      const card = page.getByTestId('schedule-details');
+      const info = card.getByRole('button', { name: 'About the workflow version' });
+      const run = main.getByTestId('schedule-summary').getByRole('link', { name: 'Open run' });
+      await run.scrollIntoViewIfNeeded();
+      expect(
+        await run.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+          );
+        }),
+      ).toBe(true);
+      await info.scrollIntoViewIfNeeded();
+      await expect(info).toBeInViewport();
+
+      // The face stays compact, but a real touch 21px above or below its middle is still owned by
+      // this Button. The linked running result remains independently reachable.
+      const hit = await info.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        const reaches = (offsetX: number, offsetY: number) => {
+          const target = document.elementFromPoint(x + offsetX, y + offsetY);
+          return target !== null && element.contains(target);
+        };
+        return {
+          x,
+          above: y - 21,
+          faceHeight: box.height,
+          reaches44Pixels: [reaches(0, -21), reaches(0, 21), reaches(-21, 0), reaches(21, 0)],
+        };
+      });
+      expect(hit.faceHeight).toBeLessThanOrEqual(36);
+      expect(hit.reaches44Pixels).toEqual([true, true, true, true]);
+      await expect(run).toHaveAttribute('href', `/runs/${GOING_RUN}`);
+
+      await page.touchscreen.tap(hit.x, hit.above);
+      await expect(info).toBeFocused();
+      await expect(page.getByRole('tooltip')).toHaveText(
+        'Scheduled runs start on the latest version of the workflow. A run that is already going keeps the version it started on.',
+      );
+      await captureForDesignReview(page, {
+        route: '/schedules/:schedule',
+        state: 'workflow version help after touch',
+        source: SOURCE,
+      });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await expect(info).toBeFocused();
+    });
+  }
+});
+
+test('the schedule detail uses the content width at 1920 pixels and keeps its 1280-pixel layout', async ({
+  page,
+}) => {
+  for (const width of [1920, 1280] as const) {
+    await page.setViewportSize({ width, height: 1000 });
+    await openSchedule(page, 'Daily summary');
+    const geometry = await page.locator('[data-page="schedule"]').evaluate((section) => {
+      const root = document.documentElement;
+      const rootStyle = getComputedStyle(root);
+      const contentWidth = parseFloat(rootStyle.getPropertyValue('--cinder-content-width'));
+      const outlet = section.closest('main');
+      if (outlet === null) throw new Error('the schedule outlet is drawn');
+      const outletStyle = getComputedStyle(outlet);
+      const outletBox = outlet.getBoundingClientRect();
+      return {
+        width: section.getBoundingClientRect().width,
+        maxInlineSize: getComputedStyle(section).maxInlineSize,
+        contentWidth: contentWidth * parseFloat(rootStyle.fontSize),
+        available:
+          outletBox.width -
+          parseFloat(outletStyle.paddingInlineStart) -
+          parseFloat(outletStyle.paddingInlineEnd),
+      };
+    });
+    if (width === 1920) {
+      expect(geometry.width).toBeLessThanOrEqual(geometry.contentWidth + 1);
+    } else {
+      expect(geometry.maxInlineSize).toBe('none');
+      expect(Math.abs(geometry.width - geometry.available)).toBeLessThanOrEqual(1);
+    }
+  }
+});
+
 test('Inbox triage is paused and its workflow is paused too, with the link that resumes the workflow', async ({
   page,
   checkA11y,

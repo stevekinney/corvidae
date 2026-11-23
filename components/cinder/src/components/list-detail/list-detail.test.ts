@@ -263,7 +263,7 @@ describe('ListDetail', () => {
     await tick();
 
     expect(detailText(container)).toBe('Beta chat detail');
-    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta');
+    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta', { automatic: false });
     expect(location.write).toHaveBeenCalledWith('selected', 'beta');
     expect(primaryOf(container, 'beta').getAttribute('aria-current')).toBe('true');
   });
@@ -332,7 +332,7 @@ describe('ListDetail', () => {
 
     expect(location.read).toHaveBeenCalledWith('selected');
     expect(detailText(container)).toBe('Beta chat detail');
-    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta');
+    expect(onSelectedKeyChange).toHaveBeenCalledWith('beta', { automatic: false });
     expect(location.write).not.toHaveBeenCalled();
     expect(primaryOf(container, 'beta').getAttribute('aria-current')).toBe('true');
   });
@@ -494,6 +494,123 @@ describe('ListDetail', () => {
     await tick();
     expect(stacked.queryByRole('region', { name: 'Details' })).toBeNull();
     expect(stacked.getByRole('region', { name: 'Chats' })).toBeTruthy();
+  });
+
+  test('openFirst reports its choice as automatic and leaves focus where it was', async () => {
+    const changes: Array<[string | null, boolean]> = [];
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    const { container } = render(ListDetailFixture, {
+      props: {
+        selectionLocation: memoryLocation(),
+        openFirst: true,
+        onSelectedKeyChange: (key, change) => changes.push([key, change.automatic]),
+      },
+    });
+    await measure(container, 1000);
+    await tick();
+
+    expect(changes).toEqual([['alpha', true]]);
+    expect(document.activeElement).toBe(outside);
+    expect(primaryOf(container, 'alpha').getAttribute('aria-current')).toBe('true');
+
+    await fireEvent.click(primaryOf(container, 'beta'));
+    await tick();
+    expect(changes.at(-1)).toEqual(['beta', false]);
+  });
+
+  test('openFirst opens nothing while the panes sit one above the other', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), openFirst: true, stackBelow: 1200 },
+    });
+    await measure(container, 1000);
+    await tick();
+
+    expect(container.querySelector('.cinder-list-detail')?.getAttribute('data-cinder-layout')).toBe(
+      'below',
+    );
+    expect(detailText(container)).toBe(
+      'Nothing selected Choose an item from the list to see it here.',
+    );
+  });
+
+  test('openFirst opens the new first item when a filter hides the open one, and clears an emptied list', async () => {
+    const location = memoryLocation('beta');
+    const items = [
+      { id: 'alpha', title: 'Alpha chat' },
+      { id: 'beta', title: 'Beta chat' },
+      { id: 'gamma', title: 'Gamma chat' },
+    ];
+    const { container, rerender } = render(ListDetailFixture, {
+      props: { items, selectionLocation: location, openFirst: true },
+    });
+    await measure(container, 1000);
+    await tick();
+    expect(detailText(container)).toBe('Beta chat detail');
+
+    await rerender({ items: items.filter((item) => item.id !== 'beta' && item.id !== 'alpha') });
+    await tick();
+    expect(detailText(container)).toBe('Gamma chat detail');
+    expect(location.write).toHaveBeenLastCalledWith('selected', 'gamma');
+
+    await rerender({ items: [] });
+    await tick();
+    expect(location.write).toHaveBeenLastCalledWith('selected', null);
+
+    await rerender({ items });
+    await tick();
+    expect(detailText(container)).toBe('Alpha chat detail');
+  });
+
+  test.each([599, 1000])('openFirst shows a missing linked item at %d pixels', async (width) => {
+    const location = memoryLocation('missing');
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: location, openFirst: true },
+    });
+    await measure(container, width);
+    await tick();
+
+    expect(detailText(container)).toBe(
+      'Not found This item is not in the list. It may have been removed.',
+    );
+    expect(location.write).not.toHaveBeenCalledWith('selected', 'alpha');
+  });
+
+  test('reopenFirst={false} keeps the open item that left the list, in its notFound place', async () => {
+    const items = [
+      { id: 'alpha', title: 'Alpha chat' },
+      { id: 'beta', title: 'Beta chat' },
+    ];
+    const { container, rerender } = render(ListDetailFixture, {
+      props: {
+        items,
+        selectionLocation: memoryLocation('beta'),
+        openFirst: true,
+        reopenFirst: false,
+        notFoundTitle: 'No longer waiting',
+      },
+    });
+    await measure(container, 1000);
+    await tick();
+    await rerender({ items: items.slice(0, 1) });
+    await tick();
+
+    expect(detailText(container)).toContain('No longer waiting');
+  });
+
+  test('openFirst waits for the list to load before it opens anything', async () => {
+    const location = memoryLocation();
+    const { container, rerender } = render(ListDetailFixture, {
+      props: { items: [], loading: true, selectionLocation: location, openFirst: true },
+    });
+    await measure(container, 1000);
+    await tick();
+    expect(location.write).not.toHaveBeenCalled();
+
+    await rerender({ items: [{ id: 'alpha', title: 'Alpha chat' }], loading: false });
+    await tick();
+    expect(detailText(container)).toBe('Alpha chat detail');
   });
 
   test('pushBelow and backLabel are configurable', async () => {
@@ -809,7 +926,7 @@ describe('ListDetail', () => {
       expect(getByRole('button', { name: 'Show list' })).toBeTruthy();
     });
 
-    test('the toggle has one rule for both states, at the header corner, and the rail draws none of its own', async () => {
+    test('the toggle sits at the top of the rail once the list is hidden, and on the divider inside the list pane while it shows (COR-2438)', async () => {
       const css = stripCinderComponentsLayer(
         await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
       );
@@ -817,12 +934,30 @@ describe('ListDetail', () => {
       expect(rule.get('position')).toBe('absolute');
       expect(rule.get('inset-block-start')).toBe('var(--cinder-space-3-5)');
       expect(rule.get('inset-inline-start')).toBe('var(--cinder-space-2)');
+      // While the list shows: against the divider, inside the list pane, centred on its length.
+      const handle = declarationsFor(
+        css,
+        '.cinder-list-detail:not([data-cinder-list-collapsed]) .cinder-list-detail__toggle',
+      );
+      expect(handle.get('inset-block-start')).toBe(
+        'calc(50% - var(--cinder-button-height-sm) / 2)',
+      );
+      expect(handle.get('inset-inline-start')?.replace(/\s+/g, ' ')).toBe(
+        'calc( var(--_cinder-list-detail-list-width, 0px) - var(--cinder-button-height-sm) - var(--cinder-space-1) )',
+      );
+      // Shown on hover and focus where the pointer hovers; a touch screen always shows it.
+      expect(css).toMatch(
+        /@media \(hover: hover\)[\s\S]*\.cinder-list-detail__toggle:focus-within/,
+      );
+      // The header holds no slot for it, so its title starts on the search field's edge.
+      expect(css).not.toContain('data-cinder-toggle-slot');
+      expect(css).not.toContain('data-cinder-toggle-space');
       // The rail only reserves the width: no padding that would place a button in it.
       const rail = declarationsFor(css, '.cinder-list-detail__rail');
       expect(rail.has('padding')).toBe(false);
     });
 
-    test('a list with no header of its own gets an empty one that holds the toggle’s place', async () => {
+    test('a list with no header of its own gets no empty one: the toggle is not in a header', async () => {
       const { container, getByRole } = render(ListDetailTableFixture, {
         props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
       });
@@ -831,11 +966,7 @@ describe('ListDetail', () => {
       const toggle = getByRole('button', { name: 'Hide list' });
       expect(toggle.closest('.cinder-list-detail__toggle')).not.toBeNull();
       expect(toggle.closest('.cinder-list-detail__header')).toBeNull();
-      expect(
-        container
-          .querySelector('.cinder-list-detail__header')
-          ?.hasAttribute('data-cinder-toggle-space'),
-      ).toBe(true);
+      expect(container.querySelector('.cinder-list-detail__header')).toBeNull();
     });
 
     test('takes its labels from the host, and has nothing to hide below pushBelow', async () => {

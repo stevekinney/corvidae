@@ -109,22 +109,18 @@ export function waterfallOrigin(
   return starts.length === 0 ? undefined : Math.min(...starts);
 }
 
-/**
- * The bar of every step that has one, by step number. `entries` is every step of the run, not a
- * page or a filtered list, so a bar means the same thing wherever the step is shown.
- */
-export function stepWaterfall(
-  entries: readonly WaterfallEntry[],
-  options: {
-    readonly runStartedAt?: number | undefined;
-    readonly now: number;
-    /** The run's status; a finished run has no step still going. */
-    readonly runStatus?: string | undefined;
-  },
-): ReadonlyMap<number, WaterfallBar> {
-  const bars = new Map<number, WaterfallBar>();
+/** What the layout is told: when the run began, the present moment, and how the run stands. */
+interface WaterfallOptions {
+  readonly runStartedAt?: number | undefined;
+  readonly now: number;
+  /** The run's status; a finished run has no step still going. */
+  readonly runStatus?: string | undefined;
+}
+
+/** The scale every bar shares: the origin, the width of the run in milliseconds, and each step's length. */
+function scaleOf(entries: readonly WaterfallEntry[], options: WaterfallOptions) {
   const origin = waterfallOrigin(entries, options.runStartedAt);
-  if (origin === undefined) return bars;
+  if (origin === undefined) return undefined;
 
   const now = usable(options.now) ? options.now : origin;
   const open = openStepNumbers(entries, options.runStatus);
@@ -148,7 +144,33 @@ export function stepWaterfall(
   for (const { entry, length } of measured) {
     if (usable(entry.timestamp)) end = Math.max(end, entry.timestamp + (length ?? 0));
   }
-  const span = end - origin;
+  return { origin, span: end - origin, measured };
+}
+
+/**
+ * How wide the run is, in milliseconds: the span every bar is measured against, from the origin to
+ * the latest end of any step. A page that labels its scale says this at the right-hand end. It is
+ * `undefined` when nothing can be measured, and `0` when every step is a point at one instant.
+ */
+export function waterfallSpan(
+  entries: readonly WaterfallEntry[],
+  options: WaterfallOptions,
+): number | undefined {
+  return scaleOf(entries, options)?.span;
+}
+
+/**
+ * The bar of every step that has one, by step number. `entries` is every step of the run, not a
+ * page or a filtered list, so a bar means the same thing wherever the step is shown.
+ */
+export function stepWaterfall(
+  entries: readonly WaterfallEntry[],
+  options: WaterfallOptions,
+): ReadonlyMap<number, WaterfallBar> {
+  const bars = new Map<number, WaterfallBar>();
+  const scale = scaleOf(entries, options);
+  if (scale === undefined) return bars;
+  const { origin, span, measured } = scale;
 
   for (const { entry, isOpen, length } of measured) {
     if (!usable(entry.timestamp)) continue;

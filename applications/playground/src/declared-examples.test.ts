@@ -15,6 +15,7 @@ import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 
 const COMPONENTS_WITH_EVERY_DECLARED_EXAMPLE = [
   'approval-card',
+  'confirm-dialog',
   'meter',
   'payload-inspector',
   'text',

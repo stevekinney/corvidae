@@ -44,6 +44,102 @@ async function openGeneral(page: Page) {
   await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
 }
 
+type SettingsKeyState = {
+  apply: 'live' | 'restart';
+  locked: boolean;
+  lockReason?: 'deployment' | 'shared-storage';
+  pendingRestart: boolean;
+};
+
+type SettingsSnapshot = {
+  values: Record<string, unknown>;
+  effective: Record<string, unknown>;
+  running: Record<string, unknown>;
+  revision: number;
+  persisted: boolean;
+  keys: Record<string, SettingsKeyState>;
+};
+
+type SettingsResponse = { jsonrpc: string; id: unknown; result: SettingsSnapshot };
+type SchemaResponse = {
+  jsonrpc: string;
+  id: unknown;
+  result: { schema: { properties: Record<string, Record<string, unknown>> } };
+};
+
+/**
+ * Keeps the real Settings page and schema, while giving rare save and ownership states a small
+ * in-memory Bureau. The fixture changes no product behavior: it only makes a local E2E read show
+ * the same state a real Bureau would return after its update.
+ */
+async function stubSettings(
+  page: Page,
+  options: {
+    amendSnapshot?: (snapshot: SettingsSnapshot) => void;
+    amendSchema?: (properties: Record<string, Record<string, unknown>>) => void;
+    refuseUpdate?: (patch: Record<string, unknown>) => boolean;
+  } = {},
+) {
+  let snapshot: SettingsSnapshot | undefined;
+  const updates: Array<Record<string, unknown>> = [];
+  let restarts = 0;
+  await page.route('**/host/restart', async (route) => {
+    restarts += 1;
+    await route.fulfill({ status: 204 });
+  });
+  await page.route('**/jsonrpc', async (route) => {
+    const request = route.request().postDataJSON() as {
+      id?: unknown;
+      method?: string;
+      params?: { patch?: Record<string, unknown> };
+    } | null;
+    if (request?.method === 'bureau.settings.get') {
+      const response = await route.fetch();
+      const answer = (await response.json()) as SettingsResponse;
+      if (snapshot === undefined) {
+        snapshot = structuredClone(answer.result);
+        options.amendSnapshot?.(snapshot);
+      }
+      await route.fulfill({ response, json: { ...answer, result: snapshot } });
+      return;
+    }
+    if (request?.method === 'bureau.settings.schema') {
+      const response = await route.fetch();
+      const answer = (await response.json()) as SchemaResponse;
+      const properties = structuredClone(answer.result.schema.properties);
+      options.amendSchema?.(properties);
+      await route.fulfill({
+        response,
+        json: { ...answer, result: { ...answer.result, schema: { properties } } },
+      });
+      return;
+    }
+    if (request?.method !== 'bureau.settings.update') return route.fallback();
+    const patch = request.params?.patch ?? {};
+    updates.push(patch);
+    if (options.refuseUpdate?.(patch)) {
+      await route.abort('connectionfailed');
+      return;
+    }
+    if (snapshot === undefined) throw new Error('Settings updated before their snapshot loaded.');
+    for (const [key, value] of Object.entries(patch)) {
+      snapshot.values[key] = value;
+      snapshot.effective[key] = value;
+      if (snapshot.keys[key]?.apply === 'restart') snapshot.keys[key].pendingRestart = true;
+    }
+    snapshot.revision += 1;
+    const pendingRestart = Object.keys(patch).filter((key) => snapshot?.keys[key]?.pendingRestart);
+    await route.fulfill({
+      json: {
+        jsonrpc: '2.0',
+        id: request.id ?? null,
+        result: { revision: snapshot.revision, pendingRestart },
+      },
+    });
+  });
+  return { updates, restarts: () => restarts };
+}
+
 test.describe('Settings › General', () => {
   test('ready: four sections of rows under a General heading, with the section navigation beside them', async ({
     page,
@@ -104,6 +200,169 @@ test.describe('Settings › General', () => {
     await checkA11y('settings general at 375px');
   });
 
+  test('/settings inherited duration placeholder', async ({ page }) => {
+    let saves = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method === 'bureau.settings.update') {
+        saves += 1;
+        await route.fallback();
+        return;
+      }
+      if (body?.method !== 'bureau.settings.get') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const answer = (await response.json()) as {
+        result: { values: Record<string, unknown>; effective: Record<string, unknown> };
+      };
+      delete answer.result.values['engine.workflowClaimRenewInterval'];
+      answer.result.effective['engine.workflowClaimRenewInterval'] = 15_000;
+      await route.fulfill({ response, json: answer });
+    });
+    await openGeneral(page);
+
+    const renew = settingRow(page, 'engine.workflowClaimRenewInterval');
+    const input = renew.getByRole('spinbutton');
+    await expect(input).toHaveValue('');
+    await expect(input).toHaveAttribute('placeholder', '15');
+    await expect(renew).toContainText('seconds');
+    expect(saves).toBe(0);
+    await captureAtBothWidths(page, 'inherited-duration-placeholder');
+  });
+
+  test('/settings shows labels without raw configuration keys at 375px', async ({ page }) => {
+    await openGeneral(page);
+    const identifiers = page.locator('[data-view="settings"] .cinder-setting-row__identifier');
+    await expect(identifiers.first()).toBeVisible();
+    await page.setViewportSize({ width: 375, height: 900 });
+    for (const label of [
+      'Wakeup',
+      'Max concurrent runs',
+      'Embedder',
+      'Storage backend',
+      'Theme',
+      'Sidebar',
+      'Default agent for new chats',
+      'Use single-key shortcuts',
+    ]) {
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    }
+    await expect(identifiers).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: ROUTE,
+      state: 'setting labels without raw keys',
+      source: SOURCE,
+    });
+  });
+
+  test('advanced settings: ordinary rows stay visible while the additional settings are disclosed', async ({
+    page,
+  }) => {
+    await openGeneral(page);
+    const disclosure = page.getByRole('button', { name: 'Advanced' });
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
+    await expect(settingRow(page, 'engine.workflowClaimRenewInterval')).toBeVisible();
+    await expect(settingRow(page, 'engine.maxConcurrentRuns')).toBeVisible();
+    await expect(settingRow(page, 'tools.decide')).toHaveCount(0);
+    await captureAtBothWidths(page, 'advanced settings collapsed');
+
+    await disclosure.focus();
+    await page.keyboard.press('Enter');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    const decide = settingRow(page, 'tools.decide');
+    await expect(decide.getByRole('switch', { name: 'Decide' })).toBeVisible();
+    await captureAtBothWidths(page, 'advanced settings open');
+  });
+
+  test('advanced settings: an unmatched General key joins Advanced, while an empty group does not render', async ({
+    page,
+  }) => {
+    await stubSettings(page, {
+      amendSnapshot: (snapshot) => {
+        snapshot.values['future.setting'] = true;
+        snapshot.effective['future.setting'] = true;
+        snapshot.running['future.setting'] = true;
+        snapshot.keys['future.setting'] = { apply: 'live', locked: false, pendingRestart: false };
+      },
+      amendSchema: (properties) => {
+        properties['future.setting'] = { type: 'boolean' };
+      },
+    });
+    await openGeneral(page);
+    for (const heading of ['Tools', 'Runs', 'Memory', 'Storage', 'Your preferences']) {
+      await expect(page.getByRole('heading', { level: 2, name: heading })).toBeVisible();
+    }
+    await expect(settingRow(page, 'future.setting')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Advanced' }).click();
+    await expect(settingRow(page, 'future.setting').getByRole('switch')).toBeVisible();
+    await captureAtBothWidths(page, 'advanced settings unmatched General key');
+
+    await page.unroute('**/jsonrpc');
+    await stubSettings(page, {
+      amendSchema: (properties) => {
+        for (const key of Object.keys(properties)) {
+          if (
+            ![
+              'tools.humanInput',
+              'tools.wakeup',
+              'engine.workflowClaimRenewInterval',
+              'engine.maxConcurrentRuns',
+            ].includes(key)
+          ) {
+            delete properties[key];
+          }
+        }
+      },
+    });
+    await openGeneral(page);
+    await expect(page.getByRole('button', { name: 'Advanced' })).toHaveCount(0);
+    await expect(settingRow(page, 'tools.wakeup')).toBeVisible();
+    await expect(settingRow(page, 'engine.maxConcurrentRuns')).toBeVisible();
+    await captureAtBothWidths(page, 'advanced settings no qualifying rows');
+  });
+
+  test.describe('advanced settings touch reach', () => {
+    test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 900 } });
+
+    test('reaches both edges and leaves the first advanced control usable', async ({ page }) => {
+      await openGeneral(page);
+      const disclosure = page.getByRole('button', { name: 'Advanced', exact: true });
+      await disclosure.scrollIntoViewIfNeeded();
+      const hit = await disclosure.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const x = bounds.x + bounds.width / 2;
+        const y = bounds.y + bounds.height / 2;
+        const above = y - 21.5;
+        const below = y + 21.5;
+        return {
+          x,
+          above,
+          face: bounds.height,
+          reachesEdges: [above, below].map((target) =>
+            element.contains(document.elementFromPoint(x, target)),
+          ),
+        };
+      });
+      expect(hit.face).toBeLessThan(44);
+      expect(hit.reachesEdges).toEqual([true, true]);
+      await page.touchscreen.tap(hit.x, hit.above);
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      const decide = settingRow(page, 'tools.decide').getByRole('switch', { name: 'Decide' });
+      await decide.scrollIntoViewIfNeeded();
+      expect(
+        await decide.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2),
+          );
+        }),
+      ).toBe(true);
+    });
+  });
+
   test('reverted: Revert puts the waiting change back to the running value, with an Undo toast', async ({
     page,
   }) => {
@@ -143,10 +402,56 @@ test.describe('Settings › General', () => {
     }
   });
 
+  test('advanced settings: a restart save survives reopening, without restarting the host', async ({
+    page,
+  }) => {
+    const fixture = await stubSettings(page);
+    await openGeneral(page);
+    await page.getByRole('button', { name: 'Advanced' }).click();
+    const row = settingRow(page, 'engine.workflowClaimTtl');
+    await row.getByRole('spinbutton').fill('31');
+    await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
+    await expect(row.getByRole('status')).toContainText('Saved, waiting for a restart');
+    await expect.poll(() => fixture.updates).toEqual([{ 'engine.workflowClaimTtl': 31_000 }]);
+    const banner = page.getByTestId('settings-restart-summary');
+    await expect(banner).toContainText('2 changes wait for a restart');
+    await page.getByRole('button', { name: 'Advanced' }).click();
+    await expect(banner).toContainText('2 changes wait for a restart');
+    await captureAtBothWidths(page, 'advanced settings collapsed with two pending changes');
+    await page.getByRole('button', { name: 'Advanced' }).click();
+    await expect(row.getByRole('spinbutton')).toHaveValue('31');
+    await expect(row.getByRole('status')).toContainText('Saved, waiting for a restart');
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+    expect(fixture.restarts()).toBe(0);
+    await captureAtBothWidths(page, 'advanced settings reopened with a pending restart');
+  });
+
+  test('advanced settings: Decide sends one normal patch and keeps the saved setting after reopening', async ({
+    page,
+  }) => {
+    const fixture = await stubSettings(page);
+    await openGeneral(page);
+    const disclosure = page.getByRole('button', { name: 'Advanced' });
+    await disclosure.click();
+    const decide = settingRow(page, 'tools.decide').getByRole('switch', { name: 'Decide' });
+    await decide.click();
+    await expect.poll(() => fixture.updates).toEqual([{ 'tools.decide': false }]);
+    await disclosure.click();
+    await expect(settingRow(page, 'tools.decide')).toHaveCount(0);
+    await disclosure.click();
+    await expect(decide).toHaveAttribute('aria-checked', 'false');
+    await expect(settingRow(page, 'tools.decide').getByRole('status')).toContainText(
+      'Saved just now',
+    );
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+    await captureAtBothWidths(page, 'advanced settings Decide saved and reopened');
+  });
+
   test('invalid value: a number past its limit fails at its field, with Nothing was saved', async ({
     page,
   }) => {
     await openGeneral(page);
+    await page.getByRole('button', { name: 'Advanced' }).click();
     const row = settingRow(page, 'logs.maximumLinesPerRun');
     await row.getByRole('spinbutton').fill('9999');
     await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
@@ -155,33 +460,74 @@ test.describe('Settings › General', () => {
     await captureAtBothWidths(page, 'invalid-value');
   });
 
-  test('save failed: the typed value stays in the field, with Try again', async ({
-    page,
-    pageErrors,
-  }) => {
-    pageErrors.expectEvery({
-      pattern: /Failed to load resource|ERR_CONNECTION_FAILED|status of 5\d\d/,
-      reason: 'the test refuses the save, so the request fails',
+  test.describe('advanced settings retry touch', () => {
+    test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 900 } });
+
+    test('save failed: the typed value stays in the field, with Try again', async ({
+      page,
+      pageErrors,
+    }) => {
+      pageErrors.expectEvery({
+        pattern: /Failed to load resource|ERR_CONNECTION_FAILED|status of 5\d\d/,
+        reason: 'the test refuses the save, so the request fails',
+      });
+      let refusing = true;
+      const fixture = await stubSettings(page, { refuseUpdate: () => refusing });
+      await openGeneral(page);
+      await page.getByRole('button', { name: 'Advanced' }).click();
+      const row = settingRow(page, 'logs.maximumLinesPerRun');
+      await row.getByRole('spinbutton').fill('321');
+      await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
+      await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
+      await expect(row.getByRole('button', { name: 'Try again' })).toBeVisible();
+      await expect(row.getByRole('spinbutton')).toHaveValue('321');
+      await page.getByRole('button', { name: 'Advanced' }).click();
+      await expect(row).toHaveCount(0);
+      await page.getByRole('button', { name: 'Advanced' }).click();
+      await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
+      await expect(row.getByRole('spinbutton')).toHaveValue('321');
+      const retry = row.getByRole('button', { name: 'Try again' });
+      await expect(retry).toBeVisible();
+      await captureAtBothWidths(page, 'save-failed');
+      await page.setViewportSize({ width: 375, height: 900 });
+      await retry.scrollIntoViewIfNeeded();
+      const touch = await retry.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        const above = y - 21.5;
+        const below = y + 21.5;
+        return {
+          x,
+          above,
+          faceHeight: box.height,
+          coarsePointer: matchMedia('(pointer: coarse)').matches,
+          hits: [above, below].map((target) =>
+            button.contains(document.elementFromPoint(x, target)),
+          ),
+        };
+      });
+      expect(touch.coarsePointer).toBe(true);
+      expect(touch.faceHeight).toBeLessThan(24);
+      expect(touch.hits).toEqual([true, true]);
+      expect(
+        await row.getByRole('spinbutton').evaluate((input) => {
+          const box = input.getBoundingClientRect();
+          return input.contains(
+            document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+          );
+        }),
+      ).toBe(true);
+      refusing = false;
+      await page.touchscreen.tap(touch.x, touch.above);
+      await expect(row.getByRole('status')).toContainText('Saved just now');
+      await expect
+        .poll(() => fixture.updates)
+        .toEqual([{ 'logs.maximumLinesPerRun': 321 }, { 'logs.maximumLinesPerRun': 321 }]);
     });
-    await openGeneral(page);
-    await page.route('**/jsonrpc', async (route) => {
-      const body = route.request().postDataJSON() as { method?: string } | null;
-      if (body?.method === 'bureau.settings.update') {
-        await route.abort('connectionfailed');
-        return;
-      }
-      await route.continue();
-    });
-    const row = settingRow(page, 'logs.maximumLinesPerRun');
-    await row.getByRole('spinbutton').fill('321');
-    await settingRow(page, 'tools.wakeup').getByRole('switch').focus();
-    await expect(row).toContainText(SETTINGS_COPY.couldNotSave);
-    await expect(row.getByRole('button', { name: 'Try again' })).toBeVisible();
-    await expect(row.getByRole('spinbutton')).toHaveValue('321');
-    await captureAtBothWidths(page, 'save-failed');
   });
 
-  test('locked, remote mode: the backend and what the deployment owns sit in a Remote deployment card', async ({
+  test('advanced settings locked, remote mode: the backend and what the deployment owns sit in a Remote deployment card', async ({
     page,
   }) => {
     await page.route('**/host/paths', async (route) => {
@@ -211,6 +557,7 @@ test.describe('Settings › General', () => {
         'durable',
         'engine.workflowClaimTtl',
         'engine.workflowClaimRenewInterval',
+        'tools.decide',
       ]) {
         const state = answer.result.keys[key];
         if (state !== undefined) {
@@ -228,6 +575,9 @@ test.describe('Settings › General', () => {
     });
     await openGeneral(page);
     await expect(page.getByRole('heading', { level: 2, name: 'Remote deployment' })).toBeVisible();
+    const remote = page
+      .getByRole('heading', { level: 2, name: 'Remote deployment' })
+      .locator('xpath=ancestor::section[1]');
     await expect(settingRow(page, 'storage.backend')).toContainText('Postgres and S3');
     await expect(settingRow(page, 'storage.backend')).toContainText('Set by the deployment');
     const locked = settingRow(page, 'engine.workflowClaimRenewInterval');
@@ -239,6 +589,17 @@ test.describe('Settings › General', () => {
     await expect(cap).toContainText(SETTINGS_COPY.lockedMessage);
     await expect(cap.getByRole('spinbutton')).toBeDisabled();
     await expect(cap.getByRole('spinbutton')).toHaveValue('4');
+    await page.getByRole('button', { name: 'Advanced' }).click();
+    const durable = settingRow(page, 'durable');
+    await expect(durable).toContainText(SETTINGS_COPY.lockedMessage);
+    await expect(durable.getByRole('switch')).toBeDisabled();
+    const decide = settingRow(page, 'tools.decide');
+    await expect(decide).toContainText(SETTINGS_COPY.lockedMessage);
+    await expect(decide.getByRole('switch')).toBeDisabled();
+    await expect(remote.locator('[data-setting="tools.decide"]')).toBeVisible();
+    await expect(
+      page.getByTestId('settings-advanced').locator('[data-setting="tools.decide"]'),
+    ).toHaveCount(0);
     await captureAtBothWidths(page, 'locked-remote');
   });
 
@@ -1012,7 +1373,8 @@ test.describe('Settings › General, the Embedder row on a phone', () => {
 
     const line = switchLine(page);
     const dot = line.getByRole('img', { name: 'Running' });
-    const label = embedderRow(page).locator('.cinder-form-field__label-row');
+    const label = embedderRow(page).locator('.cinder-setting-row__field > label');
+    await expect(label).toHaveText('Embedder');
     const bar = line.getByRole('progressbar');
     const cancel = line.getByRole('button', { name: 'Cancel switch' });
     // Scrolled into the viewport and settled, since the hit test below is made in viewport coordinates.

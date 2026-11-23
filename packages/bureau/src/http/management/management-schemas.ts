@@ -181,12 +181,36 @@ export const taskViewSchema = z.object({
   /**
    * What asks for attention (COR-2526): `stalled` while the run is alive but making no progress
    * outside a declared wait, which is Operative's own `alive-but-stalled` assessment recorded when
-   * it changes, and `looping` once the run's toolbox reported a loop until the run settles. Empty
-   * for a task that has ended, and `stalled` is empty while a person is asked something.
+   * it changes, and `looping` once the run's toolbox reported a loop until the run settles. Neither
+   * is listed for a task that has ended, and `stalled` is empty while a person is asked something.
+   * `overspending` (COR-2527) is listed once a step found the run's cost over the workspace's spend
+   * threshold (the `runs.spendThresholdUsd` setting), and stays after the run settles.
    */
-  attention: z.array(z.enum(['stalled', 'looping'])),
+  attention: z.array(z.enum(['stalled', 'looping', 'overspending'])),
   /** The instant, as ISO 8601 on the Bureau's clock, the run was seen to stall; `null` unless `attention` holds `stalled`. */
   stalledSince: z.string().nullable(),
+  /**
+   * Why a failed task failed (COR-2531), or `null` for a task that did not fail and for a failure
+   * nothing described. `step` is the step it failed at (its index and a label: the failing tool's
+   * name, `model` for a model step, or for a workflow run the engine's `failedStep.label`),
+   * `errorCode` and `errorKind` are the run's error identifiers, and `toolCall` names the tool and
+   * the call that failed. It never holds a tool's arguments or error text: the text is
+   * `statusMessage`.
+   */
+  failure: z
+    .object({
+      step: z.object({ index: z.number().int().min(0), label: z.string() }).nullable(),
+      errorCode: z.string().nullable(),
+      errorKind: z.string().nullable(),
+      toolCall: z.object({ name: z.string(), callId: z.string() }).nullable(),
+    })
+    .nullable(),
+  /**
+   * The step the run is on a second or later try of, while it runs (COR-2531): `label` is `model`
+   * for a model step, or for a workflow run the engine's retrying activity, and `attempt` is 2 or
+   * later. `null` when no step is retrying, and for a task that has ended.
+   */
+  retrying: z.object({ label: z.string(), attempt: z.number().int().min(2) }).nullable(),
 });
 
 /** The paging fields the list operations share. */

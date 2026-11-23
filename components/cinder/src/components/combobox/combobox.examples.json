@@ -16,6 +16,12 @@
       "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n  const options = [\n    { value: 'free', label: 'Free' },\n    { value: 'pro', label: 'Pro' },\n    { value: 'enterprise', label: 'Enterprise', disabled: true },\n  ];\n</script>\n\n<Combobox\n  id=\"combobox-disabled\"\n  label=\"Plan\"\n  placeholder=\"Locked plan selection\"\n  {options}\n  value=\"pro\"\n  disabled\n/>\n"
     },
     {
+      "id": "filled",
+      "title": "Filled appearance",
+      "description": "Use a filled combobox on a comfortable, content-first form. The explicit appearance keeps the inset field treatment outside a comfortable-density subtree too.",
+      "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n\n  const timeZones = [\n    { value: 'america-denver', label: 'America/Denver' },\n    { value: 'america-new-york', label: 'America/New_York' },\n  ];\n</script>\n\n<Combobox\n  id=\"time-zone\"\n  label=\"Time zone\"\n  placeholder=\"Choose a time zone\"\n  options={timeZones}\n  appearance=\"filled\"\n/>\n"
+    },
+    {
       "id": "typed-options",
       "title": "Typed options with as const",
       "description": "Use `as const` on the options array to infer a precise literal-union type for `T`. TypeScript then rejects any `value` that is not a member of the union (or the empty-string sentinel) at compile time.",

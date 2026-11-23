@@ -303,15 +303,14 @@ describe('the states (C3-15, C3-16, C3-17)', () => {
     await waitFor(() => expect(hookIds(view.container)).toHaveLength(3));
   });
 
-  test('a read that was refused is an inline access gate, with the scope in code and only See your scopes', async () => {
+  test('a read that was refused explains the local run access gate', async () => {
     const view = open(LIVE, 'forbidden');
 
     await view.findByText(copy.forbidden.title);
     const body = section(view.container)!;
     expect(body.textContent).toContain(`requires ${copy.forbidden.requirement}`);
-    const actions = [...body.querySelectorAll('a, button')];
-    expect(actions.map((action) => action.textContent?.trim())).toEqual(['See your scopes']);
-    expect(actions[0]?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(body.textContent).toContain(copy.forbidden.reason);
+    expect(body.querySelectorAll('a, button')).toHaveLength(0);
     expect(hookIds(view.container)).toEqual([]);
   });
 });

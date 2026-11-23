@@ -8,6 +8,7 @@ import {
   HumanWaitParkedEvent,
   type HumanInputSchema,
 } from '@lostgradient/operative';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
@@ -29,11 +30,12 @@ function build(
   engine: Pick<RegistryAgnosticEngine, 'get'>,
   clock = { now: 1_000 },
   steps: readonly (typeof PARKED_STEP)[] = [PARKED_STEP],
+  liveRun?: NonNullable<ReturnType<RunHumanWaitsDependencies['store']['getRun']>>,
 ) {
   const diagnostics: Diagnostic[] = [];
   const dependencies: RunHumanWaitsDependencies = {
-    store: { getRun: () => undefined },
-    catalogRunIds: new Set(),
+    store: { getRun: (id) => (id === 'live-1' ? liveRun : undefined) },
+    catalogRunIds: new Set(liveRun === undefined ? [] : ['live-1']),
     runAttribution: new Map(),
     engine: () => engine as RegistryAgnosticEngine,
     checkpointSteps: async () => steps,
@@ -41,7 +43,7 @@ function build(
     recordDecision: async () => undefined,
     checkDelivery: () => undefined,
     prepareDelivery: async (_review, payload) => ({ payload, audit: [] }),
-    createError: (message) => new Error(message),
+    createError: (message, code) => Object.assign(new Error(message), { code }),
     durableNotConfigured: () => new Error('no durable engine'),
     diagnose: (diagnostic) => {
       diagnostics.push(diagnostic);
@@ -156,6 +158,27 @@ describe('a wait with an input schema (COR-1487)', () => {
   });
 });
 
+it('hides an externally closed catalog review while the live run still holds the park event', async () => {
+  const { waits } = build(
+    { get: async () => ({ status: 'running', waitingForSignals: [] }) as never },
+    undefined,
+    [],
+    {
+      status: 'running',
+      actions: [
+        { type: HumanWaitParkedEvent.type, detail: { signalName: 'answer' }, timestamp: 1_000 },
+      ],
+    },
+  );
+  const [review] = waits.list();
+  expect(review).toMatchObject({ runId: 'live-1', signalName: 'answer' });
+  const rejection = await rejectionOf(
+    waits.resolve({ id: review!.id, decision: 'approve', principal: 'alice' }),
+  );
+  expect(rejection).toMatchObject({ code: 'NOT_FOUND' });
+  expect(waits.list()).toEqual([]);
+});
+
 describe('rereadClosed', () => {
   const GRACE = 100;
   const stillParked = {
@@ -214,5 +237,33 @@ describe('rereadClosed', () => {
     const { waits } = build(stillParked);
 
     expect(await waits.rereadClosed('run-9', GRACE)).toEqual({});
+  });
+});
+
+describe('resolve after the engine closed a review', () => {
+  it('answers NOT_FOUND and removes a timed-out review before a background refresh', async () => {
+    let waiting = true;
+    const { waits } = build({
+      get: async () =>
+        ({
+          status: 'running',
+          waitingForSignals: waiting ? ['answer'] : [],
+        }) as never,
+    });
+    await waits.attach('run-1', { agentName: 'asker' }, SERVICES);
+    const [review] = waits.list();
+    if (review === undefined) throw new Error('expected a pending review');
+
+    // The timeout path clears the engine wait before its asynchronous Bureau refresh runs.
+    waiting = false;
+    const result = await waits
+      .resolve({ id: review.id, decision: 'approve', principal: 'alice' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(result).toMatchObject({ code: 'NOT_FOUND' });
+    expect(waits.list()).toEqual([]);
   });
 });

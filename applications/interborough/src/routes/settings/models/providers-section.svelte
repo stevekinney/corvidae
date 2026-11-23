@@ -86,8 +86,9 @@
               size="sm"
               disabled={locked}
               aria-label={copy.manageLabel(name)}
-              onclick={() => (managing = provider.name)}>{copy.manage}</Button
-            >
+              onclick={() => (managing = provider.name)}
+              label={copy.manage}
+            />
           {/if}
         {:else}
           <Button
@@ -95,8 +96,9 @@
             size="sm"
             disabled={locked}
             aria-label={copy.connectLabel(name)}
-            onclick={() => (connecting = provider.name)}>{copy.connect}</Button
-          >
+            onclick={() => (connecting = provider.name)}
+            label={copy.connect}
+          />
         {/if}
       </div>
     {/each}

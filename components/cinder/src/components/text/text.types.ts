@@ -24,6 +24,13 @@ type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
   /** Whether a clamped run is open to its full length. Bindable; ignored without `clamp`. @default false */
   expanded?: boolean;
   /**
+   * Holds the run to a readable line length (70 characters), so a paragraph in a wide region does
+   * not run to the region's edge. Off by default, so no existing text moves; turn it on for prose
+   * that sits in a column wider than a comfortable line, such as a note or an explanation.
+   * @default false
+   */
+  measure?: boolean;
+  /**
    * Content that sits beside the "Show more" button on the line under a clamped run, separated from
    * it by a space and a colour step, such as a "Show raw payloads" link. Ignored without `clamp`.
    */
@@ -78,6 +85,8 @@ export interface TextSchemaProps {
   clamp?: number;
   /** Whether a clamped run is open to its full length. @default false */
   expanded?: boolean;
+  /** Holds the run to a readable line length of 70 characters. Off by default, so no existing text moves. @default false */
+  measure?: boolean;
   /** Cuts the text in the middle, or ends it with an ellipsis, when it is too long for one line. Needs `text`. */
   truncate?: 'middle' | 'end';
   /** The plain text to cut with `truncate`. */

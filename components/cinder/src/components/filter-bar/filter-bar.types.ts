@@ -82,6 +82,11 @@ export type ToggleFacet = {
   count?: number;
   /** Tone of the dot before the label. Defaults to `warning`. */
   tone?: ToggleFacetTone;
+  /**
+   * Keeps the chip out of the row: it is a checkbox row of the Filter menu in every layout, opened
+   * by one icon button, and while it is on the row shows it as a removable chip. Default `false`.
+   */
+  menuOnly?: boolean;
   /** Whether the facet control is disabled. */
   disabled?: boolean;
 };
@@ -97,6 +102,13 @@ export type CustomFacet = {
   key: string;
   /** Accessible label for the facet, and its row in the narrow form's Filter menu. */
   label: string;
+  /**
+   * Keeps the facet out of the row: its control is a row of the Filter menu in every layout, opened
+   * by one icon button. A custom control is wide, so a filter that is rarely used takes no room
+   * a segment or a chip needs. While it has an applied filter, the row shows it as a removable chip
+   * ("Failed at step: charge-card"). Default `false`.
+   */
+  menuOnly?: boolean;
   /**
    * Consumer-supplied snippet that renders the full facet control. Receives
    * the bar-level `disabled` state — the snippet MUST apply it to its own

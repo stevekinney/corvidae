@@ -37,8 +37,8 @@ import {
 } from './journey-agent.ts';
 import { recordBureauTraffic, withReplyDiagnostics } from './journey-diagnostics.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
-import { expectEngineMissesForRuns, waitingReviewOf } from './task-support.ts';
-import { openJsonTab, removeWorkflow } from './workflow-support.ts';
+import { bureauCall, expectEngineMissesForRuns, waitingReviewOf } from './task-support.ts';
+import { listWorkflowRuns, openJsonTab, removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
 test.describe.configure({ mode: 'serial' });
@@ -239,7 +239,7 @@ test('reloads while an agent waits on a question, and answers it from the review
   const review = await waitingReviewOf(request, threadId, E2E_JOURNEY_URL);
   await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
   const row = page.locator(`[data-review-row="bureau:${review.id}"]`);
-  const pane = page.locator('.ib-review-pane');
+  const pane = page.locator('.ib-review-detail[data-kind="human-wait"]');
   await expect(row).toContainText(QUESTION);
   await expect(pane).toContainText(QUESTION);
   await checkA11y('the question in the reviews inbox');
@@ -296,15 +296,11 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
 
   await expect(conversation(page).getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
-  // The call is a row of the tool rail, named for a person; its identifier is the tooltip drawn
-  // beside the row, which shows only on hover or focus.
+  // The tool rail names the workflow action in words.
   await expect(
     conversation(page)
-      .getByRole('tooltip', { includeHidden: true })
-      .filter({ hasText: /workflows-create/ })
-      .first()
-      .locator('xpath=..')
       .locator('[data-cinder-tool-call-row]')
+      .filter({ hasText: /Create workflow|Workflows create/i })
       .first(),
   ).toBeVisible();
   // The agent wrote the file, which the Bureau reports as an agent-authored workflow of its own.
@@ -319,6 +315,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
 
 test('opens the workflow from /workflows, waits for the schedule’s fire to be listed as a run, and opens that run', async ({
   page,
+  request,
 }) => {
   await page.goto('/workflows');
   const row = page.locator(`[data-workflow="${JOURNEY_WORKFLOW_ID}"]`);
@@ -335,11 +332,32 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
     { ignoreCase: true },
   );
 
-  // The schedule fires every few seconds. This page may open before the first fire, says there are
-  // no runs, and asks again until there is one, so the wait is for its first row.
+  // The schedule fires every few seconds. Health's runs list is a snapshot until the person turns
+  // on Live and accepts its new rows, so subscribe before the first fire rather than mistaking an
+  // empty initial snapshot for a workflow with no instances.
   await detail.getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
   await detail.getByRole('link', { name: WORKFLOW_COPY.runsAction, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/runs$`));
+  await expect(page).toHaveURL(new RegExp(`/health/runs\\?type=${JOURNEY_WORKFLOW_ID}$`));
+  await page.getByRole('button', { name: 'Go live', exact: true }).click();
+  await expect
+    .poll(async () => {
+      const bureauRuns = await listWorkflowRuns(request, JOURNEY_WORKFLOW_ID);
+      const response = await request.post('/jsonrpc', {
+        data: {
+          jsonrpc: '2.0',
+          id: 'journey-engine-runs',
+          method: 'weft.workflows.list',
+          params: { type: JOURNEY_WORKFLOW_ID },
+        },
+      });
+      expect(response.ok()).toBe(true);
+      const body = (await response.json()) as { result: { items: Array<{ type: string }> } };
+      return (
+        bureauRuns.length > 0 && body.result.items.some((run) => run.type === JOURNEY_WORKFLOW_ID)
+      );
+    })
+    .toBe(true);
+  await page.getByRole('button', { name: /^\+\d+ new$/ }).click();
   const runs = page.locator('tbody tr');
   await expect(runs.first()).toBeVisible();
   for (const text of await runs.allTextContents()) expect(text).toContain(JOURNEY_WORKFLOW_ID);
@@ -452,7 +470,26 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
     request,
     test.info(),
     () => sessionOf(page),
-    () => expect(reply).toContainText(correction),
+    async () => {
+      const contextId = sessionOf(page);
+      let task: { status: string; statusMessage?: string } | undefined;
+      await expect
+        .poll(async () => {
+          const result = (await bureauCall(
+            request,
+            'bureau.tasks.list',
+            { contextId },
+            E2E_JOURNEY_URL,
+          )) as { tasks: (typeof task)[] };
+          [task] = result.tasks;
+          return task?.status ?? 'not yet recorded';
+        })
+        .toMatch(/^(?:completed|failed|canceled)$/);
+      expect(task?.status, task?.statusMessage ?? 'The recall task must complete').toBe(
+        'completed',
+      );
+      await expect(reply).toContainText(correction);
+    },
   );
   await expect(reply).not.toContainText(original);
 });
@@ -496,6 +533,6 @@ test('opens the workers screen from Health, which the sidebar opens', async ({ p
   // Health's sections are the tab bar under its heading (COR-2018).
   await page.locator('main').getByRole('tab', { name: 'Workers', exact: true }).click();
 
-  await expect(page).toHaveURL(/\/health\/workers$/);
+  await expect(page).toHaveURL(/\/health\/workers(\?worker=[^&]+)?$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
 });

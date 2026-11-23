@@ -301,9 +301,10 @@
    */
   function naturalWidth(element: HTMLElement): number {
     const { flex, inlineSize } = element.style;
+    const overflowWidth = element.scrollWidth;
     element.style.flex = 'none';
     element.style.inlineSize = 'max-content';
-    let width = element.getBoundingClientRect().width;
+    let width = Math.max(element.getBoundingClientRect().width, overflowWidth);
     for (const descendant of element.querySelectorAll<HTMLElement>('*')) {
       // A visually hidden element is clipped to a pixel on purpose and draws nothing.
       if (descendant.clientWidth <= 1) continue;
@@ -2949,17 +2950,31 @@
     border-radius: var(--cinder-radius-sm);
   }
 
+  /* The footer's left group may give width to the controls after Attach, but on a fine pointer its
+   * compact face remains the 28px square Cinder gave it. Letting this item shrink made the desktop
+   * target narrower than Cinder's 24px minimum. A coarse pointer keeps Cinder's existing 44px
+   * pseudo-target without reserving more narrow-footer width. */
+  @media (any-pointer: fine) {
+    .chat-input-footer-left :global(.chat-input-attach) {
+      flex: 0 0 1.75rem;
+    }
+  }
+
   .chat-input-footer-left :global(.chat-input-attach:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* The row never wraps: the host's selects shrink (a ghost select ellipsizes its value) or fold
-   * into one Settings control (`controls` is told when) before anything drops to a second line. */
+  /* The row never wraps. Settings selects keep their natural width until the composer folds
+   * them into one control, so the ghost fields cannot silently shorten their values. */
   .chat-input-footer-left {
     flex: 1 1 auto;
     flex-wrap: nowrap;
     min-inline-size: 0;
+  }
+
+  .chat-input-footer-left > :global(.cinder-select-field.select-variant-ghost) {
+    flex: none;
   }
 
   .chat-input-footer-right {

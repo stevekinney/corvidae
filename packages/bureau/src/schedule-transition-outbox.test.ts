@@ -98,12 +98,18 @@ async function commitWithoutRecording(
   fixture: ReturnType<typeof newFixture>,
   kind: ScheduleTransitionKind,
   scheduleId: string,
+  actor?: { principal: string; panelUri?: string },
 ): Promise<string> {
   const storage = fixture.open();
   try {
     const engine = new Engine({ storage, backgroundTasks: 'manual' });
     try {
-      const transition = { kind, scheduleId, committedAtMs: Date.now() };
+      const transition = {
+        kind,
+        scheduleId,
+        committedAtMs: Date.now(),
+        ...(actor === undefined ? {} : { actor }),
+      };
       const key = scheduleTransitionKey(transition, 'crashed-ordinal');
       const options: ScheduleTransitionOptions = {
         additionalOperations: [scheduleTransitionOperation(key, transition)],
@@ -194,6 +200,34 @@ describe('schedule transitions through the outbox (COR-194)', () => {
       expect(await auditTypes(again, scheduleId)).toEqual([...before, kind]);
     });
   }
+
+  it('writes the audit entry a caller’s pause owes with that caller and panel at the next boot (COR-2545)', async () => {
+    const fixture = newFixture();
+    const first = await open(fixture);
+    const scheduleId = await createSchedule(first);
+    await close(first);
+
+    const actor = {
+      principal: 'api-key:alice',
+      panelUri: 'ui://inspectors/schedule-editor/v1',
+    };
+    await commitWithoutRecording(fixture, 'schedule.paused', scheduleId, actor);
+
+    const restarted = await open(fixture);
+    const records = await restarted.internals.auditTrail!.query({
+      runId: `schedule:${scheduleId}`,
+    });
+    const paused = records.filter((record) => record.type === 'schedule.paused');
+    expect(paused).toHaveLength(1);
+    expect(paused[0]?.principal).toBe(actor.principal);
+    expect(paused[0]?.detail).toMatchObject({ scheduleId, panelUri: actor.panelUri });
+    await close(restarted);
+
+    // A later boot records it no second time.
+    const again = await open(fixture);
+    const later = await again.internals.auditTrail!.query({ runId: `schedule:${scheduleId}` });
+    expect(later.filter((record) => record.type === 'schedule.paused')).toHaveLength(1);
+  });
 
   it('reads back only a pending record this build wrote', () => {
     const transition = { kind: 'schedule.paused', scheduleId: 'a:b', committedAtMs: 7 } as const;

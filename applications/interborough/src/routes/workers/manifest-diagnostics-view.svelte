@@ -43,7 +43,7 @@
       <Skeleton height="4rem" />
     </div>
   {:else if error}
-    <PanelFault {error} />
+    <PanelFault {error} subject="diagnostics" />
   {:else if diagnostics.length === 0 && rejections.length === 0}
     <EmptyState
       kind="first-use"

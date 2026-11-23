@@ -1,6 +1,9 @@
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { flushSync, tick } from 'svelte';
 
+import { discoverAgentsMessages, STATES_CONTEXT_WINDOW } from '../../../fixtures/chat-states.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { router } from '../../lib/router.svelte.ts';
 import Chats from './chats.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -25,6 +28,50 @@ const page = (offset: number, count: number, more: boolean) => ({
 });
 
 describe('the list of sessions', () => {
+  test('keeps the open chat mounted when a refused approval changes its list status', async () => {
+    const waiting = { ...CONTEXT, activity: 'awaiting-input' };
+    let reads = 0;
+    restore = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': () => waiting,
+        'bureau.contexts.list': () => ({ contexts: [waiting], nextOffset: null }),
+        'bureau.contexts.window': () => STATES_CONTEXT_WINDOW,
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          reads += 1;
+          return Response.json({ threadId: 'session-1', messages: discoverAgentsMessages() });
+        }
+        if (url.endsWith('/run')) {
+          return new Response(
+            'data: {"type":"RUN_ERROR","code":"RUN_NOT_FOUND","message":"none"}\n\n',
+            {
+              headers: { 'content-type': 'text/event-stream' },
+            },
+          );
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByRole, findByText, getByTestId, queryByRole } = mount();
+    const row = () => container.querySelector('[data-chat="session-1"]')?.textContent;
+    const approve = await findByRole('button', { name: /^Approve$/ });
+    expect(row()).toContain(CHAT_COPY.status.waiting);
+
+    await fireEvent.click(approve);
+
+    await findByText(CHAT_COPY.approval.notWaiting);
+    await findByText(CHAT_COPY.approval.lapsed);
+    expect(row()).toContain(CHAT_COPY.status.done);
+    expect(getByTestId('chat-header').textContent).toContain(CHAT_COPY.status.done);
+    expect(queryByRole('button', { name: /^Approve$/ })).toBeNull();
+    await waitFor(() => expect(reads).toBeGreaterThan(1));
+  });
+
   test('is the sessions the Bureau lists, newest first, each as a link with its latest message and its status', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 3, false),
@@ -312,6 +359,79 @@ describe('the list of sessions', () => {
     expect(router.pathname).toBe('/chats/session-0');
   });
 
+  test('beside the list the latest chat opens on arrival, replacing the address, and a row still opens its chat', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      const served = bureau({
+        'bureau.contexts.list': () => page(0, 2, false),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.contexts.get': (params) => ({ ...CONTEXT, id: String(params['contextId']) }),
+      });
+      restore = served.restore;
+      landAt('/chats');
+      const entries = window.history.length;
+      const { findByRole, getByRole } = mount();
+      const search = await findByRole('searchbox', { name: 'Search chats' });
+
+      await waitFor(() => expect(router.pathname).toBe('/chats/session-0'));
+      // A replace: Back leaves the page rather than returning to the bare list.
+      expect(window.history.length).toBe(entries);
+      expect(getByRole('searchbox', { name: 'Search chats' })).toBe(search);
+
+      const second = await findByRole('link', { name: /Chat 1/ });
+      second.click();
+      expect(router.pathname).toBe('/chats/session-1');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+  });
+
+  test('leaving for another page while the list is still mounted opens no chat on the way out', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1200,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      const served = bureau({
+        'bureau.contexts.list': () => page(0, 2, false),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.contexts.get': (params) => ({ ...CONTEXT, id: String(params['contextId']) }),
+      });
+      restore = served.restore;
+      landAt('/chats');
+      mount();
+      await waitFor(() => expect(router.pathname).toBe('/chats/session-0'));
+
+      // The outlet unmounts the page a tick after the address changes: in that tick the open chat
+      // is gone from the address, and the list must not open its first chat again over the new page.
+      router.navigate('/agents');
+      flushSync();
+      await tick();
+      expect(router.pathname).toBe('/agents');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+  });
+
   test('shows no time for a chat whose time is unreadable', async () => {
     const served = bureau({
       'bureau.contexts.list': () => ({
@@ -329,7 +449,7 @@ describe('the list of sessions', () => {
     expect(row.closest('[data-chat]')?.querySelector('time')).toBeNull();
   });
 
-  test('says to pick a chat, with New chat as an action, until one is open', async () => {
+  test('says quietly that no chat is open, with no second empty state, until one is open (COR-2438)', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 1, false),
       'bureau.reviews.list': () => ({ reviews: [] }),
@@ -340,8 +460,9 @@ describe('the list of sessions', () => {
     const { findByRole } = mount();
 
     const detail = await findByRole('region', { name: 'Open chat' });
-    expect(detail.textContent).toContain('Pick a chat');
-    expect(detail.querySelector('a[href="/chats/new"]')?.textContent).toContain('New chat');
+    await waitFor(() => expect(detail.textContent?.trim()).toBe('No chat open'));
+    expect(detail.querySelector('.cinder-empty-state')).toBeNull();
+    expect(detail.querySelector('a[href="/chats/new"]')).toBeNull();
     const title = await findByRole('heading', { level: 1 });
     expect(title.textContent?.trim()).toBe('Chats');
   });

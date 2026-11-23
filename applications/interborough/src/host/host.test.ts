@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { serveComposedJsonRpc } from './composed-json-rpc.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { deriveStartOverrideSigningSecret, startHost, type Host } from './host.ts';
 
@@ -171,6 +172,10 @@ describe('the identity of every request', () => {
     const tools = (listed.result?.['tools'] ?? []) as Array<{ name: string }>;
     const names = tools.map((tool) => tool.name);
     expect(names).toContain('bureau.reviews.list');
+    // A model's longer explanation of a failed run is kept off MCP, so a model cannot spend tokens
+    // asking another model to explain a run (COR-2534); the stored-facts explanation is on it.
+    expect(names).toContain('bureau.tasks.explain');
+    expect(names.filter((name) => name.startsWith('bureau.tasks.explanation.'))).toEqual([]);
     // The run inspector is an injected `ui://` resource, linked from `bureau.tasks.inspect` (COR-910).
     const inspect = (tools as Array<{ name: string; _meta?: unknown }>).find(
       (tool) => tool.name === 'bureau.tasks.inspect',
@@ -189,6 +194,16 @@ describe('the identity of every request', () => {
       'bureau.reviews.resolve',
       'bureau.workflows.get',
       'bureau.workflows.update',
+      'bureau.runs.compare',
+      // The schedule editor's reads (COR-2545); its writes are host-only and never listed here.
+      'bureau.schedules.list',
+      'bureau.schedules.get',
+      'bureau.agents.list',
+      'bureau.workflows.list',
+      'bureau.tasks.get',
+      // The failure explanation's one read (COR-2543).
+      'bureau.tasks.explain',
+      'bureau.runs.timeline',
     ]);
     const visibilities = Object.fromEntries(
       (tools as Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }>).map((tool) => [
@@ -211,7 +226,18 @@ describe('the identity of every request', () => {
         uri: 'ui://inspectors/workflow-revision-review/v1',
         mimeType: 'text/html;profile=mcp-app',
       },
+      { uri: 'ui://inspectors/schedule-editor/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/run-timeline/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/failure-explanation/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/run-comparison/v1', mimeType: 'text/html;profile=mcp-app' },
     ]);
+    // The failure explanation opens from the explain tool (COR-2543).
+    const explain = (tools as Array<{ name: string; _meta?: unknown }>).find(
+      (tool) => tool.name === 'bureau.tasks.explain',
+    );
+    expect(explain?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://inspectors/failure-explanation/v1' },
+    });
     // The pending-review app opens from the existing `bureau.reviews.list`; it adds no tool name.
     const reviewList = tools.find((tool) => tool.name === 'bureau.reviews.list') as {
       _meta?: unknown;
@@ -322,6 +348,34 @@ describe('the relay to Weft’s server', () => {
     expect(answers.map((answer) => answer.id)).toEqual(['agents', 'storage', 'who']);
     for (const answer of answers) expect(answer.error).toBeUndefined();
     expect(answers[0]?.result).toHaveProperty('agents');
+  });
+
+  test('keeps earlier batch answers when the relay refuses a later call', async () => {
+    const response = await serveComposedJsonRpc(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        body: JSON.stringify([
+          { jsonrpc: '2.0', id: 'agents', method: 'bureau.agents.list' },
+          { jsonrpc: '2.0', id: 7, method: 'weft.storage.capabilities' },
+        ]),
+      }),
+      {
+        bureauMethods: new Set(['bureau.agents.list']),
+        authorizeEngine: async () => undefined,
+        refuseBureau: async () => undefined,
+        bureau: async () => Response.json({ jsonrpc: '2.0', id: 'agents', result: { agents: [] } }),
+        relay: async () => new Response('Bad Gateway', { status: 502 }),
+      },
+    );
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual([
+      { jsonrpc: '2.0', id: 'agents', result: { agents: [] } },
+      {
+        jsonrpc: '2.0',
+        id: 7,
+        error: { code: -32603, message: 'Upstream request refused', data: { status: 502 } },
+      },
+    ]);
   });
 
   test('derives the signing secret from the key without echoing it', () => {

@@ -134,6 +134,36 @@ describe('Text', () => {
   });
 });
 
+describe('Text measure', () => {
+  test('is off by default, so no existing text takes a line length', () => {
+    const { container } = render(Text, { children: textSnippet('prose') });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+
+    expect(root.hasAttribute('data-cinder-measure')).toBe(false);
+  });
+
+  test('holds a plain run, and a clamped one, to a readable line length the stylesheet sets', () => {
+    const plain = render(Text, { measure: true, children: textSnippet('prose') });
+    expect(
+      (plain.container.querySelector('.cinder-text') as HTMLElement).hasAttribute(
+        'data-cinder-measure',
+      ),
+    ).toBe(true);
+    plain.unmount();
+
+    const clamped = render(Text, { measure: true, clamp: 3, children: textSnippet('prose') });
+    expect(
+      (clamped.container.querySelector('.cinder-text') as HTMLElement).hasAttribute(
+        'data-cinder-measure',
+      ),
+    ).toBe(true);
+    expect(textCss).toMatch(/\.cinder-text\[data-cinder-measure\]\s*\{\s*max-inline-size: 70ch;/);
+    // The default text sets no measure: the base rule carries none.
+    const baseRule = /\.cinder-text \{([^}]*)\}/.exec(textCss)?.[1] ?? '';
+    expect(baseRule).not.toContain('max-inline-size');
+  });
+});
+
 describe('Text clamp', () => {
   const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
   const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');

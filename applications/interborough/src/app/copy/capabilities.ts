@@ -397,7 +397,13 @@ export const CAPABILITIES_COPY = {
         test: 'Test connection',
         chooseTools: 'Choose tools',
       },
-      kind: { label: 'What kind of source', mcp: 'MCP server', openapi: 'OpenAPI spec' },
+      kind: {
+        label: 'What kind of source',
+        mcp: 'MCP server',
+        mcpDescription: 'A server that offers tools, such as GitHub or a database.',
+        openapi: 'OpenAPI spec',
+        openapiDescription: 'A web API described by an OpenAPI 3 file.',
+      },
       /** What a person calls the source; the identifier it is saved under is made from it (row 33f). */
       name: {
         label: 'Name',
