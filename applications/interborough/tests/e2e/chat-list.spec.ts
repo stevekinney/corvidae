@@ -578,7 +578,9 @@ test.describe('the chat list at other widths', () => {
     await page.setViewportSize({ width: 375, height: 900 });
     await page.goto('/chats?view=archived');
     const archived = list(page);
-    await expect(archived.getByRole('heading', { name: 'Archived chats' })).toBeVisible();
+    await expect(
+      archived.getByRole('heading', { level: 1, name: 'Archived chats', exact: true }),
+    ).toBeVisible();
     await expect(archived.getByRole('searchbox', { name: 'Search chats' })).toHaveCount(0);
     await expect(archived.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
     await page.setViewportSize({ width: 1280, height: 900 });
