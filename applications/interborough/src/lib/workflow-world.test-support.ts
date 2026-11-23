@@ -877,23 +877,22 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     },
     'bureau.workflows.runs.list': (params) => {
       const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
-      const runs = world.runs
+      const matching = world.runs
         .filter((run) => run.type === params['workflow'])
-        .toSorted((left, right) => right.createdAt - left.createdAt)
-        .slice(0, limit)
-        .map((run) => ({
-          id: run.id,
-          workflow: run.type,
-          workflowVersion: 'version-1',
-          status: run.status,
-          createdAt: new Date(run.createdAt).toISOString(),
-          updatedAt: new Date(run.updatedAt).toISOString(),
-          origin: run.origin ?? null,
-          steps: run.steps ?? null,
-          awaitingSignal: run.awaitingSignal ?? null,
-          failure: run.failure ?? null,
-        }));
-      return { runs, nextOffset: null };
+        .toSorted((left, right) => right.createdAt - left.createdAt);
+      const runs = matching.slice(0, limit).map((run) => ({
+        id: run.id,
+        workflow: run.type,
+        workflowVersion: 'version-1',
+        status: run.status,
+        createdAt: new Date(run.createdAt).toISOString(),
+        updatedAt: new Date(run.updatedAt).toISOString(),
+        origin: run.origin ?? null,
+        steps: run.steps ?? null,
+        awaitingSignal: run.awaitingSignal ?? null,
+        failure: run.failure ?? null,
+      }));
+      return { runs, nextOffset: matching.length > limit ? limit : null };
     },
     'bureau.workflows.get': (params) => {
       const file = find(params['id']);

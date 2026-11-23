@@ -666,6 +666,46 @@ describe('results', () => {
     });
   });
 
+  it('reports complete run totals at the scan limit and withholds truncated totals', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('digest', DEFINITION);
+    const engine = served.bureau.durableEngine()!;
+    const started = await engine.start('digest', null, { id: 'retained-run' });
+    await started.result();
+    const recorded = await engine.list({ type: 'digest' });
+    const [sample] = recorded.items;
+    if (sample === undefined) throw new Error('Expected the recorded digest run.');
+    const retained = Array.from({ length: 1001 }, (_, index) => ({
+      ...sample,
+      id: `retained-${String(index)}`,
+      createdAt: sample.createdAt + 1001 - index,
+    }));
+    let total = 1000;
+    const list = engine.list.bind(engine);
+    const stub = spyOn(engine, 'list').mockImplementation(async (filter, options) => {
+      if (filter?.type !== 'digest') return list(filter, options);
+      const offset = filter.offset ?? 0;
+      return {
+        items: retained.slice(offset, Math.min(total, offset + (filter.limit ?? 100))),
+        total,
+      };
+    });
+    try {
+      const methods = ['bureau.workflows.revisions', 'bureau.workflows.history'] as const;
+      for (const method of methods) {
+        const answer = await ownerRpc(served.owner, method, { id: 'digest' });
+        expect(answer.result?.['revisions']).toMatchObject([{ runs: { count: 1000 } }]);
+      }
+      total = 1001;
+      for (const method of methods) {
+        const answer = await ownerRpc(served.owner, method, { id: 'digest' });
+        expect(answer.result?.['revisions']).toMatchObject([{ runs: null }]);
+      }
+    } finally {
+      stub.mockRestore();
+    }
+  });
+
   it('retains a deleted workflow’s stored run revision when no saved-version record exists', async () => {
     const storage = new MemoryStorage();
     const served = await serveWorkflows(cleanups, { storage });

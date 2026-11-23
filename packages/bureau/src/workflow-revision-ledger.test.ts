@@ -352,8 +352,8 @@ describe('a workflow’s history on a Bureau', () => {
       { expectedHash: created.hash },
     );
     const history = (await workflows.history('release-notes')) ?? [];
-    expect(history.map((entry) => entry.runs.count)).toEqual([0, 1]);
-    expect(history[1]?.runs.firstRunAt).not.toBeNull();
+    expect(history.map((entry) => entry.runs?.count)).toEqual([0, 1]);
+    expect(history[1]?.runs?.firstRunAt).toBeString();
   });
 
   it('answers undefined for a workflow with neither a file nor a version', async () => {

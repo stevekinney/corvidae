@@ -173,16 +173,15 @@
       }): Promise<{
         readonly total: number;
         readonly newest: LastRun | null;
-        readonly waitingForSignal: boolean;
+        readonly mayHaveWaitingRun: boolean;
       }> => {
         if (resolution.data?.kind === 'agent-authored') {
-          const runs = await listWorkflowFileRuns(type, HEADLINE_LIMIT, { signal });
+          const { runs, hasMore } = await listWorkflowFileRuns(type, HEADLINE_LIMIT, { signal });
           const [newest] = runs;
           return {
             total: runs.length,
-            waitingForSignal: runs.some(
-              (run) => run.status === 'suspended' && run.awaitingSignal != null,
-            ),
+            // An older page can contain a waiting run. Leave the authorized signal action available.
+            mayHaveWaitingRun: hasMore || runs.some((run) => run.awaitingSignal != null),
             newest:
               newest === undefined
                 ? null
@@ -199,7 +198,7 @@
         const [newest] = page.items;
         return {
           total: page.total,
-          waitingForSignal: false,
+          mayHaveWaitingRun: false,
           newest:
             newest === undefined
               ? null
@@ -808,7 +807,7 @@
   {/if}
   <WorkflowMoreMenu
     canSignal={actions?.signal === true &&
-      (headline.data?.waitingForSignal === true ||
+      (headline.data?.mayHaveWaitingRun === true ||
         (file?.paused !== true && (document === undefined || document.trigger.kind === 'signal')))}
     onSendSignal={() => (signalOpen = true)}
     onDuplicate={canDuplicate ? () => duplicate.mutate() : undefined}

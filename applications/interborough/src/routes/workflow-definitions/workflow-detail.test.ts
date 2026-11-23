@@ -959,9 +959,30 @@ describe('send signal', () => {
     ]);
   });
 
+  test('offers the signal action when older runs are outside the headline page', async () => {
+    const view = open('/workflows/digest', {
+      files: [readyFile('digest', { paused: true })],
+      runs: [
+        runFixture('older-waiter', 'digest', {
+          status: 'running',
+          awaitingSignal: 'approve',
+          createdAt: 1_759_999_999_999,
+        }),
+        ...Array.from({ length: 20 }, (_, index) => runFixture(`newer-${String(index)}`, 'digest')),
+      ],
+    });
+    const root = await ready(view.container);
+    await waitFor(() => {
+      expect(testId(root, 'workflow-line-last-run')?.textContent).toContain('Done');
+    });
+    await fireEvent.click(await view.findByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
+    await view.findByRole('menuitem', { name: WORKFLOW_COPY.page.menu.duplicate });
+    expect(view.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.sendSignal })).not.toBeNull();
+  });
+
   test('is a dialog the menu opens, and is not on the Overview where people read', async () => {
     const view = open('/workflows/digest', {
-      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+      runs: [runFixture('waiting', 'digest', { status: 'running', awaitingSignal: 'approve' })],
     });
     const root = await ready(view.container);
     expect(testId(root, 'workflow-signal')).toBeNull();

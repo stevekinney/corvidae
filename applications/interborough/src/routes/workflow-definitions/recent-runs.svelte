@@ -92,7 +92,7 @@
       queryKey: queryKeys.workflowCatalog.recentRuns(kind, type),
       queryFn: async ({ signal }): Promise<readonly WorkflowRunSummary[]> => {
         if (kind === 'agent-authored') {
-          const files = await listWorkflowFileRuns(type, RECENT_LIMIT, { signal });
+          const { runs: files } = await listWorkflowFileRuns(type, RECENT_LIMIT, { signal });
           return files.map((run) => ({
             id: run.id,
             status: run.status,

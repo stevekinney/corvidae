@@ -387,14 +387,14 @@ export async function getWorkflowRunHistory(
   return bureauClient['bureau.workflows.runs.history']({ runId, limit: 500 }, options);
 }
 
-/** The newest `limit` instances of one workflow file. */
+/** The newest `limit` instances of one workflow file and whether it has an older page. */
 export async function listWorkflowFileRuns(
   id: string,
   limit: number,
   options?: Options,
-): Promise<readonly WorkflowFileRun[]> {
+): Promise<{ readonly runs: readonly WorkflowFileRun[]; readonly hasMore: boolean }> {
   const page = await bureauClient['bureau.workflows.runs.list']({ workflow: id, limit }, options);
-  return page.runs.map(workflowRunOf);
+  return { runs: page.runs.map(workflowRunOf), hasMore: page.nextOffset !== null };
 }
 
 /** Replaces the workflow's file, if it still hashes to `expectedHash`. */

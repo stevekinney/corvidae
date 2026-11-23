@@ -1931,9 +1931,7 @@ export const workflowsHistoryOperation = defineOperation<
         previousVersion: entry.previousVersion,
         changes: entry.changes.map((change) => ({ ...change })),
         compatibility: entry.compatibility,
-        runs: authorizeWorkspaceClass('deployment-operator', principal).allowed
-          ? { ...entry.runs }
-          : null,
+        runs: authorizeWorkspaceClass('deployment-operator', principal).allowed ? entry.runs : null,
       })),
     };
   },
