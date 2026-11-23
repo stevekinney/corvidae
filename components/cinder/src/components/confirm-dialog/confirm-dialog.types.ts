@@ -165,11 +165,10 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    */
   onConfirm: () => void;
   /**
-   * Viewport width below which the dialog is a bottom sheet: a grabber, a compact Cancel beside
-   * the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both
-   * drawn at the button's painted height and reaching 44px through its hit area, with Cancel
-   * keeping initial focus. A CSS length such as `"760px"`, or `false` for the centred dialog at
-   * every width.
+   * Viewport width below which the dialog is a bottom sheet. Cancel stays compact when both
+   * actions fit on one row. When the actions stack, both fill the row width, with confirmation
+   * above Cancel. Both have 44px hit areas and Cancel keeps initial focus. A CSS length such as
+   * `"760px"`, or `false` for the centred dialog at every width.
    * @default "760px"
    */
   sheetBelow?: string | false;
