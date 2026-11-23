@@ -666,7 +666,7 @@ describe('results', () => {
     });
   });
 
-  it('reports complete run totals at the scan limit and withholds truncated totals', async () => {
+  it('reports complete run totals and withholds truncated or shifting totals', async () => {
     const served = await serve();
     await served.bureau.workflows!.create('digest', DEFINITION);
     const engine = served.bureau.durableEngine()!;
@@ -681,29 +681,38 @@ describe('results', () => {
       createdAt: sample.createdAt + 1001 - index,
     }));
     let total = 1000;
+    let shifting = false;
+    let overlapping = false;
     const list = engine.list.bind(engine);
     const stub = spyOn(engine, 'list').mockImplementation(async (filter, options) => {
       if (filter?.type !== 'digest') return list(filter, options);
       const offset = filter.offset ?? 0;
       const limit = filter.limit ?? 100;
+      const pageTotal = shifting && offset > 0 ? total + 1 : total;
+      const start = overlapping && offset > 0 ? offset - 1 : offset;
       return {
-        items: retained.slice(offset, Math.min(total, offset + limit)),
-        total,
+        items: retained.slice(start, Math.min(pageTotal, start + limit)),
+        total: pageTotal,
         offset,
         limit,
       };
     });
     try {
-      const methods = ['bureau.workflows.revisions', 'bureau.workflows.history'] as const;
-      for (const method of methods) {
-        const answer = await ownerRpc(served.owner, method, { id: 'digest' });
-        expect(answer.result?.['revisions']).toMatchObject([{ runs: { count: 1000 } }]);
+      async function expectRuns(runs: { count: number } | null): Promise<void> {
+        for (const method of ['bureau.workflows.revisions', 'bureau.workflows.history'] as const) {
+          const answer = await ownerRpc(served.owner, method, { id: 'digest' });
+          expect(answer.result?.['revisions']).toMatchObject([{ runs }]);
+        }
       }
+      await expectRuns({ count: 1000 });
       total = 1001;
-      for (const method of methods) {
-        const answer = await ownerRpc(served.owner, method, { id: 'digest' });
-        expect(answer.result?.['revisions']).toMatchObject([{ runs: null }]);
-      }
+      await expectRuns(null);
+      total = 1000;
+      shifting = true;
+      await expectRuns(null);
+      shifting = false;
+      overlapping = true;
+      await expectRuns(null);
     } finally {
       stub.mockRestore();
     }

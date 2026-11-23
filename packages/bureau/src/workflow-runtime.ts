@@ -2415,11 +2415,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   /** Read retained runs up to the shared history limit and report whether the scan reached the end. */
   async function readRetainedRunHistory(id: string) {
     const runs: WorkflowSummary[] = [];
+    let total: number | undefined;
     for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
-      const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
+      const limit = Math.min(100, RUNS_READ_LIMIT_PER_WORKFLOW - offset);
+      const page = await engine.list({ type: weftNameOf(id), limit, offset });
+      if (total !== undefined && page.total !== total) break;
+      total = page.total;
       runs.push(...page.items);
       offset += page.items.length;
-      if (offset >= page.total) return { runs, complete: true };
+      if (offset >= total) {
+        // A new or pruned run can shift the offsets between otherwise valid pages.
+        const distinct = new Set(runs.map((run) => run.id));
+        return { runs, complete: distinct.size === runs.length };
+      }
       if (page.items.length === 0) break;
     }
     return { runs, complete: false };
