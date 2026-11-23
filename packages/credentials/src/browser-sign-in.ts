@@ -260,7 +260,9 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
     currentSession,
     startSignIn,
     validWrite,
-    consentBinding: async (request: Request) =>
-      (await resolveSession(request))?.session.consentBinding ?? null,
+    consentBinding: async (request: Request) => {
+      const resolved = await resolveSession(request);
+      return resolved?.session.consentBinding ?? null;
+    },
   };
 }

@@ -62,7 +62,7 @@ for (const mounted of [false, true]) {
       subject = 'first',
       fault = '';
     configuration[client.customFetch] = async (input, init) => {
-      const url = new URL(input.toString());
+      const url = new URL(input);
       if (url.pathname === '/jwks')
         return Response.json({ keys: [{ ...jwk, kid: 'key', alg: 'RS256', use: 'sig' }] });
       const body = new URLSearchParams(init?.body as string);
@@ -150,8 +150,12 @@ for (const mounted of [false, true]) {
     };
     let fetchFirst = await host(first);
     const fetchSecond = await host(second);
-    expect((await fetchFirst(new Request('https://app.test/api'))).status).toBe(401);
-    expect((await fetchFirst(new Request('https://app.test/private'))).status).toBe(303);
+    const status = async (response: Promise<Response>) => {
+      const result = await response;
+      return result.status;
+    };
+    expect(await status(fetchFirst(new Request('https://app.test/api')))).toBe(401);
+    expect(await status(fetchFirst(new Request('https://app.test/private')))).toBe(303);
     const start = async (destination = '/private?tab=1') => {
       const response = await fetchFirst(
         new Request(`https://app.test/auth/sign-in?returnTo=${encodeURIComponent(destination)}`),
@@ -161,7 +165,7 @@ for (const mounted of [false, true]) {
       expect(authorization.searchParams.get('code_challenge')).toBeTruthy();
       expect(authorization.searchParams.get('state')).toBeTruthy();
       expect(authorization.searchParams.get('nonce')).toBeTruthy();
-      return { authorization, binding: response.headers.getSetCookie()[0]!.split(';')[0]! };
+      return { authorization, binding: response.headers.getSetCookie()[0].split(';')[0] };
     };
     const finish = async (
       attempt: Awaited<ReturnType<typeof start>>,
@@ -177,7 +181,7 @@ for (const mounted of [false, true]) {
     };
     const one = await start(),
       two = await start();
-    expect((await finish(one, two.authorization.searchParams.get('state')!)).status).toBe(400);
+    expect(await status(finish(one, two.authorization.searchParams.get('state')!))).toBe(400);
     storage[Symbol.dispose]();
     storage = new BunSQLiteStorage(join(directory, 'sessions.sqlite'));
     first = createBrowserSignIn({ ...options, storage });
@@ -187,22 +191,21 @@ for (const mounted of [false, true]) {
     expect(response.headers.get('location')).toBe('https://app.test/private?tab=1');
     expect(response.headers.getSetCookie()[0]).toContain('HttpOnly; SameSite=Lax');
     expect(response.headers.getSetCookie()[0]).toContain('Secure');
-    const sessionCookie = response.headers.getSetCookie()[0]!.split(';')[0]!;
+    const sessionCookie = response.headers.getSetCookie()[0].split(';')[0];
     const session = await second.currentSession(
       new Request('https://app.test/private', { headers: { cookie: sessionCookie } }),
     );
     expect(session?.subjectId).toBe('https://issuer.test:first');
     expect(session?.workspaceId).toBe('workspace');
-    const page = await (
-      await fetchSecond(
-        new Request('https://app.test/private', { headers: { cookie: sessionCookie } }),
-      )
-    ).text();
+    const pageResponse = await fetchSecond(
+      new Request('https://app.test/private', { headers: { cookie: sessionCookie } }),
+    );
+    const page = await pageResponse.text();
     expect(JSON.parse(page)).toEqual({
       subjectId: 'https://issuer.test:first',
       workspaceId: 'workspace',
     });
-    expect(page).not.toContain(sessionCookie.split('=')[1]!);
+    expect(page).not.toContain(sessionCookie.split('=')[1]);
     expect(page).not.toContain('upstream-secret');
     const binding = await second.consentBinding(
       new Request('https://app.test/', { headers: { cookie: sessionCookie } }),
@@ -210,19 +213,16 @@ for (const mounted of [false, true]) {
     expect(binding).toBeTruthy();
     expect(binding).not.toBe(sessionCookie.split('=')[1]);
     expect(page).not.toContain(binding!);
-    expect((await finish(one)).status).toBe(400);
+    expect(await status(finish(one))).toBe(400);
     subject = 'second';
     const secondResponse = await finish(two);
     expect(secondResponse.status).toBe(303);
-    expect((await finish(two)).status).toBe(400);
-    const secondCookie = secondResponse.headers.getSetCookie()[0]!.split(';')[0]!;
-    expect(
-      (
-        await first.currentSession(
-          new Request('https://app.test/', { headers: { cookie: secondCookie } }),
-        )
-      )?.subjectId,
-    ).not.toBe(session?.subjectId);
+    expect(await status(finish(two))).toBe(400);
+    const secondCookie = secondResponse.headers.getSetCookie()[0].split(';')[0];
+    const secondSession = await first.currentSession(
+      new Request('https://app.test/', { headers: { cookie: secondCookie } }),
+    );
+    expect(secondSession?.subjectId).not.toBe(session?.subjectId);
     const sessionCount = async () => {
       let count = 0;
       for await (const ignored of storage.scan('browser-sign-in:session:session:')) {
@@ -235,21 +235,22 @@ for (const mounted of [false, true]) {
     for (const invalid of ['nonce', 'issuer', 'signature', 'audience', 'subject', 'expiry']) {
       fault = invalid;
       const attempt = await start();
-      expect((await finish(attempt)).status).toBe(400);
+      expect(await status(finish(attempt))).toBe(400);
       expect(await sessionCount()).toBe(2);
     }
     fault = '';
     const attempt = await start('https://evil.test/');
-    expect((await finish(attempt, 'invalid_state_that_is_long_enough')).status).toBe(400);
+    expect(await status(finish(attempt, 'invalid_state_that_is_long_enough'))).toBe(400);
     expect(await sessionCount()).toBe(2);
-    expect((await finish(attempt)).headers.get('location')).toBe('https://app.test/');
+    const safeRedirect = await finish(attempt);
+    expect(safeRedirect.headers.get('location')).toBe('https://app.test/');
     const write = (origin: string, csrf: string) =>
       new Request('https://app.test/auth/sign-out', {
         method: 'POST',
         headers: { cookie: sessionCookie, origin, 'x-csrf-token': csrf },
       });
-    expect((await fetchSecond(write('https://evil.test', session!.csrfToken))).status).toBe(403);
-    expect((await fetchSecond(write('https://app.test', 'wrong'))).status).toBe(403);
+    expect(await status(fetchSecond(write('https://evil.test', session!.csrfToken)))).toBe(403);
+    expect(await status(fetchSecond(write('https://app.test', 'wrong')))).toBe(403);
     expect(
       await first.currentSession(
         new Request('https://app.test/', { headers: { cookie: sessionCookie } }),
@@ -265,8 +266,9 @@ for (const mounted of [false, true]) {
     ).toBeNull();
     active = false;
     expect(
-      (await fetchFirst(new Request('https://app.test/api', { headers: { cookie: secondCookie } })))
-        .status,
+      await status(
+        fetchFirst(new Request('https://app.test/api', { headers: { cookie: secondCookie } })),
+      ),
     ).toBe(401);
     expect(
       await second.currentSession(
@@ -274,15 +276,13 @@ for (const mounted of [false, true]) {
       ),
     ).toBeNull();
     expect(
-      (
-        await fetchSecond(
-          new Request('https://app.test/api', { headers: { cookie: secondCookie } }),
-        )
-      ).status,
+      await status(
+        fetchSecond(new Request('https://app.test/api', { headers: { cookie: secondCookie } })),
+      ),
     ).toBe(401);
     for await (const [key, value] of storage.scan('browser-sign-in:')) {
       const record = key + new TextDecoder().decode(value);
-      expect(record).not.toContain(secondCookie.split('=')[1]!);
+      expect(record).not.toContain(secondCookie.split('=')[1]);
       expect(record).not.toContain('upstream-secret');
     }
   });
