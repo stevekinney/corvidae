@@ -1,7 +1,7 @@
 {
   "issue": "COR-2599",
   "branch": "steve/cor-2599-composable",
-  "checkedAt": "3fa546ed8b259d1f8b1ddd63000efc8500cd6944",
+  "checkedAt": "822ade8e27194423241b7f28cffc614dc0041893",
   "briefVersion": "cb3a7323b6b1",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "bun test packages/mcp/src/http.test.ts: verified grant, membership and refusal counts"
+      "evidence": "bun test packages/mcp/src/http.test.ts: verified grant, membership, refusal counts and current delegation after delayed body in correction worktree"
     },
     {
       "id": "AC3",
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "bun test packages/mcp/src/http.test.ts: size, forwarded host, origin and stream cancellation"
+      "evidence": "bun test packages/mcp/src/http.test.ts: size, forwarded host, origin, cancellation during authority recheck and scope revocation in correction worktree"
     },
     {
       "id": "AC5",

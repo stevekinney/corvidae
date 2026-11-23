@@ -2,6 +2,179 @@ import { describe, expect, test } from 'bun:test';
 import { createProtectedHttpHandler } from './http';
 
 describe('protected HTTP listener', () => {
+  test('uses current delegation after a delayed request body', async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let delegableScopes = ['write'];
+    let writes = 0;
+    const handler = createProtectedHttpHandler({
+      origin: 'https://equipment.example.com',
+      resourcePath: '/api/mcp',
+      issuer: 'https://login.example.com',
+      scopes: ['write'],
+      async verifyAccessToken() {
+        return {
+          issuer: 'https://login.example.com',
+          audience: 'https://equipment.example.com/api/mcp',
+          expiresAt: Date.now() + 60000,
+          subject: 'user',
+          scopes: ['write'],
+        };
+      },
+      async resolvePrincipal() {
+        return { delegableScopes };
+      },
+      dispatch(_request, context) {
+        const refusal = context.requireScopes(['write']);
+        if (refusal) return refusal;
+        writes++;
+        return new Response('private');
+      },
+    });
+    const request = new Request('https://equipment.example.com/api/mcp', {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid' },
+      body: new ReadableStream({
+        async pull(controller) {
+          started();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          controller.enqueue(new TextEncoder().encode('body'));
+          controller.close();
+        },
+      }),
+    });
+    const pending = handler(request);
+    await reading;
+    delegableScopes = [];
+    release();
+    const response = await pending;
+    expect(response.status).toBe(403);
+    expect(writes).toBe(0);
+    expect(await response.text()).not.toContain('private');
+  });
+
+  test('does not enqueue a private chunk when cancellation races the authority check', async () => {
+    let release!: () => void;
+    let checking!: () => void;
+    let checks = 0;
+    const blocked = new Promise<void>((resolve) => {
+      checking = resolve;
+    });
+    const abort = new AbortController();
+    const handler = createProtectedHttpHandler({
+      origin: 'https://equipment.example.com',
+      resourcePath: '/api/mcp',
+      issuer: 'https://login.example.com',
+      scopes: ['read'],
+      async verifyAccessToken() {
+        return {
+          issuer: 'https://login.example.com',
+          audience: 'https://equipment.example.com/api/mcp',
+          expiresAt: Date.now() + 60000,
+          subject: 'user',
+          scopes: ['read'],
+        };
+      },
+      async resolvePrincipal() {
+        checks++;
+        if (checks === 4) {
+          checking();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return { delegableScopes: ['read'] };
+      },
+      dispatch(_request, context) {
+        return (
+          context.requireScopes(['read']) ??
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('private'));
+              },
+            }),
+          )
+        );
+      },
+    });
+    const response = await handler(
+      new Request('https://equipment.example.com/api/mcp', {
+        headers: { authorization: 'Bearer valid' },
+        signal: abort.signal,
+      }),
+    );
+    const reader = response.body!.getReader();
+    const pending = reader.read();
+    await blocked;
+    abort.abort();
+    release();
+    const result = await pending;
+    expect(result.done).toBe(true);
+    expect(result.value).toBeUndefined();
+  });
+
+  test('withholds a pending chunk when the required scope is removed', async () => {
+    let release!: () => void;
+    let checking!: () => void;
+    let checks = 0;
+    let delegableScopes = ['read'];
+    const blocked = new Promise<void>((resolve) => {
+      checking = resolve;
+    });
+    const handler = createProtectedHttpHandler({
+      origin: 'https://equipment.example.com',
+      resourcePath: '/api/mcp',
+      issuer: 'https://login.example.com',
+      scopes: ['read'],
+      async verifyAccessToken() {
+        return {
+          issuer: 'https://login.example.com',
+          audience: 'https://equipment.example.com/api/mcp',
+          expiresAt: Date.now() + 60000,
+          subject: 'user',
+          scopes: ['read'],
+        };
+      },
+      async resolvePrincipal() {
+        checks++;
+        if (checks === 4) {
+          checking();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return { delegableScopes };
+      },
+      dispatch(_request, context) {
+        return (
+          context.requireScopes(['read']) ??
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('private'));
+              },
+            }),
+          )
+        );
+      },
+    });
+    const response = await handler(
+      new Request('https://equipment.example.com/api/mcp', {
+        headers: { authorization: 'Bearer valid' },
+      }),
+    );
+    const pending = response.text();
+    await blocked;
+    delegableScopes = [];
+    release();
+    expect(await pending).toBe('');
+  });
   test('serves canonical discovery and refuses missing credentials', async () => {
     const handler = createProtectedHttpHandler({
       origin: 'https://equipment.example.com',

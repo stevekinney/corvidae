@@ -116,8 +116,7 @@ export function createProtectedHttpHandler<T extends Principal>(
       audience: typeof grant.audience === 'string' ? grant.audience : [...grant.audience],
       scopes: [...grant.scopes],
     };
-    const principal = await options.resolvePrincipal(grant);
-    if (!principal) return unauthorized();
+    if (!(await options.resolvePrincipal(grant))) return unauthorized();
     const maximum = options.maximumRequestBytes ?? 1024 * 1024;
     if (Number(request.headers.get('content-length')) > maximum)
       return new Response(null, { status: 413 });
@@ -151,17 +150,20 @@ export function createProtectedHttpHandler<T extends Principal>(
           fresh.expiresAt <= Date.now() ||
           !grant.scopes.every((scope) => fresh.scopes.includes(scope))
         )
-          return false;
+          return null;
         const currentPrincipal = await options.resolvePrincipal(fresh);
-        return (
-          !!currentPrincipal &&
-          [...requiredScopes].every((scope) => currentPrincipal.delegableScopes.includes(scope))
-        );
+        if (
+          !currentPrincipal ||
+          ![...requiredScopes].every((scope) => currentPrincipal.delegableScopes.includes(scope))
+        )
+          return null;
+        return { ...currentPrincipal, delegableScopes: [...currentPrincipal.delegableScopes] };
       } catch {
-        return false;
+        return null;
       }
     };
-    if (!(await current()) || request.signal.aborted) return unauthorized();
+    const principal = await current();
+    if (!principal || request.signal.aborted) return unauthorized();
     const response = await options.dispatch(request, {
       grant,
       principal,
@@ -183,6 +185,7 @@ export function createProtectedHttpHandler<T extends Principal>(
     if (!response.body) return response;
     const reader = response.body.getReader();
     let closed = false;
+    let cancelled = false;
     const close = async () => {
       if (closed) return;
       closed = true;
@@ -194,15 +197,17 @@ export function createProtectedHttpHandler<T extends Principal>(
     request.signal.addEventListener('abort', abort, { once: true });
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
-        if (closed || request.signal.aborted || !(await current())) {
+        const beforeRead = await current();
+        if (closed || request.signal.aborted || !beforeRead) {
           await close();
-          controller.close();
+          if (!cancelled) controller.close();
           return;
         }
         const result = await reader.read();
-        if (closed || request.signal.aborted || !(await current())) {
+        const beforeRelease = await current();
+        if (closed || request.signal.aborted || !beforeRelease) {
           await close();
-          controller.close();
+          if (!cancelled) controller.close();
         } else if (result.done) {
           closed = true;
           request.signal.removeEventListener('abort', abort);
@@ -210,6 +215,7 @@ export function createProtectedHttpHandler<T extends Principal>(
         } else controller.enqueue(result.value);
       },
       async cancel() {
+        cancelled = true;
         request.signal.removeEventListener('abort', abort);
         await close();
       },
