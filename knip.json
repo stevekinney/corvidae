@@ -151,7 +151,7 @@
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
     "scripts/browser-fixtures": {
-      "entry": ["tests/**/*.playwright.ts"],
+      "entry": ["tests/**/*.playwright.ts", "src/fixtures/tool-call-rail.svelte"],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
     },
     "scripts/groom": {

@@ -41,6 +41,7 @@ import {
  */
 
 import { type WorkflowCompatibilityReason } from '@lostgradient/weft';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
@@ -77,6 +78,9 @@ import type { BureauDryRunHost } from './dry-run-references.ts';
 /** What the workflow operations read from the handler's `host`. */
 export type BureauWorkflowsOperationHost = BureauOwnershipHost & {
   readonly workflows: BureauWorkflows | undefined;
+  /** The durable engine's live concurrency snapshot, absent when this Bureau has no durable engine. */
+  readonly workflowConcurrency: () =>
+    { readonly max: number; readonly running: readonly string[] } | undefined;
   /**
    * The code-defined workflow `id`, or `undefined` when the engine has none. It does not need a
    * workflow directory: the Bureau's own workflows are registered by code on any durable Bureau.
@@ -1258,6 +1262,52 @@ const runsCancelAnswer = orDryRun(
 /** The statuses of an instance that has not finished. */
 const UNFINISHED_RUN_STATUSES: ReadonlySet<string> = new Set(['pending', 'running', 'suspended']);
 
+const concurrencyInput = z.object({});
+const concurrencyOutput = z.object({
+  max: z.number().int().positive(),
+  running: z.number().int().nonnegative(),
+});
+
+/** The durable engine's own concurrency view—not a projection of persisted run statuses. */
+const workflowsConcurrencyOperation = defineOperation<
+  typeof concurrencyInput,
+  typeof concurrencyOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.concurrency',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.concurrency'),
+  mcpExposable: false,
+  summary: 'Read workflow run concurrency',
+  description:
+    'Returns the durable engine’s current workflow-run concurrency cap and how many runs it is executing now. Waiting and suspended runs are not counted. Requires bureau.workflows:read unless the caller owns the deployment’s workflows.',
+  destructive: false,
+  tags: ['Workflows'],
+  inputSchema: concurrencyInput,
+  outputSchema: concurrencyOutput,
+  producibleFaults: ['Forbidden', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ host, principal }) => {
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
+      throw {
+        code: 'Forbidden',
+        message: 'Reading workflow concurrency requires bureau.workflows:read',
+        data: { reason: 'missing scope bureau.workflows:read' },
+      } satisfies OperationFault;
+    }
+    const snapshot = host.workflowConcurrency();
+    if (snapshot === undefined)
+      throw {
+        code: 'UnsupportedCapability',
+        message: 'Workflow concurrency is unavailable',
+        data: { capability: 'workflowConcurrency' },
+      } satisfies OperationFault;
+    return { max: snapshot.max, running: snapshot.running.length };
+  },
+});
+
 export const workflowsRunsCancelOperation = defineOperation<
   typeof runsCancelInput,
   typeof runsCancelAnswer,
@@ -1317,14 +1367,52 @@ export const workflowsRunsCancelOperation = defineOperation<
   },
 });
 
+/** The scope a run's retry asks of `principal`: write for the owner, read for a workspace member. */
+function retryScopeOf(principal: Principal): BureauScope {
+  return principal.method === 'unauthenticated' || principal.workspace === undefined
+    ? 'bureau.workflows:write'
+    : 'bureau.workflows:read';
+}
+
+/** Whether a workspace member may manage the run `runId`; any other caller always may. */
+async function mayManageRun(
+  host: BureauWorkflowsOperationHost,
+  principal: Principal,
+  runId: string,
+): Promise<boolean> {
+  if (principal.method === 'unauthenticated' || principal.workspace === undefined) return true;
+  return host.ownership.mayAccess({
+    principal,
+    resourceOwner: await host.ownership.runOwner(runId),
+    operatorScope: 'bureau.workflows:write',
+  });
+}
+
+/**
+ * The step `bureau.workflows.runs.retry` would run again for the instance `runId` when `principal`
+ * asked it, or `undefined` when it would refuse or answer `NotFound` (COR-2533). `bureau.tasks.explain`
+ * suggests a retry only for a run this answers for, so the command it gives is one that works.
+ */
+export async function retryableStepFor(
+  host: BureauWorkflowsOperationHost,
+  principal: Principal,
+  runId: string,
+): Promise<number | undefined> {
+  if (host.workflows === undefined) return undefined;
+  if (!mayAccessWorkflows(host, principal, retryScopeOf(principal))) return undefined;
+  if (!(await mayManageRun(host, principal, runId))) return undefined;
+  return host.workflows.retryableStep(runId);
+}
+
 const runsRetryInput = z.object({
   runId: z.string().min(1).describe('The identifier of the failed workflow instance to run again.'),
   step: z
     .number()
     .int()
     .min(1)
+    .optional()
     .describe(
-      'The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.',
+      'The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.',
     ),
   retryId: z
     .string()
@@ -1352,7 +1440,7 @@ export const workflowsRunsRetryOperation = defineOperation<
   mcpExposable: false,
   summary: 'Run a failed workflow run again from the step it failed at',
   description:
-    'Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.',
+    'Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at, and is that step when left out. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: runsRetryInput,
@@ -1365,29 +1453,13 @@ export const workflowsRunsRetryOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     // Authorized as `bureau.workflows.runs.cancel` is: the owner or the write scope, and for a
     // workspace member, the run's own owner with the right to manage.
-    const workflows = workflowsFor(
-      host,
-      principal,
-      principal.method === 'unauthenticated' || principal.workspace === undefined
-        ? 'bureau.workflows:write'
-        : 'bureau.workflows:read',
-      'run',
-      input.runId,
-    );
-    if (
-      principal.method !== 'unauthenticated' &&
-      principal.workspace !== undefined &&
-      !host.ownership.mayAccess({
-        principal,
-        resourceOwner: await host.ownership.runOwner(input.runId),
-        operatorScope: 'bureau.workflows:write',
-      })
-    ) {
+    const workflows = workflowsFor(host, principal, retryScopeOf(principal), 'run', input.runId);
+    if (!(await mayManageRun(host, principal, input.runId))) {
       throw resourceNotFound('run', input.runId);
     }
     try {
       return await workflows.retryRun(input.runId, {
-        step: input.step,
+        ...(input.step === undefined ? {} : { step: input.step }),
         ...(input.retryId === undefined ? {} : { retryId: input.retryId }),
       });
     } catch (error) {
@@ -1455,6 +1527,14 @@ export const workflowsRunsHistoryOperation = defineOperation<
 
 const startInput = z.object({
   id: workflowId,
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      'The caller’s key for one manual start. Retrying the same key for the same authorized caller and workflow returns the run the first request started while its record exists, and never starts another.',
+    ),
   input: z
     .json()
     .optional()
@@ -1474,6 +1554,15 @@ const startOutput = z.object({
   workflowVersion: z.string().describe('The revision the instance runs.'),
 });
 
+/**
+ * Scope a caller-supplied manual-start key to its authorized owner and workflow.
+ * The engine accepts at most 117 UTF-8 bytes, so the namespace is a fixed-size digest instead of
+ * concatenating supported owner, workflow, and request-key lengths.
+ */
+function manualStartIdempotencyKey(owner: string, workflow: string, requestKey: string): string {
+  return `manual:${sha256HexSync(JSON.stringify([owner, workflow, requestKey]))}`;
+}
+
 export const workflowsStartOperation = defineOperation<
   typeof startInput,
   typeof startOutput,
@@ -1484,7 +1573,7 @@ export const workflowsStartOperation = defineOperation<
   mcpExposable: false,
   summary: 'Start a workflow',
   description:
-    'Starts one instance of the ready, unpaused workflow `id` with `input` and returns its `runId`. The instance’s `trigger` is `{ kind: "manual", input, origin }`, where `origin` is `{ kind: "person", principal, surface }` (the caller’s owner string and `surface`), and the run is tagged `origin:person`. An `input` that does not satisfy the workflow’s `inputSchema` is `InvalidParams` whose `data.issues` locates every failure, and nothing is created; a raw `weft.workflows.start` is not checked first. A workflow that is missing, invalid, or paused is `NotFound`. An earlier file change the engine has not followed is `Unavailable` (`workflow-apply-failed`). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+    'Starts one instance of the ready, unpaused workflow `id` with `input` and returns its `runId`. The instance’s `trigger` is `{ kind: "manual", input, origin }`, where `origin` is `{ kind: "person", principal, surface }` (the caller’s owner string and `surface`), and the run is tagged `origin:person`. An `idempotencyKey` makes the start at-most-once for that authorized caller and workflow: an exact retry answers the first run while its run record exists. An input that does not satisfy the workflow’s `inputSchema` is `InvalidParams` whose `data.issues` locates every failure, and nothing is created; a raw `weft.workflows.start` is not checked first. A workflow that is missing, invalid, or paused is `NotFound`. An earlier file change the engine has not followed is `Unavailable` (`workflow-apply-failed`). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: startInput,
@@ -1505,11 +1594,17 @@ export const workflowsStartOperation = defineOperation<
       input.id,
     );
     try {
+      const owner = ownerOfPrincipal(principal) ?? DEPLOYMENT_OWNER;
       return await workflows.start(input.id, {
         input: input.input,
         // v1 has one user: a caller with no owner string of its own starts it as the deployment's.
-        owner: ownerOfPrincipal(principal) ?? DEPLOYMENT_OWNER,
+        owner,
         surface: input.surface,
+        ...(input.idempotencyKey === undefined
+          ? {}
+          : {
+              idempotencyKey: manualStartIdempotencyKey(owner, input.id, input.idempotencyKey),
+            }),
       });
     } catch (error) {
       if (error instanceof WorkflowInputInvalidError) {
@@ -1922,6 +2017,7 @@ export const bureauWorkflowsOperations = [
   workflowsImpactOperation,
   workflowsRunsListOperation,
   workflowsRunsGetOperation,
+  workflowsConcurrencyOperation,
   workflowsRunsCancelOperation,
   workflowsRunsRetryOperation,
   workflowsRunsHistoryOperation,

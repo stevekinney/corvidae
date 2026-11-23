@@ -647,6 +647,13 @@ export interface BureauWorkflows {
    * at most once per failure.
    */
   readonly retryRun: (runId: string, options: WorkflowRetryOptions) => Promise<WorkflowRetryResult>;
+  /**
+   * COR-2533 — the step {@link retryRun} would run again for `runId`, counted from 1, or `undefined`
+   * when it would refuse (the instance is not failed, failed outside a step, or at a step or on a
+   * version that cannot run again) or the run is no instance of a workflow file. It makes the
+   * checks the retry makes and then changes nothing.
+   */
+  readonly retryableStep: (runId: string) => Promise<number | undefined>;
   /** Read a bounded, sanitized history projection for one workflow-file run. */
   readonly historyRuns: (
     runId: string,
@@ -1624,6 +1631,27 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     workflowVersion: string,
     runId: string,
   ): Promise<void> {
+    const document = await retryDocumentOf(id, workflowVersion, runId);
+    await withRegistration(async () => {
+      await noteRegistered(
+        await registerBureauWorkflowDocuments(engine, registrationHost, {
+          active: [],
+          retained: [document],
+        }),
+      );
+    });
+  }
+
+  /**
+   * COR-2424 — the document of the revision `workflowVersion` of workflow `id`, read from its
+   * stored snapshot, when an instance pinned to it can run on it again; otherwise the
+   * `version-unavailable` refusal. It registers nothing, so asking changes nothing.
+   */
+  async function retryDocumentOf(
+    id: string,
+    workflowVersion: string,
+    runId: string,
+  ): Promise<WorkflowDocument> {
     const unavailable = (why: string): WorkflowRetryRefusedError =>
       new WorkflowRetryRefusedError(
         'version-unavailable',
@@ -1650,14 +1678,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (!(error instanceof WorkflowDocumentValidationError)) throw error;
       throw unavailable(`it no longer validates against this Bureau (${error.message})`);
     }
-    await withRegistration(async () => {
-      await noteRegistered(
-        await registerBureauWorkflowDocuments(engine, registrationHost, {
-          active: [],
-          retained: [document],
-        }),
-      );
-    });
+    return document;
   }
 
   /** COR-2424 — the retry requests of each instance this process is carrying out. */
@@ -1772,11 +1793,14 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         `Run "${runId}" cannot run again: the steps of the version it ran (${workflowVersion}) are no longer recorded.`,
       );
     }
-    await checkRetryStep(state, written.steps, retryOptions.step);
+    // A request that names no step runs the step the instance failed at. An instance that failed
+    // outside a step has none, and `checkRetryStep` refuses it in its own words.
+    const step = retryOptions.step ?? (await failedStepNumber(runId)) ?? 1;
+    await checkRetryStep(state, written.steps, step);
     await registerRevisionForRetry(id, workflowVersion, runId);
     const request: WorkflowRetryRequest = {
       retryId,
-      step: retryOptions.step,
+      step,
       requestedAt: options.runtime.clock.nowISO(),
       failureAt: state.updatedAt,
     };
@@ -1810,10 +1834,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const after: WorkflowState | null | undefined = await engine.get(runId);
       if (after?.status === 'failed') await clearPending();
       if (error instanceof WorkflowRevisionUnavailableError) {
-        throw new WorkflowRetryRefusedError(
-          'version-unavailable',
-          runId,
-          `Run "${runId}" cannot run again on the version it ran: ${error.message}`,
+        // A refusal says nothing changed, so it is only true of an instance still failed. One that
+        // reactivated before its resume failed is running again: that is a failure after the
+        // change, which the caller must not answer by asking again as if nothing had happened.
+        if (after?.status === 'failed') {
+          throw new WorkflowRetryRefusedError(
+            'version-unavailable',
+            runId,
+            `Run "${runId}" cannot run again on the version it ran: ${error.message}`,
+          );
+        }
+        throw new Error(
+          `Run "${runId}" was reactivated, but could not resume on the version it ran: ${error.message}`,
+          { cause: error },
         );
       }
       throw error;
@@ -1843,7 +1876,42 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       pending: null,
       applied: request,
     });
-    return answer(retryOptions.step);
+    return answer(step);
+  }
+
+  /** COR-2533 — the step `runId` failed at, counted from 1, or `undefined` when it failed outside one. */
+  async function failedStepNumber(runId: string): Promise<number | undefined> {
+    const index = failedStepIndexOf(await engine.getTimeline(runId));
+    return index === undefined ? undefined : index + 1;
+  }
+
+  /**
+   * COR-2533 — {@link BureauWorkflows.retryableStep}: the checks a retry makes before it changes
+   * anything, with the step it would run, and nothing written.
+   */
+  async function retryableStepNow(runId: string): Promise<number | undefined> {
+    const state: WorkflowState | null | undefined = await engine.get(runId);
+    if (
+      state === null ||
+      state === undefined ||
+      state.status !== 'failed' ||
+      !(await isWorkflowType(state.type))
+    ) {
+      return undefined;
+    }
+    const id = bureauNameOf(state.type);
+    const workflowVersion = state.versionTuple.workflowVersion;
+    const written = await revisionOf(id, workflowVersion);
+    const step = await failedStepNumber(runId);
+    if (written === undefined || step === undefined) return undefined;
+    try {
+      await checkRetryStep(state, written.steps, step);
+      await retryDocumentOf(id, workflowVersion, runId);
+    } catch (error) {
+      if (error instanceof WorkflowRetryRefusedError) return undefined;
+      throw error;
+    }
+    return step;
   }
 
   /**
@@ -3272,6 +3340,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       );
       return result;
     },
+
+    retryableStep: retryableStepNow,
 
     async historyRuns(runId, limit) {
       const state = await engine.get(runId);

@@ -12,6 +12,11 @@ import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
+  forbiddenVisibleText,
+  PATH_ALLOWED_SELECTOR,
+  visibleTextOutsideCopyControls,
+} from '../../lib/visible-text-rules.ts';
+import {
   codeDefinition,
   emptyWorld,
   installWorkflowWorld,
@@ -113,6 +118,23 @@ describe('the Code tab of an agent-authored workflow', () => {
     }
     // A file is read with `get`; the code-defined read is for a type with no file.
     expect(stub?.callsTo('bureau.workflows.internal.get')).toEqual([]);
+  });
+
+  // COR-2548: the capture of the Code tab showed `/tmp/interborough-e2e-…/e2e-digest.json`, the
+  // host's own path, in the line above the file. The line names the file under the Interborough
+  // home, whichever directory the host keeps it in (owner, 2026-11-19).
+  test('names the file under the home, never the host’s absolute path', async () => {
+    const { container } = open('/workflows/digest', {
+      workflowDirectory: '/tmp/interborough-e2e-m21o32/home/workflows',
+    });
+    const root = await ready(container);
+    await openTab(root, TABS.code);
+    await waitFor(() => expect(testId(root, 'workflow-file-path')).not.toBeNull());
+
+    expect(testId(root, 'workflow-file-path')?.textContent).toBe('workflows/digest.json');
+    expect(
+      forbiddenVisibleText(visibleTextOutsideCopyControls(root, PATH_ALLOWED_SELECTOR)),
+    ).toEqual([]);
   });
 
   test('shows an invalid file’s text too, with no outline, because it has no steps to outline', async () => {

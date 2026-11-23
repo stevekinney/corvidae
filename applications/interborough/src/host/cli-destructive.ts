@@ -121,7 +121,7 @@ export async function confirmIrreversible(
     );
   const answer = await prompt(`${subject}? This cannot be undone. [y/N] `, dependencies.signal);
   if (!answer.trim().toLowerCase().startsWith('y'))
-    throw Object.assign(new Error('Cancelled; nothing was changed.'), { exitCode: 1 });
+    throw Object.assign(new Error('Canceled. Nothing was changed.'), { exitCode: 1 });
 }
 
 /** The gate every action in {@link CLI_DESTRUCTIVE_ACTIONS} passes before it sends anything. */

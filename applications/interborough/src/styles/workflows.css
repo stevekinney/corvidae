@@ -105,7 +105,7 @@
  * never by a value, within two screens at a phone's width. The floor is no wider than the
  * container at 768px (about 642px), so there the table fills it with no sideways scroll, and Type,
  * which carries the tags as its second line, takes what the fixed columns leave. */
-.weft-workflows-table {
+.weft-workflows-table--with-floor {
   min-inline-size: 40rem;
 }
 
@@ -137,6 +137,34 @@
 @media (hover: hover) {
   .weft-workflows-table__id-link:hover {
     text-decoration: underline;
+  }
+}
+
+/* In the phone Health table, keep the run link's extension inside its inline width. */
+@media (max-width: 639.98px) and (any-pointer: coarse) {
+  .weft-workflows-table:not(.weft-workflows-table--with-floor) .weft-workflows-table__run-identity {
+    overflow: visible;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor) .weft-workflows-table__id-link {
+    position: relative;
+    overflow: visible;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor)
+    .weft-workflows-table__id-link
+    > code {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .weft-workflows-table:not(.weft-workflows-table--with-floor)
+    .weft-workflows-table__id-link::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 }
 
@@ -279,49 +307,6 @@
   font-size: var(--cinder-text-sm);
   cursor: pointer;
   min-height: 40px;
-}
-
-/* Query fault banner (shared by list/start/aggregate) */
-.weft-query-fault {
-  display: flex;
-  align-items: center;
-  gap: var(--cinder-space-2-5, 10px);
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-raised);
-  flex-wrap: wrap;
-}
-
-.weft-query-fault[data-tone='warning'] {
-  border-color: var(--cinder-status-warning-border);
-  background: var(--cinder-status-warning-background);
-}
-
-.weft-query-fault[data-tone='danger'] {
-  border-color: var(--cinder-status-danger-border);
-  background: var(--cinder-status-danger-background);
-}
-
-.weft-query-fault__icon {
-  flex: none;
-  color: var(--cinder-text-subtle);
-}
-
-.weft-query-fault[data-tone='warning'] .weft-query-fault__icon {
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-query-fault[data-tone='danger'] .weft-query-fault__icon {
-  color: var(--cinder-status-danger-text);
-}
-
-.weft-query-fault__message {
-  flex: 1 1 auto;
-  min-width: 160px;
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-default);
 }
 
 /* Pagination */

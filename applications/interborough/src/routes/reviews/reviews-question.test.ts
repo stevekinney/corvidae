@@ -112,7 +112,7 @@ describe('an open question with choices', () => {
     expect(getByText('Deploys to the live site')).not.toBeNull();
     expect(getByPlaceholderText('Type your answer')).not.toBeNull();
     expect(getByRole('button', { name: 'Answer' }).hasAttribute('disabled')).toBe(true);
-    const footer = container.querySelector('.ib-review-pane__footer');
+    const footer = container.querySelector('.ib-review-detail__footer');
     expect(footer?.textContent?.trim()).toBe('The agent continues as soon as you answer.');
     // Nothing in the footer commits a choice: the pick is the answer.
     expect(footer?.querySelector('button')).toBeNull();
@@ -179,7 +179,7 @@ describe('an open question with a structured answer', () => {
     const send = getByRole('button', { name: REVIEWS_COPY.sendAnswer });
     expect(form?.id).toBeTruthy();
     expect(send.getAttribute('form')).toBe(form?.id ?? null);
-    expect(container.querySelector('.ib-review-pane__footer')?.textContent).toContain(
+    expect(container.querySelector('.ib-review-detail__footer')?.textContent).toContain(
       'The agent continues as soon as you answer.',
     );
 

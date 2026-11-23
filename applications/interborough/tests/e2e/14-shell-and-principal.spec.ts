@@ -13,6 +13,7 @@ import { ROUTE_LOAD_FAILURE_COPY } from '../../src/app/copy/views.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { chordKeyboard, type ChordKeyboard } from './shortcut-support.ts';
 
 const WIDTHS = [
   { name: '375', width: 375, height: 812 },
@@ -278,53 +279,29 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
 test('g then a letter opens a view', async ({ page, request }) => {
   const chat = newThreadId('shell-shortcut');
   const message = 'Echo this message from the shortcut test';
-  const keyboard = await page.context().newCDPSession(page);
+  let keyboard: ChordKeyboard | undefined;
   try {
     await runToEnd(request, 'demo:echo', chat, message);
     await page.goto('/');
     await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
-
-    // Chromium delivers trusted key events at the supplied input times. Waiting for each
-    // browser command can otherwise consume the chord window while the chat is painting.
-    let nextKeyTime = await page.evaluate(() => performance.timeOrigin + performance.now());
-    async function pressChord(
-      destination: 'a' | 'c' | 'h',
-      intervalMilliseconds: number,
-    ): Promise<void> {
-      for (const [index, key] of ['g', destination].entries()) {
-        const capital = key.toUpperCase();
-        const event = {
-          key,
-          code: `Key${capital}`,
-          windowsVirtualKeyCode: capital.charCodeAt(0),
-          timestamp: (nextKeyTime + index * intervalMilliseconds) / 1000,
-        };
-        await keyboard.send('Input.dispatchKeyEvent', {
-          ...event,
-          type: 'keyDown',
-          text: key,
-          unmodifiedText: key,
-        });
-        await keyboard.send('Input.dispatchKeyEvent', { ...event, type: 'keyUp' });
-      }
-      nextKeyTime += intervalMilliseconds + 100;
-    }
-
-    await pressChord('a', 50);
+    // The chords are typed at the times a person presses them, so painting the chat cannot spend
+    // the chord window between the two keys (`shortcut-support.ts`).
+    keyboard = await chordKeyboard(page);
+    await keyboard.press('a');
     await expect(page).toHaveURL(/\/agents$/);
-    await pressChord('c', 50);
+    await keyboard.press('c');
     const chatUrl = new URL(`/chats/${encodeURIComponent(chat)}`, page.url()).href;
     await expect(page).toHaveURL(chatUrl);
     await expect(
       page.getByRole('log', { name: 'Messages' }).getByText(message).first(),
     ).toBeVisible();
 
-    await pressChord('h', 1235);
+    await keyboard.press('h', 1235);
     expect(page.url()).toBe(chatUrl);
-    await pressChord('h', 50);
+    await keyboard.press('h');
     await expect(page).toHaveURL(/\/$/);
   } finally {
-    await Promise.all([keyboard.detach(), deleteChats([chat])]);
+    await Promise.all([keyboard?.detach(), deleteChats([chat])]);
   }
 });
 

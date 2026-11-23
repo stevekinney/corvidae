@@ -14,7 +14,7 @@ import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW_MILLISECONDS, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
-import { isBureauCall } from './bureau-answer-support.ts';
+import { isBureauCall, rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -354,14 +354,22 @@ for (const width of WIDTHS) {
           });
         },
       );
+      // The Bureau stored one try of the step (it runs an agent step once), so its explanation is
+      // rewritten to say the three the engine's timeline above holds.
+      await rewriteBureauAnswer(page, 'bureau.tasks.explain', (result) => ({
+        ...result,
+        tries: 3,
+      }));
       await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, width);
 
       const block = page.getByTestId('run-step-failure');
       await expect(block).toContainText('Step 2, Collect merged changes, failed after 3 tries');
-      await expect(block).toContainText('Interborough tried 3 times in 3.4 s.');
-      await expect(block).toContainText(
-        'GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests.',
+      // The tries are in the explanation's Tries row, with how long they took in all (row 55b),
+      // and the step's message is in none of the words: only the stack, behind its disclosure.
+      await expect(block.locator('[data-explanation="root"] dl')).toContainText(
+        /Tries\s*3, 3\.4 s in all/,
       );
+      await expect(block).not.toContainText('GitHub did not answer');
       await captureForDesignReview(page, {
         route: '/runs/:run',
         state: 'failed after three tries',

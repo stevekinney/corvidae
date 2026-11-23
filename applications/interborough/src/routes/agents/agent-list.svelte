@@ -48,6 +48,7 @@
   import { RETRY_LABEL, STALE_DATA_LABEL } from '../../app/copy/views.ts';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
   import { agentEditPath } from '../../lib/agent-paths.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';
@@ -299,7 +300,7 @@
           description={VIEW_COPY.agents.error.description}
           headingLevel={2}
           retryLabel={RETRY_LABEL}
-          onRetry={tryAgain}
+          {...faultErrorStateAdvice(agents.error, tryAgain)}
         />
         <p>{STALE_DATA_LABEL} <RelativeTime date={agents.dataUpdatedAt} /></p>
       </div>

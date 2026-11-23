@@ -28,6 +28,7 @@
   import {
     buildApiOperations,
     operationGroups,
+    operationsEmptiness,
     type ApiOperation,
     type OpenApiDocumentLike,
   } from './api-operations.ts';
@@ -60,6 +61,7 @@
   const shown = $derived(
     group === ALL ? operations : operations.filter((row) => row.group === group),
   );
+  const emptiness = $derived(operationsEmptiness(operations, shown));
 
   const failureStatus = $derived(failureStatusOf(document.error));
 
@@ -83,31 +85,35 @@
 
 {#if document.data !== undefined}
   <div class="ib-api-operations" data-testid="api-operations">
-    <div class="ib-api-operations__toolbar">
-      <div class="ib-api-operations__group">
-        <Select
-          id="ib-api-operations-group"
-          label={copy.groupLabel}
-          labelVisible={false}
-          value={group}
-          options={[
-            { value: ALL, label: copy.allGroups },
-            ...groups.map((name) => ({ value: name, label: name })),
-          ]}
-          onchange={(event) => (group = event.currentTarget.value)}
-        />
+    <!-- A server that lists no operation at all gets the state alone: a group select and a count
+         over nothing offer nothing to choose (COR-2548). -->
+    {#if emptiness !== 'none'}
+      <div class="ib-api-operations__toolbar">
+        <div class="ib-api-operations__group">
+          <Select
+            id="ib-api-operations-group"
+            label={copy.groupLabel}
+            labelVisible={false}
+            value={group}
+            options={[
+              { value: ALL, label: copy.allGroups },
+              ...groups.map((name) => ({ value: name, label: name })),
+            ]}
+            onchange={(event) => (group = event.currentTarget.value)}
+          />
+        </div>
+        <span class="ib-api-operations__count" data-testid="api-operations-count"
+          >{copy.count(shown.length)}</span
+        >
       </div>
-      <span class="ib-api-operations__count" data-testid="api-operations-count"
-        >{copy.count(shown.length)}</span
-      >
-    </div>
+    {/if}
 
-    {#if shown.length === 0}
+    {#if emptiness !== undefined}
       <EmptyState
         kind="first-use"
         headingLevel={3}
         title={copy.empty.title}
-        description={copy.empty.description}
+        description={emptiness === 'none' ? copy.empty.none : copy.empty.group}
       >
         {#snippet icon()}<Workflow aria-hidden="true" />{/snippet}
       </EmptyState>

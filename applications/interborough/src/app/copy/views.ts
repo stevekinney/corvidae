@@ -89,6 +89,10 @@ export const STALE_DATA_LABEL = 'Showing data from';
 /** The label on the control that asks a view to try again. */
 export const RETRY_LABEL = 'Try again';
 
+/** The label and address of the way forward a fault Health can explain offers beside Try again. */
+export const OPEN_HEALTH_LABEL = 'Open Health';
+export const HEALTH_PATH = '/health';
+
 /**
  * What a route says when its code could not be loaded, such as after a rebuild replaced the files
  * an open page still points at. No view is involved, so it is not one of the view states.

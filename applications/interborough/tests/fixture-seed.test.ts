@@ -6,8 +6,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
-import { Engine } from '@lostgradient/weft';
+import { rejectionOf } from '@lostgradient/testing';
+import { Engine, isWeftFault } from '@lostgradient/weft';
 
+import { FORK_COMPARISON_RUN_ID } from '../fixtures/fork-comparison-ids.ts';
+import {
+  ORDER_PROCESSING_CANDIDATE_REVISION,
+  seedWorkflowRevisions,
+} from '../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../fixtures/workflows.ts';
 
 /** One seeded engine for the file: seeding runs every fixture, which takes a second or so. */
@@ -70,5 +76,49 @@ describe('seed', () => {
     expect(sweep).toBeDefined();
     const state = await engine.get(sweep!.id);
     expect(state).toMatchObject({ status: 'completed', result: { finalValue: 220 } });
+  });
+
+  it('seeds a run whose newest checkpoint, the first row of the checkpoint list, keeps one step and runs one again (COR-2538)', async () => {
+    const checkpoints = await engine.listCheckpoints(FORK_COMPARISON_RUN_ID);
+    // The list is newest first, so the first row is the one the end-to-end spec forks from.
+    const newest = checkpoints[0];
+    expect(newest).toBeDefined();
+
+    const preview = await engine.previewFork(FORK_COMPARISON_RUN_ID, { fromStep: newest!.step });
+
+    expect(preview.keptSteps.map((step) => step.label)).toEqual(['reserveStock']);
+    expect(preview.rerunSteps.map((step) => step.label)).toEqual(['issueTicket']);
+  });
+
+  it('refuses a fork dry run for the candidate revision the fork spec picks, as the fork itself is refused (COR-2538)', async () => {
+    await seedWorkflowRevisions(engine);
+    const order = items.find((run) => run.type === 'order-processing');
+    expect(order).toBeDefined();
+
+    const refusal = await rejectionOf(
+      engine.previewFork(order!.id, { revision: ORDER_PROCESSING_CANDIDATE_REVISION }),
+    );
+
+    // The dialog frames a refused preview as a revision conflict by this error's reason, which the
+    // server's JSON-RPC fault carries as `data.reason` beside the coarse `Conflict`.
+    expect(isWeftFault(refusal, 'WorkflowRevisionUnavailableError')).toBe(true);
+    expect(Reflect.get(refusal as object, 'reason')).toBe('not-registered');
+  });
+
+  it('seeds a run whose fork from the last checkpoint answers a different ticket than the source (COR-2538)', async () => {
+    const fork = await engine.fork(FORK_COMPARISON_RUN_ID);
+    await fork.result();
+
+    const comparison = await engine.compare(fork.id);
+
+    expect(comparison.sourceWorkflowId).toBe(FORK_COMPARISON_RUN_ID);
+    const shared = comparison.steps.find((step) => step.index === 0);
+    const reran = comparison.steps.find((step) => step.index === 1);
+    expect(shared).toMatchObject({ shared: true });
+    expect(reran?.shared).toBe(false);
+    // The fork ran `issueTicket` again, so the next ticket number is in its output and not the source's.
+    expect(reran?.source?.output).not.toBe(reran?.fork?.output);
+    expect(reran?.source?.output).toContain('"ticket"');
+    expect(reran?.fork?.output).toContain('"ticket"');
   });
 });

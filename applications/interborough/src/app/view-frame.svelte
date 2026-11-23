@@ -40,7 +40,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
-  import { classifyFault, isNetworkFailure } from '../lib/faults.ts';
+  import { classifyFault, faultErrorStateAdvice, isNetworkFailure } from '../lib/faults.ts';
   import { queryKeys, workflowViewInstance } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
   import NewChatLoading from '../routes/chat/new-chat-loading.svelte';
@@ -273,7 +273,7 @@
         {description}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={() => void probeQuery.refetch()}
+        {...faultErrorStateAdvice(probeQuery.error, () => void probeQuery.refetch())}
       />
     </HealthFrame>
   {:else}
@@ -283,7 +283,7 @@
       {description}
       headingLevel={stateHeadingLevel}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void probeQuery.refetch()}
+      {...faultErrorStateAdvice(probeQuery.error, () => void probeQuery.refetch())}
     />
   {/if}
 {/snippet}
@@ -296,7 +296,7 @@
       description={errorCopy.description}
       headingLevel={2}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void probeQuery.refetch()}
+      {...faultErrorStateAdvice(probeQuery.error, () => void probeQuery.refetch())}
     />
     <p class="weft-view__stale-age">{STALE_DATA_LABEL} <RelativeTime date={staleSince} /></p>
   </div>
@@ -306,6 +306,7 @@
   class="weft-view"
   data-view={initial.view}
   data-state={state}
+  data-chat-first-use={startsNewChat && state === 'empty' ? '' : undefined}
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >

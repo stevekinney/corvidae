@@ -285,7 +285,10 @@ describe('a code-defined type', () => {
     const all = [...root.querySelectorAll('a')].find(
       (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
     );
-    expect(all?.getAttribute('href')).toBe('/workflows/order-processing/runs');
+    expect(all?.getAttribute('href')).toBe('/health/runs?type=order-processing');
+    all?.click();
+    await waitFor(() => expect(router.pathname).toBe('/health/runs'));
+    expect(router.current.search.get('type')).toBe('order-processing');
   });
 
   test('shows its newest runs, newest first, each a link to the run', async () => {
@@ -317,6 +320,21 @@ describe('a code-defined type', () => {
     );
     // A run that has ended says how long it took, at the end of line two.
     expect(runs[1]?.textContent).toContain('3 s');
+  });
+
+  test('keeps a slash in the workflow type as one Health Runs filter value', async () => {
+    const { container } = open('/workflows/invoices%2Feu', {
+      definitions: [codeDefinition('invoices/eu')],
+    });
+    const root = await ready(container);
+    await openTab(root, TABS.runs);
+    const all = [...root.querySelectorAll('a')].find(
+      (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
+    );
+    expect(all?.getAttribute('href')).toBe('/health/runs?type=invoices%2Feu');
+    all?.click();
+    await waitFor(() => expect(router.pathname).toBe('/health/runs'));
+    expect(router.current.search.get('type')).toBe('invoices/eu');
   });
 
   test('shows the compact empty state when nothing has run it, whose hint names the header’s Start run', async () => {
@@ -1452,7 +1470,12 @@ describe('the links on a type’s page', () => {
     ]);
     await openTab(root, TABS.runs);
     clickEach([
-      ['/workflows/digest/runs', root.querySelector<HTMLAnchorElement>('a[href$="/runs"]')],
+      [
+        '/health/runs',
+        [...root.querySelectorAll<HTMLAnchorElement>('a')].find(
+          (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
+        ) ?? null,
+      ],
     ]);
   });
 });

@@ -25,7 +25,7 @@
       "suiteExitCode": 0
     },
     "chat": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "renderedSourceSha": "a32a9e663a918a566ee7f3db1be030bcfa62fde3",
       "suiteExitCode": 0
     },
     "chat-composer-popover": {
@@ -48,20 +48,44 @@
       "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
       "suiteExitCode": 0
     },
+    "chip": {
+      "renderedSourceSha": "a32a9e663a918a566ee7f3db1be030bcfa62fde3",
+      "suiteExitCode": 0
+    },
+    "code-block": {
+      "renderedSourceSha": "f79fcab553708af354e21732e16a9a756ed7156b",
+      "suiteExitCode": 0
+    },
+    "collapsible": {
+      "renderedSourceSha": "50a1abe787152046a960b2b23b508940022b8456",
+      "suiteExitCode": 0
+    },
     "combobox": {
       "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
       "suiteExitCode": 0
     },
     "copy-button": {
-      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "renderedSourceSha": "a32a9e663a918a566ee7f3db1be030bcfa62fde3",
+      "suiteExitCode": 0
+    },
+    "copyable-value": {
+      "renderedSourceSha": "4bfe587b2ad96df9754570edc9fdb76b89af2e76",
       "suiteExitCode": 0
     },
     "description-list": {
       "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
       "suiteExitCode": 0
     },
+    "form-actions": {
+      "renderedSourceSha": "adaca83f203136d51a1b7d1ed1f9c6063f85ffbc",
+      "suiteExitCode": 0
+    },
     "form-field": {
       "renderedSourceSha": "dff1b871e1bb8ae4e81fdb83abcb7fc22fbaabe7",
+      "suiteExitCode": 0
+    },
+    "json-viewer": {
+      "renderedSourceSha": "a32a9e663a918a566ee7f3db1be030bcfa62fde3",
       "suiteExitCode": 0
     },
     "multi-select": {
@@ -89,11 +113,15 @@
       "suiteExitCode": 0
     },
     "stacked-list-item": {
-      "renderedSourceSha": "b89a8de7628a80a3e4eccc96c941761633368743",
+      "renderedSourceSha": "68f75dd2064c7dbdba00a9fd0a9fd3b97e2526ea",
       "suiteExitCode": 0
     },
     "surface": {
       "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+      "suiteExitCode": 0
+    },
+    "tool-call-rail": {
+      "renderedSourceSha": "a32a9e663a918a566ee7f3db1be030bcfa62fde3",
       "suiteExitCode": 0
     }
   }

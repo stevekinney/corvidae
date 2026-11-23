@@ -250,6 +250,18 @@
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* The close face stays 36px. On a touch device, its 44px target expands four pixels into the
+     panel's existing eight-pixel corner gutter, so the clipped panel contains it and nearby header
+     controls keep their own hit areas. */
+  @media (any-pointer: coarse) {
+    .cinder-modal__close::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
   @media (hover: hover) {
     .cinder-modal__close:hover {
       background: color-mix(in oklch, currentColor, transparent 85%);

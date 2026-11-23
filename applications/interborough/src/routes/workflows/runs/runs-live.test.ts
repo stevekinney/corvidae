@@ -29,6 +29,7 @@ import {
   createLiveFeeds,
   type LiveFeeds,
 } from '../../../lib/live-source/live-feeds.test-support.ts';
+import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
@@ -145,6 +146,65 @@ describe.each(RUN_LIST_SITES)('/runs, reading $site', ({ operation, counted, eve
     await feeds?.passPolls(3, REVIEW_POLL_MILLISECONDS);
 
     expect(count()).toBeGreaterThan(before);
+  });
+});
+
+describe('/runs, reading a queued workflow instance after a server filter changes', () => {
+  test('keeps the fallback only after the queued instance is shown, then stops it once the instance starts', async () => {
+    const queued = taskFixture({
+      id: 'release-notes-queued',
+      contextId: 'release-notes-queued',
+      kind: 'catalog',
+      agentName: null,
+      status: 'submitted',
+      workflow: {
+        type: 'release-notes',
+        scheduleId: null,
+        scheduleName: null,
+        tick: null,
+        steps: null,
+        awaitingSignal: null,
+      },
+    });
+    const tasks = [
+      taskFixture({
+        id: 'charge-failed',
+        status: 'failed',
+        failure: {
+          step: { index: 2, label: 'charge-card' },
+          errorCode: null,
+          errorKind: null,
+          toolCall: null,
+        },
+      }),
+      queued,
+    ];
+    const count = () =>
+      reads(
+        'bureau.tasks.list',
+        (call) => hundredAtATime(call) && call.params['status'] === undefined,
+      );
+
+    open('/runs?failedStep=charge-card', tasks);
+    await until(() => expect(count()).toBe(1));
+    await feeds?.bureauGoesLive();
+    const filtered = count();
+    await feeds?.passPolls(2, REVIEW_POLL_MILLISECONDS);
+    expect(count()).toBe(filtered);
+
+    router.navigate('/runs', { replace: true, keep: true });
+    await until(() => expect(count()).toBeGreaterThan(filtered));
+    const shown = count();
+    await feeds?.passPolls(1, REVIEW_POLL_MILLISECONDS);
+    await until(() => expect(count()).toBeGreaterThan(shown));
+
+    tasks[1] = { ...queued, status: 'working' };
+    const queuedReads = count();
+    await feeds?.passPolls(1, REVIEW_POLL_MILLISECONDS);
+    await until(() => expect(count()).toBeGreaterThan(queuedReads));
+    const started = count();
+    await feeds?.passPolls(2, REVIEW_POLL_MILLISECONDS);
+    expect(count()).toBe(started);
   });
 });
 

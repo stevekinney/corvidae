@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -401,6 +401,82 @@ describe('ToolCallRail rows', () => {
     );
   });
 
+  // COR-2646: a host that rebuilds its calls on a clock (Interborough's 100ms tick while a call runs or
+  // an approval is live) hands the rail new call objects with the same ids. Each one re-ran the row's
+  // attachment, which cleared and re-set the row in the tooltip's `triggerRef`: the cleared ref hid an
+  // open tooltip and cancelled a pending show, and the rebind restarted the 100ms delay, so a focused
+  // row whose calls updated faster than that delay never showed its tooltip.
+  const identifiedCalls = (): Call[] => [
+    { id: 'a', name: 'Lookup order', identifier: 'lookup-order', status: 'done' },
+    { id: 'b', name: 'Check inventory', status: 'done' },
+  ];
+  const rowTooltip = (row: HTMLElement): HTMLElement | null =>
+    document.getElementById(row.getAttribute('aria-describedby') ?? '');
+
+  test('a focused row keeps its description and open tooltip when the calls are rebuilt with the same ids', async () => {
+    const view = render(ToolCallRail, {
+      props: { calls: identifiedCalls(), onSelect: () => undefined },
+    });
+    const row = requiredInstance(rows(view.container)[0], HTMLElement);
+    await waitFor(() => expect(rowTooltip(row)?.textContent).toBe('lookup-order'));
+    row.focus();
+    expect(document.activeElement).toBe(row);
+    await waitFor(() => expect(rowTooltip(row)?.hasAttribute('data-cinder-visible')).toBe(true));
+    // Every write to the row's description: a rebind drops `aria-describedby` and adds it back.
+    const descriptionWrites: string[] = [];
+    const setAttribute = row.setAttribute.bind(row);
+    const removeAttribute = row.removeAttribute.bind(row);
+    row.setAttribute = (name: string, value: string) => {
+      if (name === 'aria-describedby') descriptionWrites.push(`set ${value}`);
+      setAttribute(name, value);
+    };
+    row.removeAttribute = (name: string) => {
+      if (name === 'aria-describedby') descriptionWrites.push('remove');
+      removeAttribute(name);
+    };
+
+    await view.rerender({ calls: identifiedCalls(), onSelect: () => undefined });
+    await tick();
+
+    expect(descriptionWrites).toEqual([]);
+    expect(document.activeElement).toBe(row);
+    // A hidden tooltip keeps `data-cinder-visible` through its exit transition, so the open session
+    // is the panel that is visible and not closing.
+    expect(rowTooltip(row)?.hasAttribute('data-cinder-visible')).toBe(true);
+    expect(rowTooltip(row)?.hasAttribute('data-cinder-closing')).toBe(false);
+  });
+
+  test('a focused row shows its tooltip while the calls are rebuilt faster than the show delay', async () => {
+    const view = render(ToolCallRail, {
+      props: { calls: identifiedCalls(), onSelect: () => undefined },
+    });
+    const row = requiredInstance(rows(view.container)[0], HTMLElement);
+    await waitFor(() => expect(rowTooltip(row)?.textContent).toBe('lookup-order'));
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    const realSetInterval = globalThis.setInterval;
+    const realClearInterval = globalThis.clearInterval;
+    jest.useFakeTimers();
+    try {
+      row.focus();
+      // Ten rebuilds, 60ms apart: each lands inside the 100ms show delay the one before restarted.
+      for (let rebuild = 0; rebuild < 10; rebuild += 1) {
+        jest.advanceTimersByTime(60);
+        await view.rerender({ calls: identifiedCalls(), onSelect: () => undefined });
+        await tick();
+      }
+    } finally {
+      jest.useRealTimers();
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+      globalThis.setInterval = realSetInterval;
+      globalThis.clearInterval = realClearInterval;
+    }
+
+    expect(document.activeElement).toBe(row);
+    expect(rowTooltip(row)?.hasAttribute('data-cinder-visible')).toBe(true);
+  });
+
   test('a row that cannot be chosen still takes focus so its tooltip is reachable', () => {
     const { container } = render(ToolCallRail, { props: { calls: turn(3) } });
 
@@ -563,6 +639,18 @@ describe('ToolCallRail styles', () => {
     expect(cssText).toContain('@container cinder-tool-call-rail (max-width: 28rem)');
     expect(cssText).toContain('grid-row: 2');
     expect(cssText).toContain('.cinder-tool-call-rail__summary-duration');
+  });
+
+  test('compact rows and the disclosure use non-layout hit targets', () => {
+    expect(cssText).toMatch(
+      /button\.cinder-tool-call-rail__summary::before \{[^}]*position: absolute;[^}]*1\.5rem/s,
+    );
+    expect(cssText).toMatch(
+      /\.cinder-tool-call-rail__row \{[^}]*min-block-size: 2\.75rem;[^}]*padding-block: var\(--cinder-space-0-5\)/s,
+    );
+    expect(cssText).toMatch(
+      /\.cinder-tool-call-rail__row::before \{[^}]*position: absolute;[^}]*--cinder-touch-target-min/s,
+    );
   });
 
   test('red and amber words use the status text tokens, never a fill', () => {

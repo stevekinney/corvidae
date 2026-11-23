@@ -10,7 +10,7 @@ import { buildServiceWorker } from "../../src/prerender/service-worker.ts";
 
 const layout = `<script>import {onMount} from 'svelte';let {children}=$props();onMount(()=>{navigator.serviceWorker.register('/app/service-worker.js',{scope:'/app/',updateViaCache:'none'});});</script><main>{@render children()}</main><style>main{color:rgb(1,2,3)}</style>`;
 const page = (value: string) =>
-  `<script>let count=$state(0);</script><h1>${value}</h1><button onclick={()=>count++}>Count {count}</button>`;
+  `<script>import {onMount} from 'svelte';let count=$state(0);let hydrated=$state(false);onMount(()=>{hydrated=true;});</script><h1>${value}</h1><button data-hydrated={hydrated} onclick={()=>count++}>Count {count}</button>`;
 const worker = `export function install(metadata){const name='velveteen-'+metadata.version;self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(name);await cache.addAll(metadata.files);await self.skipWaiting();})()));self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const key of await caches.keys())if(key.startsWith('velveteen-')&&key!==name)await caches.delete(key);await self.clients.claim();})()));self.addEventListener('fetch',event=>{if(event.request.method!=='GET')return;event.respondWith((async()=>{return (await caches.match(event.request,{cacheName:name,ignoreVary:true}))??fetch(event.request);})());});}`;
 
 const fixture = await staticFixture(
@@ -132,6 +132,8 @@ test("H03: copied source-free static output hydrates offline, then activates new
   try {
     const context = await browser.newContext();
     const tab = await context.newPage();
+    // Prerendered text is visible before the client attaches the click handler.
+    const counter = tab.locator('button[data-hydrated="true"]');
     const diagnostics: string[] = [];
     const expectedDiagnostics: string[] = [];
     const failedRequests: string[] = [];
@@ -156,8 +158,8 @@ test("H03: copied source-free static output hydrates offline, then activates new
       await tab.evaluate(() => navigator.serviceWorker.controller !== null),
     ).toBe(true);
     await browserExpect(tab.locator("h1")).toHaveText("A");
-    await tab.getByRole("button").click();
-    await browserExpect(tab.getByRole("button")).toHaveText("Count 1");
+    await counter.click();
+    await browserExpect(counter).toHaveText("Count 1");
     expect(
       await tab
         .locator("main")
@@ -171,8 +173,8 @@ test("H03: copied source-free static output hydrates offline, then activates new
     ]) {
       await tab.goto(origin + url);
       await browserExpect(tab.locator("h1")).toHaveText(title);
-      await tab.getByRole("button").click();
-      await browserExpect(tab.getByRole("button")).toHaveText("Count 1");
+      await counter.click();
+      await browserExpect(counter).toHaveText("Count 1");
     }
     expect(
       await tab.evaluate(() =>
@@ -226,8 +228,8 @@ test("H03: copied source-free static output hydrates offline, then activates new
     await context.setOffline(true);
     await tab.goto(origin + "/app/");
     await browserExpect(tab.locator("h1")).toHaveText("B");
-    await tab.getByRole("button").click();
-    await browserExpect(tab.getByRole("button")).toHaveText("Count 1");
+    await counter.click();
+    await browserExpect(counter).toHaveText("Count 1");
     expect(
       await tab.evaluate(() =>
         fetch("/app/public.txt").then((response) => response.text()),

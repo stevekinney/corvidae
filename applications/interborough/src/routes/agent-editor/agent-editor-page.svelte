@@ -104,6 +104,7 @@
     tryPlacementOf,
   } from './agent-try-session.svelte.ts';
   import { SAVE_TIMEOUT_MS } from './agent-editor-save.ts';
+  import AgentDeleteDialog from '../agents/agent-delete-dialog.svelte';
 
   interface Props {
     /** The identifier of the agent to edit; absent on `/agents/new`. */
@@ -211,6 +212,7 @@
   /** A save had no answer within {@link SAVE_TIMEOUT_MS}, so the page stopped waiting (row 14x). */
   let timedOut = $state(false);
   let confirmingDelete = $state(false);
+  let deleteError = $state<string | undefined>();
   let trying = $state(false);
   // Where Try it is drawn: beside the form at desktop width, else a sheet the header opens.
   const sheetViewport = new MediaQuery(TRY_SHEET_QUERY, false);
@@ -401,13 +403,23 @@
     mutationFn: (hash: string) => deleteAgent(agentId ?? '', hash),
     onMutate: () => {
       failure = null;
+      deleteError = undefined;
     },
     onSuccess: () => {
+      confirmingDelete = false;
       wasWritten();
       leaveGuard.release();
       router.navigate('/agents');
     },
-    onError: (error) => failWith(agentFaultOf(error), copy.deleteFailed),
+    onError: (error) => {
+      const fault = agentFaultOf(error);
+      if (fault.kind === 'rejected' || fault.kind === 'other') {
+        deleteError = fault.message;
+        return;
+      }
+      confirmingDelete = false;
+      failWith(fault, copy.deleteFailed);
+    },
   }));
 
   /** A save is in flight and the page is still waiting for it: Save shows its loading state. */
@@ -599,7 +611,10 @@
           data-changes
           variant="danger"
           disabled={busy}
-          onclick={() => (confirmingDelete = true)}
+          onclick={() => {
+            deleteError = undefined;
+            confirmingDelete = true;
+          }}
           label={copy.deleteAction}
         />
       {/if}
@@ -751,7 +766,10 @@
             {saving}
             onSave={submit}
             onCancel={cancel}
-            onDelete={() => (confirmingDelete = true)}
+            onDelete={() => {
+              deleteError = undefined;
+              confirmingDelete = true;
+            }}
             retryingModels={catalog.isFetching}
             onRetryModels={() => void catalog.refetch()}
             savedRevision={latestVersion?.revision}
@@ -771,12 +789,12 @@
   {/if}
 </div>
 
-<ConfirmDialog
+<AgentDeleteDialog
   bind:open={confirmingDelete}
-  title={copy.deleteDialog.title}
-  description={copy.deleteDialog.description(savedName)}
-  confirmLabel={copy.deleteDialog.confirm}
-  destructive
+  id={agentId ?? ''}
+  name={savedName}
+  busy={removal.isPending}
+  error={deleteError}
   onConfirm={confirmDelete}
 />
 

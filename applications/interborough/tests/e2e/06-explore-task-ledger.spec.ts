@@ -6,6 +6,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 
+import { captureClock } from './capture-clock.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import {
   E2E_BARRIER_URL,
@@ -57,6 +58,9 @@ async function expectNoHorizontalOverflow(locator: Locator, label: string): Prom
 }
 
 test('operator inspects a seeded authoritative task ledger', async ({ page, checkA11y }) => {
+  // This test takes no screenshot and checks availability on the live fixture's clock. The
+  // sample world's historical capture time would correctly display the newly seeded task as delayed.
+  if (captureClock() !== undefined) await page.clock.setFixedTime(Date.now());
   await openTask(page, E2E_TASK_OPERATION_ID);
 
   await expect(page.getByText('queued')).toBeVisible();

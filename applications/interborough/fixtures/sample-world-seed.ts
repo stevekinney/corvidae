@@ -229,6 +229,12 @@ export interface SampleWorldOptions {
    * `bureau.agents.definitions.create` writes) is made here.
    */
   readonly beforeProviderKeyRemoved?: (host: Host) => Promise<void>;
+  /**
+   * Told the name of each step of the story as it begins: a session's host starting, its work, its
+   * host stopping, and the Nov 2 host's. A seed that never settles has then said which step it is
+   * stuck on, and the e2e server prints each one as a startup phase (COR-2632).
+   */
+  readonly onStep?: (step: string) => void;
 }
 
 /** What the seed made, by name, with the host it left running at Nov 2. */
@@ -364,6 +370,8 @@ interface Story {
   readonly home: string;
   readonly runtime: OffsetRuntime;
   readonly director: Director;
+  /** Told each step as it begins ({@link SampleWorldOptions.onStep}). */
+  readonly onStep: (step: string) => void;
 }
 
 /**
@@ -381,18 +389,33 @@ async function startAt(story: Story, at: number, options?: SampleWorldHostOption
   });
 }
 
-/** Runs `act` on a host started at `at`, then stops the host. */
+/**
+ * Runs one step of the story: the story is told `name` as it begins, so a seed that never settles
+ * has said which step it was on, and a step that fails rejects with an error that names it.
+ */
+async function step<T>(story: Story, name: string, work: () => Promise<T>): Promise<T> {
+  try {
+    story.onStep(name);
+    return await work();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`The sample world's step "${name}" failed: ${reason}`, { cause: error });
+  }
+}
+
+/** Runs `act` on a host started at `at`, then stops the host, each as a step of its own. */
 async function session(
   story: Story,
+  name: string,
   at: number,
   act: (context: SessionContext) => Promise<void>,
 ): Promise<void> {
-  const host = await startAt(story, at);
+  const host = await step(story, `${name}: starting its host`, () => startAt(story, at));
   try {
-    await act({ host, runtime: story.runtime, director: story.director });
+    await step(story, name, () => act({ host, runtime: story.runtime, director: story.director }));
   } finally {
     story.director.scene = {};
-    await host.close();
+    await step(story, `${name}: stopping its host`, () => host.close());
   }
 }
 
@@ -618,13 +641,14 @@ export async function seedSampleWorld(
     home,
     runtime: createOffsetRuntime(SAMPLE_WORLD_TIMES.toolRunnerVersion1),
     director: { scene: {} },
+    onStep: options.onStep ?? (() => {}),
   };
   const { runtime } = story;
   const times = SAMPLE_WORLD_TIMES;
   const history = SAMPLE_WORLD_HISTORY_TIMES;
   const [version1, version2, version3, version4] = TOOL_RUNNER_VERSIONS;
 
-  await session(story, times.toolRunnerVersion1, async ({ host }) => {
+  await session(story, 'Tool runner version 1', times.toolRunnerVersion1, async ({ host }) => {
     await saveToolRunnerVersion(host, version1);
     // The claim timing the host runs: renewed every 30 seconds within a 90-second claim. A restart
     // later in the story puts it in force, so on Monday only the 15-second interval it saves waits
@@ -632,28 +656,33 @@ export async function seedSampleWorld(
     await saveSetting(host, 'engine.workflowClaimTtl', 90_000);
     await saveSetting(host, 'engine.workflowClaimRenewInterval', 30_000);
   });
-  await session(story, times.toolRunnerVersion2, async ({ host }) => {
+  await session(story, 'Tool runner version 2', times.toolRunnerVersion2, async ({ host }) => {
     await saveToolRunnerVersion(host, version2);
     runtime.setTime(times.neverShareEmails);
     await rememberHowTo(host, TOOL_RUNNER_HOW_TOS.neverShareEmails);
   });
-  await session(story, times.lookUpBeforeAnswering, async (context) => {
+  await session(story, 'Oct 21', times.lookUpBeforeAnswering, async (context) => {
     await rememberHowTo(context.host, TOOL_RUNNER_HOW_TOS.lookUpBeforeAnswering);
     await october21(context);
   });
-  await session(story, history.triageCreated - 60_000, october23);
-  await session(story, history.triageSecondRun - 60_000, october24);
-  await session(story, times.toolRunnerVersion3, async ({ host }) =>
+  await session(story, 'Oct 23', history.triageCreated - 60_000, october23);
+  await session(story, 'Oct 24', history.triageSecondRun - 60_000, october24);
+  await session(story, 'Tool runner version 3', times.toolRunnerVersion3, async ({ host }) =>
     saveToolRunnerVersion(host, version3),
   );
-  await session(story, history.releaseNotesVersion3 - 60_000, october29Morning);
+  await session(story, 'Oct 29 morning', history.releaseNotesVersion3 - 60_000, october29Morning);
   // The server was started a minute before the chat, so its start comes first in the audit log.
-  await session(story, times.billingAsked - 60_000, billingChatEndedByARestart);
-  await session(story, times.toolRunnerVersion4, async ({ host }) =>
+  await session(
+    story,
+    'Oct 29 billing chat',
+    times.billingAsked - 60_000,
+    billingChatEndedByARestart,
+  );
+  await session(story, 'Tool runner version 4', times.toolRunnerVersion4, async ({ host }) =>
     saveToolRunnerVersion(host, version4),
   );
-  await session(story, history.sayHelloGoal - 60_000, october30);
-  await session(story, times.sayHello, async (context) => {
+  await session(story, 'Oct 30', history.sayHelloGoal - 60_000, october30);
+  await session(story, 'Nov 1', times.sayHello, async (context) => {
     // The clean-up of that night ran at 3:00 AM, with this host's own clock, so its record is real.
     // The host that starts on Monday finds it older than the 3:00 AM it was off for, which Data and
     // retention words as "Skipped today while Interborough was off."
@@ -667,14 +696,24 @@ export async function seedSampleWorld(
     await checksRecorded(context);
   });
   // Daily summary, on a clock set back to Oct 28 (`sample-world-history.ts` says why).
-  await session(story, history.dailySummaryCreated - 60_000, october28);
-  await session(story, history.dailySummaryRan - 30_000, october29DailySummary);
+  await session(story, 'Oct 28 daily summary', history.dailySummaryCreated - 60_000, october28);
+  await session(
+    story,
+    'Oct 29 daily summary',
+    history.dailySummaryRan - 30_000,
+    october29DailySummary,
+  );
   await writeFinalWorkflowFiles(home);
 
-  const host = await startAt(story, times.serverStarted, options.host);
+  const host = await step(story, 'Nov 2: starting its host', () =>
+    startAt(story, times.serverStarted, options.host),
+  );
   try {
     const context = { host, runtime, director: story.director };
-    return { host, runtime, ...(await monday(context, options.beforeProviderKeyRemoved)) };
+    const made = await step(story, 'Nov 2', () =>
+      monday(context, options.beforeProviderKeyRemoved),
+    );
+    return { host, runtime, ...made };
   } catch (error) {
     await host.close();
     throw error;

@@ -1453,6 +1453,12 @@
     gap: var(--cinder-gap-stack);
   }
 
+  /* The approval shows what will run, so short Fields summaries wrap when they need room. */
+  .cinder-approval-card--detail .cinder-payload-inspector__inline {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   /* The risk glyph line under Input: what cannot be undone and what approving does. */
   .cinder-approval-card__detail-risk {
     display: flex;
@@ -1748,6 +1754,33 @@
       flex: 1 1 100%;
       justify-content: flex-end;
       margin-inline-start: 0;
+    }
+  }
+
+  @container (inline-size < 24rem) {
+    /* Let the decision bar stick across the full detail, including the content above the note. */
+    .cinder-approval-card--detail .cinder-approval-card__actions {
+      display: contents;
+    }
+
+    .cinder-approval-card--detail .cinder-approval-card__action-row {
+      position: sticky;
+      z-index: 1;
+      inset-block-end: 0;
+      padding-block: var(--cinder-space-2);
+      background: var(--cinder-surface);
+    }
+
+    .cinder-approval-card--detail .cinder-approval-card__action-buttons {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .cinder-approval-card--detail .cinder-approval-card__action-buttons .cinder-button {
+      inline-size: 100%;
+      min-block-size: var(--cinder-touch-target-min);
     }
   }
 

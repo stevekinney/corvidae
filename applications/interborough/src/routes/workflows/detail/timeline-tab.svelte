@@ -50,6 +50,7 @@
 
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { RUN_STEPS_COPY, RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+  import { faultErrorStateAdvice } from '../../../lib/faults.ts';
   import { routerSelectionLocationFor } from '../../../lib/router-selection-location.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import LogLines from '../runs/log-lines.svelte';
@@ -351,7 +352,7 @@
       description={timelineQuery.error.message}
       headingLevel={3}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void timelineQuery.refetch()}
+      {...faultErrorStateAdvice(timelineQuery.error, () => void timelineQuery.refetch())}
     />
   {:else if entries.length === 0}
     <EmptyState

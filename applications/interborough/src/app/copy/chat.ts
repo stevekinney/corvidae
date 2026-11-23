@@ -255,6 +255,8 @@ export const CHAT_COPY = {
     mayHaveRun: (tool: string, subject: string = 'result'): string =>
       `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
     retry: 'Retry',
+    /** The link beside a failed run's line to the Run page's explanation of the failure (COR-2533). */
+    explain: 'Why it failed',
     /**
      * The notice under the last reply of a chat the server stopped when it restarted: what arrived
      * is kept, and the chat is over. The product speaking, with an info glyph, not a failure.
@@ -455,7 +457,7 @@ export const CHAT_COPY = {
       reason === undefined || reason === ''
         ? `${sourceId}: ${disposition}`
         : `${sourceId}: ${disposition} (${reason})`,
-    usage: 'Tokens this run used',
+    usage: 'What this run used',
     usageNote: 'Counted across every step of the run, not this reply alone.',
     usageKinds: { input: 'Input', output: 'Output', total: 'Total' },
   },

@@ -213,10 +213,16 @@ export async function getCodeWorkflow(id: string, options?: Options): Promise<Co
 export async function startWorkflowFile(
   id: string,
   input: unknown,
+  idempotencyKey: string | undefined,
   options?: Options,
 ): Promise<WorkflowStartResult> {
   return bureauClient['bureau.workflows.start'](
-    { id, surface: 'web', ...(input === undefined ? {} : { input }) },
+    {
+      id,
+      surface: 'web',
+      ...(input === undefined ? {} : { input }),
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    },
     options,
   );
 }

@@ -128,7 +128,7 @@ describe('activity worker provenance', () => {
       }),
     );
     expect(await findByRole('status', { name: 'Loading worker provenance' })).not.toBeNull();
-    await waitFor(async () => expect(await findByText('Something went wrong')).not.toBeNull());
+    await waitFor(async () => expect(await findByText('Couldn’t load the worker')).not.toBeNull());
   });
 
   test('omits the panel when the client cannot read tasks', () => {

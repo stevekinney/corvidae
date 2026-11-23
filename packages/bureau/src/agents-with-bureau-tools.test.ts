@@ -60,7 +60,8 @@ describe('agentsWithBureauTools', () => {
     });
     bureaus.push(bureau);
 
-    // Without a workflow directory the built-in plugin makes Discover and child-run agents.
+    // Without a workflow directory the built-in plugin makes Discover, child-run, asset and run
+    // timeline agents.
     expect(offered).toEqual([
       'bureau:discover-agents',
       'bureau:child-runs-dispatch',
@@ -70,6 +71,8 @@ describe('agentsWithBureauTools', () => {
       'bureau:child-runs-cancel',
       'bureau:assets-publish',
       'bureau:assets-read',
+      'bureau:tasks-explain',
+      'bureau:runs-timeline',
     ]);
     expect(bureau.agents.list().map(({ id }) => id)).toEqual(['helper', 'finder']);
 

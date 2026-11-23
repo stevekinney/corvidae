@@ -154,10 +154,10 @@ export type SharedActionTypeAttemptsCreate_605da491 = {
     readonly workflowId: string | null;
   } | null;
 };
-export type SharedActorAgentNameAttention_ffceb9e6 = {
+export type SharedActorAgentNameAttention_30e4f494 = {
   readonly actor: string | null;
   readonly agentName: string | null;
-  readonly attention: ReadonlyArray<'stalled' | 'looping'>;
+  readonly attention: ReadonlyArray<'stalled' | 'looping' | 'overspending'>;
   readonly cleanup:
     | 'cancel-requested'
     | 'canceled'
@@ -662,6 +662,12 @@ export type SharedCostStepsTools_95f40410 = {
   readonly steps?: number | null;
   readonly tools?: SharedCallsSeconds_35295711 | null;
 };
+export type SharedCostUsdGeneratedAtModel_ce6ddde1 = {
+  readonly costUsd: number | null;
+  readonly generatedAt: string;
+  readonly model: string;
+  readonly text: string;
+};
 export type SharedCostUsdStepsTokens_b79f227c = {
   readonly costUsd: number | null;
   readonly steps: number;
@@ -779,6 +785,13 @@ export type SharedIdRevisionStatus_e86a595b = {
   readonly status: 'active' | 'paused' | 'cancelled';
 };
 export type SharedIndexLabel_b9e5acc3 = { readonly index: number; readonly label: string };
+export type SharedInputLabelOperationType_dfed1127 = {
+  readonly input: string;
+  readonly label: string;
+  readonly operationType: string;
+  readonly output?: string;
+  readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
+};
 export type SharedInputTypeWorkflowId_2b929ea1 = {
   readonly input: 'payload' | 'event';
   readonly type: 'start-workflow';

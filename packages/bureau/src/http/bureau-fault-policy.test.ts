@@ -147,6 +147,24 @@ describe('the Bureau fault policy', () => {
     });
   });
 
+  it('answers a NOT_CONFIGURED in the words an operation gives it (COR-2534)', () => {
+    const fault = faultOf(errorOf('NOT_CONFIGURED'), {
+      capability: 'generate',
+      notConfigured: { message: 'No model is connected', remediation: 'Connect a provider.' },
+    });
+    expect(fault).toMatchObject({
+      code: 'UnsupportedCapability',
+      message: 'No model is connected',
+      remediation: 'Connect a provider.',
+      data: { capability: 'generate' },
+    });
+    // Another code is untouched by it.
+    const conflict = errorOf('CONFLICT');
+    expect(bureauFaultOf(conflict, { notConfigured: { message: 'x', remediation: 'y' } })).toBe(
+      conflict,
+    );
+  });
+
   it('does not repeat a storage outage message, which could name an internal', () => {
     const fault = faultOf(
       new BureauError('connect ECONNREFUSED 10.0.0.7:5432', 'STORAGE_UNAVAILABLE'),

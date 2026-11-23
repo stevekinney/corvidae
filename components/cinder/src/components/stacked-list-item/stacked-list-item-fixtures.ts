@@ -18,6 +18,12 @@ export default [
     name: 'narrow-trailing',
     host: './stacked-list-item-trailing.fixture.svelte',
   },
+  // A narrow two-line row whose action takes a line under the text, and a row whose title is
+  // followed by three badges that drop under it (COR-2528).
+  {
+    name: 'narrow-actions',
+    host: './stacked-list-item-narrow-actions.fixture.svelte',
+  },
   // A `wrapMeta` row at 320px whose line two wraps: it reads as one run of text, the dot, the word
   // and the meta, so the wrapped line starts at the row's text edge.
   {
