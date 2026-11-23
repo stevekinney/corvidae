@@ -437,20 +437,36 @@ test.describe('Settings › Plugins', () => {
     }
 
     const layout = page.locator('.ib-plugins__frame > .cinder-list-detail');
-    for (const width of [1280, 320, ...WIDE_DESKTOP_WIDTHS] as const) {
+    for (const width of [1280, 375, 320, ...WIDE_DESKTOP_WIDTHS] as const) {
       await page.setViewportSize({ width, height: 900 });
       // ListDetail measures its root and renders `stacked` below 600px, replacing the detail pane
       // when that breakpoint flips. Wait for the new layout before scrolling the form.
       await expect(layout).toHaveAttribute(
         'data-cinder-layout',
-        width === 320 ? 'stacked' : 'split',
+        width <= 375 ? 'stacked' : 'split',
       );
-      if (width === 320) {
+      if (width <= 375) {
+        const boxes = await readBoxes(page, {
+          searchAddressLabel: labelOf('searchAddress'),
+          searchAddress: controlOf('searchAddress', 'input'),
+          regionLabel: labelOf('region'),
+          region: controlOf('region', 'select'),
+          includeSnippetsLabel: labelOf('includeSnippets'),
+          includeSnippets: controlOf('includeSnippets', '[role="switch"]'),
+        });
+        for (const key of ['searchAddress', 'region', 'includeSnippets'] as const) {
+          const label = boxes[`${key}Label`];
+          const control = boxes[key];
+          expect(
+            control.y,
+            `${key} control stacks below its label at ${width}px`,
+          ).toBeGreaterThanOrEqual(label.y + label.height);
+        }
         const overflow = await page.evaluate(() => {
           const scroller = document.scrollingElement;
           return scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth;
         });
-        expect(overflow, 'nothing overflows horizontally at 320px').toBe(0);
+        expect(overflow, `nothing overflows horizontally at ${width}px`).toBe(0);
       }
       await configuration.scrollIntoViewIfNeeded();
       await captureForDesignReview(page, {
