@@ -1306,6 +1306,9 @@ for (const width of WIDTHS) {
       kind: 'post-message',
       configuration: { channel: 'alerts', token: { $secret: 'slack-bot-token' } },
     });
+    // The outbound call precedes the mutation's settled render. The editor's success toast is its
+    // durable confirmation that Save hook is no longer pending, so Axe scans the persisted view.
+    await expect(page.locator('.cinder-toast', { hasText: copy.saved })).toBeVisible();
     await checkA11y(`hooks — a plugin hook’s configuration at ${width}px`);
   });
 }
