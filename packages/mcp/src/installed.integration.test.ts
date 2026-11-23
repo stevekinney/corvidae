@@ -13,7 +13,7 @@ test('an independent listener installs the HTTP entry without provider dependenc
     await cp(join(packageDirectory, 'package.json'), join(stagedPackage, 'package.json'));
     await cp(join(packageDirectory, 'src'), join(stagedPackage, 'src'), { recursive: true });
     const archive = 'mcp.tgz';
-    const pack = Bun.spawn(['tar', '-czf', archive, 'package'], {
+    const pack = spawnWithHangGuard(['tar', '-czf', archive, 'package'], {
       cwd: directory,
       stdout: 'pipe',
       stderr: 'pipe',
