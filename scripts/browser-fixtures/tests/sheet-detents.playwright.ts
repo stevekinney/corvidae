@@ -14,7 +14,6 @@ import {
   test,
   type ComponentPageFixture,
 } from '@lostgradient/testing/playwright/component-page-fixture';
-import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import type { Locator, Page } from '@playwright/test';
 import { fixtureEntry } from './layout-fixture.ts';
 
