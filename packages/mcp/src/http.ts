@@ -23,8 +23,9 @@ export interface ProtectedHttpOptions<T extends Principal> {
     request: Request,
     context: {
       grant: VerifiedGrant;
-      principal: T;
-      requireScopes(scopes: readonly string[]): Response | null;
+      requireScopes(
+        scopes: readonly string[],
+      ): Promise<{ ok: true; principal: T } | { ok: false; response: Response }>;
     },
   ): Response | Promise<Response>;
 }
@@ -162,24 +163,28 @@ export function createProtectedHttpHandler<T extends Principal>(
         return null;
       }
     };
-    const principal = await current();
-    if (!principal || request.signal.aborted) return unauthorized();
+    if (!(await current()) || request.signal.aborted) return unauthorized();
     const response = await options.dispatch(request, {
       grant,
-      principal,
-      requireScopes(scopes) {
-        if (scopes.some((scope) => !options.scopes.includes(scope)))
-          return new Response(null, { status: 403 });
-        const missing = scopes.filter((scope) => !grant.scopes.includes(scope));
-        if (scopes.some((scope) => !principal.delegableScopes.includes(scope)))
-          return new Response(null, { status: 403 });
+      async requireScopes(scopes) {
+        const requested = [...scopes];
+        if (requested.some((scope) => !options.scopes.includes(scope)))
+          return { ok: false, response: new Response(null, { status: 403 }) };
+        const principal = await current();
+        if (!principal || request.signal.aborted) return { ok: false, response: unauthorized() };
+        const missing = requested.filter((scope) => !grant.scopes.includes(scope));
+        if (requested.some((scope) => !principal.delegableScopes.includes(scope)))
+          return { ok: false, response: new Response(null, { status: 403 }) };
         if (missing.length)
-          return new Response(null, {
-            status: 403,
-            headers: { 'www-authenticate': challenge('insufficient_scope', missing) },
-          });
-        for (const scope of scopes) requiredScopes.add(scope);
-        return null;
+          return {
+            ok: false,
+            response: new Response(null, {
+              status: 403,
+              headers: { 'www-authenticate': challenge('insufficient_scope', missing) },
+            }),
+          };
+        for (const scope of requested) requiredScopes.add(scope);
+        return { ok: true, principal };
       },
     });
     if (!response.body) return response;

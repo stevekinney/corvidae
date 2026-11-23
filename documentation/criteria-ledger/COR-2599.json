@@ -1,7 +1,7 @@
 {
   "issue": "COR-2599",
   "branch": "steve/cor-2599-composable",
-  "checkedAt": "822ade8e27194423241b7f28cffc614dc0041893",
+  "checkedAt": "b6601a0f3a5b1ac28fbe7427392ba16731d1c75a",
   "briefVersion": "cb3a7323b6b1",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "bun test packages/mcp/src/http.test.ts: verified grant, membership, refusal counts and current delegation after delayed body in correction worktree"
+      "evidence": "bun test packages/mcp/src/http.test.ts: current principal and delegation after dispatch await, cancellation before operation admission, and delayed body in correction worktree"
     },
     {
       "id": "AC3",

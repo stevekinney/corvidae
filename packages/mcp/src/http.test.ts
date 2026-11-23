@@ -2,6 +2,112 @@ import { describe, expect, test } from 'bun:test';
 import { createProtectedHttpHandler } from './http';
 
 describe('protected HTTP listener', () => {
+  test('hands off the freshly resolved principal and refuses cancellation during the decision', async () => {
+    for (const cancel of [false, true]) {
+      let checks = 0;
+      let label = 'old';
+      let release!: () => void;
+      let started!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const abort = new AbortController();
+      let admitted: string | undefined;
+      const handler = createProtectedHttpHandler({
+        origin: 'https://equipment.example.com',
+        resourcePath: '/api/mcp',
+        issuer: 'https://login.example.com',
+        scopes: ['read'],
+        async verifyAccessToken() {
+          return {
+            issuer: 'https://login.example.com',
+            audience: 'https://equipment.example.com/api/mcp',
+            expiresAt: Date.now() + 60000,
+            subject: 'user',
+            scopes: ['read'],
+          };
+        },
+        async resolvePrincipal() {
+          checks++;
+          if (checks === 3) {
+            started();
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          }
+          return { delegableScopes: ['read'], label };
+        },
+        async dispatch(_request, context) {
+          const decision = await context.requireScopes(['read']);
+          if (!decision.ok) return decision.response;
+          admitted = decision.principal.label;
+          return new Response(null, { status: 204 });
+        },
+      });
+      const pending = handler(
+        new Request('https://equipment.example.com/api/mcp', {
+          headers: { authorization: 'Bearer valid' },
+          signal: abort.signal,
+        }),
+      );
+      await waiting;
+      label = 'current';
+      if (cancel) abort.abort();
+      release();
+      const response = await pending;
+      expect(response.status).toBe(cancel ? 401 : 204);
+      expect(admitted).toBe(cancel ? undefined : 'current');
+    }
+  });
+  test('rechecks delegation after dispatch awaits before admitting an operation', async () => {
+    let release!: () => void;
+    let started!: () => void;
+    let delegableScopes = ['write'];
+    let writes = 0;
+    const waiting = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const handler = createProtectedHttpHandler({
+      origin: 'https://equipment.example.com',
+      resourcePath: '/api/mcp',
+      issuer: 'https://login.example.com',
+      scopes: ['write'],
+      async verifyAccessToken() {
+        return {
+          issuer: 'https://login.example.com',
+          audience: 'https://equipment.example.com/api/mcp',
+          expiresAt: Date.now() + 60000,
+          subject: 'user',
+          scopes: ['write'],
+        };
+      },
+      async resolvePrincipal() {
+        return { delegableScopes };
+      },
+      async dispatch(_request, context) {
+        started();
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const decision = await context.requireScopes(['write']);
+        if (!decision.ok) return decision.response;
+        writes++;
+        return new Response('private');
+      },
+    });
+    const pending = handler(
+      new Request('https://equipment.example.com/api/mcp', {
+        headers: { authorization: 'Bearer valid' },
+      }),
+    );
+    await waiting;
+    delegableScopes = [];
+    release();
+    const response = await pending;
+    expect(response.status).toBe(403);
+    expect(writes).toBe(0);
+    expect(await response.text()).not.toContain('private');
+  });
   test('uses current delegation after a delayed request body', async () => {
     let release!: () => void;
     let started!: () => void;
@@ -27,9 +133,9 @@ describe('protected HTTP listener', () => {
       async resolvePrincipal() {
         return { delegableScopes };
       },
-      dispatch(_request, context) {
-        const refusal = context.requireScopes(['write']);
-        if (refusal) return refusal;
+      async dispatch(_request, context) {
+        const decision = await context.requireScopes(['write']);
+        if (!decision.ok) return decision.response;
         writes++;
         return new Response('private');
       },
@@ -82,7 +188,7 @@ describe('protected HTTP listener', () => {
       },
       async resolvePrincipal() {
         checks++;
-        if (checks === 4) {
+        if (checks === 5) {
           checking();
           await new Promise<void>((resolve) => {
             release = resolve;
@@ -90,17 +196,17 @@ describe('protected HTTP listener', () => {
         }
         return { delegableScopes: ['read'] };
       },
-      dispatch(_request, context) {
-        return (
-          context.requireScopes(['read']) ??
-          new Response(
-            new ReadableStream({
-              start(controller) {
-                controller.enqueue(new TextEncoder().encode('private'));
-              },
-            }),
-          )
-        );
+      async dispatch(_request, context) {
+        const decision = await context.requireScopes(['read']);
+        return !decision.ok
+          ? decision.response
+          : new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode('private'));
+                },
+              }),
+            );
       },
     });
     const response = await handler(
@@ -143,7 +249,7 @@ describe('protected HTTP listener', () => {
       },
       async resolvePrincipal() {
         checks++;
-        if (checks === 4) {
+        if (checks === 5) {
           checking();
           await new Promise<void>((resolve) => {
             release = resolve;
@@ -151,17 +257,17 @@ describe('protected HTTP listener', () => {
         }
         return { delegableScopes };
       },
-      dispatch(_request, context) {
-        return (
-          context.requireScopes(['read']) ??
-          new Response(
-            new ReadableStream({
-              start(controller) {
-                controller.enqueue(new TextEncoder().encode('private'));
-              },
-            }),
-          )
-        );
+      async dispatch(_request, context) {
+        const decision = await context.requireScopes(['read']);
+        return !decision.ok
+          ? decision.response
+          : new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode('private'));
+                },
+              }),
+            );
       },
     });
     const response = await handler(
@@ -240,8 +346,8 @@ describe('protected HTTP listener', () => {
         return member ? { delegableScopes: delegable } : null;
       },
       async dispatch(request, context) {
-        const refusal = context.requireScopes([request.headers.get('x-scope') ?? 'read']);
-        if (refusal) return refusal;
+        const decision = await context.requireScopes([request.headers.get('x-scope') ?? 'read']);
+        if (!decision.ok) return decision.response;
         if (request.method === 'POST') expect(await request.text()).toBe('hello');
         calls++;
         return new Response('private');
