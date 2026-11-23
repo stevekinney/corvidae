@@ -24,6 +24,7 @@
     error,
     disabled,
     required,
+    optional = false,
     type = 'text',
     variant = 'default',
     appearance,
@@ -217,6 +218,7 @@
     {descriptionAction}
     {error}
     required={resolvedRequired}
+    {optional}
     disabled={resolvedDisabled}
     class="cinder-input-field"
     data-cinder-variant={variant}
@@ -244,6 +246,7 @@
     {descriptionAction}
     {error}
     required={required ?? false}
+    {optional}
     disabled={disabled ?? false}
     class="cinder-input-field"
     data-cinder-variant={variant}

@@ -180,6 +180,8 @@ export const AUDIT_COPY = {
   },
   /** An address that names an event the page could not show. */
   recordNotFound: {
+    title: 'Event not found',
+    back: 'Back to Audit log',
     more: 'That event was not found in the recent log. Load more to keep looking.',
     end: 'That event is not in the log.',
   },
@@ -214,6 +216,7 @@ export const AUDIT_EVENT_COPY = {
   chatTarget: (title: string): string => `Chat › ${title}`,
   scheduleRan: 'Started a scheduled run',
   createdSchedule: 'Created a schedule',
+  updatedSchedule: 'Changed a schedule',
   pausedSchedule: 'Paused a schedule',
   resumedSchedule: 'Resumed a schedule',
   canceledSchedule: 'Canceled a schedule',

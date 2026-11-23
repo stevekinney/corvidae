@@ -96,8 +96,9 @@
           variant="secondary"
           size="sm"
           onclick={addToAgent}
-          data-testid="tool-add-to-agent">{copy.addToAgent.label}</Button
-        >
+          data-testid="tool-add-to-agent"
+          label={copy.addToAgent.label}
+        />
       {/if}
       <CopyButton
         value={tool.name}

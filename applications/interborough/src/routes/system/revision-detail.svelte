@@ -52,7 +52,11 @@
       <Skeleton height="8rem" />
     </div>
   {:else if recordQuery.isError}
-    <QueryFaultBanner error={recordQuery.error} onRetry={() => recordQuery.refetch()} />
+    <QueryFaultBanner
+      error={recordQuery.error}
+      subject="this revision"
+      onRetry={() => recordQuery.refetch()}
+    />
   {:else if detail === undefined}
     <div class="weft-revision-detail__malformed" role="alert">
       The server returned a revision record this console doesn't recognize — showing nothing rather

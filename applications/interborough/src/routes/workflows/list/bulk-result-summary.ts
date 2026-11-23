@@ -34,7 +34,7 @@ function countLabel(count: number, singular: string, plural = `${singular}s`): s
 
 export function cancelResultSummary(result: BulkCancelResult, matched: number): BulkCommitSummary {
   return {
-    headline: `Cancelled ${result.cancelled} of ${countLabel(matched, 'workflow')}`,
+    headline: `Canceled ${result.cancelled} of ${countLabel(matched, 'workflow')}`,
     errors: result.errors,
   };
 }

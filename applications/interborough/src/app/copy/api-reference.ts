@@ -58,7 +58,10 @@ export const API_REFERENCE_COPY = {
     noScope: 'Any caller',
     empty: {
       title: 'No operations',
-      description: 'The server lists no operations in this group.',
+      /** The server lists no operation at all: the state stands alone, with no group select. */
+      none: 'The server lists no operations.',
+      /** A chosen group has none: the group select stays so another can be chosen. */
+      group: 'The server lists no operations in this group.',
     },
   },
   discovery: {

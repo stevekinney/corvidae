@@ -1,0 +1,92 @@
+diff --git a/dist/QueryClientProvider.svelte b/dist/QueryClientProvider.svelte
+index 36f1df43b12c6ab105c7a74c8913cfc4dcac117f..cff6604f7c8f6dce7a6a1f8262ac532fc016ba6d 100644
+--- a/dist/QueryClientProvider.svelte
++++ b/dist/QueryClientProvider.svelte
+@@ -1,5 +1,5 @@
+ <script lang="ts">
+-  import { onDestroy, onMount } from 'svelte'
++  import { onDestroy, onMount, untrack } from 'svelte'
+   import { QueryClient } from '@tanstack/query-core'
+   import { setQueryClientContext } from './context.js'
+   import type { QueryClientProviderProps } from './types.js'
+@@ -11,7 +11,7 @@
+     client.mount()
+   })
+ 
+-  setQueryClientContext(client)
++  setQueryClientContext(untrack(() => client))
+ 
+   onDestroy(() => {
+     client.unmount()
+diff --git a/dist/createMutation.svelte.js b/dist/createMutation.svelte.js
+index 6a9cb526ad413e30774c27d46a5719b9c35c9d51..567573ab433dc5f8c5acf27635c0428a9bd2389b 100644
+--- a/dist/createMutation.svelte.js
++++ b/dist/createMutation.svelte.js
+@@ -1,4 +1,5 @@
+ import { MutationObserver, noop, notifyManager } from '@tanstack/query-core';
++import { untrack } from 'svelte';
+ import { useQueryClient } from './useQueryClient.js';
+ import { watchChanges } from './utils.svelte.js';
+ /**
+@@ -174,7 +175,7 @@ export function createMutation(options, queryClient) {
+     const mutate = (...args) => {
+         observer.mutate(args[0], args[1]).catch(noop);
+     };
+-    let result = $state(observer.getCurrentResult());
++    let result = $state(untrack(() => observer.getCurrentResult()));
+     watchChanges(() => observer, 'pre', () => {
+         result = observer.getCurrentResult();
+     });
+@@ -200,5 +201,5 @@ export function createMutation(options, queryClient) {
+         },
+     }));
+     // @ts-expect-error
+-    return resultProxy;
++    return untrack(() => resultProxy);
+ }
+diff --git a/src/QueryClientProvider.svelte b/src/QueryClientProvider.svelte
+index 36f1df43b12c6ab105c7a74c8913cfc4dcac117f..cff6604f7c8f6dce7a6a1f8262ac532fc016ba6d 100644
+--- a/src/QueryClientProvider.svelte
++++ b/src/QueryClientProvider.svelte
+@@ -1,5 +1,5 @@
+ <script lang="ts">
+-  import { onDestroy, onMount } from 'svelte'
++  import { onDestroy, onMount, untrack } from 'svelte'
+   import { QueryClient } from '@tanstack/query-core'
+   import { setQueryClientContext } from './context.js'
+   import type { QueryClientProviderProps } from './types.js'
+@@ -11,7 +11,7 @@
+     client.mount()
+   })
+ 
+-  setQueryClientContext(client)
++  setQueryClientContext(untrack(() => client))
+ 
+   onDestroy(() => {
+     client.unmount()
+diff --git a/src/createMutation.svelte.ts b/src/createMutation.svelte.ts
+index a6e988140889fb02c397447ae04facf09d9fa3b0..c78e6c6edf51f74ee50416a2dfd5b3b7696e64b9 100644
+--- a/src/createMutation.svelte.ts
++++ b/src/createMutation.svelte.ts
+@@ -1,4 +1,5 @@
+ import { MutationObserver, noop, notifyManager } from '@tanstack/query-core'
++import { untrack } from 'svelte'
+ import { useQueryClient } from './useQueryClient.js'
+ import { watchChanges } from './utils.svelte.js'
+ import type {
+@@ -206,7 +207,7 @@ export function createMutation<
+     observer.mutate(args[0] as TVariables, args[1]).catch(noop)
+   }
+ 
+-  let result = $state(observer.getCurrentResult())
++  let result = $state(untrack(() => observer.getCurrentResult()))
+   watchChanges(
+     () => observer,
+     'pre',
+@@ -240,5 +241,5 @@ export function createMutation<
+   )
+ 
+   // @ts-expect-error
+-  return resultProxy
++  return untrack(() => resultProxy)
+ }

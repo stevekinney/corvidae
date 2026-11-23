@@ -502,6 +502,17 @@ export function stoppedNoteId(runId: string): string {
 }
 
 /**
+ * The run a stop line is about, read from the line's identity ({@link stoppedNoteId}), or
+ * `undefined` for a note that is not a stop line, so the line can lead to that run's page.
+ */
+export function stoppedRunIdOf(noteId: string): string | undefined {
+  const prefix = 'stopped:';
+  return noteId.startsWith(prefix) && noteId.length > prefix.length
+    ? noteId.slice(prefix.length)
+    : undefined;
+}
+
+/**
  * The kinds of note a thread read again cannot be trusted to give back whole. The tasks say a
  * wakeup that is still pending and each child run (`taskNoteAnnouncements`), but a wakeup that has
  * since fired, or a child run a task record does not hold (one a tool or a peer started), is

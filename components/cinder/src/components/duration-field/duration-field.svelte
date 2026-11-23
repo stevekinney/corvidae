@@ -23,6 +23,7 @@
     onValueChange,
     label,
     description,
+    placeholder,
     error,
     required = false,
     disabled = false,
@@ -92,6 +93,7 @@
     {id}
     {...label !== undefined ? { label } : {}}
     {...description !== undefined ? { description } : {}}
+    {...placeholder !== undefined ? { placeholder } : {}}
     {...error !== undefined ? { error } : {}}
     {...name !== undefined ? { name } : {}}
     {...onblur !== undefined ? { onblur } : {}}
@@ -103,6 +105,7 @@
     value={shown}
     onValueChange={(next) => {
       const milliseconds = next === null ? null : toMilliseconds(next, shownUnit, integer, units);
+      if (milliseconds === value) return;
       lastSent = milliseconds;
       value = milliseconds;
       onValueChange?.(milliseconds);

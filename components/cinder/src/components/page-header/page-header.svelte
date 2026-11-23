@@ -57,6 +57,7 @@
     statusPlacement = 'below',
     narrowActions = 'own-row',
     titleText,
+    titleLines = 2,
     class: className,
     ...rest
   }: PageHeaderProps = $props();
@@ -337,6 +338,7 @@
   data-cinder-divider={divider ? 'true' : undefined}
   data-cinder-regular-actions={!useCompactActions && !hero ? '' : undefined}
   data-cinder-narrow-actions={narrowActions === 'beside-status' ? 'beside-status' : undefined}
+  data-cinder-title-lines={titleLines === 1 ? '1' : undefined}
   data-cinder-variant={resolvedVariant === 'default' ? undefined : resolvedVariant}
   data-cinder-tone={hero ? resolvedTone : undefined}
   data-theme={darkBand ? 'dark' : undefined}

@@ -1,17 +1,25 @@
 <script lang="ts">
   /**
-   * The context meter in the composer's control row: a short bar and its percentage, named "Context
-   * 38%", with a tooltip that says the tokens behind it ("76K of 200K tokens"). It reads the same
-   * `bureau.contexts.window` report as the header's ring, from the estimate of the next prompt over
+   * The chat's one context meter (COR-2438), in the composer's control row beside Send: a short bar
+   * and its percentage, with the tokens behind it in a tooltip ("76K of 200K tokens"), which opens
+   * to what fills the window. It reads `bureau.contexts.window`, the estimate of the next prompt over
    * the window of the model that would answer; a model the catalog does not know leaves the bar empty
-   * and reads the token count alone. It is composed from Cinder's `Meter` and `Tooltip`.
+   * and reads the token count, since there is no percentage to give. The panel splits the estimate
+   * by what fills the window (the instructions, the tools, the messages, memory and attachments), one
+   * meter each, and adds the provider's own count for the latest step, which lags the estimate by
+   * that step's reply.
+   *
+   * There is one meter, in one format, in one place: the header has none. The bar's track carries a
+   * control's rule, so an empty window still reads as a meter in both themes. It is composed from
+   * Cinder's `Button`, `Meter`, `Popover` and `Tooltip`.
    */
-  import { Meter, Tooltip } from '@lostgradient/cinder';
+  import { Button, Meter, Popover, Tooltip } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import type { ContextWindow } from '../../lib/bureau-client.ts';
   import {
     formatCompactTokens,
+    formatTokens,
     WINDOW_DANGER_FRACTION,
     WINDOW_WARNING_FRACTION,
     windowUse,
@@ -26,31 +34,73 @@
 
   let { report, failed = false }: ContextMeterProps = $props();
 
-  const COPY = CHAT_COPY.contextMeter;
-  let anchor = $state<HTMLElement | null>(null);
+  const COPY = CHAT_COPY.contextWindow;
+  const SHORT = CHAT_COPY.contextMeter;
+
+  let open = $state(false);
 </script>
 
 {#if report !== undefined}
   {@const use = windowUse(report)}
-  {@const used = formatCompactTokens(use.used)}
-  {@const max = use.max === null ? null : formatCompactTokens(use.max)}
-  <span class="weft-context-meter" data-tone={use.tone} bind:this={anchor}>
-    <span class="weft-context-meter__bar">
-      <Meter
-        size="sm"
-        value={Math.round(use.drawn * 100)}
-        low={WINDOW_WARNING_FRACTION * 100}
-        high={WINDOW_DANGER_FRACTION * 100}
-        optimum={0}
-        ariaLabel={COPY.label(use.percent, used)}
-        tabindex={0}
-      />
-    </span>
-    <span class="weft-context-meter__reading" aria-hidden="true"
-      >{COPY.reading(use.percent, used)}</span
-    >
-  </span>
-  <Tooltip text={COPY.tooltip(used, max)} placement="top" triggerRef={anchor} describe={false} />
+  {@const used = formatTokens(use.used)}
+  {@const max = use.max === null ? null : formatTokens(use.max)}
+  {@const shortUsed = formatCompactTokens(use.used)}
+  {@const shortMax = use.max === null ? null : formatCompactTokens(use.max)}
+  <!-- A category's meter is drawn over the window, or over the estimate when the window is unknown. -->
+  {@const scale = Math.max(use.max ?? 0, use.used, 1)}
+  <Popover bind:open placement="top-end" label={COPY.label} focusManagement="preserve">
+    {#snippet trigger()}
+      <Tooltip text={SHORT.tooltip(shortUsed, shortMax)} describe={false}>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="weft-context-meter"
+          aria-label={COPY.trigger(use.percent, used, max)}
+          data-tone={use.tone}
+          onclick={() => (open = !open)}
+        >
+          <span class="weft-context-meter__bar" aria-hidden="true">
+            <Meter
+              size="sm"
+              value={Math.round(use.drawn * 100)}
+              low={WINDOW_WARNING_FRACTION * 100}
+              high={WINDOW_DANGER_FRACTION * 100}
+              optimum={0}
+              ariaLabel={SHORT.label(use.percent, shortUsed)}
+            />
+          </span>
+          <span class="weft-context-meter__reading" aria-hidden="true"
+            >{SHORT.reading(use.percent, shortUsed)}</span
+          >
+        </Button>
+      </Tooltip>
+    {/snippet}
+    <div class="weft-context-window" data-testid="context-window">
+      <p class="weft-context-window__summary">{COPY.summary(used, max)}</p>
+      <p class="weft-context-window__note">{COPY.estimate}</p>
+      <ul class="weft-context-window__categories" aria-label={COPY.breakdown}>
+        {#each report.categories as category (category.name)}
+          {@const name = COPY.categories[category.name]}
+          {@const tokens = formatTokens(category.tokens)}
+          <li class="weft-context-window__category" data-category={category.name}>
+            <span class="weft-context-window__name">{name}</span>
+            <span class="weft-context-window__tokens">{tokens}</span>
+            <Meter
+              size="sm"
+              value={category.tokens}
+              max={scale}
+              ariaLabel={COPY.category(name, tokens)}
+            />
+          </li>
+        {/each}
+      </ul>
+      <p class="weft-context-window__note">
+        {report.usedReported === null
+          ? COPY.notReported
+          : COPY.reported(formatTokens(report.usedReported))}
+      </p>
+    </div>
+  </Popover>
 {:else if failed}
   <span class="weft-context-meter__unavailable">{COPY.unavailable}</span>
 {/if}

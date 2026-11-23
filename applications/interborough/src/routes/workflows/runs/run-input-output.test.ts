@@ -11,7 +11,12 @@ import type { WorkflowState } from '@lostgradient/weft';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
-import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
+import {
+  contextDetailFixture,
+  explainAnswers,
+  FAILED_RUN_EXPLANATION,
+  taskFixture,
+} from '../../../lib/bureau-fixtures.test-support.ts';
 import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
 import { bureau, landAt } from '../../chat/pages.test-support.ts';
 import Harness from './run-input-output.test-harness.svelte';
@@ -108,8 +113,16 @@ describe('a workflow’s input and output', () => {
     expect(container.querySelectorAll('.ib-run__payloads')).toHaveLength(1);
   });
 
-  test('a failed workflow shows the failure-category badge and plain-language explanation', () => {
-    const { getByText } = render(Harness, {
+  test('a failed workflow leads with a Cinder Alert before its input, and keeps its cause out of raw JSON', async () => {
+    restore?.();
+    restore = bureau(
+      explainAnswers({
+        ...FAILED_RUN_EXPLANATION,
+        summary: 'The step "fetch" failed because it ran past its deadline.',
+        cause: { category: 'timeout', code: null, kind: null },
+      }),
+    ).restore;
+    const { container, findByText, getByRole, getByText } = render(Harness, {
       props: {
         workflow: workflow({
           status: 'failed',
@@ -119,9 +132,17 @@ describe('a workflow’s input and output', () => {
       },
     });
 
-    expect(getByText('timeout')).not.toBeNull();
-    expect(getByText(/exceeded its configured deadline/)).not.toBeNull();
-    expect(getByText('the activity took too long')).not.toBeNull();
+    const alert = container.querySelector<HTMLElement>(
+      '[data-run-failure][data-cinder-variant="danger"]',
+    );
+    const input = getByRole('group', { name: copy.input });
+    if (alert === null) throw new Error('Expected the run failure alert');
+    // The sentence is the Bureau's (COR-2533), never the browser's own per category.
+    await findByText('The step "fetch" failed because it ran past its deadline.');
+    expect(alert.textContent).toContain('timeout');
+    expect(alert.textContent).toContain('the activity took too long');
+    expect(alert.textContent).not.toContain('{');
+    expect(alert.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(getByText(copy.noOutputFailed)).not.toBeNull();
   });
 
@@ -142,11 +163,13 @@ describe('a workflow’s input and output', () => {
   });
 
   test('a failed workflow with no failure category shows neither the badge nor the explanation', () => {
-    const { getByText, queryByText } = render(Harness, {
+    const { container, getByText, queryByText } = render(Harness, {
       props: { workflow: workflow({ status: 'failed', error: 'boom' }) },
     });
 
-    expect(getByText('Failed')).not.toBeNull();
+    expect(
+      container.querySelector('[data-run-failure][data-cinder-variant="danger"]'),
+    ).not.toBeNull();
     expect(getByText('boom')).not.toBeNull();
     expect(queryByText(/could not be classified/)).toBeNull();
   });
@@ -168,7 +191,109 @@ describe('a workflow’s input and output', () => {
       },
     });
 
-    expect(getByRole('button', { name: 'Show full stack trace' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Show the error details' })).not.toBeNull();
+  });
+
+  test('COR-2533: a failed run only the Bureau holds says why, then what it stored about the failure', async () => {
+    restore?.();
+    restore = bureau(explainAnswers()).restore;
+    const task = taskFixture({
+      id: 'run-1',
+      status: 'failed',
+      statusMessage: 'The model provider dropped the connection.',
+    });
+    const { container, findByText } = render(Harness, { props: { task } });
+
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    const section = container.querySelector<HTMLElement>('[data-run-failure]');
+    expect(section?.textContent).toContain('The model provider dropped the connection.');
+    expect(section?.querySelector('[data-explanation="remediation"]')).not.toBeNull();
+    expect(section?.querySelector('#failure-explanation')).not.toBeNull();
+  });
+
+  test('COR-2533: a failed agent run the engine holds as a completed run still explains itself, where Chat’s link lands', async () => {
+    restore?.();
+    restore = bureau(explainAnswers()).restore;
+    const { container, findByText } = render(Harness, {
+      props: {
+        task: taskFixture({
+          id: 'run-1',
+          status: 'failed',
+          statusMessage: 'The model provider dropped the connection.',
+        }),
+        // An agent run ends as a completed engine run that carries a failed result.
+        workflow: workflow({ id: 'run-1', status: 'completed' }),
+      },
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    const section = container.querySelector<HTMLElement>('[data-run-failure]');
+    expect(section?.textContent).toContain('The model provider dropped the connection.');
+    expect(container.querySelectorAll('#failure-explanation')).toHaveLength(1);
+  });
+
+  test('COR-2534: a failed agent run’s page offers "Explain further" and, asked, shows what a model wrote under its name, with the stored explanation still there', async () => {
+    restore?.();
+    const stub = bureau({
+      ...explainAnswers(),
+      'bureau.tasks.explanation.get': () => ({ explanation: null }),
+      'bureau.tasks.explanation.generate': () => ({
+        explanation: {
+          text: 'The provider dropped the connection mid-answer.',
+          model: 'anthropic/claude-haiku-5-5',
+          generatedAt: '2026-11-21T10:00:00.000Z',
+          costUsd: 0.002,
+        },
+      }),
+    });
+    restore = stub.restore;
+    const { container, findByRole, findByText } = render(Harness, {
+      props: { task: taskFixture({ id: 'run-1', status: 'failed', statusMessage: 'dropped' }) },
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+
+    await fireEvent.click(await findByRole('button', { name: 'Explain further' }));
+
+    await findByText('The provider dropped the connection mid-answer.');
+    expect(container.querySelector('[data-explanation="model-name"]')?.textContent).toContain(
+      'anthropic/claude-haiku-5-5',
+    );
+    expect(container.querySelector('[data-explanation="summary"]')?.textContent).toBe(
+      FAILED_RUN_EXPLANATION.summary,
+    );
+    expect(stub.calls.map((call) => call.method)).toContain('bureau.tasks.explanation.generate');
+  });
+
+  test('COR-2534: a failed instance of a workflow file has no task to keep it on, so it offers no action', async () => {
+    restore?.();
+    const stub = bureau(explainAnswers());
+    restore = stub.restore;
+    const { container, findByText, queryByRole } = render(Harness, {
+      props: { workflow: workflow({ status: 'failed', failureCategory: 'application' }) },
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    expect(queryByRole('button', { name: 'Explain further' })).toBeNull();
+    expect(container.querySelector('[data-explanation="further"]')).toBeNull();
+    expect(stub.calls.map((call) => call.method)).not.toContain('bureau.tasks.explanation.get');
+  });
+
+  test('COR-2533: a failed run with no message still explains itself', async () => {
+    restore?.();
+    restore = bureau(explainAnswers()).restore;
+    const { container, findByText } = render(Harness, {
+      props: { task: taskFixture({ id: 'run-1', status: 'failed', statusMessage: null }) },
+    });
+    await findByText(FAILED_RUN_EXPLANATION.summary);
+    expect(container.querySelector('[data-run-failure]')).not.toBeNull();
+  });
+
+  test('COR-2533: a run that did not fail asks nothing of the Bureau', () => {
+    restore?.();
+    const stub = bureau(explainAnswers());
+    restore = stub.restore;
+    render(Harness, {
+      props: { task: taskFixture({ id: 'run-1', status: 'completed', finishReason: 'stop' }) },
+    });
+    expect(stub.calls.filter((call) => call.method === 'bureau.tasks.explain')).toEqual([]);
   });
 
   test('the Bureau’s record of a workflow file’s run shows its trigger, result and error', () => {

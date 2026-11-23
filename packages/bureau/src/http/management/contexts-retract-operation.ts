@@ -27,7 +27,7 @@ import { defineOperation, type OperationFault } from '@lostgradient/backchannel'
 import { z } from 'zod';
 
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
-import { BureauError } from '../../bureau-errors.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -109,14 +109,7 @@ export const contextsRetractOperation = defineOperation<
     try {
       outcome = await host.contexts.retract(contextId, { id: inputId, principal: owner });
     } catch (error) {
-      if (error instanceof BureauError && error.code === 'CONFLICT') {
-        throw {
-          code: 'Unavailable',
-          message: error.message,
-          data: { reason: 'shutting-down' },
-        } satisfies OperationFault;
-      }
-      throw error;
+      throw bureauFaultOf(error, { forms: { CONFLICT: 'shutting-down' } });
     }
     switch (outcome.outcome) {
       case 'retracted':

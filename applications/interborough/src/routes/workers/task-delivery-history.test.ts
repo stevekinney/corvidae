@@ -130,7 +130,7 @@ describe('TaskDeliveryHistory', () => {
       'Unauthorized',
     );
     const fault = renderHistory();
-    expect(await fault.findByText('Not authorized')).not.toBeNull();
+    expect(await fault.findByText('Couldn’t load deliveries')).not.toBeNull();
   });
 });
 
@@ -144,7 +144,7 @@ describe('TaskDeliveryHistory — a failed read', () => {
       'Unauthorized',
     );
     const view = renderHistory();
-    expect(await view.findByText('Not authorized')).not.toBeNull();
+    expect(await view.findByText('Couldn’t load deliveries')).not.toBeNull();
 
     scripted.routeJsonRpcMethod('weft.tasks.deliveries', {
       operationId: 'op_1',

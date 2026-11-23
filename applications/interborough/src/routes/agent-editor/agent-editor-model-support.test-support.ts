@@ -34,11 +34,11 @@ export function optionDescription(option: HTMLElement): string {
   return option.querySelector('[class*="option-description"]')?.textContent?.trim() ?? '';
 }
 
-/** Chooses `value` in the model field: opens it and presses the option. */
-export async function chooseModel(field: HTMLElement, value: string): Promise<void> {
+/** Chooses the option with the visible label in the model field. */
+export async function chooseModel(field: HTMLElement, label: string): Promise<void> {
   const options = await openModelOptions(field);
-  const option = options.find((entry) => optionLabel(entry) === value);
-  if (option === undefined) throw new Error(`Expected ${value} to be offered.`);
+  const option = options.find((entry) => optionLabel(entry) === label);
+  if (option === undefined) throw new Error(`Expected ${label} to be offered.`);
   await fireEvent.mouseDown(option);
 }
 

@@ -158,6 +158,9 @@ Options:
       --jitter <duration>   Deterministic dispatch jitter for create (e.g. 30s, 5m)
   -j, --json                Output results as JSON
   -h, --help                Show this help message
+
+With --json, a failure prints { "ok": false, "error": { "code", "message", "retryable",
+"remediation"? } } on stdout; the exit code is 1 either way.
 `;
 
 export const VALIDATE_HELP_TEXT = `
@@ -214,7 +217,7 @@ export const WORKFLOW_HELP_TEXT = `
 weft workflow - List, inspect, start, signal, and cancel workflows on a server
 
 Usage:
-  weft workflow ls [--type <type>] [--status <status>] [--limit <n>] [options]
+  weft workflow ls [--type <type>] [--status <status>] [--failed-step <step>] [--retrying] [--limit <n>] [options]
   weft workflow get <workflow-id> [options]
   weft workflow events <workflow-id> [options]
   weft workflow start <workflow-type> [--input <json> | --input-file <path|->] [--id <id>] [options]
@@ -227,6 +230,8 @@ Options:
       --profile <name>     Profile from ~/.weft/config
       --type <type>        (ls) Filter by workflow type
       --status <status>    (ls) Filter by workflow status
+      --failed-step <step> (ls) Only failed workflows that stopped at the step with this label
+      --retrying           (ls) Only running workflows that are retrying an activity
       --limit <n>          (ls) Maximum number of rows
       --input <json>       (start/signal) JSON input payload
       --input-file <path>  (start/signal) Read JSON input from a file, or '-' for stdin
@@ -244,6 +249,12 @@ Exit codes:
   3   Usage or input error
   4   Operation unavailable on this server (version skew)
   5   (cancel --dry-run) The workflow was not found
+
+Failures:
+  Without --json, stderr holds the message, then a 'Try:' line when there is a next step.
+  With --json, stdout holds one object and stderr stays empty:
+    { "ok": false, "error": { "code", "message", "retryable", "remediation"? } }
+  "code" is the server's fault code (for example NotFound, Unavailable, InvalidParams).
 `;
 
 export const TAIL_HELP_TEXT = `

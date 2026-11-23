@@ -131,7 +131,7 @@ describe('a call whose approval a person decided', () => {
     const entry = entryDecided(APPROVED);
     const call = railCall(entry, false, { owner: 'anonymous:local', zone: 'America/Chicago' });
     expect(call.status).toBe('approved');
-    expect(call.decision).toBe('Approved by you 10:46 AM, refunded 4200');
+    expect(call.decision).toBe('Approved by you 10:46 AM, Refunded 4200');
   });
 
   test('says where when the page watched it decided on another page', () => {
@@ -142,7 +142,7 @@ describe('a call whose approval a person decided', () => {
       zone: 'America/Chicago',
     };
     expect(railCall(entry, false, context).decision).toBe(
-      'Approved by you in Reviews 10:46 AM, refunded 4200',
+      'Approved by you in Reviews 10:46 AM, Refunded 4200',
     );
   });
 
@@ -165,10 +165,10 @@ describe('a call whose approval a person decided', () => {
         zone: 'America/Chicago',
         continuing: new Set([entry.callId]),
       }).decision,
-    ).toBe('Approved by you 10:46 AM, refunded 4200');
+    ).toBe('Approved by you 10:46 AM, Refunded 4200');
     const stopped = railCall(entry, false, { ...context, continuing: new Set() });
     expect(stopped.status).toBe('approved');
-    expect(stopped.decision).toBe('Approved by you in Reviews 10:46 AM, refunded 4200');
+    expect(stopped.decision).toBe('Approved by you in Reviews 10:46 AM, Refunded 4200');
   });
 
   test('says running only for the decision whose run is still going, not for every decision made in Reviews', () => {
@@ -182,7 +182,7 @@ describe('a call whose approval a person decided', () => {
     };
     expect(decidedLine(going, context)).toBe('Approved by you in Reviews 10:46 AM, running…');
     expect(decidedLine(finished, context)).toBe(
-      'Approved by you in Reviews 10:46 AM, refunded 4200',
+      'Approved by you in Reviews 10:46 AM, Refunded 4200',
     );
     expect(railCall(going, false, context).status).toBe('running');
     expect(railCall(finished, false, context).status).toBe('approved');
@@ -214,7 +214,7 @@ describe('a call whose approval a person decided', () => {
     const entry = entryDecided({ ...APPROVED, decisionSurface: 'reviews' });
     expect(entry.decision?.decisionSurface).toBe('reviews');
     expect(decidedLine(entry, { owner: 'anonymous:local', zone: 'America/Chicago' })).toBe(
-      'Approved by you in Reviews 10:46 AM, refunded 4200',
+      'Approved by you in Reviews 10:46 AM, Refunded 4200',
     );
   });
 
@@ -225,14 +225,14 @@ describe('a call whose approval a person decided', () => {
       elsewhere: new Set([entry.callId]),
       zone: 'America/Chicago',
     };
-    expect(decidedLine(entry, context)).toBe('Approved by you 10:46 AM, refunded 4200');
+    expect(decidedLine(entry, context)).toBe('Approved by you 10:46 AM, Refunded 4200');
   });
 
   test('says nothing of where for a decision that recorded no surface, after a reload (COR-2292)', () => {
     const entry = entryDecided(APPROVED);
     expect(entry.decision).not.toHaveProperty('decisionSurface');
     expect(decidedLine(entry, { owner: 'anonymous:local', zone: 'America/Chicago' })).toBe(
-      'Approved by you 10:46 AM, refunded 4200',
+      'Approved by you 10:46 AM, Refunded 4200',
     );
   });
 

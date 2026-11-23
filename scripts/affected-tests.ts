@@ -18,10 +18,10 @@
  * `test:self:slow`), which hold the `*.slow.test.ts` and `*.integration.test.ts` files: tests that
  * start a process or an out-of-process service, and so depend on how loaded the host is. The
  * isolated lanes run, narrowed to the selection, only with `--isolated` or when a changed file is
- * itself one of those tests, so editing one still runs it.
+ * itself one of those tests. Explicit `--fast-only` keeps both kinds out even when edited.
  *
  * Usage:
- *   bun scripts/affected-tests.ts run [--isolated] [--exclude <test file>]... [--base <rev>] [--changed <path>...]
+ *   bun scripts/affected-tests.ts run [--isolated | --fast-only] [--exclude <test file>]... [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --explain [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --json [--base <rev>] [--changed <path>...]
  *
@@ -351,9 +351,11 @@ export function excludeTests(selection: Selection, excluded: readonly string[]):
   };
 }
 
-/** Whether a changed path is itself an isolated test, which the quick tier still runs. */
-export function touchesIsolatedTest(changed: readonly string[]): boolean {
-  return changed.some((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)));
+/** Explicit lane selection takes precedence over detecting a changed isolated test. */
+export function shouldRunIsolatedTests(changed: readonly string[], isolated?: boolean): boolean {
+  return (
+    isolated ?? changed.some((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)))
+  );
 }
 
 /**
@@ -475,7 +477,7 @@ function parseArguments(argumentsList: readonly string[]) {
     command: 'run',
     base: null as string | null,
     changed: null as string[] | null,
-    isolated: false,
+    isolated: undefined as boolean | undefined,
     exclude: [] as string[],
   };
   let mode: string | null = null;
@@ -485,6 +487,7 @@ function parseArguments(argumentsList: readonly string[]) {
     else if (token === '--explain') mode = 'explain';
     else if (token === '--json') mode = 'json';
     else if (token === '--isolated') options.isolated = true;
+    else if (token === '--fast-only') options.isolated = false;
     else if (token === '--exclude') options.exclude.push(argumentsList[++index] ?? '');
     else if (token === '--base') options.base = argumentsList[++index] ?? null;
     else if (token === '--changed') {
@@ -523,7 +526,7 @@ async function main(): Promise<number> {
     console.log(explain(selection, changed));
     return 0;
   }
-  const isolated = options.isolated || touchesIsolatedTest(changed);
+  const isolated = shouldRunIsolatedTests(changed, options.isolated);
   console.log(explain(selection, changed));
   console.log(
     isolated

@@ -113,16 +113,22 @@ export const DONE_PAGE_SIZE = 25;
  * either feed reports a review (a decision asks too), and every {@link REVIEW_POLL_MILLISECONDS}
  * while either feed is not live. Call it while a component initializes.
  */
-export function waitingReviewsQuery(): CreateQueryResult<readonly ListedReview[]> {
+export function waitingReviewsQuery(
+  options: { readonly enabled?: () => boolean } = {},
+): CreateQueryResult<readonly ListedReview[]> {
   const bureauLive = useBureauEventsLive();
   const fleetLive = useFleetEventsLive();
   return createQuery(() => ({
     queryKey: queryKeys.reviews.inbox('pending'),
     queryFn: ({ signal }) => listPendingReviews({ signal }),
+    enabled: options.enabled?.() ?? true,
     // poll-reason: fallback
     refetchInterval: bureauLive() && fleetLive() ? false : REVIEW_POLL_MILLISECONDS,
-    // The poll (or the next event) asks again, so a failure is not retried in between.
+    // This query is shared by the shell and the page. A newly mounted observer reads the same
+    // failure; the next poll, event or explicit retry still asks the Bureau again.
     retry: false,
+    retryOnMount: false,
+    refetchOnMount: false,
   }));
 }
 
@@ -229,11 +235,8 @@ export function resolveBureauReviewMutation(): CreateMutationResult<
         };
       }
     },
-    // A review that is no longer waiting is said in its place, not as a fault (COR-2426, row 26g);
-    // any other failure is the toast every mutation's failure is.
-    onError: (error) => {
-      if (!isReviewNoLongerWaiting(error)) showFault(faultTreatment(error));
-    },
+    // The Reviews pane owns the inline outcome and retry for this mutation.
+    onError: () => undefined,
     onSettled: () => {
       void invalidateReviewQueries(queryClient);
     },

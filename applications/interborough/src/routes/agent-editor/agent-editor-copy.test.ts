@@ -157,7 +157,7 @@ describe('the seed of a copy', () => {
 describe('Duplicate, on the new agent page', () => {
   test('fills the form from a built-in agent, names the copy, and creates a file agent', async () => {
     const calls = bureau(builtIn());
-    const { findByRole, getByRole, getByTestId } = copyOf('assistant');
+    const { findByRole, getByRole, getByTestId, queryByTestId } = copyOf('assistant');
 
     const name = await findByRole('textbox', { name: /^Name/ });
     expect((name as HTMLInputElement).value).toBe('Assistant copy');
@@ -168,6 +168,7 @@ describe('Duplicate, on the new agent page', () => {
       'Help the person.',
     );
     expect(getByTestId('agent-copied-from').textContent).toContain('Assistant');
+    expect(queryByTestId('agent-copy-dropped-behaviors')).toBeNull();
     // Nothing exists yet: the source was read, and no write was made.
     expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
 
@@ -194,6 +195,47 @@ describe('Duplicate, on the new agent page', () => {
         },
       },
     ]);
+  });
+
+  test('discloses each behavior the code-agent copy leaves out before the editable fields', async () => {
+    const calls = bureau({
+      ...builtIn({ tools: ['lookup-order', 'unavailable-tool'] }),
+      dropped: [
+        'stopWhen',
+        'approvals',
+        'outputSchema',
+        'guardrails',
+        'generate',
+        'future-behavior',
+      ],
+    });
+    const { findByRole, getByTestId } = copyOf('assistant');
+    const name = await findByRole('textbox', { name: /^Name/ });
+    const list = getByTestId('agent-copy-dropped-behaviors');
+
+    expect(Array.from(list.querySelectorAll('li'), (item) => item.textContent)).toEqual([
+      'When it stops. The copy stops at its step limit.',
+      'Asks. Every tool in the copy starts at its default.',
+      'Structured output. The copy’s replies have no fixed shape.',
+      'Guardrails. The copy runs only the default guardrails.',
+      'Its own way of answering. The copy answers with a model instead.',
+      'future-behavior',
+    ]);
+    expect(list.closest('[role="alert"]')).toBe(
+      getByTestId('agent-copy-dropped').closest('[role="alert"]'),
+    );
+    expect(list.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
+  });
+
+  test('starts a blank form without a copy behavior notice or source read', async () => {
+    const calls = bureau({ ...builtIn(), dropped: ['generate'] });
+    router.navigate('/agents/new', { replace: true });
+    const { findByRole, queryByTestId } = render(Harness, { props: {} } as never);
+
+    await findByRole('textbox', { name: /^Name/ });
+    expect(queryByTestId('agent-copy-dropped-behaviors')).toBeNull();
+    expect(calls.callsTo('bureau.agents.definitions.get')).toEqual([]);
   });
 
   test('lets the person rename the copy before it is created', async () => {

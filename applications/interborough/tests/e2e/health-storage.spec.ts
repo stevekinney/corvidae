@@ -69,7 +69,13 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(page.locator('header').getByText('Storage', { exact: true })).toBeVisible();
     await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
     await expect(main.getByText('Live', { exact: true })).toBeVisible();
-    await expect(main.getByRole('tab')).toHaveText(['Overview', 'Workers', 'Storage', 'Audit log']);
+    await expect(main.getByRole('tab')).toHaveText([
+      'Overview',
+      'Runs',
+      'Workers',
+      'Storage',
+      'Audit log',
+    ]);
     await expect(main.getByRole('tab', { name: 'Storage' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -210,6 +216,16 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(main.getByTestId('storage-count')).toHaveText(
       /^(?:\d+ keys?|Showing \d+ of \d+ keys\. Scroll to load more\.)$/,
     );
+
+    await search.fill('audit:v1:');
+    const nextKey = main.getByTestId('storage-key-name');
+    await expect(nextKey).toHaveText(/^audit:v1:/);
+    await expect(page).toHaveURL(/\/health\/storage$/);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'first key after a prefix filter',
+      source: SOURCE,
+    });
 
     // A chosen group and typed text that part ways match nothing.
     await main.getByLabel('Group', { exact: true }).selectOption({ label: 'Chat sessions' });
@@ -701,14 +717,25 @@ test.describe('Health › Storage writes and states', () => {
     // The alert only says it. The three ways on are one row under the editor: Discard my edit and
     // Save over it are secondary, Show new value is the primary, left to right.
     await expect(banner.getByRole('button')).toHaveCount(0);
-    const buttons = pane.locator('.ib-storage-key__actions').getByRole('button');
+    const actions = pane.locator('.ib-storage-key__actions');
+    const buttons = actions.getByRole('button');
     const editorBox = await editor.boundingBox();
-    const rowBox = await pane.locator('.ib-storage-key__actions').boundingBox();
+    const rowBox = await actions.boundingBox();
     expect(rowBox?.y ?? 0).toBeGreaterThan((editorBox?.y ?? 0) + (editorBox?.height ?? 0) - 1);
-    const boxes = await buttons.evaluateAll((all) =>
-      all.map((button) => button.getBoundingClientRect().top),
-    );
-    expect(new Set(boxes.map(Math.round)).size).toBe(1);
+    const geometry = await actions.evaluate((row) => ({
+      width: row.clientWidth,
+      scrollWidth: row.scrollWidth,
+      columnGap: getComputedStyle(row).columnGap,
+      buttons: [...row.querySelectorAll('button')].map((button) => {
+        const { top, width } = button.getBoundingClientRect();
+        return { top, width };
+      }),
+    }));
+    expect(
+      new Set(geometry.buttons.map(({ top }) => Math.round(top))).size,
+      JSON.stringify(geometry),
+    ).toBe(1);
+    expect(geometry.scrollWidth - geometry.width).toBeLessThanOrEqual(1);
     await expect(buttons).toHaveText(['Discard my edit', 'Save over it…', 'Show new value']);
     await expect(buttons.nth(0)).toContainClass('button-variant-secondary');
     await expect(buttons.nth(1)).toContainClass('button-variant-secondary');
@@ -786,29 +813,36 @@ test.describe('Health › Storage writes and states', () => {
     }
   });
 
-  test('nothing selected: the pane says what to do, the table keeps no row highlighted', async ({
+  test('on arrival the pane beside the table opens the first key, and one above the other nothing opens', async ({
     page,
     checkA11y,
   }) => {
-    await openStorage(page);
+    // COR-2445: beside the table the first key opens, so the pane never says "Select a key".
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await page.goto('/health/storage');
     const main = page.locator('main');
+    const first = main.locator('tbody tr[data-cinder-row-id]').first();
+    await expect(first).toBeVisible();
+    await expect(main.locator('.cinder-list-detail')).toHaveAttribute(
+      'data-cinder-layout',
+      'split',
+    );
+    await expect(first).toHaveAttribute('aria-current', 'true');
     const detail = main.locator('.cinder-list-detail__detail');
     await expect(
       detail.getByRole('heading', { name: 'Select a key to see its value' }),
-    ).toBeVisible();
-    await expect(
-      detail.getByText(
-        'Pick a row to read what is stored. Keys Interborough doesn’t manage can also be edited and deleted.',
-      ),
-    ).toBeVisible();
-    await expect(detail.locator('.cinder-empty-state svg')).toBeVisible();
+    ).toHaveCount(0);
+    await checkA11y('health storage, the first key open');
+
+    // With the pane under the table the table is where it starts: nothing opens.
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.goto('/health/storage');
+    await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
+    await expect(main.locator('.cinder-list-detail')).not.toHaveAttribute(
+      'data-cinder-layout',
+      'split',
+    );
     await expect(main.locator('tbody tr[aria-current="true"]')).toHaveCount(0);
-    await captureForDesignReview(page, {
-      route: '/health/storage',
-      state: 'nothing-selected',
-      source: SOURCE,
-    });
-    await checkA11y('health storage, nothing selected');
   });
 
   test('while the keys are read the filters stay, rows appear after 300 ms, Still loading with Cancel after 10 s, and Cancel stops the read', async ({

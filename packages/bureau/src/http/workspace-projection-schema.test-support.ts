@@ -205,6 +205,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The abort receipt contains only the upload identity and whether an upload was aborted (upload abort output schema).',
   'bureau.workflows.signal':
     'The signal receipt contains started run identifiers and delivered or rejected counts, not the signal payload (workflow signal output schema).',
+  'bureau.workflows.concurrency':
+    'The concurrency snapshot contains only the configured maximum and a running count, not workflow input or result (workflowsConcurrencyOperation).',
   'bureau.goals.cancel':
     'The cancellation receipt contains the goal identifier, outcome, status and revision; it does not return the cancellation reason (goals cancel output schema).',
   'bureau.goals.update':
@@ -225,6 +227,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'historyRuns projects bounded event type, time, step and summary and never returns raw event data (workflow-runtime historyEventOf).',
   'bureau.runs.timeline':
     'projectRunTimeline copies a step’s label, kind, status, start, duration and tries from an allowlist and never an input or output summary (run-timeline.ts).',
+  'bureau.tasks.explain':
+    'The explanation is built from identifiers only: the failure category, the error’s code and kind, the step’s label and the guardrails’ names and outcomes, never an error message, a stack or a flagged text (run-failure-explanation.ts, run-failure-verdicts.ts).',
   'bureau.settings.events':
     'The subscription response is a subscription identifier; its separately inventoried event carries the change (settings event output schema).',
   'bureau.tasks.events':
@@ -267,7 +271,11 @@ export const WORKSPACE_PROJECTION_CONFORMANCE = (() => {
                     'bureau.tasks.list',
                     'bureau.tasks.cancel',
                     'bureau.tasks.inspect',
+                    'bureau.runs.compare',
                     'bureau.tasks.respond',
+                    // A model's explanation is written from the failed run's own error message.
+                    'bureau.tasks.explanation.get',
+                    'bureau.tasks.explanation.generate',
                     'bureau.reviews.resolve',
                     'bureau.audit.query',
                     'bureau.checks.list',

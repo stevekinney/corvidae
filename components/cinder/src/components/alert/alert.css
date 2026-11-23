@@ -60,6 +60,7 @@
   .cinder-alert__content {
     flex: 1;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   /* A heading is the status colour the alert already has, semibold; the body under it reads in the
@@ -184,6 +185,13 @@
     --_cinder-status-base: var(--cinder-status-success-solid);
     --_cinder-status-fg-chroma-light: 0.14;
     --_cinder-status-fg-chroma-dark: 0.12;
+  }
+
+  .cinder-alert[data-cinder-variant='neutral'] {
+    --_cinder-alert-ring: var(--cinder-status-neutral-text);
+    --_cinder-status-base: var(--cinder-status-neutral-text);
+    --_cinder-status-fg-chroma-light: 0.04;
+    --_cinder-status-fg-chroma-dark: 0.04;
   }
 
   .cinder-alert[data-cinder-variant='warning'] {

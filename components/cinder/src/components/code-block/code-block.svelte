@@ -11,9 +11,12 @@
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
   import { IDENTIFIER_ACRONYMS } from '../../utilities/humanize-identifier.ts';
+  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
   import {
+    allowBreaksAtPunctuation,
     annotationToneClass,
+    splitWords,
     decorateHighlightedLines,
     hangWrappedLines,
     keepFlagsWhole,
@@ -44,6 +47,15 @@
 
   const noopScrollFadeAttachment: Attachment<HTMLElement> = () => {};
   const viewportScrollFadeAttachment = overflowFadeEdges('inline');
+  const reserveFloatingMeta = useResizeObserver((entries) => {
+    const meta = entries.at(-1)?.target;
+    const codeBlock = meta?.parentElement;
+    if (!(meta instanceof HTMLElement) || !(codeBlock instanceof HTMLElement)) return;
+    codeBlock.style.setProperty(
+      '--_cinder-code-block-float-meta-width',
+      `${Math.ceil(meta.getBoundingClientRect().width)}px`,
+    );
+  });
 
   // CodeBlock imports no highlighter of its own. It highlights with its
   // `highlighter` prop, else with the one an ancestor published through
@@ -177,6 +189,19 @@
   </small>
 {/snippet}
 
+<!-- A wrapping block's text. A word with a slash, dot, colon or hyphen in it is a box of its own, with
+     a break opportunity after each of them: it moves to the next row whole when it fits one, and
+     breaks at a slash only when it is wider than a row. `<wbr>` is no character, so what is shown
+     and copied is the code as written. No whitespace around the pieces: inside a `pre` it would be
+     text. -->
+{#snippet broken(
+  text: string,
+)}{#each splitWords(text) as run, runIndex (runIndex)}{#if run.pieces.length > 1}<span
+        class="cinder-code-block__word"
+        >{#each run.pieces as piece, index (index)}{piece}{#if index < run.pieces.length - 1}<wbr
+            />{/if}{/each}</span
+      >{:else}{run.text}{/if}{/each}{/snippet}
+
 {#snippet plainCode()}
   {#if hasLineFeatures}
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
@@ -190,7 +215,7 @@
             style:--_cinder-code-block-indent-tabs={wrap ? leadingIndent(text).tabs : undefined}
             >{#if wrap}{#each splitFlags(text) as run, runIndex (runIndex)}{#if run.flag}<span
                     class="cinder-code-block__flag">{run.text}</span
-                  >{:else}{run.text}{/if}{/each}{:else}{text}{/if}</span
+                  >{:else}{@render broken(run.text)}{/if}{/each}{:else}{text}{/if}</span
           >{#each notes as annotation, noteIndex (noteIndex)}{@render note(
               annotation,
             )}{/each}{/each}{#if streaming}{@render caret()}{/if}</code
@@ -199,7 +224,9 @@
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
         >{#if wrap}{#each splitFlags(code) as run, index (index)}{#if run.flag}<span
                 class="cinder-code-block__flag">{run.text}</span
-              >{:else}{run.text}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
+              >{:else}{@render broken(
+                run.text,
+              )}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
       ></pre>
   {/if}
 {/snippet}
@@ -222,7 +249,7 @@
   aria-busy={streaming ? 'true' : undefined}
 >
   {#if metaVisible}
-    <div class="cinder-code-block__meta">
+    <div class="cinder-code-block__meta" {@attach floatingMeta ? reserveFloatingMeta : undefined}>
       {#if language && languageLabelVisible}
         <span class="cinder-code-block__language">{language}</span>
       {/if}
@@ -270,6 +297,7 @@
             {@attach markNumericTokens}
             {@attach wrap ? keepFlagsWhole : noopScrollFadeAttachment}
             {@attach wrap ? hangWrappedLines : noopScrollFadeAttachment}
+            {@attach wrap ? allowBreaksAtPunctuation : noopScrollFadeAttachment}
           >
             {@html highlighted}
           </div>

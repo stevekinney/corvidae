@@ -80,7 +80,7 @@ async function expectNoPluginNameAsWords(page: Page): Promise<void> {
   await expect(page.locator('body')).not.toContainText('e2e-off');
 }
 
-test.describe('the sidebar entries a plugin adds', () => {
+test.describe('/ plugin sidebar entries', () => {
   test('sit in their declared group after the built-ins, in load order, with a Plugin badge, the same height, and a tooltip', async ({
     page,
   }) => {
@@ -141,7 +141,7 @@ test.describe('the sidebar entries a plugin adds', () => {
     });
   });
 
-  test.describe('on a phone', () => {
+  test.describe('/ on a phone', () => {
     test.use({ viewport: { width: 375, height: 812 } });
 
     test('are in the navigation drawer in the same order, and the bottom tab bar is unchanged', async ({
@@ -172,7 +172,7 @@ test.describe('the sidebar entries a plugin adds', () => {
   });
 });
 
-test.describe('the command palette', () => {
+test.describe('/ plugin command palette entries', () => {
   test('lists every page under Go to, with where it comes from, including a page with no sidebar entry', async ({
     page,
   }) => {
@@ -202,7 +202,7 @@ test.describe('the command palette', () => {
   });
 });
 
-test.describe('a plugin’s page', () => {
+test.describe('/plugins/:plugin/*', () => {
   test('opens from its sidebar entry, under a header of its title and "From <plugin>", and fills the outlet', async ({
     page,
   }) => {
@@ -462,7 +462,7 @@ test.describe('a plugin’s page', () => {
   });
 });
 
-test.describe('the Plugins page', () => {
+test.describe('/settings/plugins', () => {
   test('names a changed panel by its title, and by its identifier in monospace only when it has none', async ({
     page,
   }) => {

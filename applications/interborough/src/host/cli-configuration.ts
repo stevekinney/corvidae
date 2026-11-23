@@ -5,6 +5,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 import { request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
+import { cliPreview, isDryRun, previewTargetNotFound } from './cli-destructive.ts';
 
 type RecordValue = Record<string, unknown>;
 
@@ -156,10 +157,71 @@ async function hostMutation(
   });
 }
 
+/**
+ * `--dry-run` for a change to a host route, which has no dry run of its own: read the list the
+ * target is in, say what the command would send, and send nothing. A target the list lacks is
+ * not found.
+ */
+async function previewHostMutation(
+  target: CliTarget,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+  change: {
+    readonly kind: string;
+    readonly id: string;
+    /** The host route that lists the target, which `hostMutation` also reads the revision from. */
+    readonly listPath: string;
+    /** The list's key for its rows, and the row member that names one. */
+    readonly rowsKey: string;
+    readonly rowKey: string;
+    readonly method: 'PUT' | 'DELETE';
+    readonly path: string;
+    readonly body: RecordValue;
+  },
+): Promise<CliCommandResult> {
+  const listing = await request(target, change.listPath, parsed, dependencies);
+  const rows = record(listing.data)[change.rowsKey];
+  const row = (Array.isArray(rows) ? rows : []).find(
+    (candidate) => record(candidate)[change.rowKey] === change.id,
+  );
+  if (row === undefined) throw previewTargetNotFound(change.kind, change.id);
+  // The row's plain fields only: a plugin's stored configuration is not repeated here.
+  const current = Object.fromEntries(
+    Object.entries(record(row)).filter(
+      ([key, value]) =>
+        ['id', 'name', 'kind', 'enabled', 'status', 'connected'].includes(key) &&
+        ['string', 'boolean', 'number'].includes(typeof value),
+    ),
+  );
+  return cliPreview({
+    target: { kind: change.kind, id: change.id },
+    current,
+    wouldSend: {
+      method: change.method,
+      path: change.path,
+      body: {
+        ...change.body,
+        expectedRevision: option(parsed, 'expected-revision') ?? revisionOf(listing.data),
+      },
+    },
+  });
+}
+
 async function providers(target: CliTarget, parsed: Parsed, dependencies: CliClientDependencies) {
   const action = parsed.arguments[0] ?? 'list';
   if (action === 'list') return request(target, '/host/providers', parsed, dependencies);
   const name = identifier(parsed, 1);
+  if (action === 'disconnect' && isDryRun(parsed))
+    return previewHostMutation(target, parsed, dependencies, {
+      kind: 'provider',
+      id: name,
+      listPath: '/host/providers',
+      rowsKey: 'providers',
+      rowKey: 'name',
+      method: 'DELETE',
+      path: `/host/providers/${encodeURIComponent(name)}`,
+      body: {},
+    });
   if (action === 'disconnect')
     return hostMutation(
       target,
@@ -244,6 +306,17 @@ async function toolSources(target: CliTarget, parsed: Parsed, dependencies: CliC
   const action = parsed.arguments[0] ?? 'list';
   if (action === 'list') return request(target, '/host/tool-sources', parsed, dependencies);
   const id = identifier(parsed, 1);
+  if (action === 'remove' && isDryRun(parsed))
+    return previewHostMutation(target, parsed, dependencies, {
+      kind: 'tool source',
+      id,
+      listPath: '/host/tool-sources',
+      rowsKey: 'sources',
+      rowKey: 'id',
+      method: 'DELETE',
+      path: `/host/tool-sources/${encodeURIComponent(id)}`,
+      body: {},
+    });
   if (action === 'remove')
     return hostMutation(
       target,
@@ -309,6 +382,17 @@ async function plugins(target: CliTarget, parsed: Parsed, dependencies: CliClien
   const action = parsed.arguments[0] ?? 'list';
   if (action === 'list') return request(target, '/host/plugins', parsed, dependencies);
   const name = identifier(parsed, 1);
+  if (action === 'disable' && isDryRun(parsed))
+    return previewHostMutation(target, parsed, dependencies, {
+      kind: 'plugin',
+      id: name,
+      listPath: '/host/plugins',
+      rowsKey: 'plugins',
+      rowKey: 'name',
+      method: 'PUT',
+      path: `/host/plugins/${encodeURIComponent(name)}`,
+      body: { enabled: false },
+    });
   if (action === 'enable' || action === 'disable')
     return hostMutation(
       target,

@@ -6,15 +6,17 @@ import { isOfferedInChat } from '../../lib/agent-visibility.ts';
 import type { AgentSummary } from '../../lib/bureau-client.ts';
 
 /**
- * The Assistant a host lists, or `undefined`: `assistant`, or a plugin's copy of it
+ * The Assistant a host offers in Chat, or `undefined`: `assistant`, or a plugin's copy of it
  * (`demo:assistant`). Assistant is scripted and needs no model, but a host only has one where a
  * plugin contributes it (the demo plugin, off by default) or the host registers one, so a page that
  * offers Assistant asks first.
  */
-export function findAssistant(agents: readonly Pick<AgentSummary, 'name'>[]): string | undefined {
+export function findAssistant(
+  agents: readonly Pick<AgentSummary, 'name' | 'visibility'>[],
+): string | undefined {
   return (
-    agents.find((agent) => agent.name === 'assistant') ??
-    agents.find((agent) => agent.name.endsWith(':assistant'))
+    agents.find((agent) => agent.name === 'assistant' && isOfferedInChat(agent)) ??
+    agents.find((agent) => agent.name.endsWith(':assistant') && isOfferedInChat(agent))
   )?.name;
 }
 
@@ -27,8 +29,7 @@ export function findAssistant(agents: readonly Pick<AgentSummary, 'name'>[]): st
 export function startingAgent(
   agents: readonly Pick<AgentSummary, 'name' | 'visibility'>[],
 ): string | undefined {
-  const offered = agents.filter((agent) => isOfferedInChat(agent));
-  return findAssistant(offered) ?? offered[0]?.name;
+  return findAssistant(agents) ?? agents.find((agent) => isOfferedInChat(agent))?.name;
 }
 
 /**

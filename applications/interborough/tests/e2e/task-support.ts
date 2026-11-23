@@ -2,12 +2,21 @@
  * What the Tasks and Reviews specs share: finding the task a session's run became, and the AG-UI
  * mount's own record of what a tool did.
  */
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Locator } from '@playwright/test';
 
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, type PageErrorLog } from './fixtures.ts';
 
 type TaskRow = { id: string; contextId: string; status: string };
+
+/** Approves through the visible controls, confirming irreversible calls. */
+export async function approveReview(pane: Locator): Promise<void> {
+  const button = pane.getByRole('button', { name: 'Approve', exact: true });
+  const card = pane.locator('article[data-cinder-risk]');
+  const irreversible = (await card.getAttribute('data-cinder-risk')) === 'high';
+  await button.click();
+  if (irreversible) await pane.getByRole('button', { name: 'Press again to approve' }).click();
+}
 
 /** Calls one Bureau operation as the page does and returns its result. */
 export async function bureauCall(

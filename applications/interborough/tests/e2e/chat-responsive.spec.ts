@@ -14,6 +14,7 @@ import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
 import { rewriteBureauAnswer } from './bureau-answer-support.ts';
+import { hideModelPicker, revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -31,10 +32,10 @@ const LONG_TITLE = 'Please refund order 4471, it arrived damaged.';
 const REASON = 'Connect a model provider';
 const CONNECT = 'Connect provider';
 
-/** Opens `path` at `width` by 812 pixels on the sample clock. */
-async function open(page: Page, width: number, path: string): Promise<void> {
+/** Opens `path` at the requested viewport on the sample clock. */
+async function open(page: Page, width: number, path: string, height = 812): Promise<void> {
   await page.clock.setFixedTime(SAMPLE_NOW);
-  await page.setViewportSize({ width, height: 812 });
+  await page.setViewportSize({ width, height });
   await page.goto(path);
 }
 
@@ -61,6 +62,39 @@ const trail = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' 
 const chatList = (page: Page) => page.getByRole('region', { name: 'Chats' });
 const openChat = (page: Page) => page.getByRole('region', { name: 'Open chat' });
 const blockedRow = (page: Page) => page.locator('[data-chat-composer-status="blocked"]');
+
+test('Warning indicator in Chat', async ({ page }) => {
+  await connectProvider(page);
+  await rewriteBureauAnswer(page, 'bureau.contexts.window', (answer) => ({
+    ...answer,
+    maxTokens: 100_000,
+    usedEstimated: 80_000,
+    usedReported: null,
+    categories: [{ name: 'messages', tokens: 80_000 }],
+  }));
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+
+  const meter = page.locator('.weft-context-meter');
+  await expect(meter).toHaveAttribute('data-tone', 'warning');
+  await expect(meter).toHaveAccessibleName(/80%/);
+  await expect(meter.locator('[role="meter"]')).toHaveAttribute('data-cinder-state', 'low');
+  const indicator = await meter.evaluate((trigger) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--cinder-status-warning-indicator)';
+    trigger.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expect(meter.locator('.cinder-meter__fill')).toHaveCSS('background-color', indicator);
+  await captureForDesignReview(page, {
+    route: '/chats/:chat',
+    state: 'context window 80% warning',
+    source: SOURCE,
+  });
+});
 
 /**
  * The waiting approval's placement, read in one layout pass: the transcript's box, the card's box,
@@ -189,6 +223,120 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   // A button's 44px hit area exists only under a coarse pointer, so the phone is a touch phone.
   test.use({ hasTouch: true, isMobile: true });
 
+  test('opens the decision deck beside the ordinary tool approval controls (COR-2452)', async ({
+    page,
+  }) => {
+    await open(page, 320, `/chats/${SAMPLE_WORLD_THREADS.refund}`, 640);
+    const approval = page.locator('[data-approval-decision]');
+    await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
+    await approval.getByRole('button', { name: 'Review in deck' }).click();
+    const deck = page.getByRole('dialog', { name: 'Review tool approval' });
+    const irreversible = deck.getByText('Approval can’t be undone.', { exact: true });
+    await expect(deck).toContainText('Refund order 4471 for $42.00?');
+    await expect(irreversible).toBeInViewport({ ratio: 1 });
+    await expect(deck).toContainText('4200');
+    await expect(deck.getByRole('button', { name: 'Back to approval controls' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'tool approval decision deck',
+      source: SOURCE,
+    });
+    for (const decision of ['Approve', 'Deny', 'Later']) {
+      const button = deck.getByRole('button', { name: decision, exact: true });
+      await expect(button).toBeInViewport({ ratio: 1 });
+      const bounds = await button.boundingBox();
+      expect(bounds?.height).toBeLessThanOrEqual(36);
+      await button.click({ trial: true });
+    }
+    const reasonField = deck
+      .locator('.cinder-payload-inspector__field')
+      .filter({ has: page.getByText('Reason', { exact: true }) });
+    const reasonValue = reasonField.locator('dd');
+    await expect(reasonValue).toHaveText('Arrived damaged');
+    // Scroll just the modal body. Scrolling the target through Playwright also moves its ancestor
+    // scrollports and the mobile viewport can capture the footer before its new paint.
+    const showLowerPayload = async () => {
+      await deck.locator('.cinder-modal__body').evaluate(async (body) => {
+        body.scrollTop = body.scrollHeight;
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+      });
+      await expect(reasonValue).toBeInViewport({ ratio: 1 });
+      await expect(irreversible).toBeInViewport({ ratio: 1 });
+      for (const name of ['Deny', 'Later', 'Approve']) {
+        await expect(deck.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+      }
+    };
+    await showLowerPayload();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'tool approval decision deck payload scrolled',
+      source: SOURCE,
+      ready: showLowerPayload,
+    });
+    await deck.getByRole('button', { name: 'Deny' }).click();
+    await expect(deck.getByRole('button', { name: 'Confirm denial' })).toBeVisible();
+    await expect(deck).toContainText('4200');
+    await deck.getByRole('button', { name: 'Undo' }).click();
+    await expect(deck.getByRole('button', { name: 'Confirm denial' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(deck).toHaveCount(0);
+    await expect(approval.getByRole('button', { name: 'Review in deck' })).toBeFocused();
+  });
+
+  test('keeps stacked composer drawers within 40 percent of a 640px phone (COR-2452)', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 375, height: 640 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
+    await page.locator('.chat-timeline').first().hover();
+    await page.mouse.wheel(0, -4000);
+    const approval = page.locator('[data-chat-approval-drawer]');
+    await expect(approval).toBeVisible();
+
+    const composer = page.getByRole('textbox', { name: /^Message/ });
+    const queue = page.locator('[data-chat-follow-up-drawer]');
+    for (let index = 1; index <= 8; index += 1) {
+      const followUp = `Please check the shipping record at position ${index}.`;
+      await composer.fill(followUp);
+      await composer.press('Enter');
+      await expect(queue.getByText(followUp)).toBeAttached();
+    }
+    await expect(approval).toBeVisible();
+    const stack = await approval.evaluate((first) => {
+      const second = document.querySelector('[data-chat-follow-up-drawer]')!;
+      const viewport = first.closest<HTMLElement>('[data-chat-composer-drawers]');
+      const inputArea = first.closest<HTMLElement>('.chat-input-area')!;
+      return {
+        drawersHeight:
+          viewport?.getBoundingClientRect().height ??
+          second.getBoundingClientRect().bottom - first.getBoundingClientRect().top,
+        dockHeight: inputArea.getBoundingClientRect().height,
+        viewport: window.innerHeight,
+      };
+    });
+    expect(stack.viewport).toBe(640);
+    expect(stack.drawersHeight).toBeLessThanOrEqual(stack.viewport * 0.4);
+    expect(stack.dockHeight).toBeLessThanOrEqual(stack.viewport * 0.4);
+    await expect(approval.getByRole('button', { name: 'Review approval' })).toBeVisible();
+    await expect(composer).toBeVisible();
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 640 });
+      const composerBounds = await composer.boundingBox();
+      expect(composerBounds?.width).toBeGreaterThan(width / 2);
+      await expect(composer).toBeInViewport({ ratio: 1 });
+    }
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'bounded stacked composer drawers',
+      source: SOURCE,
+    });
+  });
+
   test('lists the chats as a screen of its own: the status, a dot, then the latest message on line two (06l)', async ({
     page,
   }) => {
@@ -316,9 +464,10 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(read.more).not.toBeNull();
     expect(read.more!.height).toBeLessThanOrEqual(32.5);
     expect(read.title).not.toBeNull();
-    expect(read.title!.height).toBeLessThanOrEqual(30.5);
-    // The title switcher sits a little above the top bar's centre, so the top bar's trail must not
-    // clip its hit area vertically (CI run 43635945611 found it cut at the top).
+    // A medium Button's painted height, as the search field beside it (COR-2438).
+    expect(read.title!.height).toBeLessThanOrEqual(32.5);
+    // The top bar's trail must not clip the title switcher's hit area vertically (CI run
+    // 43635945611 found it cut at the top).
     for (const [name, control] of [
       ['More', read.more!],
       ['title switcher', read.title!],
@@ -337,6 +486,18 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
+    await expect(trail(page).getByRole('button', { name: REFUND })).toBeVisible();
+    const header = page.getByTestId('chat-header');
+    await expect(header.getByRole('heading', { level: 1, name: REFUND })).toHaveCSS(
+      'clip-path',
+      'inset(50%)',
+    );
+    await expect(header).not.toContainText('Waiting on you');
+    const waiting = openChat(page).getByText('Waiting on you', { exact: true }).filter({
+      visible: true,
+    });
+    await expect(waiting).toHaveCount(1);
+    await expect(waiting).toHaveAttribute('data-cinder-variant', 'warning');
     // Nothing was typed: the page focused the card by script as it opened, and a script focus draws
     // no ring unless the keyboard was the last input (the owner's comment on `grid-card-320`).
     await expect(row).toHaveCSS('outline-style', 'none');
@@ -383,6 +544,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       };
       // The next drawn surface in the docked stack: the blocked row or the composer.
       let next = element.nextElementSibling;
+      next ??= element.closest('[data-chat-composer-drawers]')?.nextElementSibling ?? null;
       while (next !== null && next.getBoundingClientRect().height === 0) {
         next = next.nextElementSibling;
       }
@@ -426,6 +588,61 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(
       reminder.drawer.x + reminder.drawer.width - (reminder.button.x + reminder.button.width),
     ).toBeLessThan(20);
+  });
+
+  test('a waiting approval stays actionable when the chat narrows from 375 to 320', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const approval = page.locator('[data-approval-decision]');
+    await expect(approval).toBeFocused();
+    const tool = page.getByRole('button', { name: /Issue refund/ }).first();
+    await expect(tool).toBeVisible();
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await page.setViewportSize({ width: 320, height: 640 });
+
+    const readToolTarget = () =>
+      tool.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const top = element.closest('.chat-timeline')?.scrollTop ?? 0;
+        const points = [
+          [rect.left + 2, rect.top + 2],
+          [rect.right - 2, rect.top + 2],
+          [rect.left + 2, rect.bottom - 2],
+          [rect.right - 2, rect.bottom - 2],
+        ];
+        return {
+          scrollTop: top,
+          corners: points.map(([x, y]) => element.contains(document.elementFromPoint(x!, y!))),
+        };
+      });
+    const expectArrival = async () => {
+      const layout = await readApprovalPlacement(page);
+      expectDecisionInView(layout);
+      expectQuestionAndApproveInView(layout);
+      const target = await readToolTarget();
+      expect(target.corners).toEqual([true, true, true, true]);
+    };
+    await expect(expectArrival).toPass();
+    const placed = await readToolTarget();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await expectArrival();
+    const settled = await readToolTarget();
+    expect(settled.scrollTop).toBe(placed.scrollTop);
+    await expect(approval).toBeFocused();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'approval rests after narrowing',
+      source: SOURCE,
+      ready: expectArrival,
+    });
   });
 
   test('at 320 by 640 with a provider connected, the waiting approval’s decision row is in view and not covered by the live composer (COR-2327 B1)', async ({
@@ -653,12 +870,12 @@ test.describe('The composer at desktop width', () => {
     const composer = page.locator('.chat-input').first();
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
     const settings = page.getByRole('button', { name: 'Settings: Model, Effort and Permissions' });
-    await expect(
-      page
-        .getByRole('combobox', { name: /Permissions/ })
-        .or(settings)
-        .first(),
-    ).toBeVisible();
+    await revealSettings(page, [
+      { name: 'Model', text: 'Claude Sonnet 5.5' },
+      { name: 'Effort', text: 'Medium' },
+      { name: 'Permissions', text: 'On changes asks' },
+    ]);
+    await hideModelPicker(page);
     // Whatever stays in the row is drawn whole: nothing in it is clipped to an ellipsis.
     const clipped = await composer.locator('.chat-input-footer-left').evaluate((footer) =>
       [footer, ...footer.querySelectorAll<HTMLElement>('*')]
@@ -668,6 +885,21 @@ test.describe('The composer at desktop width', () => {
         .map((element) => element.textContent?.trim()),
     );
     expect(clipped).toEqual([]);
+    // A full control may overflow its left flex group without ellipsizing. It must fold before it
+    // reaches the meter or Send, rather than merely painting its value underneath them.
+    const controlsPastMeter = await composer.locator('.chat-input-footer').evaluate((footer) => {
+      const right = footer.querySelector<HTMLElement>('.chat-input-footer-right')!;
+      const rightEdge = right.getBoundingClientRect().left;
+      return [
+        ...footer.querySelectorAll<HTMLElement>(
+          '.chat-input-attach, [role="combobox"], [data-testid="composer-settings"]',
+        ),
+      ]
+        .filter((control) => control.getBoundingClientRect().width > 0)
+        .filter((control) => control.getBoundingClientRect().right > rightEdge + 0.5)
+        .map((control) => control.getAttribute('aria-label') ?? control.textContent?.trim());
+    });
+    expect(controlsPastMeter).toEqual([]);
     if ((await composer.getAttribute('data-controls-folded')) !== null) {
       await expect(settings).toBeVisible();
       await expect(page.getByRole('combobox', { name: /Permissions/ })).toHaveCount(0);
@@ -676,13 +908,12 @@ test.describe('The composer at desktop width', () => {
 });
 
 test.describe('Keyboard hints on a phone', () => {
-  test('a phone with a mouse names the number keys under a question and the Enter keys under the composer', async ({
-    page,
-  }) => {
+  test('a phone with a mouse names the two choice keys under the question', async ({ page }) => {
     await connectProvider(page);
     await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
     await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
-    await expect(page.getByText(CHAT_COPY.pickHint)).toBeVisible();
+    await expect(page.getByText('Press 1 to 2 to pick a choice.')).toBeVisible();
+    await expect(page.locator('.weft-chat-question')).toHaveCSS('border-top-style', 'none');
   });
 
   test.describe('on a touch-only device', () => {
@@ -694,13 +925,13 @@ test.describe('Keyboard hints on a phone', () => {
       await connectProvider(page);
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
       await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
-      await expect(page.getByText(CHAT_COPY.pickHint)).toHaveCount(1);
-      await expect(page.getByText(CHAT_COPY.pickHint)).toBeHidden();
+      await expect(page.getByText(CHAT_COPY.pickHint(2))).toHaveCount(1);
+      await expect(page.getByText(CHAT_COPY.pickHint(2))).toBeHidden();
 
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
       await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
-      await expect(page.locator('.chat-input-hint')).toHaveCount(1);
-      await expect(page.locator('.chat-input-hint')).toBeHidden();
+      // No hint under the composer at all, on any device (COR-2438).
+      await expect(page.locator('.chat-input-hint')).toHaveCount(0);
     });
   });
 });

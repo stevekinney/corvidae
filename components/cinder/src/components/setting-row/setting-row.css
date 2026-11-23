@@ -192,6 +192,20 @@
     border-radius: var(--cinder-radius-sm);
   }
 
+  @media (any-pointer: coarse) {
+    .cinder-setting-row__retry {
+      position: relative;
+    }
+
+    /* Keep the inline link's line height while making the button easier to touch. */
+    .cinder-setting-row__retry::after {
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+      content: '';
+    }
+  }
+
   /* Narrow: the label and its description lead, the control stacks under them, and the status, the
      managed line and the error sit directly under the control (row 50i). Order reads the lines
      into that sequence whatever the markup order is. */

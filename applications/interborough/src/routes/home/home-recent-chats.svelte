@@ -28,7 +28,7 @@
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { listIsClear } from '../../lib/worth-showing.ts';
-  import { pendingQuestions, type ChatStatusWord } from '../chat/session-groups.ts';
+  import { pendingQuestions, waitingChatIds, type ChatStatusWord } from '../chat/session-groups.ts';
   import { bureauReviewsQuery } from '../reviews/reviews-data.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
@@ -56,6 +56,9 @@
       pendingQuestions(reviews.data ?? []),
       chatsWithFailedRun(tasks.data?.tasks ?? []),
       clock(),
+      undefined,
+      // Waiting on you as the chat list and the chat itself say it (COR-2438).
+      new Set(waitingChatIds(reviews.data ?? [])),
     ),
   );
 </script>
@@ -69,6 +72,7 @@
     {#if chats.data === undefined && chats.isError}
       <HomeCardError
         title={HOME_COPY.states.cardFailed.recent}
+        error={chats.error}
         onRetry={() => void chats.refetch()}
       />
     {:else if chats.data === undefined}

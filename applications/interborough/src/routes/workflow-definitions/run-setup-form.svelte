@@ -31,12 +31,12 @@
     type ScheduleValue,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { untrack, type Snippet } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
 
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
-  import { getSettings } from '../../lib/bureau-settings.ts';
+  import { bureauClient } from '../../lib/bureau-api.ts';
   import { getClient } from '../../lib/client.ts';
   import { isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -45,22 +45,19 @@
   import { startingSchedules } from '../../lib/workflow-catalog.ts';
   import { startWorkflowFile } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
-  import { parseWorkflowAggregateResult } from '../health/aggregate-output.ts';
-  import { aggregateInputFor, WORKING_NOW_FILTER } from '../health/health-counts.ts';
   import {
     browserTimeZone,
     scheduleValueTimeZone,
     scheduleValueToWireSpec,
   } from '../schedules/cadence.ts';
-  import { MAX_NAME_LENGTH } from '../schedules/new-schedule-model.ts';
-  import { createSchedule } from '../schedules/schedule-queries.ts';
+  import { MAX_NAME_LENGTH, takenNameOf } from '../schedules/new-schedule-model.ts';
+  import { createSchedule, fetchScheduleList } from '../schedules/schedule-queries.ts';
   import { cadenceText } from '../schedules/schedule-cadence-text.ts';
   import ScheduleWhen from '../schedules/schedule-when.svelte';
   import {
     actionOffReason,
     inputIssuesOf,
     missingRequiredField,
-    runsAtLimit,
     summaryOf,
     takesNoInput,
     type InputState,
@@ -85,6 +82,8 @@
      * @default 'ready'
      */
     input?: 'ready' | 'loading' | 'failed' | 'unreadable';
+    /** Whether verified catalog metadata can keep a JSON input available after the detail read failed. */
+    fallback?: boolean;
     /** Why the primary action is off, which is said beside it; `undefined` while it is on. */
     block?: StartBlock | undefined;
     /** What the workflow is called: its title, or its identifier when the file gives none. */
@@ -104,7 +103,8 @@
     kind,
     schema,
     input: inputMode = 'ready',
-    block,
+    fallback = false,
+    block: pageBlock,
     identity,
     trigger,
     notice,
@@ -116,9 +116,24 @@
   const client = getClient();
   const queryClient = useQueryClient();
   const principal = getPrincipalStore();
+  let jsonEscapeOpen = $state(false);
+  const block = $derived(pageBlock ?? (fallback && !jsonEscapeOpen ? 'unloaded' : undefined));
+
+  const scheduleGate = $derived(scopeGate(principal, ['schedules:write']));
+  const startGate = $derived(
+    kind === 'code'
+      ? scopeGate(principal, ['workflows:write'])
+      : { disabled: false, title: undefined },
+  );
+  const nowOnly = $derived(scheduleGate.disabled && !startGate.disabled);
+  $effect(() => {
+    if (nowOnly && whenChoice === 'schedule') whenChoice = 'now';
+  });
 
   /** `RadioGroup` holds its choice as a plain string. */
-  const when = $derived<'now' | 'schedule'>(whenChoice === 'schedule' ? 'schedule' : 'now');
+  const when = $derived<'now' | 'schedule'>(
+    !nowOnly && whenChoice === 'schedule' ? 'schedule' : 'now',
+  );
   let cadence = $state<ScheduleValue>({ cron: '0 9 * * *', timeZone: browserTimeZone() });
   let overlap = $state('skip');
   let catchUp = $state(false);
@@ -165,13 +180,20 @@
 
   /** The input, which the footer asks for and the Bureau's or the engine's refusal goes back to. */
   let inputField = $state<ReturnType<typeof WorkflowInput<Choice>>>();
+  async function openJsonEscape(): Promise<void> {
+    jsonEscapeOpen = true;
+    await tick();
+    inputField?.focusJson();
+  }
   /** The When block, which says whether the cadence it shows is one it emitted. */
   let whenBlock = $state<ReturnType<typeof ScheduleWhen>>();
   /**
    * Whether a start is in flight. It is set before the first `await`, because the mutation's own
    * `isPending` turns true a tick after `mutate`, and two asks can arrive in that tick.
    */
-  let sending = false;
+  let sending = $state(false);
+  /** Kept after a lost answer, so retrying Start run replays the same durable request. */
+  const manualStartKeys = new Map<string, string>();
 
   /** The choices the footer's ask was made with, which the start sends whatever changes while the input is checked. */
   type Choice = {
@@ -180,11 +202,35 @@
     readonly name: string;
     readonly overlap: string;
     readonly catchUp: boolean;
+    readonly idempotencyKey: string | undefined;
   };
 
   type Outcome =
     | { readonly kind: 'run'; readonly runId: string }
     | { readonly kind: 'schedule'; readonly id: string };
+
+  function canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+    if (typeof value === 'object' && value !== null) {
+      const members = Object.keys(value as Record<string, unknown>)
+        .toSorted()
+        .flatMap((key) => {
+          const member = (value as Record<string, unknown>)[key];
+          return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
+        });
+      return `{${members.join(',')}}`;
+    }
+    return JSON.stringify(value) ?? 'null';
+  }
+
+  function manualStartKeyFor(value: unknown): string {
+    const snapshot = canonicalJson(value ?? null);
+    const existing = manualStartKeys.get(snapshot);
+    if (existing !== undefined) return existing;
+    const key = crypto.randomUUID();
+    manualStartKeys.set(snapshot, key);
+    return key;
+  }
 
   const run = createMutation(() => ({
     mutationFn: async (variables: Choice & { readonly input: unknown }): Promise<Outcome> => {
@@ -203,10 +249,15 @@
         return { kind: 'schedule', id: created.id };
       }
       if (kind === 'file') {
-        const started = await startWorkflowFile(type, variables.input);
+        const started = await startWorkflowFile(type, variables.input, variables.idempotencyKey);
         return { kind: 'run', runId: started.runId };
       }
-      const handle = await client.start(type, variables.input);
+      const handle =
+        variables.idempotencyKey === undefined
+          ? await client.start(type, variables.input)
+          : await client.start(type, variables.input, {
+              idempotencyKey: variables.idempotencyKey,
+            });
       return { kind: 'run', runId: handle.id };
     },
     onMutate: () => {
@@ -227,14 +278,16 @@
     onError: (error, variables) => {
       const refused = inputIssuesOf(error);
       if (refused !== null) {
+        if (variables.idempotencyKey !== undefined) {
+          manualStartKeys.delete(canonicalJson(variables.input ?? null));
+        }
         inputField?.refuse(refused);
         return;
       }
       const scheduled = variables.when === 'schedule';
       if (isNetworkFailure(error)) {
-        // The request may have reached the Bureau before the answer was lost, and a start carries no
-        // key that would make a second ask the same one, so a second ask could create a second run:
-        // say it may have happened, and where to look, never that nothing started.
+        // The request may have reached the Bureau before the answer was lost. An exact retry retains
+        // its key, but a changed input is intentionally a new request, so say it may have happened.
         failure = {
           title: scheduled ? copy.scheduleMaybe : copy.startMaybe,
           message: copy.lostDescription,
@@ -244,6 +297,10 @@
             : { label: copy.checkRuns, path: '/runs' },
         };
         return;
+      }
+      // A response proves this request did not create a run, so the next press is a new request.
+      if (variables.idempotencyKey !== undefined) {
+        manualStartKeys.delete(canonicalJson(variables.input ?? null));
       }
       // The service answered with a refusal, so nothing was done, and the ask can be made again.
       const title = scheduled ? copy.scheduleFailed : copy.startFailed;
@@ -319,49 +376,23 @@
     schedules.isSuccess && startedBy.length === 0 && trigger?.kind !== 'schedule',
   );
 
-  /**
-   * The engine's cap on runs at once, read on load. The value in force is the one the host booted
-   * with (`running`): the key applies on restart, so a saved value may not be in force yet. A
-   * caller who may not read the settings is told nothing, and Now reads as it always does.
-   */
-  const settings = createQuery(() => ({
-    queryKey: queryKeys.settings.snapshot(),
-    queryFn: ({ signal }: { signal: AbortSignal }) => getSettings({ signal }),
-    retry: false,
-  }));
-  /**
-   * The runs that are going, by type, so the types the Bureau runs itself (which never take a slot)
-   * can be left out. The count is the engine's, which only a caller who may read runs is given.
-   */
-  const running = createQuery(() => ({
-    queryKey: queryKeys.workflows.aggregate('type', WORKING_NOW_FILTER),
-    queryFn: async () =>
-      parseWorkflowAggregateResult(
-        await client.operations['weft.workflows.aggregate']({
-          ...aggregateInputFor(WORKING_NOW_FILTER),
-          groupBy: 'type' as const,
-        }),
-      ),
+  /** The durable engine's exact executing set, rather than persisted statuses such as suspended. */
+  const concurrency = createQuery(() => ({
+    queryKey: ['workflow-concurrency'],
+    queryFn: ({ signal }) => bureauClient['bureau.workflows.concurrency']({}, { signal }),
     enabled: principal.hasScope('workflows:read'),
     retry: false,
   }));
-  /** The cap, when as many runs as it allows are going: a run started now waits for one to finish. */
-  const atLimit = $derived(
-    runsAtLimit(
-      settings.data?.running['engine.maxConcurrentRuns'] ??
-        settings.data?.effective['engine.maxConcurrentRuns'],
-      running.data,
-    ),
-  );
+  /** The cap, when every durable-engine slot is executing a workflow run. */
+  const atLimit = $derived.by(() => {
+    const snapshot = concurrency.data;
+    return snapshot !== undefined && snapshot.running >= snapshot.max ? snapshot.max : undefined;
+  });
 
   /** The scope the primary action needs, disabled with its reason when the principal lacks it. */
-  const gate = $derived.by(() => {
-    if (when === 'schedule') return scopeGate(principal, ['schedules:write']);
-    if (kind === 'code') return scopeGate(principal, ['workflows:write']);
-    return { disabled: false, title: undefined };
-  });
+  const gate = $derived(when === 'schedule' ? scheduleGate : startGate);
   /** Whether a start or a schedule is in flight: the form is read-only, and Cancel is off. */
-  const starting = $derived(run.isPending);
+  const starting = $derived(run.isPending || sending);
   const action = $derived(when === 'schedule' ? copy.scheduleAction : copy.startAction);
   const actionLabel = $derived(
     starting ? (when === 'schedule' ? copy.creatingAction : copy.startingAction) : action,
@@ -384,6 +415,37 @@
   function begin(value: unknown, choice: Choice): void {
     if (sending) return;
     sending = true;
+    if (choice.when === 'schedule') {
+      void beginSchedule($state.snapshot(value), choice);
+      return;
+    }
+    run.mutate({
+      input: value,
+      ...choice,
+      ...(choice.when === 'now' && (kind === 'file' || kind === 'code')
+        ? { idempotencyKey: manualStartKeyFor(value) }
+        : {}),
+    });
+  }
+
+  async function beginSchedule(value: unknown, choice: Choice): Promise<void> {
+    try {
+      // The input and schedule fields arrived from the one submitted Choice before this await.
+      const current = await queryClient.fetchQuery({
+        queryKey: ['run-setup-schedule-names', type],
+        queryFn: () => fetchScheduleList(client, {}),
+        staleTime: 0,
+      });
+      if (takenNameOf(choice.name, current.items) !== undefined) {
+        nameError = 'A schedule with this name already exists.';
+        sending = false;
+        await tick();
+        document.getElementById('run-setup-name')?.focus();
+        return;
+      }
+    } catch {
+      // The create remains authoritative when the freshness read cannot answer.
+    }
     run.mutate({ input: value, ...choice });
   }
 
@@ -397,7 +459,16 @@
   /** The footer's ask. The input checks itself, and starts only what this ask submitted. */
   function request(): void {
     if (sending || gate.disabled || block !== undefined) return;
-    if (when === 'schedule') {
+    const submittedWhen = when;
+    const choice: Choice = {
+      when: submittedWhen,
+      cadence: $state.snapshot(cadence),
+      name,
+      overlap,
+      catchUp,
+      idempotencyKey: undefined,
+    };
+    if (submittedWhen === 'schedule') {
       if (whenBlock?.isInvalid() === true) {
         failure = {
           title: copy.scheduleFailed,
@@ -406,20 +477,12 @@
         };
         return;
       }
-      nameError = nameProblem(name);
+      nameError = nameProblem(choice.name);
       if (nameError !== '') {
         document.getElementById('run-setup-name')?.focus();
         return;
       }
     }
-    // The mutation reads the schedule after its first `await`, so it gets a copy the builder cannot change.
-    const choice: Choice = {
-      when,
-      cadence: $state.snapshot(cadence),
-      name,
-      overlap,
-      catchUp,
-    };
     if (noInput) {
       begin(undefined, choice);
       return;
@@ -442,7 +505,7 @@
   }
 </script>
 
-<div class="ib-run-setup__body">
+<div class="ib-run-setup__body" role="region" aria-label={copy.optionsRegion}>
   {@render notice?.()}
 
   <!-- While a start is in flight nothing in the form can be changed: what was sent is what shows. -->
@@ -465,7 +528,7 @@
           onCancel={cancel}
           label={copy.loadingInput}
         />
-      {:else if inputMode === 'failed'}
+      {:else if inputMode === 'failed' || fallback}
         <Alert
           variant="danger"
           heading={copy.inputFailed.title}
@@ -474,6 +537,11 @@
           {copy.inputFailed.description}
           {#snippet actions()}
             <Button variant="secondary" size="sm" onclick={() => onRetry?.()}>{RETRY_LABEL}</Button>
+            {#if fallback && !jsonEscapeOpen}
+              <Button variant="secondary" size="sm" onclick={openJsonEscape}>
+                {copy.inputFallback}
+              </Button>
+            {/if}
           {/snippet}
         </Alert>
       {:else if inputMode === 'unreadable'}
@@ -482,11 +550,13 @@
         <p class="ib-run-setup__line" data-testid="run-setup-no-form">
           {copy.takesNoInput(identity.name)}
         </p>
-      {:else}
+      {/if}
+      {#if inputMode === 'ready' && !noInput && (!fallback || jsonEscapeOpen)}
         <WorkflowInput
           bind:this={inputField}
           {schema}
           composed
+          rawOnly={fallback}
           locked={starting}
           onChange={trackInput}
           onInput={begin}
@@ -495,25 +565,31 @@
     </FormSection>
 
     <FormSection heading={copy.whenHeading} columns={1}>
-      <RadioGroup
-        name="run-setup-when"
-        label={copy.whenLabel}
-        variant="card"
-        bind:value={whenChoice}
-      >
-        <RadioGroup.Option
-          id="run-setup-when-now"
-          value="now"
-          label={copy.now}
-          description={atLimit === undefined ? copy.nowDescription : copy.nowAtLimit(atLimit)}
-        />
-        <RadioGroup.Option
-          id="run-setup-when-schedule"
-          value="schedule"
-          label={copy.schedule}
-          description={copy.scheduleDescription}
-        />
-      </RadioGroup>
+      {#if nowOnly}
+        <p class="ib-run-setup__line">
+          {atLimit === undefined ? copy.nowOnlyDescription : copy.nowAtLimit(atLimit)}
+        </p>
+      {:else}
+        <RadioGroup
+          name="run-setup-when"
+          label={copy.whenLabel}
+          variant="card"
+          bind:value={whenChoice}
+        >
+          <RadioGroup.Option
+            id="run-setup-when-now"
+            value="now"
+            label={copy.now}
+            description={atLimit === undefined ? copy.nowDescription : copy.nowAtLimit(atLimit)}
+          />
+          <RadioGroup.Option
+            id="run-setup-when-schedule"
+            value="schedule"
+            label={copy.schedule}
+            description={copy.scheduleDescription}
+          />
+        </RadioGroup>
+      {/if}
       {#if when === 'now'}
         <div class="ib-run-setup__starts" data-testid="run-setup-starts">
           {#if triggerNote?.kind === 'signal'}
@@ -596,27 +672,27 @@
       {/if}
     </Alert>
   {/if}
+</div>
 
-  <div class="ib-run-setup__footer" data-testid="run-setup-footer">
-    <p class="ib-run-setup__summary" data-testid="run-setup-summary">{summary}</p>
-    <div class="ib-run-setup__actions">
-      {#if offReason !== null}
-        <span
-          id="run-setup-action-off"
-          class="ib-run-setup__reason"
-          data-testid="run-setup-action-off">{offReason}</span
-        >
-      {/if}
-      <Button variant="secondary" disabled={starting} onclick={cancel}>{copy.cancel}</Button>
-      <Button
-        data-changes
-        variant="primary"
-        disabled={gate.disabled || block !== undefined || starting}
-        title={gate.title}
-        aria-describedby={offReason === null ? undefined : 'run-setup-action-off'}
-        onclick={request}>{actionLabel}</Button
+<div class="ib-run-setup__footer" data-testid="run-setup-footer">
+  <p class="ib-run-setup__summary" data-testid="run-setup-summary">{summary}</p>
+  <div class="ib-run-setup__actions">
+    {#if offReason !== null}
+      <span
+        id="run-setup-action-off"
+        class="ib-run-setup__reason"
+        data-testid="run-setup-action-off">{offReason}</span
       >
-    </div>
+    {/if}
+    <Button variant="secondary" disabled={starting} onclick={cancel} label={copy.cancel} />
+    <Button
+      data-changes
+      variant="primary"
+      disabled={gate.disabled || block !== undefined || starting}
+      title={gate.title}
+      aria-describedby={offReason === null ? undefined : 'run-setup-action-off'}
+      onclick={request}>{actionLabel}</Button
+    >
   </div>
 </div>
 
@@ -627,6 +703,13 @@
     flex-direction: column;
     gap: var(--cinder-space-6);
     min-width: 0;
+  }
+
+  .ib-run-setup__body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow-y: auto;
+    padding-block-end: var(--cinder-space-2);
   }
 
   .ib-run-setup__lead {
@@ -665,17 +748,9 @@
     margin-block-start: var(--cinder-space-1);
   }
 
-  /*
-   * What the page will do, and the way to do it. It stays at the foot of the outlet while the form
-   * scrolls under it, so the action is always in reach.
-   */
+  /* The options scroll above the bar, so actions stay in reach without covering a field. */
   .ib-run-setup__footer {
-    position: sticky;
-    /* The outlet has no bottom padding, so the bar sticks to the bottom of what it shows; its
-       negative margin overlaps the spacer that ends the outlet (`foundation.css`). */
-    bottom: 0;
-    z-index: 1;
-    margin-block-end: calc(-1 * var(--cinder-space-6));
+    flex: none;
     padding-block: var(--cinder-space-3);
     background: var(--cinder-surface-canvas);
     border-block-start: 1px solid var(--cinder-border);

@@ -19,7 +19,12 @@ import { CONNECTION_COPY } from '../../src/app/copy/views.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test, type PageErrorLog } from './fixtures.ts';
-import { expectEngineMissesForRuns, taskOfSession, waitingReviewOf } from './task-support.ts';
+import {
+  approveReview,
+  expectEngineMissesForRuns,
+  taskOfSession,
+  waitingReviewOf,
+} from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 /** Counts the console errors and failed requests an outage makes the page report. */
@@ -171,7 +176,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     const review = await waitingReviewOf(request, threadId);
     await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
     const row = page.locator(`[data-review-row="bureau:${review.id}"]`);
-    const pane = page.locator('.ib-review-pane');
+    const pane = page.locator('.ib-reviews__detail');
     const approve = pane.getByRole('button', { name: 'Approve' });
     await expect(approve).toBeVisible();
     const operations = recordOperations(page);
@@ -194,7 +199,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await expect(banner(page)).toHaveCount(0);
     await expect(approve).not.toHaveAttribute('aria-disabled', 'true');
-    await approve.click();
+    await approveReview(pane);
     await expect(row).toHaveCount(0);
     expect(operations).toContain('bureau.reviews.resolve');
 

@@ -167,7 +167,11 @@ describe('Workers route — fault title mapping', () => {
 
     await fireEvent.click(await findByRole('tab', { name: 'Task queues' }));
 
-    expect(await findByText('Not authorized')).not.toBeNull();
+    // The title names what failed to load (COR-2560: one title per fault, on every screen); the
+    // regression this test guards is that a 401 is still classified as a refusal, not as a
+    // server error, so the row's kind and its text are the refusal's, never "Something went wrong".
+    expect(await findByText('Couldn’t load queues')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     expect(queryByText('Something went wrong')).toBeNull();
   });
 });

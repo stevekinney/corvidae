@@ -42,6 +42,15 @@
     gap: var(--cinder-space-2);
   }
 
+  /* Checkbox rows retain their compact visual layout, but their coarse-pointer hit targets grow
+     to 44px without contributing size. Keep adjacent targets 8px apart so a tap on one row never
+     falls in the later sibling's overlapping hit area. */
+  @media (any-pointer: coarse) {
+    .cinder-checkbox-group__items {
+      gap: calc(var(--cinder-touch-target-min) - 1.125rem + var(--cinder-space-2));
+    }
+  }
+
   .cinder-checkbox-group__description {
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-normal);

@@ -40,6 +40,8 @@ export const WORKFLOW_COPY = {
     /** The segments above the rows, and the name of the group they form. */
     segmentsLabel: 'Show workflows',
     segments: { all: 'All', paused: 'Paused', problems: 'Problems' },
+    searchLabel: 'Search workflows',
+    searchPlaceholder: 'Search workflows',
     /** The accessible name of the rows. */
     rowsLabel: 'Workflows',
     clearAction: 'Clear filters',
@@ -428,7 +430,9 @@ export const WORKFLOW_COPY = {
     whenLabel: 'When to run',
     now: 'Now',
     /** The line under Now. */
+    optionsRegion: 'Run options',
     nowDescription: 'Starts as soon as you press Start run.',
+    nowOnlyDescription: 'Starts as soon as you confirm.',
     schedule: 'On a schedule',
     scheduleDescription: 'Starts a run each time the schedule fires, with this input.',
     scheduleLabel: 'Schedule',
@@ -516,6 +520,8 @@ export const WORKFLOW_COPY = {
       description:
         'Interborough didn’t answer when it asked for the schema. Nothing you typed is lost.',
     },
+    /** Shown only when catalog metadata proves a raw JSON input can be offered safely after that read failed. */
+    inputFallback: 'Enter input as JSON',
     /** The skeleton's status line after ten seconds (board PageRunSetup, "Loading"). */
     loadingInput: 'Loading the input form…',
     /** The neutral alert above Input for a paused file, and its button (board PageRunSetup, "Paused workflow"). */
@@ -609,7 +615,7 @@ export const WORKFLOW_COPY = {
     builderTab: 'Builder',
     jsonTab: 'JSON',
     /** The workflow's `title`, the name a person reads. */
-    titleLabel: 'Title (optional)',
+    titleLabel: 'Title',
     titlePlaceholder: 'e.g. Morning briefing',
     /** The workflow's identifier, the file's `name`. */
     idLabel: 'ID',

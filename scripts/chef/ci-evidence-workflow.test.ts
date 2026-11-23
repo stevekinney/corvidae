@@ -214,6 +214,24 @@ describe('CI evidence workflow producers', () => {
   const main = readFileSync(join(root, '.github/workflows/main.yml'), 'utf8');
   const pullRequest = readFileSync(join(root, '.github/workflows/pull-request.yml'), 'utf8');
 
+  test('a paused push records both slow jobs as inapplicable and a manual run still requires them', () => {
+    for (const name of ['tests-slow', 'browser']) {
+      const job = main.split(`\n  ${name}:\n`)[1]?.split(/\n  [a-z-]+:\n/)[0];
+      expect(job).toContain(
+        "if: ${{ github.event_name == 'workflow_dispatch' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}",
+      );
+    }
+    expect(main).toContain(
+      `CI_EVIDENCE_NOT_APPLICABLE: \${{ github.event_name == 'push' && vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '["tests-slow","browser"]' || '[]' }}`,
+    );
+    expect(pullRequest).toContain(
+      "TEST_LANES: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '--fast-only' || '--isolated' }}",
+    );
+    expect(pullRequest).toContain(
+      "id: select\n        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}",
+    );
+  });
+
   test('installs the producer and preserves required job bundles across partial reruns', () => {
     expect(main).toContain('bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json');
     expect(main).toContain('name: ci-evidence-receipt-${{ github.run_attempt }}');

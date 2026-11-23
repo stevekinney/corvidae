@@ -36,6 +36,45 @@ afterEach(() => {
   resetScrollLock();
 });
 
+describe('Modal body that renders nothing (COR-2547)', () => {
+  test('an empty body takes no room, so no padded band sits between the title and the footer', () => {
+    expect(declared('.cinder-modal__body:empty', 'display')).toBe('none');
+  });
+});
+
+describe('Modal close control touch target (COR-2403)', () => {
+  test('keeps its 36px painted face and reaches 44px out of flow only on a coarse pointer', () => {
+    expect(declared('.cinder-modal__close', 'width')).toBe('2.25rem');
+    expect(declared('.cinder-modal__close', 'height')).toBe('2.25rem');
+    expect(declared('.cinder-modal__close', 'inset-block-start')).toBe('var(--cinder-space-2)');
+    expect(declared('.cinder-modal__close', 'inset-inline-end')).toBe('var(--cinder-space-2)');
+    expect(declared('.cinder-modal__panel', 'overflow')).toBe('hidden');
+
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    const hitArea = /\.cinder-modal__close::before\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(hitArea).toMatch(/content:\s*'';/);
+    expect(hitArea).toMatch(/position:\s*absolute;/);
+    expect(hitArea).toContain('var(--cinder-touch-target-min)');
+    expect(hitArea).toContain(
+      'inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));',
+    );
+    expect(hitArea).toContain(
+      'inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));',
+    );
+  });
+
+  test('renders the accessible close button in the default modal chrome', () => {
+    const { container } = render(Modal, {
+      props: { open: true, title: 'Restart', children: textSnippet('Restart the worker.') },
+    });
+    const close = requiredInstance(
+      container.querySelector('.cinder-modal__close'),
+      HTMLButtonElement,
+    );
+    expect(close.getAttribute('aria-label')).toBe('Close');
+  });
+});
+
 // A short confirmation has nothing to separate from: the header and footer rules appear only
 // while the body scrolls (COR-2448 AC4).
 describe('Modal header and footer rules (COR-2448 AC4)', () => {

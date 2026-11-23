@@ -208,11 +208,14 @@ test.describe('/runs: the list on a phone, a tablet and in the dark', () => {
   test('on a tablet with a Started by and an Agent filter applied, those chips stay in the row and the unapplied Workflow chip folds into the Filter menu (52x)', async ({
     page,
   }) => {
-    // Filtered to nothing by Model switcher and a goal, as row 52x draws it: the row cannot hold
-    // the two applied chips beside the Workflow chip. (Shorter chips, Agent: Assistant, fit the
-    // row at 768 pixels, and then nothing folds.)
+    // Filtered to nothing by Request human input and Interborough, as row 52x draws it: the row
+    // cannot hold the two applied chips beside the Workflow chip. These are the longest labels the
+    // showcase offers, so the row overflows by about 50 pixels in CI's Linux fonts and more in
+    // macOS's. Shorter chips fit the 720-pixel row a 768-pixel tablet has since the tablet rail
+    // went (COR-2647): Agent: Model switcher with Started by: Goals is 24 pixels short of
+    // overflowing on Linux, and then nothing folds.
     await page.setViewportSize({ width: 768, height: 900 });
-    await page.goto('/runs?agent=model-switcher&startedBy=goal');
+    await page.goto('/runs?agent=request-human-input&startedBy=system');
     const bar = filterBar(page);
     await expect(bar).toBeVisible();
     await expect(bar).toHaveAttribute('data-cinder-layout', 'medium');
@@ -653,6 +656,36 @@ test.describe('/runs: a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => 
     await page.clock.resume();
     release();
     await expect(main.locator('li[data-run]').first()).toBeVisible();
+  });
+
+  test('keeps the Started by menu open when loading finishes (runs filter race)', async ({
+    page,
+  }) => {
+    const release = await openLoading(page, 1280);
+    try {
+      const main = page.locator('main');
+      const chip = filterBar(page).getByRole('button', { name: 'Started by', exact: true });
+      const choices = page.locator('.cinder-filter-bar__options');
+      await page.clock.runFor(300);
+
+      await chip.click();
+      await expect(choices).toBeVisible();
+
+      await page.clock.resume();
+      release();
+      await expect(main.locator('li[data-run]').first()).toBeVisible();
+      expect(await chip.getAttribute('aria-expanded')).toBe('true');
+      await expect(choices).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/runs',
+        state: 'filter menu open after loading',
+        source: SOURCE,
+      });
+      await choices.getByText('Schedules', { exact: true }).click();
+      await expect(page).toHaveURL(/startedBy=schedule/);
+    } finally {
+      release();
+    }
   });
 
   test('says it is taking longer than usual after 10 s, and Cancel leaves Loading canceled with Try again', async ({

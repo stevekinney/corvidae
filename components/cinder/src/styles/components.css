@@ -109,6 +109,7 @@
 @import '../components/inspector-row/inspector-row.css';
 @import '../components/invocation-rule-builder/invocation-rule-builder.css';
 @import './components/json-highlight.css';
+@import '../components/json-diff-viewer/json-diff-viewer.css';
 @import '../components/json-editor/json-editor.css';
 @import '../components/json-schema-editor/json-schema-editor.css';
 @import '../components/json-viewer/json-viewer.css';

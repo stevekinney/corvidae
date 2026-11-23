@@ -20,7 +20,6 @@
    */
   import {
     AccessGate,
-    Button,
     DataList,
     ErrorState,
     Section,
@@ -33,15 +32,14 @@
   import { untrack } from 'svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
-  import { FORBIDDEN_COPY, RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { listAgents } from '../../../lib/bureau-client.ts';
   import { inspectTaskHooks, type TaskView } from '../../../lib/bureau-tasks.ts';
-  import { classifyFault } from '../../../lib/faults.ts';
+  import { classifyFault, faultErrorStateAdvice } from '../../../lib/faults.ts';
   import { clockTime, viewerTimeZone } from '../../../lib/format/clock.ts';
   import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { router } from '../../../lib/router.svelte.ts';
   import {
     hookLineParts,
     hookLineString,
@@ -119,14 +117,6 @@
   const view = $derived(hooks.data === undefined ? undefined : runHooksView(hooks.data, over));
   const rows = $derived(view === undefined ? [] : [...view.rows]);
 
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   function lineOf(row: RunHookRow): string {
     return hookLineString(hookLineParts(row, context));
   }
@@ -172,19 +162,9 @@
       layout="inline"
       headingLevel={3}
       title={copy.forbidden.title}
-      reason={FORBIDDEN_COPY.description}
+      reason={copy.forbidden.reason}
       requirement={copy.forbidden.requirement}
-    >
-      {#snippet actions()}
-        <Button
-          variant="secondary"
-          href={router.href(FORBIDDEN_COPY.scopes.href)}
-          onclick={(event) => open(event, FORBIDDEN_COPY.scopes.href)}
-        >
-          {FORBIDDEN_COPY.scopes.label}
-        </Button>
-      {/snippet}
-    </AccessGate>
+    />
   </Section>
 {:else if hooks.isError && hooks.data === undefined}
   <!-- A read that fails after the hooks were read leaves the rows read last on screen, as the run
@@ -198,7 +178,7 @@
       headingLevel={3}
       retryLabel={RETRY_LABEL}
       retryVariant="secondary"
-      onRetry={() => void hooks.refetch()}
+      {...faultErrorStateAdvice(hooks.error, () => void hooks.refetch())}
     />
   </Section>
 {:else if view === undefined}

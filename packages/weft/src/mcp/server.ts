@@ -196,6 +196,9 @@ class ProjectedTools {
         return {
           content: result.content.map((block) => ({ ...block })),
           ...(result.isError !== undefined ? { isError: result.isError } : {}),
+          ...(result.structuredContent === undefined
+            ? {}
+            : { structuredContent: { ...result.structuredContent } }),
         };
       },
     );

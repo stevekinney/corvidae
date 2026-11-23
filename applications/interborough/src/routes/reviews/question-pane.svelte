@@ -66,10 +66,10 @@
   });
 </script>
 
-<div class="ib-review-pane" data-kind="human-wait" data-review={review.id}>
-  <div class="ib-review-pane__content">
-    <p class="ib-review-pane__eyebrow">{REVIEWS_COPY.questionEyebrow}</p>
-    <h2 class="ib-review-pane__question" id={`review-${review.id}-question`}>
+<div class="ib-review-detail" data-kind="human-wait" data-review={review.id}>
+  <div class="ib-review-detail__content">
+    <p class="ib-review-detail__eyebrow">{REVIEWS_COPY.questionEyebrow}</p>
+    <h2 class="ib-review-detail__question" id={`review-${review.id}-question`}>
       <IdentifierText
         text={review.prompt ?? REVIEWS_COPY.questionFallback}
         identifiers={review.agentName === undefined ? [] : [review.agentName]}
@@ -78,18 +78,18 @@
     <ReviewSource {review} {waiting} />
     {#if review.said !== undefined && review.said !== review.prompt}
       <!-- COR-2426, row 25f: what the agent said when it asked, collapsed under its first words. -->
-      <div class="ib-review-pane__said" data-testid="review-said">
+      <div class="ib-review-detail__said" data-testid="review-said">
         <Collapsible
           trigger={REVIEWS_COPY.said(saidBy, shorten(review.said))}
           variant="flat"
           framed={false}
         >
-          <p class="ib-review-pane__said-text">{review.said}</p>
+          <p class="ib-review-detail__said-text">{review.said}</p>
         </Collapsible>
       </div>
     {/if}
     {#if waiting}
-      <div class="ib-review-pane__answer" bind:this={answerElement} data-question-answer-region>
+      <div class="ib-review-detail__answer" bind:this={answerElement} data-question-answer-region>
         <ChatQuestion
           {...{ 'data-changes': true }}
           id={`review-${review.id}`}
@@ -106,18 +106,18 @@
         />
       </div>
       {#if outcome !== undefined && outcome.issues === undefined && outcome.message !== ''}
-        <p class="ib-review-pane__note" role="alert">{outcome.message}</p>
+        <p class="ib-review-detail__note" role="alert">{outcome.message}</p>
       {/if}
       {#if pickable}
-        <p class="ib-review-pane__note ib-review-pane__hint">{REVIEWS_COPY.pickHint}</p>
+        <p class="ib-review-detail__note ib-review-detail__hint">{REVIEWS_COPY.pickHint}</p>
       {/if}
     {:else}
       <ReviewResolution {review} />
     {/if}
   </div>
   {#if waiting}
-    <div class="ib-review-pane__footer">
-      <p class="ib-review-pane__footer-note">{REVIEWS_COPY.answerHint}</p>
+    <div class="ib-review-detail__footer">
+      <p class="ib-review-detail__footer-note">{REVIEWS_COPY.answerHint}</p>
       {#if structured}
         <Button
           type="submit"

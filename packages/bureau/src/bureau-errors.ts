@@ -19,34 +19,33 @@ export type BureauErrorNotConfiguredSubject =
   /** COR-1920: a secret answer arrived, and the Bureau has no `answerEncryption` key or no storage for it. */
   | 'encryption';
 
+/**
+ * Every code a {@link BureauError} carries, as a runtime list so a policy keyed by code can be
+ * checked for a code it forgot. `BureauError['code']` is derived from it.
+ */
+export const BUREAU_ERROR_CODES = [
+  'NOT_FOUND',
+  'CONFLICT',
+  'NOT_CONFIGURED',
+  'BAD_REQUEST',
+  'RATE_LIMITED',
+  'UNSUPPORTED_CAPABILITY',
+  'STORAGE_UNAVAILABLE',
+] as const;
+
+/** One of the codes in {@link BUREAU_ERROR_CODES}. */
+export type BureauErrorCode = (typeof BUREAU_ERROR_CODES)[number];
+
 export class BureauError extends Error {
-  readonly code:
-    | 'NOT_FOUND'
-    | 'CONFLICT'
-    | 'NOT_CONFIGURED'
-    | 'BAD_REQUEST'
-    | 'RATE_LIMITED'
-    | 'UNSUPPORTED_CAPABILITY'
-    | 'STORAGE_UNAVAILABLE';
+  readonly code: BureauErrorCode;
   readonly subject: BureauErrorNotConfiguredSubject | undefined;
 
   // `subject` is required for NOT_CONFIGURED and disallowed for every other
   // code — a compile-time guarantee that a future NOT_CONFIGURED throw site
   // cannot skip disambiguation and reintroduce the ambiguity #264 fixed.
-  constructor(message: string, code: Exclude<BureauError['code'], 'NOT_CONFIGURED'>);
+  constructor(message: string, code: Exclude<BureauErrorCode, 'NOT_CONFIGURED'>);
   constructor(message: string, code: 'NOT_CONFIGURED', subject: BureauErrorNotConfiguredSubject);
-  constructor(
-    message: string,
-    code:
-      | 'NOT_FOUND'
-      | 'CONFLICT'
-      | 'NOT_CONFIGURED'
-      | 'BAD_REQUEST'
-      | 'RATE_LIMITED'
-      | 'UNSUPPORTED_CAPABILITY'
-      | 'STORAGE_UNAVAILABLE',
-    subject?: BureauErrorNotConfiguredSubject,
-  ) {
+  constructor(message: string, code: BureauErrorCode, subject?: BureauErrorNotConfiguredSubject) {
     super(message);
     this.name = 'BureauError';
     this.code = code;

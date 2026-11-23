@@ -529,6 +529,29 @@ describe('Home’s Start a chat card (01k)', () => {
     expect(card.querySelector('[data-chat-composer-status="blocked"]')).toBeNull();
   });
 
+  test('with no agent and no provider says to connect a provider first, never a box whose Send does nothing (COR-2438 21c)', async () => {
+    const { getByTestId } = await open(sampleHomeWorld({ noAgents: true }));
+    const card = getByTestId('home-start-chat');
+    const state = await waitFor(() => within(card).getByTestId('home-start-chat-not-ready'));
+    expect(state.textContent).toContain('Connect a provider first');
+    expect(
+      within(state).getByRole('link', { name: 'Connect a provider' }).getAttribute('href'),
+    ).toBe('/settings/models');
+    expect(card.querySelector('textarea')).toBeNull();
+  });
+
+  test('with a provider and no agent says to create an agent (COR-2438 21c)', async () => {
+    const { getByTestId } = await open(
+      sampleHomeWorld({ noAgents: true, providerConnected: true }),
+    );
+    const card = getByTestId('home-start-chat');
+    const state = await waitFor(() => within(card).getByTestId('home-start-chat-not-ready'));
+    expect(within(state).getByRole('link', { name: 'Create an agent' }).getAttribute('href')).toBe(
+      '/agents/new',
+    );
+    expect(card.querySelector('textarea')).toBeNull();
+  });
+
   // COR-2489: "Connect a provider" is drawn in one button form per context: a secondary small
   // button in a Needs attention row and in the blocked composer, and the checklist's primary small
   // button while its step is current.
@@ -787,6 +810,7 @@ describe('Home’s checklist on a host with no Assistant', () => {
   async function withoutAssistant(
     overrides: Partial<HomeWorld> = {},
     agents: readonly string[] = ['tool-runner'],
+    hidden: readonly string[] = [],
   ) {
     const world = freshInstallation(overrides);
     installed = installHome(world);
@@ -798,6 +822,7 @@ describe('Home’s checklist on a host with no Assistant', () => {
         definitionRevision: 1,
         kind: 'code',
         a2a: false,
+        ...(hidden.includes(name) ? { visibility: 'hidden' } : {}),
         media: { modalities: {}, mimeFamilies: [], mediaLimits: [] },
       })),
     }));
@@ -812,6 +837,19 @@ describe('Home’s checklist on a host with no Assistant', () => {
       stepOf(container, 'chat').querySelector('a') === null ? 'button' : 'link',
       { name: 'Start a chat' },
     );
+
+  test('does not offer a hidden Assistant in the checklist', async () => {
+    const { container } = await withoutAssistant(
+      { providerConnected: true },
+      ['assistant'],
+      ['assistant'],
+    );
+    const step = stepOf(container, 'agent');
+    expect(within(step).queryByRole('button', { name: 'Use Assistant' })).toBeNull();
+    expect(words(step)).not.toContain('Assistant');
+    expect(within(step).getByRole('link', { name: 'Create an agent' })).toBeDefined();
+    expect(words(stepOf(container, 'chat'))).toContain('Waits for step 2: create an agent first.');
+  });
 
   // Owner, 2026-11-19: a step that cannot be done yet is shown as waiting on the earlier step, not
   // as an active button, by the readiness rule every New chat entry point reads.
