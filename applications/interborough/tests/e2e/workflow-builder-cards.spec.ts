@@ -444,6 +444,10 @@ test.describe('the workflow builder’s read-only step cards', () => {
     await openWith(page, EVERY_KIND);
     const root = page.locator('[data-page="workflow-creator"]');
     await expect(root.locator('.weft-workflow-builder__body')).toHaveAttribute('inert', '');
+    await expect(root.getByText(BUILDER.addField, { exact: true })).toHaveCount(0);
+    const primary = root.locator('button').filter({ hasText: WORKFLOW_COPY.creator.saveAction });
+    await expect(primary).toBeVisible();
+    await expect(primary).toBeDisabled();
     await captureForDesignReview(page, {
       route: '/workflows/new (step cards)',
       state: 'read-only',

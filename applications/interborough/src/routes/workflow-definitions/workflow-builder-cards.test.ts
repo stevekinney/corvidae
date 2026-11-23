@@ -295,6 +295,38 @@ describe('Add a step', () => {
   });
 });
 
+describe('Starts', () => {
+  test('does not clear a schedule when the selected option is activated again', async () => {
+    const scheduled = JSON.stringify({
+      name: 'built',
+      trigger: {
+        kind: 'schedule',
+        spec: '0 9 * * 1-5',
+        timezone: 'America/Chicago',
+        overlap: 'skip',
+        catchUp: false,
+      },
+      steps: [{ kind: 'sleep', duration: '1m' }],
+    });
+    const { container } = await openBuilder(scheduled);
+    const selected = container.querySelector<HTMLElement>('[data-cinder-segment-value="schedule"]');
+    expect(selected).not.toBeNull();
+    expect(selected?.getAttribute('aria-checked')).toBe('true');
+
+    await fireEvent.click(selected as HTMLElement);
+
+    expect(await textOf(container)).toMatchObject({
+      trigger: {
+        kind: 'schedule',
+        spec: '0 9 * * 1-5',
+        timezone: 'America/Chicago',
+        overlap: 'skip',
+        catchUp: false,
+      },
+    });
+  });
+});
+
 describe('an activity card', () => {
   test('is added with the starting input its form shows, draws that form from the catalog’s schema, and writes the step it describes', async () => {
     const { container, getByLabelText } = await openBuilder(

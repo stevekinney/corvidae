@@ -100,6 +100,7 @@ The Format button and `Shift+Alt+F` rewrite the document as JSON indented by two
 | `id` | `string` | yes | — | Unique identifier used for the label and feedback relationships. |
 | `invalidStatusLabel` | `string` | no | — | Replaces parse feedback’s status word while preserving its danger tone and line marker, for a caller that needs a stable invalid-state name such as "Invalid JSON". |
 | `label` | `string` | yes | — | Visible label for the editor. |
+| `parserStopVisible` | `boolean` | no | `false` | Include the parser's stop line in the marked diagnostic when it follows the line to fix. |
 | `readonly` | `boolean` | no | — | Makes the editor read-only. The status reads "Read only" and there is no Format button. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted. |
 | `required` | `boolean` | no | — | Marks the editor as required. An empty value is valid and reads "Not set" unless the field is required. |
 | `rows` | `number` | no | `8` | The most lines the editor shows before it scrolls. It grows with its content from a three-line minimum up to this height, so a short value is not a large empty box. Defaults to 8. |

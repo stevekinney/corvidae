@@ -29,6 +29,7 @@ import {
 } from '../create-bureau-handler.ts';
 import { authentication, type Handler, type RpcBody } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import type { AgentFileOperations } from '../../sources/agent-file-operations';
 import { workflowFileDirectory } from '../../sources/workflow-file-directory';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
@@ -55,6 +56,7 @@ export interface ServeOptions {
   readonly agents?: AgentDefinitions;
   /** Build a durable Bureau with no `workflowSource`, so it has no workflow directory. */
   readonly withoutDirectory?: boolean;
+  readonly workflowFileOperations?: AgentFileOperations;
   /** Shared immutable workspace binding for the Bureau and both test handlers. */
   readonly workspace?: WorkspaceMembershipOptions;
   readonly authentication?: AuthConfig;
@@ -88,7 +90,14 @@ export async function serveWorkflows(
     },
     ...(options.withoutDirectory === true
       ? {}
-      : { workflowSource: workflowFileDirectory(directory) }),
+      : {
+          workflowSource: workflowFileDirectory(
+            directory,
+            options.workflowFileOperations === undefined
+              ? {}
+              : { operations: options.workflowFileOperations },
+          ),
+        }),
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),

@@ -10,8 +10,8 @@
    * `workflow-step-list.svelte`, one list at any depth (a case, an otherwise path, side-by-side
    * lists, a repeat's steps), which reads the text, the catalogs and the one way to change the text
    * from the host this component provides (`workflow-builder-host.ts`). Below 640 pixels the
-   * builder shows read-only fields and JSON without its editing actions. The tabs still switch.
-   * A notice says to open it on a larger screen, beside a link back (row 05n).
+   * builder shows read-only fields and JSON, hides field editing actions, and disables the footer's
+   * primary action. The tabs still switch. A notice links back (row 05n).
    *
    * Create workflow's problems (the ID, what starts it, each step) are said at their fields and
    * outline their step once the page asks to `showProblems`, from two of them in one line above the
@@ -27,6 +27,7 @@
   import {
     Alert,
     Button,
+    Callout,
     FormSection,
     Input,
     JsonEditor,
@@ -53,7 +54,9 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import { browserTimeZone } from '../schedules/cadence.ts';
   import { loadModelAgents } from '../schedules/schedule-row-context.ts';
+  import ScheduleWhen from '../schedules/schedule-when.svelte';
   import { ROOT_ADDRESS } from './workflow-builder-addresses.ts';
   import {
     provideBuilderHost,
@@ -70,12 +73,15 @@
     setDescription,
     setName,
     setSchema,
+    setScheduleFields,
     setTitle,
     setTitleDerivingName,
     setTrigger,
     type BuilderSchema,
     type SchemaKey,
   } from './workflow-builder-model.ts';
+  import type { DocumentProblem } from './workflow-issue-line.ts';
+  import { scheduleFieldsOf, scheduleValueOf } from './workflow-schedule-value.ts';
   import {
     problemSummary,
     workflowProblems,
@@ -103,8 +109,12 @@
     jsonDescription: string;
     /** Where the read-only notice below 640 pixels links back to: the workflow's page, or Workflows. */
     backHref: string;
-    /** The footer's actions, at the right of the read-back: Cancel and the one primary action. */
-    actions?: Snippet;
+    /**
+     * The footer's actions, at the right of the read-back: Cancel and the one primary action. Told
+     * whether the builder is read-only (below 640 pixels), so the primary action is drawn off there
+     * rather than inviting a save it cannot make (note N3).
+     */
+    actions?: Snippet<[boolean]>;
     /**
      * Whether the page has asked to save: the problems of the workflow are then said at their
      * fields and, from two, in one line above the footer. Before that nothing is called wrong.
@@ -133,6 +143,13 @@
     notice?: Snippet;
     /** Drawn above the footer, before a failure: a notice about what saving does. */
     aboveFooter?: Snippet;
+    /**
+     * A line of JSON that parses but that the Bureau refused as a workflow, which the page found
+     * when the person pressed Create or Save (row 65z): the JSON tab marks it, the Builder tab is off
+     * with the footer's "Fix line 21 to return to the builder." as its reason. The page clears it
+     * when the text changes.
+     */
+    documentProblem?: DocumentProblem | null;
   }
 
   let {
@@ -153,6 +170,7 @@
     status,
     notice,
     aboveFooter,
+    documentProblem = null,
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.builder;
@@ -160,6 +178,10 @@
 
   /** The footer's sentence, which a disabled Builder tab points at as its reason. */
   const READ_BACK_ID = 'workflow-builder-read-back';
+  /** A new schedule's cadence: weekdays at 9:00 AM (row 65d). */
+  const DEFAULT_SCHEDULE_SPEC = '0 9 * * 1-5';
+  /** A fire that comes while a run is going is skipped, unless the file says otherwise. */
+  const DEFAULT_OVERLAP = 'skip';
 
   // Text the builder cannot read opens on the JSON tab, where it is fixed.
   let tab = $state<'builder' | 'json'>(
@@ -242,6 +264,8 @@
       agentName: (identifier) => agentLabel(identifier, agents.data),
       activityName: titleOfActivity,
       workflowName: titleOfWorkflow,
+      // A saved workflow can be started by the person editing it; a new one cannot yet (row 65j).
+      canStart: mode === 'edit',
     }),
   );
 
@@ -272,11 +296,28 @@
    * the JSON tab holds the fix. `jsonProblem` is where the text stops being JSON, or `null` when it
    * parses but is not an object.
    */
-  const blocked = $derived(view === undefined);
-  const jsonProblem = $derived(blocked ? locateJsonProblem(text) : null);
-  const fixLine = $derived(copy.json.fixLine(jsonProblem?.line ?? 1));
+  const unreadable = $derived(view === undefined);
+  // A document the Bureau refused at a line is the JSON tab's to fix as well (row 65z).
+  const blocked = $derived(unreadable || documentProblem !== null);
+  const jsonProblem = $derived(unreadable ? locateJsonProblem(text) : null);
+  const fixLine = $derived(
+    copy.json.fixLine(unreadable ? (jsonProblem?.line ?? 1) : (documentProblem?.line ?? 1)),
+  );
   /** Valid JSON that is not an object: the editor marks its first line and says so in its status. */
-  const notWorkflow = $derived(blocked && jsonProblem === null && text.trim() !== '');
+  const notWorkflow = $derived(unreadable && jsonProblem === null && text.trim() !== '');
+  /** What the JSON editor marks for valid JSON that is not a workflow, and the status it says. */
+  const notWorkflowMarks = $derived.by(() => {
+    if (notWorkflow) {
+      return {
+        statusLabel: copy.json.notWorkflow,
+        diagnostics: [{ line: 1, message: copy.json.notObject }],
+      };
+    }
+    if (!unreadable && documentProblem !== null) {
+      return { statusLabel: copy.json.notWorkflow, diagnostics: [documentProblem] };
+    }
+    return {};
+  });
 
   $effect(() => {
     if (blocked && tab === 'builder') tab = 'json';
@@ -313,10 +354,17 @@
    * JSON tab, the editor that holds it), or the first field of the builder that is wrong.
    */
   export async function focusProblem(): Promise<void> {
-    if (blocked) {
+    if (unreadable) {
       tab = 'json';
       await tick();
       jsonEditor?.focusProblem();
+      return;
+    }
+    if (documentProblem !== null) {
+      // The line the Bureau refused, which the JSON tab marks (row 65z).
+      tab = 'json';
+      await tick();
+      jsonEditor?.focusLine(documentProblem.line);
       return;
     }
     const first = problems[0];
@@ -413,8 +461,39 @@
     return trigger.kind === 'contributed' ? trigger.id : trigger.kind;
   });
 
+  /** The cadence the When block shows, or `undefined` for a spec it cannot draw, which stays a field. */
+  const scheduleValue = $derived(
+    view?.trigger?.kind === 'schedule' ? scheduleValueOf(view.trigger) : undefined,
+  );
+
+  /** The schedule UI may show an uncommitted invalid custom cadence. */
+  let scheduleWhen = $state<{ isInvalid: () => boolean; focusProblem: () => boolean }>();
+
+  /** Whether the visible schedule draft differs from the last cadence written to the workflow text. */
+  export function hasInvalidSchedule(): boolean {
+    return scheduleWhen?.isInvalid() === true;
+  }
+
+  /** Takes Create or Save to the invalid schedule field, when one is visible. */
+  export function focusScheduleProblem(): boolean {
+    return scheduleWhen?.focusProblem() ?? false;
+  }
+
   function changeTriggerKind(kind: string): void {
-    if (kind === 'manual' || kind === 'schedule' || kind === 'signal') {
+    // SegmentedControl does not report a selected option again today, but keeping the draft intact
+    // makes this handler correct for alternate controls and future control behavior too.
+    if (kind === triggerValue) return;
+    if (kind === 'schedule' && view?.trigger?.kind !== 'schedule') {
+      // A new schedule starts on weekdays at 9:00 AM in the viewer's zone, skips a fire that comes
+      // while a run is going, and does not catch up: every field the builder writes (row 65d).
+      write(
+        setScheduleFields(setTrigger(text, 'schedule', DEFAULT_SCHEDULE_SPEC), {
+          timezone: browserTimeZone(),
+          overlap: DEFAULT_OVERLAP,
+          catchUp: false,
+        }),
+      );
+    } else if (kind === 'manual' || kind === 'schedule' || kind === 'signal') {
       write(setTrigger(text, kind, ''));
     } else if (triggers.some((candidate) => candidate.id === kind)) {
       write(setContributedTrigger(text, kind, {}));
@@ -490,6 +569,9 @@
     },
     activityTitle: titleOfActivity,
     workflowTitle: titleOfWorkflow,
+    showJson: () => {
+      tab = 'json';
+    },
   };
   provideBuilderHost(host);
 
@@ -545,7 +627,9 @@
 
 {#snippet schemaSection(key: SchemaKey, heading: string, description: string, empty: string)}
   {@const schema = schemaFor(key)}
-  <FormSection {heading} {description}>
+  <!-- One column, the fields table alone: Field, Type, Description, Required and each row's
+       actions in the section's full width, with no editor chrome around them (row 65s). -->
+  <FormSection {heading} {description} columns={1}>
     {#if schema.kind === 'unreadable'}
       <p class="weft-workflow-builder__note">{copy.schemaUnreadable}</p>
     {:else if schema.kind === 'none' && (readOnly || !schemaOpened[key])}
@@ -568,6 +652,7 @@
     {:else}
       <JsonSchemaEditor
         id={`workflow-builder-${key}`}
+        variant="fields"
         schema={shownSchema(schema)}
         readonly={locked}
         onValueChangeRequest={(event) => changeSchema(key, event.schema)}
@@ -610,7 +695,11 @@
           <Alert variant="danger">{error}</Alert>
         {/if}
 
-        <div class="weft-workflow-builder__body" inert={locked}>
+        <div
+          class="weft-workflow-builder__body"
+          inert={locked}
+          data-read-only={readOnly ? '' : undefined}
+        >
           <FormSection>
             <Input
               id="workflow-builder-title"
@@ -699,7 +788,9 @@
             />
           </FormSection>
 
-          <FormSection heading={copy.startsHeading}>
+          <!-- One column: the trigger's choices, then its When block under them in the section's
+               width, as run setup lays it out (rows 65d, 65q). -->
+          <FormSection heading={copy.startsHeading} columns={1}>
             <SegmentedControl
               id="workflow-builder-trigger-kind"
               label={copy.triggerKindLabel}
@@ -764,6 +855,27 @@
               </p>
             {:else if view.trigger?.kind === 'other'}
               <p class="weft-workflow-builder__note">{view.trigger.label}. {copy.otherTrigger}</p>
+            {:else if view.trigger?.kind === 'schedule' && scheduleValue !== undefined}
+              <!-- Repeats, At, Time zone, the next runs and the two policy selects (row 65q); what
+                   they write is the file's spec, timezone, overlap and catchUp (row 65d). -->
+              {@const trigger = view.trigger}
+              <ScheduleWhen
+                bind:this={scheduleWhen}
+                value={scheduleValue}
+                onValueChange={(next) => write(setScheduleFields(text, scheduleFieldsOf(next)))}
+                label={copy.scheduleLabel}
+                overlap={trigger.overlap ?? DEFAULT_OVERLAP}
+                onOverlapChange={(next) => write(setScheduleFields(text, { overlap: next }))}
+                catchUp={trigger.catchUp ?? false}
+                onCatchUpChange={(next) => write(setScheduleFields(text, { catchUp: next }))}
+                catchUpLabel={WORKFLOW_COPY.runSetup.catchUpLabel}
+                fireZone
+              />
+              {#if mode === 'edit' && trigger.name !== null && trigger.name.trim() !== ''}
+                <div data-testid="workflow-builder-schedule-note">
+                  <Callout variant="info">{copy.scheduleDefinedNote(trigger.name.trim())}</Callout>
+                </div>
+              {/if}
             {:else if view.trigger?.kind === 'schedule'}
               <Input
                 id="workflow-builder-trigger-field"
@@ -823,12 +935,9 @@
           rows={18}
           value={text}
           error={jsonError}
-          {...notWorkflow
-            ? {
-                statusLabel: copy.json.notWorkflow,
-                diagnostics: [{ line: 1, message: copy.json.notObject }],
-              }
-            : {}}
+          invalidStatusLabel={copy.json.invalid}
+          parserStopVisible={mode === 'edit'}
+          {...notWorkflowMarks}
           onValueChange={onTextChange}
         />
       </div>
@@ -864,9 +973,7 @@
     <p
       id={READ_BACK_ID}
       class="weft-workflow-builder__read-back"
-      data-truncated={summary !== undefined || (mode === 'create' && tab === 'json' && !blocked)
-        ? ''
-        : undefined}
+      data-truncated={summary !== undefined ? '' : undefined}
       data-testid="workflow-builder-summary"
     >
       {#if blocked}
@@ -877,8 +984,8 @@
         <span class="cinder-sr-only">{copy.readBack.label}: </span>{view?.readBack ?? ''}
       {/if}
     </p>
-    {#if actions !== undefined && !readOnly}
-      <div class="weft-workflow-builder__actions">{@render actions()}</div>
+    {#if actions !== undefined}
+      <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions(readOnly)}</div>
     {/if}
   </footer>
 </div>
@@ -898,12 +1005,18 @@
     padding-top: var(--cinder-space-3);
   }
 
+  /* One layout on New and on Edit (note N3): what to do, then the way back under it, each page's
+     link naming where it goes. */
   .weft-workflow-builder__phone {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-    align-items: center;
+    display: grid;
+    justify-items: start;
+    gap: var(--cinder-space-1);
     margin: var(--cinder-space-3) 0 0;
+  }
+
+  /* A read-only builder offers nothing to type: its fields show their values, never a prompt. */
+  .weft-workflow-builder__body[data-read-only] :global(::placeholder) {
+    color: transparent;
   }
 
   .weft-workflow-builder__notice {
