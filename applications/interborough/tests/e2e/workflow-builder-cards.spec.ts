@@ -139,7 +139,9 @@ async function openWith(page: Page, document: unknown): Promise<void> {
   await replaceJsonEditorText(json, JSON.stringify(document, null, 2));
   if (size.width < PHONE_BELOW) {
     await page.setViewportSize(size);
-    await expect(root.locator('.cinder-page-header__description')).toHaveText(BUILDER.readOnlyOnScreen);
+    await expect(root.locator('.cinder-page-header__description')).toHaveText(
+      BUILDER.readOnlyOnScreen,
+    );
   }
   await openTab(root, BUILDER.builderTab);
 }
@@ -471,7 +473,9 @@ test.describe('the workflow builder’s read-only step cards', () => {
     );
 
     await page.setViewportSize({ width: 375, height: 900 });
-    await expect(root.locator('.cinder-page-header__description')).toHaveText(BUILDER.readOnlyOnScreen);
+    await expect(root.locator('.cinder-page-header__description')).toHaveText(
+      BUILDER.readOnlyOnScreen,
+    );
     await expect(root.locator('.weft-workflow-builder__read-only')).toHaveCount(0);
     const phone = await readBoxes(page, { builder, tabList });
     expect(Math.round(phone.tabList.x + phone.tabList.width)).toBe(
