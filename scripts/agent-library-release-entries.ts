@@ -2,7 +2,6 @@ import armorer from '../packages/armorer/package.json';
 import conversationalist from '../packages/conversationalist/package.json';
 
 export const libraryManifests = { armorer, conversationalist };
-export type ReleaseLibrary = keyof typeof libraryManifests;
 
 // Workspace manifests expose the imports used in Corvidae. npm also exposes
 // the documented entry points of the previously published libraries.

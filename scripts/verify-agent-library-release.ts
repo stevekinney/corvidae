@@ -26,9 +26,10 @@ try {
          import { materializeToolResult as shared } from 'conversationalist/conversation';
          if (owner !== shared) throw new Error('Conversationalist duplicated the Armorer protocol');`,
   ];
-  await Bun.write(join(consumer, 'verify.mjs'), tests.join('\n'));
-  await $`node verify.mjs`.cwd(consumer);
-  await $`bun verify.mjs`.cwd(consumer);
+  const verificationFile = join(consumer, 'verify.mjs');
+  await Bun.write(verificationFile, tests.join('\n'));
+  await $`node ${verificationFile}`.cwd(consumer);
+  await $`bun ${verificationFile}`.cwd(consumer);
   const browserEntry = join(consumer, 'browser.js');
   await Bun.write(browserEntry, `export * from ${JSON.stringify(library)};`);
   await Bun.build({ entrypoints: [browserEntry], target: 'browser' });
