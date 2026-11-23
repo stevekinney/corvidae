@@ -971,10 +971,15 @@
     "$.value.*"
   ],
   "output:bureau.decisions.models": [
+    "$.hostModel",
+    "$.hostModel|anyOf[0].kinds",
+    "$.hostModel|anyOf[0].name",
     "$.rows",
     "$.rows[].answering",
     "$.rows[].availability",
     "$.rows[].canBeFallback",
+    "$.rows[].configured",
+    "$.rows[].configuredFallback",
     "$.rows[].decisionOnly",
     "$.rows[].fallback",
     "$.rows[].model",
