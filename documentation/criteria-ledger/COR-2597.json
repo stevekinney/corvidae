@@ -1,7 +1,7 @@
 {
   "issue": "COR-2597",
   "branch": "steve/cor-2597-composable",
-  "checkedAt": "7734250e12d2be7e0349f142dd5047586d30dc5c",
+  "checkedAt": "1370ae0191b7beb9f9d43ac7e8b28a051d1d0e61",
   "briefVersion": "0b6fedb0bc01",
   "status": "READY",
   "criteria": [
@@ -23,12 +23,12 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "generate-operation-client.test.ts, catalog-client.test-d.ts and scratch archive-regeneration.log"
+      "evidence": "generate-operation-client.test.ts, catalog-client.test-d.ts and scratch round1-regeneration.log"
     },
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "browser-bundle.slow.test.ts and scratch archive-build.log; archive-evidence.txt describes package manifest"
+      "evidence": "browser-bundle.slow.test.ts and scratch round1-build.log; round1-evidence.txt describes package manifest and commands"
     }
   ]
 }
