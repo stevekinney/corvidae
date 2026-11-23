@@ -8,6 +8,12 @@
       "title": "An address with its copy control",
       "description": "The address breaks after its slashes and colons when the place is narrow, and the copy control stays on its last line, never alone on a row.",
       "code": "<script lang=\"ts\">\n  import { CopyableValue } from '@lostgradient/cinder';\n</script>\n\n<p style=\"max-inline-size: 16rem; margin: 0;\">\n  Deliveries go to\n  <CopyableValue\n    value=\"https://example.com/triggers/nightly-digest\"\n    label=\"Copy the address\"\n    copiedLabel=\"Address copied\"\n  />\n</p>\n"
+    },
+    {
+      "id": "break-hints",
+      "title": "An address with preferred line breaks",
+      "code": "<script lang=\"ts\">\n  import { CopyableValue } from '@lostgradient/cinder';\n</script>\n\n<CopyableValue value=\"temporal.staging.internal:7233\" breakHints />\n",
+      "description": "The address prefers breaks at separators and can be selected as a single value."
     }
   ]
 }

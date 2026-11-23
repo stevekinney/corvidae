@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DescriptionList } from '@lostgradient/cinder';
+  import { Button, DescriptionList } from '@lostgradient/cinder';
   import type { DescriptionListItem } from '@lostgradient/cinder';
 
   const items: DescriptionListItem[] = [
@@ -8,6 +8,18 @@
     { term: 'Version', definition: '1.0.0' },
     { term: 'License', definition: 'MIT' },
     { term: 'Maintainer', definition: 'Cinder team' },
+  ];
+
+  const wrapping = new URLSearchParams(globalThis.location.search).has('wrapping');
+  const builds: DescriptionListItem[] = [
+    {
+      term: 'Builds',
+      definition: '2026.11.06 for 3 runs, then 2026.11.13 for 4 runs, then 2026.11.20 for 2 runs',
+      href: '#builds',
+    },
+  ];
+  const identifier: DescriptionListItem[] = [
+    { term: 'Run ID', definition: { type: 'identifier', value: 'run-41b29cf' } },
   ];
 
   const fields: DescriptionListItem[] = [
@@ -31,6 +43,18 @@
     <DescriptionList items={fields} variant="fields" framed />
   </div>
 </div>
+
+{#if wrapping}
+  <div data-testid="wrap-with-link">
+    <DescriptionList items={builds} stack />
+  </div>
+  <div data-testid="wrap-with-actions">
+    <DescriptionList items={builds} stack>
+      {#snippet actions()}<Button size="xs" variant="ghost">Edit</Button>{/snippet}
+    </DescriptionList>
+  </div>
+  <DescriptionList items={identifier} />
+{/if}
 
 <style>
   .description-list-fields-layout {
