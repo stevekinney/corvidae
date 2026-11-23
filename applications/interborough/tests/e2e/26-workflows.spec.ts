@@ -208,6 +208,24 @@ test.describe('the list', () => {
     });
     await bureau(request, 'bureau.workflows.signal', { name: 'e2e-counted-go' });
     try {
+      // Starting records the run before its await-signal step has registered. Read the list's own
+      // durable projection until that registration is visible, so this test asserts Waiting only
+      // after the run is actually parked on the signal it names.
+      await expect
+        .poll(async () => {
+          const listed = await bureau(request, 'bureau.workflows.list', { includeRuns: true });
+          expect(listed.fault, 'listing e2e-counted after its start signal').toBeUndefined();
+          const workflow = (
+            listed.result as {
+              workflows: Array<{
+                id: string;
+                runs?: { current: { waitingForSignal: string | null } | null } | null;
+              }>;
+            }
+          ).workflows.find((entry) => entry.id === 'e2e-counted');
+          return workflow?.runs?.current?.waitingForSignal;
+        })
+        .toBe('e2e-counted-wait');
       await page.goto('/workflows');
       const counted = row(page, 'e2e-counted');
       await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run');
