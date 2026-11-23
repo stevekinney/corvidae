@@ -63,6 +63,23 @@ if (name === 'cinder' || name === 'editor') {
     );
   }
 }
+if (name === 'chat') {
+  const { render } = await import('svelte/server');
+  const components = await import(packageName);
+  const { default: ConversationHeader } = await import(packageName + '/conversation-header');
+  const { default: schema } = await import(packageName + '/schema');
+  const { default: variables } = await import(packageName + '/variables');
+  assert.equal(components.Chat, components.default);
+  assert.equal(components.ChatConversationHeader, ConversationHeader);
+  assert.equal(schema.type, 'object');
+  assert.ok(variables.every((variable: unknown) => typeof variable === 'string'));
+  assert.match(
+    render(components.default, {
+      props: { id: 'npm-release-chat', conversation: components.createConversation() },
+    }).body,
+    /npm-release-chat-timeline/,
+  );
+}
 if (name === 'cinder-mcp') {
   const child = spawn(join(process.cwd(), 'node_modules/.bin/cinder-mcp'), [], {
     stdio: ['pipe', 'pipe', 'inherit'],
