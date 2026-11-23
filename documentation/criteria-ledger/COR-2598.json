@@ -1,9 +1,9 @@
 {
   "issue": "COR-2598",
   "branch": "steve/cor-2598-composable",
-  "checkedAt": "dd755fb2db7520d1b4a54b260393fc8c1f6a2fad",
+  "checkedAt": "03fb157a5cfe3ff6d3b39fcb100457712bcc0cf6",
   "briefVersion": "7b9e8a74db34",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
@@ -27,8 +27,8 @@
     },
     {
       "id": "AC5",
-      "status": "not-met",
-      "evidence": "Unit lifecycle and failed startup pass; real page-publication browser suite pending coordinator execution."
+      "status": "met-on-branch",
+      "evidence": "Coordinator runtime-lifecycle browser suite passed at 03fb157a; server suite covers failed startup and exactly-once cleanup. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
     },
     {
       "id": "AC6",
@@ -37,8 +37,8 @@
     },
     {
       "id": "AC7",
-      "status": "not-met",
-      "evidence": "Installed starter mount and dependency checks added; browser-backed clean-consumer suite pending coordinator execution."
+      "status": "met-on-branch",
+      "evidence": "Coordinator package-consumer suite passed at 03fb157a, including installed starter mounts in development and production. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
     }
   ]
 }
