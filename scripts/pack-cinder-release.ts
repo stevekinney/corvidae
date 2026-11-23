@@ -6,6 +6,7 @@ import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import ts from 'typescript';
 import { z } from 'zod';
+import chatManifest from '../components/chat/package.json';
 import cinderManifest from '../components/cinder/package.json';
 import editorManifest from '../components/editor/package.json';
 import repositoryManifest from '../package.json';
@@ -102,6 +103,44 @@ function addComponentEntries(
   );
 }
 
+function chatEntries(metadata: z.infer<typeof metadataSchema>): Map<string, string> {
+  const entries = new Map<string, string>([['.', './src/index.ts']]);
+  for (const { id, artifacts } of metadata.components) {
+    const source = `./src/lib/components/${id}`;
+    const prefix = id === 'chat' ? '' : `./${id.replace(/^chat-/, '')}`;
+    if (prefix) entries.set(prefix, `${source}/index.ts`);
+    entries.set(`${prefix || '.'}/styles`, `${source}/${id}.css`);
+    for (const [kind, path] of Object.entries(artifacts)) {
+      if (path !== undefined) entries.set(`${prefix || '.'}/${kind}`, `./${path}`);
+    }
+  }
+  return entries;
+}
+
+async function addChatMetadataModules(
+  stage: string,
+  exports: Map<string, ExportTarget>,
+): Promise<void> {
+  await copyFile(
+    join(repositoryRoot, 'internal/component-tooling/src/schema-types.ts'),
+    join(stage, '.metadata/schema-types.d.ts'),
+  );
+  for (const [entry, target] of exports) {
+    if (typeof target !== 'string') continue;
+    const kind = entry.split('/').at(-1);
+    if (kind !== 'schema' && kind !== 'variables') continue;
+    const base = target.replace(/\.json$/, '');
+    const value: unknown = await Bun.file(join(stage, target)).json();
+    await Bun.write(join(stage, base + '.js'), `export default ${JSON.stringify(value)};\n`);
+    const declaration =
+      kind === 'schema'
+        ? "import type { ComponentSchema } from '../schema-types.js';\ndeclare const value: ComponentSchema;"
+        : 'declare const value: readonly string[];';
+    await Bun.write(join(stage, base + '.d.ts'), `${declaration}\nexport default value;\n`);
+    exports.set(entry, { types: base + '.d.ts', default: base + '.js' });
+  }
+}
+
 function normalizeDeclarations(source: string, path: string): string {
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   const edits: { start: number; end: number; text: string }[] = [];
@@ -190,6 +229,7 @@ const { values } = parseArgs({
     version: { type: 'string' },
     'markdown-version': { type: 'string' },
     'cinder-version': { type: 'string' },
+    'conversationalist-version': { type: 'string' },
     outdir: { type: 'string' },
   },
 });
@@ -197,28 +237,33 @@ const name = values.package;
 const version = values.version;
 const markdownVersion = values['markdown-version'];
 const cinderVersion = values['cinder-version'];
+const conversationalistVersion = values['conversationalist-version'];
 if (
-  (name !== 'cinder' && name !== 'editor') ||
+  (name !== 'cinder' && name !== 'editor' && name !== 'chat') ||
   !version ||
   !versionPattern.test(version) ||
   !markdownVersion ||
   !versionPattern.test(markdownVersion) ||
-  (name === 'editor' && (!cinderVersion || !versionPattern.test(cinderVersion))) ||
+  (name !== 'cinder' && (!cinderVersion || !versionPattern.test(cinderVersion))) ||
+  (name === 'chat' &&
+    (!conversationalistVersion || !versionPattern.test(conversationalistVersion))) ||
   !values.outdir
 ) {
   throw new Error(
-    'Usage: bun scripts/pack-cinder-release.ts --package <cinder|editor> --version <semver> --markdown-version <semver> [--cinder-version <semver>] --outdir <directory>',
+    'Usage: bun scripts/pack-cinder-release.ts --package <cinder|editor|chat> --version <semver> --markdown-version <semver> [--cinder-version <semver>] [--conversationalist-version <semver>] --outdir <directory>',
   );
 }
 const isCinder = name === 'cinder';
 const workspaceDirectory = `components/${name}`;
 const workspaceRoot = join(repositoryRoot, workspaceDirectory);
-const sourceManifest = isCinder ? cinderManifest : editorManifest;
+const manifests = { cinder: cinderManifest, editor: editorManifest, chat: chatManifest };
+const sourceManifest = manifests[name];
 const outputDirectory = resolve(values.outdir);
 const catalog = new Map(Object.entries(repositoryManifest.catalog));
 const publicDependencies = new Map([
   ['@lostgradient/markdown', markdownVersion],
   ['@lostgradient/cinder', cinderVersion],
+  ['conversationalist', conversationalistVersion],
 ]);
 const dependencies = new Map<string, string>();
 for (const [dependency, specifier] of Object.entries(sourceManifest.dependencies)) {
@@ -256,10 +301,15 @@ if (!isCinder) {
 const metadata = metadataSchema.parse(
   await Bun.file(join(workspaceRoot, '.metadata/components.json')).json(),
 );
-const entries = isCinder ? new Map(Object.entries(cinderEntries)) : editorEntries();
+const entries =
+  name === 'chat'
+    ? chatEntries(metadata)
+    : isCinder
+      ? new Map(Object.entries(cinderEntries))
+      : editorEntries();
 entries.set('./package.json', './package.json');
 entries.set('./manifest', './.metadata/components.json');
-await addComponentEntries(entries, workspaceRoot, metadata, isCinder);
+if (name !== 'chat') await addComponentEntries(entries, workspaceRoot, metadata, isCinder);
 const testOnly =
   /(?:^|\/)(?:__tests__|__fixtures__|[^/]+[-.]fixtures?(?:\.[^/]+)?|[^/]+\.(?:test|spec|test-support)\.[^/]+)$/;
 const tokenVersionFile = 'src/tokens/runtime/package-version.generated';
@@ -313,6 +363,8 @@ try {
     }
   }
 
+  if (name === 'chat') await addChatMetadataModules(stage, exports);
+
   const serverSources: BunPlugin = {
     name: 'cinder-release-server-sources',
     setup(builder) {
@@ -348,9 +400,11 @@ try {
     JSON.stringify({
       name: sourceManifest.name,
       version,
-      description: isCinder
-        ? 'Cinder Svelte components and design tokens'
-        : 'Cinder Markdown editors and review components',
+      description: {
+        cinder: 'Cinder Svelte components and design tokens',
+        editor: 'Cinder Markdown editors and review components',
+        chat: 'Cinder Svelte components for chat and agent conversations',
+      }[name],
       type: 'module',
       license: repositoryManifest.license,
       repository: {
