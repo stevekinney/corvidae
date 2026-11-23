@@ -18,6 +18,7 @@ import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -78,10 +79,9 @@ test.describe('the chat list on the sample world', () => {
     await expect(plus).toHaveText('New chat');
     await expect(plus).toHaveAttribute('href', '/chats/new');
     const field = header.getByRole('searchbox', { name: 'Search chats' });
-    const plusBox = await plus.boundingBox();
-    const fieldBox = await field.boundingBox();
-    expect(fieldBox!.y, 'the field sits under the title row').toBeGreaterThan(
-      plusBox!.y + plusBox!.height,
+    const { plus: plusBox, field: fieldBox } = await readBoxes(page, { plus, field });
+    expect(fieldBox.y, 'the field sits under the title row').toBeGreaterThan(
+      plusBox.y + plusBox.height,
     );
   });
 
@@ -196,13 +196,14 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
   test('hides with Hide chats, leaves Show chats on a rail, and stays hidden across a reload', async ({
     page,
     checkA11y,
-  }) => {
+  }, testInfo) => {
     const refund = 'Refund order 4471';
     await openChats(page);
     await row(page, refund).getByRole('link').first().click();
     const detail = page.getByRole('region', { name: 'Open chat' });
     await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
-    const detailBefore = await detail.boundingBox();
+    const { detail: beforeBox } = await readBoxes(page, { detail });
+    const detailBefore = beforeBox.width;
 
     // One control: a handle on the divider, never in the header beside the list's "+" (COR-2438).
     const hide = page.getByRole('button', { name: 'Hide chats' });
@@ -215,8 +216,52 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     const show = page.getByRole('button', { name: 'Show chats' });
     // The same control, in the same rail, now saying what it does next.
     await expect(show).toBeFocused();
-    const detailAfter = await detail.boundingBox();
-    expect(detailAfter!.width).toBeGreaterThan(detailBefore!.width + 150);
+    const readCollapseGeometry = () =>
+      page.locator('.cinder-list-detail').evaluate((root) => {
+        const rect = root.getBoundingClientRect();
+        const listPane = root.querySelector<HTMLElement>(
+          '.cinder-resizable-panels__pane:first-child',
+        );
+        const detailPane = root.querySelector<HTMLElement>(
+          '.cinder-resizable-panels__pane:last-child',
+        );
+        const rail = root.querySelector<HTMLElement>('.cinder-list-detail__rail');
+        return {
+          collapsed: root.hasAttribute('data-cinder-list-collapsed'),
+          layout: root.getAttribute('data-cinder-layout'),
+          listPaneDisplay: listPane === null ? null : getComputedStyle(listPane).display,
+          listRendered: root.querySelector('.cinder-list-detail__list') !== null,
+          railWidth: rail?.getBoundingClientRect().width ?? null,
+          rootWidth: rect.width,
+          detailWidth: detailPane?.getBoundingClientRect().width ?? null,
+        };
+      });
+    const immediateGeometry = await readCollapseGeometry();
+    await testInfo.attach('chat-list-collapse-immediate.json', {
+      body: JSON.stringify({ detailBefore, geometry: immediateGeometry }),
+      contentType: 'application/json',
+    });
+    expect(immediateGeometry.collapsed).toBe(true);
+    expect(immediateGeometry.listRendered).toBe(false);
+    expect(immediateGeometry.listPaneDisplay).toBe('none');
+    expect(immediateGeometry.railWidth).toBeGreaterThan(0);
+
+    // Hiding removes a flex pane. In a loaded host Chromium can expose the changed DOM before its
+    // next layout pass, so wait for the same expansion contract before reading its stable geometry.
+    const readDetailWidth = async () => {
+      const { detail: box } = await readBoxes(page, { detail });
+      return box.width;
+    };
+    await expect.poll(readDetailWidth).toBeGreaterThan(detailBefore + 150);
+    const detailAfter = await readDetailWidth();
+    await testInfo.attach('chat-list-collapse-settled.json', {
+      body: JSON.stringify({
+        detailBefore,
+        geometry: await readCollapseGeometry(),
+      }),
+      contentType: 'application/json',
+    });
+    expect(detailAfter).toBeGreaterThan(detailBefore + 150);
     // The capture is of the chat as it is, with its history in (COR-2327 B3): its waiting approval.
     await expect(detail.locator('[data-approval-decision]')).toBeVisible();
     await checkA11y('the chat list hidden beside an open chat');
@@ -533,7 +578,9 @@ test.describe('the chat list at other widths', () => {
     await page.setViewportSize({ width: 375, height: 900 });
     await page.goto('/chats?view=archived');
     const archived = list(page);
-    await expect(archived.getByRole('heading', { name: 'Archived chats' })).toBeVisible();
+    await expect(
+      archived.getByRole('heading', { level: 1, name: 'Archived chats', exact: true }),
+    ).toBeVisible();
     await expect(archived.getByRole('searchbox', { name: 'Search chats' })).toHaveCount(0);
     await expect(archived.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
     await page.setViewportSize({ width: 1280, height: 900 });

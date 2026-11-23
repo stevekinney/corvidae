@@ -163,6 +163,64 @@ test('opens Edit goal from a goal’s page with its check and limit in the field
   await expect(page).toHaveURL(/\/goals\/seeded-goal$/);
 });
 
+test.describe('Goal edit actions above the phone tab bar', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375] as const) {
+    test(`Save and Cancel keep their coarse hit areas in the ${width}px goal editor outlet`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      for (const control of ['Save', 'Cancel'] as const) {
+        await page.goto('/goals/seeded-goal/edit');
+        const action = page.getByRole(control === 'Save' ? 'button' : 'link', { name: control });
+        await action.scrollIntoViewIfNeeded();
+        await expect(action).toBeInViewport();
+        const target = await action.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const x = box.left + box.width / 2;
+          const y = box.top + box.height / 2 + 21;
+          const outlet = element.closest('main');
+          if (outlet === null) throw new Error('the goal editor outlet is drawn');
+          return {
+            x,
+            y,
+            faceHeight: box.height,
+            reachesAction: element.contains(document.elementFromPoint(x, y)),
+            remainsInOutlet: y < outlet.getBoundingClientRect().bottom,
+          };
+        });
+        expect(target.faceHeight).toBeLessThanOrEqual(36);
+        expect(target.reachesAction).toBe(true);
+        expect(target.remainsInOutlet).toBe(true);
+
+        await page.touchscreen.tap(target.x, target.y);
+        await expect(page).toHaveURL(/\/goals\/seeded-goal$/);
+      }
+
+      const tab = page.getByRole('navigation', { name: 'Main tabs' }).getByRole('link', {
+        name: 'Home',
+      });
+      await expect(tab).toBeVisible();
+      const tabHit = await tab.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        return {
+          x,
+          y,
+          height: box.height,
+          owned: element.contains(document.elementFromPoint(x, y)),
+        };
+      });
+      expect(tabHit.height).toBeGreaterThanOrEqual(44);
+      expect(tabHit.owned).toBe(true);
+      await page.touchscreen.tap(tabHit.x, tabHit.y);
+      await expect(page).toHaveURL(/\/$/);
+    });
+  }
+});
+
 // A check the Bureau does not have cannot be typed into the picker, so the `Unprocessable` for one
 // that went between the form's load and its submit is tested where the Bureau can be made to refuse
 // it: `goals-page.test.ts` ("says Unprocessable above the buttons for a check the Bureau no longer

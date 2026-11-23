@@ -582,7 +582,9 @@
    * not this class, and a row's trailing control that is not an action (a switch) stays beside.
    */
   @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--lines.cinder-stacked-list-item--action-buttons
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--action-buttons:not(
+        .cinder-stacked-list-item--single-action.cinder-stacked-list-item--status-leading
+      )
       .cinder-stacked-list-item__trailing {
       grid-row: 4;
       grid-column: title / -1;
@@ -743,11 +745,101 @@
     padding-inline-end: 0;
   }
 
+  /* A viewport-width phone row gives the status its full word. Its timestamp must then reflow at
+     large text rather than widening the list past the viewport; the run list uses a time snippet,
+     so this belongs on the time cell rather than only on the text-value form below. */
+  .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--group
+    )
+    .cinder-stacked-list-item__time {
+    text-align: end;
+    white-space: normal;
+  }
+
   .cinder-stacked-list-item--lines[data-cinder-phone-width='viewport'][data-cinder-phone].cinder-stacked-list-item--status-leading:not(
       .cinder-stacked-list-item--no-line-two
     )
     .cinder-stacked-list-item__status:has(*) {
     margin-inline-end: var(--cinder-space-1-5);
+  }
+
+  /* The generic narrow rule predates lines, whose body wrapper is flattened into this grid. Keep a
+     single action below the real title and line cells rather than creating an implicit `body` row.
+     This comes after both phone-width forms so an ordinary action gets the same usable text tracks
+     whether its phone state follows the row or the viewport. Menus, glyphs, and explicit phone
+     buttons each retain their compact or full-width arrangements. */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns:
+        [status] var(--_cinder-status-track) [leading] auto [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto);
+      grid-template-areas:
+        'status leading title time'
+        'status leading line line'
+        'trailing trailing trailing trailing'
+        '. . details details';
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns:
+        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
+        [time] var(--_cinder-time-track, auto);
+      grid-template-areas:
+        'leading title title time'
+        'leading status line line'
+        'trailing trailing trailing trailing'
+        '. . details details';
+    }
+
+    /* These specialized third-row layouts retain the generic action's compact spacing, but their
+       text starts at different named columns. A leading tile makes the visual title begin at the
+       status line; without one it begins at the actual title line. */
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--has-leading,
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__trailing {
+      grid-column: title / -1;
+      align-self: start;
+      margin-inline-start: 0;
+      margin-block-start: var(--cinder-space-2);
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__trailing {
+      grid-column: status / -1;
+      align-self: start;
+      margin-inline-start: 0;
+      margin-block-start: var(--cinder-space-2);
+    }
+
+    /* The ordinary inline-status form stops before a trailing column. These dedicated action
+       layouts instead put the action in their third row, so that generated line starts at column
+       one. Let line two span the real row tracks without sending it back to that line. */
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--single-action:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph,
+        .cinder-stacked-list-item--phone-buttons
+      ).cinder-stacked-list-item--status-inline
+      .cinder-stacked-list-item__line-two {
+      grid-column: status / -1;
+    }
   }
 
   /* The chat list's line-two status gives up its fixed column on a phone only (COR-2016): the
@@ -1098,6 +1190,20 @@
   }
 
   @media (any-pointer: coarse) {
+    /* The disclosure's painted word stays compact in a run/schedule row. Its hit region reaches
+       44px outside normal layout, like the compact actions menu below, so it neither widens nor
+       makes the row taller. */
+    .cinder-stacked-list-item__disclosure {
+      min-block-size: 0;
+    }
+
+    .cinder-stacked-list-item__disclosure::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
     .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger::before {
       content: '';
       position: absolute;

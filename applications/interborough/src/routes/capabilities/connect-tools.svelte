@@ -46,6 +46,7 @@
     Alert,
     Button,
     Callout,
+    ChoiceGrid,
     ConfirmDialog,
     EmptyState,
     FormActions,
@@ -59,6 +60,8 @@
     SegmentedControl,
     StatusDot,
   } from '@lostgradient/cinder';
+  import GlobeIcon from '@lucide/svelte/icons/globe';
+  import ServerIcon from '@lucide/svelte/icons/server';
   import { CircleAlert, TriangleAlert } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
@@ -833,15 +836,23 @@
       }}
     >
       <FormSection heading={copy.sections.source} columns={1}>
-        <RadioGroup
-          name="connect-kind"
-          label={copy.kind.label}
+        <ChoiceGrid
+          id="connect-kind"
+          variant="card"
+          columns="responsive"
+          ariaLabel={copy.kind.label}
           bind:value={kind}
           disabled={connecting}
         >
-          <RadioGroup.Option id="connect-kind-mcp" value="mcp" label={copy.kind.mcp} />
-          <RadioGroup.Option id="connect-kind-openapi" value="openapi" label={copy.kind.openapi} />
-        </RadioGroup>
+          <ChoiceGrid.Item value="mcp" description={copy.kind.mcpDescription}>
+            {#snippet icon()}<ServerIcon />{/snippet}
+            {copy.kind.mcp}
+          </ChoiceGrid.Item>
+          <ChoiceGrid.Item value="openapi" description={copy.kind.openapiDescription}>
+            {#snippet icon()}<GlobeIcon />{/snippet}
+            {copy.kind.openapi}
+          </ChoiceGrid.Item>
+        </ChoiceGrid>
       </FormSection>
 
       <FormSection heading={copy.sections.address} columns={1}>
@@ -899,23 +910,16 @@
             </Callout>
           {/if}
         {:else}
-          <RadioGroup
-            name="connect-specification"
+          <SegmentedControl
+            id="connect-specification"
             label={copy.specification.label}
-            bind:value={specification}
+            value={specification}
             disabled={connecting}
+            onValueChange={(next: string) => (specification = next)}
           >
-            <RadioGroup.Option
-              id="connect-specification-url"
-              value="url"
-              label={copy.specification.url}
-            />
-            <RadioGroup.Option
-              id="connect-specification-file"
-              value="file"
-              label={copy.specification.file}
-            />
-          </RadioGroup>
+            <Segment value="url">{copy.specification.url}</Segment>
+            <Segment value="file">{copy.specification.file}</Segment>
+          </SegmentedControl>
           {#if form.specification === 'url'}
             <Input
               id="connect-specification-address"

@@ -78,6 +78,24 @@ async function choose(id: string): Promise<void> {
   await fireEvent.click(field(id));
 }
 
+/** Picks the source type in Source's descriptive card choices. */
+async function chooseKind(kind: 'mcp' | 'openapi'): Promise<void> {
+  await fireEvent.click(
+    within(field('connect-kind')).getByRole('radio', {
+      name: new RegExp(`^${copy.connect.kind[kind]}`),
+    }),
+  );
+}
+
+/** Picks URL or file in the OpenAPI document segmented control. */
+async function chooseSpecification(specification: 'url' | 'file'): Promise<void> {
+  const segment = field('connect-specification').querySelector<HTMLElement>(
+    `[data-cinder-segment-value="${specification}"]`,
+  );
+  if (segment === null) throw new Error(`no specification segment ${specification}`);
+  await fireEvent.click(segment);
+}
+
 /** Picks how an MCP server signs in, in Sign in's segmented control (rows 33g, 34q). */
 async function signInBy(choice: 'oauth' | 'bearer' | 'none'): Promise<void> {
   const segment = document.body.querySelector<HTMLElement>(
@@ -192,6 +210,32 @@ describe('the Connect tools page', () => {
     expect(field('connect-name').required).toBe(true);
     expect(container.textContent).toContain(copy.connect.name.description);
     expect(container.querySelector('#connect-command')).toBeNull();
+  });
+
+  test('chooses source cards with descriptions and switches OpenAPI documents by segmented control (rows 33e, 33s)', async () => {
+    const { container } = await openPage();
+    const kinds = field('connect-kind');
+
+    expect(kinds.getAttribute('role')).toBe('radiogroup');
+    expect(kinds.getAttribute('data-cinder-variant')).toBe('card');
+    expect(kinds.textContent).toContain(copy.connect.kind.mcpDescription);
+    expect(kinds.textContent).toContain(copy.connect.kind.openapiDescription);
+    expect(
+      within(kinds).getByRole('radio', { name: new RegExp(`^${copy.connect.kind.mcp}`) }),
+    ).toHaveAttribute('aria-checked', 'true');
+
+    await chooseKind('openapi');
+    expect(
+      within(kinds).getByRole('radio', { name: new RegExp(`^${copy.connect.kind.openapi}`) }),
+    ).toHaveAttribute('aria-checked', 'true');
+    await type('connect-specification-address', 'https://api.example.com/openapi.json');
+    await chooseSpecification('file');
+    expect(container.querySelector('#connect-specification-address')).toBeNull();
+    expect(field('connect-file')).not.toBeNull();
+    await chooseSpecification('url');
+    expect(field('connect-specification-address').value).toBe(
+      'https://api.example.com/openapi.json',
+    );
   });
 
   test('reaches one by a command on one line, under a warning, and keeps Name and the footer (rows 33o, 33p, 33r)', async () => {
@@ -415,9 +459,9 @@ describe('the Connect tools page', () => {
 
   test('connects an OpenAPI service from a file with a base URL and an API key', async () => {
     const { host, findByTestId } = await openPage();
-    await choose('connect-kind-openapi');
+    await chooseKind('openapi');
     await type('connect-name', 'petstore');
-    await choose('connect-specification-file');
+    await chooseSpecification('file');
     const input = field('connect-file');
     const document = { openapi: '3.0.0', info: { title: 'Pets', version: '1' }, paths: {} };
     // The host reads the spec; what it parsed is what the connect sends.
@@ -470,9 +514,9 @@ describe('the Connect tools page', () => {
 
   test('says a file that is not an OpenAPI document is not one, and a file that is too large is refused', async () => {
     const { host, findByText } = await openPage();
-    await choose('connect-kind-openapi');
+    await chooseKind('openapi');
     await type('connect-name', 'petstore');
-    await choose('connect-specification-file');
+    await chooseSpecification('file');
     const input = field('connect-file');
 
     Object.defineProperty(input, 'files', {

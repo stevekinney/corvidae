@@ -31,6 +31,49 @@
       {/snippet}
     </DataList>
   </div>
+  <div data-testid="actions-no-leading" hidden>
+    <DataList items={rows} key={(row) => row.id}>
+      {#snippet children()}
+        <StackedListItem lines wrapMeta actions={[{ label: 'View run', href: '#run' }]}>
+          {#snippet title()}Tool runner has cost $12.35, over the spend threshold{/snippet}
+          {#snippet meta()}Found over the threshold at Nov 2, 10:46 AM. The run finished at Nov 2,
+            10:47 AM.{/snippet}
+        </StackedListItem>
+      {/snippet}
+    </DataList>
+  </div>
+  <div data-testid="status-inline-actions" hidden>
+    <div data-variant="no-leading">
+      <DataList items={rows} key={(row) => row.id}>
+        {#snippet children()}
+          <StackedListItem lines wrapMeta actions={[{ label: 'View run', href: '#run' }]}>
+            {#snippet status()}<StatusDot word="Needs attention" />{/snippet}
+            {#snippet title()}Tool runner has cost $12.35, over the spend threshold{/snippet}
+            {#snippet meta()}Found over the threshold at Nov 2, 10:46 AM. The run finished at Nov 2,
+              10:47 AM.{/snippet}
+          </StackedListItem>
+        {/snippet}
+      </DataList>
+    </div>
+    <div data-variant="leading">
+      <DataList items={rows} key={(row) => row.id}>
+        {#snippet children()}
+          <StackedListItem
+            lines
+            wrapMeta
+            leadingTone="warning"
+            actions={[{ label: 'View run', href: '#run' }]}
+          >
+            {#snippet leading()}<Hourglass aria-hidden="true" size={16} />{/snippet}
+            {#snippet status()}<StatusDot word="Needs attention" />{/snippet}
+            {#snippet title()}Tool runner has cost $12.35, over the spend threshold{/snippet}
+            {#snippet meta()}Found over the threshold at Nov 2, 10:46 AM. The run finished at Nov 2,
+              10:47 AM.{/snippet}
+          </StackedListItem>
+        {/snippet}
+      </DataList>
+    </div>
+  </div>
   <div data-testid="badges">
     <DataList items={rows} key={(row) => row.id}>
       {#snippet children()}

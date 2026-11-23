@@ -472,6 +472,14 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       'The reply stopped partway: the model provider dropped the connection.',
     );
     await expect(line.getByRole('button', { name: 'Retry' })).toBeVisible();
+    // This is a fine-pointer desktop Chat at the 1280px capture width. Attach keeps Cinder's
+    // compact 28px face instead of flex-shrinking below the mouse target Cinder promises.
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(false);
+    const attach = page.getByRole('button', { name: 'Attach file' });
+    await expect(attach).toBeVisible();
+    const { attach: attachBox } = await readBoxes(page, { attach });
+    expect(attachBox.width).toBeGreaterThanOrEqual(24);
+    expect(attachBox.height).toBeGreaterThanOrEqual(24);
     // COR-2533: the line leads to the run's explanation on the Run page.
     await expect(line.getByRole('link', { name: 'Why it failed' })).toHaveAttribute(
       'href',
@@ -488,6 +496,47 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       state: 'reply failed partway',
       source: SOURCE,
     });
+  });
+
+  test('at 320 by 640, Retry scrolls above the composer and receives its pointer (19p)', async ({
+    page,
+    request,
+  }) => {
+    await connectProvider(page);
+    await openStatesChat(page, request, 'failed-partway');
+    await page.setViewportSize({ width: 320, height: 640 });
+
+    const timeline = transcript(page);
+    const note = timeline.locator('.chat-note[data-failed]');
+    const retry = note.getByRole('button', { name: 'Retry' });
+    const composer = page.locator('.chat-input-area');
+    await expect(retry).toBeVisible();
+    await timeline.evaluate(async (element) => {
+      element.scrollTop = element.scrollHeight;
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
+
+    const boxes = await readBoxes(page, { timeline, note, retry, composer });
+    expect(boxes.note.y).toBeGreaterThanOrEqual(boxes.timeline.y);
+    expect(boxes.note.y + boxes.note.height).toBeLessThanOrEqual(
+      boxes.timeline.y + boxes.timeline.height,
+    );
+    expect(boxes.retry.y).toBeGreaterThanOrEqual(boxes.timeline.y);
+    expect(boxes.retry.y + boxes.retry.height).toBeLessThanOrEqual(
+      boxes.timeline.y + boxes.timeline.height,
+    );
+    expect(boxes.retry.y + boxes.retry.height).toBeLessThanOrEqual(boxes.composer.y + 1);
+    expect(
+      await retry.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        return button.contains(
+          document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+        );
+      }),
+    ).toBe(true);
+    await retry.click({ trial: true });
   });
 });
 

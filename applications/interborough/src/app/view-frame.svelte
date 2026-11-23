@@ -306,6 +306,7 @@
   class="weft-view"
   data-view={initial.view}
   data-state={state}
+  data-chat-first-use={startsNewChat && state === 'empty' ? '' : undefined}
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >

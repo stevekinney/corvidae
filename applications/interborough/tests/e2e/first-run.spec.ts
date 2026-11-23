@@ -25,6 +25,7 @@ import { MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_FIRST_RUN_URL });
 test.describe.configure({ mode: 'serial' });
@@ -33,7 +34,7 @@ const KEY = 'e2e-first-run-key-that-must-never-be-printed';
 const AGENT_NAME = 'First run agent';
 const AGENT_IDENTIFIER = 'first-run-agent';
 const FIRST_USE_WIDTHS =
-  designReviewCaptureDirectory() === undefined ? [375, 1280] : [1280, 768, 375];
+  designReviewCaptureDirectory() === undefined ? [320, 375, 1280] : [1280, 768, 375, 320];
 
 /** Saves a key for Anthropic from Settings › Models, and waits for the page to say it is connected. */
 async function connectAnthropic(page: Page): Promise<void> {
@@ -75,6 +76,18 @@ for (const width of FIRST_USE_WIDTHS) {
     await expect(page.getByRole('link', { name: 'Browse agents' })).toContainClass(
       'button-variant-secondary',
     );
+    // This frame has no chat panes, so its actions keep the shell’s normal content gutter.
+    const boxes = await readBoxes(page, {
+      outlet: page.locator('main.weft-shell-outlet'),
+      create: page.getByRole('link', { name: 'New agent' }),
+      browse: page.getByRole('link', { name: 'Browse agents' }),
+    });
+    for (const action of [boxes.create, boxes.browse]) {
+      expect(action.x - boxes.outlet.x).toBeGreaterThanOrEqual(16);
+      expect(boxes.outlet.x + boxes.outlet.width - action.x - action.width).toBeGreaterThanOrEqual(
+        16,
+      );
+    }
     // There is nothing to send to, so no composer, and the checklist belongs to Home.
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.getByTestId('first-run')).toHaveCount(0);
