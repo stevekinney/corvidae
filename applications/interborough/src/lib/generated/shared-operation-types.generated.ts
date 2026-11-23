@@ -211,7 +211,7 @@ export type SharedActorAgentNameAttention_30e4f494 = {
     readonly awaitingSignal: string | null;
     readonly scheduleId: string | null;
     readonly scheduleName: string | null;
-    readonly steps: { readonly at: number | null; readonly total: number } | null;
+    readonly steps: SharedAtTotal_4df37293 | null;
     readonly tick: {
       readonly event: 'came-due' | 'missed-runs';
       readonly missedRuns: number | null;
@@ -454,6 +454,7 @@ export type SharedArtifactIdTextTruncated_6e74d482 = {
   readonly text: string;
   readonly truncated: boolean;
 };
+export type SharedAtTotal_4df37293 = { readonly at: number | null; readonly total: number };
 export type SharedAttemptIdGoalRunIdKind_492a23d4 = {
   readonly attemptId: string;
   readonly goalRunId: string;
@@ -671,6 +672,11 @@ export type SharedCostUsdStepsTokens_b79f227c = {
   readonly costUsd: number | null;
   readonly steps: number;
   readonly tokens: number;
+};
+export type SharedCountFirstRunAtLastRunAt_812c9aac = {
+  readonly count: number;
+  readonly firstRunAt: string | null;
+  readonly lastRunAt: string | null;
 };
 export type SharedCreatedAtDeclaredByteLen_078d11c8 = {
   readonly createdAt: string;

@@ -23,9 +23,9 @@ import {
   invalidFile,
   readyFile,
   runFixture,
+  savedVersionFixture,
   sourceDefinition,
   workflowFaults,
-  type RevisionFixture,
   type WorkflowStub,
   type World,
 } from '../../lib/workflow-world.test-support.ts';
@@ -45,19 +45,6 @@ afterEach(() => {
 });
 
 const TABS = WORKFLOW_COPY.page.tabs;
-
-function revision(
-  version: string,
-  compatibility: NonNullable<RevisionFixture['compatibility']> | null,
-): RevisionFixture {
-  return {
-    workflowVersion: version,
-    firstRunAt: '2026-10-19T08:00:00.000Z',
-    lastRunAt: '2026-10-19T09:00:00.000Z',
-    document: { name: 'digest', trigger: { kind: 'schedule', spec: '0 6 * * *' }, steps: [] },
-    compatibility,
-  };
-}
 
 function open(path: string, overrides: Partial<World> = {}) {
   stub = installWorkflowWorld(
@@ -251,56 +238,74 @@ describe('the Code tab of a code-defined workflow', () => {
 });
 
 describe('the History tab', () => {
-  test('shows each version’s verdict against the current revision, and the reasons it is not compatible', async () => {
+  test('shows every saved version, including one that has not run, with its neutral verdict', async () => {
     const { container } = open('/workflows/digest', {
-      revisions: {
+      savedVersions: {
         digest: [
-          revision('version-current', { compatible: true }),
-          revision('version-old', {
-            compatible: false,
-            reasons: ['workflow-version-incompatible', 'artifact-revision-mismatch'],
+          savedVersionFixture('1.3.0', {
+            current: true,
+            workflowVersion: 'same-engine-revision',
+            compatibility: 'compatible',
+            surface: 'web',
+            changes: [{ kind: 'step-reworded', step: 2, breaking: false }],
+            runs: {
+              count: 4,
+              firstRunAt: '2026-10-19T08:00:00.000Z',
+              lastRunAt: '2026-10-19T09:00:00.000Z',
+            },
+          }),
+          savedVersionFixture('1.2.0', {
+            current: false,
+            workflowVersion: 'same-engine-revision',
+            compatibility: 'breaking',
+            runs: {
+              count: 1,
+              firstRunAt: '2026-10-19T08:00:00.000Z',
+              lastRunAt: '2026-10-19T09:00:00.000Z',
+            },
+          }),
+          savedVersionFixture('1.1.0', {
+            current: false,
+            runs: { count: 0, firstRunAt: null, lastRunAt: null },
           }),
         ],
       },
     });
     const root = await ready(container);
     await openTab(root, TABS.history);
-    await waitFor(() => expect(root.querySelectorAll('[data-version]').length).toBe(2));
+    await waitFor(() => expect(root.querySelectorAll('[data-version]').length).toBe(3));
 
     const rows = [...root.querySelectorAll<HTMLElement>('[data-version]')];
-    // A version is named by the day it first ran and a short hash, with the full one in a copy control.
-    expect(rows[0]?.querySelector('[data-testid="workflow-revision-title"]')?.textContent).toMatch(
-      /^\s*(Mon, )?Oct 19, .*, version version-, (current|older) version/,
-    );
+    expect(
+      rows[0]?.querySelector('[data-testid="workflow-revision-title"]')?.textContent,
+    ).toContain('Version 1.3.0, current version');
     expect(rows[0]?.querySelector('button')?.getAttribute('aria-label')).toBe(
-      WORKFLOW_COPY.revisions.copyVersion('version-'),
+      WORKFLOW_COPY.revisions.copyVersion('1.3.0'),
     );
-    // The verdict and the last run read as one sentence: the comma keeps its space.
     expect(
       rows[0]?.querySelector('[data-testid="workflow-revision-verdict"]')?.textContent,
-    ).toMatch(/, last run /);
+    ).toContain('Saved');
     expect(rows[0]?.textContent).toContain(WORKFLOW_COPY.revisions.compatible);
-    expect(rows[0]?.querySelector('[data-testid="workflow-revision-reasons"]')).toBeNull();
+    expect(rows[0]?.textContent).toContain('Edited in the builder: reworded step 2');
+    expect(rows[0]?.textContent).toContain(WORKFLOW_COPY.revisions.runsKeepGoing);
     expect(rows[1]?.textContent).toContain(WORKFLOW_COPY.revisions.incompatible);
-    const reasons = [
-      ...(rows[1]?.querySelectorAll('[data-testid="workflow-revision-reasons"] li') ?? []),
-    ].map((reason) => reason.textContent);
-    expect(reasons).toEqual([
-      WORKFLOW_COPY.revisions.reason('workflow-version-incompatible'),
-      WORKFLOW_COPY.revisions.reason('artifact-revision-mismatch'),
-    ]);
+    expect(rows[1]?.textContent).toContain(WORKFLOW_COPY.revisions.runsOnVersion(1));
+    expect(rows[2]?.textContent).toContain(WORKFLOW_COPY.revisions.noRunsOnVersion);
   });
 
   test('says there is no current revision to compare with when the Bureau gives no verdict', async () => {
     const { container } = open('/workflows/digest', {
-      revisions: { digest: [revision('version-gone', null)] },
+      savedVersions: { digest: [savedVersionFixture('1.0.0', { compatibility: null })] },
     });
     const root = await ready(container);
     await openTab(root, TABS.history);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain(
-        WORKFLOW_COPY.revisions.noCurrent,
+        WORKFLOW_COPY.revisions.noComparison,
       ),
+    );
+    expect(testId(root, 'workflow-revisions')?.textContent).not.toContain(
+      WORKFLOW_COPY.revisions.noRunsOnVersion,
     );
   });
 
@@ -310,8 +315,8 @@ describe('the History tab', () => {
     );
   });
 
-  test('is an empty state when no version has run', async () => {
-    const { container } = open('/workflows/digest', { revisions: { digest: [] } });
+  test('is an empty state when no version has been saved', async () => {
+    const { container } = open('/workflows/digest', { savedVersions: { digest: [] } });
     const root = await ready(container);
     await openTab(root, TABS.history);
     await waitFor(() =>
@@ -505,13 +510,11 @@ describe('a part of the tabs that fails', () => {
   });
 
   test('reads the history again on retry', async () => {
-    const { container } = open('/workflows/digest', { revisions: { digest: [] } });
+    const { container } = open('/workflows/digest', { savedVersions: { digest: [] } });
     let reads = 0;
-    stub?.on('bureau.workflows.revisions', () => {
+    stub?.on('bureau.workflows.history', () => {
       reads += 1;
-      // The page reads the versions when it loads, for the History count, and the tab, which asks
-      // for the same list, reads again as it opens: both fail, and the retry is the third read.
-      if (reads <= 2) throw workflowFaults.unavailable();
+      if (reads === 1) throw workflowFaults.unavailable();
       return { revisions: [] };
     });
     const root = await ready(container);

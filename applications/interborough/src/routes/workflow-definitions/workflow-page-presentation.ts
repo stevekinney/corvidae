@@ -86,6 +86,8 @@ export type LastRun = {
   readonly status: WorkflowStatus;
   /** When it began, in milliseconds. */
   readonly createdAt: number;
+  readonly reachedStep?: number | null;
+  readonly awaitingSignal?: string | null;
 };
 
 /**
@@ -110,11 +112,19 @@ export function lastRunLine(input: {
   if (last === null) {
     parts.push([{ text: copy.neverRun }]);
   } else if (last !== undefined) {
-    parts.push([
-      { text: `${copy.lastRunLabel} ` },
-      { text: listDate(last.createdAt, now, zone), href: input.runHref(last.id) },
-    ]);
-    parts.push([{ text: '', word: workflowRunStatusWord(last.status) }]);
+    const date = listDate(last.createdAt, now, zone);
+    const when =
+      calendarDay(last.createdAt, zone) === calendarDay(now, zone) ? copy.todayAt(date) : date;
+    parts.push([{ text: `${copy.lastRunLabel} ` }, { text: when, href: input.runHref(last.id) }]);
+    if (last.status === 'suspended' && last.awaitingSignal != null) {
+      parts.push([{ text: copy.waitingForSignal }, { text: last.awaitingSignal, code: true }]);
+    } else {
+      const status: HeaderRun[] = [{ text: '', word: workflowRunStatusWord(last.status) }];
+      if ((last.status === 'failed' || last.status === 'timed-out') && last.reachedStep != null) {
+        status.push({ text: copy.failedAtStep(last.reachedStep) });
+      }
+      parts.push(status);
+    }
   }
   if (input.fileName !== null) {
     parts.push([{ text: `${copy.fileLabel} ` }, { text: input.fileName, code: true }]);

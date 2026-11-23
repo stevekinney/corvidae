@@ -20965,6 +20965,42 @@
                   "lastRunAt": {
                     "type": "string"
                   },
+                  "runs": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "firstRunAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "lastRunAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "count",
+                          "firstRunAt",
+                          "lastRunAt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Retained runs on this engine revision, or `null` when the totals are unavailable or private."
+                  },
                   "workflowVersion": {
                     "type": "string"
                   }
@@ -20973,15 +21009,23 @@
                   "workflowVersion",
                   "firstRunAt",
                   "lastRunAt",
+                  "runs",
                   "document",
                   "compatibility"
                 ],
                 "type": "object"
               },
               "type": "array"
+            },
+            "savedVersionCount": {
+              "description": "Every saved version of the workflow, including versions that have never run.",
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
+            "savedVersionCount",
             "revisions"
           ],
           "type": "object"
@@ -22521,8 +22565,22 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "awaitingSignal": {
+                    "description": "The signal an unfinished instance waits for.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "createdAt": {
                     "type": "string"
+                  },
+                  "failure": {
+                    "description": "Why a failed or timed-out instance ended, at most 1,000 characters.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "id": {
                     "type": "string"
@@ -22747,6 +22805,30 @@
                       }
                     ]
                   },
+                  "schedule": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "manual": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "manual"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The schedule the runtime recorded as having fired the instance."
+                  },
                   "status": {
                     "enum": [
                       "pending",
@@ -22758,6 +22840,41 @@
                       "suspended"
                     ],
                     "type": "string"
+                  },
+                  "steps": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "at": {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "total": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "total",
+                          "at"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "How many steps the version the instance ran has, and the one it reached, from one."
                   },
                   "updatedAt": {
                     "type": "string"
@@ -22776,7 +22893,11 @@
                   "status",
                   "createdAt",
                   "updatedAt",
-                  "origin"
+                  "origin",
+                  "schedule",
+                  "steps",
+                  "awaitingSignal",
+                  "failure"
                 ],
                 "type": "object"
               },
@@ -22947,10 +23068,24 @@
           },
           "additionalProperties": false,
           "properties": {
+            "awaitingSignal": {
+              "description": "The signal an unfinished instance waits for.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "createdAt": {
               "type": "string"
             },
             "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "failure": {
+              "description": "Why a failed or timed-out instance ended, at most 1,000 characters.",
               "type": [
                 "string",
                 "null"
@@ -23209,6 +23344,30 @@
                 }
               ]
             },
+            "schedule": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "manual": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "manual"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The schedule the runtime recorded as having fired the instance."
+            },
             "status": {
               "enum": [
                 "pending",
@@ -23220,6 +23379,41 @@
                 "suspended"
               ],
               "type": "string"
+            },
+            "steps": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "at": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many steps the version the instance ran has, and the one it reached, from one."
             },
             "trigger": {
               "anyOf": [
@@ -23249,6 +23443,10 @@
             "createdAt",
             "updatedAt",
             "origin",
+            "schedule",
+            "steps",
+            "awaitingSignal",
+            "failure",
             "trigger",
             "result",
             "error",

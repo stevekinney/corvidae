@@ -40,6 +40,7 @@
   import { usePluginTitle } from '../../lib/plugin-title.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowRunPath } from '../../lib/router.svelte.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { listWorkflowFileRuns } from '../../lib/workflow-files.ts';
   import { ENGINE_RUNS_PATH } from '../../lib/workflow-type-paths.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../home/home-clock.svelte.ts';
@@ -54,6 +55,7 @@
   } from '../workflows/runs/run-rows.ts';
   import RunListRow from '../workflows/runs/run-list-row.svelte';
   import { STARTED_BY_FILTER_LABELS, STARTED_BY_KINDS } from '../workflows/runs/started-by.ts';
+  import type { HeaderSchedule } from './workflow-page-presentation.ts';
   import { workflowRunRows, type WorkflowRunSummary } from './workflow-run-rows.ts';
 
   interface Props {
@@ -69,12 +71,19 @@
     canStart: boolean;
     /** Whether the workflow is a paused file, whose empty state says why nothing starts it. */
     paused: boolean;
+    /** Schedules keyed by the identifier on the recorded origin. */
+    schedules: ReadonlyMap<string, HeaderSchedule>;
   }
 
-  let { type, kind, title, agentName, canStart, paused }: Props = $props();
+  let { type, kind, title, agentName, canStart, paused, schedules }: Props = $props();
 
   const copy = WORKFLOW_COPY.page.runs;
   const client = getClient();
+  const principal = getPrincipalStore();
+  const viewer = $derived(
+    principal.principal?.subject ??
+      (principal.principal?.unauthenticatedAccess === 'warn' ? 'local' : undefined),
+  );
   /** How many runs the tab lists: as many as the header counts for the tab's name. */
   const RECENT_LIMIT = 20;
 
@@ -83,13 +92,17 @@
       queryKey: queryKeys.workflowCatalog.recentRuns(kind, type),
       queryFn: async ({ signal }): Promise<readonly WorkflowRunSummary[]> => {
         if (kind === 'agent-authored') {
-          const files = await listWorkflowFileRuns(type, RECENT_LIMIT, { signal });
+          const { runs: files } = await listWorkflowFileRuns(type, RECENT_LIMIT, { signal });
           return files.map((run) => ({
             id: run.id,
             status: run.status,
             createdAt: Date.parse(run.createdAt),
             updatedAt: Date.parse(run.updatedAt),
             origin: run.origin ?? null,
+            schedule: run.schedule ?? null,
+            steps: run.steps ?? null,
+            awaitingSignal: run.awaitingSignal ?? null,
+            failure: run.failure ?? null,
           }));
         }
         const page = await client.list({ type, limit: RECENT_LIMIT });
@@ -117,7 +130,20 @@
   // A run a trigger started names its plugin by its title.
   const pluginTitle = usePluginTitle();
 
-  const everyRun = $derived<RunRow[]>(workflowRunRows(runs.data ?? [], { title, agentName }));
+  const scheduleNames = $derived(
+    new Map([...schedules].map(([id, schedule]) => [id, schedule.label])),
+  );
+
+  function scheduleCadence(id: string): string | undefined {
+    return schedules.get(id)?.cadence?.replace(/^Every /, 'every ');
+  }
+
+  const everyRun = $derived<RunRow[]>(
+    workflowRunRows(
+      runs.data ?? [],
+      kind === 'agent-authored' ? { title, agentName, type, scheduleNames } : { title, agentName },
+    ),
+  );
 
   // The tab's own filters: a status segment, and what started the run.
   let filter = $state<RunFilter>({});
@@ -135,7 +161,7 @@
   const segments = $derived<FilterSegment[]>(
     visibleRunSegments(counts, filter.status).map((value) => ({
       value,
-      label: TASK_COPY.list.segments[value],
+      label: value === 'signal' ? copy.waitingSignalLabel : TASK_COPY.list.segments[value],
       // The counts wait for the read: a segment is not 0 because the read has not arrived.
       count: runs.isPending ? 'pending' : counts[value],
     })),
@@ -206,22 +232,24 @@
       >
     </Alert>
   {:else}
-    <FilterBar
-      aria-label={copy.filtersLabel}
-      {segments}
-      segmentValue={filter.status ?? 'all'}
-      segmentsLabel={TASK_COPY.statusLabel}
-      {facets}
-      {appliedFilters}
-      searchVisible={false}
-      onSegmentChange={chooseSegment}
-      onFacetChange={(key, value) => {
-        if (key === 'startedBy') chooseStartedBy(value);
-      }}
-      onFilterRemove={(key) => {
-        if (key === 'startedBy') chooseStartedBy('');
-      }}
-    />
+    {#if everyRun.length > 0}
+      <FilterBar
+        aria-label={copy.filtersLabel}
+        {segments}
+        segmentValue={filter.status ?? 'all'}
+        segmentsLabel={TASK_COPY.statusLabel}
+        {facets}
+        {appliedFilters}
+        searchVisible={false}
+        onSegmentChange={chooseSegment}
+        onFacetChange={(key, value) => {
+          if (key === 'startedBy') chooseStartedBy(value);
+        }}
+        onFilterRemove={(key) => {
+          if (key === 'startedBy') chooseStartedBy('');
+        }}
+      />
+    {/if}
     {#if runs.isPending}
       <div role="status" aria-busy="true" aria-label={WORKFLOW_COPY.page.recentRuns}>
         <Skeleton height="1.5rem" />
@@ -262,6 +290,9 @@
               {zone}
               {agentLabel}
               {pluginTitle}
+              {scheduleCadence}
+              {viewer}
+              workflowPage
               href={workflowRunPath(type, row.id)}
             />
           {/snippet}

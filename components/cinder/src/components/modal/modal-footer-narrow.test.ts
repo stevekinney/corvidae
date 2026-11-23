@@ -93,8 +93,8 @@ describe('Modal footer at 320px with three buttons', () => {
     expect(NOT_SHEET_FOOTER).toContain(':not([data-cinder-sheet=');
     // The base footer rule no longer wraps, so a docked sheet (a column) inherits no wrap.
     expect(footerDeclaration('flex-wrap')).toBeUndefined();
-    // The sheet's footer is one row that wraps its confirmation above (COR-2448 AC5), declared by
-    // the shared docked rule, never by the centred card's rule.
+    // The shared docked rule holds a fitting row. ConfirmDialog measures an overflowing action row
+    // and adds its own data attribute for the equal-width vertical group.
     const sheetFooter = declarationsOf(
       ".cinder-modal[data-cinder-sheet='docked'] :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)",
     );

@@ -91,7 +91,9 @@ describe('CopyButton', () => {
     const { container } = render(CopyButton, { value: 'hello', textVisible: true });
     const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
     expect(button.hasAttribute('data-cinder-icon-only')).toBe(false);
-    expect(button.firstElementChild?.matches('svg.lucide-copy')).toBe(true);
+    expect(button.firstElementChild?.matches('svg.cinder-copy-button__icon.lucide-copy')).toBe(
+      true,
+    );
     const words = [...button.querySelectorAll('.cinder-copy-button__word')];
     expect(words.map((word) => word.textContent?.trim())).toEqual(['Copy', 'Copied']);
     expect(words.map((word) => word.hasAttribute('data-cinder-current'))).toEqual([true, false]);
@@ -118,7 +120,9 @@ describe('CopyButton', () => {
       children: createRawSnippet(() => ({ render: () => '<span>Copy key</span>' })),
     });
     const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
-    expect(button.firstElementChild?.matches('svg.lucide-copy')).toBe(true);
+    expect(button.firstElementChild?.matches('svg.cinder-copy-button__icon.lucide-copy')).toBe(
+      true,
+    );
     expect(button.querySelector('.cinder-copy-button__word')?.textContent?.trim()).toBe('Copy key');
   });
 
@@ -195,7 +199,7 @@ describe('CopyButton', () => {
     expect(button?.querySelector('.sr-only')).toBeNull();
   });
 
-  test('keeps its own bordered presentation, not a Button, so consumers that restyle it still win', async () => {
+  test('keeps its own ghost icon face and text-button face, so consumers that restyle it still win', async () => {
     const { container } = render(CopyButton, {
       value: 'hello',
       label: 'Copy value',
@@ -212,16 +216,26 @@ describe('CopyButton', () => {
     const source = await Bun.file(new URL('./copy-button.css', import.meta.url)).text();
     const css = source.replace(/\s+/g, ' ');
     expect(css).toContain('border: 1px solid var(--cinder-border-control);');
+    expect(css).toContain('font-size: var(--cinder-text-xs);');
+    expect(css).toMatch(
+      /\.cinder-copy-button\[data-cinder-icon-only\] \{[^}]*inline-size: 1em;[^}]*block-size: 1em;[^}]*border-width: 0;/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-copy-button\[data-cinder-icon-only\] \.cinder-copy-button__icon \{[^}]*inline-size: 1em;[^}]*block-size: 1em;/s,
+    );
     expect(css).toMatch(
       /\.cinder-copy-button \{[^}]*padding: var\(--cinder-space-1\) var\(--cinder-space-2\);/,
     );
     expect(css).toMatch(
       /\.cinder-copy-button:where\(:not\(\[data-cinder-icon-only\]\)\) \{[^}]*padding-inline: var\(--cinder-space-3\);/,
     );
-    expect(css).not.toMatch(/\.cinder-copy-button\[data-cinder-icon-only\] \{[^}]*padding/);
+    expect(css).toMatch(/\.cinder-copy-button\[data-cinder-icon-only\] \{[^}]*padding: 0;/);
     // A coarse pointer reaches it through a pseudo-element that takes no layout space.
     expect(css).toMatch(
       /@media \(any-pointer: coarse\) \{ \.cinder-copy-button \{ position: relative; \} \.cinder-copy-button::before \{[^}]*--cinder-touch-target-min/,
+    );
+    expect(css).toMatch(
+      /@media \(pointer: fine\) and \(not \(any-pointer: coarse\)\) \{ \.cinder-copy-button\[data-cinder-icon-only\] \{ position: relative; \} \.cinder-copy-button\[data-cinder-icon-only\]::before \{[^}]*1\.5rem/,
     );
   });
 

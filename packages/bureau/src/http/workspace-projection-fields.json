@@ -3178,7 +3178,12 @@
     "$.revisions[].document.trigger.*.*",
     "$.revisions[].firstRunAt",
     "$.revisions[].lastRunAt",
-    "$.revisions[].workflowVersion"
+    "$.revisions[].runs",
+    "$.revisions[].runs|anyOf[0].count",
+    "$.revisions[].runs|anyOf[0].firstRunAt",
+    "$.revisions[].runs|anyOf[0].lastRunAt",
+    "$.revisions[].workflowVersion",
+    "$.savedVersionCount"
   ],
   "output:bureau.workflows.runs.cancel": [
     "$|anyOf[0].dryRun",
@@ -3193,8 +3198,10 @@
     "$|anyOf[1].status"
   ],
   "output:bureau.workflows.runs.get": [
+    "$.awaitingSignal",
     "$.createdAt",
     "$.error",
+    "$.failure",
     "$.finishReason",
     "$.id",
     "$.origin",
@@ -3233,7 +3240,13 @@
     "$.result|anyOf[0]|anyOf[4][] -> #/$defs/__schema1",
     "$.result|anyOf[0]|anyOf[5].*",
     "$.result|anyOf[0]|anyOf[5].* -> #/$defs/__schema1",
+    "$.schedule",
+    "$.schedule|anyOf[0].id",
+    "$.schedule|anyOf[0].manual",
     "$.status",
+    "$.steps",
+    "$.steps|anyOf[0].at",
+    "$.steps|anyOf[0].total",
     "$.trigger",
     "$.trigger|anyOf[0] -> #/$defs/__schema0",
     "$.trigger|anyOf[0]|anyOf[4][] -> #/$defs/__schema0",
@@ -3254,7 +3267,9 @@
   "output:bureau.workflows.runs.list": [
     "$.nextOffset",
     "$.runs",
+    "$.runs[].awaitingSignal",
     "$.runs[].createdAt",
+    "$.runs[].failure",
     "$.runs[].id",
     "$.runs[].origin",
     "$.runs[].origin|anyOf[0]|oneOf[0].agentName",
@@ -3286,7 +3301,13 @@
     "$.runs[].origin|anyOf[0]|oneOf[9].kind",
     "$.runs[].origin|anyOf[0]|oneOf[9].plugin",
     "$.runs[].origin|anyOf[0]|oneOf[9].workflowId",
+    "$.runs[].schedule",
+    "$.runs[].schedule|anyOf[0].id",
+    "$.runs[].schedule|anyOf[0].manual",
     "$.runs[].status",
+    "$.runs[].steps",
+    "$.runs[].steps|anyOf[0].at",
+    "$.runs[].steps|anyOf[0].total",
     "$.runs[].updatedAt",
     "$.runs[].workflow",
     "$.runs[].workflowVersion"

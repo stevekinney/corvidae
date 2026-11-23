@@ -4,7 +4,7 @@ Pre-wired modal dialog for user-initiated binary decisions: "proceed" or "cancel
 
 See the [dialog preset boundary](https://github.com/stevekinney/cinder/blob/main/docs/decisions/dialog-presets.md) for the preserved role, acknowledgement, and dismissal contract.
 
-Below a 760px viewport (`sheetBelow`, which accepts any CSS length, or `false` for the centred dialog) the dialog is a bottom sheet: a grabber, a compact Cancel beside the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both drawn at the button's painted height and reaching 44px through its hit area. Cancel keeps initial focus, the corner close button is not drawn, and Escape still closes it.
+Below a 760px viewport, the dialog is a bottom sheet with a grabber. Cancel stays compact when both actions fit on one row. When they stack, both buttons fill the available width, with confirmation above Cancel. Both have a 44px hit area and Cancel keeps initial focus. Escape closes the sheet. Set `sheetBelow` to a CSS length to adjust the breakpoint or to `false` for the centred dialog at every width.
 
 ## Dialog model
 
@@ -165,7 +165,7 @@ By default a failure keeps the confirm button armed, so pressing it again is the
 | `open` | `boolean` | yes | — | Controls visibility. Bindable. |
 | `pending` | `boolean` | no | `false` | True while what the dialog confirms is still being worked out, such as a count the server has not answered: the description and options show a skeleton, the typed field waits, and the confirm button cannot be pressed. Cancel stays enabled and focusable. Entering `pending` clears the typed text, so a new answer is confirmed afresh. |
 | `pendingLabel` | `string` | no | `"Loading"` | What the skeleton is waiting for, announced once as a status when `pending` starts, such as "Counting the workflows a purge would delete". |
-| `sheetBelow` | `string` \| `false` | no | `"760px"` | Viewport width below which the dialog is a bottom sheet: a grabber, a compact Cancel beside the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both drawn at the button's painted height and reaching 44px through its hit area, with Cancel keeping initial focus. A CSS length such as `"760px"`, or `false` for the centred dialog at every width. |
+| `sheetBelow` | `string` \| `false` | no | `"760px"` | Viewport width below which the dialog is a bottom sheet. Cancel stays compact when both actions fit on one row. When the actions stack, both fill the row width, with confirmation above Cancel. Both have 44px hit areas and Cancel keeps initial focus. A CSS length such as `"760px"`, or `false` for the centred dialog at every width. |
 | `title` | `string` | yes | — | Modal title; passed through to <Modal>. |
 | `typeToConfirm` | `string` | no | — | When set, renders a labelled text input and disables the confirm button until the trimmed input matches this value case-insensitively. The input sits in the footer, above the buttons it gates and outside the scrolling body, so a long description or list never pushes it out of view and it is always in view with the confirm button. |
 | `typeToConfirmLabel` | `string` | no | — | Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. |

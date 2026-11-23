@@ -4,6 +4,7 @@ import type {
   SharedAgentIdKindRunId_4feb3c4f,
   SharedAgentNameContextIdKind_ac63222c,
   SharedAgentNameKindParentConte_3eb629fc,
+  SharedAtTotal_4df37293,
   SharedAttemptIdGoalRunIdKind_492a23d4,
   SharedBreakingFromKind_01f3feee,
   SharedBreakingFromKind_5d8657a4,
@@ -20,6 +21,7 @@ import type {
   SharedBreakingKindStep_f7c54476,
   SharedCodeIssuesMessage_037571b6,
   SharedCodeLastFiredAtRetryAt_58907586,
+  SharedCountFirstRunAtLastRunAt_812c9aac,
   SharedDryRunEffectsTarget_b07628bd,
   SharedDryRunExpectedHashId_50848f66,
   SharedFireIdKindManual_6d6cbe8c,
@@ -148,11 +150,7 @@ export type WorkflowsOperationTypes = {
         readonly outputName: string | null;
         readonly outputSchema: Record<string, unknown> | null;
         readonly previousVersion: string | null;
-        readonly runs: {
-          readonly count: number;
-          readonly firstRunAt: string | null;
-          readonly lastRunAt: string | null;
-        } | null;
+        readonly runs: SharedCountFirstRunAtLastRunAt_812c9aac | null;
         readonly savedAt: string;
         readonly steps: ReadonlyArray<Record<string, unknown>>;
         readonly surface: 'web' | 'palette' | 'api' | null;
@@ -297,8 +295,10 @@ export type WorkflowsOperationTypes = {
         };
         readonly firstRunAt: string;
         readonly lastRunAt: string;
+        readonly runs: SharedCountFirstRunAtLastRunAt_812c9aac | null;
         readonly workflowVersion: string;
       }>;
+      readonly savedVersionCount: number;
     };
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
@@ -312,8 +312,10 @@ export type WorkflowsOperationTypes = {
   'bureau.workflows.runs.get': {
     readonly input: { readonly runId: string };
     readonly output: {
+      readonly awaitingSignal: string | null;
       readonly createdAt: string;
       readonly error: string | null;
+      readonly failure: string | null;
       readonly finishReason: 'input-invalid' | 'output-invalid' | null;
       readonly id: string;
       readonly origin:
@@ -330,8 +332,10 @@ export type WorkflowsOperationTypes = {
         | null;
       readonly outputName: string | null;
       readonly result: unknown;
+      readonly schedule: { readonly id: string; readonly manual: boolean } | null;
       readonly status:
         'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended';
+      readonly steps: SharedAtTotal_4df37293 | null;
       readonly trigger: unknown;
       readonly updatedAt: string;
       readonly workflow: string;
@@ -364,7 +368,9 @@ export type WorkflowsOperationTypes = {
     readonly output: {
       readonly nextOffset: number | null;
       readonly runs: ReadonlyArray<{
+        readonly awaitingSignal: string | null;
         readonly createdAt: string;
+        readonly failure: string | null;
         readonly id: string;
         readonly origin:
           | SharedAgentNameContextIdKind_ac63222c
@@ -378,8 +384,10 @@ export type WorkflowsOperationTypes = {
           | { readonly kind: 'system' }
           | SharedKindPluginWorkflowId_b0296d57
           | null;
+        readonly schedule: { readonly id: string; readonly manual: boolean } | null;
         readonly status:
           'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended';
+        readonly steps: SharedAtTotal_4df37293 | null;
         readonly updatedAt: string;
         readonly workflow: string;
         readonly workflowVersion: string;

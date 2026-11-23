@@ -13,8 +13,8 @@ import { createQuery } from '@tanstack/svelte-query';
 import type { WorkflowRunHistoryEvent } from '../../../lib/workflow-files.ts';
 import {
   getWorkflowFile,
+  getWorkflowRevisionSummary,
   getWorkflowRunHistory,
-  listWorkflowRevisions,
   listWorkflowVersionLabels,
 } from '../../../lib/workflow-files.ts';
 import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
@@ -74,7 +74,8 @@ export class RunInstance {
       return {
         queryKey: ['run-instance', 'revisions', read.type ?? ''] as const,
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          listWorkflowRevisions(read.type ?? '', { signal }),
+          getWorkflowRevisionSummary(read.type ?? '', { signal }),
+        select: (summary) => summary.revisions,
         enabled: asked(),
         retry: false,
       };

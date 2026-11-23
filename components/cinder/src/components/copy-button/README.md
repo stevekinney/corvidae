@@ -18,7 +18,7 @@ Button that copies a given text value to the clipboard with visual feedback.
 </div>
 ```
 
-By default the button is the Copy icon, the one copy glyph used across the interface, and turns to a check once the copy lands; `label` names it and shows as its tooltip (inside a page's own `Tooltip`, the page's tooltip is the only one). `textVisible` adds the words "Copy" and "Copied" after the icon, and `children` writes other words; the icon always leads them. Both states are laid out together, so the button keeps one width and nothing beside it moves. A successful copy is announced once through a polite live region, `copiedLabel` ("Copied" by default), while the button keeps its name.
+By default the button is a borderless Copy icon, matched to the surrounding text and turning to a same-sized check once the copy lands; `label` names it and shows as its tooltip (inside a page's own `Tooltip`, the page's tooltip is the only one). Its coarse-pointer hit area remains larger than its painted glyph. `textVisible` adds the words "Copy" and "Copied" after the icon, and `children` writes other words; the icon always leads them. Both states are laid out together, so the button keeps one width and nothing beside it moves. A successful copy is announced once through a polite live region, `copiedLabel` ("Copied" by default), while the button keeps its name.
 
 ## Props
 
