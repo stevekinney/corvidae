@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2596",
+  "branch": "steve/cor-2596-composable",
+  "checkedAt": "fe9f087520d73c99aa4478e4776f559b5b178ad8",
+  "briefVersion": "b0ed2a5278ae",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts round trips equipment and books catalog descriptors"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts checks repeat generation and instrumented factories"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts checks plain callable and declared and absent replay"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts checks deterministic invalid catalog diagnostics"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts executes both catalog operations and checks browser bundle graph; bun run typecheck passed"
+    }
+  ]
+}
