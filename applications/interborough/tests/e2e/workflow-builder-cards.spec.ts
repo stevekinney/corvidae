@@ -447,7 +447,9 @@ test.describe('the workflow builder’s read-only step cards', () => {
     await page.goto('/workflows/new');
     await expect(page.locator('[data-view="workflows"]')).toHaveAttribute('data-state', 'ready');
     const root = page.locator('[data-page="workflow-creator"]');
-    await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('Morning briefing');
+    await root
+      .getByRole('textbox', { name: `${BUILDER.titleLabel} Optional`, exact: true })
+      .fill('Morning briefing');
     await root.getByRole('button', { name: BUILDER.idChange }).click();
     await root.getByLabel(BUILDER.idLabel, { exact: true }).fill('custom-briefing');
     const reset = root.getByRole('button', { name: BUILDER.resetId });
