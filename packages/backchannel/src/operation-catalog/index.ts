@@ -29,6 +29,7 @@ export {
   type ErasedOperation,
   type FaultPolicy,
   type McpToolMetadata,
+  type OperationBehavior,
   type OperationContext,
   type OperationDefinition,
   type OperationInvocationResult,

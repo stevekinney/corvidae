@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2599",
+  "branch": "steve/cor-2599-composable",
+  "checkedAt": "b6601a0f3a5b1ac28fbe7427392ba16731d1c75a",
+  "briefVersion": "cb3a7323b6b1",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: canonical metadata and bearer challenges"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: current principal and delegation after dispatch await, cancellation before operation admission, and delayed body in correction worktree"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: delegable and denied scope challenges"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: size, forwarded host, origin, cancellation during authority recheck and scope revocation in correction worktree"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/installed.integration.test.ts: installed archive listener and dependency graph"
+    }
+  ]
+}
