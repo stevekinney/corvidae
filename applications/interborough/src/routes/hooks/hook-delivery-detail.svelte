@@ -10,6 +10,7 @@
   import { RefreshCw } from '@lucide/svelte';
 
   import type { HookDelivery } from '../../lib/bureau-hooks.ts';
+  import { workflowDetailPath } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import {
     ATTEMPTS_SHOWN,
@@ -152,7 +153,7 @@
       data-testid="hook-delivery-related-run"
     >
       <h3>{copy.relatedRun}</h3>
-      <Link href={`/runs/${encodeURIComponent(relatedRun.id)}`}>{relatedRun.name}</Link>
+      <Link href={workflowDetailPath(relatedRun.id)}>{relatedRun.name}</Link>
       {#if relatedRun.step !== undefined}<p>{copy.relatedRunStep}: {relatedRun.step}</p>{/if}
       {#if relatedRun.error !== undefined}<p>{copy.relatedRunError}: {relatedRun.error}</p>{/if}
     </section>

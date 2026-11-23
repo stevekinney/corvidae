@@ -97,7 +97,7 @@ async function fillWebhook(page: Page, url: string, name: string): Promise<void>
   await page.getByLabel(copy.check.nameLabel).fill(name);
 }
 
-test('makes a hook in the editor, sends a test event to a receiver, and shows the delivery', async ({
+test('/hooks/:hook: makes a hook in the editor, sends a test event to a receiver, and shows the delivery', async ({
   page,
   checkA11y,
 }) => {
