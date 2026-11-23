@@ -19,8 +19,8 @@ describe('the client entry on the browser target', () => {
 
   it('builds the generated Fetch and injected bridge entries without server dependencies', async () => {
     for (const entry of [
-      '../__fixtures__/generated-fetch-page.ts',
-      '../__fixtures__/generated-bridge.ts',
+      '../__fixtures__/probe-client/fetch-operation-client.generated.ts',
+      '../__fixtures__/probe-client/portable-operation-client.generated.ts',
     ]) {
       const text = await bundle(entry);
       const modules = [...text.matchAll(/^\/\/ (\S+\.ts)$/gmu)].map((match) => match[1]!);
