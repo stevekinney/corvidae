@@ -1,14 +1,14 @@
 {
   "issue": "COR-2596",
   "branch": "steve/cor-2596-composable",
-  "checkedAt": "9fe44e608c05c845da92610b8b2432925def1e40",
+  "checkedAt": "fba20b4d0275f91ad4bbd68b30bc221cf35191f5",
   "briefVersion": "b0ed2a5278ae",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "behavior-validation.test.ts round trips equipment and books catalog descriptors"
+      "evidence": "behavior-validation.test.ts round trips equipment and books; Weft golden adds 111 MCP eligibility fields only"
     },
     {
       "id": "AC2",
