@@ -46,49 +46,90 @@ for (const mounted of [false, true]) {
       ['sign', 'verify'],
     );
     const jwk = await crypto.subtle.exportKey('jwk', keys.publicKey);
-    const configuration = new client.Configuration(
-      {
-        issuer: 'https://issuer.test',
-        authorization_endpoint: 'https://issuer.test/authorize',
-        token_endpoint: 'https://issuer.test/token',
-        jwks_uri: 'https://issuer.test/jwks',
-      },
-      'application',
-      { client_secret: 'secret', [client.clockTolerance]: 0 },
-    );
-    client.enableNonRepudiationChecks(configuration);
-    let nonce = '',
-      challenge = '',
+    let issuer = '',
       subject = 'first',
       fault = '';
-    configuration[client.customFetch] = async (input, init) => {
-      const url = new URL(input);
-      if (url.pathname === '/jwks')
-        return Response.json({ keys: [{ ...jwk, kid: 'key', alg: 'RS256', use: 'sig' }] });
-      const body = new URLSearchParams(init?.body as string);
-      expect(await client.calculatePKCECodeChallenge(body.get('code_verifier')!)).toBe(challenge);
-      const now = Math.floor(Date.now() / 1000);
-      const claims = {
-        iss: fault === 'issuer' ? 'https://wrong.test' : 'https://issuer.test',
-        sub: fault === 'subject' ? '' : subject,
-        aud: fault === 'audience' ? 'wrong' : 'application',
-        iat: now,
-        exp: fault === 'expiry' ? now - 300 : now + 600,
-        nonce: fault === 'nonce' ? 'wrong' : nonce,
-        email: 'same@example.test',
-      };
-      const payload = `${json({ alg: 'RS256', kid: 'key' })}.${json(claims)}`;
-      const signature = await crypto.subtle.sign(
-        'RSASSA-PKCS1-v1_5',
-        keys.privateKey,
-        new TextEncoder().encode(payload),
-      );
-      return Response.json({
-        access_token: 'upstream-secret',
-        token_type: 'Bearer',
-        id_token: `${payload}.${fault === 'signature' ? base64(new Uint8Array(signature).fill(1)) : base64(new Uint8Array(signature))}`,
-      });
-    };
+    const codes = new Map<
+      string,
+      { nonce: string; challenge: string; subject: string; redirect: string }
+    >();
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === '/.well-known/openid-configuration')
+          return Response.json({
+            issuer,
+            authorization_endpoint: `${issuer}/authorize`,
+            token_endpoint: `${issuer}/token`,
+            jwks_uri: `${issuer}/jwks`,
+            response_types_supported: ['code'],
+            subject_types_supported: ['public'],
+            id_token_signing_alg_values_supported: ['RS256'],
+            code_challenge_methods_supported: ['S256'],
+          });
+        if (url.pathname === '/jwks')
+          return Response.json({ keys: [{ ...jwk, kid: 'key', alg: 'RS256', use: 'sig' }] });
+        if (url.pathname === '/authorize') {
+          const code = crypto.randomUUID();
+          const redirect = url.searchParams.get('redirect_uri')!;
+          codes.set(code, {
+            nonce: url.searchParams.get('nonce')!,
+            challenge: url.searchParams.get('code_challenge')!,
+            subject,
+            redirect,
+          });
+          const callback = new URL(redirect);
+          callback.searchParams.set('code', code);
+          callback.searchParams.set('state', url.searchParams.get('state')!);
+          return Response.redirect(callback, 302);
+        }
+        if (url.pathname !== '/token') return new Response('Not Found', { status: 404 });
+        const body = new URLSearchParams(await request.text());
+        const code = body.get('code') ?? '';
+        const grant = codes.get(code);
+        codes.delete(code);
+        if (
+          !grant ||
+          body.get('redirect_uri') !== grant.redirect ||
+          (await client.calculatePKCECodeChallenge(body.get('code_verifier') ?? '')) !==
+            grant.challenge
+        )
+          return Response.json({ error: 'invalid_grant' }, { status: 400 });
+        const now = Math.floor(Date.now() / 1000);
+        const claims = {
+          iss: fault === 'issuer' ? 'https://wrong.test' : issuer,
+          sub: fault === 'subject' ? '' : grant.subject,
+          aud: fault === 'audience' ? 'wrong' : 'application',
+          iat: now,
+          exp: fault === 'expiry' ? now - 300 : now + 600,
+          nonce: fault === 'nonce' ? 'wrong' : grant.nonce,
+          email: 'same@example.test',
+        };
+        const payload = `${json({ alg: 'RS256', kid: 'key' })}.${json(claims)}`;
+        const signature = await crypto.subtle.sign(
+          'RSASSA-PKCS1-v1_5',
+          keys.privateKey,
+          new TextEncoder().encode(payload),
+        );
+        return Response.json({
+          access_token: 'upstream-secret',
+          token_type: 'Bearer',
+          id_token: `${payload}.${fault === 'signature' ? base64(new Uint8Array(signature).fill(1)) : base64(new Uint8Array(signature))}`,
+        });
+      },
+    });
+    using issuerCleanup = { [Symbol.dispose]: () => server.stop(true) };
+    void issuerCleanup;
+    issuer = `http://127.0.0.1:${server.port}`;
+    const configuration = await client.discovery(
+      new URL(issuer),
+      'application',
+      { client_secret: 'secret', [client.clockTolerance]: 0 },
+      undefined,
+      { execute: [client.allowInsecureRequests, client.enableNonRepudiationChecks] },
+    );
     const directory = mkdtempSync(
       join(process.env['CREDENTIALS_TEST_DIRECTORY'] ?? tmpdir(), 'credentials-'),
     );
@@ -165,22 +206,27 @@ for (const mounted of [false, true]) {
       expect(authorization.searchParams.get('code_challenge')).toBeTruthy();
       expect(authorization.searchParams.get('state')).toBeTruthy();
       expect(authorization.searchParams.get('nonce')).toBeTruthy();
-      return { authorization, binding: response.headers.getSetCookie()[0].split(';')[0] };
+      const issued = await fetch(authorization, { redirect: 'manual' });
+      const callback = new URL(issued.headers.get('location')!);
+      return {
+        authorization,
+        code: callback.searchParams.get('code')!,
+        binding: response.headers.getSetCookie()[0].split(';')[0],
+      };
     };
     const finish = async (
       attempt: Awaited<ReturnType<typeof start>>,
       state = attempt.authorization.searchParams.get('state')!,
     ) => {
-      nonce = attempt.authorization.searchParams.get('nonce')!;
-      challenge = attempt.authorization.searchParams.get('code_challenge')!;
       return fetchSecond(
-        new Request(`https://app.test/auth/callback?code=valid&state=${state}`, {
+        new Request(`https://app.test/auth/callback?code=${attempt.code}&state=${state}`, {
           headers: { cookie: attempt.binding },
         }),
       );
     };
-    const one = await start(),
-      two = await start();
+    const one = await start();
+    subject = 'second';
+    const two = await start();
     expect(await status(finish(one, two.authorization.searchParams.get('state')!))).toBe(400);
     storage[Symbol.dispose]();
     storage = new BunSQLiteStorage(join(directory, 'sessions.sqlite'));
@@ -195,14 +241,14 @@ for (const mounted of [false, true]) {
     const session = await second.currentSession(
       new Request('https://app.test/private', { headers: { cookie: sessionCookie } }),
     );
-    expect(session?.subjectId).toBe('https://issuer.test:first');
+    expect(session?.subjectId).toBe(`${issuer}:first`);
     expect(session?.workspaceId).toBe('workspace');
     const pageResponse = await fetchSecond(
       new Request('https://app.test/private', { headers: { cookie: sessionCookie } }),
     );
     const page = await pageResponse.text();
     expect(JSON.parse(page)).toEqual({
-      subjectId: 'https://issuer.test:first',
+      subjectId: `${issuer}:first`,
       workspaceId: 'workspace',
     });
     expect(page).not.toContain(sessionCookie.split('=')[1]);
@@ -261,6 +307,11 @@ for (const mounted of [false, true]) {
     expect(signout.headers.getSetCookie()[0]).toContain('Max-Age=0');
     expect(
       await first.currentSession(
+        new Request('https://app.test/', { headers: { cookie: sessionCookie } }),
+      ),
+    ).toBeNull();
+    expect(
+      await second.currentSession(
         new Request('https://app.test/', { headers: { cookie: sessionCookie } }),
       ),
     ).toBeNull();
