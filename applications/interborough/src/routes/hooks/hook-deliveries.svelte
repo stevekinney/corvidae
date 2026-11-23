@@ -32,6 +32,7 @@
     createQuery,
     useQueryClient,
   } from '@tanstack/svelte-query';
+  import { SvelteMap } from 'svelte/reactivity';
 
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
@@ -166,12 +167,12 @@
     })),
   }));
   const referenceNames = $derived.by(() => {
-    const runNames = new Map<string, string>();
+    const runNames = new SvelteMap<string, string>();
     runIds.forEach((runId, index) => {
       const type = runs[index]?.data?.workflow?.type;
       if (type !== undefined) runNames.set(runId, workflowTypeName(type));
     });
-    const reviewNames = new Map<string, string>();
+    const reviewNames = new SvelteMap<string, string>();
     reviewIds.forEach((reviewId, index) => {
       const review = reviews[index]?.data;
       if (review !== undefined) reviewNames.set(reviewId, reviewTitle(review));
