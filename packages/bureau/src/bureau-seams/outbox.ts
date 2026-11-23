@@ -155,6 +155,12 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
   let outboxDrainRerunRequested = false;
 
   async function drainOutbox(): Promise<void> {
+    // COR-2639: an outbox entry may commit after shutdown has closed outbox
+    // drain admission. Do not join an earlier admitted drain in that
+    // case: joining sets its rerun flag and turns this post-cutoff entry into
+    // storage work on the closing host. The durable entry is intentionally
+    // left pending for boot recovery or the next host's maintenance pass.
+    if (core.outboxDrainAdmissionClosed) return;
     if (core.outboxDrainInFlight) {
       outboxDrainRerunRequested = true;
       return core.outboxDrainInFlight;
