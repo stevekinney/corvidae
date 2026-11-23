@@ -8,7 +8,11 @@ import { createProbeClientWithTransport } from '../src/__fixtures__/probe-client
 import { CatalogClientError } from '../src/client/index.ts';
 import { createOperationClientSources } from './generate-operation-client.ts';
 import { FIXTURE_CLIENT_DIRECTORY, fixtureClientSources } from './operation-client-fixture.ts';
-import { fixtureOptions, fixtureSnapshot } from './operation-client-test-support.ts';
+import {
+  fixtureHandler,
+  fixtureOptions,
+  fixtureSnapshot,
+} from './operation-client-test-support.ts';
 
 async function generatedText(
   options: Parameters<typeof fixtureOptions>[0] = {},
@@ -184,6 +188,25 @@ describe('createOperationClientSources: subscription methods', () => {
     expect(sources.has(TYPES)).toBe(false);
     expect(sources.get(MAIN)).toContain('): CatalogOperations {');
   });
+
+  it('emits Fetch subscriptions only for selected routes', async () => {
+    const configured = await generatedText({
+      portableEntries: true,
+      subscriptions: 'generic',
+      subscriptionRoutes: {
+        include: (operation) => operation.name.startsWith('probe.'),
+        pathPrefix: '/custom',
+      },
+    });
+    const fetchEntry = configured.sources.get('fetch-operation-client.generated.ts') ?? '';
+    expect(fetchEntry).toContain("'probe.jobs.watch'");
+    expect(fetchEntry).not.toContain('other.feed.watch');
+    expect(fetchEntry).toContain('routePrefix: "/custom"');
+    const without = await generatedText({ portableEntries: true, subscriptions: 'none' });
+    expect(without.sources.get('fetch-operation-client.generated.ts')).not.toContain(
+      'Subscription',
+    );
+  });
 });
 
 describe('the checked-in fixture client', () => {
@@ -199,6 +222,37 @@ describe('the checked-in fixture client', () => {
 });
 
 describe('portable generated entries', () => {
+  it('opens the generated Fetch subscription on the configured route and aborts it', async () => {
+    const { host, handler } = fixtureHandler();
+    host.feed.publish('first');
+    const controller = new AbortController();
+    const requests: Request[] = [];
+    const client = createProbeClientWithFetch({
+      baseUrl: 'http://localhost',
+      headers: { authorization: 'Bearer test' },
+      fetch: async (url, init) => {
+        const request = new Request(url, init);
+        requests.push(request);
+        const target = new URL(request.url);
+        target.pathname = target.pathname.replace('/probe/v1/', '/v1/');
+        return handler(new Request(target, request));
+      },
+    });
+    const stream = client['probe.jobs.watch']({ topic: 'jobs' }, { signal: controller.signal });
+    const iterator = stream[Symbol.asyncIterator]();
+    const event = await iterator.next();
+    expect(event.value).toMatchObject({ type: 'event', id: '1', data: { kind: 'first' } });
+    expect(await iterator.next()).toEqual({ done: false, value: { type: 'replay-complete' } });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(
+      'http://localhost/probe/v1/subscriptions/probe.jobs.watch?topic=jobs',
+    );
+    expect(requests[0]?.headers.get('authorization')).toBe('Bearer test');
+    controller.abort();
+    expect(await iterator.next()).toEqual({ done: true, value: undefined });
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
   it('regenerates deterministically when an operation is added', async () => {
     const snapshot = fixtureSnapshot();
     const options = fixtureOptions({ portableEntries: true });

@@ -308,12 +308,31 @@ export function ${options.factoryName}WithTransport(transport: CatalogTransport)
     sources.set(
       'fetch-operation-client.generated.ts',
       `${GENERATED_HEADER}
-import { httpJsonRpcTransport, type JsonRpcHttpConnection } from '${runtimeSpecifier}';
+import { httpJsonRpcTransport, type JsonRpcHttpConnection${subscriptionOperations.length ? ', createSubscriptionClient, sseSubscriptionTransport' : ''} } from '${runtimeSpecifier}';
 import { ${options.factoryName}WithTransport } from './${portableFile}';
+${
+  subscriptionOperations.length
+    ? `import type { SubscriptionOperationTypes } from './${SUBSCRIPTION_TYPES_FILE}';
+
+const subscriptionNames = [
+${subscriptionOperations.map((operation) => `  '${operation.name}',`).join('\n')}
+] as const;\n`
+    : ''
+}
 
 /** Bind this catalog to the Fetch JSON-RPC transport. */
 export function ${options.factoryName}WithFetch(connection: JsonRpcHttpConnection) {
-  return ${options.factoryName}WithTransport(httpJsonRpcTransport(connection));
+  ${
+    subscriptionOperations.length
+      ? `return {
+    ...${options.factoryName}WithTransport(httpJsonRpcTransport(connection)),
+    ...createSubscriptionClient<SubscriptionOperationTypes>(
+      subscriptionNames,
+      sseSubscriptionTransport({ ...connection, routePrefix: ${JSON.stringify(options.subscriptionRoutes?.pathPrefix ?? DEFAULT_SUBSCRIPTION_ROUTE_PREFIX)} }),
+    ),
+  };`
+      : `return ${options.factoryName}WithTransport(httpJsonRpcTransport(connection));`
+  }
 }
 `,
     );
