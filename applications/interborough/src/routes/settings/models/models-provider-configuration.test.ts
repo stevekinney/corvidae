@@ -223,6 +223,21 @@ describe('connecting a provider whose plugin has settings', () => {
     expect(pluginWrites()).toEqual([]);
   });
 
+  test('keeps the Settings heading closer to its first setting than to the key section', async () => {
+    const { container } = open();
+    await loaded(container);
+    const dialog = await beginConnect(container);
+    const configuration = within(dialog).getByTestId('provider-configuration');
+    expect(configuration.getAttribute('data-has-heading')).toBe('');
+
+    const source = await Bun.file(
+      new URL('./provider-configuration.svelte', import.meta.url),
+    ).text();
+    expect(source).toMatch(
+      /\.ib-provider-configuration\[data-has-heading\]\s*\{\s*gap:\s*var\(--cinder-space-2\);/,
+    );
+  });
+
   test('draws the required field and not the optional one', async () => {
     const { container } = open({
       providers: [{ plugin: 'openai', name: 'openai', configuration: GATEWAY_SCHEMA }],

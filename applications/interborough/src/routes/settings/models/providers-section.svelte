@@ -10,7 +10,14 @@
    * none is connected, the description says why agents cannot answer. A host that keeps its
    * configuration in its deployment cannot save a key, and says so.
    */
-  import { Alert, Button, FormSection, StatusDot } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Button,
+    FormSection,
+    GroupedList,
+    GroupedListItem,
+    StatusDot,
+  } from '@lostgradient/cinder';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
   import type { ProvidersSnapshot } from '../../../lib/host-providers.ts';
@@ -67,41 +74,50 @@
         <p class="ib-providers__alert">{MODELS_COPY.locked}</p>
       </Alert>
     {/if}
-    {#each entries as provider (provider.name)}
-      {@const name = providerTitle(provider.name, configurations)}
-      {@const tagline = providerTagline(provider.name)}
-      <div class="ib-providers__row" data-provider={provider.name}>
-        <div class="ib-providers__identity">
-          <span class="ib-providers__name">{name}</span>
-          {#if tagline !== undefined}
-            <span class="ib-providers__tagline">{tagline}</span>
+    <GroupedList aria-label={copy.heading}>
+      {#each entries as provider (provider.name)}
+        {@const name = providerTitle(provider.name, configurations)}
+        {@const tagline = providerTagline(provider.name)}
+        {#snippet subtitle()}
+          {#if provider.connected}
+            <StatusDot status="success" label={copy.connected} labelVisible />
+            {#if tagline !== undefined},
+            {/if}
           {/if}
-        </div>
-        {#if provider.connected}
-          <StatusDot status="success" label={copy.connected} labelVisible />
-          <!-- A keyless provider has no key to manage: Manage is there only for its settings. -->
-          {#if provider.hasKey || hasSettingsToShow(configurations.get(provider.name))}
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={locked}
-              aria-label={copy.manageLabel(name)}
-              onclick={() => (managing = provider.name)}
-              label={copy.manage}
-            />
-          {/if}
-        {:else}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={locked}
-            aria-label={copy.connectLabel(name)}
-            onclick={() => (connecting = provider.name)}
-            label={copy.connect}
-          />
-        {/if}
-      </div>
-    {/each}
+          {tagline}
+        {/snippet}
+        <GroupedListItem
+          data-provider={provider.name}
+          {...provider.connected || tagline !== undefined ? { subtitle } : {}}
+        >
+          {#snippet title()}{name}{/snippet}
+          {#snippet action()}
+            {#if provider.connected}
+              <!-- A keyless provider has no key to manage: Manage is there only for its settings. -->
+              {#if provider.hasKey || hasSettingsToShow(configurations.get(provider.name))}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={locked}
+                  aria-label={copy.manageLabel(name)}
+                  onclick={() => (managing = provider.name)}
+                  label={copy.manage}
+                />
+              {/if}
+            {:else}
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={locked}
+                aria-label={copy.connectLabel(name)}
+                onclick={() => (connecting = provider.name)}
+                label={copy.connect}
+              />
+            {/if}
+          {/snippet}
+        </GroupedListItem>
+      {/each}
+    </GroupedList>
   </FormSection>
 </div>
 
@@ -124,31 +140,6 @@
 
   .ib-providers__alert {
     margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .ib-providers__row {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-3);
-    padding: var(--cinder-space-3) var(--cinder-space-4);
-    min-inline-size: 0;
-  }
-
-  .ib-providers__identity {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-inline-size: 0;
-  }
-
-  .ib-providers__name {
-    font-weight: var(--cinder-font-semibold);
-    overflow-wrap: anywhere;
-  }
-
-  .ib-providers__tagline {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
   }

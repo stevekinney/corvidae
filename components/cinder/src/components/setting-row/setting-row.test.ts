@@ -95,4 +95,17 @@ describe('SettingRow', () => {
     expect(statusIndex).toBeGreaterThan(descriptionIndex);
     expect(errorIndex).toBeGreaterThan(statusIndex);
   });
+
+  test('caps only descriptions at the shared prose measure on wide setting rows', async () => {
+    const css = await Bun.file(new URL('./setting-row.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-setting-row__field \.cinder-form-field__description\s*\{[^}]*max-inline-size:\s*var\(--cinder-content-width-prose\);/,
+    );
+    expect(css).not.toMatch(
+      /\.cinder-setting-row__field \.cinder-form-field__note\s*\{[^}]*max-inline-size:/,
+    );
+    expect(css).not.toMatch(
+      /\.cinder-setting-row__field \.cinder-form-field__warning\s*\{[^}]*max-inline-size:/,
+    );
+  });
 });

@@ -910,10 +910,13 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
         .classList.contains('button-variant-danger'),
     ).toBe(true);
-    // Cinder draws the list: it sits directly in the dialog's options, with no wrapper of the page's.
-    expect(
-      dialog.querySelector('[data-testid="plugin-disable-impacts"]')?.parentElement?.className,
-    ).toContain('cinder-confirm-dialog__options');
+    // The impacts use Cinder's grouped list and rows; only Cinder adds their wrapper and surface.
+    const impacts = dialog.querySelector('[data-testid="plugin-disable-impacts"]');
+    expect(impacts?.className).toContain('cinder-grouped-list__group');
+    expect(impacts?.parentElement?.className).toContain('cinder-grouped-list');
+    expect(impacts?.parentElement?.parentElement?.className).toContain(
+      'cinder-confirm-dialog__options',
+    );
     expect(writes()).toEqual([]);
   });
 
