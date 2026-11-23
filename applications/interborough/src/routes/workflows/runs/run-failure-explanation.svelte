@@ -10,7 +10,7 @@
    * the page itself knows, and nothing else is invented.
    */
   import { Badge, Button, Collapsible, ErrorState, Stack, Text } from '@lostgradient/cinder';
-  import FailureExplanation from '@lostgradient/plugin-inspectors/failure-explanation.svelte';
+  import { FailureExplanation } from '@lostgradient/plugin-inspectors/failure-explanation';
   import {
     buildExplanationModel,
     FAILURE_EXPLANATION_LABELS,

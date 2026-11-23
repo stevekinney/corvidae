@@ -199,7 +199,7 @@ These existing overlays contradict the contract above and are listed here rather
 
 ## Hydration tests
 
-Every overlay component whose surface is the component itself must have hydration tests (using `src/test/hydrate.ts`); for composite components the assertions below apply to the popup surface, not the SSR'd host markup. The tests assert:
+Every overlay component whose surface is the component itself must have hydration tests (using the `hydrateServerHtml`, `renderSvelteOnServer`, `prepareSvelteServerSource` and `setupHappyDom` helpers from `@lostgradient/testing`; `src/test/hydrate.integration.test.ts` is the reference pattern); for composite components the assertions below apply to the popup surface, not the SSR'd host markup. The tests assert:
 
 1. SSR renders empty markup with `open={false}`.
 2. SSR renders empty markup with `open={true}` (no warning in production, dev warning emitted).

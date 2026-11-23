@@ -1,6 +1,6 @@
 # Text
 
-A run of text in one of the typography variants `h1` to `h5`, `caption`, `body` and `code`. Color is inherited from the container.
+A run of text in one of the typography variants `display`, `h1` to `h5`, `caption`, `body` and `code`. `display` renders an `h1` at the display size. Color is inherited from the container.
 
 ## Usage
 

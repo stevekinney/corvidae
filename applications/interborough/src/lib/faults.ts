@@ -374,7 +374,9 @@ export function faultTreatment(error: unknown): FaultTreatment {
  * `exactOptionalPropertyTypes`.
  */
 export interface FaultErrorStateAdvice {
+  /** The fault's one line of plain text saying what to do next; absent when it carried none. */
   readonly remediation?: string;
+  /** What Retry does; present only when a retry was given and the server did not say repeating the call cannot succeed. */
   readonly onRetry?: () => void;
 }
 
