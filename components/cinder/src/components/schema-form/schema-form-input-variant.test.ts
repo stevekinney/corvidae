@@ -103,6 +103,20 @@ describe('SchemaForm input variant', () => {
     ).toBeNull();
   });
 
+  test('uses a string schema example as the empty field placeholder', async () => {
+    const { getByRole } = await mount(
+      {
+        type: 'object',
+        properties: { branch: { type: 'string', title: 'Branch', examples: ['such as main'] } },
+        required: ['branch'],
+      },
+      'input',
+    );
+    expect((getByRole('textbox', { name: /branch/i }) as HTMLInputElement).placeholder).toBe(
+      'such as main',
+    );
+  });
+
   test('draws an array of objects as a JSON editor that counts its items, and submits what it holds', async () => {
     const { container, submitted } = await mount(refund, 'input', {
       orderNumber: '4398',

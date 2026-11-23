@@ -38,7 +38,7 @@ Plain code is split into lines by the block itself. Highlighted code is decorate
 
 ## Scrolling and wrapping
 
-A code block scrolls inside its own box, with a scrollbar that is always painted from the shared scrollbar tokens. `wrap` breaks a long line instead, and hangs the rows after the first by two characters so each line of code reads as one unit. The copied text is the code as written.
+A code block scrolls inside its own box, with a scrollbar that is always painted from the shared scrollbar tokens. `wrap` breaks a long line instead, and hangs the rows after the first by two characters so each line of code reads as one unit. A wrapping block breaks a line at whitespace, and a long URL or path at a slash, dot, colon, hyphen or closing quote (a `<wbr>` after each, which adds no character), never inside a word unless one part is wider than the line. A flag such as `--notify` never breaks after its dashes. The copied text is the code as written.
 
 ## Copy
 

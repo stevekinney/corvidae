@@ -247,6 +247,22 @@ describe('CopyableValue', () => {
     expect(getByRole('button', { name: 'Copy to clipboard' })).toBeTruthy();
   });
 
+  // COR-2548: after "The API is at" the address broke between two of its parts ("127.0.0.1:" and
+  // "7399/api") though it fits a row, because each part was a box and the value itself was not.
+  test('the whole value is one box that moves to the next row whole when it fits one', () => {
+    const flat = css.replace(/\s+/g, ' ');
+    expect(flat).toMatch(
+      /\.cinder-copyable-value \{[^}]*display: inline-block;[^}]*max-inline-size: 100%;/,
+    );
+    const { container } = render(CopyableValue, { props: { value: ADDRESS } });
+    // Every part, and the control, sit inside the one root box.
+    const root = rootOf(container);
+    expect(root.querySelectorAll(':scope > .cinder-copyable-value__part').length).toBeGreaterThan(
+      1,
+    );
+    expect(root.querySelector('button')).not.toBeNull();
+  });
+
   test('other attributes land on the outer element, and class merges', () => {
     const { container } = render(CopyableValue, {
       props: { value: ADDRESS, 'data-testid': 'address', class: 'mine' },

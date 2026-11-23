@@ -9,7 +9,13 @@
  * control are one stretch that never breaks, so the control is always on the value's last line.
  * ======================================== */
 
+  /* The whole value, with its control, is one box (COR-2548), the way CodeBlock draws a word with
+   * slashes in it: one that fits a row moves to it whole, beside or below the words before it,
+   * instead of ending the row between two of its parts (`127.0.0.1:` and `7399/api`); one wider than
+   * a row takes the whole row and breaks inside itself, between parts first. */
   .cinder-copyable-value {
+    display: inline-block;
+    max-inline-size: 100%;
     font-family: var(--cinder-font-mono);
     overflow-wrap: anywhere;
   }

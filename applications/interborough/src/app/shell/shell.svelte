@@ -333,9 +333,7 @@
   // The Bureau's feed, applied for every page: a review requested or decided, a run settling.
   $effect(() => subscribeBureauInvalidation(bureauEvents, queryClient));
 
-  // How the navigation is shown at this width: the column, the rail, or the drawer behind the tab
-  // bar (`./shell-navigation.svelte.ts`). The sidebar, the tab bar and the top bar's menu button
-  // share it.
+  // The sidebar, top-bar menu and phone tabs share the navigation drawer's state.
   provideShellNavigation(new ShellNavigation(layout));
 
   // While the server does not answer, every control that changes something is held back: muted by

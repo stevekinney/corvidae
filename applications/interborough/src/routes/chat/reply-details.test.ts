@@ -103,6 +103,24 @@ describe('the details of a step', () => {
   });
 });
 
+describe('the cost of a run (COR-2525)', () => {
+  test('is written as an amount beside the tokens, and counts as something to print', () => {
+    const details = replyDetailsOf(undefined, { totalTokens: 1234, costUsd: 0.5 });
+    expect(details.cost).toBe('$0.50');
+    expect(replyDetailsOf(undefined, { costUsd: 0.5 }).usage).toEqual([]);
+    expect(isEmptyDetails(replyDetailsOf(undefined, { costUsd: 0.5 }))).toBe(false);
+  });
+
+  test('is left out for a run with none, never `$0.00`', () => {
+    expect(replyDetailsOf(undefined, { totalTokens: 10 }).cost).toBeUndefined();
+    expect(replyDetailsOf(undefined, undefined).cost).toBeUndefined();
+  });
+
+  test('says an amount under one cent as `< $0.01`', () => {
+    expect(replyDetailsOf(undefined, { costUsd: 0.004 }).cost).toBe('< $0.01');
+  });
+});
+
 describe('the tokens a run used', () => {
   test('list only the counts the event carried, input first', () => {
     expect(usageEntries({ totalTokens: 1500, inputTokens: 1000 })).toEqual([

@@ -800,6 +800,7 @@
                 {#if queuesError}
                   <QueryFaultBanner
                     error={queuesError}
+                    subject="queues"
                     onRetry={() => void queuesQuery.refetch()}
                   />
                 {:else if selectedQueue}
@@ -858,6 +859,7 @@
                 {:else if diagnosticsErrorValue}
                   <QueryFaultBanner
                     error={diagnosticsErrorValue}
+                    subject="diagnostics"
                     onRetry={() => void diagnosticsTabQuery.refetch()}
                   />
                 {:else if selectedTaskId}

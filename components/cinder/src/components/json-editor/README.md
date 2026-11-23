@@ -98,6 +98,7 @@ The Format button and `Shift+Alt+F` rewrite the document as JSON indented by two
 | `error` | `string` | no | — | External validation error. Takes precedence over JSON parse feedback. |
 | `example` | `string` | no | — | The sample that shows muted, after "e.g.", while the editor is empty, such as `{ "timeoutSeconds": 300 }`. Defaults to `{ "key": "value" }`. A `placeholder` replaces the whole text. |
 | `id` | `string` | yes | — | Unique identifier used for the label and feedback relationships. |
+| `invalidStatusLabel` | `string` | no | — | Replaces parse feedback’s status word while preserving its danger tone and line marker, for a caller that needs a stable invalid-state name such as "Invalid JSON". |
 | `label` | `string` | yes | — | Visible label for the editor. |
 | `readonly` | `boolean` | no | — | Makes the editor read-only. The status reads "Read only" and there is no Format button. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted. |
 | `required` | `boolean` | no | — | Marks the editor as required. An empty value is valid and reads "Not set" unless the field is required. |

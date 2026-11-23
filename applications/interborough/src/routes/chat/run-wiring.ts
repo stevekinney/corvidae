@@ -153,6 +153,11 @@ export type RunUsage = {
   readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly totalTokens?: number;
+  /**
+   * What the run cost in US dollars (COR-2525), present only when the Bureau priced the run: a run
+   * with no priced request sends `null`, which is no cost here, never `0`.
+   */
+  readonly costUsd?: number;
 };
 
 /**
@@ -428,20 +433,27 @@ function onRoundOf(interrupt: Interrupt, entry: ResumeEntry): ResumeEntry {
  * that carries none. Only a count that is a finite number is kept; the entries are merged in order.
  * A run that reported nothing arrives as counts of zero (the Bureau fills them in), and a run that
  * called a model used at least one token, so counts that are all zero are no usage, not "0" tokens.
+ * The cost (`costUsd`, COR-2525) is kept when it is a finite, non-negative number and left out
+ * when it is `null`, which is what a run with no priced request carries.
  */
 export function usageOfTerminal(event: unknown): RunUsage | undefined {
   if (!isRecord(event) || event['type'] !== 'RUN_FINISHED' || !Array.isArray(event['usage'])) {
     return undefined;
   }
   const counts: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+  let costUsd: number | undefined;
   for (const entry of event['usage'] as unknown[]) {
     if (!isRecord(entry)) continue;
     for (const key of ['inputTokens', 'outputTokens', 'totalTokens'] as const) {
       const value = entry[key];
       if (typeof value === 'number' && Number.isFinite(value) && value >= 0) counts[key] = value;
     }
+    const cost = entry['costUsd'];
+    if (typeof cost === 'number' && Number.isFinite(cost) && cost >= 0) costUsd = cost;
   }
-  return Object.values(counts).some((count) => count > 0) ? counts : undefined;
+  const used = Object.values(counts).some((count) => count > 0);
+  if (!used && costUsd === undefined) return undefined;
+  return { ...(used ? counts : {}), ...(costUsd === undefined ? {} : { costUsd }) };
 }
 
 /** The Bureau's own identifier for the run an event belongs to, which the cancel route takes. */

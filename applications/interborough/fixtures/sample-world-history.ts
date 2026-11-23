@@ -40,6 +40,8 @@ import { GITHUB_SOURCE_ID } from './github-stub-mcp.ts';
 import {
   bureauCall,
   central,
+  engineRuns,
+  fireScheduleAt,
   hostRequest,
   sendChatMessage,
   waitForSettledRuns,
@@ -362,17 +364,29 @@ function pacedSteps(context: SessionContext, seconds: readonly number[]): void {
   };
 }
 
-/** At `at`, waits for the schedule due then to start `workflow` and for that run to end. */
+/**
+ * At `at`, waits for the schedule due then to start `workflow` and for that run to end. The clock is
+ * held at `at` until the run has started ({@link fireScheduleAt}).
+ */
 async function scheduledRun(
   context: SessionContext,
   workflow: string,
   at: number,
   runsBefore: number,
 ): Promise<void> {
-  context.runtime.setTime(at);
+  const ofWorkflow = runOfWorkflow(workflow);
+  await fireScheduleAt(
+    context.runtime,
+    at,
+    async () => {
+      const runs = await engineRuns(context.host);
+      return runs.filter(ofWorkflow).length > runsBefore;
+    },
+    `the schedule to start ${workflow}`,
+  );
   await waitForSettledRuns(
     context.host,
-    runOfWorkflow(workflow),
+    ofWorkflow,
     runsBefore + 1,
     `the scheduled run of ${workflow}`,
   );
@@ -602,7 +616,15 @@ export async function october29DailySummary(context: SessionContext): Promise<vo
   director.scene = {
     assistant: () => runtime.advance(SAMPLE_WORLD_DURATIONS.dailySummary * 1000),
   };
-  runtime.setTime(SAMPLE_WORLD_HISTORY_TIMES.dailySummaryRan);
+  await fireScheduleAt(
+    runtime,
+    SAMPLE_WORLD_HISTORY_TIMES.dailySummaryRan,
+    async () => {
+      const runs = await engineRuns(context.host);
+      return runs.some(isScheduleFire);
+    },
+    'the Daily summary to come due',
+  );
   await waitForSettledRuns(context.host, isScheduleFire, 1, 'the Daily summary fire');
   director.scene = {};
 }

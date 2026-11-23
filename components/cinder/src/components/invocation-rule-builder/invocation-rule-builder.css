@@ -19,6 +19,9 @@
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-raised);
     box-shadow: var(--cinder-shadow-sm);
+    /* The rule's own width decides how its condition grid lays out. */
+    container-type: inline-size;
+    container-name: cinder-invocation-rule-builder-rule;
   }
 
   .cinder-invocation-rule-builder[data-irb-flat] .cinder-invocation-rule-builder__rule {
@@ -198,23 +201,65 @@
     min-inline-size: 6rem;
   }
 
-  .cinder-invocation-rule-builder__condition-value-checkbox {
+  /* A yes-or-no value is a Cinder Checkbox, whose hit area is at least 24px, in the value column. */
+  .cinder-invocation-rule-builder__condition-value-boolean {
+    display: flex;
+    align-items: center;
     flex: 0 0 auto;
-    inline-size: 1.125rem;
-    block-size: 1.125rem;
-    margin: 0;
-    accent-color: var(--cinder-accent-solid);
-    cursor: pointer;
+    min-block-size: 1.5rem;
   }
 
-  .cinder-invocation-rule-builder__condition-value-checkbox:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+  /* A yes-or-no value has one comparison, so the operator column says it in plain text. */
+  .cinder-invocation-rule-builder__condition-fixed-operator {
+    flex: 1 1 8rem;
+    min-inline-size: 0;
+    padding-inline-start: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
   }
 
-  @media (forced-colors: active) {
-    .cinder-invocation-rule-builder__condition-value-checkbox:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
+  /* ---- One column grid for every condition row (conditions-only modes) ----
+   * The field, the operator, the value and the remove button each keep one column across all the
+   * rows, so a row with a checkbox for a value lines up with the rows above and below it. Each row
+   * is a subgrid of the list. On a narrow list the value takes a row of its own under the field
+   * and operator, in every row alike. */
+  .cinder-invocation-rule-builder__conditions[data-cinder-columns] {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) minmax(6rem, 0.8fr) minmax(8rem, 2fr) auto;
+  }
+
+  .cinder-invocation-rule-builder__conditions[data-cinder-columns]
+    > .cinder-invocation-rule-builder__condition {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+  }
+
+  .cinder-invocation-rule-builder__conditions[data-cinder-columns]
+    > .cinder-invocation-rule-builder__condition
+    > * {
+    min-inline-size: 0;
+    justify-self: stretch;
+  }
+
+  @container cinder-invocation-rule-builder-rule (max-inline-size: 36rem) {
+    .cinder-invocation-rule-builder__conditions[data-cinder-columns] {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    }
+
+    .cinder-invocation-rule-builder__conditions[data-cinder-columns]
+      > .cinder-invocation-rule-builder__condition
+      > :nth-child(3) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
+    .cinder-invocation-rule-builder__conditions[data-cinder-columns]
+      > .cinder-invocation-rule-builder__condition
+      > :nth-child(4) {
+      grid-column: 3;
+      grid-row: 1;
     }
   }
 

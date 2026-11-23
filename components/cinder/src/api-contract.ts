@@ -235,6 +235,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
       density: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      trailingTrack: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      trailingAlign: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       insertionAnnouncement: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },

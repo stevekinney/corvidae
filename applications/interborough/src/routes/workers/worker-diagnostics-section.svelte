@@ -30,7 +30,11 @@
     <Skeleton height="6rem" />
   </div>
 {:else if query.isError && query.data === undefined}
-  <QueryFaultBanner error={query.error} onRetry={() => void query.refetch()} />
+  <QueryFaultBanner
+    error={query.error}
+    subject="diagnostics"
+    onRetry={() => void query.refetch()}
+  />
 {:else if query.data}
   <DiagnosticsView
     filtered

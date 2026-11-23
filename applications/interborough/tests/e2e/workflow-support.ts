@@ -134,8 +134,8 @@ async function tabsAreCollapsed(root: Locator): Promise<boolean> {
 }
 
 /** The control that shows which tab is open: the select when the bar is collapsed. */
-function collapsedTabs(root: Locator): Locator {
-  return root.getByRole('combobox', { name: COLLAPSED_TABS_LABEL });
+function collapsedTabs(root: Locator, label = COLLAPSED_TABS_LABEL): Locator {
+  return root.getByRole('combobox', { name: label });
 }
 
 /**
@@ -162,12 +162,16 @@ export async function openTab(root: Locator, name: string): Promise<void> {
 }
 
 /** Expects the tab `name` of the bar in `root` to be the one that is open. */
-export async function expectTabOpen(root: Locator, name: string): Promise<void> {
+export async function expectTabOpen(
+  root: Locator,
+  name: string,
+  collapseLabel = COLLAPSED_TABS_LABEL,
+): Promise<void> {
   // `collapseOnOverflow` changes after the bar has measured its container. Read both valid ARIA
   // representations together rather than freezing the pre-measurement shape at a phone width.
   await expect
     .poll(async () => {
-      const collapsed = collapsedTabs(root);
+      const collapsed = collapsedTabs(root, collapseLabel);
       if ((await collapsed.count()) > 0) {
         const selected = await collapsed.textContent();
         return selected?.includes(name);

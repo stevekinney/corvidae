@@ -117,4 +117,15 @@ describe('ChatInput layout CSS', () => {
     );
     expect(chatInputSource).toContain('padding-block-end: var(--cinder-space-0-5, 0.125rem);');
   });
+
+  test('does not flex-shrink Attach below its compact Cinder face on a fine pointer', async () => {
+    const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
+    const attach = cssBlocks(
+      chatInputSource,
+      '.chat-input-footer-left :global(.chat-input-attach) {',
+    ).find((block) => block.includes('flex:'));
+
+    expect(attach).toBeDefined();
+    expectDeclaration(attach ?? '', 'flex', '0 0 1.75rem');
+  });
 });

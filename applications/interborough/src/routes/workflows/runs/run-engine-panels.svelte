@@ -43,5 +43,8 @@
   <Stack gap="var(--cinder-space-4)" data-section="versioning">
     <WorkerBindingPanel {workflow} />
   </Stack>
-  <LineagePanel client={engine.client} {workflow} />
+  <!-- A fork's lineage leads the operator tabs on the run's page (`run-detail.svelte`). -->
+  {#if workflow.forkedFrom === undefined}
+    <LineagePanel client={engine.client} {workflow} />
+  {/if}
 {/if}

@@ -9,11 +9,15 @@ import { rm } from 'node:fs/promises';
 
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { bureau } from './agent-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
+import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
+import { readBoxes } from './read-boxes.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
   listWorkflowRuns,
+  readWorkflow,
   removeWorkflow,
   workflowFilePath,
   workflowRunStatus,
@@ -21,6 +25,16 @@ import {
 
 const COPY = WORKFLOW_COPY.runSetup;
 const WIDTHS = [375, 1280] as const;
+const SOURCE = 'run-setup.spec.ts';
+const RELEASE_INPUT_PROPERTIES = {
+  branch: {
+    type: 'string',
+    title: 'Branch',
+    description: 'The branch to release from.',
+    examples: ['such as main'],
+  },
+  since: { type: 'string', title: 'Since', format: 'date' },
+} as const;
 
 const area = (page: Page) => page.locator('[data-view="workflows"]');
 const setup = (page: Page) => page.locator('[data-page="run-setup"]');
@@ -61,6 +75,22 @@ async function createWaiting(
   });
 }
 
+/** A run setup with the typed fields the board shows, without an automatic trigger in the test. */
+async function createReleaseSetup(request: Parameters<typeof createWorkflowFile>[0], id: string) {
+  created.add(id);
+  await createWorkflowFile(request, id, {
+    title: 'Release notes',
+    description: 'Collects merged changes into a draft.',
+    trigger: { kind: 'signal', name: `${id}-go` },
+    steps: [{ kind: 'await-signal', signal: `${id}-wait` }],
+    inputSchema: {
+      type: 'object',
+      properties: RELEASE_INPUT_PROPERTIES,
+      required: ['branch'],
+    },
+  });
+}
+
 async function finish(
   request: Parameters<typeof createWorkflowFile>[0],
   id: string,
@@ -74,59 +104,160 @@ async function finish(
     .toBe('completed');
 }
 
-test.describe('the run setup page', () => {
-  test('names the workflow, lays out Input and When, and pins the action', async ({
+test.describe('the run setup page at /workflows/:workflow/run and its queued result at /runs', () => {
+  test('57f, 58a, 58b, 58c and 58z: names the workflow, lays out Input and When, and pins the action', async ({
     page,
     request,
     checkA11y,
   }) => {
     const id = 'e2e-setup-layout';
-    await createWaiting(request, id);
-    // The footer says a run starts right away only while fewer runs are going than the engine runs
-    // at once. The host's console engine holds the fixtures' long-running instances, so the read of
-    // what is going answers none here; the at-the-limit footer is the run setup states' own case.
+    await createReleaseSetup(request, id);
+    // The footer reads the Bureau's executing-run snapshot. The fixture host owns no such runs
+    // here, so the layout state has a free slot; the at-limit state is captured separately below.
     await page.route('**/jsonrpc', async (route) => {
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         method?: string;
         id?: unknown;
       };
-      if (body.method !== 'weft.workflows.aggregate') {
+      if (body.method !== 'bureau.workflows.concurrency') {
         await route.fallback();
         return;
       }
       await route.fulfill({
-        json: { jsonrpc: '2.0', id: body.id, result: { total: 0, groups: [], truncated: false } },
+        json: { jsonrpc: '2.0', id: body.id, result: { max: 4, running: 0 } },
       });
     });
-    for (const width of WIDTHS) {
+    for (const width of [320, ...WIDTHS]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/workflows/${id}/run`);
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
-      await expect(page.getByRole('heading', { level: 1, name: COPY.title(id) })).toBeVisible();
+      await expect(
+        page.getByRole('heading', { level: 1, name: COPY.title('Release notes') }),
+      ).toBeVisible();
       await expect(setup(page).getByRole('heading', { level: 2 })).toHaveText([
         COPY.inputHeading,
         COPY.whenHeading,
       ]);
-      await expect(setup(page).getByLabel('Topic')).toBeVisible();
-      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(COPY.summaryNow());
+      await setup(page)
+        .getByLabel(/^Branch/)
+        .fill('main');
+      await setup(page)
+        .getByLabel(/^Since/)
+        .fill('2026-10-23');
+      await expect(setup(page).getByText('The branch to release from.')).toBeVisible();
+      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+        'Runs once, right away, on main since Oct 23.',
+      );
+      const options = setup(page).getByRole('region', { name: COPY.optionsRegion });
+      const timing = options.getByText(COPY.nowDescription, { exact: true });
+      await expect(footer(page)).toBeInViewport({ ratio: 1 });
+      await timing.scrollIntoViewIfNeeded();
+      await expect(timing).toBeInViewport({ ratio: 1 });
+      await expect(footer(page)).toBeInViewport({ ratio: 1 });
+      const { optionsBox, footerBox } = await readBoxes(page, {
+        optionsBox: options,
+        footerBox: footer(page),
+      });
+      expect(optionsBox.y + optionsBox.height).toBeLessThanOrEqual(footerBox.y);
+      await options.evaluate((element) => {
+        element.scrollTop = 0;
+      });
       await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeVisible();
+      if (width !== 320) {
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow/run',
+          state: '57f-required-form-and-58a-58c-schema',
+          source: SOURCE,
+        });
+      }
       await checkA11y(`run setup at ${width}px`);
     }
   });
 
-  test('shows the field errors of an invalid input and creates no run', async ({
+  test('58d: shows the field errors of an invalid input and creates no run', async ({
     page,
     request,
   }) => {
     const id = 'e2e-setup-invalid';
-    await createWaiting(request, id);
+    await createReleaseSetup(request, id);
     await page.goto(`/workflows/${id}/run`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await setup(page).getByLabel('Topic').fill('ab');
+    await expect(setup(page).getByPlaceholder('such as main')).toHaveValue('');
     await footer(page).getByRole('button', { name: COPY.startAction }).click();
-    await expect(setup(page).getByLabel('Topic')).toHaveAttribute('aria-invalid', 'true');
+    await expect(setup(page).getByLabel(/^Branch/)).toHaveAttribute('aria-invalid', 'true');
+    await expect(setup(page).getByText('Branch is required.', { exact: true })).toBeVisible();
+    await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeEnabled();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/run$`));
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '58d-required-input-invalid',
+      source: SOURCE,
+    });
     expect(await listWorkflowRuns(request, id)).toEqual([]);
+  });
+
+  test('58a–58c: large authored input opens required fields and folds optional groups', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-large';
+    created.add(id);
+    await createWorkflowFile(request, id, {
+      title: 'Release notes',
+      trigger: { kind: 'manual' },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          branch: { ...RELEASE_INPUT_PROPERTIES.branch, default: 'main' },
+          since: { ...RELEASE_INPUT_PROPERTIES.since, default: '2026-10-23' },
+          target: { type: 'string', title: 'Target' },
+          audience: { type: 'string', title: 'Audience' },
+          filters: {
+            type: 'object',
+            title: 'Filters',
+            properties: Object.fromEntries(
+              ['Labels', 'Authors', 'Paths'].map((title) => [
+                title.toLowerCase(),
+                { type: 'array', title, items: { type: 'string' } },
+              ]),
+            ),
+          },
+          advanced: {
+            type: 'object',
+            title: 'Advanced',
+            properties: {
+              draftOnly: { type: 'boolean', title: 'Draft only', default: true },
+              dryRun: { type: 'boolean', title: 'Dry run', default: false },
+              pullRequestLimit: { type: 'integer', title: 'Pull request limit', default: 100 },
+              ...Object.fromEntries(
+                ['Template', 'Version', 'Channel', 'Reviewer', 'Milestone', 'Format'].map(
+                  (title) => [title.toLowerCase(), { type: 'string', title }],
+                ),
+              ),
+            },
+          },
+        },
+        required: ['branch', 'since'],
+      },
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/workflows/${id}/run`);
+    await expect(setup(page).getByLabel(/^Branch/)).toHaveValue('main');
+    await expect(setup(page).getByLabel(/^Since/)).toHaveValue('2026-10-23');
+    await expect(setup(page).getByLabel('Find a field')).toBeVisible();
+    for (const group of ['Filters', 'Advanced']) {
+      await expect(
+        setup(page).getByRole('button', { name: new RegExp(`^${group}`) }),
+      ).toHaveAttribute('aria-expanded', 'false');
+    }
+    await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+      'Runs once, right away, on main since Oct 23.',
+    );
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '58a-58c-large-schema',
+      source: SOURCE,
+    });
   });
 
   test('does not start on Enter, and starts from the footer with the input', async ({
@@ -134,13 +265,21 @@ test.describe('the run setup page', () => {
     request,
     pageErrors,
   }) => {
-    const id = 'e2e-setup-start';
+    // A run outlives its file, and this spec reads that the workflow has none, so each repeat
+    // (`--repeat-each`) takes a workflow of its own.
+    const repeat = test.info().repeatEachIndex;
+    const id = repeat === 0 ? 'e2e-setup-start' : `e2e-setup-start-${String(repeat)}`;
     await createWaiting(request, id);
     await page.goto(`/workflows/${id}/run`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const topic = setup(page).getByLabel('Topic');
     await topic.fill('weather');
     await topic.press('Enter');
+    // Enter makes the form check the input, and the form holds its fields while it does. Once
+    // they can be edited again the check has answered, so no run read after this can still be
+    // on its way from the Enter. A click while it checks starts the run too (COR-2637), which
+    // `run-setup.test.ts` covers.
+    await expect(topic).toBeEditable();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/run$`));
     expect(await listWorkflowRuns(request, id)).toEqual([]);
 
@@ -160,6 +299,50 @@ test.describe('the run setup page', () => {
     if (run !== undefined) await finish(request, id, run.id);
   });
 
+  test('58o and 58p: a refused start stays at the footer and Start run remains the retry', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-refused-start';
+    await createReleaseSetup(request, id);
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { id?: unknown; method?: string };
+      if (body.method !== 'bureau.workflows.start') return route.fallback();
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: body.id,
+          error: { code: -32000, message: 'Interborough didn’t answer.' },
+        },
+      });
+    });
+    await page.goto(`/workflows/${id}/run`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await setup(page)
+      .getByLabel(/^Branch/)
+      .fill('main');
+    await setup(page)
+      .getByLabel(/^Since/)
+      .fill('2026-10-23');
+    await footer(page).getByRole('button', { name: COPY.startAction }).click();
+    const failure = setup(page).getByTestId('run-setup-failure');
+    await expect(failure).toContainText(COPY.startFailed);
+    await expect(failure).toContainText(COPY.nothingStarted);
+    await expect(setup(page).getByLabel(/^Branch/)).toHaveValue('main');
+    await expect(setup(page).getByLabel(/^Since/)).toHaveValue('2026-10-23');
+    await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+      'Runs once, right away, on main since Oct 23.',
+    );
+    await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeEnabled();
+    await expect(setup(page).getByRole('button', { name: 'Try again' })).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '58o-58p-start-refused-and-retry',
+      source: SOURCE,
+    });
+    expect(await listWorkflowRuns(request, id)).toEqual([]);
+  });
+
   test('Cancel returns to the workflow', async ({ page, request }) => {
     const id = 'e2e-setup-cancel';
     await createWaiting(request, id);
@@ -167,6 +350,302 @@ test.describe('the run setup page', () => {
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     await footer(page).getByRole('button', { name: COPY.cancel }).click();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}$`));
+  });
+
+  test('58f: keeps the actual paused workflow form visible and disables Start run', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-paused';
+    created.add(id);
+    await createWorkflowFile(request, id, {
+      title: 'Triage inbox',
+      paused: true,
+      trigger: { kind: 'manual' },
+      description: 'Sorts new messages into the right folder and flags anything urgent.',
+    });
+    await page.goto(`/workflows/${id}/run`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await expect(
+      page.getByRole('heading', { level: 1, name: COPY.title('Triage inbox') }),
+    ).toBeVisible();
+    await expect(setup(page).getByTestId('run-setup-no-form')).toBeVisible();
+    await expect(setup(page).getByTestId('run-setup-paused')).toContainText(
+      'Triage inbox is paused.',
+    );
+    await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeDisabled();
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '58f-paused',
+      source: SOURCE,
+    });
+  });
+
+  test('58i and 58z: gives a no-input workflow an at-limit footer from Bureau concurrency', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-no-input-limit';
+    created.add(id);
+    await createWorkflowFile(request, id, {
+      trigger: { kind: 'signal', name: `${id}-go` },
+      steps: [{ kind: 'await-signal', signal: `${id}-wait` }],
+    });
+    await page.route('**/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        method?: string;
+        id?: unknown;
+      };
+      if (body.method !== 'bureau.workflows.concurrency') return route.fallback();
+      await route.fulfill({
+        json: { jsonrpc: '2.0', id: body.id, result: { max: 4, running: 4 } },
+      });
+    });
+    await page.goto(`/workflows/${id}/run`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await expect(setup(page).getByTestId('run-setup-no-form')).toBeVisible();
+    await expect(setup(page).getByText(COPY.nowAtLimit(4), { exact: true })).toBeVisible();
+    await expect(footer(page).getByTestId('run-setup-summary')).toContainText(
+      'when one of the 4 finishes',
+    );
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '58i-no-input-and-58z-concurrency-limit',
+      source: SOURCE,
+    });
+  });
+
+  test('59a: an actual start at the execution cap appears on Runs as Scheduled', async ({
+    page,
+    request,
+    pageErrors,
+  }) => {
+    const id = 'e2e-setup-queued-release';
+    const running = new Map<string, string>();
+    const blockingWorkflows = Array.from({ length: 4 }, (_, index) => `e2e-setup-slot-${index}`);
+    try {
+      for (const blocker of blockingWorkflows) {
+        await createWaiting(request, blocker);
+        const answer = await bureau(request, 'bureau.workflows.start', {
+          id: blocker,
+          input: { topic: 'hold an executing slot' },
+        });
+        expect(answer.fault, `start ${blocker}`).toBeUndefined();
+        expect(answer.result).toHaveProperty('runId', expect.any(String));
+        running.set(blocker, (answer.result as { runId: string }).runId);
+      }
+      await expect
+        .poll(async () => {
+          const answer = await bureau(request, 'bureau.workflows.concurrency', {});
+          return answer.result;
+        })
+        .toEqual({ max: 4, running: 4 });
+      await createReleaseSetup(request, id);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto(`/workflows/${id}/run`);
+      await setup(page)
+        .getByLabel(/^Branch/)
+        .fill('main');
+      await setup(page)
+        .getByLabel(/^Since/)
+        .fill('2026-10-23');
+      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(
+        'Runs once, when one of the 4 finishes, on main since Oct 23.',
+      );
+      const start = footer(page).getByRole('button', { name: COPY.startAction });
+      await expect(start).toBeEnabled();
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow/run',
+        state: '59a-four-executing-start-enabled',
+        source: SOURCE,
+      });
+
+      expectEngineMissesForFileRuns(pageErrors);
+      await start.click();
+      await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
+      const [run] = await listWorkflowRuns(request, id);
+      if (run === undefined) throw new Error('Run Setup did not create a durable workflow run.');
+      running.set(id, run.id);
+      await page.goto(`/runs?workflow=${id}`);
+      const row = page.locator(`li[data-run="${run.id}"]`);
+      await expect(row).toHaveAttribute('data-status', 'Scheduled');
+      await expect(row.getByRole('img', { name: 'Scheduled' })).toHaveAttribute(
+        'data-cinder-status',
+        'pending',
+      );
+      await expect(row).toContainText('waiting for a run slot');
+      await captureForDesignReview(page, {
+        route: '/runs',
+        state: '59a-start-queued-for-a-slot',
+        source: SOURCE,
+      });
+
+      const first = blockingWorkflows[0]!;
+      await finish(request, first, running.get(first)!);
+      running.delete(first);
+      await expect
+        .poll(async () => {
+          const [workflowStatus, tasks] = await Promise.all([
+            workflowRunStatus(request, run.id),
+            bureau(request, 'bureau.tasks.list', { workflow: id }),
+          ]);
+          expect(tasks.fault, `listing the task for ${id}`).toBeUndefined();
+          const task = (tasks.result as { tasks: Array<Record<string, unknown>> }).tasks.find(
+            (candidate) => candidate['id'] === run.id,
+          );
+          return {
+            workflowStatus,
+            taskStatus: task?.['status'],
+            awaitingSignal: task?.['workflow'],
+          };
+        })
+        .toEqual({
+          workflowStatus: 'running',
+          taskStatus: 'working',
+          awaitingSignal: expect.objectContaining({ awaitingSignal: `${id}-wait` }),
+        });
+      await expect(row).toHaveAttribute('data-status', 'Waiting for a signal');
+      await expect(row).toContainText(`waiting for signal ${id}-wait`);
+    } finally {
+      for (const runId of running.values()) {
+        const answer = await bureau(request, 'bureau.workflows.runs.cancel', { runId });
+        expect(answer.fault, `cancel ${runId}`).toBeUndefined();
+      }
+    }
+  });
+
+  test('58q: keeps When and the footer while the workflow detail read fails', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-detail-failure';
+    await createReleaseSetup(request, id);
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as {
+        id?: unknown;
+        method?: string;
+        params?: { id?: string };
+      };
+      if (body.method !== 'bureau.workflows.get' || body.params?.id !== id) return route.fallback();
+      await route.fulfill({
+        json: { jsonrpc: '2.0', id: body.id, error: { code: -32000, message: 'Down' } },
+      });
+    });
+    await page.goto('/runs/new');
+    await page.getByRole('combobox', { name: WORKFLOW_COPY.runPicker.fieldLabel }).selectOption(id);
+    await page.getByRole('button', { name: WORKFLOW_COPY.runPicker.continue }).click();
+    await expect(area(page)).toHaveAttribute('data-state', 'error');
+    await expect(setup(page).getByTestId('run-setup-input-failed')).toBeVisible();
+    await expect(
+      setup(page).getByRole('heading', { level: 2, name: COPY.whenHeading }),
+    ).toBeVisible();
+    await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeDisabled();
+    const jsonFallback = setup(page).getByRole('button', { name: COPY.inputFallback });
+    await expect(jsonFallback).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '58q-input-schema-load-failed',
+      source: SOURCE,
+    });
+    await jsonFallback.click();
+    const editor = await jsonEditor(setup(page), COPY.jsonEditorLabel);
+    await expect(editor).toBeVisible();
+  });
+
+  test('58u: preserves an invalid file trigger beside the disabled run setup', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-invalid-trigger-file';
+    await createWaiting(request, id);
+    await Bun.write(
+      await workflowFilePath(request, id),
+      JSON.stringify({
+        name: id,
+        trigger: { kind: 'signal', name: `${id}-go` },
+        steps: [{ kind: 'unsupported' }],
+      }),
+    );
+    await expect
+      .poll(async () => {
+        const workflow = await readWorkflow(request, id);
+        return workflow.state;
+      })
+      .toBe('invalid');
+    await page.goto(`/workflows/${id}/run`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await expect(setup(page).getByTestId('run-setup-unreadable')).toBeVisible();
+    await expect(setup(page).getByTestId('run-setup-no-form')).toContainText(COPY.unreadableInput);
+    await expect(setup(page).getByTestId('run-setup-trigger')).toContainText(`${id}-go`);
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '58u-invalid-file',
+      source: SOURCE,
+    });
+  });
+
+  test('57w: invalid JSON names the problem without dropping the schema form draft', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-invalid-json';
+    await createReleaseSetup(request, id);
+    await page.goto(`/workflows/${id}/run`);
+    await expect(setup(page).getByLabel(/^Branch/)).toHaveAttribute('placeholder', 'such as main');
+    await setup(page)
+      .getByLabel(/^Branch/)
+      .fill('main');
+    await setup(page).getByRole('button', { name: COPY.editAsJson }).click();
+    await replaceJsonEditorText(
+      await jsonEditor(setup(page), COPY.jsonEditorLabel),
+      '{\n  "branch": "main"\n  "since": "2026-10-23"\n}',
+    );
+    await expect(setup(page).getByText('Invalid JSON', { exact: true })).toBeVisible();
+    await expect(setup(page).getByRole('button', { name: /^Back to form/ })).toBeDisabled();
+    await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeEnabled();
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: '57w-raw-json-invalid',
+      source: SOURCE,
+    });
+    expect(await listWorkflowRuns(request, id)).toEqual([]);
+  });
+
+  test('58w: carries the picker metadata into Run setup while the detail read is held', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-setup-held-detail';
+    await createReleaseSetup(request, id);
+    await page.goto('/runs/new');
+    const workflow = page.getByRole('combobox', { name: WORKFLOW_COPY.runPicker.fieldLabel });
+    await workflow.selectOption(id);
+    const held = Promise.withResolvers<void>();
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
+      if (body.method !== 'bureau.workflows.get' || body.params?.id !== id) return route.fallback();
+      await held.promise;
+      await route.fallback();
+    });
+    try {
+      await page.getByRole('button', { name: WORKFLOW_COPY.runPicker.continue }).click();
+      const heading = setup(page).getByRole('heading', { level: 1 });
+      await expect(heading).toHaveText(`Run Release notes ${id}`);
+      await expect(setup(page).getByText('Collects merged changes into a draft.')).toBeVisible();
+      await expect(setup(page).getByLabel(/^Branch/)).toHaveCount(0);
+      await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeDisabled();
+      await expect(
+        setup(page).locator('.cinder-skeleton-group[data-cinder-variant="form"]'),
+      ).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow/run',
+        state: '58w-route-heading-with-loading-input',
+        source: SOURCE,
+      });
+    } finally {
+      held.resolve();
+    }
+    await expect(setup(page).getByLabel(/^Branch/)).toBeVisible();
   });
 });
 
@@ -197,8 +676,39 @@ test.describe('reaching the page', () => {
   });
 });
 
-test.describe('on a schedule', () => {
-  test('creates a schedule for a code-defined type in the chosen zone', async ({
+test.describe('on a schedule at /workflows/:workflow/run', () => {
+  test('S67: gives the named start text when the caller cannot create schedules', async ({
+    page,
+  }) => {
+    const response = await page.request.get('/api/v1/principal');
+    expect(response.ok()).toBe(true);
+    const principal = (await response.json()) as { scopes: string[] };
+    const withoutScheduling = {
+      ...principal,
+      scopes: principal.scopes.filter((scope) => scope !== 'schedules:write'),
+    };
+    await page.route('**/api/v1/principal', async (route) => {
+      await route.fulfill({ json: withoutScheduling });
+    });
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { id: unknown; method?: string };
+      if (call.method !== 'weft.system.principal') return route.fallback();
+      await route.fulfill({ json: { jsonrpc: '2.0', id: call.id, result: withoutScheduling } });
+    });
+
+    await page.goto('/workflows/order-processing/run');
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await expect(setup(page).getByText(COPY.nowOnlyDescription, { exact: true })).toBeVisible();
+    await expect(setup(page).getByRole('radiogroup', { name: COPY.whenLabel })).toHaveCount(0);
+    await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeEnabled();
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: 'S67-only-now',
+      source: SOURCE,
+    });
+  });
+
+  test('S67: creates a schedule for a code-defined type in the chosen zone', async ({
     page,
     request,
   }) => {
@@ -221,6 +731,11 @@ test.describe('on a schedule', () => {
     await expect(footer(page).getByTestId('run-setup-summary')).toContainText(
       'every day at 3:00 AM Pacific time',
     );
+    await captureForDesignReview(page, {
+      route: '/workflows/:workflow/run',
+      state: 'S67-on-a-schedule',
+      source: SOURCE,
+    });
     await footer(page).getByRole('button', { name: COPY.scheduleAction }).click();
     await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
     // The schedule is named by the Name field, which starts as the workflow's name in words.

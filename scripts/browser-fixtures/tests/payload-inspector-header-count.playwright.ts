@@ -70,6 +70,13 @@ test('in a 320px viewport the switch and Copy stay on the title’s row, Copy ne
   expect(read.copy!.top).toBeLessThan(read.label!.bottom);
   expect(read.actions!.top).toBeLessThan(read.title!.bottom);
   expect(read.copy!.left).toBeGreaterThanOrEqual(read.title!.right - 1);
+  const copyButton = card.locator('.cinder-copy-button[data-cinder-icon-only]');
+  const padding = await copyButton.evaluate((button) => {
+    const { paddingBlockStart, paddingInlineStart, paddingInlineEnd } = getComputedStyle(button);
+    return { paddingBlockStart, paddingInlineStart, paddingInlineEnd };
+  });
+  expect(padding.paddingInlineStart).toBe(padding.paddingBlockStart);
+  expect(padding.paddingInlineEnd).toBe(padding.paddingBlockStart);
 });
 
 test('the count wraps below the label inside a 160px card', async ({ page }) => {

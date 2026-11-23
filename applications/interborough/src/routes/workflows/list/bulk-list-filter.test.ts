@@ -44,6 +44,13 @@ describe('toBulkListFilterInput', () => {
     });
   });
 
+  test('carries the failed step and the retrying flag, so a bulk action never widens past them (COR-2535)', () => {
+    expect(
+      toBulkListFilterInput({ status: 'failed', failedStep: 'charge-card', retrying: false }),
+    ).toEqual({ status: 'failed', failedStep: 'charge-card', retrying: false });
+    expect(toBulkListFilterInput({ retrying: true })).toEqual({ retrying: true });
+  });
+
   test('omits undefined time-range bounds while retaining zero', () => {
     const result = toBulkListFilterInput({
       createdAt: { gte: undefined, gt: 0 },

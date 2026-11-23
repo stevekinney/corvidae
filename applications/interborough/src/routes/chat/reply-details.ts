@@ -1,12 +1,15 @@
 /**
  * What a reply's details say (COR-1983), from the two sources that carry anything: the step
  * `bureau.tasks.inspect` records (why it ran on its model, what the model saw) and the run's terminal
- * event (the tokens the run used). A value neither source carries is left out, never worked out:
- * the effort, the cost and the time are not here, because no source gives them. The model's name
- * is on the reply's own line, from the model the Bureau recorded on its row (`reply-model.ts`).
+ * event (the tokens the run used, and what it cost, COR-2525). A value neither source carries is
+ * left out, never worked out: the effort and the time are not here, because no source gives them,
+ * and a run the Bureau priced no request of has no cost, which is said by saying nothing. The
+ * model's name is on the reply's own line, from the model the Bureau recorded on its row
+ * (`reply-model.ts`).
  */
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { TaskStep } from '../../lib/bureau-tasks.ts';
+import { formatCost } from '../../lib/format/cost.ts';
 import { formatTokens } from './context-window.ts';
 import type { RunUsage } from './run-wiring.ts';
 
@@ -42,6 +45,8 @@ export type ReplyDetails = {
       }
     | undefined;
   readonly usage: readonly { readonly kind: string; readonly tokens: string }[];
+  /** What the run cost, written as an amount; `undefined` for a run with no cost. */
+  readonly cost: string | undefined;
 };
 
 /** The tokens a run reported, one entry for each count it carried, in the order input, output, total. */
@@ -108,10 +113,16 @@ export function replyDetailsOf(
             ),
           },
     usage: usageEntries(usage),
+    cost: formatCost(usage?.costUsd),
   };
 }
 
-/** Whether there is nothing to print: no plan, no context and no usage. */
+/** Whether there is nothing to print: no plan, no context, no usage and no cost. */
 export function isEmptyDetails(details: ReplyDetails): boolean {
-  return details.why === undefined && details.saw === undefined && details.usage.length === 0;
+  return (
+    details.why === undefined &&
+    details.saw === undefined &&
+    details.usage.length === 0 &&
+    details.cost === undefined
+  );
 }

@@ -1,3 +1,5 @@
+import type { FaultCode } from '@lostgradient/backchannel';
+
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
 /**
@@ -84,6 +86,36 @@ function faultFields(
       ? { remediation: redactCredentials(target, remediation) }
       : {}),
   };
+}
+
+/**
+ * The faults a server raises before it has done anything: it refused the call or found it
+ * malformed, so nothing changed and the caller may fix the call and send it again. Every other
+ * fault (`Timeout`, `Unavailable`, `EngineFailure`, `SubscriptionOverflow`) can come after the
+ * change was committed, for example when a later write of the same operation fails, so a
+ * mutation that fails with one has an outcome the CLI cannot know (exit 7).
+ */
+const FAULTS_THAT_REFUSE_BEFORE_ANY_EFFECT: ReadonlySet<string> = new Set([
+  'Unauthorized',
+  'Forbidden',
+  'NotFound',
+  'Conflict',
+  'Unprocessable',
+  'PayloadTooLarge',
+  'NotImplemented',
+  'UnsupportedTransport',
+  'InvalidParams',
+  'MethodNotFound',
+  'StaleRevision',
+  'RateLimited',
+  'UnsupportedCapability',
+] satisfies FaultCode[]);
+
+/** Whether `error` is a server fault that guarantees the operation changed nothing. */
+export function faultRefusedBeforeAnyEffect(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  const code = error['faultCode'];
+  return typeof code === 'string' && FAULTS_THAT_REFUSE_BEFORE_ANY_EFFECT.has(code);
 }
 
 function assertManagementBoundary(target: CliTarget, path: string): void {

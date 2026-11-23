@@ -61,8 +61,17 @@ import {
 } from './e2e-constants.ts';
 
 import { createEchoAgents } from './echo-agent.ts';
+import {
+  createFailingAgents,
+  EXPLAINER_AGENT_NAME,
+  failureExplainerAgent,
+} from './failure-explanation-agents.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
-import { seedCancellationRequest, seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import {
+  seedCancellationRequest,
+  seedLedgerEvidence,
+  seedQueuedTaskEvidence,
+} from './ledger-evidence-seed.ts';
 import { createModelAgents } from './model-agents.ts';
 import { pagePanelPlugins } from './page-panel-plugins.ts';
 import { createQuestionAgents } from './question-agents.ts';
@@ -369,6 +378,9 @@ const showcaseStartup = trackStartupPromise(
   seedSampleWorld(join(scratch, 'showcase-home', '.interborough'), {
     host: { port: E2E_SHOWCASE_PORT, buildDirectory },
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
+    // Each step of the story is a phase of its own, so a seed that never settles leaves the step
+    // it stopped on as the last showcase line of the startup log (COR-2632).
+    onStep: (step) => reportStartupPhase(`showcase: ${step}`),
   }).then(({ host: started }) => {
     startupCleanup.push(() => started.close());
     reportStartupPhase('showcase-ready');
@@ -384,8 +396,12 @@ const host = await startHost({
       ...createQuestionAgents(),
       ...createModelAgents(),
       ...createRegenerationProofAgent(),
+      ...createFailingAgents(),
     },
-    withBureauTools: { 'workflow-revision': workflowRevisionAgent },
+    withBureauTools: {
+      'workflow-revision': workflowRevisionAgent,
+      [EXPLAINER_AGENT_NAME]: failureExplainerAgent,
+    },
   },
   environment: { INTERBOROUGH_HOME: home },
   // A chat whose first message carries an access marker is scripted to call a tool (`access-provider.ts`).
@@ -474,29 +490,7 @@ startupCleanup.push(async () => {
 for (let wait = 0; wait < 200 && !longPollWorker.ready; wait += 1) await Bun.sleep(25);
 if (!longPollWorker.ready) throw new Error('The E2E long-poll worker did not register.');
 
-await server.dispatchTask({
-  operationId: E2E_TASK_OPERATION_ID,
-  workflowId: 'e2e-ledger-workflow',
-  workflowExecutionToken: 'e2e-ledger-token',
-  workflowType: 'order-processing',
-  activityName: 'reserveInventory',
-  input: { orderId: 'e2e-ledger-order' },
-  queue: 'default',
-  priority: 9,
-  headers: { traceparent: '00-e2e-ledger-trace-e2e-span-01' },
-  retryPolicy: {
-    maxAttempts: 3,
-    initialBackoff: '5m',
-    backoffMultiplier: 2,
-    maxBackoff: '10m',
-  },
-});
-
-for (let attempt = 0; attempt < 5; attempt += 1) {
-  const result = await server.getTaskResult(E2E_TASK_OPERATION_ID);
-  if (result?.status === 'pending' && result.state === 'queued') break;
-  await new Promise((resolve) => setTimeout(resolve, 20));
-}
+await seedQueuedTaskEvidence(server, E2E_TASK_OPERATION_ID);
 
 // COR-124: a leased task on its second, heartbeating attempt, plus requested
 // and acknowledged cancellations, all produced by a real worker against this

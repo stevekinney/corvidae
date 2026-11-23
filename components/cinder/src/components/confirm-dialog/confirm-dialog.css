@@ -8,17 +8,37 @@
     display: none;
   }
 
+  /* The sentence that says what the dialog does, and often that it cannot be undone: it reads at the
+   * body's size and colour, louder than the list or the notes under it. */
   .cinder-confirm-dialog__description {
     margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-body);
   }
 
-  /* Monospace inside the sentence (a key, an identifier) reads as part of the sentence. */
+  /* Monospace inside the sentence (a key, an identifier) reads as part of the sentence. An
+   * identifier is one long unbroken token, so it wraps at any character rather than widening the
+   * dialog. */
   .cinder-confirm-dialog__description :where(code) {
     font-family: var(--cinder-font-mono);
     font-size: 0.95em;
     color: var(--cinder-text-default);
+    overflow-wrap: anywhere;
+  }
+
+  /* The same in options: a filter summary or a workflow id in a list row or a note. */
+  .cinder-confirm-dialog__options :where(code) {
+    font-family: var(--cinder-font-mono);
+    font-size: 0.95em;
+    overflow-wrap: anywhere;
+  }
+
+  /* A body with no element in it (a failure with nothing described: its callout lives in the footer)
+   * takes no room, so no padded band sits between the title and the footer. ConfirmDialog's body
+   * holds elements only, so the whitespace its template leaves between blocks does not count, which
+   * `:empty` (Modal's rule for a body that renders nothing at all) would not forgive. */
+  .cinder-confirm-dialog .cinder-modal__body:not(:has(> *)) {
+    display: none;
   }
 
   /* The description, the options and the typed field are one column, a step apart. */
@@ -41,6 +61,11 @@
     margin-block-end: var(--cinder-space-3);
   }
 
+  /* The typed confirmation is the footer's, above the buttons it gates, a step above them. */
+  .cinder-confirm-dialog__footer > .cinder-input-field {
+    margin-block-end: var(--cinder-space-3);
+  }
+
   .cinder-confirm-dialog__actions {
     display: flex;
     align-items: center;
@@ -48,8 +73,23 @@
     gap: var(--cinder-space-3);
   }
 
+  /* A typed destructive sheet puts both actions on their own line. Cancel keeps initial focus. */
+  .cinder-modal[data-cinder-sheet='docked'].cinder-confirm-dialog
+    .cinder-confirm-dialog__actions[data-cinder-typed-destructive] {
+    flex-flow: column-reverse nowrap;
+    align-items: stretch;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'].cinder-confirm-dialog
+    .cinder-confirm-dialog__actions[data-cinder-typed-destructive]
+    > button {
+    flex: none;
+    inline-size: 100%;
+  }
   /* As a sheet the actions row takes Modal's one docked footer rule (modal.css): a compact Cancel
-   * and the confirmation filling the rest. */
+   * and the confirmation filling the rest. The one exception to its "a lone action fills the row",
+   * for a failure that carries its own action, is in modal.css beside the rule
+   * (`data-cinder-fault-only`). */
 
   /* What each choice does: a checkbox, or the command about to run. */
   .cinder-confirm-dialog__options {
@@ -70,8 +110,9 @@
   }
 
   .cinder-confirm-dialog__options > ul > li {
-    padding-block: var(--cinder-space-2);
+    padding-block: var(--cinder-space-1);
     border-block-start: 1px solid var(--cinder-border-muted);
+    font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
   }
 
@@ -96,10 +137,6 @@
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-  }
-
-  .cinder-confirm-dialog__failure :where(strong) {
-    font-weight: var(--cinder-font-semibold);
   }
 
   /* Cancel holds the first focus (the guard against a hasty confirm), and the dialog opens from a

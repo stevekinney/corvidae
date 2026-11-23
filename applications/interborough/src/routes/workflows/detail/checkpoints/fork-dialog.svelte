@@ -9,9 +9,12 @@
    *
    * Default fork behavior (`ForkOptions.revision` omitted) resolves and
    * persists the SOURCE run's own `revision` — shown up front as "Retains
-   * rev X" (or "Unpinned source" for a legacy run with no persisted
-   * revision) so an operator sees what will happen before confirming,
-   * without opening anything. A collapsed "Fork a different revision"
+   * the source run's own revision" (or "Unpinned source" for a legacy run
+   * with no persisted revision; the revision itself is in the tooltip, never
+   * a printed label) so an operator sees what will happen before confirming,
+   * without opening anything. Once the server's dry run says the fork would
+   * run on another revision, a warning Callout is the one statement of it
+   * and this line steps aside. A collapsed "Fork a different revision"
    * disclosure opts into an EXPLICIT revision (`ForkOptions.revision`,
    * diagnostic use) — a `Select` of installed revisions
    * (`weft.workflows.revisions.list`) when `workflows:read` is granted,
@@ -70,18 +73,25 @@
    * flight, or if it fails or finds the run purged, the page-load
    * `sourceRevision` prop is what the dialog shows, unchanged.
    */
-  import { Badge, Button, Input, Select, Skeleton, Tooltip } from '@lostgradient/cinder';
+  import { Button, Callout, Input, Select, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
   import { ChevronDown, ChevronRight, GitFork } from '@lucide/svelte';
 
+  import { RUN_FORK_PREVIEW_COPY } from '../../../../app/copy/runs.ts';
   import { faultTreatment } from '../../../../lib/faults.ts';
-  import { formatRelativeTime, truncateId } from '../../../../lib/format/index.ts';
+  import { formatRelativeTime } from '../../../../lib/format/index.ts';
   import { queryKeys } from '../../../../lib/query.ts';
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';
   import WorkerInheritanceNote from '../../../../lib/worker-inheritance-note.svelte';
   import { EAGER_REVISION_HEDGE } from '../../../../lib/workflow-revision.ts';
   import { router, workflowDetailPath } from '../../../../lib/router.svelte.ts';
   import type { ForkClient, ForkSourceClient } from './checkpoints-data.ts';
+  import {
+    fetchForkPreview,
+    forkPreviewQueryKey,
+    type ForkPreviewClient,
+    type ForkPreviewRequest,
+  } from './fork-comparison-data.ts';
   import {
     forkConflictGuidance,
     isForkRevisionConflict,
@@ -92,7 +102,7 @@
   } from './fork-revision-picker.ts';
 
   interface ForkDialogProps {
-    readonly client: ForkClient & ForkSourceClient & WorkflowRevisionListClient;
+    readonly client: ForkClient & ForkSourceClient & ForkPreviewClient & WorkflowRevisionListClient;
     readonly workflowId: string;
     /** Pre-fills the target step from whichever checkpoint the operator selected. */
     readonly initialStep: number;
@@ -100,7 +110,7 @@
     readonly workflowType: string;
     /** The source run's own persisted `WorkflowState.revision` — `undefined` for a legacy (pre-revision-pinning) record. What a default fork (no explicit opt-in) retains. */
     readonly sourceRevision: string | undefined;
-    /** Fired with the new run's id right after a successful fork, so the Checkpoints tab can offer the divergence view. */
+    /** Fired with the new run's id right after a successful fork, so the Checkpoints tab can show its comparison with this run. */
     readonly onForked?: (forkedWorkflowId: string) => void;
   }
 
@@ -258,6 +268,44 @@
   });
 
   /**
+   * What the server's dry run is asked (COR-2538): the step and the revision the operator has chosen
+   * right now. It is `null` until the step parses and the principal may fork, so nothing is asked
+   * for a step that is not one. The query key carries both, so a change of step or of revision asks
+   * again and the previous answer is never shown for the new choice; `gcTime: 0` keeps an answer
+   * from an earlier visit from standing in for a fresh one.
+   */
+  const previewRequest = $derived<ForkPreviewRequest | null>(
+    parsedStep === null || writeGate.disabled
+      ? null
+      : {
+          fromStep: parsedStep,
+          revision: selection.mode === 'explicit' ? selection.revision : undefined,
+        },
+  );
+
+  const previewQuery = createQuery(() => ({
+    queryKey: forkPreviewQueryKey(workflowId, previewRequest ?? { fromStep: -1 }),
+    queryFn: () =>
+      previewRequest === null
+        ? Promise.reject(new TypeError('The fork preview was asked for without a step'))
+        : fetchForkPreview(client, workflowId, previewRequest),
+    enabled: previewRequest !== null,
+    gcTime: 0,
+  }));
+
+  /** The preview answers the choice on screen: confirming before it does would fork blind. */
+  const previewReady = $derived(
+    previewRequest !== null && previewQuery.isSuccess && !previewQuery.isFetching,
+  );
+  const previewConflict = $derived(
+    previewQuery.isError ? isForkRevisionConflict(previewQuery.error) : false,
+  );
+  /** The answer on screen says the fork would run on a revision other than the source's. */
+  const revisionWouldChange = $derived(
+    previewReady && previewQuery.data !== undefined && previewQuery.data.revisionWouldChange,
+  );
+
+  /**
    * The mutation's input carries `selection` alongside `fromStep` (Codex
    * review, PR #978, round 3) — NOT just `fromStep` with `selection` closed
    * over live. `forkMutation.variables` freezes whatever was passed to the
@@ -278,7 +326,7 @@
   }));
 
   function submit(): void {
-    if (parsedStep === null) return;
+    if (parsedStep === null || !previewReady) return;
     forkMutation.mutate({ fromStep: parsedStep, selection });
   }
 
@@ -302,30 +350,30 @@
     bind:value={targetStepText}
   />
 
-  <div class="weft-fork-dialog__retention" role="status">
-    {#if selection.mode === 'explicit'}
-      <Tooltip text={`Fork target revision (exact executable artifact): ${selection.revision}`}>
-        <span>
-          Will target <code>rev {truncateId(selection.revision)}</code> instead of the source run's own
-          revision.
-        </span>
-      </Tooltip>
-    {:else if sourceRevision !== undefined}
-      <Tooltip
-        text={`Revision (exact executable artifact) as last loaded: ${sourceRevision}. ${EAGER_REVISION_HEDGE} If this run has been replaced by a start-new restart since this page loaded, the fork instead targets the replacement's own revision.`}
-      >
-        <span
-          >Retains <code>rev {truncateId(sourceRevision)}</code> — the source run's own revision, as last
-          loaded here.</span
+  <!-- The revision is stated once. Once the server's dry run says the fork would run on another
+       revision, that is the statement (the warning below) and this line steps aside. The full
+       revision stays in the tooltip, never printed as a label. -->
+  {#if !revisionWouldChange}
+    <div class="weft-fork-dialog__retention" role="status">
+      {#if selection.mode === 'explicit'}
+        <Tooltip text={`Fork target revision (exact executable artifact): ${selection.revision}`}>
+          <span>Will target the revision you chose instead of the source run's own revision.</span>
+        </Tooltip>
+      {:else if sourceRevision !== undefined}
+        <Tooltip
+          text={`Revision (exact executable artifact) as last loaded: ${sourceRevision}. ${EAGER_REVISION_HEDGE} If this run has been replaced by a start-new restart since this page loaded, the fork instead targets the replacement's own revision.`}
         >
-      </Tooltip>
-    {:else}
-      <span>
-        Unpinned source — this run predates revision pinning, so which revision the fork targets
-        can't be stated here. It usually follows the active revision, but it can be a different one.
-      </span>
-    {/if}
-  </div>
+          <span>Retains the source run's own revision, as last loaded here.</span>
+        </Tooltip>
+      {:else}
+        <span>
+          Unpinned source — this run predates revision pinning, so which revision the fork targets
+          can't be stated here. It usually follows the active revision, but it can be a different
+          one.
+        </span>
+      {/if}
+    </div>
+  {/if}
 
   <Button
     variant="ghost"
@@ -382,22 +430,78 @@
     </div>
   {/if}
 
-  <p class="weft-fork-dialog__note">
-    A new workflow is created, linked via <code>forkedFrom</code>.
-  </p>
+  {#if previewRequest !== null}
+    <div class="weft-fork-dialog__preview" data-fork-preview aria-busy={previewQuery.isFetching}>
+      {#if previewQuery.isPending}
+        <Skeleton height="4rem" />
+        <span class="weft-fork-dialog__note" role="status">{RUN_FORK_PREVIEW_COPY.loading}</span>
+      {:else if previewQuery.isError}
+        {#if previewConflict}
+          <div role="alert">
+            <Callout variant="warning" title={RUN_FORK_PREVIEW_COPY.refusedTitle}>
+              {forkConflictGuidance(selection)}
+            </Callout>
+          </div>
+        {:else}
+          <p class="weft-fork-dialog__error" role="alert">
+            {RUN_FORK_PREVIEW_COPY.failedTitle}.
+            {previewQuery.error instanceof Error ? previewQuery.error.message : ''}
+          </p>
+        {/if}
+      {:else if previewQuery.data}
+        {@const preview = previewQuery.data}
+        <div class="weft-fork-dialog__preview-heading">{RUN_FORK_PREVIEW_COPY.heading}</div>
+        <div class="weft-fork-dialog__preview-lists">
+          <section aria-label={RUN_FORK_PREVIEW_COPY.keptHeading(preview.keptSteps.length)}>
+            <div class="weft-fork-dialog__preview-label">
+              {RUN_FORK_PREVIEW_COPY.keptHeading(preview.keptSteps.length)}
+            </div>
+            <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.keptNote}</p>
+            {#if preview.keptSteps.length === 0}
+              <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.noSteps}</p>
+            {:else}
+              <ul data-fork-preview-kept>
+                {#each preview.keptSteps as step (step.index)}
+                  <li>{RUN_FORK_PREVIEW_COPY.step(step.index, step.label)}</li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
+          <section aria-label={RUN_FORK_PREVIEW_COPY.rerunHeading(preview.rerunSteps.length)}>
+            <div class="weft-fork-dialog__preview-label">
+              {RUN_FORK_PREVIEW_COPY.rerunHeading(preview.rerunSteps.length)}
+            </div>
+            <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.rerunNote}</p>
+            {#if preview.rerunSteps.length === 0}
+              <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.noSteps}</p>
+            {:else}
+              <ul data-fork-preview-rerun>
+                {#each preview.rerunSteps as step (step.index)}
+                  <li>{RUN_FORK_PREVIEW_COPY.step(step.index, step.label)}</li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
+        </div>
+        {#if preview.revisionWouldChange}
+          <Callout variant="warning" title={RUN_FORK_PREVIEW_COPY.revisionWouldChangeTitle}>
+            {RUN_FORK_PREVIEW_COPY.revisionWouldChange(selection.mode === 'explicit')}
+          </Callout>
+        {/if}
+      {/if}
+    </div>
+  {/if}
+
+  <p class="weft-fork-dialog__note">{RUN_FORK_PREVIEW_COPY.linked}</p>
 
   <WorkerInheritanceNote surface="fork" />
 
   {#if forkMutation.isError}
     {#if revisionConflict}
-      <div class="weft-fork-dialog__conflict" role="alert">
-        <Badge variant="warning">Revision unavailable</Badge>
-        <p>
-          {forkMutation.error instanceof Error
-            ? forkMutation.error.message
-            : 'The requested revision could not be resolved.'}
+      <div role="alert">
+        <Callout variant="warning" title={RUN_FORK_PREVIEW_COPY.refusedTitle}>
           {forkConflictGuidance(failedSelection)}
-        </p>
+        </Callout>
       </div>
     {:else}
       <p class="weft-fork-dialog__error">
@@ -409,27 +513,40 @@
   {/if}
 
   {#if forkMutation.isSuccess && forkMutation.data}
+    <!-- Named by its workflow and when it started, never by its id; the link goes to the id. -->
     <div class="weft-fork-dialog__success">
-      <span>Forked as <code>{forkMutation.data.id}</code></span>
-      <Button variant="ghost" size="sm" label="View →" onclick={viewForkedRun} />
+      <span>
+        {RUN_FORK_PREVIEW_COPY.forkedAs}
+        <a
+          href={router.href(workflowDetailPath(forkMutation.data.id))}
+          onclick={(event) => {
+            event.preventDefault();
+            viewForkedRun();
+          }}>{workflowType}</a
+        >, {RUN_FORK_PREVIEW_COPY.startedJustNow}
+      </span>
     </div>
   {:else}
-    <Tooltip text={writeGate.title ?? ''}>
-      <Button
-        data-changes
-        variant="primary"
-        size="sm"
-        fullWidth
-        label={forkMutation.isPending ? 'Forking…' : 'Create fork'}
-        loading={forkMutation.isPending}
-        disabled={writeGate.disabled || parsedStep === null || forkMutation.isPending}
-        onclick={submit}
-      >
-        {#snippet leadingIcon()}
-          <GitFork aria-hidden="true" size={13} />
-        {/snippet}
-      </Button>
-    </Tooltip>
+    <div class="weft-fork-dialog__actions">
+      <Tooltip text={writeGate.title ?? ''}>
+        <Button
+          data-changes
+          variant="primary"
+          size="sm"
+          label={forkMutation.isPending ? 'Forking…' : 'Create fork'}
+          loading={forkMutation.isPending}
+          disabled={writeGate.disabled ||
+            parsedStep === null ||
+            !previewReady ||
+            forkMutation.isPending}
+          onclick={submit}
+        >
+          {#snippet leadingIcon()}
+            <GitFork aria-hidden="true" size={13} />
+          {/snippet}
+        </Button>
+      </Tooltip>
+    </div>
   {/if}
 </div>
 
@@ -441,7 +558,7 @@
     padding: var(--cinder-density-pad-card);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--cinder-space-2-5);
   }
 
   .weft-fork-dialog__retention {
@@ -449,47 +566,55 @@
     color: var(--cinder-text-subtle);
   }
 
-  .weft-fork-dialog__retention code {
-    font-family: var(--cinder-font-mono);
+  /* No box inside the dialog's own box: the picker and the preview sit on the dialog's surface. */
+  .weft-fork-dialog__picker {
+    padding-block: var(--cinder-space-1);
   }
 
-  .weft-fork-dialog__picker {
-    padding: var(--cinder-space-2);
-    background: var(--cinder-surface);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+  .weft-fork-dialog__preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  /* A normal-width primary button at the start of its row, never a bar across a wide dialog. */
+  .weft-fork-dialog__actions {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .weft-fork-dialog__preview-heading,
+  .weft-fork-dialog__preview-label {
+    font-size: var(--cinder-text-xs);
+    font-weight: 600;
+  }
+
+  .weft-fork-dialog__preview-lists {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--cinder-space-3);
+  }
+
+  .weft-fork-dialog__preview ul {
+    margin: 0;
+    padding-inline-start: var(--cinder-space-4);
+    max-height: 12rem;
+    overflow-y: auto;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-2xs);
+    overflow-wrap: anywhere;
   }
 
   .weft-fork-dialog__note {
     margin: 0;
-    font-size: var(--cinder-text-2xs);
-    color: var(--cinder-text-disabled);
-  }
-
-  .weft-fork-dialog__note code {
-    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-subtle);
   }
 
   .weft-fork-dialog__error {
     margin: 0;
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-status-danger-text);
-  }
-
-  .weft-fork-dialog__conflict {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    background: var(--cinder-status-warning-background);
-    border: 1px solid var(--cinder-status-warning-border);
-    border-radius: var(--cinder-radius-md);
-  }
-
-  .weft-fork-dialog__conflict p {
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-status-warning-text);
   }
 
   .weft-fork-dialog__success {
@@ -501,9 +626,5 @@
     border: 1px solid var(--cinder-status-success-border);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-sm);
-  }
-
-  .weft-fork-dialog__success code {
-    font-family: var(--cinder-font-mono);
   }
 </style>
