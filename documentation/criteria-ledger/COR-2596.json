@@ -1,7 +1,7 @@
 {
   "issue": "COR-2596",
   "branch": "steve/cor-2596-composable",
-  "checkedAt": "fe9f087520d73c99aa4478e4776f559b5b178ad8",
+  "checkedAt": "1c664c85511abb4a72a2ca42880a1653b5c1b6b9",
   "briefVersion": "b0ed2a5278ae",
   "status": "READY",
   "criteria": [
@@ -23,7 +23,7 @@
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "behavior-validation.test.ts checks deterministic invalid catalog diagnostics"
+      "evidence": "behavior-validation.test.ts checks deterministic invalid catalog diagnostics, constrained cursor schemas and nested transforms without executing callbacks"
     },
     {
       "id": "AC5",
