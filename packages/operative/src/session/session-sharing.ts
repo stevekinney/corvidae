@@ -187,23 +187,7 @@ export function withSessionReadRequest(
     )
   )
     return { ...metadata };
-  return {
-    ...metadata,
-    [SESSION_READ_REQUESTS_METADATA_KEY]: [...requests, request].map((candidate) => ({
-      requestId: candidate.requestId,
-      owner: candidate.owner,
-      workspaceId: candidate.workspaceId,
-      actorId: candidate.actorId,
-      requestedAt: candidate.requestedAt,
-      ...(candidate.resolvedAt === undefined
-        ? {}
-        : {
-            resolvedAt: candidate.resolvedAt,
-            resolvedBy: candidate.resolvedBy!,
-            decision: candidate.decision!,
-          }),
-    })),
-  };
+  return withSessionReadRequestRecords(metadata, [...requests, request]);
 }
 
 /** Settles the one pending request for a reader without changing access itself. */
@@ -237,6 +221,7 @@ function withSessionReadRequestRecords(
   return {
     ...metadata,
     [SESSION_READ_REQUESTS_METADATA_KEY]: requests.map((candidate) => ({
+      requestId: candidate.requestId,
       owner: candidate.owner,
       workspaceId: candidate.workspaceId,
       actorId: candidate.actorId,

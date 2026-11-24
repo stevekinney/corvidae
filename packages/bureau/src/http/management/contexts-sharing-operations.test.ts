@@ -437,7 +437,11 @@ describe('chat sharing access requests', () => {
     } as never);
 
     expect(receipt).toMatchObject({ changed: false });
-    const [replacement] = sessionReadRequestsOf(current().metadata);
+    const requests = sessionReadRequestsOf(current().metadata);
+    expect(requests.find((request) => request.requestId === requestA)).toMatchObject({
+      decision: 'denied',
+    });
+    const replacement = requests.find((request) => request.requestId === requestB);
     expect(replacement?.requestId).toBe(requestB);
     expect(replacement?.resolvedAt).toBeUndefined();
   });
