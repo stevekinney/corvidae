@@ -340,6 +340,40 @@
     "internal/typescript": {
       "name": "@lostgradient/typescript",
     },
+    "packages/api-key-settings": {
+      "name": "@lostgradient/api-key-settings",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+        "@lostgradient/backchannel-svelte": "workspace:*",
+        "@lostgradient/credentials": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/backchannel-mcp": "workspace:*",
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@modelcontextprotocol/client": "catalog:",
+        "@tanstack/svelte-query": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "playwright": "catalog:",
+        "prettier": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "svelte": "catalog:",
+      },
+      "optionalPeers": [
+        "@lostgradient/cinder",
+      ],
+    },
     "packages/armorer": {
       "name": "armorer",
       "dependencies": {
@@ -1535,6 +1569,8 @@
     "@lmdb/lmdb-win32-x64": ["@lmdb/lmdb-win32-x64@3.5.9", "", { "os": "win32", "cpu": "x64" }, "sha512-UP0dMDLQ9z8V7VcasGsd9zvHdwwsYT2tQ7u37h5sGzoyLB+S3UHPEzj9lssH7JqF/U8kB3IwJGkYwLTOkoEzNw=="],
 
     "@loaderkit/resolve": ["@loaderkit/resolve@1.0.6", "", { "dependencies": { "@braidai/lang": "^1.0.0" } }, "sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg=="],
+
+    "@lostgradient/api-key-settings": ["@lostgradient/api-key-settings@workspace:packages/api-key-settings"],
 
     "@lostgradient/backchannel": ["@lostgradient/backchannel@workspace:packages/backchannel"],
 
