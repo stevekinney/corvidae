@@ -254,8 +254,8 @@ describe('a resumed turn', () => {
           'bureau:continuationRun': continuationRun,
         },
       },
-      { id: 'later-person', role: 'user', content: 'a later normal turn' },
-      { id: `${laterRun}:step:0`, role: 'assistant', content: 'later answer' },
+      { role: 'user', content: 'a later normal turn' },
+      { role: 'assistant', content: 'later answer' },
     );
     const session = createAgentSession({
       id: 'replay',

@@ -1210,7 +1210,7 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe('20');
       // The group still counts every step, and its navigation row still counts every call.
       expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        '20 steps Compared recent orders… lookup_order ×20 6s',
+        '20 steps Compared recent orders… lookup_order ×20 6.1 s',
       );
       expect(
         container
