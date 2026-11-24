@@ -12,6 +12,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { catalogConsumerFiles } from "./catalog-consumer-fixture.ts";
+import { stageCatalogPackages } from "./catalog-consumer-stage.ts";
 
 const repository = resolve(
   process.argv[2] ?? resolve(import.meta.dir, "../.."),
@@ -107,13 +109,105 @@ try {
     );
   observations.packageResolution = resolvedPackage;
 
-  const installedManifest = JSON.parse(await readFile(join(application, "node_modules", packageName.name, "package.json"), "utf8")) as { dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
-  const dependencies = Object.keys({ ...installedManifest.dependencies, ...installedManifest.peerDependencies });
-  if (dependencies.some((name) => /(?:backchannel|armorer|bureau|modelcontextprotocol)/i.test(name))) throw new Error("Velveteen has a provider dependency");
+  const archives = await stageCatalogPackages(repository, directory);
+  const appManifestPath = join(application, "package.json");
+  const appManifest = JSON.parse(await readFile(appManifestPath, "utf8")) as {
+    dependencies: Record<string, string>;
+  };
+  for (const [name, archive] of Object.entries(archives))
+    appManifest.dependencies[name] = `file:${archive}`;
+  appManifest.dependencies["@tanstack/svelte-query"] = "^6.2.1";
+  appManifest.dependencies.zod = "^4.6.6";
+  await writeFile(appManifestPath, JSON.stringify(appManifest, null, 2));
+  assertSuccess(
+    "catalog package installation",
+    run([process.execPath, "install"], application),
+  );
+  for (const entry of [
+    "@lostgradient/backchannel",
+    "@lostgradient/backchannel/generator",
+    "@lostgradient/backchannel/client",
+    "@lostgradient/backchannel-svelte",
+  ]) {
+    const resolvedEntry = await realpath(
+      Bun.resolveSync(entry, appManifestPath),
+    );
+    if (!resolvedEntry.startsWith(await realpath(application)))
+      throw new Error(
+        `catalog entry resolved outside the installed consumer: ${entry}`,
+      );
+  }
+  for (const [path, contents] of Object.entries(catalogConsumerFiles)) {
+    const destination = join(application, path);
+    await mkdir(resolve(destination, ".."), { recursive: true });
+    await writeFile(destination, contents);
+  }
+  assertSuccess(
+    "catalog generation",
+    run([process.execPath, "src/generate.ts"], application, {
+      EXTRA_OPERATION: "",
+    }),
+  );
+
+  const installedManifest = JSON.parse(
+    await readFile(
+      join(application, "node_modules", packageName.name, "package.json"),
+      "utf8",
+    ),
+  ) as {
+    dependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+  };
+  const dependencies = Object.keys({
+    ...installedManifest.dependencies,
+    ...installedManifest.peerDependencies,
+  });
+  if (
+    dependencies.some((name) =>
+      /(?:backchannel|armorer|bureau|modelcontextprotocol)/i.test(name),
+    )
+  )
+    throw new Error("Velveteen has a provider dependency");
   const serverSource = join(application, "src/server.ts");
   const serverText = await readFile(serverSource, "utf8");
-  if (!serverText.includes("createApplication({ generation })")) throw new Error("starter application entry changed");
-  await writeFile(serverSource, serverText.replace("createApplication({ generation })", "createApplication({ generation, mounts: { '/service': () => () => new Response('mounted') } })"));
+  if (!serverText.includes("createApplication({ generation })"))
+    throw new Error("starter application entry changed");
+  await writeFile(
+    serverSource,
+    `import { createOperationHandler, principalFromApiKey } from '@lostgradient/backchannel';\nimport { operations, state } from './catalog.ts';\n` +
+      serverText.replace(
+        "createApplication({ generation })",
+        `createApplication({ generation, mounts: { '/service': () => { const handler = createOperationHandler({ operations, host: {}, authenticate: async (request) => request.headers.get('cookie')?.includes('actor=1') ? { method: 'api-key', principal: principalFromApiKey({ subject: 'actor', scopes: ['equipment:read'] }) } : new Response('denied', { status: 401 }) }); return (request) => { const url = new URL(request.url); if (url.pathname === '/control') { if (url.searchParams.has('release')) state.release.resolve(); return new Response(JSON.stringify({ reads: state.reads, inspections: state.inspections, commands: state.commands, aborted: state.aborted, settledA: state.settledA })); } return handler(request); }; } } })`,
+      ),
+  );
+  const unchangedPaths = [serverSource, join(application, "src/transport.ts")];
+  const beforeGeneration = await Promise.all(
+    unchangedPaths.map((path) => readFile(path, "utf8")),
+  );
+  const generatedBinding = join(
+    application,
+    "src/generated/operation-client.svelte.ts",
+  );
+  const originalBinding = await readFile(generatedBinding, "utf8");
+  assertSuccess(
+    "extended catalog generation",
+    run([process.execPath, "src/generate.ts"], application, {
+      EXTRA_OPERATION: "1",
+    }),
+  );
+  const afterGeneration = await Promise.all(
+    unchangedPaths.map((path) => readFile(path, "utf8")),
+  );
+  if (
+    beforeGeneration.some((source, index) => source !== afterGeneration[index])
+  )
+    throw new Error("catalog generation changed the transport or router");
+  const extendedBinding = await readFile(generatedBinding, "utf8");
+  if (
+    originalBinding.includes("useEquipmentItemsInspect") ||
+    !extendedBinding.includes("useEquipmentItemsInspect")
+  )
+    throw new Error("regeneration did not add the Svelte operation");
 
   const checked = run([process.execPath, "run", "check"], application);
   assertSuccess("generated application check", checked);
@@ -195,8 +289,9 @@ try {
     }
   };
 
-  const dev = await start("dev");
-  if (await (await fetch(new URL("/service/item", dev.value.url))).text() !== "mounted") throw new Error("development mount failed");
+  const dev = await start("dev", { EXTRA_OPERATION: "1" });
+  if ((await fetch(new URL("/service/control", dev.value.url))).status !== 200)
+    throw new Error("development mount failed");
   if (dev.value.mode !== "development")
     throw new Error(`dev mode mismatch: ${dev.value.mode}`);
   browser = await chromium.launch({ headless: true });
@@ -223,15 +318,131 @@ try {
   if (diagnostics.length)
     throw new Error(`browser diagnostics: ${diagnostics.join(" | ")}`);
   await devPage.close();
+  const catalogPage = await browser.newPage();
+  const catalogDiagnostics: string[] = [];
+  catalogPage.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning")
+      catalogDiagnostics.push(message.text());
+  });
+  catalogPage.on("pageerror", (error) =>
+    catalogDiagnostics.push(String(error)),
+  );
+  await catalogPage
+    .context()
+    .addCookies([{ name: "actor", value: "1", url: dev.value.url }]);
+  const catalogResponse = await catalogPage.goto(
+    new URL("/items/initial", dev.value.url).href,
+    { waitUntil: "networkidle" },
+  );
+  if (!(await catalogResponse!.text()).includes('id="item">initial'))
+    throw new Error("protected SSR did not render the catalog item");
+  await catalogPage.locator("#item").waitFor();
+  await catalogPage.waitForFunction(
+    () => document.querySelector("#inspection")?.textContent === "initial",
+  );
+  const control = async () =>
+    (await (
+      await fetch(new URL("/service/control", dev.value.url))
+    ).json()) as {
+      reads: string[];
+      inspections: number;
+      commands: number;
+      aborted: boolean;
+      settledA: boolean;
+    };
+  const hydrated = await control();
+  if (hydrated.reads.join(",") !== "initial" || hydrated.inspections < 2)
+    throw new Error(
+      `hydration or regenerated operation mismatch: ${JSON.stringify(hydrated)}`,
+    );
+  await catalogPage.locator("#reserve").click();
+  await catalogPage.waitForFunction(
+    () => document.querySelector("#fault")?.textContent === "unknown",
+  );
+  if ((await control()).commands !== 1)
+    throw new Error("ambiguous command was replayed");
+  await catalogPage
+    .locator('a[href="/items/A"]')
+    .evaluate((link: HTMLAnchorElement) => link.click());
+  await catalogPage.waitForFunction(async () =>
+    (await (await fetch("/service/control")).json()).reads.includes("A"),
+  );
+  await catalogPage
+    .locator('a[href="/items/B"]')
+    .evaluate((link: HTMLAnchorElement) => link.click());
+  await catalogPage.waitForFunction(
+    () => document.querySelector("#item")?.textContent === "B",
+  );
+  await catalogPage.waitForFunction(
+    async () => (await (await fetch("/service/control")).json()).aborted,
+  );
+  await fetch(new URL("/service/control?release=1", dev.value.url));
+  await catalogPage.waitForFunction(
+    async () => (await (await fetch("/service/control")).json()).settledA,
+  );
+  await catalogPage.waitForLoadState("networkidle");
+  if ((await catalogPage.locator("#item").textContent()) !== "B")
+    throw new Error("late A result replaced B");
+  if (catalogDiagnostics.length)
+    throw new Error(
+      `catalog browser diagnostics: ${catalogDiagnostics.join(" | ")}`,
+    );
+  const finalCatalog = await control();
+  if (
+    finalCatalog.reads.join(",") !== "initial,A,B" ||
+    finalCatalog.commands !== 1
+  )
+    throw new Error(
+      `catalog requests were duplicated: ${JSON.stringify(finalCatalog)}`,
+    );
+  observations.catalog = {
+    hydrated,
+    final: finalCatalog,
+    regeneration: "transport and router unchanged",
+  };
+  await catalogPage.close();
   dev.child.kill("SIGTERM");
   await dev.child.exited;
   observations.development = { mode: dev.value.mode, initial, afterClick };
 
   const built = run([process.execPath, "run", "build"], application);
   assertSuccess("generated application build", built);
+  const generations = join(application, ".velveteen/production/generations");
+  let inspectedBrowserBundle = false;
+  for await (const file of new Bun.Glob("*/build-metadata.json").scan({
+    cwd: generations,
+    absolute: true,
+  })) {
+    const metadata = JSON.parse(await readFile(file, "utf8")) as {
+      browser: { inputs: Record<string, unknown> };
+    };
+    inspectedBrowserBundle ||= Object.keys(metadata.browser.inputs).some(
+      (input) => input.endsWith("src/generated/operation-client.svelte.ts"),
+    );
+    const forbidden = Object.keys(metadata.browser.inputs).filter(
+      (input) =>
+        input.includes("node_modules/@lostgradient/backchannel/") &&
+        !input.includes("/src/client/"),
+    );
+    if (forbidden.length)
+      throw new Error(
+        `server catalog code in browser bundle: ${forbidden.join(", ")}`,
+      );
+  }
+  if (!inspectedBrowserBundle)
+    throw new Error(
+      "generated Svelte binding missing from browser bundle metadata",
+    );
   await rename(join(application, "src/routes"), join(directory, "routes"));
-  const production = await start("start", { NODE_ENV: "production" });
-  if (await (await fetch(new URL("/service/item", production.value.url))).text() !== "mounted") throw new Error("production mount failed");
+  const production = await start("start", {
+    NODE_ENV: "production",
+    EXTRA_OPERATION: "1",
+  });
+  if (
+    (await fetch(new URL("/service/control", production.value.url))).status !==
+    200
+  )
+    throw new Error("production mount failed");
   if (production.value.mode !== "production")
     throw new Error(`start mode mismatch: ${production.value.mode}`);
   const productionResponse = await fetch(production.value.url);
