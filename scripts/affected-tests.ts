@@ -29,10 +29,23 @@
  * change to this file select?". Exit codes: 0 success, 1 a lane failed, 2 invalid usage.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
-import { type SourceTree, type WorkspaceDescription } from './affected-tests-graph.ts';
+import {
+  analyzeSource,
+  type SourceAnalysis,
+  type SourceTree,
+  type WorkspaceDescription,
+} from './affected-tests-graph.ts';
 import {
   buildManifest,
   repositoryRoot,
@@ -222,6 +235,65 @@ export function listTree(root: string): SourceTree {
       } catch {
         return undefined;
       }
+    },
+  };
+}
+
+/** Cache syntax analysis only. Resolution always uses the current path set and workspace graph. */
+export function sourceAnalysisCache(root: string, directory: string) {
+  type Entry = { digest: string; analysis: SourceAnalysis };
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+  const version = hash(
+    `${Bun.version} ${Bun.revision}\n${readFileSync(join(root, 'scripts/affected-tests-graph.ts'), 'utf8')}`,
+  );
+  const file = join(directory, 'source-analysis.json');
+  let previous: Record<string, Entry> = Object.create(null);
+  try {
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as {
+      version: string;
+      entries: Record<string, Entry>;
+      checksum: string;
+    };
+    const validEntry = (entry: Entry) =>
+      typeof entry?.digest === 'string' &&
+      entry.analysis !== null &&
+      typeof entry.analysis === 'object' &&
+      ['specifiers', 'typeSpecifiers', 'computedPathExtensions', 'pathLiterals'].every((key) => {
+        const value = entry.analysis[key as keyof SourceAnalysis];
+        return Array.isArray(value) && value.every((item) => typeof item === 'string');
+      }) &&
+      ['scansFileSystem', 'scansRepository', 'bundlesCode', 'importsDynamically'].every(
+        (key) => typeof entry.analysis[key as keyof SourceAnalysis] === 'boolean',
+      );
+    if (
+      saved.version === version &&
+      saved.entries !== null &&
+      typeof saved.entries === 'object' &&
+      !Array.isArray(saved.entries) &&
+      Object.values(saved.entries).every(validEntry) &&
+      saved.checksum === hash(JSON.stringify(saved.entries))
+    )
+      previous = saved.entries;
+  } catch {
+    // A missing or interrupted cache is an ordinary cold run.
+  }
+  const entries: Record<string, Entry> = Object.create(null);
+  return {
+    analyze: (path: string, source: string): SourceAnalysis => {
+      const digest = hash(source);
+      const prior = Object.hasOwn(previous, path) ? previous[path] : undefined;
+      const analysis = prior?.digest === digest ? prior.analysis : analyzeSource(path, source);
+      entries[path] = { digest, analysis };
+      return analysis;
+    },
+    save: () => {
+      mkdirSync(directory, { recursive: true });
+      const temporary = join(directory, `source-analysis.${process.pid}.json`);
+      writeFileSync(
+        temporary,
+        JSON.stringify({ version, entries, checksum: hash(JSON.stringify(entries)) }),
+      );
+      renameSync(temporary, file);
     },
   };
 }
@@ -513,10 +585,16 @@ async function main(): Promise<number> {
   const workspaces = discoverWorkspaces(root);
   const changed =
     options.changed ?? changedFiles(root, mergeBase(root, options.base ?? 'origin/main'));
+  const cache = sourceAnalysisCache(
+    root,
+    rootScriptEnvironment()['CORVIDAE_SOURCE_ANALYSIS_CACHE'] ??
+      join(root, '.cache', 'affected-tests'),
+  );
   const selection = excludeTests(
-    selectTests({ changed, tree: listTree(root), workspaces }),
+    selectTests({ changed, tree: listTree(root), workspaces, analyze: cache.analyze }),
     options.exclude,
   );
+  cache.save();
 
   if (options.command === 'json') {
     console.log(JSON.stringify(explainJson(selection, changed), null, 2));

@@ -1,5 +1,9 @@
 # Host admission for heavy work outside `bun test`
 
+## Retiring an interrupted Interborough start
+
+After the supervisor process has terminated, run `bun applications/interborough/src/host/supervisor.ts cleanup` from the affected worktree. The command checks that worktree's recorded supervisor and Cinder generation ownership, retires a verified abandoned process group, and leaves retained logs and fixture data in place. Run it again if needed: a completed retirement is harmless to repeat. It refuses a live, foreign, reused, or unverifiable owner or process group; inspect that ownership rather than deleting its lock or signalling a process by name.
+
 Two controls bound the work this repository puts on a development host. The host lock (`scripts/run-exclusively.ts`) serializes the heavy root stages, and the test slot pool (`scripts/bun-test-pool.ts`) bounds the Bun test workers on the host, whoever starts them. On 2026-11-11, with both in place, the 12-core, 32 GB host still ran at 0.3% idle CPU, with 34% system time and 11 GB of memory compressed. What it was running then: the Docker VM of a `corvidae-baselines-*` container at 137%, `chrome-headless-shell` at 118%, and several Cinder `preview-shard.ts` processes at 30 to 76% each (COR-2398). This document lists the entry points that start a browser, a container or a fan-out of worker processes outside `bun test` and outside the locked stages, and what admits each one.
 
 ## Inventory
