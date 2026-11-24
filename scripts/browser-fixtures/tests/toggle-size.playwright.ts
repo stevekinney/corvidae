@@ -18,6 +18,12 @@ const TOGGLE = 'button.cinder-toggle';
 const TRACK = { width: 32, height: 18 };
 const THUMB = 14;
 const TRAVEL = 14;
+const CORNER_RADII = [
+  'borderTopLeftRadius',
+  'borderTopRightRadius',
+  'borderBottomRightRadius',
+  'borderBottomLeftRadius',
+] as const;
 // A painted pixel differs from the page background by more than this in some channel.
 const PAINT_THRESHOLD = 40;
 // Edge pixels of the rounded track are antialiased, so the painted box is read to the pixel.
@@ -79,6 +85,33 @@ async function openToggle(page: Page, fixtureName: 'assertion' | 'on'): Promise<
   return button;
 }
 
+async function cornerRadii(button: Locator): Promise<string[]> {
+  return await button.evaluate((element, properties) => {
+    const style = getComputedStyle(element);
+    return properties.map((property) => style[property]);
+  }, CORNER_RADII);
+}
+
+async function expectRoundedCorners(button: Locator): Promise<void> {
+  for (const radius of await cornerRadii(button)) {
+    for (const axis of radius.split(' ')) {
+      expect(Number.parseFloat(axis)).toBeGreaterThan(0);
+    }
+  }
+}
+
+async function expectRoundedToggle(
+  page: Page,
+  fixtureName: 'assertion' | 'on',
+  disabled = false,
+): Promise<void> {
+  const button = await openToggle(page, fixtureName);
+  await button.evaluate((element, isDisabled) => {
+    (element as HTMLButtonElement).disabled = isDisabled;
+  }, disabled);
+  await expectRoundedCorners(button);
+}
+
 async function coarsePage(browser: Browser): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext({
     hasTouch: true,
@@ -138,6 +171,16 @@ test.describe('Toggle size', () => {
     expect(box!.width).toBeGreaterThanOrEqual(24);
   });
 
+  test('fine pointer: off, on and disabled tracks keep four rounded corners', async ({ page }) => {
+    for (const [fixtureName, disabled] of [
+      ['assertion', false],
+      ['on', false],
+      ['assertion', true],
+    ] as const) {
+      await expectRoundedToggle(page, fixtureName, disabled);
+    }
+  });
+
   test('coarse pointer: the button box is at least 44×44 and the track stays 32×18', async ({
     browser,
   }) => {
@@ -150,6 +193,23 @@ test.describe('Toggle size', () => {
         expect(box!.width).toBeGreaterThanOrEqual(44);
         expect(box!.height).toBeGreaterThanOrEqual(44);
         expectTrack(await paintedTrack(page, button));
+      }
+    } finally {
+      await close();
+    }
+  });
+
+  test('coarse pointer: off, on and disabled tracks keep four rounded corners', async ({
+    browser,
+  }) => {
+    const { page, close } = await coarsePage(browser);
+    try {
+      for (const [fixtureName, disabled] of [
+        ['assertion', false],
+        ['on', false],
+        ['assertion', true],
+      ] as const) {
+        await expectRoundedToggle(page, fixtureName, disabled);
       }
     } finally {
       await close();

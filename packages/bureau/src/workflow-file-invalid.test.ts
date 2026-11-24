@@ -94,11 +94,15 @@ describe('an invalid file', () => {
 
   it('invalid-json: the text is not a JSON object', async () => {
     const fixture = await start();
-    await fixture.put('broken.json', '{ "name": ');
+    await fixture.put('broken.json', ['{', '  "name": "broken"', '  "steps": []', '}'].join('\n'));
     await fixture.put('array.json', '[]');
     await fixture.catalog.refresh();
-    expect(listing(fixture, 'broken')?.problem?.code).toBe('invalid-json');
-    expect(listing(fixture, 'array')?.problem?.code).toBe('invalid-json');
+    expect(listing(fixture, 'broken')?.problem).toMatchObject({
+      code: 'invalid-json',
+      syntax: { kind: 'comma', line: 2, stoppedAt: 3 },
+    });
+    expect(listing(fixture, 'array')?.problem).toMatchObject({ code: 'invalid-json' });
+    expect(listing(fixture, 'array')?.problem?.syntax).toBeUndefined();
   });
 
   it('readSnapshot uses the same invalid-identifier evaluation as the scanned listing', async () => {

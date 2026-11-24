@@ -250,16 +250,25 @@ test.describe('nested Collapsible isolation', () => {
 
   test('collapsible-nested-framed-in-flat: trigger background-color, pressed', async ({ page }) => {
     // Releasing the mouse toggles a trigger, so each side is read while held, on a fresh page.
+    // Disable transitions for this comparison, so neither background read samples a frame.
+    const disableTransition = () =>
+      page.addStyleTag({
+        content: '.cinder-collapsible__trigger { transition: none !important; }',
+      });
+    await disableTransition();
     const referenceTrigger = reference(page, 'collapsible-reference-default-open', 'trigger');
     await referenceTrigger.hover();
     await page.mouse.down();
+    expect(await referenceTrigger.evaluate((element) => element.matches(':active'))).toBe(true);
     const expected = await read(referenceTrigger, 'background-color');
     await page.mouse.up();
 
     await page.reload({ waitUntil: 'load' });
+    await disableTransition();
     const nestedTrigger = nested(page, 'collapsible-nested-framed-in-flat', 'trigger');
     await nestedTrigger.hover();
     await page.mouse.down();
+    expect(await nestedTrigger.evaluate((element) => element.matches(':active'))).toBe(true);
     await expect(nestedTrigger).toHaveCSS('background-color', expected);
     await page.mouse.up();
   });

@@ -56,11 +56,29 @@ export const WORKFLOW_COPY = {
     neverRun: 'Never run',
     /** The right edge of a row with a run in progress: when that run began. */
     started: (time: string): string => `Started ${time}`,
-    /** The line under a title: the steps of the file, then how many runs began lately. */
+    /** The line under a title: the steps of the file, the total runs, and the latest outcome. */
     steps: (count: number): string => `${String(count)} ${count === 1 ? 'step' : 'steps'}`,
-    runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} in 24 hours`,
-    /** The run in progress, in the line under a title. */
-    runningNow: 'Running',
+    runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'}`,
+    runsToday: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} today`,
+    runningRuns: (count: number): string => `${String(count)} running`,
+    /** The complete activity caption for an engine-defined workflow row. */
+    codeActivity: (today: number, running: number, last: string): string =>
+      [
+        `${String(today)} ${today === 1 ? 'run' : 'runs'} today`,
+        ...(running === 0 ? [] : [`${String(running)} running`]),
+        `last ${last}`,
+      ].join(', '),
+    runningStep: (step: number | null, totalSteps: number | null): string =>
+      step === null || totalSteps === null
+        ? 'Running'
+        : `Running, step ${String(step)} of ${String(totalSteps)}`,
+    waitingOnYou: 'Waiting on you',
+    waiting: 'Waiting',
+    lastRunDone: 'last run done',
+    lastRunFailed: 'last run failed',
+    lastRunFailedAtStep: (step: number): string => `last run failed at step ${String(step)}`,
+    lastRunCanceled: 'last run canceled',
+    lastRunTimedOut: 'last run timed out',
     /** A file the Bureau cannot use, named by its file. */
     fileName: (id: string): string => `${id}.json`,
     schedules: (count: number): string => `${String(count)} schedules`,
@@ -72,21 +90,12 @@ export const WORKFLOW_COPY = {
       title: 'No workflows yet',
       description:
         'A workflow is a set of steps that agents and tools run in order. Build one yourself, or, once a provider is connected, describe it and an agent drafts it.',
-      askAction: 'Ask an agent',
-      /** The sentence that says Interborough's own workflows exist, when the engine holds some. */
-      internal: (count: number): string =>
-        `Interborough also runs ${String(count)} internal ${count === 1 ? 'workflow' : 'workflows'} of its own for chats, goals and schedules.`,
-      /** The state's way to the internal workflows. */
-      internalAction: 'See internal workflows',
-      /** The closed row under the state that opens to the folder workflow files are read from. */
-      files: {
-        label: 'Where workflow files live',
-        lead: 'Interborough reads workflows from',
-        copyLabel: 'Copy the folder',
-        copiedLabel: 'Folder copied',
-      },
-      /** Where the files are when the host does not say. */
-      hintDirectory: '~/.interborough/workflows',
+      askAction: 'Ask an agent to write one',
+      checkingProvider: 'Checking for a model provider.',
+      needsProvider: 'Ask an agent to write one needs a model provider.',
+      connectProvider: 'Connect a provider',
+      /** The small, human-only hint under the two first-use actions. */
+      fileHint: 'Or add a file to the workflows folder.',
     },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */

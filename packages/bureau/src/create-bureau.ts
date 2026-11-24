@@ -1552,6 +1552,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   const expiredSteeringTransitions = new Map<string, readonly SteeringGateTransition[]>();
   const core: BureauCore<D> = {
+    terminalReviewReleases: composedPlugins.terminalReviewReleases,
     options,
     workspace,
     assetServiceHolder,

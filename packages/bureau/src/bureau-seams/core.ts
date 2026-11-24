@@ -218,6 +218,14 @@ export type ReviewAuditAttachment = {
   detail: unknown;
   principal: string;
   decisionRequest?: ReviewDecisionRequest;
+  terminalRelease?: {
+    handler: string;
+    identifier: string;
+    runId: string;
+    reviewId: string;
+    round: number;
+    toolRevision: string;
+  };
 };
 
 /** What a chat run's terminal event reports about its spend and who ran it (COR-1915). */
@@ -242,6 +250,13 @@ export type ScheduledFireApprovalEnding =
  * factory's top: read `core.x` where it is used, so the read happens at call time.
  */
 export interface BureauCore<D extends AgentDefinitions> {
+  readonly terminalReviewReleases?: ReadonlyMap<
+    string,
+    {
+      plugin: string;
+      release: import('@lostgradient/interborough-plugin').PluginRelease;
+    }
+  >;
   /** The resolved options, final once `runtime` exists. */
   readonly options: LayeredBureauOptions<D>;
   /** The workspace membership this Bureau is bound to, if any. */
@@ -378,6 +393,7 @@ export interface BureauCore<D extends AgentDefinitions> {
        * the retry came from.
        */
       decisionSurface?: ApprovalDecisionSurface | undefined;
+      terminalRelease?: ReviewAuditAttachment['terminalRelease'];
     }
   >;
   /** Pending tool approvals overridden in this process. */

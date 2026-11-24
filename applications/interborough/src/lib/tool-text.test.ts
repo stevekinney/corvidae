@@ -57,6 +57,16 @@ describe('policyReasonOf', () => {
 
   test('says Always for an approval whose only copy of the reason is its message', () => {
     expect(reasonSaysAlways(policyReasonOf(undefined, undefined, REASON_ALWAYS))).toBe(true);
+    expect(reasonSaysAlways(policyReasonOf('Approval required', REASON_ALWAYS))).toBe(true);
+    expect(
+      reasonSaysAlways(
+        policyReasonOf('Approval required', `${REASON_ALWAYS} [host policy: round-1]`),
+      ),
+    ).toBe(true);
+    expect(declaredSummary(`${REASON_ALWAYS} [host policy: round-1]`)).toBeUndefined();
+    expect(declaredSummary(`${REASON_ALWAYS} User-authored detail.`)).toBe(
+      `${REASON_ALWAYS} User-authored detail.`,
+    );
   });
 });
 
@@ -128,5 +138,17 @@ describe('the lines about a call', () => {
     expect(resultSummary({ orderId: '4472', refundedCents: 1850 }, 'issue-refund')).toBe(
       '$18.50 refunded',
     );
+    expect(
+      resultSummary(
+        {
+          refundId: 'private-id',
+          orderId: '4472',
+          cents: 4200,
+          currency: 'USD',
+          status: 'provider-pending',
+        },
+        'issue-refund',
+      ),
+    ).toBe('$42.00 refund pending');
   });
 });

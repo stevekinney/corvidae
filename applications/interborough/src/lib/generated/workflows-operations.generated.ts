@@ -19,7 +19,7 @@ import type {
   SharedBreakingKindStep_75afbed9,
   SharedBreakingKindStep_e8bef9d7,
   SharedBreakingKindStep_f7c54476,
-  SharedCodeIssuesMessage_037571b6,
+  SharedCodeIssuesMessage_4f0ab443,
   SharedCodeLastFiredAtRetryAt_58907586,
   SharedCountFirstRunAtLastRunAt_812c9aac,
   SharedDryRunEffectsTarget_b07628bd,
@@ -103,7 +103,7 @@ export type WorkflowsOperationTypes = {
       readonly outputSchema: Record<string, unknown> | null;
       readonly owner: string;
       readonly paused: boolean;
-      readonly problem: SharedCodeIssuesMessage_037571b6 | null;
+      readonly problem: SharedCodeIssuesMessage_4f0ab443 | null;
       readonly schedule: {
         readonly id: string;
         readonly nextFireAt: string | null;
@@ -231,11 +231,30 @@ export type WorkflowsOperationTypes = {
             readonly outputSchema: Record<string, unknown> | null;
             readonly owner: string;
             readonly paused: boolean;
-            readonly problem: SharedCodeIssuesMessage_037571b6 | null;
+            readonly problem: SharedCodeIssuesMessage_4f0ab443 | null;
             readonly runs: {
               readonly active: number;
+              readonly current: {
+                readonly startedAt: string;
+                readonly status: 'pending' | 'running' | 'suspended';
+                readonly step: number | null;
+                readonly totalSteps: number | null;
+                readonly waitingForSignal: string | null;
+              } | null;
+              readonly last: {
+                readonly failedStep: number | null;
+                readonly status:
+                  | 'pending'
+                  | 'running'
+                  | 'completed'
+                  | 'failed'
+                  | 'cancelled'
+                  | 'timed-out'
+                  | 'suspended';
+              } | null;
               readonly last24Hours: number;
               readonly lastRunAt: string | null;
+              readonly total: number;
             } | null;
             readonly state: 'ready' | 'invalid';
             readonly steps: ReadonlyArray<Record<string, unknown>> | null;
