@@ -1,262 +1,181 @@
-# Runs only the browser cases and unit test files a change reaches, on a branch, in minutes. A full
-# `main.yml` run takes 80 to 170 minutes from dispatch (2026-11-16: up to 35 minutes waiting for
-# runners, Cinder's whole unit suite at 47 minutes, a fixtures shard at 38), which is the wrong price
-# for checking a one-line correction. Use this for every correction round; run `main.yml` once per
-# batch.
-#
-#   gh workflow run targeted-checks.yml --ref <branch> \
-#     -f fixture_components='approval-card,description-list' \
-#     -f fixture_specs='scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts' \
-#     -f e2e_specs='tests/e2e/chat-responsive.spec.ts tests/e2e/chat-toast-clearance.spec.ts' \
-#     -f unit_lanes='[{"workspace":"components/cinder","paths":["src/components/approval-card"],"config":""}]'
-#
-# Every input is optional. The `checks` job always runs lint and type-check on the changed
-# workspaces; each other job runs only when its inputs name something. The browser jobs copy
-# the image and setup of `browser-suites.yml`, so the renderer and fonts are the baselines' own, and
-# the fixtures job uploads `playwright-fixtures-targeted` on failure, which
-# `scripts/browser-fixtures/scripts/baselines-from-run.ts <run id>` reads like a `main.yml` run's.
-# `scripts/browser-fixtures/scripts/browser-suites-workflow.test.ts` keeps the image tag equal to the
-# Playwright that `bun.lock` resolves. Inputs reach the shell through `env`, never interpolated.
-name: Targeted checks
+name: COR-2654 startup profiles diagnostic
 
 on:
   workflow_dispatch:
-    inputs:
-      fixture_components:
-        description: Fixture component slugs for the screenshot suite, comma-separated (CINDER_TEST_COMPONENTS).
-        type: string
-        required: false
-        default: ''
-      fixture_specs:
-        description: Fixture spec files, space-separated, from the repository root.
-        type: string
-        required: false
-        default: ''
-      e2e_specs:
-        description: Interborough end-to-end spec files, space-separated, from applications/interborough.
-        type: string
-        required: false
-        default: ''
-      unit_lanes:
-        description: 'Every unit lane, as a JSON list of {workspace, paths, config}. Workspace "." is the repository root, run through scripts/bun-test.ts; paths are files or folders inside the workspace; config is a bunfig such as ./bunfig.ui.toml.'
-        type: string
-        required: false
-        default: ''
-      plan_digest:
-        description: SHA-256 digest of the evidence plan (scripts/chef/landing-plan.ts), set by targeted-run.ts. Landing reads it from the run name.
-        type: string
-        required: false
-        default: ''
-
-# Landing (scripts/chef/landing-evidence.ts) accepts this run as coverage for a head only when the
-# name carries the digest of the plan it computes itself.
-run-name: ${{ inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
 
 permissions:
   contents: read
 
-# A newer dispatch on a branch cancels the older one: a correction round supersedes the last.
-concurrency:
-  group: targeted-checks-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
-
-env:
-  TURBO_TELEMETRY_DISABLED: '1'
-  DO_NOT_TRACK: '1'
-  # Vercel Remote Cache, shared with the owner's machine; empty, remote caching is off.
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-
 jobs:
-  # Lint and type-check the workspaces the branch changed against `origin/main`, as
-  # `pull-request.yml` does, so a type error (a svelte-check error, a stale test expectation) never
-  # waits for the full run. It runs on every dispatch, whatever the inputs.
-  checks:
-    name: Changed workspaces lint and type-check
+  profiles:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TURBO_SCM_BASE: origin/main
+      SUBJECT: 617f78d010731acf37ba4d40aa35d68570c64838
+      SUBJECT_TREE: db2e97ae36eb557e204eb875ef9de936bd460184
+      TURBO_TELEMETRY_DISABLED: '1'
+      DO_NOT_TRACK: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-checks
-      - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
-
-  fixtures:
-    name: Chromium fixtures (targeted)
-    if: ${{ inputs.fixture_components != '' || inputs.fixture_specs != '' }}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-jammy
-    env:
-      CINDER_VISUAL_DIFF: block
-      CINDER_TEST_COMPONENTS: ${{ inputs.fixture_components }}
-      FIXTURE_SPECS: ${{ inputs.fixture_specs }}
-    steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-fixtures
-      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bunx turbo run metadata
-      - run: bun scripts/browser-fixtures/scripts/prepare-manifest.ts
-      # Named components with no spec run the screenshot suite for those components alone.
-      - run: |
-          specs="$FIXTURE_SPECS"
-          if [ -n "$CINDER_TEST_COMPONENTS" ]; then
-            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts scripts/browser-fixtures/tests/components-sweep.playwright.ts"
-          fi
-          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
-          bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts \
-            --project=chromium --workers=4 --reporter=line,html,json $specs
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
-        continue-on-error: true
-        with:
-          name: playwright-fixtures-targeted
-          path: |
-            playwright-output/
-            scripts/browser-fixtures/test-results/
-          retention-days: 14
-          if-no-files-found: ignore
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
-
-  interborough:
-    name: Interborough end-to-end (targeted)
-    if: ${{ inputs.e2e_specs != '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-jammy
-    env:
-      E2E_SPECS: ${{ inputs.e2e_specs }}
-    steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-interborough
-      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bunx turbo run metadata
-      - run: |
-          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
-          bun applications/interborough/scripts/run-gated-browser-suite.ts \
-            --trace=retain-on-failure --reporter=line,html,json $E2E_SPECS
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
-        continue-on-error: true
-        with:
-          name: playwright-interborough-targeted
-          path: |
-            playwright-output/
-            applications/interborough/test-results/
-          retention-days: 14
-          if-no-files-found: ignore
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
-
-  unit:
-    name: Unit test files (${{ matrix.lane.workspace }})
-    if: ${{ inputs.unit_lanes != '' && inputs.unit_lanes != '[]' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # One job per lane of the plan, so no lane is dropped: a failed lane never hides another.
-    strategy:
-      fail-fast: false
-      matrix:
-        lane: ${{ fromJSON(inputs.unit_lanes) }}
-    env:
-      UNIT_WORKSPACE: ${{ matrix.lane.workspace }}
-      UNIT_PATHS: ${{ join(matrix.lane.paths, ' ') }}
-      UNIT_CONFIG: ${{ matrix.lane.config }}
-      TZ: UTC
-      LANG: en_US.UTF-8
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-unit-${{ matrix.lane.workspace }}
-      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bunx turbo run metadata
-      - run: |
-          # The root lane runs the repository's own `scripts/` test files through the pooled,
-          # hang-guarded runner, as `test:self` does.
-          if [ "$UNIT_WORKSPACE" = . ]; then
-            bun scripts/bun-test.ts $UNIT_PATHS
-            exit
-          fi
-          # The browser-fixtures workspace runs as the root `test:browser-fixtures` does: its tests
-          # read the generated, gitignored manifest, and the curated build is verified after them.
-          if [ "$UNIT_WORKSPACE" = scripts/browser-fixtures ]; then
-            bun scripts/browser-fixtures/scripts/prepare-manifest.ts
-            (cd "$UNIT_WORKSPACE" && bun test --conditions browser --conditions svelte $UNIT_PATHS)
-            bun scripts/browser-fixtures/scripts/verify-curated-build.ts
-            exit
-          fi
-          cd "$UNIT_WORKSPACE"
-          config=""
-          # Interborough runs every test outside src/host and fixtures under bunfig.ui.toml (its
-          # `test` script); a dispatch that leaves unit_config out gets that, not a DOM-less run.
-          if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then
-            host=0
-            for path in $UNIT_PATHS; do
-              case "$path" in src/host|src/host/*|fixtures|fixtures/*) host=1 ;; esac
+      - run: bunx playwright install --with-deps chromium
+      - name: Verify subject and process ownership
+        run: |
+          grep -Fxq 'VERSION_ID="26.04"' /etc/os-release
+          test "$(git rev-parse "$SUBJECT^{tree}")" = "$SUBJECT_TREE"
+          bun applications/interborough/scripts/startup-process-control.ts "$RUNNER_TEMP/cor2654-control"
+          bun applications/interborough/scripts/qualify-startup.ts --matcher-control
+          bun applications/interborough/scripts/qualify-startup.ts --profile-control
+      - name: Run isolated development and production profiles
+        run: |
+          output="$RUNNER_TEMP/cor2654-profiles"
+          mkdir "$output"
+          {
+            printf 'image=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+            uname -a
+            nproc
+            sed -n '1,3p' /proc/meminfo
+          } > "$output/runner.txt"
+          bun --version > "$output/bun.txt"
+          cgroup_path="$(awk -F: '$1 == "0" { print $3; exit }' /proc/self/cgroup)"
+          memory_events="/sys/fs/cgroup${cgroup_path%/}/memory.events"
+          record_memory_events() { if [[ -r "$memory_events" ]]; then cat "$memory_events"; else printf 'unavailable\n'; fi; }
+          final=0
+          for arm in first second production; do
+            checkout="$RUNNER_TEMP/cor2654-$arm"
+            git worktree add --detach "$checkout" "$SUBJECT"
+            test "$(git -C "$checkout" rev-parse HEAD 'HEAD^{tree}' | tr '\n' ' ')" = "$SUBJECT $SUBJECT_TREE "
+            test ! -e "$checkout/node_modules"
+            test ! -e "$checkout/applications/interborough/build"
+            test ! -e "$checkout/components/cinder/.metadata"
+            test ! -e "$checkout/components/cinder/src/tokens/registry.generated.json"
+            (cd "$checkout" && bun -e 'import { CINDER_GENERATED_OUTPUTS } from "./scripts/ensure-cinder-generated.ts"; for (const path of CINDER_GENERATED_OUTPUTS) if (await Bun.file("components/cinder/" + path).exists()) throw new Error("Generated output exists: " + path)')
+            sha256sum "$checkout/bun.lock" | awk '{print $1}' > "$output/$arm-lock.sha256"
+            start="$(date +%s%3N)"
+            code=0
+            (cd "$checkout" && bun install --frozen-lockfile) > "$output/$arm-install.log" 2>&1 || code=$?
+            jq -n --argjson start "$start" --argjson end "$(date +%s%3N)" --argjson exit "$code" '{milliseconds:($end-$start),exit:$exit}' > "$output/$arm-install.json"
+            if [[ "$code" != 0 ]]; then final=1; fi
+            if [[ "$code" == 0 ]]; then
+              (cd "$checkout" && bun -e 'import { CINDER_GENERATED_OUTPUTS } from "./scripts/ensure-cinder-generated.ts"; for (const path of CINDER_GENERATED_OUTPUTS) if (await Bun.file("components/cinder/" + path).exists()) throw new Error("Generated output exists after install: " + path)')
+            fi
+          done
+          cmp "$output/first-lock.sha256" "$output/second-lock.sha256" || final=1
+          cmp "$output/first-lock.sha256" "$output/production-lock.sha256" || final=1
+          if [[ "$final" == 0 ]]; then
+            for phase in cold warm; do
+              if [[ "$phase" == warm ]]; then
+                for arm in first second; do
+                  checkout="$RUNNER_TEMP/cor2654-$arm"
+                  printf 'cor2654-install-marker-%s\n' "$arm" > "$checkout/node_modules/.cor2654-install-marker"
+                  code=0
+                  (cd "$checkout" && bun install --frozen-lockfile) > "$output/$arm-repeat-install.log" 2>&1 || code=$?
+                  printf '%s\n' "$code" > "$output/$arm-repeat-install.exit"
+                  if [[ "$code" != 0 ]] || ! cmp -s "$checkout/node_modules/.cor2654-install-marker" <(printf 'cor2654-install-marker-%s\n' "$arm"); then final=1; fi
+                done
+                if [[ "$final" != 0 ]]; then break; fi
+              fi
+              record_memory_events > "$output/$phase-memory-before.txt"
+              declare -A pids
+              for arm in first second; do
+                checkout="$RUNNER_TEMP/cor2654-$arm"
+                jq -n --arg phase "$phase" --argjson build "$([[ -d "$checkout/applications/interborough/build" ]] && echo true || echo false)" --argjson metadata "$([[ -d "$checkout/components/cinder/.metadata" ]] && echo true || echo false)" --argjson home "$([[ -d "$RUNNER_TEMP/cor2654-home-$arm" ]] && echo true || echo false)" '{phase:$phase,buildExists:$build,metadataExists:$metadata,homeExists:$home}' > "$output/$phase-$arm-cache-state.json"
+                date +%s%3N > "$output/$phase-$arm-launch.txt"
+                bun applications/interborough/scripts/qualify-startup.ts "$RUNNER_TEMP/cor2654-$arm" "$RUNNER_TEMP/cor2654-home-$arm" "$output/$phase-$arm.json" dev > "$output/$phase-$arm.log" 2>&1 &
+                pids[$arm]=$!
+              done
+              (
+                while [[ ! -e "$output/$phase-sampling-done" ]]; do
+                  stamp="$(date +%s%3N)"
+                  ps -eo pid=,ppid=,rss=,pcpu= | awk -v first="${pids[first]}" -v second="${pids[second]}" -v time="$stamp" '
+                    { pid[NR]=$1; parent[NR]=$2; rss[NR]=$3; cpu[NR]=$4 }
+                    END {
+                      owner[first]="first"; owner[second]="second"
+                      for (pass=0; pass<20; pass++) for (i=1; i<=NR; i++) if (owner[parent[i]] != "") owner[pid[i]]=owner[parent[i]]
+                      for (i=1; i<=NR; i++) if (owner[pid[i]] != "") print time, owner[pid[i]], pid[i], parent[i], rss[i], cpu[i]
+                    }' >> "$output/$phase-process-samples.txt"
+                  sleep 1
+                done
+              ) &
+              sampler=$!
+              for arm in first second; do
+                code=0
+                wait "${pids[$arm]}" || code=$?
+                printf '%s\n' "$code" > "$output/$phase-$arm.exit"
+                if [[ "$code" != 0 ]]; then final=1; fi
+              done
+              touch "$output/$phase-sampling-done"
+              wait "$sampler"
+              record_memory_events > "$output/$phase-memory-after.txt"
+              for arm in first second; do
+                if [[ -s "$output/$phase-$arm.json" ]]; then
+                  jq '[.lines[].text | select(contains("STARTUP {")) | sub("^.*STARTUP "; "") | fromjson] as $events | {cinder:[$events[] | select(.stage=="cinder")],uiBundles:[$events[] | select(.stage=="ui-bundle")],panels:[$events[] | select(.stage=="panel")],qualification:.qualification,actionMilliseconds:.actionMilliseconds}' "$output/$phase-$arm.json" > "$output/$phase-$arm-phases.json" || final=1
+                else
+                  final=1
+                fi
+              done
+              if [[ "$final" != 0 ]]; then break; fi
+              jq -en --slurpfile a "$output/$phase-first.json" --slurpfile b "$output/$phase-second.json" '
+                ($a[0].home != $b[0].home) and ($a[0].url != $b[0].url) and
+                (($a[0].startedAt[0:19] + "Z" | fromdateiso8601) < (($b[0].startedAt[0:19] + "Z" | fromdateiso8601) + ($b[0].actionMilliseconds / 1000))) and
+                (($b[0].startedAt[0:19] + "Z" | fromdateiso8601) < (($a[0].startedAt[0:19] + "Z" | fromdateiso8601) + ($a[0].actionMilliseconds / 1000)))
+              ' > "$output/$phase-separated.json" || final=1
             done
-            if [ "$host" = 0 ]; then UNIT_CONFIG=./bunfig.ui.toml; fi
-            if [ "$host" = 1 ]; then echo "::notice::host-lane paths run under the default bunfig; dispatch UI tests separately with unit_config=./bunfig.ui.toml"; fi
+            for arm in first second; do
+              if [[ -s "$output/warm-$arm.json" ]]; then
+                jq -en --slurpfile cold "$output/cold-$arm.json" --slurpfile warm "$output/warm-$arm.json" '
+                  ($cold[0].home == $warm[0].home) and ($cold[0].settings.persisted == $warm[0].settings.previous)
+                ' > "$output/$arm-reopened-state.json" || final=1
+              fi
+            done
           fi
-          if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi
-          conditions="--conditions browser --conditions svelte"
-          # Interborough's host lane (`src/host`, `fixtures`) runs with no export conditions, as its
-          # `test` script runs it: under `browser`, Prettier resolves to its standalone build, which
-          # has no `resolveConfig`, so `bureau-client-generation.test.ts` cannot load (COR-2643).
-          if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then
-            conditions=""
+          if [[ "$final" == 0 ]]; then
+            for mode in token panel; do
+              code=0
+              bun scripts/chef/cor2654-marker-probe.ts "$RUNNER_TEMP/cor2654-first" "$RUNNER_TEMP/cor2654-home-first" applications/interborough/scripts/qualify-startup.ts "$output/marker-$mode.json" "$mode" > "$output/marker-$mode.log" 2>&1 || code=$?
+              printf '%s\n' "$code" > "$output/marker-$mode.exit"
+              if [[ "$code" != 0 ]]; then final=1; fi
+            done
           fi
-          # The playground's startup-failure tests leave `playground-server.ts`'s module-level
-          # readiness false, so its files run in fresh module registries, as its `test` runner
-          # isolates them (COR-2649).
-          if [ "$UNIT_WORKSPACE" = applications/playground ]; then
-            bun test --isolate $config $conditions $UNIT_PATHS
-            exit
+          if [[ -s "$output/production-install.json" ]] && jq -e '.exit == 0' "$output/production-install.json" >/dev/null; then
+            record_memory_events > "$output/production-memory-before.txt"
+            code=0
+            bun applications/interborough/scripts/qualify-startup.ts "$RUNNER_TEMP/cor2654-production" "$RUNNER_TEMP/cor2654-home-production" "$output/production.json" production > "$output/production.log" 2>&1 &
+            production=$!
+            (
+              while [[ ! -e "$output/production-sampling-done" ]]; do
+                stamp="$(date +%s%3N)"
+                ps -eo pid=,ppid=,rss=,pcpu= | awk -v root="$production" -v time="$stamp" '
+                  { pid[NR]=$1; parent[NR]=$2; rss[NR]=$3; cpu[NR]=$4 }
+                  END {
+                    owned[root]=1
+                    for (pass=0; pass<20; pass++) for (i=1; i<=NR; i++) if (owned[parent[i]]) owned[pid[i]]=1
+                    for (i=1; i<=NR; i++) if (owned[pid[i]]) print time, pid[i], parent[i], rss[i], cpu[i]
+                  }' >> "$output/production-process-samples.txt"
+                sleep 1
+              done
+            ) &
+            sampler=$!
+            wait "$production" || code=$?
+            touch "$output/production-sampling-done"
+            wait "$sampler"
+            record_memory_events > "$output/production-memory-after.txt"
+            printf '%s\n' "$code" > "$output/production.exit"
+            if [[ "$code" != 0 ]]; then final=1; fi
           fi
-          bun test $config $conditions $UNIT_PATHS
-      - uses: ./.github/actions/turbo-cache/save
+          exit "$final"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: ${{ !cancelled() }}
+        with:
+          name: cor2654-startup-profiles
+          path: |
+            ${{ runner.temp }}/cor2654-control/process-control.json
+            ${{ runner.temp }}/cor2654-profiles/
+          if-no-files-found: error
+          retention-days: 14
