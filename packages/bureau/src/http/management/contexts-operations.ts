@@ -145,12 +145,11 @@ async function activeSharedSummaries(
   );
 }
 
-async function projectListedContext(
-  host: BureauContextsOperationHost,
+function projectListedContext(
   owner: string | undefined,
   admitted: AdmittedContextSummary,
   activity: ContextActivity | undefined,
-): Promise<z.infer<typeof contextSummarySchema> | undefined> {
+): z.infer<typeof contextSummarySchema> | undefined {
   if (admitted.summary.owner === owner) return projectContext(admitted.summary, activity);
   return admitted.sharedSession === undefined
     ? undefined
@@ -502,12 +501,7 @@ export const contextsListOperation = defineOperation<
         const page = matching.slice(offset, offset + limit);
         const projected = await Promise.all(
           page.map((admittedSummary) =>
-            projectListedContext(
-              host,
-              owner,
-              admittedSummary,
-              activity.get(admittedSummary.summary.id),
-            ),
+            projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
           ),
         );
         return {
@@ -526,12 +520,7 @@ export const contextsListOperation = defineOperation<
       const activity = await host.tasks.activityOf(page.map(({ summary }) => summary.id));
       const projected = await Promise.all(
         page.map((admittedSummary) =>
-          projectListedContext(
-            host,
-            owner,
-            admittedSummary,
-            activity.get(admittedSummary.summary.id),
-          ),
+          projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
         ),
       );
       return {
