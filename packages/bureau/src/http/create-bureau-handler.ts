@@ -177,6 +177,7 @@ import {
   contextsRevokeShareOperation,
   contextsRequestShareOperation,
   contextsResolveShareRequestOperation,
+  contextsListShareRequestsOperation,
   contextsShareOperation,
 } from './management/contexts-sharing-operations.ts';
 import {
@@ -912,6 +913,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsRevokeShareOperation,
   contextsRequestShareOperation,
   contextsResolveShareRequestOperation,
+  contextsListShareRequestsOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauAgentOverridesOperations,
   ...bureauAgentDisableOperations,

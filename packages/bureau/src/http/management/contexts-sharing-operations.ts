@@ -24,6 +24,9 @@ export type BureauContextsSharingOperationHost = BureauOwnershipHost &
   BureauWorkspaceHost & {
     readonly contexts: {
       readonly get: (id: string) => Promise<import('@lostgradient/operative').AgentSession | undefined>;
+      readonly list: (
+        options?: import('@lostgradient/operative').SessionListOptions,
+      ) => Promise<readonly import('@lostgradient/operative').SessionSummary[]>;
       readonly internals: Pick<BureauInternals, 'sessionStore'>;
     };
   };
@@ -39,6 +42,13 @@ const sharingOutput = z.object({
   changed: z.boolean(),
 });
 const requestResolutionInput = sharingInput.extend({ decision: z.enum(['grant', 'deny']) });
+const requestQueueOutput = z.object({
+  requests: z.array(z.object({
+    contextId: z.string(),
+    granteeOwnerId: z.string(),
+    requestedAt: z.string(),
+  })),
+});
 
 function missing(contextId: string): OperationFault {
   return resourceNotFound('context', contextId);
@@ -217,5 +227,22 @@ export const contextsResolveShareRequestOperation = defineOperation<typeof reque
       return { ...current, metadata: input.decision === 'grant' ? withSessionReadGrant(settled, { owner: input.granteeOwnerId, workspaceId: workspace.workspaceId, actorId: workspace.actorId, sessionIncarnation: current.incarnation, grantedBy: workspace.owner, grantedAt: at }) : settled };
     }, { refreshActivity: false });
     return { contextId: input.contextId, granteeOwnerId: input.granteeOwnerId, changed };
+  },
+});
+
+export const contextsListShareRequestsOperation = defineOperation<z.ZodObject<Record<never, never>>, typeof requestQueueOutput, BureauContextsSharingOperationHost>({
+  name: 'bureau.contexts.share.requests.list', authorize: authorizeWorkspaceOperation('bureau.contexts.share.requests.list'), mcpExposable: false,
+  summary: 'List pending chat access requests', description: 'Lists only pending requests for contexts the caller owns. It never exposes another owner’s chat or request receipt.',
+  destructive: false, tags: ['Contexts'], inputSchema: z.object({}), outputSchema: requestQueueOutput,
+  producibleFaults: ['InvalidParams', 'UnsupportedCapability'], access: { kind: 'authenticated' }, discoverable: true, transports, unknownKeyPolicy,
+  invoke: async ({ host, principal }) => {
+    const requests = (await host.contexts.list()).flatMap((session) => {
+      const owner = sessionOwnerOf(session.metadata);
+      if (owner === null || !isOwnerOfResource(principal, owner)) return [];
+      return sessionReadRequestsOf(session.metadata)
+        .filter((request) => request.resolvedAt === undefined)
+        .map((request) => ({ contextId: session.id, granteeOwnerId: request.owner, requestedAt: request.requestedAt }));
+    });
+    return { requests };
   },
 });
