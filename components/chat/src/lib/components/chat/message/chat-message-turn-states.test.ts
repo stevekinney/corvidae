@@ -102,9 +102,10 @@ describe('R4: stopped', () => {
     });
     const row = outcome(container);
     expect(row?.getAttribute('data-kind')).toBe('stopped');
-    const card = row?.querySelector('.chat-turn-stopped-card');
-    expect(card?.getAttribute('role')).toBe('note');
-    expect(card?.textContent).toContain('Stopped by you, partial answer');
+    const stopped = row?.querySelector('.chat-turn-stopped-row');
+    expect(stopped?.textContent).toContain('Stopped by you, partial answer');
+    expect(stopped?.querySelector('[data-cinder-variant="neutral"]')).not.toBeNull();
+    expect(row?.querySelector('.chat-turn-stopped-card')).toBeNull();
 
     const buttons = Array.from(row?.querySelectorAll('button') ?? [], (button) =>
       button.textContent?.trim(),
@@ -123,7 +124,7 @@ describe('R4: stopped', () => {
     expect(
       getByRole('button', { name: 'Discard' }).classList.contains('button-variant-secondary'),
     ).toBe(true);
-    expect(card?.querySelector('.cinder-callout__action')).not.toBeNull();
+    expect(stopped?.querySelector('.chat-turn-actions')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Continue' }));
     await fireEvent.click(getByRole('button', { name: 'Discard' }));

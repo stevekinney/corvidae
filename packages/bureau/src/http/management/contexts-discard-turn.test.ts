@@ -16,6 +16,7 @@ import {
 import { waitForCondition, waitForTaskState } from '../../test';
 import { noopTool } from '../../testing/model-override.test-support.ts';
 import { buildBureauHandlerHost, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { bureauFaultPolicy } from '../bureau-fault-policy.ts';
 import {
   openBureau,
   type OpenedBureau,
@@ -210,6 +211,7 @@ describe('bureau.contexts.discardturn refusals', () => {
         principal: unauthenticatedLocalAuthContext().principal!,
       }),
       publicPaths: [],
+      faultPolicy: bureauFaultPolicy,
     });
   }
 

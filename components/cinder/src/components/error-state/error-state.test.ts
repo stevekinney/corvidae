@@ -435,7 +435,7 @@ describe('ErrorState details disclosure', () => {
       props: { title: 'Failed', description: 'Nope.', detail: 'HTTP 500', detailsLabel: 'Details' },
     });
     const trigger = getByRole('button', { name: 'Details' });
-    const detail = container.querySelector('.cinder-error-state-detail');
+    const detail = container.querySelector<HTMLElement>('.cinder-error-state-detail');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     expect(detail?.hidden).toBe(true);
     await fireEvent.click(trigger);

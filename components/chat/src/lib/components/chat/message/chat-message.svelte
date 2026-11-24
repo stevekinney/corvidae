@@ -2595,7 +2595,7 @@
    * can fall into the following Message details control on a narrow stopped turn. */
   @media (any-pointer: coarse) {
     .chat-turn-actions {
-      min-block-size: var(--cinder-touch-target-min);
+      padding-block: var(--cinder-space-2);
     }
   }
 

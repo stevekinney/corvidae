@@ -8,12 +8,14 @@ import { createAgent } from '@lostgradient/operative';
 import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
+import { BureauShuttingDownError } from '../../bureau-errors.ts';
 import {
   SessionResumeRefusedError,
   type SessionResumeRefusalReason,
 } from '../../session-resume.ts';
 import { waitForCondition, waitForTaskState } from '../../test';
 import { buildBureauHandlerHost, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { bureauFaultPolicy } from '../bureau-fault-policy.ts';
 import {
   openBureau,
   type OpenedBureau,
@@ -168,6 +170,7 @@ describe('bureau.contexts.resumeturn refusals', () => {
             principal: unauthenticatedLocalAuthContext().principal!,
           }),
           publicPaths: [],
+          faultPolicy: bureauFaultPolicy,
         });
 
         const response = await handler(
@@ -188,4 +191,48 @@ describe('bureau.contexts.resumeturn refusals', () => {
       });
     },
   );
+
+  it('answers a shutting-down Bureau as Unavailable', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedTurn(opened, 'anonymous:local');
+      const host = buildBureauHandlerHost(opened.bureau, []);
+      const handler = createOperationHandler({
+        operations: BUREAU_HANDLER_OPERATIONS,
+        host: {
+          ...host,
+          contexts: {
+            get: opened.bureau.contexts.get,
+            internals: { sessionStore: opened.bureau.internals.sessionStore },
+            resumeTurn: async () => {
+              throw new BureauShuttingDownError(
+                'Cannot resume a turn: Bureau is shutting down.',
+                '2026-11-18T00:00:00.000Z',
+              );
+            },
+          } as never,
+        },
+        authenticate: async () => ({
+          method: 'unauthenticated-local' as const,
+          principal: unauthenticatedLocalAuthContext().principal!,
+        }),
+        publicPaths: [],
+        faultPolicy: bureauFaultPolicy,
+      });
+      const response = await handler(
+        new Request('http://localhost/jsonrpc', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'bureau.contexts.resumeturn',
+            params: { contextId: run.contextId, commandId: 'c', runId: 'r' },
+          }),
+        }),
+      );
+      const body = (await response.json()) as RpcBody;
+
+      expect(body.error?.data).toMatchObject({ weftCode: 'Unavailable', reason: 'shutting-down' });
+    });
+  });
 });

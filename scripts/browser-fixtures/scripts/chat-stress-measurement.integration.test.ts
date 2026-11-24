@@ -30,9 +30,40 @@ import {
   runStep,
   stepRowSpacingProblems,
   waitForCaptureLayout,
+  waitForFinalCaptureReadiness,
 } from './capture-chat-stress.ts';
 
 describe('chat stress visual measurement', () => {
+  describe('final capture readiness', () => {
+    test('waits for a code block that enters pending after the layout frame', async () => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <div class="cinder-code-block" data-cinder-highlight-state="highlighted">
+            <span class="cinder-code-block__language">TypeScript</span>
+          </div>
+          <script>
+            requestAnimationFrame(() => {
+              const block = document.querySelector('.cinder-code-block');
+              block.setAttribute('data-cinder-highlight-state', 'pending');
+              requestAnimationFrame(() => block.setAttribute('data-cinder-highlight-state', 'highlighted'));
+            });
+          </script>
+        `);
+
+        await waitForFinalCaptureReadiness(page);
+
+        await expect(page.locator('.cinder-code-block')).toHaveAttribute(
+          'data-cinder-highlight-state',
+          'highlighted',
+        );
+      } finally {
+        await browser.close();
+      }
+    });
+  });
+
   describe('repeated rollup guard', () => {
     // The real mechanism of `tool-call-timeline.svelte`: the summary becomes a two-column grid, the
     // count spans the first row, and the tool/count and duration share the second row.

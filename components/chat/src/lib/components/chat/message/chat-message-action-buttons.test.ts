@@ -110,7 +110,7 @@ describe('chat message action buttons', () => {
       '@media (any-pointer: coarse) {',
       '.chat-turn-actions',
     );
-    expect(coarse).toContain('min-block-size: var(--cinder-touch-target-min);');
+    expect(coarse).toContain('padding-block: var(--cinder-space-2);');
     expect(source).toMatch(/class="chat-turn-action"\s+size="sm"\s+variant="secondary"/u);
     expect(source).toMatch(/class="chat-turn-action"\s+size="sm"\s+variant="primary"/u);
   });
