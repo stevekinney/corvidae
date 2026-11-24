@@ -1147,9 +1147,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
       const group = /\.chat-tool-call-timeline\s*\{([^}]*)\}/s.exec(source)?.[1] ?? '';
       expect(group).not.toMatch(/\bborder(?:-[a-z-]+)?:|radius/);
-      const rows = /:global\(\.chat-tool-call-toggle\),\s*\.chat-tool-call-row\s*\{([^}]*)\}/s.exec(
-        source,
-      )?.[1];
+      const rows = /\.chat-tool-call-row\s*\{([^}]*)\}/s.exec(source)?.[1];
       expect(rows).toMatch(/padding:\s*0;/);
       // No hairline above the list or between its steps.
       expect(source).not.toMatch(/\.chat-tool-call-list\s*\{[^}]*border/s);

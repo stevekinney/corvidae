@@ -1151,9 +1151,7 @@
   }
 
   .cinder-approval-card__receipt .cinder-approval-card__input-toggle {
-    align-items: center;
     align-self: flex-start;
-    line-height: var(--cinder-leading-tight);
   }
 
   .cinder-approval-card__pause {

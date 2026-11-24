@@ -694,9 +694,8 @@
     font: inherit;
   }
 
-  /* The first line of a button's content is where its icon aligns: when a phrase wraps, the
-   * chevron and the status icon stay beside the first line, not centered on all of them. */
-  :global(.chat-tool-call-toggle),
+  /* Individual call rows keep their compact timeline treatment. The group trigger itself is the
+   * shared DisclosureTrigger and owns its control, glyph, focus and touch contracts. */
   .chat-tool-call-row {
     display: flex;
     align-items: flex-start;
@@ -714,37 +713,15 @@
     cursor: pointer;
   }
 
-  :global(.chat-tool-call-toggle:focus-visible),
   .chat-tool-call-row:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  /* The chevron is 14px beside 13px text: a glyph follows its text (12 to 14px beside 12 to 13px). */
-  :global(.chat-tool-call-toggle .cinder-disclosure-trigger__chevron) {
-    inline-size: 14px;
-    block-size: 14px;
-    flex: none;
-    margin-block: calc((1lh - 14px) / 2);
-    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  :global(.chat-tool-call-toggle[aria-expanded='true'] .cinder-disclosure-trigger__chevron) {
-    transform: rotate(90deg);
   }
 
   /* The step row takes the message's direction: the chevron leads at the inline start and points
      toward the text, as the open one points down in either. */
   :global(.chat-message-wrapper[data-message-direction='rtl']) .chat-tool-call-timeline {
     direction: rtl;
-  }
-
-  :global(
-    .chat-message-wrapper[data-message-direction='rtl']
-      .chat-tool-call-toggle[aria-expanded='false']
-      .cinder-disclosure-trigger__chevron
-  ) {
-    transform: scaleX(-1);
   }
 
   /* On a touch screen a row is still painted at its text line height; its 44px hit area reaches
@@ -755,7 +732,6 @@
    * header overhangs on both sides, a step row ends at its own edges, and only the last row
    * overhangs, below: a tap between two rows goes to the nearer one. */
   @media (any-pointer: coarse) {
-    :global(.chat-tool-call-toggle),
     .chat-tool-call-row {
       position: relative;
       z-index: 1;
@@ -1188,10 +1164,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :global(.chat-tool-call-toggle .cinder-disclosure-trigger__chevron) {
-      transition: none;
-    }
-
     .chat-tool-call-activity-icon[data-cinder-tool-activity-active],
     .chat-tool-call-status-icon[data-cinder-tool-activity-active] {
       animation: none;
