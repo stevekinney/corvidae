@@ -4,7 +4,12 @@ import type { ConversationHistory, Message } from '@lostgradient/chat';
 
 import { lastAssistantId, turnStateOf } from './turn-states.ts';
 
-const assistant = { id: 'assistant', role: 'assistant', content: 'Partial answer', metadata: {} } as Message;
+const assistant = {
+  id: 'assistant',
+  role: 'assistant',
+  content: 'Partial answer',
+  metadata: {},
+} as Message;
 
 test('only the dropped stream’s last assistant turn reconnects', () => {
   const conversation = {

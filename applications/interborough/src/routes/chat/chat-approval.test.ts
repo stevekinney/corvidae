@@ -90,9 +90,9 @@ describe('a waiting approval', () => {
 
   test('uses the explicit decision surface instead of nesting a review deck', () => {
     const { container, queryByRole } = mount('dangerous');
-    expect(container.querySelector('[data-cinder-layout]')?.getAttribute('data-cinder-layout')).toBe(
-      'decision',
-    );
+    expect(
+      container.querySelector('[data-cinder-layout]')?.getAttribute('data-cinder-layout'),
+    ).toBe('decision');
     expect(queryByRole('button', { name: 'Review in deck' })).toBeNull();
   });
 

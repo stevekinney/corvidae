@@ -62,7 +62,7 @@
   const flat = $derived(variant === 'flat');
   const row = $derived(variant === 'row');
   const compact = $derived(size === 'compact' && !flat && !row);
-  const detailId = $props.id();
+  const detailId = `${titleId}-details`;
   let detailOpen = $state(false);
 </script>
 
