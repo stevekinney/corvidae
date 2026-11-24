@@ -1,3 +1,4 @@
+import { CatalogClientError } from '@lostgradient/backchannel/client';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { expect, it } from 'bun:test';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,84 @@ it('compiles the approval action state for both Svelte targets', async () => {
     expect(() =>
       compileModule(javascript, { filename: 'tool-approval-actions.svelte.js', generate }),
     ).not.toThrow();
+  }
+});
+
+it('distinguishes a typed Forbidden refusal from a lost response for the same target', async () => {
+  const build = await Bun.build({
+    entrypoints: [fileURLToPath(new URL('./tool-approval-actions.svelte.ts', import.meta.url))],
+    target: 'bun',
+    plugins: [
+      {
+        name: 'svelte-module',
+        setup(builder) {
+          builder.onLoad({ filter: /\.svelte\.ts$/u }, async ({ path }) => ({
+            loader: 'js',
+            contents: compileModule(
+              new Bun.Transpiler({ loader: 'ts' }).transformSync(await Bun.file(path).text()),
+              { filename: path, generate: 'server' },
+            ).js.code,
+          }));
+        },
+      },
+    ],
+  });
+  const module = await import(
+    `data:text/javascript;base64,${Buffer.from(await build.outputs[0].text()).toString('base64')}`
+  );
+  const review = {
+    id: 'approval:1',
+    round: 0,
+    kind: 'tool-approval',
+    status: 'pending',
+    approval: { action: { type: 'input' } },
+  };
+  for (const refused of [true, false]) {
+    let reads = 0;
+    const writes: unknown[] = [];
+    const outcomes: string[] = [];
+    let notify!: () => void;
+    const reported = new Promise<void>((resolve) => {
+      notify = resolve;
+    });
+    const host = {
+      disposed: false,
+      async call(name: string, input: unknown) {
+        if (name.endsWith('.get')) {
+          if (++reads > 1) throw new Error('read unavailable');
+          return review;
+        }
+        writes.push(input);
+        if (refused)
+          throw new CatalogClientError(name, {
+            code: -32003,
+            message: 'Forbidden',
+            data: { weftCode: 'Forbidden', httpStatus: 403 },
+          });
+        throw new Error('response lost');
+      },
+      invalidate() {},
+    };
+    const actions = module.useToolApprovalActions({
+      catalog: host,
+      authorized: () => true,
+      onOutcome: (_seen: unknown, outcome: string) => {
+        outcomes.push(outcome);
+        notify();
+      },
+    })(review);
+    actions.approve();
+    await reported;
+    expect(outcomes).toEqual([refused ? 'failed' : 'unknown-after-dispatch']);
+    expect(writes).toEqual([{ id: review.id, round: 0, decision: 'approve' }]);
+    if (refused) {
+      await waitUntil(() => !actions.disabled);
+      expect(reads).toBe(1);
+    } else {
+      actions.deny();
+      expect(actions.disabled).toBe(true);
+      expect(writes).toHaveLength(1);
+    }
   }
 });
 

@@ -174,6 +174,17 @@ export function useApprovalDecision(host: ApprovalHost) {
         }
         state.uncertain = true;
         const data = error && typeof error === 'object' && 'data' in error ? error.data : undefined;
+        if (
+          (data &&
+            typeof data === 'object' &&
+            'weftCode' in data &&
+            data.weftCode === 'Forbidden') ||
+          (error && typeof error === 'object' && 'code' in error && error.code === 'Forbidden')
+        ) {
+          state.uncertain = false;
+          report('failed', captured);
+          return;
+        }
         const reason =
           data && typeof data === 'object' && 'reason' in data ? data.reason : undefined;
         report(
