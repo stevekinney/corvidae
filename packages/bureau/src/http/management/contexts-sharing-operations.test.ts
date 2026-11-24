@@ -34,10 +34,20 @@ describe('chat sharing access requests', () => {
       expect(
         (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.status', { contextId }))
           .body?.result,
-      ).toEqual({ status: 'active' });
+      ).toMatchObject({ status: 'active', title: 'private chat', agentName: 'default' });
       expect(
         (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.list', {})).body?.result,
-      ).toMatchObject({ contexts: [expect.objectContaining({ id: contextId })] });
+      ).toMatchObject({
+        contexts: [
+          expect.objectContaining({
+            id: contextId,
+            owner: null,
+            lastMessagePreview: null,
+            parentContextId: null,
+            forkedFromMessageId: null,
+          }),
+        ],
+      });
       const repeatedGrant = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share', {
         contextId,
         granteeOwnerId,
@@ -75,7 +85,6 @@ describe('chat sharing access requests', () => {
         (
           await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.request', {
             contextId,
-            granteeOwnerId,
           })
         ).body?.result,
       ).toMatchObject({ changed: true });
@@ -87,7 +96,6 @@ describe('chat sharing access requests', () => {
         (
           await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.request', {
             contextId,
-            granteeOwnerId,
           })
         ).body?.result,
       ).toMatchObject({ changed: false });
@@ -120,7 +128,7 @@ describe('chat sharing access requests', () => {
       expect(
         (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.status', { contextId }))
           .body?.result,
-      ).toEqual({ status: 'active' });
+      ).toMatchObject({ status: 'active', title: 'private chat', agentName: 'default' });
       expect(
         (
           await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.request.resolve', {
@@ -144,7 +152,7 @@ describe('chat sharing access requests', () => {
           opened,
           actor,
           'bureau.contexts.share.request',
-          { contextId, granteeOwnerId: WORKSPACE_PRIVACY_ACTORS[actor].owner },
+          { contextId },
         );
         expect(response.body?.error?.data?.httpStatus ?? response.status).toBe(
           actor === 'foreign' ? 403 : 404,

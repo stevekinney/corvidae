@@ -547,11 +547,10 @@ export async function revokeContextShare(input: {
 }
 
 /** Requests restoration of this caller's former read grant. */
-export async function requestContextShare(input: {
-  readonly contextId: string;
-  readonly granteeOwnerId: string;
-}): Promise<BureauOutput<'bureau.contexts.share.request'>> {
-  return bureauClient['bureau.contexts.share.request'](input);
+export async function requestContextShare(
+  contextId: string,
+): Promise<BureauOutput<'bureau.contexts.share.request'>> {
+  return bureauClient['bureau.contexts.share.request']({ contextId });
 }
 
 /**

@@ -6,7 +6,6 @@ import type {
   SharedCommandOutcome_2d8e5749,
   SharedCommandOutcome_69ccd5e0,
   SharedConflictOutcome_e9582f9b,
-  SharedContextIdGranteeOwnerId_dce966fb,
   SharedDryRunEffectsTarget_b07628bd,
   SharedFailureOutcome_707f27ea,
   SharedOutcomeReason_1cc511c4,
@@ -204,12 +203,12 @@ export type ContextsOperationTypes = {
     readonly faults: 'InvalidParams' | 'NotFound' | 'Unavailable' | 'UnsupportedCapability';
   };
   'bureau.contexts.share': {
-    readonly input: SharedContextIdGranteeOwnerId_dce966fb;
+    readonly input: { readonly contextId: string; readonly granteeOwnerId: string };
     readonly output: SharedChangedContextIdGranteeO_3863cba0;
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.contexts.share.request': {
-    readonly input: SharedContextIdGranteeOwnerId_dce966fb;
+    readonly input: { readonly contextId: string };
     readonly output: SharedChangedContextIdGranteeO_3863cba0;
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
@@ -234,7 +233,7 @@ export type ContextsOperationTypes = {
     readonly faults: 'InvalidParams' | 'UnsupportedCapability';
   };
   'bureau.contexts.share.revoke': {
-    readonly input: SharedContextIdGranteeOwnerId_dce966fb;
+    readonly input: { readonly contextId: string; readonly granteeOwnerId: string };
     readonly output: SharedChangedContextIdGranteeO_3863cba0;
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };

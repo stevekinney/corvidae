@@ -662,10 +662,6 @@ export type SharedContentCreatedAtId_21bc25fe = {
   readonly trust: 'untrusted' | 'verified' | 'system';
   readonly writer: 'person' | 'agent' | 'system';
 };
-export type SharedContextIdGranteeOwnerId_dce966fb = {
-  readonly contextId: string;
-  readonly granteeOwnerId: string;
-};
 export type SharedCostStepsTools_95f40410 = {
   readonly cost?: SharedChatRunWarn_cfc87b81 | null;
   readonly steps?: number | null;

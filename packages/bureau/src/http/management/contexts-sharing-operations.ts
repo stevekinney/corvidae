@@ -44,6 +44,8 @@ const sharingInput = z.object({
   contextId: z.string().min(1),
   granteeOwnerId: z.string().min(1).max(256),
 });
+// A requester cannot name an owner. The authenticated workspace directory supplies it.
+const requestShareInput = sharingInput.pick({ contextId: true });
 const shareStatusInput = sharingInput.pick({ contextId: true });
 
 const sharingOutput = z.object({
@@ -209,7 +211,7 @@ export const contextsRevokeShareOperation = defineOperation<
 });
 
 export const contextsRequestShareOperation = defineOperation<
-  typeof sharingInput,
+  typeof requestShareInput,
   typeof sharingOutput,
   BureauContextsSharingOperationHost
 >({
@@ -221,7 +223,7 @@ export const contextsRequestShareOperation = defineOperation<
     'Lets only a formerly granted workspace member create one pending owner-visible request. It never restores access.',
   destructive: false,
   tags: ['Contexts'],
-  inputSchema: sharingInput,
+  inputSchema: requestShareInput,
   outputSchema: sharingOutput,
   producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
   access: { kind: 'authenticated' },
@@ -238,7 +240,6 @@ export const contextsRequestShareOperation = defineOperation<
       loaded === undefined ||
       owner === null ||
       workspace === undefined ||
-      workspace.owner !== input.granteeOwnerId ||
       !(await currentWorkspacePeer(host, principal, owner)) ||
       !sessionWasReadGrantedTo(loaded.metadata, workspace.owner, loaded.incarnation)
     )

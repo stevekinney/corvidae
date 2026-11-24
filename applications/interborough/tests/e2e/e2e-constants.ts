@@ -94,6 +94,10 @@ export const E2E_SHOWCASE_URL = `http://127.0.0.1:${E2E_SHOWCASE_PORT}`;
 export const E2E_PLUGIN_PAGES_PORT = E2E_PORT + 7;
 export const E2E_PLUGIN_PAGES_URL = `http://127.0.0.1:${E2E_PLUGIN_PAGES_PORT}`;
 
+/** A credentialed, same-workspace host for the chat-sharing browser flow. */
+export const E2E_CHAT_SHARING_PORT = E2E_PORT + 8;
+export const E2E_CHAT_SHARING_URL = `http://127.0.0.1:${E2E_CHAT_SHARING_PORT}`;
+
 /**
  * An agent file the server writes into the showcase host, so the showcase has one agent the editor
  * can open: the sample world's own agents are defined in code, and the editor answers those with

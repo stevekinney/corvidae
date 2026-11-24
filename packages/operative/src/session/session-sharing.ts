@@ -154,8 +154,8 @@ function requestOf(value: JSONValue): SessionReadRequest | undefined {
     ...(resolvedAt === undefined
       ? {}
       : {
-          resolvedAt: resolvedAt as string,
-          resolvedBy: resolvedBy as string,
+          resolvedAt,
+          resolvedBy,
           decision: decision as 'granted' | 'denied',
         }),
   };

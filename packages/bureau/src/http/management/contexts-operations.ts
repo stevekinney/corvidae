@@ -309,6 +309,26 @@ function projectContext(
   };
 }
 
+/** The deliberately small list row for an active reader, never an owner projection. */
+function projectSharedContext(summary: SessionSummary): z.infer<typeof contextSummarySchema> {
+  return {
+    id: summary.id,
+    owner: null,
+    agentName: summary.agentName,
+    title: summary.title,
+    lastMessagePreview: null,
+    parentContextId: null,
+    forkedFromMessageId: null,
+    origin: 'chat',
+    messageCount: summary.messageCount,
+    createdAt: summary.updatedAt,
+    updatedAt: summary.updatedAt,
+    activity: 'idle',
+    endReason: null,
+    archivedAt: null,
+  };
+}
+
 /** The fault for a Bureau that keeps no session store, and so no contexts. */
 export function noSessions(): OperationFault {
   return {
@@ -420,7 +440,11 @@ export const contextsListOperation = defineOperation<
         );
         const page = matching.slice(offset, offset + limit);
         return {
-          contexts: page.map((summary) => projectContext(summary, activity.get(summary.id))),
+          contexts: page.map((summary) =>
+            summary.owner === owner
+              ? projectContext(summary, activity.get(summary.id))
+              : projectSharedContext(summary),
+          ),
           nextOffset: matching.length > offset + limit ? offset + limit : null,
         };
       }
@@ -434,7 +458,11 @@ export const contextsListOperation = defineOperation<
       const page = admitted.slice(offset, offset + limit);
       const activity = await host.tasks.activityOf(page.map((summary) => summary.id));
       return {
-        contexts: page.map((summary) => projectContext(summary, activity.get(summary.id))),
+        contexts: page.map((summary) =>
+          summary.owner === owner
+            ? projectContext(summary, activity.get(summary.id))
+            : projectSharedContext(summary),
+        ),
         nextOffset: admitted.length > offset + limit ? offset + limit : null,
       };
     }

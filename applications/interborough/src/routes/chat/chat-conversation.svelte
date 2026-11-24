@@ -326,7 +326,7 @@
     () => ({
       queryKey: queryKeys.contexts.detail(sessionId),
       queryFn: ({ signal }) => getContext(sessionId, { signal }),
-      enabled: !choosing,
+      enabled: !choosing && !readOnly,
       retry: false,
     }),
     undefined,
@@ -338,14 +338,14 @@
     () => ({
       queryKey: queryKeys.contexts.window(sessionId),
       queryFn: ({ signal }) => getContextWindow(sessionId, { signal }),
-      enabled: !choosing,
+      enabled: !choosing && !readOnly,
       retry: false,
     }),
     undefined,
   );
   $effect(() => {
     // Only the end of a run asks again. Reading the queries here would make each answer ask again.
-    if (!choosing && !session.streaming) {
+    if (!choosing && !readOnly && !session.streaming) {
       untrack(() => {
         void context.refetch();
         void contextWindow.refetch();
@@ -2179,22 +2179,22 @@
 
 <!-- The context meter is the composer's alone, by Send (COR-2438): one meter in one place. -->
 {#snippet headerActions()}
-  <ChatMoreMenu
-    {sessionId}
-    title={displayTitle}
-    {runGoing}
-    branchTarget={lastBranchTarget}
-    {branching}
-    canExport={hasExportableText(shown)}
-    archived={archivedAt !== null}
-    {archiveBlock}
-    onBranch={(messageId) => void branchThrough(messageId)}
-    onExport={exportChat}
-    onArchive={(archive) => void setArchived(archive, false)}
-    canShare={!readOnly &&
-      principals?.principal?.workspace !== undefined &&
-      context.data?.owner === principals.principal.subject}
-  />
+  {#if !readOnly}
+    <ChatMoreMenu
+      {sessionId}
+      title={displayTitle}
+      {runGoing}
+      branchTarget={lastBranchTarget}
+      {branching}
+      canExport={hasExportableText(shown)}
+      archived={archivedAt !== null}
+      {archiveBlock}
+      onBranch={(messageId) => void branchThrough(messageId)}
+      onExport={exportChat}
+      onArchive={(archive) => void setArchived(archive, false)}
+      canShare={context.data !== undefined}
+    />
+  {/if}
 {/snippet}
 
 <div class="ib-chat-frame">
