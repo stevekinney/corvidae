@@ -15,22 +15,52 @@ const { values } = parseArgs({
     package: { type: 'string' },
     version: { type: 'string' },
     'armorer-version': { type: 'string' },
+    'conversationalist-version': { type: 'string' },
+    'weft-version': { type: 'string' },
     outdir: { type: 'string' },
   },
 });
 const versionSchema = z
   .string()
   .refine((version) => !version.includes('+') && Bun.semver.satisfies(version, version));
-const library = z.enum(['armorer', 'bungalow', 'conversationalist']).parse(values.package);
+const library = z
+  .enum(['armorer', 'bungalow', 'conversationalist', 'operative'])
+  .parse(values.package);
 const version = versionSchema.parse(values.version);
-const armorerVersion =
-  library === 'conversationalist' ? versionSchema.parse(values['armorer-version']) : undefined;
+const publicWorkspaceVersions = new Map<string, string>();
+if (library === 'conversationalist' || library === 'operative') {
+  publicWorkspaceVersions.set('armorer', versionSchema.parse(values['armorer-version']));
+}
+if (library === 'operative') {
+  publicWorkspaceVersions.set(
+    'conversationalist',
+    versionSchema.parse(values['conversationalist-version']),
+  );
+  publicWorkspaceVersions.set('@lostgradient/weft', versionSchema.parse(values['weft-version']));
+}
 const workspace = join(repository, 'packages', library);
 const output = resolve(z.string().min(1).parse(values.outdir));
 const privateEntries = new Map([
+  ...(library === 'operative'
+    ? [
+        [
+          '@lostgradient/backchannel',
+          join(repository, 'packages/backchannel/src/index.ts'),
+        ] as const,
+      ]
+    : []),
   ['@lostgradient/cryptography', join(repository, 'packages/cryptography/src/index.ts')],
   ['@lostgradient/lifecycle', join(repository, 'packages/lifecycle/src/index.ts')],
 ]);
+
+const privateOwners = new Set(
+  [...privateEntries.values()].map(
+    (entry) => relative(join(repository, 'packages'), entry).split('/')[0],
+  ),
+);
+const publicSpecifiers = new Map(
+  library === 'operative' ? [['@lostgradient/storage', '@lostgradient/weft/storage']] : [],
+);
 
 const entries = new Map(
   Object.entries(releaseEntries[library]).map(([key, entry]) => [key, resolve(workspace, entry)]),
@@ -54,7 +84,7 @@ function releasePath(source: string): string {
   if (
     sourceDirectory !== 'src' ||
     owner === undefined ||
-    ![library, 'cryptography', 'lifecycle'].includes(owner) ||
+    (owner !== library && !privateOwners.has(owner)) ||
     !source.endsWith('.ts')
   ) {
     throw new Error(`Unexpected library source: ${source}`);
@@ -89,31 +119,38 @@ function moduleReferences(file: ts.SourceFile): ts.StringLiteralLike[] {
 function rewriteModules(code: string, source: string): string {
   const file = ts.createSourceFile(source, code, ts.ScriptTarget.ESNext, true);
   for (const reference of moduleReferences(file).toReversed()) {
-    const specifier = reference.text;
+    const specifier = publicSpecifiers.get(reference.text) ?? reference.text;
+    let target = specifier;
     const resolved = specifier.startsWith('.')
       ? Bun.resolveSync(specifier, dirname(source))
       : privateEntries.get(specifier);
     if (resolved !== undefined) {
       pending.add(resolved);
       const path = relative(dirname(releasePath(source)), releasePath(resolved)) + '.js';
-      const target = path.startsWith('../') ? path : './' + path;
-      code =
-        code.slice(0, reference.getStart(file)) +
-        JSON.stringify(target) +
-        code.slice(reference.end);
-    } else if (!isBuiltin(specifier) && !(library === 'bungalow' && specifier === 'bun:test')) {
+      target = path.startsWith('../') ? path : './' + path;
+    } else if (
+      !isBuiltin(specifier) &&
+      !((library === 'bungalow' || library === 'operative') && specifier === 'bun:test')
+    ) {
       const name = specifier
         .split('/')
         .slice(0, specifier.startsWith('@') ? 2 : 1)
         .join('/');
       externalDependencies.add(name);
     }
+    if (target !== reference.text) {
+      code =
+        code.slice(0, reference.getStart(file)) +
+        JSON.stringify(target) +
+        code.slice(reference.end);
+    }
   }
   return code;
 }
 
 function dependencyVersion(name: string): string {
-  if (name === 'armorer' && armorerVersion) return armorerVersion;
+  const publishedVersion = publicWorkspaceVersions.get(name);
+  if (publishedVersion !== undefined) return publishedVersion;
   const declared = declaredDependencies.get(name);
   const resolved = declared === 'catalog:' ? catalogVersions.get(name) : declared;
   if (!resolved || resolved.startsWith('workspace:')) {
@@ -168,7 +205,10 @@ try {
         {
           types: base + '.d.ts',
           ...(library === 'conversationalist' && nodeOnly.has(key) ? { browser: null } : {}),
-          default: base + '.js',
+          ...(library === 'operative' &&
+          (key === './decision-testing' || key === './provider-testing')
+            ? { bun: base + '.js' }
+            : { default: base + '.js' }),
         },
       ];
     }),
