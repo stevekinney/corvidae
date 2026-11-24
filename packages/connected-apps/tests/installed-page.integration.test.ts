@@ -134,12 +134,20 @@ test('installed public entries support personal connected app management', async
     await page.getByText('Approved permissions').click();
     expect(await page.getByText('Read assets', { exact: false }).count()).toBe(1);
     expect(await page.getByText('currently unavailable', { exact: false }).count()).toBe(1);
-    await page.getByRole('button', { name: 'Disconnect' }).click();
+    await page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: 'Claude' }) })
+      .getByRole('button', { name: 'Disconnect' })
+      .click();
     await page.getByRole('button', { name: 'Cancel' }).click();
     expect(writes).toBe(0);
     fail = true;
     const previousReads = reads;
-    await page.getByRole('button', { name: 'Disconnect' }).click();
+    await page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: 'Claude' }) })
+      .getByRole('button', { name: 'Disconnect' })
+      .click();
     await page.getByRole('dialog').getByRole('button', { name: 'Disconnect' }).click();
     await page.getByRole('status').getByText('Unable to disconnect', { exact: false }).waitFor();
     expect(reads).toBeGreaterThan(previousReads);
@@ -149,7 +157,11 @@ test('installed public entries support personal connected app management', async
     expect(await page.getByText('Claude', { exact: true }).count()).toBe(0);
     await page.getByRole('button', { name: 'Change account' }).click();
     await page.getByText('Claude', { exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Disconnect' }).click();
+    await page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: 'Claude' }) })
+      .getByRole('button', { name: 'Disconnect' })
+      .click();
     await page.getByRole('dialog').getByRole('button', { name: 'Disconnect' }).click();
     await page.getByRole('status').getByText('App disconnected.').waitFor();
     await page.getByText('No connected apps.').waitFor();

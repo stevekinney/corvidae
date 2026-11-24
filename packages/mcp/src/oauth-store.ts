@@ -246,7 +246,9 @@ export class OAuthStore {
 
   async getGrant(id: string): Promise<Grant | null> {
     const value = await this.storage.get(key('grant', id));
-    return value ? (JSON.parse(decoder.decode(value)) as Grant) : null;
+    if (!value) return null;
+    const grant = JSON.parse(decoder.decode(value)) as Grant;
+    return { ...grant, approvedAt: grant.approvedAt ?? null };
   }
 
   async listGrants(identity: {

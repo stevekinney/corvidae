@@ -57,6 +57,7 @@ describe('OAuthStore consent', () => {
     const grants = await store.listGrants(identity);
     expect(grants.find((grant) => grant.grantId === 'old')?.approvedAt).toBeNull();
     expect(grants.find((grant) => grant.grantId === 'new')?.approvedAt).toEqual(expect.any(Number));
+    expect((await store.getGrant('old'))?.approvedAt).toBeNull();
     expect(await store.revokeOwnedGrant('old', identity)).toBe(true);
     expect((await store.getGrant('old'))?.active).toBe(false);
   });
