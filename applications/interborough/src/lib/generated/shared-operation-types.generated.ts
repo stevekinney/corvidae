@@ -570,6 +570,16 @@ export type SharedCodeIssuesMessage_037571b6 = {
   readonly issues: ReadonlyArray<SharedMessagePath_da49cd77> | null;
   readonly message: string;
 };
+export type SharedCodeIssuesMessage_4f0ab443 = {
+  readonly code: string;
+  readonly issues: ReadonlyArray<SharedMessagePath_da49cd77> | null;
+  readonly message: string;
+  readonly syntax?: {
+    readonly kind: 'comma' | 'other';
+    readonly line: number;
+    readonly stoppedAt: number;
+  };
+};
 export type SharedCodeLastFiredAtRetryAt_58907586 = {
   readonly code: 'start-failed' | 'configuration-refused' | null;
   readonly lastFiredAt: string | null;

@@ -45,6 +45,8 @@ Drag-and-drop reorderable list that emits the new order on each change.
 
 Dragging needs a pointer that can hold and move, so a list that people reorder should offer a single-pointer alternative (WCAG 2.5.7). Set `reorderMode="buttons"` to give each row Move up and Move down buttons in place of the drag handle, or `reorderMode="both"` to keep the handle and add them. The row's context then carries a `moveButtons` snippet; render it where the buttons belong, beside the row's own controls. The first row has no Move up, the last no Move down, and a lone row has neither. Pressing a button reorders through `onReorder` with the same change descriptor a drop gives, announces the move, and keeps focus on the pressed button, or on the row's other button when the pressed one no longer applies. `formatMoveUpLabel` and `formatMoveDownLabel` rename the buttons ("Move Ask an agent up").
 
+Use `SortableListEditorRow` inside the list's row snippet when each item has a numbered header and editable content. Its default layout puts one border around the item. Use `layout="row"` for a nested item so it has a separator between rows. Render `context.moveButtons` and any other item controls in the editor row's `actions` snippet. The body can include another `SortableList`, with its own items and reorder handler.
+
 ```svelte
 <script lang="ts">
   import { Button, SortableList } from '@lostgradient/cinder';

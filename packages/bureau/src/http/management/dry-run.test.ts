@@ -201,7 +201,16 @@ describe('the effects of a dry run, counted from the Bureau’s own listings', (
       },
       goals: { list: async () => [] },
       contexts: { list: async () => [] },
-      workflows: { runCounts: async () => ({ active: 3, last24Hours: 9, lastRunAt: null }) },
+      workflows: {
+        runCounts: async () => ({
+          total: 9,
+          active: 3,
+          last24Hours: 9,
+          lastRunAt: null,
+          last: null,
+          current: null,
+        }),
+      },
     }).workflowEffects('digest');
     expect(effects).toEqual([
       { kind: 'schedules', count: 1 },

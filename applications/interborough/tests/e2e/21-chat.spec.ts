@@ -24,7 +24,7 @@ const BARRIER = 'barrier';
 const BARRIER_SHORT = 'barrier-short';
 const FIRST_REPLY = 'The barrier opened.';
 const FOLLOW_UP_REPLY = 'The follow-up was delivered.';
-const REFUNDED = 'Order order-1001 was refunded.';
+const REFUNDED = 'The refund for order order-1001 is pending with the processor.';
 const NOT_ISSUED = 'The refund of order order-1001 was not issued.';
 
 const composer = (page: Page) => page.getByRole('textbox');
@@ -135,7 +135,7 @@ test.describe('a tool approval', () => {
     await expect(alert).toBeVisible();
     // One flat row: the question in the call's own words, with Deny and Approve, and none of the
     // policy's string or the run's identifier anywhere in the view's text.
-    await expect(alert).toContainText('Refund order order-1001 for $42.00?');
+    await expect(alert).toContainText('Refund order order-1001 for 4200 minor units (USD)?');
     const text = (await transcript(page).innerText()) ?? '';
     expect(text).not.toMatch(/requires approval|mutating tier|run-\d/);
     // Two calls are two plain rows of the rail, with no summary: the lookup, and the refund that
@@ -150,7 +150,7 @@ test.describe('a tool approval', () => {
     await expect(
       conversation(page).locator('code').filter({ hasText: 'issue-refund' }),
     ).toHaveCount(0);
-    // The seeded turn already refunded the order once, so one reply is the one the session opened with.
+    // The seeded turn already submitted one refund, so its pending reply is present on load.
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
     // Interborough's own row carries the same marker now (so a retry can find its card), so the

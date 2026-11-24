@@ -108,6 +108,7 @@ export {
   isValidOperationName,
   validateOperationName,
   type FaultPolicy,
+  type OperationBehavior,
   type OperationContext,
   type OperationKind,
   type StreamOperationInvocation,

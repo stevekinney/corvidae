@@ -10,7 +10,7 @@
    * Confirming writes the choice and restarts in one step through the shared restart flow; Cancel
    * changes nothing.
    */
-  import { ConfirmDialog } from '@lostgradient/cinder';
+  import { ConfirmDialog, GroupedList, GroupedListItem } from '@lostgradient/cinder';
 
   import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import type { PluginStanding } from '../../../lib/host-plugins.ts';
@@ -78,14 +78,16 @@
           <strong>{copy.nothingLead}</strong>{copy.nothing(shown.plugin.descriptor.title)}
         </p>
       {:else}
-        <ul data-testid="plugin-disable-impacts">
+        <GroupedList
+          data-testid="plugin-disable-impacts"
+          aria-label={copy.title(shown.plugin.descriptor.title)}
+        >
           {#each impacts as impact (impact.key)}
-            <li data-impact={impact.key}>
-              <strong>{impact.count}</strong>
-              {impact.sentence}
-            </li>
+            <GroupedListItem data-impact={impact.key}>
+              {#snippet title()}<strong>{impact.count}</strong> {impact.sentence}{/snippet}
+            </GroupedListItem>
           {/each}
-        </ul>
+        </GroupedList>
       {/if}
       <PendingWritesList changes={otherChanges} />
       <p data-testid="plugin-disable-note">{note}</p>

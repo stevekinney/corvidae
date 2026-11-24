@@ -809,11 +809,31 @@ export interface PluginEventDeclaration {
   readonly payload: z.ZodObject;
 }
 
+/** Durable cleanup for a terminally denied or rejected, signed tool call. */
+export interface PluginRelease {
+  readonly name: string;
+  readonly agent: string;
+  readonly tool: string;
+  readonly toolRevision: string;
+  /** Project only the domain identifier from the verified arguments. */
+  readonly identifier: (arguments_: unknown) => string;
+  /** Idempotently release the identified domain reservation, or prove it no longer needs release. */
+  readonly release: (input: {
+    readonly identifier: string;
+    readonly runId: string;
+    readonly reviewId: string;
+    readonly round: number;
+    readonly toolRevision: string;
+  }) => Promise<void>;
+}
+
 /**
  * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
  * plugin names only the kinds it contributes.
  */
 export interface PluginContributions {
+  /** Terminal-review business cleanup, delivered durably and not separately disableable like hooks. */
+  readonly releases?: readonly PluginRelease[];
   /** Tools agents can call. */
   readonly tools?: readonly AnyTool[];
   /** Activities workflows can call. */

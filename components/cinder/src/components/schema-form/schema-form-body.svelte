@@ -288,11 +288,13 @@
     return settingRows ? rowLabel(field) : field.label;
   }
 
-  /** A row shows its key only beside a title the schema supplies, and not when that title is the key in another case. */
+  /** A row shows its key only beside a schema title that differs from the existing sentence-case key label. */
   function rowIdentifier(field: SchemaFormField): string | undefined {
     const title = field.schema['title'];
     if (typeof title !== 'string' || title.trim().length === 0) return undefined;
-    return title.toLowerCase() === field.key.toLowerCase() ? undefined : field.key;
+    return title.trim().toLowerCase() === sentenceCaseLabel(field.key).toLowerCase()
+      ? undefined
+      : field.key;
   }
 
   /** Map a field's options to Select's `{ value, label }` shape, keyed on the
@@ -882,6 +884,7 @@
           {id}
           {...labelledProps}
           placeholder={placeholderFor(field)}
+          {...hosted ? { size: 'sm' } : {}}
           type={field.schema['writeOnly'] === true ? 'password' : 'text'}
           autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}
           required={field.required}
@@ -917,6 +920,7 @@
       {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
         <DurationField
           {id}
+          {...hosted ? { size: 'sm' } : {}}
           label={textOf(field)}
           description={field.description}
           {error}
@@ -931,6 +935,7 @@
         <NumberInput
           {id}
           {...labelledProps}
+          {...hosted ? { size: 'sm' } : {}}
           required={field.required}
           disabled={frozen}
           step={field.kind === 'integer' ? 1 : undefined}
@@ -942,6 +947,7 @@
         <Select
           {id}
           {...labelledProps}
+          {...hosted ? { size: 'sm' } : {}}
           required={field.required}
           disabled={frozen}
           options={selectOptions(field)}
