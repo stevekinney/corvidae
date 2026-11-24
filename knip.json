@@ -118,6 +118,25 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/bureau-client": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/bureau": {
       "entry": [
         "**/*.test.ts",

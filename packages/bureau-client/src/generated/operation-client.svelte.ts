@@ -4,7 +4,7 @@ import {
   createReactiveRead,
   type CatalogHost,
 } from '@lostgradient/backchannel-svelte';
-import type { ClientOperationTypes } from './operation-client.generated.ts';
+import type { ReviewsOperationTypes as ClientOperationTypes } from './reviews-operations.generated.ts';
 
 export { getReviewsHost } from '../reviews/context.ts';
 export { default as ReviewsProvider } from '../reviews/ReviewsProvider.svelte';

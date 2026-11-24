@@ -27,11 +27,24 @@ export async function createReviewsClientSources(): Promise<ReadonlyMap<string, 
     },
   );
   const output = new Map<string, string>();
+  const operationTypes = sources.get('reviews-operations.generated.ts');
+  if (!operationTypes) throw new Error('Reviews operation types were not generated');
+  const included = new Set([
+    'operation-client.svelte.ts',
+    'portable-operation-client.generated.ts',
+    'reviews-operations.generated.ts',
+    'shared-operation-types.generated.ts',
+  ]);
   for (const [name, source] of sources) {
+    if (!included.has(name)) continue;
     const complete =
       name === 'operation-client.svelte.ts'
         ? source
             .replace('  createCommand,\n', '')
+            .replace(
+              "import type { ClientOperationTypes } from './operation-client.generated.ts';",
+              "import type { ReviewsOperationTypes as ClientOperationTypes } from './reviews-operations.generated.ts';",
+            )
             .replace(
               "export { getCatalogHost as getReviewsHost } from '@lostgradient/backchannel-svelte';",
               "export { getReviewsHost } from '../reviews/context.ts';",
@@ -46,16 +59,25 @@ export async function createReviewsClientSources(): Promise<ReadonlyMap<string, 
             )
         : name === 'portable-operation-client.generated.ts'
           ? `${source}\nexport type { ReviewsOperationTypes } from './reviews-operations.generated.ts';\n`
-          : source;
+          : name === 'shared-operation-types.generated.ts'
+            ? source.replace(/export type (Shared\w+)/gu, (declaration, typeName: string) =>
+                operationTypes.includes(typeName) ? declaration : `type ${typeName}`,
+              )
+            : source;
     if (
       name === 'operation-client.svelte.ts' &&
       (!complete.includes('export { useApprovalDecision }') ||
         !complete.includes('export { getReviewsHost }') ||
         !complete.includes('../reviews/ReviewsProvider.svelte') ||
+        complete.includes('./operation-client.generated.ts') ||
         complete.includes('useBureauReviewsResolve'))
     )
       throw new Error('Reviews bindings were not replaced');
-    output.set(name, complete);
+    const filePath = join(outputDirectory, name);
+    output.set(
+      name,
+      await format(complete, { ...(await resolveConfig(filePath)), filepath: filePath }),
+    );
   }
   return output;
 }

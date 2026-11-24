@@ -36,7 +36,7 @@ it('builds both hosts against the same client, actions and control', async () =>
   });
   expect(build.success).toBe(true);
   const module = await import(
-    `data:text/javascript;base64,${Buffer.from(await build.outputs[0]!.text()).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(await build.outputs[0].text()).toString('base64')}`
   );
   expect(module.shared).toBe(true);
 });

@@ -100,7 +100,7 @@ export type SharedAgeMillisecondsAgentName_7cfdfed5 = {
     readonly title?: string;
   };
 };
-export type SharedAnswerDigestDecidedAtDec_655ece59 = {
+type SharedAnswerDigestDecidedAtDec_655ece59 = {
   readonly answerDigest?: string;
   readonly decidedAt: number;
   readonly decidedBy: string;

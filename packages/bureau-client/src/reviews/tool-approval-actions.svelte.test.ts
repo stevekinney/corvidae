@@ -39,7 +39,7 @@ it('fences duplicate actions before the first read completes', async () => {
   });
   expect(build.success).toBe(true);
   const module = await import(
-    `data:text/javascript;base64,${Buffer.from(await build.outputs[0]!.text()).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(await build.outputs[0].text()).toString('base64')}`
   );
   let completeRead!: (value: unknown) => void;
   const read = new Promise((resolve) => {
@@ -102,7 +102,7 @@ it('keeps a lost response fenced until a read succeeds', async () => {
     ],
   });
   const module = await import(
-    `data:text/javascript;base64,${Buffer.from(await build.outputs[0]!.text()).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(await build.outputs[0].text()).toString('base64')}`
   );
   const review = {
     id: 'review',
@@ -177,7 +177,7 @@ it('uses fresh round and policy and suppresses results after authority changes',
     ],
   });
   const module = await import(
-    `data:text/javascript;base64,${Buffer.from(await build.outputs[0]!.text()).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(await build.outputs[0].text()).toString('base64')}`
   );
   const review = {
     id: 'review',
@@ -270,7 +270,7 @@ it('reports distinct receipts and conflicts and rereads each conflict', async ()
     ],
   });
   const module = await import(
-    `data:text/javascript;base64,${Buffer.from(await build.outputs[0]!.text()).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(await build.outputs[0].text()).toString('base64')}`
   );
   const review = {
     id: 'review',
