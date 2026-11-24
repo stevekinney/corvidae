@@ -566,7 +566,9 @@
   const archivedAt = $derived(choosing ? null : (context.data?.archivedAt ?? null));
   // A read-only chat offers no Regenerate or Try again: either would start a run its agent may not
   // start (COR-2429, design review 2).
-  const mayRegenerate = $derived(archivedAt === null && !agentDisabled && !agentUnavailable);
+  const mayRegenerate = $derived(
+    !readOnly && archivedAt === null && !agentDisabled && !agentUnavailable,
+  );
   let archiving = $state(false);
   /**
    * Archives the chat or unarchives it (`chat-archive.ts`). Unarchived from the bar, the composer
@@ -2470,7 +2472,7 @@
           {#snippet messageActions({ message })}
             {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
             {@const branchAt = branchTargetOf(message)}
-            {#if replyStep !== undefined && !session.streaming}
+            {#if !readOnly && replyStep !== undefined && !session.streaming}
               {@const replyModel = replyModelName(message.metadata)}
               {#if replyModel !== undefined}
                 <span class="weft-chat-model">{replyModel}</span>
@@ -2481,7 +2483,7 @@
                 usage={session.usage.get(replyStep.runId)}
               />
             {/if}
-            {#if branchAt !== undefined}
+            {#if !readOnly && branchAt !== undefined}
               <Button
                 data-changes
                 type="button"
