@@ -5,7 +5,6 @@ import type { Fetcher } from './bureau-client.ts';
 import { humanWaitFixture, toolApprovalFixture } from './bureau-fixtures.test-support.ts';
 import {
   getBureauReview,
-  isApprovalOutcomeNotWritten,
   isReviewNoLongerWaiting,
   isReviewRoundChanged,
   listBureauReviews,
@@ -156,9 +155,8 @@ describe('the Bureau’s review operations', () => {
   test('tells a review that changed while it was read from every other Conflict', () => {
     const conflict = (reason: unknown) =>
       new HttpClientError(409, 'Conflict', { faultCode: 'Conflict', data: { reason } });
-    const changed = conflict('REVIEW_ROUND_CHANGED: now at round 3');
+    const changed = conflict('REVIEW_ROUND_CHANGED');
     expect(isReviewRoundChanged(changed)).toBe(true);
-    expect(isApprovalOutcomeNotWritten(changed)).toBe(false);
     expect(isReviewRoundChanged(conflict('Another resolver won.'))).toBe(false);
     expect(isReviewRoundChanged(conflict('APPROVAL_OUTCOME_NOT_WRITTEN: x'))).toBe(false);
     expect(isReviewRoundChanged(new Error('REVIEW_ROUND_CHANGED: now at round 3'))).toBe(false);
@@ -167,9 +165,7 @@ describe('the Bureau’s review operations', () => {
   test('tells a review that was already resolved, or is gone, from every other fault (COR-2426)', () => {
     const conflict = (reason: unknown) =>
       new HttpClientError(409, 'Conflict', { faultCode: 'Conflict', data: { reason } });
-    expect(
-      isReviewNoLongerWaiting(conflict('REVIEW_ALREADY_RESOLVED: Review "x" is resolved')),
-    ).toBe(true);
+    expect(isReviewNoLongerWaiting(conflict('REVIEW_ALREADY_RESOLVED'))).toBe(true);
     // A NotFound also answers a caller who may not decide it, so it is not taken as gone.
     expect(isReviewNoLongerWaiting(new HttpClientError(404, 'No pending review'))).toBe(false);
     expect(isReviewNoLongerWaiting(conflict('REVIEW_ROUND_CHANGED: now at round 3'))).toBe(false);

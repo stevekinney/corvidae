@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { CATALOG_OPERATION_BEHAVIORS } from '../lib/generated/operation-behaviors.generated.ts';
 
 import {
   BUREAU_CLIENT_DIRECTORY,
@@ -16,6 +17,16 @@ import {
 } from '../../scripts/generate-bureau-client.ts';
 
 describe('the generated Bureau client', () => {
+  it('retains the Reviews observation metadata in the generated descriptor', () => {
+    expect(CATALOG_OPERATION_BEHAVIORS['bureau.reviews.resolve'].behavior.conflictReasons).toEqual([
+      'REVIEW_ROUND_CHANGED',
+      'REVIEW_ALREADY_RESOLVED',
+      'APPROVAL_OUTCOME_NOT_WRITTEN',
+    ]);
+    expect(
+      CATALOG_OPERATION_BEHAVIORS['bureau.reviews.resolve'].behavior.observedInput,
+    ).toMatchObject({ read: 'bureau.reviews.get', key: 'id', revision: 'round' });
+  });
   it('is what the generator writes now, file for file', async () => {
     const sources = await createBureauClientSources();
     const files = await readdir(BUREAU_CLIENT_DIRECTORY);

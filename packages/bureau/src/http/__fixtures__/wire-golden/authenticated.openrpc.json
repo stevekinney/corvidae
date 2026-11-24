@@ -6833,7 +6833,7 @@
       }
     },
     {
-      "description": "Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run). An answer that names, by `signalName`, a question the task asked and that was already decided is a `Conflict` whose `reason` starts `REVIEW_ALREADY_RESOLVED:`, as `bureau.reviews.resolve` answers a review already resolved; a `signalName` the task never asked is a plain `Conflict`.",
+      "description": "Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run). An answer that names, by `signalName`, a question the task asked and that was already decided is a `Conflict` whose `data.reason` is `REVIEW_ALREADY_RESOLVED`, as `bureau.reviews.resolve` answers a review already resolved; a `signalName` the task never asked is a plain `Conflict`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -27296,9 +27296,14 @@
           "additionalProperties": false,
           "properties": {
             "nextPageToken": {
-              "type": [
-                "string",
-                "null"
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "reviews": {
@@ -27490,7 +27495,52 @@
                         ],
                         "type": "object"
                       },
+                      "effect": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cents": {
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "type": "integer"
+                          },
+                          "currency": {
+                            "const": "USD",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "refund",
+                            "type": "string"
+                          },
+                          "orderId": {
+                            "type": "string"
+                          },
+                          "refundId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "admitted",
+                              "submitting",
+                              "provider-pending",
+                              "succeeded",
+                              "failed",
+                              "needs-reconciliation"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "refundId",
+                          "orderId",
+                          "cents",
+                          "currency",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
+                        "minLength": 1,
                         "type": "string"
                       },
                       "kind": {
@@ -27542,6 +27592,12 @@
                           "decidedAt"
                         ],
                         "type": "object"
+                      },
+                      "resolvedAt": {
+                        "type": "number"
+                      },
+                      "resolvedBy": {
+                        "type": "string"
                       },
                       "round": {
                         "maximum": 9007199254740991,
@@ -27596,6 +27652,7 @@
                         "type": "string"
                       },
                       "id": {
+                        "minLength": 1,
                         "type": "string"
                       },
                       "inputSchema": {
@@ -27657,6 +27714,12 @@
                           "decidedAt"
                         ],
                         "type": "object"
+                      },
+                      "resolvedAt": {
+                        "type": "number"
+                      },
+                      "resolvedBy": {
+                        "type": "string"
                       },
                       "runId": {
                         "type": "string"
@@ -28101,7 +28164,52 @@
                   ],
                   "type": "object"
                 },
+                "effect": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "cents": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "currency": {
+                      "const": "USD",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "refund",
+                      "type": "string"
+                    },
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "refundId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "admitted",
+                        "submitting",
+                        "provider-pending",
+                        "succeeded",
+                        "failed",
+                        "needs-reconciliation"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "refundId",
+                    "orderId",
+                    "cents",
+                    "currency",
+                    "status"
+                  ],
+                  "type": "object"
+                },
                 "id": {
+                  "minLength": 1,
                   "type": "string"
                 },
                 "kind": {
@@ -28153,6 +28261,12 @@
                     "decidedAt"
                   ],
                   "type": "object"
+                },
+                "resolvedAt": {
+                  "type": "number"
+                },
+                "resolvedBy": {
+                  "type": "string"
                 },
                 "round": {
                   "maximum": 9007199254740991,
@@ -28207,6 +28321,7 @@
                   "type": "string"
                 },
                 "id": {
+                  "minLength": 1,
                   "type": "string"
                 },
                 "inputSchema": {
@@ -28268,6 +28383,12 @@
                     "decidedAt"
                   ],
                   "type": "object"
+                },
+                "resolvedAt": {
+                  "type": "number"
+                },
+                "resolvedBy": {
+                  "type": "string"
                 },
                 "runId": {
                   "type": "string"
@@ -28363,7 +28484,7 @@
       }
     },
     {
-      "description": "Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; one that begins `REVIEW_ALREADY_RESOLVED: ` (COR-2426) means the review was already resolved with another decision, so nothing took effect and it is no longer waiting; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.",
+      "description": "Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` is `REVIEW_ROUND_CHANGED` means nothing took effect and the review must be read again; `REVIEW_ALREADY_RESOLVED` means the review was already resolved and also requires a fresh read. An applied decision whose outcome row could not be written returns `warning: APPROVAL_OUTCOME_NOT_WRITTEN`. A protected review requires its displayed round and reviewer authority; other reviews retain the existing optional round.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -28533,6 +28654,10 @@
             },
             "remembered": {
               "type": "boolean"
+            },
+            "warning": {
+              "const": "APPROVAL_OUTCOME_NOT_WRITTEN",
+              "type": "string"
             }
           },
           "required": [

@@ -214,7 +214,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
         { taskId: run.id, messageId: 'm4', answer: 'y', signalName: 'never-asked' },
         'alice-key',
       );
-      expect(String(again.error?.data?.['reason'])).toStartWith(`${REVIEW_ALREADY_RESOLVED}: `);
+      expect(again.error?.data?.['reason']).toBe(REVIEW_ALREADY_RESOLVED);
       expect(never.error?.data?.httpStatus).toBe(409);
       expect(String(never.error?.data?.['reason'])).not.toStartWith(REVIEW_ALREADY_RESOLVED);
     });
@@ -249,7 +249,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
       );
 
       expect(again.error?.data?.httpStatus).toBe(409);
-      expect(String(again.error?.data?.['reason'])).toStartWith(`${REVIEW_ALREADY_RESOLVED}: `);
+      expect(again.error?.data?.['reason']).toBe(REVIEW_ALREADY_RESOLVED);
       // A command that names no wait was never sent to one, so it keeps the plain conflict.
       expect(unnamed.error?.data?.httpStatus).toBe(409);
       expect(String(unnamed.error?.data?.['reason'])).not.toStartWith(REVIEW_ALREADY_RESOLVED);

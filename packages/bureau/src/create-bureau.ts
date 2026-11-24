@@ -5016,6 +5016,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     audit,
     notifications: notificationsComposition.notifications,
     internals: {
+      reviewPolicy: options.reviewPolicy,
       hasExplicitId: options.id !== undefined,
       get taskRetention() {
         return taskRetentionOf(currentSettings());

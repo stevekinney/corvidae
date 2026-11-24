@@ -839,6 +839,8 @@ export type {
   PendingToolApprovalReview,
   ApprovalDecisionSurface,
   ResolveReviewInput,
+  ReviewPolicy,
+  ReviewEffect,
   ResolvedReview,
   ReviewResolutionFields,
   ResolveReviewResult,

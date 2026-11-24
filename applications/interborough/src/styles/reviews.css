@@ -64,6 +64,19 @@
   min-inline-size: 0;
 }
 
+/* Keep review inputs and decisions together on wide detail panes. */
+.ib-reviews__detail [data-kind='tool-approval'],
+.ib-reviews__detail .ib-review-detail {
+  max-inline-size: 48rem;
+}
+
+@media (min-width: 64rem) {
+  .ib-reviews__detail [data-kind='tool-approval'],
+  .ib-reviews__detail .ib-review-detail {
+    max-inline-size: min(48rem, calc(100% - var(--cinder-space-4)));
+  }
+}
+
 /* ── The open review ──────────────────────────────────────────────────────────── */
 
 .ib-review-detail {
