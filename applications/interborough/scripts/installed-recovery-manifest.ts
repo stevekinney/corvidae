@@ -92,10 +92,10 @@ export function assertOneRefundResult(
     results.length !== 1 ||
     content === null ||
     typeof content !== 'object' ||
-    !('orderId' in content) ||
-    content.orderId !== 'order-1001' ||
-    !('refundedCents' in content) ||
-    content.refundedCents !== 4200
+    !Object.hasOwn(content, 'orderId') ||
+    Reflect.get(content, 'orderId') !== 'order-1001' ||
+    !Object.hasOwn(content, 'refundedCents') ||
+    Reflect.get(content, 'refundedCents') !== 4200
   )
     throw new Error('Expected exactly one durable refund result');
 }

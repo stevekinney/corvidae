@@ -27,12 +27,6 @@ on:
         description: Candidate npm tarball SHA-256
         required: true
         type: string
-  pull_request:
-    paths:
-      - .github/workflows/interborough-installed-recovery.yml
-      - applications/interborough/scripts/installed-recovery-manifest.ts
-      - applications/interborough/scripts/rehearse-installed-recovery.ts
-      - applications/interborough/scripts/stage-recovery-evidence.ts
 
 permissions:
   contents: read
@@ -40,27 +34,23 @@ permissions:
 
 jobs:
   rehearsal:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-       github.head_ref == 'steve/cor-2660-installed-upgrade-restore')
     runs-on: macos-15
     timeout-minutes: 90
     env:
-      PREVIOUS_ARTIFACT: ${{ inputs.previous_artifact || '14840715467' }}
-      PREVIOUS_ARCHIVE_SHA256: ${{ inputs.previous_archive_sha256 || '2757a48d02ec8ea1ab9930d69ba0a770156548f130fcb0be23cc3b7ad93a15a0' }}
-      PREVIOUS_PACKAGE_SHA256: ${{ inputs.previous_package_sha256 || '9f70ed5d2271bb7fcd42c438ac94cbeb5e4a240390a69b244b54a562f5706619' }}
-      CANDIDATE_ARTIFACT: ${{ inputs.candidate_artifact || '14878166631' }}
-      CANDIDATE_ARCHIVE_SHA256: ${{ inputs.candidate_archive_sha256 || 'feede2a5cd8bc275d3a186ca83e761daeffebee08b2e7f8f4bfc0a246962c792' }}
-      CANDIDATE_PACKAGE_SHA256: ${{ inputs.candidate_package_sha256 || 'b0dceee147a60e97c70e010005f76847540384c4ab34e79573cf822ee41375c5' }}
+      PREVIOUS_ARTIFACT: ${{ inputs.previous_artifact }}
+      PREVIOUS_ARCHIVE_SHA256: ${{ inputs.previous_archive_sha256 }}
+      PREVIOUS_PACKAGE_SHA256: ${{ inputs.previous_package_sha256 }}
+      CANDIDATE_ARTIFACT: ${{ inputs.candidate_artifact }}
+      CANDIDATE_ARCHIVE_SHA256: ${{ inputs.candidate_archive_sha256 }}
+      CANDIDATE_PACKAGE_SHA256: ${{ inputs.candidate_package_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Verify checked out source
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:

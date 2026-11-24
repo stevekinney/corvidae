@@ -63,6 +63,13 @@ test('requires exactly one successful durable result for the resumed call', () =
     'exactly one',
   );
   expect(() => assertOneRefundResult({ first: row }, 'another-call')).toThrow('exactly one');
+  const inherited = Object.create({ orderId: 'order-1001', refundedCents: 4200 }) as object;
+  expect(() =>
+    assertOneRefundResult(
+      { first: { toolResult: { ...row.toolResult, content: inherited } } },
+      'call-1',
+    ),
+  ).toThrow('exactly one');
 });
 
 test('requires the restored review and setting from host readback', async () => {
