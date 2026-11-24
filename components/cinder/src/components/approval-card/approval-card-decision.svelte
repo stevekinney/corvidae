@@ -266,21 +266,30 @@
         </DisclosureTrigger>
         <dl id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
           {#if hasNote}
-            <div class="cinder-approval-card__decision-note"><dt>Your note</dt><dd dir="auto">{decisionNote}</dd></div>
+            <div class="cinder-approval-card__decision-note">
+              <dt>Your note</dt>
+              <dd dir="auto">{decisionNote}</dd>
+            </div>
           {/if}
           {#if result !== undefined}
-            <div class="cinder-approval-card__result"><dt>Result</dt><dd>{result}</dd></div>
+            <div class="cinder-approval-card__result">
+              <dt>Result</dt>
+              <dd>{result}</dd>
+            </div>
           {/if}
           {#if command !== undefined}
-            <div class="cinder-approval-card__command"><dt>Command</dt><dd>
-              <CodeBlock
-                code={command}
-                language="shell"
-                languageLabelVisible={false}
-                copyable={false}
-                wrap
-              />
-            </dd></div>
+            <div class="cinder-approval-card__command">
+              <dt>Command</dt>
+              <dd>
+                <CodeBlock
+                  code={command}
+                  language="shell"
+                  languageLabelVisible={false}
+                  copyable={false}
+                  wrap
+                />
+              </dd>
+            </div>
           {/if}
         </dl>
       </div>

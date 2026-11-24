@@ -100,7 +100,7 @@
     busyIndicator={false}
     open={part.streaming || expanded}
     disabled={part.streaming}
-    variant="flat"
+    variant="disclosure"
     onToggle={() => handleToggle()}
   >
     <div

@@ -123,7 +123,12 @@
       {/if}
       {#if detail}
         <div class="cinder-error-state-details">
-          <DisclosureTrigger open={detailOpen} controls={detailId} class="cinder-error-state-details-summary" onclick={() => (detailOpen = !detailOpen)}>{detailsLabel}</DisclosureTrigger>
+          <DisclosureTrigger
+            open={detailOpen}
+            controls={detailId}
+            class="cinder-error-state-details-summary"
+            onclick={() => (detailOpen = !detailOpen)}>{detailsLabel}</DisclosureTrigger
+          >
           <p id={detailId} class="cinder-error-state-detail" hidden={!detailOpen}>{detail}</p>
         </div>
       {/if}
@@ -188,7 +193,12 @@
       {/if}
       {#if detail}
         <div class="cinder-error-state-details">
-          <DisclosureTrigger open={detailOpen} controls={detailId} class="cinder-error-state-details-summary" onclick={() => (detailOpen = !detailOpen)}>{detailsLabel}</DisclosureTrigger>
+          <DisclosureTrigger
+            open={detailOpen}
+            controls={detailId}
+            class="cinder-error-state-details-summary"
+            onclick={() => (detailOpen = !detailOpen)}>{detailsLabel}</DisclosureTrigger
+          >
           <p id={detailId} class="cinder-error-state-detail" hidden={!detailOpen}>{detail}</p>
         </div>
       {/if}

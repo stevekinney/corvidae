@@ -200,7 +200,9 @@
     <Button variant="secondary" size="sm" onclick={() => void copySnapshot()}
       >{copiedText !== undefined && copiedText === snapshotText ? 'Copied' : 'Copy'}</Button
     >
-    <Button variant="secondary" size="sm" onclick={() => inspection.downloadExport()}>Download</Button>
+    <Button variant="secondary" size="sm" onclick={() => inspection.downloadExport()}
+      >Download</Button
+    >
     <Button variant="primary" size="sm" onclick={() => inspection.closeSnapshot()}>Close</Button>
   {/snippet}
 </Modal>
