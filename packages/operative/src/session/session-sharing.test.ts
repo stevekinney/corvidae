@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 
 import {
   SESSION_READ_GRANTS_METADATA_KEY,
-  sessionReadGrantHistoryOf,
   sessionHasReadGrant,
+  sessionReadGrantHistoryOf,
   sessionReadGrantOf,
   sessionWasReadGrantedTo,
   withSessionReadGrant,
@@ -11,14 +11,17 @@ import {
   withSessionReadRevocation,
 } from './session-sharing.ts';
 
-const initial = withSessionReadGrant({}, {
-  owner: 'workspace-a:bob',
-  workspaceId: 'workspace-a',
-  actorId: 'bob',
-  sessionIncarnation: 'session-a',
-  grantedBy: 'workspace-a:alice',
-  grantedAt: '2026-11-23T00:00:00.000Z',
-});
+const initial = withSessionReadGrant(
+  {},
+  {
+    owner: 'workspace-a:bob',
+    workspaceId: 'workspace-a',
+    actorId: 'bob',
+    sessionIncarnation: 'session-a',
+    grantedBy: 'workspace-a:alice',
+    grantedAt: '2026-11-23T00:00:00.000Z',
+  },
+);
 
 test('read grants are explicit and a revocation retains former-reader evidence', () => {
   expect(sessionHasReadGrant(initial, 'workspace-a:bob')).toBe(true);

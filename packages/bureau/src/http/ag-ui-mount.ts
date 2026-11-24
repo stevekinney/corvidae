@@ -399,7 +399,10 @@ export function createAgUiMount(
   }
 
   /** A distinct, non-streaming text projection for an active explicit reader grant. */
-  async function readSharedThreadMessages(threadId: string, principal: Principal): Promise<Response> {
+  async function readSharedThreadMessages(
+    threadId: string,
+    principal: Principal,
+  ): Promise<Response> {
     const loaded = ownedSession(await bureau.contexts.get(threadId));
     const reader = ownerOfPrincipal(principal);
     const grant =
@@ -416,7 +419,10 @@ export function createAgUiMount(
       authority !== undefined &&
       (await authority(loaded!.owner));
     if (!active) return notFound('thread', threadId);
-    return json({ threadId, messages: sharedSnapshotMessages(loaded!.session.conversationHistory) }, 200);
+    return json(
+      { threadId, messages: sharedSnapshotMessages(loaded!.session.conversationHistory) },
+      200,
+    );
   }
 
   async function attachByThread(

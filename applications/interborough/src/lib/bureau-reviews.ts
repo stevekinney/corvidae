@@ -43,9 +43,12 @@ export function reviewWithSource<Review extends ListedReview>(review: Review): R
 type Options = { readonly signal?: AbortSignal };
 
 /** A durable, owner-only request to restore a former chat reader. */
-export type ChatAccessRequest = BureauOutput<'bureau.contexts.share.requests.list'>['requests'][number];
+export type ChatAccessRequest =
+  BureauOutput<'bureau.contexts.share.requests.list'>['requests'][number];
 
-export async function listChatAccessRequests(options?: Options): Promise<readonly ChatAccessRequest[]> {
+export async function listChatAccessRequests(
+  options?: Options,
+): Promise<readonly ChatAccessRequest[]> {
   return (await bureauClient['bureau.contexts.share.requests.list']({}, options)).requests;
 }
 

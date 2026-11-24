@@ -41,25 +41,29 @@ export {
 } from './session-origin';
 export type { SessionOrigin } from './session-origin';
 export { LOCAL_SESSION_OWNER, SESSION_OWNER_METADATA_KEY, sessionOwnerOf } from './session-owner';
+export { resumeSession } from './session-resume';
+export type { ResumeSessionOptions, ResumeSessionResult } from './session-resume';
 export {
   SESSION_READ_GRANTS_METADATA_KEY,
   SESSION_READ_GRANT_HISTORY_METADATA_KEY,
   SESSION_READ_REQUESTS_METADATA_KEY,
   sessionHasReadGrant,
+  sessionReadGrantHistoryOf,
   sessionReadGrantOf,
   sessionReadGrantsOf,
-  sessionReadGrantHistoryOf,
   sessionReadRequestsOf,
   sessionWasReadGrantedTo,
   withSessionReadGrant,
   withSessionReadGrantAttempt,
-  withSessionReadRevocation,
   withSessionReadRequest,
   withSessionReadRequestResolution,
+  withSessionReadRevocation,
 } from './session-sharing';
-export type { SessionReadGrant, SessionReadGrantEvent, SessionReadRequest } from './session-sharing';
-export { resumeSession } from './session-resume';
-export type { ResumeSessionOptions, ResumeSessionResult } from './session-resume';
+export type {
+  SessionReadGrant,
+  SessionReadGrantEvent,
+  SessionReadRequest,
+} from './session-sharing';
 export {
   SESSION_TITLE_METADATA_KEY,
   SESSION_TITLE_OVERRIDE_LIMIT,
