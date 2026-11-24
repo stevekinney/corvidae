@@ -27,13 +27,7 @@
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
-  import {
-    Check,
-    Dropdown,
-    DropdownTrigger,
-    DropdownMenu,
-    DropdownItem,
-  } from '@lostgradient/cinder';
+  import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@lostgradient/cinder';
 
   let {
     id,
@@ -73,9 +67,6 @@
       >
         <option.icon class="cinder-icon-sm" />
         <span class="dropdown-item-label">{option.label}</span>
-        {#if isActive}
-          <Check class="cinder-icon-sm dropdown-item-check" />
-        {/if}
       </DropdownItem>
     {/each}
   </DropdownMenu>
@@ -131,11 +122,5 @@
 
   .dropdown-item-label {
     flex: 1;
-  }
-
-  :global(.dropdown-item-check) {
-    color: var(--cinder-accent-text);
-    flex-shrink: 0;
-    margin-inline-start: auto;
   }
 </style>

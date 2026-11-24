@@ -183,6 +183,14 @@ describe('MarkdownEditor toolbar layout CSS ownership', () => {
     expect(source).not.toContain('aria-checked={isActive}');
   });
 
+  it("leaves the active block type's check mark to DropdownItem (COR-2664)", async () => {
+    const source = await Bun.file(toolbarDropdownPath).text();
+
+    // DropdownItem draws the mark for a checked radio item; a second one here would show two.
+    expect(source).not.toContain('dropdown-item-check');
+    expect(source).not.toMatch(/\bCheck\b/);
+  });
+
   it('does not depend on a consumer-global prose class for the rich editor surface', async () => {
     const markdownEditorSource = stripCssComments(await Bun.file(markdownEditorPath).text());
     const classAttributes = [...markdownEditorSource.matchAll(/class="([^"]*)"/g)].map(

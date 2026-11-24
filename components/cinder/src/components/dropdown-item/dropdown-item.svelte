@@ -8,6 +8,7 @@
 </script>
 
 <script lang="ts">
+  import Check from '@lucide/svelte/icons/check';
   import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
   import type { DropdownItemProps } from './dropdown-item.types.ts';
@@ -153,9 +154,11 @@
     rest as Omit<HTMLButtonAttributes, 'class' | 'type' | 'disabled' | 'onclick'>,
   );
   const buttonType = $derived((rest as { type?: HTMLButtonAttributes['type'] }).type ?? 'button');
-  const ariaChecked = $derived(
-    itemRole === 'menuitemcheckbox' || itemRole === 'menuitemradio' ? checked : undefined,
-  );
+  // A radio or checkbox item draws its mark in a slot every such item keeps, checked or not, so
+  // the labels of a group start at one edge (COR-2664). The mark is decoration: `aria-checked`
+  // carries the state.
+  const checkable = $derived(itemRole === 'menuitemcheckbox' || itemRole === 'menuitemradio');
+  const ariaChecked = $derived(checkable ? checked : undefined);
 </script>
 
 <!--
@@ -163,9 +166,20 @@
   cannot override the menu role, tabindex (the parent DropdownMenu owns the roving tabindex), aria-disabled,
   or the click handler — overriding any of those would break menu semantics.
 -->
+{#snippet checkMark()}
+  {#if checkable}
+    <span class="cinder-dropdown-item__check" aria-hidden="true">
+      {#if checked}
+        <Check aria-hidden="true" />
+      {/if}
+    </span>
+  {/if}
+{/snippet}
+
 {#snippet content()}
   {#if reasonText}
     <span id={labelId} class="cinder-dropdown-item__label">
+      {@render checkMark()}
       {#if children}
         {@render children()}
       {/if}
@@ -173,8 +187,11 @@
     <span id={reasonId} class="cinder-dropdown-item__reason" {@attach alignReason}>
       {reasonText}
     </span>
-  {:else if children}
-    {@render children()}
+  {:else}
+    {@render checkMark()}
+    {#if children}
+      {@render children()}
+    {/if}
   {/if}
 {/snippet}
 
