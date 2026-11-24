@@ -202,6 +202,10 @@ describe('isChatTurnState', () => {
   });
 
   test('rejects a value that is not a turn state', () => {
+    const inheritedExplanation = Object.create({
+      href: '/runs/run-7#failure-explanation',
+      label: 'Why it failed',
+    });
     for (const value of [
       undefined,
       null,
@@ -216,6 +220,7 @@ describe('isChatTurnState', () => {
       { kind: 'reconnecting', attempt: 1, attempts: 5, nextTryIn: 3, wait: 'soon' },
       { kind: 'failed', cause: 'Timed out.', explanationLink: { href: 7, label: 'Why it failed' } },
       { kind: 'failed', cause: 'Timed out.', explanationLink: { href: '/runs/run-7', label: 7 } },
+      { kind: 'failed', cause: 'Timed out.', explanationLink: inheritedExplanation },
     ]) {
       expect(isChatTurnState(value)).toBe(false);
     }

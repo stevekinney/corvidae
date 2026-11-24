@@ -1065,7 +1065,11 @@
         semantic="note"
         class="chat-turn-callout chat-turn-alert"
         title={withoutAnswer ? turnWords.failedBeforeAnswer : turnWords.incomplete}
-        {...turn.explanationLink !== undefined || onRetryTurn ? { action: failedTurnAction } : {}}
+        {...turn.explanationLink !== undefined
+          ? { action: failedTurnAction }
+          : onRetryTurn
+            ? { action: retryTurnAction }
+            : {}}
       >
         {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
         <p class="chat-turn-text chat-turn-failure-body" dir="auto">
