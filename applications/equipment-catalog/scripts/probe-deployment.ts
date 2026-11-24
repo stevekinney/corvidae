@@ -94,6 +94,7 @@ for (const role of ['reader', 'editor'] as const) {
       const before = await lookup();
       const next = `Probe ${crypto.randomUUID()}`;
       let denied = false;
+      let failure: unknown;
       try {
         try {
           const result = await client.callTool({
@@ -110,16 +111,18 @@ for (const role of ['reader', 'editor'] as const) {
         const after = await lookup();
         if (role === 'reader' ? !denied || after !== before : denied || after !== next)
           throw new Error(`${role} authorization assertion failed`);
-      } finally {
-        if (role === 'editor') {
-          const restored = await client.callTool({
-            name: 'equipment.rename',
-            arguments: { assetId: 'CAM-7', name: before },
-          });
-          if (restored.isError || (await lookup()) !== before)
-            throw new Error('Could not restore the original equipment name');
-        }
+      } catch (error) {
+        failure = error;
       }
+      if (role === 'editor') {
+        const restored = await client.callTool({
+          name: 'equipment.rename',
+          arguments: { assetId: 'CAM-7', name: before },
+        });
+        if (restored.isError || (await lookup()) !== before)
+          throw new Error('Could not restore the original equipment name');
+      }
+      if (failure) throw failure;
       console.log(
         JSON.stringify({
           resource: resource.href,

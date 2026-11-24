@@ -1,5 +1,5 @@
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
-import { createFixture } from '../../equipment-catalog/src/fixture.ts';
+import { createFixture } from '@lostgradient/equipment-fixture';
 
 const fixture = createFixture('/mcp');
 const handler = await createToolboxMcpHandler(fixture.toolbox, {
@@ -15,7 +15,7 @@ const handler = await createToolboxMcpHandler(fixture.toolbox, {
     verifyAccessToken: fixture.oauth.verifyAccessToken,
     resolvePrincipal: fixture.resolvePrincipal,
   },
-  requestContext: (principal) => fixture.requestContext(principal.principal),
+  requestContext: (_principal, grant) => fixture.requestContext(grant.subject),
 });
 const server = Bun.serve({
   hostname: '0.0.0.0',

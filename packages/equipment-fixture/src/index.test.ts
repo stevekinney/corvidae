@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { fixtureScopes } from './fixture.ts';
+import { fixtureScopes } from './index.ts';
 
 test('the synthetic role allowlist grants only each subject’s scopes', () => {
   expect(fixtureScopes('reader', 'reader', 'editor')).toEqual(['equipment:read']);

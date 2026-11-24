@@ -1,5 +1,3 @@
-import { principalFromApiKey, type Principal } from '@lostgradient/backchannel';
-import { operationsFromToolbox } from '@lostgradient/backchannel-armorer';
 import { createBrowserSignIn, oidc } from '@lostgradient/credentials/browser-sign-in';
 import { hostedOAuth, OAuthStore } from '@lostgradient/mcp/oauth';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
@@ -7,7 +5,7 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 function required(name: string) {
-  const value = process.env[name];
+  const value = Object.hasOwn(process.env, name) ? process.env[name] : undefined;
   if (!value) throw new Error(`Missing ${name}`);
   return value;
 }
@@ -64,16 +62,10 @@ export function createFixture(resourcePath: string) {
   });
   const resolvePrincipal = async (grant: { subject: string; tenant?: string }) => {
     const scopes = grant.tenant === 'equipment' ? role(grant.subject) : null;
-    return scopes
-      ? {
-          delegableScopes: scopes,
-          principal: principalFromApiKey({ subject: grant.subject, scopes }),
-        }
-      : null;
+    return scopes ? { delegableScopes: scopes } : null;
   };
   const key = 'fixture:equipment:name';
   const input = z.object({ assetId: z.literal('CAM-7') });
-  const output = input.extend({ name: z.string() });
   const read = async () =>
     new TextDecoder().decode((await storage.get(key)) ?? new TextEncoder().encode('Camera'));
   const lookup = createTool({
@@ -98,40 +90,17 @@ export function createFixture(resourcePath: string) {
     },
   });
   const toolbox = createToolbox([lookup, rename]);
-  const requestContext = (principal: Principal) => {
-    if (!('subject' in principal) || !principal.subject) throw new Error('Missing fixture subject');
+  const requestContext = (subject: string) => {
     return {
       authority: {
-        principalId: principal.subject,
+        principalId: subject,
         tenantId: 'equipment',
-        ownerId: principal.subject,
+        ownerId: subject,
         capabilities: [],
         authorizationRevision: '1',
       },
     };
   };
-  const operations = operationsFromToolbox(
-    toolbox,
-    [
-      {
-        tool: lookup.id,
-        name: 'equipment.lookup',
-        scopes: ['equipment:read'],
-        outputSchema: output,
-        mcpExposable: true,
-        behavior: { kind: 'read', key: ['assetId'] },
-      },
-      {
-        tool: rename.id,
-        name: 'equipment.rename',
-        scopes: ['equipment:write'],
-        outputSchema: output,
-        mcpExposable: true,
-        behavior: { kind: 'command', invalidates: ['equipment.lookup'] },
-      },
-    ],
-    { requestContext },
-  );
   return {
     origin,
     storage,
@@ -141,7 +110,6 @@ export function createFixture(resourcePath: string) {
     toolbox,
     lookup,
     rename,
-    operations,
     requestContext,
   };
 }

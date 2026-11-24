@@ -1,9 +1,12 @@
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { operationsFromToolbox } from '@lostgradient/backchannel-armorer';
 import { mountCatalog } from '@lostgradient/backchannel-mcp/velveteen';
+import { createFixture } from '@lostgradient/equipment-fixture';
 import { buildProduction } from '@lostgradient/velveteen/build';
 import { readProductionGeneration } from '@lostgradient/velveteen/build/publication';
 import { createApplication } from '@lostgradient/velveteen/server';
 import { join } from 'node:path';
-import { createFixture } from './fixture.ts';
+import { z } from 'zod';
 
 const root = import.meta.dir + '/..';
 const outputDirectory = join(root, '.velveteen/production');
@@ -16,11 +19,40 @@ if (process.argv.includes('--build')) {
   });
 } else {
   const fixture = createFixture('/api/mcp');
+  const output = z.object({ assetId: z.literal('CAM-7'), name: z.string() });
+  const operations = operationsFromToolbox(
+    fixture.toolbox,
+    [
+      {
+        tool: fixture.lookup.id,
+        name: 'equipment.lookup',
+        scopes: ['equipment:read'],
+        outputSchema: output,
+        mcpExposable: true,
+        behavior: { kind: 'read', key: ['assetId'] },
+      },
+      {
+        tool: fixture.rename.id,
+        name: 'equipment.rename',
+        scopes: ['equipment:write'],
+        outputSchema: output,
+        mcpExposable: true,
+        behavior: { kind: 'command', invalidates: ['equipment.lookup'] },
+      },
+    ],
+    {
+      requestContext: (principal) => {
+        if (!('subject' in principal) || !principal.subject)
+          throw new Error('Missing fixture subject');
+        return fixture.requestContext(principal.subject);
+      },
+    },
+  );
   const generation = await readProductionGeneration(outputDirectory);
   const mounts = mountCatalog({
     basePath: '/api',
     publicOrigin: fixture.origin,
-    operations: fixture.operations,
+    operations,
     host: {},
     authenticateApi: async () => new Response(null, { status: 401 }),
     mcp: {
@@ -28,7 +60,18 @@ if (process.argv.includes('--build')) {
       authorization: {
         issuer: fixture.origin,
         verifyAccessToken: fixture.oauth.verifyAccessToken,
-        resolvePrincipal: fixture.resolvePrincipal,
+        resolvePrincipal: async (grant) => {
+          const authority = await fixture.resolvePrincipal(grant);
+          return (
+            authority && {
+              ...authority,
+              principal: principalFromApiKey({
+                subject: grant.subject,
+                scopes: authority.delegableScopes,
+              }),
+            }
+          );
+        },
         handle: fixture.oauth.handle,
       },
     },
