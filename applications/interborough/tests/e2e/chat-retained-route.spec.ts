@@ -6,8 +6,9 @@
  */
 import type { Page } from '@playwright/test';
 
-import { conversation, newThreadId, runToEnd } from './chat-support.ts';
+import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
+import { threadMessages } from './task-support.ts';
 
 test.use({ viewport: { width: 1280, height: 900 } });
 
@@ -21,6 +22,11 @@ function recordAttaches(page: Page, threadId: string): string[] {
     }
   });
   return attaches;
+}
+
+/** The demo provider writes this durable marker when it accepted and completed a refund. */
+function refundRan(messages: unknown[]): boolean {
+  return JSON.stringify(messages).includes('provider-pending');
 }
 
 test('a chat left while its run waits, and returned to, attaches once and carries on', async ({
@@ -49,10 +55,12 @@ test('a chat left while its run waits, and returned to, attaches once and carrie
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
   await expect(approval).toBeVisible();
-  await expect(approval).toContainText('Refund order order-1001 for $42.00?');
+  await expect(approval.getByRole('heading', { level: 4 })).toHaveText(
+    'Refund order order-1001 for 4200 minor units (USD)?',
+  );
   expect(attaches).toHaveLength(1);
 
   // Deciding it on the returned page continues the run.
   await approval.getByRole('button', { name: 'Approve' }).click();
-  await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
+  await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
 });
