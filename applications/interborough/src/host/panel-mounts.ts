@@ -283,6 +283,15 @@ export type PanelMountOptions = {
   readonly build?: PanelPageBuilder;
   /** The timer that bounds a build, the platform's unless a test fires it. */
   readonly clock?: PanelBuildClock;
+  /** Receives each panel's outcome and elapsed time for startup qualification. */
+  readonly observe?: (event: {
+    plugin: string;
+    panel: string;
+    outcome: 'ready' | 'failed';
+    milliseconds: number;
+    built: boolean;
+    prebuilt: boolean;
+  }) => void;
 };
 
 /**
@@ -312,7 +321,10 @@ export async function panelMounts(
   const versions = { ...panelBuildVersions(dependencies), buildCode: panelBuildCodeDigest() };
   const built = await Promise.all(
     contributed.map(async ({ plugin, app }) => {
+      const started = performance.now();
       let reason: string | undefined;
+      let builtPage = false;
+      let usedPrebuilt = false;
       // What a build reads of the plugin's panel, copied before the first await: the object is the
       // plugin's, and a build that outlasts a change to it must still build what was contributed.
       const { name, uri, title, entry } = { ...app, entry: app.entry.href };
@@ -323,23 +335,41 @@ export async function panelMounts(
             ? {}
             : await prebuiltPage(prebuiltDirectory, { name, uri });
         reason = prebuilt.reason;
+        usedPrebuilt = prebuilt.page !== undefined;
         const page =
           prebuilt.page ??
           // A build that does not finish in time is a failure of this panel, and the host starts.
           (await withPanelBuildDeadline(
-            cache.serve(`${plugin}/${name}`, { entry, title, styles, ...versions }, () =>
-              build({
+            cache.serve(`${plugin}/${name}`, { entry, title, styles, ...versions }, () => {
+              builtPage = true;
+              return build({
                 entry,
                 title,
                 styles,
                 ...(dependencies === undefined ? {} : { dependencies }),
-              }),
-            ),
+              });
+            }),
             title,
             options.clock,
           ));
+        options.observe?.({
+          plugin,
+          panel: name,
+          outcome: 'ready',
+          milliseconds: performance.now() - started,
+          built: builtPage,
+          prebuilt: usedPrebuilt,
+        });
         return { plugin, app, page, ...(reason === undefined ? {} : { reason }) };
       } catch (error) {
+        options.observe?.({
+          plugin,
+          panel: name,
+          outcome: 'failed',
+          milliseconds: performance.now() - started,
+          built: builtPage,
+          prebuilt: usedPrebuilt,
+        });
         const message = failureMessage(error);
         return {
           plugin,

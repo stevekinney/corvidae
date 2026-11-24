@@ -33,6 +33,7 @@ import {
   UNKNOWN_COMMIT,
   type BuildInfo,
 } from '../src/host/build-info.ts';
+import { processEnvironment } from '../src/host/environment-configuration.ts';
 import {
   assertCleanBuild,
   browserBuildOptions,
@@ -217,7 +218,14 @@ export async function buildApplication(
     readonly ensureGenerated?: () => void;
   } = {},
 ): Promise<ApplicationBuild> {
-  (options.ensureGenerated ?? ensureCinderGenerated)();
+  const generationStarted = performance.now();
+  const generated = (options.ensureGenerated ?? ensureCinderGenerated)();
+  if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+    console.error(
+      `STARTUP ${JSON.stringify({ stage: 'cinder', milliseconds: performance.now() - generationStarted, generated })}`,
+    );
+  }
+  const bundleStarted = performance.now();
   const development = options.development ?? false;
   const directory =
     options.outdir === undefined
@@ -260,6 +268,11 @@ export async function buildApplication(
     await writeFile(join(staging, BUILD_INFO_FILE), `${JSON.stringify(source)}\n`);
     if (development) await retainPreviousAssets(staging, directory);
     await replaceDirectory(staging, directory);
+    if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+      console.error(
+        `STARTUP ${JSON.stringify({ stage: 'ui-bundle', milliseconds: performance.now() - bundleStarted })}`,
+      );
+    }
     return { directory, files: [...files, BUILD_INFO_FILE].toSorted(), metafile };
   } finally {
     await rm(staging, { recursive: true, force: true });
