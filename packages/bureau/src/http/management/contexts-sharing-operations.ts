@@ -593,7 +593,7 @@ export const contextsShareStatusOperation = defineOperation<
     )
       throw missing(input.contextId);
     return {
-      status: sessionReadRequestsOf(loaded.metadata).some(
+      status: sessionReadRequestsOf(current.metadata).some(
         (request) => request.owner === workspace.owner && request.resolvedAt === undefined,
       )
         ? ('pending' as const)
