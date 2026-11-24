@@ -715,7 +715,7 @@
     gap: var(--cinder-space-1);
   }
 
-  .cinder-approval-card__input-toggle {
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger) {
     appearance: none;
     display: flex;
     align-items: center;
@@ -745,19 +745,20 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  .cinder-approval-card__input-toggle svg {
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger) svg {
     flex: none;
     align-self: center;
     margin-block-start: 1px;
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .cinder-approval-card__input-toggle svg[data-cinder-open] {
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger) svg[data-cinder-open] {
     transform: rotate(90deg);
   }
 
   /* A collapsed disclosure points toward the inline end, so RTL mirrors it. */
-  .cinder-approval-card__input-toggle:dir(rtl) svg:not([data-cinder-open]),
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger):dir(rtl)
+    svg:not([data-cinder-open]),
   .cinder-approval-card:has(
       :is(
         .cinder-approval-card__title,
@@ -765,10 +766,16 @@
         .cinder-approval-card__row-question
       ):dir(rtl)
     )
-    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    :is(
+      .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger),
+      .cinder-approval-card__said-toggle
+    )
     svg:not([data-cinder-open]),
   .cinder-approval-card[dir='rtl']
-    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    :is(
+      .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger),
+      .cinder-approval-card__said-toggle
+    )
     svg:not([data-cinder-open]) {
     transform: scaleX(-1);
   }

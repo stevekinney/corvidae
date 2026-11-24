@@ -3797,6 +3797,15 @@
     min-inline-size: 0;
   }
 
+  /* A source marker reaches 10px below its 24px face on touch. The ordinary narrow row gap is
+   * 8px, leaving a two-pixel overlap with the following step disclosure's 44px target. Reserve
+   * the next spacing token only at this adjacent source-to-step boundary so either control keeps
+   * its own upper and lower tap lane. */
+  :global(.chat-message-wrapper:has(.chat-message-sources, .chat-message-line-sources))
+    + .chat-tool-call-group {
+    margin-block-start: var(--cinder-space-1);
+  }
+
   /* The answer under a collapsed step row stands as far from the row's text as a message's own
    * text stands from the time under it, measured between the letters (R06, owner decision of
    * 2026-11-13), at every width. Between the baseline of the message's last line and the capitals
