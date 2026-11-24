@@ -26,6 +26,9 @@ import type { AgentDefinitions } from './agent-catalog';
 import { BureauShuttingDownError, ContextArchivedError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import {
+  CONTINUATION_PROCESS_METADATA_KEY,
+  continuationAdmissionFenceKey,
+  continuationRow,
   judgeResumableTurn,
   SessionResumeRefusedError,
   startedContinuation,
@@ -105,12 +108,13 @@ function agentThat(second: 'waits' | 'fails' | 'finishes' | 'continuation-waits'
 async function openBureau(
   agent: ReturnType<typeof createAgent>,
   storage: Storage = new MemoryStorage(),
+  durable = true,
 ) {
   const bureau = await createBureau<AgentDefinitions>({
     models: { catalog: createVendorCatalog().descriptors },
     agents: { agent },
     storage,
-    durable: true,
+    durable,
   });
   cleanups.push(() => bureau.dispose());
   return bureau;
@@ -407,7 +411,7 @@ describe('a resumed turn', () => {
     await reachedPreparedShell.promise;
     const marked = (await first.contexts.get(run.contextId))!;
     const marker = getOwn(marked.conversationHistory.messages, `${run.id}:continuation`)!;
-    const processId = marker.metadata?.['bureau:continuationProcess'];
+    const processId = marker.metadata?.[CONTINUATION_PROCESS_METADATA_KEY];
     expect(typeof processId).toBe('string');
     await textValueStore(fixture.storage).delete(processLeaseKey(processId as string));
 
@@ -428,6 +432,119 @@ describe('a resumed turn', () => {
       ],
     ).toBe(recovered.runId);
     await untilEnded(second, run.contextId, recovered.runId);
+  });
+
+  it('retires a pre-authorized local continuation before a dead owner can create it', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const first = await openBureau(agentThat('waits'), fixture.storage, false);
+    const second = await openBureau(agentThat('waits'), fixture.storage, false);
+    const { run } = await stoppedTurn(first);
+    const registry = first.internals.taskRegistry as {
+      recordAdmission: typeof first.internals.taskRegistry.recordAdmission;
+    };
+    const recordAdmission = registry.recordAdmission.bind(registry);
+    const reachedAdmission = Promise.withResolvers<void>();
+    const releaseAdmission = Promise.withResolvers<void>();
+    Object.defineProperty(registry, 'recordAdmission', {
+      configurable: true,
+      value: async (...args: Parameters<typeof registry.recordAdmission>) => {
+        const admitted = await recordAdmission(...args);
+        reachedAdmission.resolve();
+        await releaseAdmission.promise;
+        return admitted;
+      },
+    });
+
+    const stale = resume(first, run.contextId, run.id);
+    await reachedAdmission.promise;
+    const marked = (await first.contexts.get(run.contextId))!;
+    const processId = getOwn(marked.conversationHistory.messages, `${run.id}:continuation`)
+      ?.metadata?.[CONTINUATION_PROCESS_METADATA_KEY];
+    expect(typeof processId).toBe('string');
+    await textValueStore(fixture.storage).delete(processLeaseKey(processId as string));
+
+    const recovered = await resume(second, run.contextId, run.id, 'resume-after-local-owner-loss');
+    releaseAdmission.resolve();
+    const rejected = await stale.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).toContain('was retired');
+    await untilEnded(second, run.contextId, recovered.runId);
+  });
+
+  it('replays an authorized local continuation after its owner dies before registration', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const first = await openBureau(agentThat('waits'), fixture.storage, false);
+    const second = await openBureau(agentThat('waits'), fixture.storage, false);
+    const { run } = await stoppedTurn(first);
+    const continuationRunId = 'authorized-local-continuation';
+    const sessions = first.internals.sessionStore!;
+    const before = (await sessions.load(run.contextId))!;
+    await first.internals.taskRegistry.recordAdmission({
+      taskId: continuationRunId,
+      contextId: run.contextId,
+      incarnation: before.incarnation,
+      agentName: 'agent',
+      owner: ALICE,
+      origin: { kind: 'chat' },
+      message: undefined,
+    });
+    const admission = (await first.internals.taskRegistry.record(continuationRunId))!;
+    expect(typeof admission.ownerProcess).toBe('string');
+    await sessions.update(run.contextId, (current) => {
+      if (current === undefined) return undefined;
+      const marker = continuationRow(
+        run.id,
+        'resume-after-local-crash',
+        ALICE,
+        continuationRunId,
+        new Date().toISOString(),
+        admission.ownerProcess,
+      );
+      return {
+        ...current,
+        metadata: { ...current.metadata, lastRunId: continuationRunId },
+        conversationHistory: {
+          ...current.conversationHistory,
+          ids: [...current.conversationHistory.ids, marker.id],
+          messages: {
+            ...current.conversationHistory.messages,
+            [marker.id]: { ...marker, position: current.conversationHistory.ids.length },
+          },
+        },
+      };
+    });
+    await textValueStore(fixture.storage).set(
+      continuationAdmissionFenceKey(continuationRunId),
+      JSON.stringify({ state: 'authorized', runId: continuationRunId }),
+    );
+    await textValueStore(fixture.storage).delete(processLeaseKey(admission.ownerProcess!));
+
+    expect(
+      await second.internals.taskRegistry.settleAbandoned(
+        continuationRunId,
+        admission.ownerProcess!,
+        { key: processLeaseKey(admission.ownerProcess!), expected: null },
+        {
+          at: new Date().toISOString(),
+          status: 'failed',
+          finishReason: TASK_OWNER_LOST_FINISH_REASON,
+          message: 'The process that was running this task stopped before it finished.',
+        },
+      ),
+    ).toBe('written');
+    expect(await resume(second, run.contextId, run.id, 'resume-after-local-crash')).toEqual({
+      contextId: run.contextId,
+      runId: continuationRunId,
+      resumedRunId: run.id,
+    });
+    expect((await second.internals.taskRegistry.record(continuationRunId))?.settled).toMatchObject({
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+    });
   });
 });
 

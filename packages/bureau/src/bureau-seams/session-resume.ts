@@ -314,6 +314,14 @@ export function createSessionResume<D extends AgentDefinitions>(
   async function assertContinuationStarted(continuationRunId: string): Promise<void> {
     if (runtime.durable === undefined) {
       if (core.store.getRun(continuationRunId) !== undefined) return;
+      if (
+        runtime.kv !== undefined &&
+        isAuthorizedContinuationReceipt(
+          await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId)),
+          continuationRunId,
+        )
+      )
+        return;
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
     if (runtime.kv === undefined) {

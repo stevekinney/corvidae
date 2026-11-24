@@ -307,6 +307,45 @@ export function createRunCreation<D extends AgentDefinitions>(
     }
   };
 
+  const assertRunCreationStillOpen = (sessionId: string): void => {
+    core.assertRunAdmissionOpen('run');
+    if (inFlightSessionDeletions.has(sessionId)) {
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
+  };
+
+  /** Resolves the session-bound agent before a run has claimed any durable state. */
+  async function resolveSessionStart(
+    sessionId: string,
+    session: AgentSession | undefined,
+    request: CreateRunRequest & SessionTaskFields,
+    owner: string,
+    runId: string,
+  ): Promise<{ agentName: string; sessionAgent: SessionAgentRun; triedRun: boolean }> {
+    if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
+    const agentName = resolveRunAgentName(sessionId, session, request.agentName);
+    const triedRun = isTryAgentName(agentName);
+    if (triedRun) peers.assertTriedAgentBelongsTo(agentName, sessionId);
+    const resolution = await runtime.resolveSessionAgentRun(
+      agentName,
+      runId,
+      owner,
+      continuationRecord(sessionId, session, request),
+      { sessionId, metadata: session?.metadata },
+    );
+    if (resolution.status === 'missing-agent') throw peers.missingAgentError(agentName);
+    if (resolution.status === 'not-durable-capable') {
+      throw new BureauError(
+        `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,
+        'UNSUPPORTED_CAPABILITY',
+      );
+    }
+    if (resolution.status !== 'resolved') throw unresolvedStart(agentName, resolution);
+    return { agentName, sessionAgent: resolution.run, triedRun };
+  }
+
   async function createRunFromRequest(
     request: CreateRunRequest & SessionTaskFields,
   ): Promise<CreatedRunSummary> {
@@ -335,17 +374,13 @@ export function createRunCreation<D extends AgentDefinitions>(
     const baseConversationHistory = conversation.current;
     rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, session !== undefined);
 
-    // COR-718 — a session belongs to the owner of the run that created it. A
-    // different principal starting a run on it is refused exactly as a session
-    // that does not exist is, so an identifier grants nothing.
-    if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
-      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-    }
-    const agentName = resolveRunAgentName(sessionId, session, request.agentName);
-    // COR-1911 — a tried agent belongs to the one context that was started with it: a name that
-    // is held for another context, or for none, is an agent that does not exist.
-    const triedRun = isTryAgentName(agentName);
-    if (triedRun) peers.assertTriedAgentBelongsTo(agentName, sessionId);
+    const { agentName, sessionAgent, triedRun } = await resolveSessionStart(
+      sessionId,
+      session,
+      request,
+      owner,
+      runId,
+    );
     // COR-1867 — where the task came from, as its record and its run's `origin:<kind>` tag keep
     // it. A chat's identifiers are this start's own, never the caller's.
     const taskOrigin: TaskOrigin = taskOriginOfStart(request.origin, {
@@ -353,27 +388,6 @@ export function createRunCreation<D extends AgentDefinitions>(
       agentName,
       owner,
     });
-    // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
-    // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
-    // answers as any unknown agent does.
-    // COR-2429 — the command id a start carries is the only evidence it gives; whether it may run
-    // on a disabled agent is `admitsRunOnDisabledAgent`'s to decide (`continuationRecord`).
-    const resolution = await runtime.resolveSessionAgentRun(
-      agentName,
-      runId,
-      owner,
-      continuationRecord(sessionId, session, request),
-      { sessionId, metadata: session?.metadata },
-    );
-    if (resolution.status === 'missing-agent') throw peers.missingAgentError(agentName);
-    if (resolution.status === 'not-durable-capable') {
-      throw new BureauError(
-        `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,
-        'UNSUPPORTED_CAPABILITY',
-      );
-    }
-    if (resolution.status !== 'resolved') throw unresolvedStart(agentName, resolution);
-    const sessionAgent: SessionAgentRun = resolution.run;
     // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
     const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
     const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
@@ -826,14 +840,6 @@ export function createRunCreation<D extends AgentDefinitions>(
           admissionFence: request.taskAdmissionFence?.(runId),
         });
         await request.assertTaskAdmissionLive?.(runId);
-        // Durable runs claim this same receipt in their post-prepare `beforeLaunch` fence. An
-        // in-memory run has no such boundary, so it must claim before its local creation starts;
-        // otherwise a peer can retire the saved marker after this read and before the local run
-        // exists. Keep the optional call outside the ordinary path: `await undefined` adds a
-        // microtask to every normal in-memory start.
-        if (runtime.durable === undefined && authorizeTaskAdmission !== undefined) {
-          await authorizeTaskAdmission(runId);
-        }
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
         // failure: its end is logged and its session's input settled.
@@ -842,13 +848,10 @@ export function createRunCreation<D extends AgentDefinitions>(
           runId,
           runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
         );
-        core.assertRunAdmissionOpen('run');
         // COR-1481 — the fence again, now that the session is saved and before the run
         // registers: a deletion that began during the awaits above has already looked
         // for this session's runs and would not find this one.
-        if (inFlightSessionDeletions.has(sessionId)) {
-          throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-        }
+        assertRunCreationStillOpen(sessionId);
         startedRunOptions = {
           generate: runRuntime.generate,
           toolbox: runToolbox,
@@ -911,6 +914,17 @@ export function createRunCreation<D extends AgentDefinitions>(
             ? {}
             : { withTraceContext: request.withTraceContext }),
         };
+        // Durable runs claim this receipt in their post-prepare `beforeLaunch` fence. An in-memory
+        // run has no such boundary, so it claims only after all synchronous preparation succeeded,
+        // immediately before irreversible local creation. Keep the optional call outside the
+        // ordinary path: `await undefined` adds a microtask to every normal in-memory start.
+        if (runtime.durable === undefined && authorizeTaskAdmission !== undefined) {
+          await authorizeTaskAdmission(runId);
+          // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
+          // synchronous fence immediately before local creation, so a shutdown or deletion that
+          // started while the receipt was claimed cannot miss this run.
+          assertRunCreationStillOpen(sessionId);
+        }
         activeRun = createActiveRun(
           startedRunOptions,
           // Route through the durable engine when one was composed (durable
