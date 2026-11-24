@@ -1,4 +1,7 @@
+import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { expect, test } from 'bun:test';
+import type { ConversationHistory } from 'conversationalist';
+import { z } from 'zod';
 import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { waitForCondition } from '../test';
 import {
@@ -33,7 +36,44 @@ const cases = [
   },
   // COR-2296: the answer each actor is asked to regenerate is its context's one reply, named below.
   { operation: 'bureau.contexts.regenerate', input: { commandId: 'private-regenerate' } },
+  // COR-2437: each actor names its context's one run, which wrote a step and then failed.
+  { operation: 'bureau.contexts.discardturn', input: { commandId: 'private-discard' } },
+  // COR-2437: as for a discard; the run failed on `error`, so the owner's turn goes on.
+  { operation: 'bureau.contexts.resumeturn', input: { commandId: 'private-resume' } },
 ] as const;
+
+/** Whether `operation` names its context's one run, a turn that wrote a step and then failed. */
+const namesAFailedTurn = (operation: string): boolean =>
+  operation === 'bureau.contexts.discardturn' || operation === 'bureau.contexts.resumeturn';
+
+/**
+ * A Bureau whose runs call a tool, then fail: a turn with rows, which ended without finishing, so
+ * the owner may discard it.
+ */
+function failingAfterAStep() {
+  return {
+    toolbox: createToolbox([
+      createTool({
+        name: 'noop',
+        description: 'Does nothing',
+        input: z.object({}),
+        execute: async () => 'ok',
+      }),
+    ]) as unknown as Toolbox,
+    generate: async (context: {
+      readonly conversation: { readonly current: ConversationHistory };
+    }) => {
+      const history = context.conversation.current;
+      if (history.messages[history.ids.at(-1) ?? '']?.toolResult !== undefined) {
+        throw new Error('the model failed');
+      }
+      return {
+        content: sentinel,
+        toolCalls: [{ id: `c-${history.ids.length}`, name: 'noop', arguments: {} }],
+      };
+    },
+  };
+}
 
 /** The answer of a context's one-step task: the reply `bureau.contexts.regenerate` replaces. */
 const answerOf = (taskId: string): string => `${taskId}:step:0`;
@@ -43,7 +83,9 @@ for (const row of cases) {
     const opened = await openWorkspacePrivacyBureau(
       row.operation === 'bureau.contexts.input' || row.operation === 'bureau.contexts.retract'
         ? {}
-        : { generate: async () => ({ content: sentinel, toolCalls: [] }) },
+        : namesAFailedTurn(row.operation)
+          ? failingAfterAStep()
+          : { generate: async () => ({ content: sentinel, toolCalls: [] }) },
     );
     try {
       // Every mutation has its own settled context, keeping the authorization comparisons independent.
@@ -56,9 +98,17 @@ for (const row of cases) {
           row.operation !== 'bureau.contexts.retract'
         )
           await waitForCondition(
-            () => opened.bureau.tasks.detail(task.id)?.status === 'completed',
+            () =>
+              opened.bureau.tasks.detail(task.id)?.status ===
+              (namesAFailedTurn(row.operation) ? 'error' : 'completed'),
             'context task finishes',
           );
+        if (namesAFailedTurn(row.operation))
+          await waitForCondition(async () => {
+            const record = await opened.bureau.internals.taskRegistry.record(task.id);
+            const session = await opened.bureau.contexts.get(task.contextId);
+            return record?.settled !== undefined && session?.metadata['lastRunId'] === task.id;
+          }, 'the failed turn is settled and recorded in the chat');
         if (row.operation === 'bureau.contexts.regenerate')
           await waitForCondition(async () => {
             const record = await opened.bureau.internals.taskRegistry.record(task.id);
@@ -93,12 +143,15 @@ for (const row of cases) {
           ...(row.operation === 'bureau.contexts.regenerate'
             ? { messageId: answerOf(task.id) }
             : {}),
+          ...(namesAFailedTurn(row.operation) ? { runId: task.id } : {}),
           contextId: task.contextId,
         });
         witnesses.observeWire(row.operation, actor, result);
         if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
         else if (actor === 'owner') {
           expect(result.body?.error).toBeUndefined();
+          if (row.operation === 'bureau.contexts.resumeturn')
+            expect(result.body?.result?.['resumedRunId']).toBe(task.id);
           if (row.operation === 'bureau.contexts.retract')
             expect(result.body?.result?.['outcome']).toBe('retracted');
           if (row.operation === 'bureau.contexts.forgetgrants')
@@ -113,6 +166,7 @@ for (const row of cases) {
             ...(row.operation === 'bureau.contexts.regenerate'
               ? { messageId: answerOf(task.id) }
               : {}),
+            ...(namesAFailedTurn(row.operation) ? { runId: task.id } : {}),
             contextId: 'unknown-context',
           });
           expect(JSON.stringify(result.body?.error).replaceAll(task.contextId, '<id>')).toBe(

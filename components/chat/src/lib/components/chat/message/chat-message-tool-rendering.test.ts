@@ -1121,20 +1121,25 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe(false);
     });
 
-    test('on a touch screen the summary line and each step row are painted at their text height and reach 44px by a pseudo-element', () => {
+    test('keeps the summary compact and gives every expanded step a real control-height target', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
-      // No painted minimum or padding on any pointer type: the row is its text line height.
-      expect(source).not.toMatch(/\.chat-tool-call-(?:toggle|row)[^}]*min-block-size/s);
-      expect(source).not.toMatch(
-        /@media \(any-pointer: coarse\) \{[^}]*\.chat-tool-call-row\s*\{[^}]*(?:min-block-size|padding-block)/s,
-      );
-      // The 44px hit area is a pseudo-element that takes no layout: the header overhangs both
-      // ways, a step row ends at its edges, and only the last row overhangs, below.
+      // No painted minimum or padding on any pointer type: the row is its text line height. The
+      // shared disclosure trigger supplies a coarse 44px minimum by default, so the timeline
+      // explicitly opts the compact summary back out before its child owns the hit region.
       expect(source).toMatch(
-        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-toggle::before\s*\{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
+        /\.chat-tool-call-heading > :global\(\.chat-tool-call-toggle\)\s*\{[^}]*min-block-size: auto;/s,
       );
       expect(source).toMatch(
-        /\.chat-tool-call-item:last-child > \.chat-tool-call-row::before\s*\{[^}]*inset-block-end: min\(0px,/s,
+        /\.chat-tool-call-row\s*\{[^}]*min-block-size: var\(--cinder-control-height-xs\);/s,
+      );
+      // The compact summary needs an explicit child because generated content outside a button's
+      // border is not reliably hit-tested. Expanded rows use a real control height so adjacent
+      // buttons never compete for the same point.
+      expect(source).toMatch(
+        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-hit-target\s*\{[^}]*position: absolute;[^}]*pointer-events: auto;[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
+      );
+      expect(source).toMatch(
+        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-list\s*\{[^}]*margin-block-start: var\(--cinder-space-4\);/s,
       );
       // A failed step's Retry and Copy error are Cinder Buttons: compact paint, hit-area extension.
       expect(source).not.toMatch(
@@ -1146,9 +1151,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
       const group = /\.chat-tool-call-timeline\s*\{([^}]*)\}/s.exec(source)?.[1] ?? '';
       expect(group).not.toMatch(/\bborder(?:-[a-z-]+)?:|radius/);
-      const rows = /\.chat-tool-call-toggle,\s*\.chat-tool-call-row\s*\{([^}]*)\}/s.exec(
-        source,
-      )?.[1];
+      const rows = /\.chat-tool-call-row\s*\{([^}]*)\}/s.exec(source)?.[1];
       expect(rows).toMatch(/padding:\s*0;/);
       // No hairline above the list or between its steps.
       expect(source).not.toMatch(/\.chat-tool-call-list\s*\{[^}]*border/s);
@@ -1198,7 +1201,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const rows = callRows(container);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Compared recent orders… lookup_order ×20 6s',
+        'Compared recent orders… lookup_order ×20 6.1 s',
       );
       expect(
         container
@@ -1207,7 +1210,7 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe('20');
       // The group still counts every step, and its navigation row still counts every call.
       expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        '20 steps Compared recent orders… lookup_order ×20 6s',
+        '20 steps Compared recent orders… lookup_order ×20 6.1 s',
       );
       expect(
         container

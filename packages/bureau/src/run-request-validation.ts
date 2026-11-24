@@ -1,6 +1,7 @@
 import { type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
+  type AgentSession,
   AgentContractError,
   type AgentInput,
   type SessionInputPayload,
@@ -128,6 +129,23 @@ export type SessionTaskFields = {
   readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
   readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
+   * Internal handoff after the session has durably named this allocated run, before task
+   * admission. A caller which wrote a companion receipt can use this exact identity to undo it
+   * if admission rejects.
+   */
+  readonly onSessionSaved?: ((runId: string, session: AgentSession) => void) | undefined;
+  /** Internal fence which prevents a retired continuation creator from admitting its task. */
+  readonly taskAdmissionFence?: ((runId: string) => string) | undefined;
+  /** Internal continuation-only authorization immediately after durable prepare. */
+  readonly authorizeTaskAdmission?:
+    ((runId: string, kind: 'durable' | 'local') => Promise<void>) | undefined;
+  /** Records that a locally registered continuation may answer duplicate commands. */
+  readonly confirmTaskAdmission?: ((runId: string) => Promise<void>) | undefined;
+  /** Rejects a claimed local continuation before its rollback removes its marker. */
+  readonly rejectTaskAdmission?: ((runId: string) => Promise<boolean>) | undefined;
+  /** Internal continuation-only check after task admission, before constructing a run. */
+  readonly assertTaskAdmissionLive?: ((runId: string) => Promise<void>) | undefined;
+  /**
    * The caller's start signal, bound to the run once its workflow is prepared and before its
    * receipt is recorded: the run executes from that point, so an abort must reach it from there.
    */
@@ -137,6 +155,17 @@ export type SessionTaskFields = {
   /** The caller's tracer binding, which runs the run's generate and tool calls under the parent. */
   readonly withTraceContext?:
     (<T>(parent: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
+  /**
+   * COR-2437 — judges the session inside the atomic update that starts the run, and throws to
+   * refuse the start, so a run that continues a stopped turn starts only on the history it was
+   * judged on: a message, a discard or another continuation that lands first wins.
+   */
+  readonly startGuard?: ((session: AgentSession | undefined) => void) | undefined;
+  /**
+   * Server-owned rows that need the allocated run id in the same atomic session update that starts
+   * it. This is intentionally internal to Bureau's run creation paths, not caller input.
+   */
+  readonly appendMessagesForRun?: ((runId: string) => ReadonlyArray<Message>) | undefined;
 };
 
 /** The run-creation fields a task input becomes: a message, its parts, or rows to append. */

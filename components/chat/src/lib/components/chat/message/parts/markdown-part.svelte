@@ -37,17 +37,21 @@
     {markdownNode}
   />
 {:else}
-  {#each claimSources as claim, index (claim.id)}
+  {#each claimSources as claim (claim.id)}
     <div class="chat-markdown-claim" data-chat-cited-claim={claim.id}>
       <MessageContent content={claim.markdown} class="chat-markdown-claim-content" {markdownNode} />
       {#if claim.sources.length > 0}
+        {@const markerSource = claim.sources[0]!}
         <Citation
           sources={claim.sources}
           label={copy.sources}
+          markerLabel={markerSource.label}
           labels={{ noLink: copy.internalDocument, unsafeLink: copy.unsafeLink }}
           closeOnSourceRemoval
         >
-          <span class="chat-claim-marker" data-number={index + 1} aria-hidden="true"></span>
+          <span class="chat-claim-marker" title={markerSource.label}>
+            {markerSource.label}
+          </span>
         </Citation>
       {/if}
     </div>
@@ -69,6 +73,27 @@
   }
 
   .chat-claim-marker::before {
-    content: '[' attr(data-number) ']';
+    content: '[';
+  }
+
+  .chat-claim-marker::after {
+    content: ']';
+  }
+
+  .chat-claim-marker {
+    display: inline-block;
+    max-inline-size: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
+  }
+
+  /* Citation keeps its compact painted line and owns a 44px coarse-pointer target. Reserve the
+   * lower overhang before the message actions, so the target never falls through to Details. */
+  @media (any-pointer: coarse) {
+    .chat-markdown-claim:has(.chat-claim-marker) {
+      padding-block-end: calc((var(--cinder-touch-target-min) - 1lh) / 2);
+    }
   }
 </style>

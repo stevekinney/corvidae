@@ -181,7 +181,7 @@ export type ChatLabels = {
   uploadFailed: string;
   /** Host-overridable text. The default reads `Approval waiting`. */
   approvalWaiting: string;
-  /** Host-overridable text. The default reads `Approval needed.`. */
+  /** Host-overridable text. The default reads `Waiting for your approval.`. */
   approvalWaitingText: string;
   /**
    * The sentence that follows the approval reminder, and the Queue button's description, while the
@@ -190,12 +190,20 @@ export type ChatLabels = {
   approvalQueueNote: string;
   /** Host-overridable text. The default reads `Review approval`. */
   reviewApproval: string;
+  /** Host-overridable heading for approvals waiting together. */
+  approvalsWaiting: (count: number) => string;
   /**
    * What the approval reminder's button reads in a narrow column, where the whole row is one line
    * on a phone. Its accessible name stays `reviewApproval`, which must contain these words.
    */
   reviewApprovalShort: string;
-  /** Host-overridable text. The default reads `Copy`. */
+  /** The reader, as an approval's receipt names a decision the reader made: "Approved by you". Default `you`. */
+  you: string;
+  /**
+   * Where an approval decided in Reviews was decided, as its receipt says it: "Approved by Priya
+   * Raman in Reviews". Default `Reviews`.
+   */
+  decidedInReviews: string;
   copy: string;
   /** Host-overridable text. The default reads `Copy message`. */
   copyMessage: string;
@@ -327,10 +335,13 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   readingFile: 'Reading file',
   uploadFailed: 'Upload failed. Try again, or remove it.',
   approvalWaiting: 'Approval waiting',
-  approvalWaitingText: 'Approval needed.',
-  approvalQueueNote: 'Messages you send now wait until you decide.',
+  approvalWaitingText: 'Waiting for your approval.',
+  approvalQueueNote: 'Anything you send now queues until you decide.',
   reviewApproval: 'Review approval',
+  approvalsWaiting: (count) => `${count} approvals waiting`,
   reviewApprovalShort: 'Review',
+  you: 'you',
+  decidedInReviews: 'Reviews',
   copy: 'Copy',
   copyMessage: 'Copy message',
   copied: 'Copied',

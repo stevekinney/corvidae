@@ -102,9 +102,10 @@ describe('R4: stopped', () => {
     });
     const row = outcome(container);
     expect(row?.getAttribute('data-kind')).toBe('stopped');
-    const card = row?.querySelector('.chat-turn-stopped-card');
-    expect(card?.getAttribute('role')).toBe('note');
-    expect(card?.textContent).toContain('Stopped. The answer above is partial.');
+    const stopped = row?.querySelector('.chat-turn-stopped-row');
+    expect(stopped?.textContent).toContain('Stopped by you, partial answer');
+    expect(stopped?.querySelector('[data-cinder-variant="neutral"]')).not.toBeNull();
+    expect(row?.querySelector('.chat-turn-stopped-card')).toBeNull();
 
     const buttons = Array.from(row?.querySelectorAll('button') ?? [], (button) =>
       button.textContent?.trim(),
@@ -123,7 +124,7 @@ describe('R4: stopped', () => {
     expect(
       getByRole('button', { name: 'Discard' }).classList.contains('button-variant-secondary'),
     ).toBe(true);
-    expect(card?.querySelector('.cinder-callout__action')).not.toBeNull();
+    expect(stopped?.querySelector('.chat-turn-actions')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Continue' }));
     await fireEvent.click(getByRole('button', { name: 'Discard' }));
@@ -209,6 +210,22 @@ describe('R5: failed partway', () => {
     ).toBe('Timed out. Retry keeps what was written so far.');
   });
 
+  test('keeps an optional failure explanation link in the Callout when Retry is unavailable', () => {
+    const { getByRole, queryByRole } = mount({
+      turnState: {
+        kind: 'failed',
+        cause: 'The provider dropped the connection.',
+        explanationLink: { href: '/runs/run-7#failure-explanation', label: 'Why it failed' },
+      },
+    });
+
+    const link = getByRole('link', { name: 'Why it failed' });
+    expect(link.getAttribute('href')).toBe('/runs/run-7#failure-explanation');
+    expect(link.hasAttribute('data-chat-note-link')).toBe(true);
+    expect(link.closest('.cinder-callout')).not.toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   test('a failed stop note is not drawn beside the alert', () => {
     const { container } = mount({
       turnState: { kind: 'failed', cause: 'Timed out.' },
@@ -238,7 +255,7 @@ describe('R6: empty answer', () => {
     expect(container.querySelector('.chat-message-line time')).toBeNull();
     expect(container.querySelectorAll('time')).toHaveLength(1);
 
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Try again' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
   });
 
@@ -251,12 +268,12 @@ describe('R6: empty answer', () => {
     expect(container.querySelectorAll('time')).toHaveLength(1);
   });
 
-  test('the empty outcome is one compact neutral card without a dashed placeholder edge', () => {
+  test('the empty outcome is a dashed transcript row, not a callout', () => {
     const { container } = mount({ turnState: { kind: 'empty' } });
-    const card = container.querySelector('.chat-turn-empty-card');
-    expect(card?.classList.contains('cinder-callout')).toBe(true);
-    expect(card?.getAttribute('data-cinder-variant')).toBe('neutral');
-    expect(card?.querySelector('.cinder-callout__icon')).not.toBeNull();
+    const row = container.querySelector('.chat-turn-empty-row');
+    expect(row).not.toBeNull();
+    expect(row?.classList.contains('cinder-callout')).toBe(false);
+    expect(container.querySelector('.chat-turn-empty-card')).toBeNull();
   });
 });
 
@@ -308,7 +325,7 @@ describe('a turn that said only what it was doing', () => {
 
   test('a stopped one with an answer keeps the partial-answer words', () => {
     const { container } = mount({ turnState: { kind: 'stopped' } });
-    expect(outcome(container)?.textContent).toContain('Stopped. The answer above is partial.');
+    expect(outcome(container)?.textContent).toContain('Stopped by you, partial answer');
   });
 
   test('a failed one says it failed before an answer, and a host can say both its own way', () => {

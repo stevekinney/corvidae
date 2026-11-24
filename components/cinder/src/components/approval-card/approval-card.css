@@ -320,6 +320,16 @@
     line-height: var(--cinder-leading-normal);
   }
 
+  .cinder-approval-card__asker {
+    display: flex;
+    gap: var(--cinder-space-1);
+    margin: var(--cinder-space-1) 0 0;
+  }
+
+  .cinder-approval-card__asker-time {
+    color: var(--cinder-text-muted);
+  }
+
   /* Why the last answer did not go through: Alert's tinted, bordered danger message, drawn as one
    * compact line of a glyph, the bold summary and the reason. */
   .cinder-approval-card__failure.cinder-alert {
@@ -715,7 +725,7 @@
     gap: var(--cinder-space-1);
   }
 
-  .cinder-approval-card__input-toggle {
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger) {
     appearance: none;
     display: flex;
     align-items: center;
@@ -745,19 +755,20 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  .cinder-approval-card__input-toggle svg {
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger) svg {
     flex: none;
     align-self: center;
     margin-block-start: 1px;
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .cinder-approval-card__input-toggle svg[data-cinder-open] {
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger) svg[data-cinder-open] {
     transform: rotate(90deg);
   }
 
   /* A collapsed disclosure points toward the inline end, so RTL mirrors it. */
-  .cinder-approval-card__input-toggle:dir(rtl) svg:not([data-cinder-open]),
+  .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger):dir(rtl)
+    svg:not([data-cinder-open]),
   .cinder-approval-card:has(
       :is(
         .cinder-approval-card__title,
@@ -765,10 +776,16 @@
         .cinder-approval-card__row-question
       ):dir(rtl)
     )
-    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    :is(
+      .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger),
+      .cinder-approval-card__said-toggle
+    )
     svg:not([data-cinder-open]),
   .cinder-approval-card[dir='rtl']
-    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    :is(
+      .cinder-approval-card__input-toggle:not(.cinder-disclosure-trigger),
+      .cinder-approval-card__said-toggle
+    )
     svg:not([data-cinder-open]) {
     transform: scaleX(-1);
   }
@@ -1020,8 +1037,9 @@
   }
 
   .cinder-approval-card--decision[data-cinder-state='expired'] {
-    border-color: var(--cinder-status-warning-border);
-    background: var(--cinder-status-warning-background);
+    border-style: dashed;
+    border-color: var(--cinder-border);
+    background: var(--cinder-surface-raised);
   }
 
   /* A settled card (expired, approved or denied) is the title on its own line, then one small muted
@@ -1059,6 +1077,33 @@
     text-align: start;
   }
 
+  /* A settled receipt is one scan line once the card has room: status, the action, and who made
+   * it stay together; the host-owned time remains the single timestamp beneath the card. */
+  @container (inline-size >= 30rem) {
+    .cinder-approval-card__settled-row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      column-gap: var(--cinder-space-2);
+    }
+
+    .cinder-approval-card__settled-title {
+      grid-column: 2;
+      grid-row: 1;
+      font-size: var(--cinder-text-sm);
+      line-height: var(--cinder-leading-normal);
+    }
+
+    .cinder-approval-card__settled-note {
+      grid-column: 1;
+      grid-row: 1;
+      white-space: nowrap;
+    }
+
+    .cinder-approval-card__settled-actions {
+      grid-column: 3;
+      grid-row: 1;
+    }
+  }
+
   /* An approval or a denial's line starts with a quiet dot in its tone and the word for what was
    * decided: green for an approval, neutral for a denial. The dot is the line's only mark. */
   .cinder-approval-card__settled-dot {
@@ -1086,6 +1131,14 @@
     justify-content: flex-end;
     gap: var(--cinder-space-3);
     margin-inline-start: auto;
+  }
+
+  /* The compact rule above is the base for a narrow receipt. Reassert the wide trailing column
+     after it so the action does not collapse into column two and leave the grid's final gap empty. */
+  @container (inline-size >= 30rem) {
+    .cinder-approval-card__settled-actions {
+      grid-column: 3;
+    }
   }
 
   /* No glyph gutter: the action is the first thing on the row, and a badge beside it says when it
@@ -1117,9 +1170,7 @@
   }
 
   .cinder-approval-card__receipt .cinder-approval-card__input-toggle {
-    align-items: center;
     align-self: flex-start;
-    line-height: var(--cinder-leading-tight);
   }
 
   .cinder-approval-card__pause {

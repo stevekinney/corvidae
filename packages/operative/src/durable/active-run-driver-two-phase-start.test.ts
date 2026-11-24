@@ -136,6 +136,38 @@ describe('a fresh durable run started in two phases (COR-297)', () => {
     context.engine[Symbol.dispose]();
   });
 
+  it('abandons a prepared record without running start hooks when beforeLaunch rejects', async () => {
+    const context = await buildContext();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    const starts: string[] = [];
+    hooks.on('onRunStart', async () => {
+      starts.push('onRunStart');
+    });
+    const { activeRun, events } = startRun(context, 'two-phase-before-launch-rejects', hooks, {
+      beforeLaunch: async () => {
+        throw new Error('admission retired');
+      },
+    });
+
+    const durablyStarted = activeRun.durablyStarted;
+    if (durablyStarted === undefined) throw new Error('Expected a durable start receipt.');
+    const rejected = await durablyStarted.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).toBe('admission retired');
+    const result = await activeRun.result;
+
+    expect(result.finishReason).toBe('error');
+    expect((result.error as Error).message).toBe('admission retired');
+    expect(starts).toEqual([]);
+    expect(events).toEqual(['run.completed']);
+    expect(context.spy.abandons).toEqual(['two-phase-before-launch-rejects']);
+    expect(context.spy.launches).toEqual([]);
+    context.engine[Symbol.dispose]();
+  });
+
   it("keeps the hook's error when abandoning the prepared record also fails", async () => {
     const context = await buildContext();
     const realPrepare = context.spy.engine.prepare.bind(context.spy.engine);

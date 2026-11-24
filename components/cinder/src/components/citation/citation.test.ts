@@ -42,6 +42,7 @@ describe('Citation', () => {
     const marker = container.querySelector('.cinder-citation__marker');
     expect(element).not.toBeNull();
     expect(marker?.textContent).toBe('content');
+    expect(marker?.querySelector('.cinder-citation__marker-hit-target')).not.toBeNull();
     expect(element?.textContent).not.toContain('[0]');
   });
 
@@ -383,11 +384,12 @@ describe('Citation', () => {
     expect(marker).toContain('padding: 0;');
     expect(marker).toContain('vertical-align: baseline;');
     expect(css).toMatch(
-      /@media \(any-pointer: coarse\) \{\s*\.cinder-citation__marker::before \{[^}]*var\(--cinder-touch-target-min\)/s,
+      /@media \(any-pointer: coarse\) \{\s*\.cinder-citation__marker-hit-target \{[^}]*var\(--cinder-touch-target-min\)/s,
     );
     expect(css).not.toMatch(/\.cinder-citation__marker \{[^}]*min-block-size/s);
-    const hit = /\.cinder-citation__marker::before \{[^}]*\}/.exec(css)?.[0] ?? '';
+    const hit = /\.cinder-citation__marker-hit-target \{[^}]*\}/.exec(css)?.[0] ?? '';
     expect(hit).toContain('position: absolute;');
+    expect(hit).toContain('pointer-events: auto;');
     expect(hit).toContain('calc((100% - 24px) / 2)');
   });
 
