@@ -252,12 +252,14 @@ it('installs the public entries and exercises the page against durable credentia
       .getByRole('dialog', { name: 'Revoke sync' })
       .getByRole('button', { name: 'Cancel' })
       .click();
+    await page.locator('dialog[open]').waitFor({ state: 'detached' });
     expect(await read(second)).toBe(200);
     await revokeButton.click();
     await page
       .getByRole('dialog', { name: 'Revoke sync' })
       .getByRole('button', { name: 'Revoke key' })
       .click();
+    await page.locator('dialog[open]').waitFor({ state: 'detached' });
     await revokeButton.waitFor({ state: 'detached' });
     expect(await read(second)).toBe(401);
     const finalResponse = await call('api.keys.list', {});
