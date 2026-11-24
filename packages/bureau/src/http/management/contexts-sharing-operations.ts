@@ -3,7 +3,11 @@
 import {
   sessionHasReadGrant,
   sessionOwnerOf,
+  sessionReadRequestsOf,
+  sessionWasReadGrantedTo,
   withSessionReadGrant,
+  withSessionReadRequest,
+  withSessionReadRequestResolution,
   withSessionReadRevocation,
 } from '@lostgradient/operative';
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
@@ -34,6 +38,7 @@ const sharingOutput = z.object({
   granteeOwnerId: z.string(),
   changed: z.boolean(),
 });
+const requestResolutionInput = sharingInput.extend({ decision: z.enum(['grant', 'deny']) });
 
 function missing(contextId: string): OperationFault {
   return resourceNotFound('context', contextId);
@@ -163,4 +168,54 @@ export const contextsRevokeShareOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: ({ input, host, principal }) => change(host, principal, input, 'revoke'),
+});
+
+export const contextsRequestShareOperation = defineOperation<typeof sharingInput, typeof sharingOutput, BureauContextsSharingOperationHost>({
+  name: 'bureau.contexts.share.request', authorize: authorizeWorkspaceOperation('bureau.contexts.share.request'), mcpExposable: false,
+  summary: 'Request restored context access', description: 'Lets only a formerly granted workspace member create one pending owner-visible request. It never restores access.',
+  destructive: false, tags: ['Contexts'], inputSchema: sharingInput, outputSchema: sharingOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'], access: { kind: 'authenticated' }, discoverable: true, transports, unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const store = host.contexts.internals.sessionStore;
+    if (store === undefined) throw noSessions();
+    const workspace = 'workspace' in principal ? principal.workspace : undefined;
+    const loaded = await host.contexts.get(input.contextId);
+    const owner = loaded === undefined ? null : sessionOwnerOf(loaded.metadata);
+    if (loaded === undefined || owner === null || workspace === undefined || workspace.owner !== input.granteeOwnerId || !(await currentWorkspacePeer(host, principal, owner)) || !sessionWasReadGrantedTo(loaded.metadata, workspace.owner, loaded.incarnation)) throw missing(input.contextId);
+    let changed = false;
+    await store.update(input.contextId, (current) => {
+      if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
+      const before = sessionReadRequestsOf(current.metadata).some((request) => request.owner === workspace.owner && request.resolvedAt === undefined);
+      if (before) return undefined;
+      changed = true;
+      return { ...current, metadata: withSessionReadRequest(current.metadata, { owner: workspace.owner, workspaceId: workspace.workspaceId, actorId: workspace.actorId, requestedAt: new Date().toISOString() }) };
+    }, { refreshActivity: false });
+    return { contextId: input.contextId, granteeOwnerId: workspace.owner, changed };
+  },
+});
+
+export const contextsResolveShareRequestOperation = defineOperation<typeof requestResolutionInput, typeof sharingOutput, BureauContextsSharingOperationHost>({
+  name: 'bureau.contexts.share.request.resolve', authorize: authorizeWorkspaceOperation('bureau.contexts.share.request.resolve'), mcpExposable: false,
+  summary: 'Resolve a context access request', description: 'Lets only the chat owner grant or deny a pending former-reader request.',
+  destructive: false, tags: ['Contexts'], inputSchema: requestResolutionInput, outputSchema: sharingOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'], access: { kind: 'authenticated' }, discoverable: true, transports, unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const store = host.contexts.internals.sessionStore;
+    if (store === undefined) throw noSessions();
+    const workspace = 'workspace' in principal ? principal.workspace : undefined;
+    const loaded = await host.contexts.get(input.contextId);
+    const owner = loaded === undefined ? null : sessionOwnerOf(loaded.metadata);
+    if (loaded === undefined || owner === null || !isOwnerOfResource(principal, owner) || workspace === undefined || !(await currentWorkspacePeer(host, principal, input.granteeOwnerId))) throw missing(input.contextId);
+    let changed = false;
+    await store.update(input.contextId, (current) => {
+      if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
+      const pending = sessionReadRequestsOf(current.metadata).some((request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined);
+      if (!pending) return undefined;
+      changed = true;
+      const at = new Date().toISOString();
+      const settled = withSessionReadRequestResolution(current.metadata, input.granteeOwnerId, input.decision === 'grant' ? 'granted' : 'denied', workspace.owner, at);
+      return { ...current, metadata: input.decision === 'grant' ? withSessionReadGrant(settled, { owner: input.granteeOwnerId, workspaceId: workspace.workspaceId, actorId: workspace.actorId, sessionIncarnation: current.incarnation, grantedBy: workspace.owner, grantedAt: at }) : settled };
+    }, { refreshActivity: false });
+    return { contextId: input.contextId, granteeOwnerId: input.granteeOwnerId, changed };
+  },
 });

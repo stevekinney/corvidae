@@ -175,6 +175,8 @@ import {
 import {
   type BureauContextsSharingOperationHost,
   contextsRevokeShareOperation,
+  contextsRequestShareOperation,
+  contextsResolveShareRequestOperation,
   contextsShareOperation,
 } from './management/contexts-sharing-operations.ts';
 import {
@@ -908,6 +910,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsWindowOperation,
   contextsShareOperation,
   contextsRevokeShareOperation,
+  contextsRequestShareOperation,
+  contextsResolveShareRequestOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauAgentOverridesOperations,
   ...bureauAgentDisableOperations,

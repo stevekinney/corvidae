@@ -4,6 +4,17 @@ import type { JSONValue } from '../types';
 export const SESSION_READ_GRANTS_METADATA_KEY = 'sessionReadGrants';
 /** Append-only grant and revocation facts for audit and former-reader admission. */
 export const SESSION_READ_GRANT_HISTORY_METADATA_KEY = 'sessionReadGrantHistory';
+export const SESSION_READ_REQUESTS_METADATA_KEY = 'sessionReadRequests';
+
+export type SessionReadRequest = Readonly<{
+  owner: string;
+  workspaceId: string;
+  actorId: string;
+  requestedAt: string;
+  resolvedAt?: string | undefined;
+  resolvedBy?: string | undefined;
+  decision?: 'granted' | 'denied' | undefined;
+}>;
 
 /** One current or former reader, recorded in session metadata with its grant state. */
 export type SessionReadGrant = Readonly<{
@@ -96,6 +107,53 @@ function jsonEvent(event: SessionReadGrantEvent): JSONValue {
     actor: event.actor,
     at: event.at,
   };
+}
+
+function requestOf(value: JSONValue): SessionReadRequest | undefined {
+  if (!isRecord(value)) return undefined;
+  const { owner, workspaceId, actorId, requestedAt, resolvedAt, resolvedBy, decision } = value;
+  if ([owner, workspaceId, actorId, requestedAt].some((field) => typeof field !== 'string' || field === '')) return undefined;
+  if ((resolvedAt === undefined) !== (resolvedBy === undefined) || (resolvedAt === undefined) !== (decision === undefined)) return undefined;
+  if (resolvedAt !== undefined && (typeof resolvedAt !== 'string' || resolvedAt === '' || typeof resolvedBy !== 'string' || resolvedBy === '' || (decision !== 'granted' && decision !== 'denied'))) return undefined;
+  return { owner: owner as string, workspaceId: workspaceId as string, actorId: actorId as string, requestedAt: requestedAt as string, ...(resolvedAt === undefined ? {} : { resolvedAt: resolvedAt as string, resolvedBy: resolvedBy as string, decision: decision as 'granted' | 'denied' }) };
+}
+
+export function sessionReadRequestsOf(metadata: Readonly<Record<string, JSONValue>>): readonly SessionReadRequest[] {
+  const stored = metadata[SESSION_READ_REQUESTS_METADATA_KEY];
+  if (!Array.isArray(stored)) return [];
+  const requests = stored.map(requestOf);
+  return requests.some((request) => request === undefined) ? [] : requests as SessionReadRequest[];
+}
+
+/** Adds a single pending request for a former reader; retries retain its original receipt. */
+export function withSessionReadRequest(metadata: Readonly<Record<string, JSONValue>>, request: SessionReadRequest): Record<string, JSONValue> {
+  const requests = sessionReadRequestsOf(metadata);
+  if (requests.some((candidate) => candidate.owner === request.owner && candidate.resolvedAt === undefined)) return { ...metadata };
+  return { ...metadata, [SESSION_READ_REQUESTS_METADATA_KEY]: [...requests, request].map((candidate) => ({ owner: candidate.owner, workspaceId: candidate.workspaceId, actorId: candidate.actorId, requestedAt: candidate.requestedAt, ...(candidate.resolvedAt === undefined ? {} : { resolvedAt: candidate.resolvedAt, resolvedBy: candidate.resolvedBy!, decision: candidate.decision! }) })) };
+}
+
+/** Settles the one pending request for a reader without changing access itself. */
+export function withSessionReadRequestResolution(
+  metadata: Readonly<Record<string, JSONValue>>,
+  owner: string,
+  decision: 'granted' | 'denied',
+  resolvedBy: string,
+  resolvedAt: string,
+): Record<string, JSONValue> {
+  const requests = sessionReadRequestsOf(metadata);
+  let changed = false;
+  const settled = requests.map((request) => {
+    if (request.owner !== owner || request.resolvedAt !== undefined) return request;
+    changed = true;
+    return { ...request, decision, resolvedBy, resolvedAt };
+  });
+  return changed
+    ? withSessionReadRequestRecords(metadata, settled)
+    : { ...metadata };
+}
+
+function withSessionReadRequestRecords(metadata: Readonly<Record<string, JSONValue>>, requests: readonly SessionReadRequest[]): Record<string, JSONValue> {
+  return { ...metadata, [SESSION_READ_REQUESTS_METADATA_KEY]: requests.map((candidate) => ({ owner: candidate.owner, workspaceId: candidate.workspaceId, actorId: candidate.actorId, requestedAt: candidate.requestedAt, ...(candidate.resolvedAt === undefined ? {} : { resolvedAt: candidate.resolvedAt, resolvedBy: candidate.resolvedBy!, decision: candidate.decision! }) })) };
 }
 
 /** Read valid grants only. Malformed persisted metadata fails closed. */

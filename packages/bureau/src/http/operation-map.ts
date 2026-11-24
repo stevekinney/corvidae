@@ -167,6 +167,14 @@ export const OPERATION_MAP = {
     workspaceClass: 'explicit-share',
     exempt: 'an owner-authorized transition of durable session reader metadata',
   },
+  'bureau.contexts.share.request': {
+    workspaceClass: 'explicit-share',
+    exempt: 'a former reader’s owner-visible request receipt',
+  },
+  'bureau.contexts.share.request.resolve': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner resolving a former reader request receipt',
+  },
 
   'bureau.reviews.list': { workspaceClass: 'private-owned', member: 'reviews.list' },
   'bureau.reviews.get': { workspaceClass: 'private-owned', member: 'reviews.get' },

@@ -44,15 +44,19 @@ export { LOCAL_SESSION_OWNER, SESSION_OWNER_METADATA_KEY, sessionOwnerOf } from 
 export {
   SESSION_READ_GRANTS_METADATA_KEY,
   SESSION_READ_GRANT_HISTORY_METADATA_KEY,
+  SESSION_READ_REQUESTS_METADATA_KEY,
   sessionHasReadGrant,
   sessionReadGrantOf,
   sessionReadGrantsOf,
   sessionReadGrantHistoryOf,
+  sessionReadRequestsOf,
   sessionWasReadGrantedTo,
   withSessionReadGrant,
   withSessionReadRevocation,
+  withSessionReadRequest,
+  withSessionReadRequestResolution,
 } from './session-sharing';
-export type { SessionReadGrant, SessionReadGrantEvent } from './session-sharing';
+export type { SessionReadGrant, SessionReadGrantEvent, SessionReadRequest } from './session-sharing';
 export { resumeSession } from './session-resume';
 export type { ResumeSessionOptions, ResumeSessionResult } from './session-resume';
 export {
