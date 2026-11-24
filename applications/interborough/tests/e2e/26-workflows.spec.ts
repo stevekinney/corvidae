@@ -17,6 +17,7 @@ import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
+import { connectProvider } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -326,24 +327,7 @@ test.describe('the list', () => {
         });
         // This is the connected-provider first-use state: Ask an agent is an enabled secondary
         // action, not an absent action or the disabled no-provider state.
-        await page.route('**/host/providers', async (route) => {
-          const response = await route.fetch();
-          const json = (await response.json()) as {
-            providers: Array<Record<string, unknown>>;
-          };
-          await route.fulfill({
-            response,
-            json: {
-              ...json,
-              providers: json.providers.map((provider) => ({
-                ...provider,
-                configured: true,
-                hasKey: true,
-                connected: true,
-              })),
-            },
-          });
-        });
+        await connectProvider(page);
         await page.goto('/workflows');
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
