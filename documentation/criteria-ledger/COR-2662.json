@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2662",
+  "branch": "steve/cor-2662-recipient-recovery",
+  "checkedAt": "c5b834b2b919c6cb57c6d11b22d6189af810e192",
+  "briefVersion": "e40e3abd86ed",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Bureau issue command exit 0; hoisted-bureau.log records run, delivery, attempt, key and durable receiver counts."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Bureau issue command exit 0; same key has interrupted and successful attempts, one effect, and a distinct run has one effect."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Bureau issue command exit 0; non-deduplicating control trace shows two effects. hooks.md documents at-least-once delivery and receiver responsibility."
+    }
+  ]
+}

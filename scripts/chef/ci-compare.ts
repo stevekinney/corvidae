@@ -335,7 +335,7 @@ function stepFailures(log: string): FailureRecord[] {
 }
 
 function isTestLauncher(command: string): boolean {
-  return /\b(?:bun(?:x)?\s+(?:--bun\s+)?(?:test|playwright)\b|bun(?:x)?\s+run\s+test(?=:|\s|$)|bunx\s+turbo\s+run\s+test(?=:|\s|$)|run-gated-browser-suite)\b/.test(
+  return /\b(?:bun(?:x)?\s+(?:--bun\s+)?(?:test|playwright)\b|bun(?:x)?\s+run\s+test(?=:|\s|$)|bunx\s+turbo\s+run\s+test(?=:|\s|$)|run-gated-browser-suite|scripts\/chef\/targeted-unit\.sh|scripts\/affected-tests\.ts\s+run)\b|\/\/#ci:browser-(?:fixtures|interborough)\b/.test(
     command,
   );
 }

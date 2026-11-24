@@ -119,8 +119,16 @@ describe.each([
       [
         'scripts/ensure-cinder-generated.ts',
         {
-          fingerprint: 'bdd70cdc8bcfbd17eb3ffff4303b04df2ac0b5475855bba654cf52cc28982646',
+          fingerprint: 'dd8e2daafecbd56e9dcc0a6bafc1666583f8a2f138c7ee14aa43dee1eebe2559',
           inputs: ['$TURBO_ROOT$/components/cinder/{src,scripts}/**'],
+        },
+      ],
+      // The lease scans pending ownership records in the local lock directory, not source files.
+      [
+        'scripts/owned-process-lease.ts',
+        {
+          fingerprint: 'b83af1c29292ca379363f9826154fbc4a820674f546aaedc06b3ea01c5cd983c',
+          inputs: [],
         },
       ],
       // Lock and process inspection are host state, not repository source inputs. A source change
@@ -161,6 +169,15 @@ describe.each([
     }
     if (job === 'interborough')
       expect(reachableRootHelpers).toContain('scripts/ensure-cinder-generated.ts');
+    // The group starts this fixed executable by path, which the static import graph cannot see.
+    if (reachableRootHelpers.includes('scripts/owned-process-group.ts')) {
+      const group = readFileSync(resolve(root, 'scripts/owned-process-group.ts'), 'utf8');
+      expect(new Bun.CryptoHasher('sha256').update(group).digest('hex')).toBe(
+        '2b24a5391ee5cfb3fb81eaa872751e858e28220a811f7183816824ad13ba5c7f',
+      );
+      expect(group).toContain("join(import.meta.dir, 'owned-process-gate.ts')");
+      expect(covers('scripts/owned-process-gate.ts')).toBe(true);
+    }
     expect(unsupportedDynamicEdges, 'a root helper needs a proven bounded dynamic domain').toEqual(
       [],
     );

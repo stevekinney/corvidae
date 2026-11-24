@@ -241,6 +241,9 @@ describe('failingTests', () => {
       'bun run test:browser-fixtures',
       'bun run test:slow --continue',
       'bunx turbo run test:slow --concurrency=1',
+      'bun scripts/chef/ci-replay.ts run -- bash scripts/chef/targeted-unit.sh',
+      'bun scripts/chef/ci-replay.ts run -- bunx turbo run //#ci:browser-fixtures',
+      'bun scripts/chef/ci-replay.ts run -- bun scripts/affected-tests.ts run --isolated',
     ]) {
       const log = [
         `Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,

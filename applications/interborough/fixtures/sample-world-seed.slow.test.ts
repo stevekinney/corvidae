@@ -6,6 +6,7 @@
  * time between the moments the seed sets, so a time is asserted as the moment it was set to, plus at
  * most {@link SLACK}.
  */
+import { openLocalBungalow } from '@lostgradient/bungalow';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -59,6 +60,7 @@ const steps: string[] = [];
 beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), 'interborough-sample-world-'));
   world = await seedSampleWorld(join(home, 'home'), {
+    ownership: { root: home, owner: join(import.meta.dir, '../../..') },
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
     onStep: (step) => steps.push(step),
   });
@@ -124,6 +126,7 @@ describe('the steps of the seed (COR-2632)', () => {
     const failing = await mkdtemp(join(tmpdir(), 'interborough-sample-world-failing-'));
     try {
       const seeded = seedSampleWorld(join(failing, 'home'), {
+        ownership: { root: failing, owner: join(import.meta.dir, '../../..') },
         onStep: (step) => {
           if (step === 'Tool runner version 1: starting its host') throw new Error('no host today');
         },
@@ -133,6 +136,28 @@ describe('the steps of the seed (COR-2632)', () => {
       );
     } finally {
       await rm(failing, { recursive: true, force: true });
+    }
+  });
+
+  test('closes the session and releases its lease when reporting its stop fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'interborough-sample-world-stop-'));
+    const target = join(root, 'home');
+    try {
+      expect(
+        await throwingRejectionOf(
+          seedSampleWorld(target, {
+            ownership: { root, owner: join(import.meta.dir, '../../..') },
+            onStep: (name) => {
+              if (name === 'Tool runner version 1: stopping its host')
+                throw new Error('report failed');
+            },
+          }),
+        ),
+      ).toThrow('report failed');
+      const reopened = await openLocalBungalow({ name: 'interborough', root: target });
+      reopened.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

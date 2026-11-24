@@ -214,10 +214,10 @@ export async function buildApplication(
      * Makes sure Cinder's generated files exist before the bundler imports them. Every caller,
      * Turbo or not, goes through here; a test supplies a no-op.
      */
-    readonly ensureGenerated?: () => void;
+    readonly ensureGenerated?: () => void | Promise<void>;
   } = {},
 ): Promise<ApplicationBuild> {
-  (options.ensureGenerated ?? ensureCinderGenerated)();
+  await (options.ensureGenerated ?? ensureCinderGenerated)();
   const development = options.development ?? false;
   const directory =
     options.outdir === undefined

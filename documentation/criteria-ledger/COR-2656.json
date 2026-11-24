@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2656",
+  "branch": "steve/cor-2656-ci-replay-accounting",
+  "checkedAt": "ae03d0e741f67c3411513a9d872a96f462396ee5",
+  "briefVersion": "55a884b245c7",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Hosted intentional browser failure 45332971856 retained exact matcher and scope in the replay record and linked sanitized JUnit. Artifact 14893090187 verified SHA-256 9dd5b2e3d0889ee1dcac2bd30bc660a615b06d106bbaaccabf8f2f4ba2b57e1e, exact two-file inventory and 0 marker matches. Direct workflow-shell controls cover safe fallback and preservation of first failure."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Independent verifier started only from failed unit 45328213202 and browser 45330552678. Fresh unit check reproduced exit 1 then clean parent exit 0 (provider control 45328296697). Independent hosted browser 45331282306 reproduced Banner assertion at 65:20 on exact image; restored 45331300519 passed all 4. Both final safe files from 45332971856 contain zero seeded markers."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Fixed UTC cohort: 971 landed revisions, 1,220 attributed runs, 1,229 attempts, 12,530 distinct jobs. Billing/rate/cache/storage gaps remain explicit. Safe projection SHA-256 64de7c23dbfdfa11b66d3e3a41b4a92c1ec20cbd15f5a9df17b376bb41cdc589, authenticated Linear attachment 55d00328-abcc-4283-8f0f-7ba9d86780b1."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Independent provider reduction reconciled 5 landed PRs, 50 runs and 495 distinct jobs and per-class durations; offline accounting tests cover retry, duplicate IDs, cancellation, and supersession. Receipt SHA-256 4a18188260d94ba9712305e03bf24154e309a8f2aa2afb049b743e7491ba8b90, authenticated Linear attachment aef66292-c850-42fd-a751-cf4fc212bf6c."
+    }
+  ]
+}

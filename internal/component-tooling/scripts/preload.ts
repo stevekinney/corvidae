@@ -45,7 +45,7 @@ setupHappyDom();
 // Cinder's token artifacts are generated, not tracked, and a test imports them through its index.
 // A direct `bun test` bypasses Turbo's `metadata` task, so make sure they exist before any test file
 // loads (a no-op while they are present and fresh).
-ensureCinderGenerated();
+await ensureCinderGenerated();
 
 await plugin(sveltePlugin({ generate: 'client', allowStyleBlock: allowCinderTestStyleBlock }));
 
