@@ -2,6 +2,7 @@
 
 import {
   sessionReadGrantOf,
+  sessionReadGrantHistoryOf,
   sessionOwnerOf,
   sessionReadRequestsOf,
   summarizeSession,
@@ -114,6 +115,22 @@ function sameRequest(left: SessionReadRequest | undefined, right: SessionReadReq
   );
 }
 
+function changedGrantEventCount(
+  metadata: Readonly<Record<string, import('@lostgradient/operative').JSONValue>>,
+  owner: string,
+) {
+  return sessionReadGrantHistoryOf(metadata).filter(
+    (event) => event.owner === owner && event.changed,
+  ).length;
+}
+
+function requestCount(
+  metadata: Readonly<Record<string, import('@lostgradient/operative').JSONValue>>,
+  owner: string,
+) {
+  return sessionReadRequestsOf(metadata).filter((request) => request.owner === owner).length;
+}
+
 function isActiveGrant(
   grant: SessionReadGrant | undefined,
   workspaceId: string,
@@ -152,6 +169,7 @@ async function change(
   if (target === undefined || target.workspaceId !== workspace!.workspaceId)
     throw missing(input.contextId);
   const originalGrant = sessionReadGrantOf(loaded.metadata, input.granteeOwnerId);
+  const originalGrantEvents = changedGrantEventCount(loaded.metadata, input.granteeOwnerId);
   let committed = false;
   await store.update(
     input.contextId,
@@ -166,7 +184,12 @@ async function change(
       );
       // A revoke is bound to the exact active grant the owner saw. It cannot revoke a
       // replacement grant restored while the owner command was awaiting the directory.
-      if (kind === 'revoke' && !sameGrant(currentGrant, originalGrant)) return undefined;
+      if (
+        kind === 'revoke' &&
+        (!sameGrant(currentGrant, originalGrant) ||
+          changedGrantEventCount(current.metadata, input.granteeOwnerId) !== originalGrantEvents)
+      )
+        return undefined;
       if ((kind === 'grant' && currentlyGranted) || (kind === 'revoke' && !currentlyGranted)) {
         if (currentGrant === undefined) return undefined;
         const pending = sessionReadRequestsOf(current.metadata).some(
@@ -304,6 +327,8 @@ export const contextsRequestShareOperation = defineOperation<
       loaded === undefined || workspace === undefined
         ? undefined
         : sessionReadGrantOf(loaded.metadata, workspace.owner);
+    const priorRequests =
+      loaded === undefined ? 0 : requestCount(loaded.metadata, workspace?.owner ?? '');
     if (
       loaded === undefined ||
       owner === null ||
@@ -322,7 +347,11 @@ export const contextsRequestShareOperation = defineOperation<
       (current) => {
         if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
         const currentGrant = sessionReadGrantOf(current.metadata, workspace.owner);
-        if (!sameGrant(currentGrant, formerGrant)) return undefined;
+        if (
+          !sameGrant(currentGrant, formerGrant) ||
+          requestCount(current.metadata, workspace.owner) !== priorRequests
+        )
+          return undefined;
         const before = sessionReadRequestsOf(current.metadata).some(
           (request) => request.owner === workspace.owner && request.resolvedAt === undefined,
         );
@@ -376,6 +405,8 @@ export const contextsResolveShareRequestOperation = defineOperation<
         : sessionReadRequestsOf(loaded.metadata).find(
             (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
           );
+    const priorRequests =
+      loaded === undefined ? 0 : requestCount(loaded.metadata, input.granteeOwnerId);
     if (
       loaded === undefined ||
       owner === null ||
@@ -400,7 +431,11 @@ export const contextsResolveShareRequestOperation = defineOperation<
         const currentPending = sessionReadRequestsOf(current.metadata).find(
           (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
         );
-        if (!sameRequest(currentPending, pending)) return undefined;
+        if (
+          !sameRequest(currentPending, pending) ||
+          requestCount(current.metadata, input.granteeOwnerId) !== priorRequests
+        )
+          return undefined;
         changed = true;
         const at = new Date().toISOString();
         const settled = withSessionReadRequestResolution(

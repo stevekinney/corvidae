@@ -131,7 +131,7 @@ describe('chat sharing access requests', () => {
         actorId: 'bob',
         sessionIncarnation: session.incarnation,
         grantedBy: WORKSPACE_PRIVACY_ACTORS.owner.owner,
-        grantedAt: '2026-11-23T00:02:00.000Z',
+        grantedAt: '2026-11-23T00:00:00.000Z',
       }),
     }));
 
@@ -146,7 +146,7 @@ describe('chat sharing access requests', () => {
     expect(
       sessionReadGrantOf(current().metadata, WORKSPACE_PRIVACY_ACTORS.peer.owner),
     ).toMatchObject({
-      grantedAt: '2026-11-23T00:02:00.000Z',
+      grantedAt: '2026-11-23T00:00:00.000Z',
     });
   });
 
