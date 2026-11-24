@@ -10,7 +10,7 @@
 
   import type { ChatAvailability, ChatAvailabilityAction } from '@lostgradient/chat';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { Button } from '@lostgradient/cinder';
+  import { Button, EmptyState } from '@lostgradient/cinder';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
@@ -219,19 +219,24 @@
   />
 {:else if context.isError && !failedToLoad}
   {#if shareStatus.data?.status === 'requestable' || shareStatus.data?.status === 'pending'}
-    <section aria-label="Chat access">
-      <h1>Chat access</h1>
-      <p>
-        {shareStatus.data.status === 'pending'
+    <div class="weft-chat-route-access">
+      <EmptyState
+        kind="blocked"
+        headingLevel={1}
+        title="Chat access"
+        description={shareStatus.data.status === 'pending'
           ? 'Your access request is waiting for the chat owner.'
           : 'You no longer have access to this chat.'}
-      </p>
-      {#if shareStatus.data.status === 'requestable'}
-        <Button variant="primary" loading={requesting} onclick={() => void requestAccess()}
-          >Request access</Button
-        >
-      {/if}
-    </section>
+      >
+        {#snippet action()}
+          {#if shareStatus.data.status === 'requestable'}
+            <Button variant="primary" loading={requesting} onclick={() => void requestAccess()}
+              >Request access</Button
+            >
+          {/if}
+        {/snippet}
+      </EmptyState>
+    </div>
   {:else if classifyFault(context.error)?.kind === 'not-found' && VIEW_COPY.chat.notFound}
     <NotFoundState
       title={VIEW_COPY.chat.notFound.title}
