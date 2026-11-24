@@ -15,6 +15,7 @@
     onatbottombindingchange?: (value: boolean) => void;
     onunreadcountbindingchange?: (value: number) => void;
     onNewMessageIndicatorVisibleBindingChange?: (value: boolean) => void;
+    onHostQuestionDockedBindingChange?: (value: boolean) => void;
   };
 
   export type { ChatAnnounceLevel, ChatProps };
@@ -142,6 +143,7 @@
     onatbottombindingchange,
     onunreadcountbindingchange,
     onNewMessageIndicatorVisibleBindingChange,
+    onHostQuestionDockedBindingChange,
     class: className,
     surfaceMode = 'default',
     scrollFadeVisible = false,
@@ -528,7 +530,9 @@
   );
   $effect.pre(() => {
     const docked = hostDocksQuestion;
-    if (untrack(() => hostQuestionDocked) !== docked) hostQuestionDocked = docked;
+    if (untrack(() => hostQuestionDocked) === docked) return;
+    hostQuestionDocked = docked;
+    onHostQuestionDockedBindingChange?.(docked);
   });
 
   // Once every question of the round is answered the dock has nothing to ask: the round ends, so a
