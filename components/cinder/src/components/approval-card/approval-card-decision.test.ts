@@ -777,7 +777,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*background:/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*border:/);
     expect(css).toMatch(
-      /\.cinder-approval-card--decision\[data-cinder-state='expired'\] \{[^}]*border-color:\s*var\(--cinder-status-warning-border\)/s,
+      /\.cinder-approval-card--decision\[data-cinder-state='expired'\] \{[^}]*border-style:\s*dashed;[^}]*border-color:\s*var\(--cinder-border\)/s,
     );
     expect(css).toMatch(/@media \(any-pointer: coarse\) \{[^}]*__arm-escape \{\s*display: none;/s);
     expect(css).toMatch(
