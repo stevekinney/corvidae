@@ -3,6 +3,8 @@ import { once } from 'node:events';
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { rootScriptEnvironment } from '../environment-configuration.ts';
+
 const MATCHERS = new Set([
   'toBe',
   'toEqual',
@@ -388,7 +390,7 @@ async function jobId(
 }
 
 async function saveRecord(command: string, output: string): Promise<void> {
-  const environment = { ...process.env };
+  const environment = { ...rootScriptEnvironment() };
   const temporary = environment['RUNNER_TEMP'];
   const workspace = environment['GITHUB_WORKSPACE'];
   if (!temporary || !workspace) throw new Error('replay runner context unavailable');
@@ -459,8 +461,8 @@ async function runCommand(args: string[]): Promise<number> {
   if (args.length === 0) throw new Error('replay command missing');
   const command = args.join(' ');
   const environment = replayEnvironment(
-    process.env,
-    process.env['CI_REPLAY_NO_CREDENTIALS'] === 'true',
+    rootScriptEnvironment(),
+    rootScriptEnvironment()['CI_REPLAY_NO_CREDENTIALS'] === 'true',
   );
   const child = Bun.spawn(['bash', '-c', 'exec "$@" 2>&1', 'ci-replay', ...args], {
     stdout: 'pipe',
@@ -489,14 +491,14 @@ if (import.meta.main) {
     if (mode === 'run' && args[0] === '--') process.exitCode = await runCommand(args.slice(1));
     else if (mode === 'isolated' && args[0] === '--' && args.length > 1) {
       const child = Bun.spawn(args.slice(1), {
-        env: replayEnvironment(process.env, true),
+        env: replayEnvironment(rootScriptEnvironment(), true),
         stdin: 'inherit',
         stdout: 'inherit',
         stderr: 'inherit',
       });
       process.exitCode = await child.exited;
     } else if (mode === 'finalize' && args.length === 0)
-      await saveRecord(process.env['CI_REPLAY_COMMAND'] ?? '', '');
+      await saveRecord(rootScriptEnvironment()['CI_REPLAY_COMMAND'] ?? '', '');
     else throw new Error('invalid replay invocation');
   } catch {
     process.stderr.write('could not write bounded CI replay record\n');

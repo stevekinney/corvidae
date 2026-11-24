@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { rootScriptEnvironment } from './environment-configuration.ts';
+
 import { provider, providerPages } from './ci-run-accounting-provider.ts';
 import {
   accountJobs,
@@ -152,7 +154,7 @@ export async function collectAccounting(
     execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
   if (!remoteMatchesRepository(remoteUrl, repository))
     throw new Error('local origin does not match requested repository');
-  const pinnedMain = process.env['CI_ACCOUNTING_MAIN_SHA'];
+  const pinnedMain = rootScriptEnvironment()['CI_ACCOUNTING_MAIN_SHA'];
   if (pinnedMain !== undefined && !shaPattern.test(pinnedMain))
     throw new Error('invalid pinned main revision');
   const mainRevision =

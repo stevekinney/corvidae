@@ -1,3 +1,5 @@
+import { rootScriptEnvironment } from './environment-configuration.ts';
+
 export interface AccountingJob {
   id: number;
   runId: number;
@@ -355,7 +357,7 @@ if (import.meta.main) {
   const repository = option('--repo');
   const from = option('--from');
   const until = option('--until');
-  const directory = process.env['CI_ACCOUNTING_EVIDENCE_DIRECTORY'];
+  const directory = rootScriptEnvironment()['CI_ACCOUNTING_EVIDENCE_DIRECTORY'];
   if (!repository || !from || !until || !directory || !args.includes('--json')) {
     process.stderr.write(
       'Usage: CI_ACCOUNTING_EVIDENCE_DIRECTORY=<directory> bun scripts/ci-run-accounting.ts --repo <owner/repo> --from <UTC> --until <UTC> --json\n',
@@ -365,8 +367,8 @@ if (import.meta.main) {
   try {
     const { collectAccounting } = await import('./ci-run-accounting-collection.ts');
     const result = await collectAccounting(repository, from, until, directory, {
-      selectionOnly: process.env['CI_ACCOUNTING_SELECTION_ONLY'] === '1',
-      planOnly: process.env['CI_ACCOUNTING_PLAN_ONLY'] === '1',
+      selectionOnly: rootScriptEnvironment()['CI_ACCOUNTING_SELECTION_ONLY'] === '1',
+      planOnly: rootScriptEnvironment()['CI_ACCOUNTING_PLAN_ONLY'] === '1',
     });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     if ('commitInventoryComplete' in result && !result.commitInventoryComplete)
