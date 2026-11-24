@@ -510,10 +510,10 @@ export const contextsListShareRequestsOperation = defineOperation<
               owner: request.owner,
             }));
         })
-        .map(async ({ owner, ...request }) => ({
-          ...request,
-          granteeLabel: (await host.resolveWorkspaceOwner?.(owner))?.displayName ?? null,
-        })),
+        .map(async ({ owner, ...request }) => {
+          const member = await host.resolveWorkspaceOwner?.(owner);
+          return { ...request, granteeLabel: member?.displayName ?? null };
+        }),
     );
     return { requests };
   },
