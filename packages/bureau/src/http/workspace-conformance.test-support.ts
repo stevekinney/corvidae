@@ -2,6 +2,30 @@ import type { OPERATION_MAP } from './operation-map.ts';
 
 /** Expected wire outcomes. Membership denial is HTTP; resource faults are protocol encoded. */
 export const WORKSPACE_EXPECTED_OUTCOMES = {
+  'share-owner': [
+    'success',
+    'not-found',
+    'not-found',
+    'not-found',
+    'membership-denied',
+    'membership-denied',
+  ],
+  'share-reader': [
+    'not-found',
+    'success',
+    'not-found',
+    'not-found',
+    'membership-denied',
+    'membership-denied',
+  ],
+  'share-owner-collection': [
+    'own-records',
+    'empty',
+    'empty',
+    'empty',
+    'membership-denied',
+    'membership-denied',
+  ],
   shared: ['success', 'success', 'success', 'success', 'membership-denied', 'membership-denied'],
   administrator: [
     'forbidden',
@@ -132,12 +156,12 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     inputFixture: 'An owner chat with one durable same-workspace reader grant',
     sentinel: 'PRIVATE-WORKSPACE-CONTENT-8d5c',
     operations: [
-      ['bureau.contexts.share', 'owner'],
-      ['bureau.contexts.share.revoke', 'owner'],
-      ['bureau.contexts.share.request', 'shared'],
-      ['bureau.contexts.share.request.resolve', 'owner'],
-      ['bureau.contexts.share.requests.list', 'owner-collection'],
-      ['bureau.contexts.share.status', 'shared'],
+      ['bureau.contexts.share', 'share-owner'],
+      ['bureau.contexts.share.revoke', 'share-owner'],
+      ['bureau.contexts.share.request', 'share-reader'],
+      ['bureau.contexts.share.request.resolve', 'share-owner'],
+      ['bureau.contexts.share.requests.list', 'share-owner-collection'],
+      ['bureau.contexts.share.status', 'share-reader'],
     ],
   },
   {

@@ -15,7 +15,9 @@ import {
   openWorkspacePrivacyBureau,
   workspacePrivacyCall,
   WORKSPACE_PRIVACY_ACTORS,
+  type WorkspacePrivacyActor,
 } from '../workspace-privacy-fixtures.test-support.ts';
+import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 import {
   contextsRequestShareOperation,
   contextsRevokeShareOperation,
@@ -104,6 +106,70 @@ const workspacePrincipal = (actor: 'owner' | 'peer') => ({
 });
 
 describe('chat sharing access requests', () => {
+  test('executes all six actor witnesses for sharing operations', async () => {
+    const opened = await openWorkspacePrivacyBureau();
+    const witnesses = workspaceConformanceLedger('management/contexts-sharing-operations.test.ts');
+    try {
+      const contextId = await chat(opened);
+      const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
+      for (const actor of actors) {
+        witnesses.observeWire(
+          'bureau.contexts.share',
+          actor,
+          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share', {
+            contextId,
+            granteeOwnerId: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+          }),
+        );
+      }
+      for (const actor of actors) {
+        witnesses.observeWire(
+          'bureau.contexts.share.status',
+          actor,
+          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.status', { contextId }),
+        );
+      }
+      for (const actor of actors) {
+        witnesses.observeWire(
+          'bureau.contexts.share.revoke',
+          actor,
+          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.revoke', {
+            contextId,
+            granteeOwnerId: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+          }),
+        );
+      }
+      for (const actor of actors) {
+        witnesses.observeWire(
+          'bureau.contexts.share.request',
+          actor,
+          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.request', { contextId }),
+        );
+      }
+      for (const actor of actors) {
+        witnesses.observeWire(
+          'bureau.contexts.share.request.resolve',
+          actor,
+          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.request.resolve', {
+            contextId,
+            granteeOwnerId: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+            decision: 'grant',
+          }),
+        );
+      }
+      for (const actor of actors) {
+        witnesses.observeCollection(
+          'bureau.contexts.share.requests.list',
+          actor,
+          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.requests.list', {}),
+          contextId,
+        );
+      }
+      witnesses.verify();
+    } finally {
+      await opened.dispose();
+    }
+  });
   test('does not append a request after an owner restores the former grant in the update fence', async () => {
     const initial = sharedSession(
       withSessionReadRevocation(
