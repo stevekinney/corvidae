@@ -779,6 +779,11 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
                 approvalDecision: {
                   ...(outcome['metadata'] as { approvalDecision?: object }).approvalDecision,
                   asked: 'Refund order 4471 for $42.00',
+                  // Where it was decided, as the Bureau records a decision made in Reviews
+                  // (COR-2292). The sample row it is copied from was decided in the chat. A page
+                  // that mounts again (the phone width below stacks the list and the chat) reads
+                  // the receipt from this, having lost what it watched.
+                  decisionSurface: 'reviews',
                 },
               },
             }
@@ -900,6 +905,25 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     for (const state of ['approved in Reviews', 'running after Reviews']) {
       await captureForDesignReview(page, { route: '/chats/:chat', state, source: SOURCE });
     }
+
+    // The same receipt on a phone (COR-2282 A5). A phone width stacks the list and the chat, so the
+    // chat page mounts again, last, after everything this page watched has been checked: the
+    // receipt is read from the decision the Bureau recorded, once, with Reviews a link to it.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(decided).toHaveCount(1);
+    await expect(decided).toBeVisible();
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toHaveText(
+      'Approved by you in Reviews',
+    );
+    await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
+      'href',
+      /\/reviews\?tab=done&review=bureau%3Aapproval%3A/,
+    );
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'approved in Reviews at 375',
+      source: SOURCE,
+    });
   });
 });
 
