@@ -37697,7 +37697,7 @@
       }
     },
     {
-      "description": "Returns `rows`: every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (the row a decision goes to now: the row `decisions.model` names when it is in the catalog, can decide and is available, else the fallback’s; none when the named row is forbidden by the model policy, which refuses every decision) and `fallback` (the row the language-model fallback uses: `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row) and `canBeFallback` (whether the row can be the fallback at all: it returns structured output, so a decision-only row cannot be, and a `needs-setup` row that returns structured output can). A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.",
+      "description": "Returns `hostModel`, the configured host-registered model’s name and the decision kinds it answers first, or `null`. The `rows` list has every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (for kinds the host model does not answer, the available catalog row named by `decisions.model` when it can decide, or the fallback row otherwise. No catalog row is marked when the host model answers every kind or policy denies the configured catalog row), `fallback` (the row the language-model fallback uses), `canBeFallback` (whether this row can be the fallback at all), and canonical configured-row marks for `decisions.model` and `decisions.fallbackModel`. A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -37721,13 +37721,47 @@
         "schema": {
           "additionalProperties": false,
           "properties": {
+            "hostModel": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kinds": {
+                      "items": {
+                        "description": "The kind of answer wanted: a boolean, one of the options, a level, or an object.",
+                        "enum": [
+                          "boolean",
+                          "choice",
+                          "scale",
+                          "structured"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kinds"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The configured host-registered model and the kinds it answers before any catalog row."
+            },
             "rows": {
               "description": "Every catalog row that can decide, in catalog order.",
               "items": {
                 "additionalProperties": false,
                 "properties": {
                   "answering": {
-                    "description": "Whether a decision goes to this row now, as `bureau.decisions.decide` chooses it: the row `decisions.model` names when it is in the catalog, can decide and is available, else the `fallback` row. A named row the model policy forbids refuses every decision, so no row is marked. At most one row is marked.",
+                    "description": "The catalog row that can answer under the current settings after the host model serves its declared kinds. At most one catalog row is marked.",
                     "type": "boolean"
                   },
                   "availability": {
@@ -37741,6 +37775,20 @@
                   "canBeFallback": {
                     "description": "Whether this row can be the language-model fallback at all: it returns structured output, the rule `chooseFallbackRow` applies before availability. A decision-only row cannot, however `decisions.fallbackModel` is saved. A `needs-setup` row that returns structured output can: it is the fallback once its provider has a key.",
                     "type": "boolean"
+                  },
+                  "configured": {
+                    "description": "The exact `decisions.model` value when it resolves to this row, including a saved alias. Otherwise null.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "configuredFallback": {
+                    "description": "The exact effective `decisions.fallbackModel` setting when it resolves to this row, including a saved alias. Otherwise null.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "decisionOnly": {
                     "description": "Whether the row only decides and is no chat model (TypeSafe’s rows).",
@@ -37766,7 +37814,9 @@
                   "decisionOnly",
                   "answering",
                   "fallback",
-                  "canBeFallback"
+                  "canBeFallback",
+                  "configured",
+                  "configuredFallback"
                 ],
                 "type": "object"
               },
@@ -37774,6 +37824,7 @@
             }
           },
           "required": [
+            "hostModel",
             "rows"
           ],
           "type": "object"

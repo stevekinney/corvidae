@@ -29,6 +29,13 @@ import {
 /** A refusal shown on the field it names. */
 export type ConfigurationIssue = { path: readonly (string | number)[]; message: string };
 
+/** The field label already identifies the input, so a provider's echoed schema key is redundant. */
+function fieldReason(message: string, key: string): string {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const reason = message.replace(new RegExp(`^${escaped}(?:\\s*[:.-]\\s*|\\s+)`), '');
+  return reason === '' ? message : reason;
+}
+
 /** What the draft needs from its dialog. */
 export type ProviderConfigurationOptions = {
   /** The provider's configuration source now, or `undefined` while the dialog has none. */
@@ -168,7 +175,7 @@ export class ProviderConfigurationDraft {
         properties !== null &&
         Object.hasOwn(properties, key)
       ) {
-        this.issues = [{ path: [key], message: copy.rejected(error.message) }];
+        this.issues = [{ path: [key], message: copy.rejected(fieldReason(error.message, key)) }];
         return;
       }
       this.failure = copy.rejected(error.message);

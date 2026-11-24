@@ -24,10 +24,16 @@ export type DecisionsOperationTypes = {
   'bureau.decisions.models': {
     readonly input: {};
     readonly output: {
+      readonly hostModel: {
+        readonly kinds: ReadonlyArray<'boolean' | 'choice' | 'scale' | 'structured'>;
+        readonly name: string;
+      } | null;
       readonly rows: ReadonlyArray<{
         readonly answering: boolean;
         readonly availability: 'available' | 'needs-setup';
         readonly canBeFallback: boolean;
+        readonly configured: string | null;
+        readonly configuredFallback: string | null;
         readonly decisionOnly: boolean;
         readonly fallback: boolean;
         readonly model: string;
