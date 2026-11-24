@@ -210,6 +210,22 @@ describe('R5: failed partway', () => {
     ).toBe('Timed out. Retry keeps what was written so far.');
   });
 
+  test('keeps an optional failure explanation link in the Callout when Retry is unavailable', () => {
+    const { container, getByRole, queryByRole } = mount({
+      turnState: {
+        kind: 'failed',
+        cause: 'The provider dropped the connection.',
+        explanationLink: { href: '/runs/run-7#failure-explanation', label: 'Why it failed' },
+      },
+    });
+
+    const link = getByRole('link', { name: 'Why it failed' });
+    expect(link.getAttribute('href')).toBe('/runs/run-7#failure-explanation');
+    expect(link.hasAttribute('data-chat-note-link')).toBe(true);
+    expect(link.closest('.cinder-callout')).not.toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   test('a failed stop note is not drawn beside the alert', () => {
     const { container } = mount({
       turnState: { kind: 'failed', cause: 'Timed out.' },

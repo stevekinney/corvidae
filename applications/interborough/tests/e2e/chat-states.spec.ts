@@ -470,10 +470,10 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
 
     // The part that arrived stays until the person acts; the failure is a status line below it,
     // not agent speech, with Retry.
-    const line = transcript(page).locator('.chat-note[data-failed]');
-    await expect(line).toContainText(
-      'The reply stopped partway: the model provider dropped the connection.',
-    );
+    const line = transcript(page).locator('.chat-turn-outcome[data-kind="failed"]');
+    await expect(line).toContainText('This answer is incomplete.');
+    await expect(line).toContainText('The model provider dropped the connection.');
+    await expect(line).toContainText('Retry keeps what was written so far.');
     await expect(line.getByRole('button', { name: 'Retry' })).toBeVisible();
     // This is a fine-pointer desktop Chat at the 1280px capture width. Attach keeps Cinder's
     // compact 28px face instead of flex-shrinking below the mouse target Cinder promises.
@@ -510,8 +510,8 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
     await page.setViewportSize({ width: 320, height: 640 });
 
     const timeline = transcript(page);
-    const note = timeline.locator('.chat-note[data-failed]');
-    const retry = note.getByRole('button', { name: 'Retry' });
+    const line = timeline.locator('.chat-turn-outcome[data-kind="failed"]');
+    const retry = line.getByRole('button', { name: 'Retry' });
     const composer = page.locator('.chat-input-area');
     await expect(retry).toBeVisible();
     await timeline.evaluate(async (element) => {

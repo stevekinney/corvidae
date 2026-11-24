@@ -301,6 +301,9 @@ describe('a reply that failed partway (19p)', () => {
     const line = await findByText('This answer is incomplete.');
     expect(line.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     expect(await findByRole('button', { name: 'Retry' })).not.toBeNull();
+    const explanation = await findByRole('link', { name: 'Why it failed' });
+    expect(explanation.getAttribute('href')).toBe('/runs/run-states-failed#failure-explanation');
+    expect(explanation.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
         'Failed',
