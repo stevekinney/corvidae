@@ -2392,6 +2392,20 @@ test.describe('chat harness — tool calls', () => {
         );
         expect(owner, `point ${dy}px from the expanded aggregate centre`).toBe('true');
       }
+      const firstRow = harness
+        .locator('.chat-tool-call-item')
+        .first()
+        .locator('.chat-tool-call-row');
+      const firstRowBox = await renderedBox(firstRow, 'first expanded aggregate row');
+      const firstRowOwner = await page.evaluate(
+        ([x, y]) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest('.chat-tool-call-row')
+            ?.getAttribute('aria-expanded') ?? null,
+        [firstRowBox.x + firstRowBox.width / 2, firstRowBox.y + firstRowBox.height / 2] as const,
+      );
+      expect(firstRowOwner).toBe('false');
     } finally {
       await dispose();
     }
