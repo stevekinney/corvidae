@@ -1,7 +1,7 @@
 {
   "issue": "COR-2608",
-  "branch": "steve/composable-reviews-final",
-  "checkedAt": "867cfbe87090d3fec881bc076ab7314eab0a2b1a",
+  "branch": "steve/composable-consent-api-settings",
+  "checkedAt": "32b18296982dfc539712f3feb7cc02d3fd70b782",
   "briefVersion": "6818a4af680c",
   "status": "READY",
   "criteria": [
