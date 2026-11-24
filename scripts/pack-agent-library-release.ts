@@ -228,7 +228,10 @@ try {
           url: 'git+https://github.com/stevekinney/corvidae.git',
           directory: 'packages/' + library,
         },
-        engines: library === 'bungalow' ? { bun: '>=1.4.4' } : { node: '>=22', bun: '>=1.4.0' },
+        engines:
+          library === 'bungalow'
+            ? { bun: '>=1.4.4' }
+            : { node: library === 'operative' ? '>=22.3' : '>=22', bun: '>=1.4.0' },
         ...(library === 'bungalow' ? { os: ['darwin', 'linux'] } : {}),
         exports,
         dependencies,

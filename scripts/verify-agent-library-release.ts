@@ -61,7 +61,8 @@ try {
       verificationFile,
       `
       import { deepStrictEqual, strictEqual } from 'node:assert';
-      import { createAgent, createRunEngine } from '@lostgradient/operative';
+      import { fileURLToPath } from 'node:url';
+      import { assembleBaselineArtifact, createAgent, createRunEngine, createScriptedGenerate, readReproductionArtifact, writeReproductionArtifact } from '@lostgradient/operative';
       import { workflow } from '@lostgradient/weft';
       import { MemoryStorage } from '@lostgradient/weft/storage';
 
@@ -69,11 +70,17 @@ try {
         await import(specifier);
       }
 
-      const agent = createAgent({
-        instructions: 'Reply with the test response.',
-        generate: async () => ({ content: 'installed agent', toolCalls: [] }),
-      });
+      const generate = createScriptedGenerate([
+        { kind: 'respond', response: { content: 'installed agent', toolCalls: [] } },
+      ]);
+      const agent = createAgent({ instructions: 'Reply with the test response.', generate });
       strictEqual((await agent.run('hello').result()).content, 'installed agent');
+      generate.assertReceived(0, { tools: [] });
+
+      const artifact = await assembleBaselineArtifact({ randomSeed: 'release-smoke' });
+      const artifactPath = fileURLToPath(new URL('./artifacts/reproduction.json', import.meta.url));
+      await writeReproductionArtifact(artifact, artifactPath);
+      deepStrictEqual(await readReproductionArtifact(artifactPath), artifact);
 
       const runWorkflow = workflow({ name: 'agentRun' }).execute(async function* (_context, input) {
         return { doubled: input.value * 2 };
@@ -105,6 +112,16 @@ try {
     `,
     );
     await $`bun ${join(import.meta.dir, 'bun-test.ts')} ${testingFile}`;
+
+    const browserEntry = join(consumer, 'verify-browser.js');
+    await Bun.write(
+      browserEntry,
+      "export { parseStepRowIdentifier } from '@lostgradient/operative';",
+    );
+    const browser = await Bun.build({ entrypoints: [browserEntry], target: 'browser' });
+    if (!browser.success || browser.logs.length > 0) {
+      throw new Error(browser.logs.map((log) => log.message).join('\n'));
+    }
   } else {
     const tests = [
       ...specifiers.map((specifier) => `await import(${JSON.stringify(specifier)});`),

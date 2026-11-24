@@ -8,7 +8,7 @@ Declare `"@lostgradient/operative": "workspace:*"` in the consuming workspace's 
 
 ## npm releases
 
-The public package ships the current root API, provider kit, and run-engine workflow types as ESM for Node.js 22 and newer and for Bun. The `decision-testing` and `provider-testing` entry points use Bun's test runner. Model provider implementations are separate workspaces.
+The public package ships the current root API, provider kit, and run-engine workflow types as ESM for Node.js 22.3 and newer and for Bun. The `decision-testing` and `provider-testing` entry points use Bun's test runner. Model provider implementations are separate workspaces.
 
 For the Corvidae release, run the [npm library release workflow](https://github.com/stevekinney/corvidae/actions/workflows/cinder-npm-release.yml) with `package` set to `operative`, an exact release version, and the published Weft, Armorer, and Conversationalist versions. The workflow can build and test an artifact from a branch. Publishing uses the tested artifact from protected `main` and npm trusted publishing.
 
