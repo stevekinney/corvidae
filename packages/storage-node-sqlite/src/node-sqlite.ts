@@ -211,7 +211,7 @@ export class NodeSQLiteStorage implements Storage {
               Number(
                 this.#database
                   .prepare(
-                    "SELECT CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) AS now",
+                    "SELECT CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER) AS now",
                   )
                   .get()?.['now'],
               ),

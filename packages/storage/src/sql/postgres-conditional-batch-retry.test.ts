@@ -18,17 +18,24 @@ function refusePoolFactory(): PostgresPool {
  * throws an error that is not a transaction abort, and `proceed` runs the statements against an
  * empty table.
  */
-function scriptedPool(outcomes: AttemptOutcome[]): {
+function scriptedPool(
+  outcomes: AttemptOutcome[],
+  deadlineValid = true,
+): {
   pool: PostgresPool;
   arm(storage: PostgresKeyValueStorage): Promise<void>;
   began(): number;
+  statements: string[];
 } {
   let armed = false;
   let began = 0;
+  const statements: string[] = [];
   const pool: PostgresPool = {
     query: async () => ({ rows: [{ collation: 'C' }] }),
     connect: async () => ({
       query: async (sql: string) => {
+        statements.push(sql);
+        if (sql.includes('clock_timestamp()')) return { rows: [{ valid: deadlineValid }] };
         if (armed && sql.startsWith('BEGIN')) {
           const outcome = outcomes[Math.min(began, outcomes.length - 1)];
           began += 1;
@@ -53,6 +60,7 @@ function scriptedPool(outcomes: AttemptOutcome[]): {
       armed = true;
     },
     began: () => began,
+    statements,
   };
 }
 
@@ -140,6 +148,20 @@ const cases: Case[] = [
 ];
 
 describe('PostgresKeyValueStorage conditionalBatch retry lifecycle', () => {
+  it('rechecks the backend deadline after a serialization retry and rolls back staged writes', async () => {
+    const scripted = scriptedPool(['conflict', 'proceed'], false);
+    const storage = new PostgresKeyValueStorage(
+      { pool: scripted.pool, serializationRetry: { delay: async () => {}, random: () => 0 } },
+      refusePoolFactory,
+    );
+    await scripted.arm(storage);
+    expect(await storage.conditionalBatch([...writeIfAbsent[0]], [...writeIfAbsent[1]], 100)).toBe(
+      false,
+    );
+    expect(scripted.began()).toBe(2);
+    expect(scripted.statements.some((statement) => statement.startsWith('INSERT INTO'))).toBe(true);
+    expect(scripted.statements.at(-1)).toBe('ROLLBACK');
+  });
   it.each(cases)('$name', async ({ outcomes, conditions, expected, attempts, delays }) => {
     const scripted = scriptedPool(outcomes);
     const waited: number[] = [];

@@ -169,6 +169,10 @@ async function startDisposablePostgres(
       'UTF8',
     ]);
     const port = await availablePort();
+    const socket =
+      Buffer.byteLength(join(directory, `.s.PGSQL.${port}`)) <= 103
+        ? `-k ${directory}`
+        : "-c unix_socket_directories=''";
     await runPostgresCommand([
       control,
       '-D',
@@ -176,7 +180,7 @@ async function startDisposablePostgres(
       '-l',
       log,
       '-o',
-      `-h 127.0.0.1 -p ${port} -c unix_socket_directories=''`,
+      `-h 127.0.0.1 -p ${port} ${socket}`,
       '-w',
       'start',
     ]);
