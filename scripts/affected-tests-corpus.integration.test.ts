@@ -101,111 +101,131 @@ const controls = [
   },
 ];
 
+async function runControl(control: (typeof controls)[number]) {
+  const root = await mkdtemp(join(tmpdir(), 'affected-corpus-'));
+  const put = async (path: string, content: string) => {
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), content);
+  };
+  try {
+    for (const [path, content] of Object.entries({
+      ...shared,
+      ...control.extra,
+      [detector]: control.test,
+      [unrelated]:
+        "import { test, expect } from 'bun:test'; test('unrelated', () => expect(true).toBe(true));",
+      [control.input]: control.good,
+    }))
+      await put(path, content);
+    const select = (analyze?: ReturnType<typeof sourceAnalysisCache>['analyze']) =>
+      selectTests({
+        changed: control.changed,
+        tree: listTree(root),
+        workspaces: discoverWorkspaces(root),
+        ...(analyze === undefined ? {} : { analyze }),
+      });
+    const git = async (...args: string[]) => {
+      const result = await runWithHangGuard(['git', '-C', root, ...args]);
+      if (result.exitCode !== 0)
+        throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
+      return result.stdout.toString().trim();
+    };
+    await git('init', '--quiet');
+    await git('add', '.');
+    const base = await git('write-tree');
+    const indexDirectory = join(root, '.git', 'analysis-cache');
+    const initialCache = sourceAnalysisCache(join(import.meta.dir, '..'), indexDirectory);
+    select(initialCache.analyze);
+    initialCache.save();
+    if (control.bad === null) {
+      if (control.renamed !== undefined) await put(control.renamed, control.good);
+      await rm(join(root, control.input));
+    } else await put(control.input, control.bad);
+    await git('add', '-A');
+    const candidate = await git('write-tree');
+    const warmCache = sourceAnalysisCache(join(import.meta.dir, '..'), indexDirectory);
+    const selection = select(warmCache.analyze);
+    const freshSelection = select();
+    const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
+    const reason = selection.workspaces
+      .flatMap((workspace) => [...workspace.tests])
+      .find(([path]) => path === detector)?.[1];
+    const execute = async (paths: string[]) => {
+      const start = performance.now();
+      const result = await runWithHangGuard(['bun', wrapper, ...paths], { cwd: root });
+      return { ...result, elapsedMilliseconds: performance.now() - start };
+    };
+    const selectedFailure = await execute(selected);
+    const exhaustiveFailure = await execute([detector, unrelated]);
+    const failureClass =
+      control.bad === null ? 'Cannot find module' : 'expect(received).toBe(expected)';
+    await put(control.input, control.good);
+    if (control.renamed !== undefined) await rm(join(root, control.renamed));
+    const selectedRestored = await execute(selected);
+    const exhaustiveRestored = await execute([detector, unrelated]);
+    console.log(
+      JSON.stringify({
+        control: control.name,
+        base,
+        candidate,
+        detector,
+        declaredFallback: control.fallback,
+        reason,
+        selected,
+        execution: 'separate Bun test processes; no Turbo test-result cache',
+        selectedExit: selectedFailure.exitCode,
+        exhaustiveExit: exhaustiveFailure.exitCode,
+        failureClass,
+        restoredSelectedExit: selectedRestored.exitCode,
+        restoredExhaustiveExit: exhaustiveRestored.exitCode,
+        executionMilliseconds: {
+          selected: selectedFailure.elapsedMilliseconds,
+          exhaustive: exhaustiveFailure.elapsedMilliseconds,
+          restoredSelected: selectedRestored.elapsedMilliseconds,
+          restoredExhaustive: exhaustiveRestored.elapsedMilliseconds,
+        },
+      }),
+    );
+    return {
+      base,
+      candidate,
+      selected,
+      reason,
+      selection,
+      freshSelection,
+      selectedFailure,
+      exhaustiveFailure,
+      selectedRestored,
+      exhaustiveRestored,
+      failureClass,
+    };
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+const results = [];
+for (const control of controls) results.push(await runControl(control));
+
 describe('selected and exhaustive detector corpus', () => {
-  for (const control of controls) {
-    test(control.name, async () => {
-      const root = await mkdtemp(join(tmpdir(), 'affected-corpus-'));
-      const put = async (path: string, content: string) => {
-        await mkdir(dirname(join(root, path)), { recursive: true });
-        await writeFile(join(root, path), content);
-      };
-      try {
-        for (const [path, content] of Object.entries({
-          ...shared,
-          ...control.extra,
-          [detector]: control.test,
-          [unrelated]:
-            "import { test, expect } from 'bun:test'; test('unrelated', () => expect(true).toBe(true));",
-          [control.input]: control.good,
-        }))
-          await put(path, content);
-        const select = (analyze?: ReturnType<typeof sourceAnalysisCache>['analyze']) =>
-          selectTests({
-            changed: control.changed,
-            tree: listTree(root),
-            workspaces: discoverWorkspaces(root),
-            ...(analyze === undefined ? {} : { analyze }),
-          });
-        const git = async (...args: string[]) => {
-          const result = await runWithHangGuard(['git', '-C', root, ...args]);
-          expect(result.exitCode).toBe(0);
-          return result.stdout.toString().trim();
-        };
-        await git('init', '--quiet');
-        await git('add', '.');
-        const base = await git('write-tree');
-        const indexDirectory = join(root, '.git', 'analysis-cache');
-        const initialCache = sourceAnalysisCache(join(import.meta.dir, '..'), indexDirectory);
-        select(initialCache.analyze);
-        initialCache.save();
-        if (control.bad === null) {
-          if (control.renamed !== undefined) await put(control.renamed, control.good);
-          await rm(join(root, control.input));
-        } else await put(control.input, control.bad);
-        await git('add', '-A');
-        const candidate = await git('write-tree');
-        expect(candidate).not.toBe(base);
-        const warmCache = sourceAnalysisCache(join(import.meta.dir, '..'), indexDirectory);
-        const selection = select(warmCache.analyze);
-        const freshSelection = select();
-        expect(selection.workspaces.map((workspace) => [...workspace.tests])).toEqual(
-          freshSelection.workspaces.map((workspace) => [...workspace.tests]),
-        );
-        const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
-        expect(selected).toContain(detector);
-        const reason = selection.workspaces
-          .flatMap((workspace) => [...workspace.tests])
-          .find(([path]) => path === detector)?.[1];
-        if (control.fallback === null) expect(reason).toMatchObject({ kind: 'imports' });
-        else expect(reason).toEqual({ kind: 'fallback', rule: control.fallback });
-        const execute = async (paths: string[]) => {
-          const start = performance.now();
-          const result = await runWithHangGuard(['bun', wrapper, ...paths], { cwd: root });
-          return { ...result, elapsedMilliseconds: performance.now() - start };
-        };
-        const selectedFailure = await execute(selected);
-        const exhaustiveFailure = await execute([detector, unrelated]);
-        expect(selectedFailure.exitCode).not.toBe(0);
-        expect(exhaustiveFailure.exitCode).not.toBe(0);
-        const failureClass =
-          control.bad === null ? 'Cannot find module' : 'expect(received).toBe(expected)';
-        for (const failure of [selectedFailure, exhaustiveFailure]) {
-          const output = `${failure.stdout.toString()}\n${failure.stderr.toString()}`;
-          expect(output).toContain('detector.test.ts');
-          expect(output).toContain(failureClass);
-        }
-        await put(control.input, control.good);
-        if (control.renamed !== undefined) await rm(join(root, control.renamed));
-        const selectedRestored = await execute(selected);
-        const exhaustiveRestored = await execute([detector, unrelated]);
-        expect(selectedRestored.exitCode).toBe(0);
-        expect(exhaustiveRestored.exitCode).toBe(0);
-        console.log(
-          JSON.stringify({
-            control: control.name,
-            base,
-            candidate,
-            detector,
-            declaredFallback: control.fallback,
-            reason,
-            selected,
-            execution: 'separate Bun test processes; no Turbo test-result cache',
-            selectedExit: selectedFailure.exitCode,
-            exhaustiveExit: exhaustiveFailure.exitCode,
-            failureClass,
-            restoredSelectedExit: selectedRestored.exitCode,
-            restoredExhaustiveExit: exhaustiveRestored.exitCode,
-            executionMilliseconds: {
-              selected: selectedFailure.elapsedMilliseconds,
-              exhaustive: exhaustiveFailure.elapsedMilliseconds,
-              restoredSelected: selectedRestored.elapsedMilliseconds,
-              restoredExhaustive: exhaustiveRestored.elapsedMilliseconds,
-            },
-          }),
-        );
-      } finally {
-        await rm(root, { recursive: true, force: true });
+  for (const [index, control] of controls.entries()) {
+    test(control.name, () => {
+      const result = results[index]!;
+      expect(result.candidate).not.toBe(result.base);
+      expect(result.selection.workspaces.map((workspace) => [...workspace.tests])).toEqual(
+        result.freshSelection.workspaces.map((workspace) => [...workspace.tests]),
+      );
+      expect(result.selected).toContain(detector);
+      if (control.fallback === null) expect(result.reason).toMatchObject({ kind: 'imports' });
+      else expect(result.reason).toEqual({ kind: 'fallback', rule: control.fallback });
+      for (const failure of [result.selectedFailure, result.exhaustiveFailure]) {
+        expect(failure.exitCode).not.toBe(0);
+        const output = `${failure.stdout.toString()}\n${failure.stderr.toString()}`;
+        expect(output).toContain('detector.test.ts');
+        expect(output).toContain(result.failureClass);
       }
+      expect(result.selectedRestored.exitCode).toBe(0);
+      expect(result.exhaustiveRestored.exitCode).toBe(0);
     });
   }
 });
