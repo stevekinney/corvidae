@@ -13,7 +13,7 @@
       "suiteExitCode": 0
     },
     "chat": {
-      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "renderedSourceSha": "53ff76b1052ab9b588654fec62c50a0a56f0416c",
       "suiteExitCode": 0
     },
     "chat-composer-popover": {
@@ -21,7 +21,7 @@
       "suiteExitCode": 0
     },
     "chat-sub-session": {
-      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "renderedSourceSha": "53ff76b1052ab9b588654fec62c50a0a56f0416c",
       "suiteExitCode": 0
     },
     "review-editor-malformed-front-matter": {
