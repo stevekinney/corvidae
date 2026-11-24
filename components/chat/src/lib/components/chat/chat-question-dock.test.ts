@@ -247,7 +247,7 @@ describe('a docked question', () => {
     );
   });
 
-  test('keeps the dock flat while its nested radio rows retain their own touch size', async () => {
+  test('keeps one dock frame while its radio rows remain flat touch targets', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
@@ -257,9 +257,10 @@ describe('a docked question', () => {
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
     const dock = /\.chat-question-dock\s*\{([^}]*)\}/u.exec(source)?.[1] ?? '';
-    expect(dock).not.toContain('border:');
-    expect(dock).not.toContain('border-radius:');
+    expect(dock).toContain('border: 1px solid var(--cinder-border);');
+    expect(dock).toContain('border-radius: var(--cinder-radius-lg);');
     expect(dock).not.toContain('background:');
+    expect(dock).not.toContain('padding:');
     expect(dock).not.toContain('padding:');
     expect(source).toMatch(
       /\.chat-question-dock-body :global\(\.cinder-choice-grid-item\[data-cinder-variant='row'\]\)\s*\{[^}]*--_cinder-choice-card-min-block-size: 3.25rem;/,

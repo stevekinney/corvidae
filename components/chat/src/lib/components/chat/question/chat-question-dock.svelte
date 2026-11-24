@@ -392,8 +392,9 @@
     gap: var(--cinder-space-3);
     inline-size: 100%;
     min-inline-size: 0;
-    /* The dock is part of the transcript, not a raised panel. Its choices retain their own
-     * coarse 52px rows, while the surrounding question stays visually flat. */
+    /* One frame groups the dock without turning its coarse 52px choices into nested cards. */
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
     max-block-size: min(100%, 80dvh);
   }
 
