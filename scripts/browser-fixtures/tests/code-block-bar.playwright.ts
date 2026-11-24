@@ -93,9 +93,8 @@ for (const theme of ['light', 'dark'] as const) {
     expect(full.copy!.right).toBeGreaterThan(full.language!.right);
     expect(full.root.right - full.copy!.right).toBeLessThanOrEqual(8);
 
-    // Copy alone still sits at the inline end. It floats, and the floating inset is the coarse hit
-    // area's overhang past the 24px face (10px), so the whole 44px target stays inside the clipped
-    // block.
+    // Copy alone still sits at the inline end. It floats, and the floating inset aligns its painted
+    // 24px face with the code while its 44px coarse target remains reachable past the shell.
     const copyOnly = await read(page, 'copy-only');
     expect(copyOnly.root.right - copyOnly.copy!.right).toBeLessThanOrEqual(10);
     // Neither: no bar at all.
@@ -105,5 +104,55 @@ for (const theme of ['light', 'dark'] as const) {
     const long = await read(page, 'long-language');
     expect(long.language!.right).toBeLessThanOrEqual(long.copy!.left);
     expect(long.copy!.right).toBeLessThanOrEqual(long.root.right);
+  });
+}
+
+for (const width of [320, 375]) {
+  test(`the Copy target remains reachable at both outer edges on a ${width}px phone`, async ({
+    componentPage,
+  }) => {
+    if (entry === undefined || fixture === undefined) throw new Error('No code block bar fixture.');
+    const page = await componentPage.open({
+      entry,
+      theme: 'light',
+      viewport: { name: 'mobile', width, height: 900 },
+      hasTouch: true,
+      fixtureName: 'bar',
+      fixtureContentHash: fixture.fixtureContentHash,
+    });
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+    const fixtureHost = page.getByTestId('language-and-copy');
+    await fixtureHost.locator('.cinder-copy-button').waitFor();
+
+    const hitTargets = await fixtureHost.evaluate((host) => {
+      const root = host.querySelector('.cinder-code-block');
+      const button = host.querySelector('.cinder-copy-button');
+      if (!(root instanceof HTMLElement) || !(button instanceof HTMLElement)) {
+        throw new Error('Missing CodeBlock Copy target.');
+      }
+      const rootBox = root.getBoundingClientRect();
+      const buttonBox = button.getBoundingClientRect();
+      const y = (buttonBox.top + buttonBox.bottom) / 2;
+      const outerInlineEnd = document.elementFromPoint(buttonBox.right + 9, y);
+      const outerBlockStart = document.elementFromPoint(
+        (buttonBox.left + buttonBox.right) / 2,
+        buttonBox.top - 9,
+      );
+      return {
+        shellClips: getComputedStyle(root).overflow,
+        copyWidth: buttonBox.width,
+        endTargetIsCopy: outerInlineEnd === button || button.contains(outerInlineEnd),
+        startTargetIsCopy: outerBlockStart === button || button.contains(outerBlockStart),
+        extendsPastShellEnd: buttonBox.right + 9 > rootBox.right,
+        extendsPastShellStart: buttonBox.top - 9 < rootBox.top,
+      };
+    });
+
+    expect(hitTargets.shellClips).toBe('visible');
+    expect(hitTargets.copyWidth).toBe(24);
+    expect(hitTargets.extendsPastShellEnd).toBe(true);
+    expect(hitTargets.extendsPastShellStart).toBe(true);
+    expect(hitTargets.endTargetIsCopy).toBe(true);
+    expect(hitTargets.startTargetIsCopy).toBe(true);
   });
 }

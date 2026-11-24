@@ -1,7 +1,7 @@
 /**
  * The chat transcript's approvals and polish against the real host (COR-1984): an approval is one
- * 40px row with Show input, Deny, Approve and Allow for the rest of this chat, which resumes the run
- * with `remember` as Approve does (COR-1990); a call the person denied reads Denied and is counted so, not as failed; the
+ * 40px row with Input, Deny and Approve; an ordinary on-changes approval offers a remembered grant
+ * while the refund requires approval each time. A denied call reads Denied and is not failed; the
  * transcript sits on the page background; and the header title draws the Markdown it was given.
  * Sessions are started through the AG-UI mount, the way a client other than the page would.
  */
@@ -10,6 +10,7 @@ import type { Page } from '@playwright/test';
 import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BARRIER_URL, E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { REMEMBER_APPROVAL_AGENT } from './regeneration-proof-agent.ts';
 
 const TOOL_RUNNER = 'demo:tool-runner';
 const CHAT_PROOF_PARENT = 'e2e:chat-proof-parent';
@@ -51,7 +52,7 @@ function recordResolutions(page: Page): Array<Record<string, unknown>> {
 }
 
 test.describe('an approval in the chat', () => {
-  test('is Cinder’s approval row: Input, a note, Allow for the rest of this chat, Deny and Approve', async ({
+  test('is Cinder’s refund approval row with Input, a note, Deny and Approve', async ({
     page,
     request,
     checkA11y,
@@ -64,14 +65,13 @@ test.describe('an approval in the chat', () => {
 
     const approval = page.locator('[data-approval-decision]');
     await expect(approval).toBeVisible();
-    // Cinder's shared approval row: the input in the open, a note on request, the grant for the
-    // rest of the chat as a checkbox on its own line, then Deny and Approve.
+    // Refunds always require per-call approval, so there is no remembered grant.
     for (const name of ['Add note', 'Deny', 'Approve']) {
       await expect(approval.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
     }
     await expect(
       approval.getByRole('checkbox', { name: /^Allow .* for the rest of this chat$/ }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await checkA11y('a chat waiting on an approval');
 
     // The input is in the open, one pair per line, with no disclosure to open first.
@@ -85,7 +85,8 @@ test.describe('an approval in the chat', () => {
     page,
     request,
   }) => {
-    const threadId = await waitingSession(request);
+    const threadId = newThreadId(REMEMBER_APPROVAL_AGENT);
+    await runToEnd(request, REMEMBER_APPROVAL_AGENT, threadId, 'Record the fixture value');
     const resumes = recordResumes(page);
     const resolutions = recordResolutions(page);
     await page.goto(`/chats/${threadId}`);
@@ -108,8 +109,9 @@ test.describe('an approval in the chat', () => {
       '@lostgradient/bureau': { round: expect.any(Number) },
     });
     expect(resolutions).toEqual([]);
-    // The Bureau ran the refund, and the transcript shows the call as done.
+    // The harmless on-changes tool ran, and the transcript shows the call as done.
     await expect(conversation(page).getByRole('img', { name: 'Needs you' })).toHaveCount(0);
+    await expect(conversation(page).getByText('The fixture value was recorded.')).toBeVisible();
   });
 
   test('is plain Approve without remember when only Approve is pressed', async ({

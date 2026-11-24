@@ -56,6 +56,10 @@
       "renderedSourceSha": "90161b8dbd3652427b0569320f9ca9954f6ac5ca",
       "suiteExitCode": 0
     },
+    "code-location": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
+      "suiteExitCode": 0
+    },
     "collapsible": {
       "renderedSourceSha": "50a1abe787152046a960b2b23b508940022b8456",
       "suiteExitCode": 0
@@ -80,12 +84,20 @@
       "renderedSourceSha": "4e96125aa78b1899964942f21378d14f5130ac80",
       "suiteExitCode": 0
     },
+    "duration-field": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
+      "suiteExitCode": 0
+    },
     "form-actions": {
-      "renderedSourceSha": "adaca83f203136d51a1b7d1ed1f9c6063f85ffbc",
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
       "suiteExitCode": 0
     },
     "form-field": {
       "renderedSourceSha": "dff1b871e1bb8ae4e81fdb83abcb7fc22fbaabe7",
+      "suiteExitCode": 0
+    },
+    "form-section": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
       "suiteExitCode": 0
     },
     "inspector": {
@@ -129,7 +141,15 @@
       "suiteExitCode": 0
     },
     "schema-form": {
-      "renderedSourceSha": "2c1dd08e6818d3f33badb9148af72c4e85aa60a5",
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
+      "suiteExitCode": 0
+    },
+    "select": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
+      "suiteExitCode": 0
+    },
+    "share-card": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
       "suiteExitCode": 0
     },
     "sidebar": {
@@ -154,6 +174,22 @@
     },
     "table": {
       "renderedSourceSha": "4e96125aa78b1899964942f21378d14f5130ac80",
+      "suiteExitCode": 0
+    },
+    "tag-input": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
+      "suiteExitCode": 0
+    },
+    "toast-region": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
+      "suiteExitCode": 0
+    },
+    "toggle": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
+      "suiteExitCode": 0
+    },
+    "token-computation": {
+      "renderedSourceSha": "d27dd8707ce82c3c83a84dca8ee7d83d64bcb6b2",
       "suiteExitCode": 0
     },
     "tool-call-rail": {

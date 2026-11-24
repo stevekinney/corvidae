@@ -87,7 +87,7 @@
     workflowProblems,
     type WorkflowProblem,
   } from './workflow-builder-problems.ts';
-  import { locateJsonProblem } from './workflow-source.ts';
+  import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
   import WorkflowStepList from './workflow-step-list.svelte';
   import { StepKeys } from './workflow-step-keys.svelte.ts';
 

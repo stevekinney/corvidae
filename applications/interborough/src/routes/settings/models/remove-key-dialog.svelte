@@ -11,7 +11,7 @@
    * plugins' contributions, never listed here. The host never answers with a key and this dialog
    * never holds one.
    */
-  import { ConfirmDialog } from '@lostgradient/cinder';
+  import { ConfirmDialog, GroupedList, GroupedListItem } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { EMBEDDER_COPY } from '../../../app/copy/embedder.ts';
@@ -170,34 +170,21 @@
 >
   {#snippet options()}
     {#if trimmedNames.length > 0 || embedderNote !== undefined}
-      <div class="ib-remove" data-testid="provider-remove-notes">
+      <GroupedList data-testid="provider-remove-notes" aria-label={copy.title(displayName)}>
         {#if trimmedNames.length > 0}
-          <p class="ib-remove__note" data-testid="provider-remove-trimmed">
-            {copy.trimmedNote(trimmedNames, displayName)}
-          </p>
+          <GroupedListItem data-testid="provider-remove-trimmed"
+            >{#snippet title()}{copy.trimmedNote(
+                trimmedNames,
+                displayName,
+              )}{/snippet}</GroupedListItem
+          >
         {/if}
         {#if embedderNote !== undefined}
-          <p class="ib-remove__note" data-testid="provider-remove-embedder">
-            {embedderNote}
-          </p>
+          <GroupedListItem data-testid="provider-remove-embedder"
+            >{#snippet title()}{embedderNote}{/snippet}</GroupedListItem
+          >
         {/if}
-      </div>
+      </GroupedList>
     {/if}
   {/snippet}
 </ConfirmDialog>
-
-<style>
-  .ib-remove {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    min-width: 0;
-  }
-
-  .ib-remove__note {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
-  }
-</style>

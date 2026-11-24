@@ -20,7 +20,10 @@
      * radius, the same step cards and dialogs use. At the control radius it read
      * as a hard-cornered plate at panel width. */
     border-radius: var(--cinder-radius-lg);
-    overflow: hidden;
+    /* The CopyButton owns a 44px coarse-pointer pseudo-target. Let it reach past the painted
+     * 24px face at this shell's edge; the viewport below is the only code/content scroller and
+     * keeps its own overflow clipping. */
+    overflow: visible;
     user-select: none;
   }
 
@@ -257,9 +260,8 @@
   }
 
   /* On a touch screen the copy button keeps its painted 24px box. CopyButton gives it the 44px hit
-   * area through a pseudo-element, so the block's layout never grows for a finger; the block's
-   * rounded clip trims that area's outer 6px at the top and inline end, and the painted 24px stays
-   * whole. */
+   * area through a pseudo-element, so the block's layout never grows for a finger. The shell leaves
+   * that target reachable at its outer edges; the viewport keeps code/content clipping. */
 
   .cinder-code-block .cinder-code-block__meta .cinder-copy-button:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
@@ -560,8 +562,8 @@
      * button is the same 24px box as the meta row's, so Copy looks the same size in either stack. */
     --_cinder-code-block-float-size: 1.5rem;
     /* The coarse-pointer hit area is `touch-target-min` square and centred on the face, so it
-     * overhangs the face by half the difference. The root clips its overflow, so the inset is at
-     * least that overhang and the whole target stays inside the block. */
+     * overhangs the face by half the difference. The inset keeps the painted face aligned with the
+     * code's end padding while the shell leaves the target's outer edges reachable. */
     --_cinder-code-block-float-inset: max(
       var(--cinder-space-2),
       calc((var(--cinder-touch-target-min) - var(--_cinder-code-block-float-size)) / 2)
@@ -636,8 +638,8 @@
     inset-block-start: var(--_cinder-code-block-first-line-centre);
     inset-inline-end: 0;
     z-index: 1;
-    /* The inset keeps the button's whole coarse hit area, which reaches past its painted edge,
-     * inside the block's clipped box. */
+    /* The inset aligns the painted button with the code's end padding. Its coarse target may reach
+     * past the shell, which intentionally leaves that interactive edge unclipped. */
     padding: 0 var(--_cinder-code-block-float-inset);
     transform: translateY(-50%);
   }

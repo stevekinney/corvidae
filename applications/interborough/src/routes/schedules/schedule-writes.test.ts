@@ -38,7 +38,7 @@ const FILE: WorkflowFileListing = {
   outputSchema: null,
   version: 'v1',
   trigger: { kind: 'schedule', spec: '1h' },
-  runs: { active: 0, last24Hours: 0, lastRunAt: null },
+  runs: { active: 0, current: null, last: null, last24Hours: 0, lastRunAt: null, total: 0 },
   problem: null,
 };
 

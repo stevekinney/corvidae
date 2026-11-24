@@ -104,13 +104,15 @@ describe('a chat’s permission mode on the demo tool-runner', () => {
     expect(stream).not.toContain('issue-refund');
   });
 
-  test('allow-all skips the ask the refund raises under on-changes', async () => {
+  test('allow-all still requires approval for the refund', async () => {
     const host = await start();
     await chatIn(host, 'thread-allow-all', 'allow-all');
 
     const stream = await turn(host, 'thread-allow-all');
 
-    expect(stream).toContain('Order order-1001 was refunded.');
-    expect(stream).not.toContain('"type":"interrupt"');
+    expect(stream).toContain('"type":"interrupt"');
+    expect(stream).toContain('issue-refund');
+    expect(stream).not.toContain('provider-pending');
+    expect(stream).toContain('(mode: always)');
   });
 });
