@@ -1,9 +1,9 @@
 {
   "issue": "COR-2604",
   "branch": "steve/cor-2604-backchannel-svelte",
-  "checkedAt": "3b0b4fe32ee5936e660c8e8b0d7d10c1ab815f9a",
+  "checkedAt": "34dfa0759786d9412aa6ae412804231dda9f91d6",
   "briefVersion": "766d058a6e0f",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
@@ -37,8 +37,8 @@
     },
     {
       "id": "AC7",
-      "status": "not-met",
-      "evidence": "Correlation, reconciliation and DOM/SSR tests pass; real browser fixture awaits coordinator dispatch."
+      "status": "met-on-branch",
+      "evidence": "Correlation, reconciliation and DOM/SSR tests pass; coordinator ran the named Chromium fixture at 34dfa0759786d9412aa6ae412804231dda9f91d6, exit 0, scratch/COR-2604-affdc532/chromium-34dfa.log."
     }
   ]
 }
