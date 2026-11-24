@@ -410,6 +410,7 @@
         "svelte": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
+        "zod": "catalog:",
       },
       "peerDependencies": {
         "@tanstack/svelte-query": "catalog:",

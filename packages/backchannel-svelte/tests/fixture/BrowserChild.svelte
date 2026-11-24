@@ -18,11 +18,13 @@
   });
   onDestroy(() => watch.dispose());
   async function submit() {
-    secret = (await command.mutateAsync({ id: 'one' })).secret;
+    const result = await command.mutateAsync({ id: 'one' });
+    secret = result.secret;
   }
   async function submitDelayed() {
     try {
-      secret = (await command.mutateAsync({ id: 'delayed' })).secret;
+      const result = await command.mutateAsync({ id: 'delayed' });
+      secret = result.secret;
     } catch {
       /* interrupted on scope disposal */
     }

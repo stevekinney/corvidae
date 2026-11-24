@@ -1,8 +1,4 @@
-import {
-  CatalogClientError,
-  type CatalogTransport,
-  type SubscriptionTransport,
-} from '@lostgradient/backchannel/client';
+import type { CatalogTransport, SubscriptionTransport } from '@lostgradient/backchannel/client';
 import { QueryObserver, type QueryClient } from '@tanstack/svelte-query';
 import { readonly, writable } from 'svelte/store';
 export { activateResource, loadMoreWhenVisible } from './attachments.ts';
@@ -224,7 +220,7 @@ export function createCommand<Input, Output>(
 ) {
   const invalidationTargets = [...invalidates];
   const pending = writable(false);
-  const fault = writable<'failed' | 'unknown' | undefined>();
+  const fault = writable<'unknown' | undefined>();
   let active = 0;
   host.own(() => {
     pending.set(false);
@@ -245,10 +241,6 @@ export function createCommand<Input, Output>(
         if (host.disposed) throw new Error('Catalog request was interrupted');
       } catch (cause) {
         if (host.disposed) throw cause;
-        if (cause instanceof CatalogClientError) {
-          fault.set('failed');
-          throw cause;
-        }
         host.markUncertain(operation);
         fault.set('unknown');
         throw new UnknownCommandOutcome(cause);

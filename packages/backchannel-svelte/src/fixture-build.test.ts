@@ -42,7 +42,7 @@ it('builds the generated browser fixture without server and private dependencies
       /(?:^|\/)(?:server|armorer|velveteen|credentials|mcp)(?:\/|$)/iu.test(path),
     ),
   ).toEqual([]);
-  const source = await build.outputs[0]!.text();
+  const source = await build.outputs[0].text();
   expect(source).not.toMatch(/@lostgradient\/(?:armorer|velveteen|credentials|mcp)/u);
   expect(source).not.toMatch(/node:|bun:/u);
 });
@@ -55,7 +55,7 @@ it('renders a synchronously validated seed on the server', async () => {
   });
   expect(build.logs).toEqual([]);
   expect(build.success).toBe(true);
-  const source = await build.outputs[0]!.text();
+  const source = await build.outputs[0].text();
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
   );
@@ -87,7 +87,7 @@ it('builds and runs the portable client without resolving Svelte', async () => {
   });
   expect(build.success).toBe(true);
   expect(imports.filter((path) => path === 'svelte' || path.startsWith('svelte/'))).toEqual([]);
-  const source = await build.outputs[0]!.text();
+  const source = await build.outputs[0].text();
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
   );

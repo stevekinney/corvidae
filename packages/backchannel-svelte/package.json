@@ -31,7 +31,8 @@
     "oxlint": "catalog:",
     "svelte": "catalog:",
     "svelte-check": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "zod": "catalog:"
   },
   "sideEffects": false
 }

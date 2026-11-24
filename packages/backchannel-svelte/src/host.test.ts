@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { QueryClient } from '@tanstack/svelte-query';
 import { describe, expect, it } from 'bun:test';
 import { validateSeed } from '../tests/fixture/validate-seed.ts';
@@ -49,7 +50,7 @@ describe('scoped catalog host', () => {
     host.dispose();
     expect(signal?.aborted).toBe(true);
     finish({ secret: 'unique-secret' });
-    await expect(pending).rejects.toThrow();
+    expect(await throwingRejectionOf(pending)).toThrow();
     expect(host.cache.getMutationCache().getAll()).toHaveLength(0);
   });
 
@@ -61,7 +62,7 @@ describe('scoped catalog host', () => {
     });
     const pending = createCommand(host, 'issue', []).mutateAsync({});
     queueMicrotask(() => host.dispose());
-    await expect(pending).rejects.toThrow();
+    expect(await throwingRejectionOf(pending)).toThrow();
   });
 
   it('delivers concurrent responses to their own callers and forwards aborts', async () => {
@@ -87,7 +88,7 @@ describe('scoped catalog host', () => {
     controller.abort();
     expect(signals.get('third')?.aborted).toBe(true);
     responses.get('third')?.('late');
-    await expect(interrupted).rejects.toThrow();
+    expect(await throwingRejectionOf(interrupted)).toThrow();
   });
 
   it('snapshots caller input before asynchronous transport work', async () => {
@@ -134,11 +135,11 @@ describe('scoped catalog host', () => {
       },
     });
     const command = createCommand(host, 'write', ['read']);
-    await expect(command.mutateAsync({})).rejects.toThrow('outcome is unknown');
-    await expect(command.mutateAsync({})).rejects.toThrow('Reconcile');
+    expect(await throwingRejectionOf(command.mutateAsync({}))).toThrow('outcome is unknown');
+    expect(await throwingRejectionOf(command.mutateAsync({}))).toThrow('Reconcile');
     expect(calls).toEqual(['write']);
     await command.reconcile('read', {});
-    await expect(command.mutateAsync({})).rejects.toThrow('outcome is unknown');
+    expect(await throwingRejectionOf(command.mutateAsync({}))).toThrow('outcome is unknown');
     expect(calls).toEqual(['write', 'read', 'write']);
   });
 
@@ -160,8 +161,8 @@ describe('scoped catalog host', () => {
     const first = createCommand(host, 'write', ['read']);
     const second = createCommand(host, 'write', ['read']);
     const pending = second.mutateAsync('pending');
-    await expect(first.mutateAsync('lost')).rejects.toThrow('outcome is unknown');
-    await expect(first.reconcile('read', {})).rejects.toThrow('pending');
+    expect(await throwingRejectionOf(first.mutateAsync('lost'))).toThrow('outcome is unknown');
+    expect(await throwingRejectionOf(first.reconcile('read', {}))).toThrow('pending');
     expect(calls).toEqual(['write', 'write']);
     finish('settled');
     await pending;

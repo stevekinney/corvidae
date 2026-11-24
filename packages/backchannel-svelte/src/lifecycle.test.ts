@@ -15,7 +15,7 @@ it('runs the generated Svelte fixture with reactive reads, scope teardown and se
     plugins: [sveltePlugin({ generate: 'client' })],
   });
   expect(build.success).toBe(true);
-  const source = await build.outputs[0]!.text();
+  const source = await build.outputs[0].text();
   const driver = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
   );

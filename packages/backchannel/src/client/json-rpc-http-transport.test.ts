@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { CatalogClientError, createCatalogClient, type CatalogFetch } from './catalog-client.ts';
 import { httpJsonRpcTransport, jsonRpcHttpEndpoint } from './json-rpc-http-transport.ts';
 
@@ -58,7 +58,8 @@ describe('httpJsonRpcTransport', () => {
   it('correlates reverse-order concurrent responses with distinct default request ids', async () => {
     const requests: { id: string; resolve: (response: Response) => void }[] = [];
     const fetch: CatalogFetch = async (_input, init) => {
-      const request = JSON.parse(String(init?.body)) as { id: string };
+      if (typeof init?.body !== 'string') throw new Error('Expected a JSON request body');
+      const request = JSON.parse(init.body) as { id: string };
       return new Promise((resolve) => requests.push({ id: request.id, resolve }));
     };
     const transport = httpJsonRpcTransport({ baseUrl: '/api', fetch });
@@ -79,9 +80,11 @@ describe('httpJsonRpcTransport', () => {
       { error: { code: -32601, message: 'wrong' } },
     ]) {
       const fetch: CatalogFetch = async () => Response.json(answer);
-      await expect(
-        httpJsonRpcTransport({ baseUrl: '/api', fetch, requestId: 'expected' })('probe.read', {}),
-      ).rejects.toThrow('Invalid JSON-RPC response');
+      const pending = httpJsonRpcTransport({ baseUrl: '/api', fetch, requestId: 'expected' })(
+        'probe.read',
+        {},
+      );
+      expect(await throwingRejectionOf(pending)).toThrow('Invalid JSON-RPC response');
     }
   });
   it('posts a JSON-RPC request to the endpoint with the connection headers', async () => {

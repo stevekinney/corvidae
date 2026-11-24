@@ -26,7 +26,8 @@ describe('createOperationClientSources for a catalog that is not Weft', () => {
   it('matches the committed paged Svelte catalog fixture', async () => {
     const sources = await svelteFixtureSources();
     const directory = join(import.meta.dir, '../../backchannel-svelte/tests/fixture/generated');
-    expect((await readdir(directory)).toSorted()).toEqual([...sources.keys()].toSorted());
+    const names = await readdir(directory);
+    expect(names.toSorted()).toEqual([...sources.keys()].toSorted());
     for (const [name, source] of sources)
       expect(await Bun.file(join(directory, name)).text()).toBe(source);
     const svelte = sources.get('operation-client.svelte.ts') ?? '';
@@ -355,9 +356,10 @@ describe('portable generated entries', () => {
       headers,
       fetch: async (url, init) => {
         requests.push([url, init]);
+        if (typeof init?.body !== 'string') throw new Error('Expected a JSON request body');
         return Response.json({
           jsonrpc: '2.0',
-          id: (JSON.parse(String(init?.body)) as { id: string }).id,
+          id: (JSON.parse(init.body) as { id: string }).id,
           result: null,
         });
       },
