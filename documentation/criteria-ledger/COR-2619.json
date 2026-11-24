@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2619",
+  "branch": "steve/composable-review-adoption",
+  "checkedAt": "a15839ae1e23df47321bc8af250327cc581df10f",
+  "briefVersion": "6af12e5f7cf4",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Catalog and protocol inventory checked by catalog-consumer-inventory.test.ts at a15839ae1e."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Direct inventory test validates served operations, supported bindings, classifications and required transport fields at a15839ae1e."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Direct inventory test scans imports and transport sites and rejects unlisted and replaced fixture calls at a15839ae1e."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Inventory records host, AG-UI, asset, OAuth and sandbox protocol boundaries; no production transport was modified."
+    }
+  ]
+}
