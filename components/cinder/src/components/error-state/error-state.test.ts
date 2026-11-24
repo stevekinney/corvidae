@@ -46,10 +46,14 @@ describe('ErrorState rendering', () => {
     expect(withDetail.container.querySelector('.cinder-error-state-detail')?.textContent).toContain(
       'ECONNRESET',
     );
-    const details = withDetail.container.querySelector('details.cinder-error-state-details');
+    const details = withDetail.container.querySelector('.cinder-error-state-details');
     expect(details).not.toBeNull();
-    expect(details?.hasAttribute('open')).toBe(false);
-    expect(details?.querySelector('summary')?.textContent?.trim()).toBe('Show the error details');
+    expect(details?.querySelector('.cinder-error-state-detail')?.hasAttribute('hidden')).toBe(true);
+    expect(
+      withDetail
+        .getByRole('button', { name: 'Show the error details' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
     cleanup();
 
     const withoutDetail = render(ErrorState, { props: { title: 'Failed', description: 'Nope.' } });

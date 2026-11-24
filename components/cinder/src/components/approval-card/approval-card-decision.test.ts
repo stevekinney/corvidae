@@ -452,7 +452,7 @@ describe('ApprovalCard decision layout: why the agent wants to do this', () => {
 describe('ApprovalCard decision layout: the retained receipt', () => {
   // C#6 (chat stress sweep): a receipt repeated the question it asked ("Refund order 4471 for
   // $42.00?") beside "Approved", and never said what was approved.
-  test('an approval is the expired card pattern: what was approved, one status line, no time inside', () => {
+  test('an approval is the expired card pattern: what was approved, one status line and its durable time', () => {
     const { container, getByRole, queryByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'approved',
@@ -470,12 +470,12 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(title?.querySelector('.cinder-sr-only')?.textContent).toBe('Approved:');
     expect(getByRole('article', { name: 'Approved: Refund $42.00, order 4471' })).toBeTruthy();
     expect(squash(title?.textContent)).not.toContain('Refund order 4471 for $42.00?');
-    // One status line: the word, then who. When it was decided is the host's, under the card.
+    // One status line: the word, who decided and the receipt's durable decision time.
     expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
-      'Approved by you',
+      'Approved by you, 10:46 AM',
     );
     expect(row?.querySelector('.cinder-approval-card__settled-dot')).not.toBeNull();
-    expect(container.textContent).not.toContain('10:46 AM');
+    expect(container.textContent).toContain('10:46 AM');
     // No badge, and none of the old receipt's parts.
     expect(container.querySelector('.cinder-badge')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__receipt-by')).toBeNull();
@@ -495,7 +495,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     });
     const by = container.querySelector('.cinder-approval-card__settled-note');
 
-    expect(squash(by?.textContent)).toBe('Approved by Priya Raman in Reviews');
+    expect(squash(by?.textContent)).toBe('Approved by Priya Raman in Reviews, 10:46 AM');
     expect(by?.textContent).not.toContain(String.fromCodePoint(0xb7));
     const link = getByRole('link', { name: 'Reviews' });
     expect(link.getAttribute('href')).toBe('/reviews');
@@ -515,7 +515,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(queryByRole('link')).toBeNull();
     expect(
       squash(container.querySelector('.cinder-approval-card__settled-note')?.textContent),
-    ).toBe('Approved by Priya Raman in Reviews');
+    ).toBe('Approved by Priya Raman in Reviews, 10:46 AM');
   });
 
   test('a denial is the same pattern in a neutral tone, with its reason in the one disclosure', async () => {
@@ -531,7 +531,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 
     expect(row?.getAttribute('data-cinder-tone')).toBe('neutral');
     expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
-      'Denied by you',
+      'Denied by you, 10:40 AM',
     );
     // The reason is not a second line on the card: it is in the disclosure, with the note's label.
     expect(container.querySelector('.cinder-approval-card__receipt-quote')).toBeNull();
@@ -539,7 +539,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(details?.hasAttribute('hidden')).toBe(true);
     await fireEvent.click(getByRole('button', { name: 'Details' }));
     expect(squash(details?.textContent)).toContain(
-      'Your note: Refund it through the original card instead',
+      'Your note Refund it through the original card instead',
     );
   });
 
@@ -588,14 +588,14 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(details?.hasAttribute('hidden')).toBe(false);
-    expect(squash(details?.textContent)).toContain('Your note: Checked the order first');
-    expect(squash(details?.textContent)).toContain('Result: Refunded $42.00 to the original card.');
+    expect(squash(details?.textContent)).toContain('Your note Checked the order first');
+    expect(squash(details?.textContent)).toContain('Result Refunded $42.00 to the original card.');
     expect(squash(details?.querySelector('.cinder-approval-card__command')?.textContent)).toContain(
       'refund --order 4471 --amount 42.00',
     );
   });
 
-  test('writes "Your note:" and "Result:" as one label followed by one space each', async () => {
+  test('writes the note and result as definition-list terms followed by their values', async () => {
     const { container, getByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'approved',
@@ -610,18 +610,17 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     const note = details.querySelector('.cinder-approval-card__decision-note');
     const result = details.querySelector('.cinder-approval-card__result');
     expect(squash(note?.textContent)).toBe(
-      'Your note: Approved after confirming the duplicate charge.',
+      'Your note Approved after confirming the duplicate charge.',
     );
-    expect(squash(result?.textContent)).toBe('Result: Refund completed successfully.');
-    // The same classed label leads each, and each is followed by exactly one space.
+    expect(squash(result?.textContent)).toBe('Result Refund completed successfully.');
+    // Each definition-list term has one corresponding value.
     for (const [block, label] of [
-      [note, 'decision-note-label'],
-      [result, 'result-label'],
+      [note, 'decision-note'],
+      [result, 'result'],
     ] as const) {
-      const span = block?.querySelector(`.cinder-approval-card__${label}`);
-      expect(span).not.toBeNull();
-      expect(span?.nextSibling?.textContent?.startsWith(' ')).toBe(true);
-      expect(span?.nextSibling?.textContent?.startsWith('  ')).toBe(false);
+      expect(block?.classList.contains(`cinder-approval-card__${label}`)).toBe(true);
+      expect(block?.querySelector('dt')).not.toBeNull();
+      expect(block?.querySelector('dd')).not.toBeNull();
     }
   });
 
