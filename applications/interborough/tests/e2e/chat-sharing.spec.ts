@@ -145,6 +145,15 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
         'Shared chat evidence',
       );
       await expect(owner.getByText('Nothing waiting on you', { exact: true })).toHaveCount(0);
+      const requestCopy = owner.getByText('Reader Member', { exact: false });
+      const grantAccess = owner.getByRole('button', { name: 'Grant access' });
+      const [copyBox, grantBox] = await Promise.all([
+        requestCopy.boundingBox(),
+        grantAccess.boundingBox(),
+      ]);
+      expect(copyBox).not.toBeNull();
+      expect(grantBox).not.toBeNull();
+      expect(grantBox!.x - (copyBox!.x + copyBox!.width)).toBeLessThanOrEqual(96);
       await captureForDesignReviewWithPhone(owner, {
         route: '/reviews',
         state: 'chat access request pending',
