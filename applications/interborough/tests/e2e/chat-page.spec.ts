@@ -861,7 +861,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(composer.getByRole('button', { name: 'Stop generating' })).toBeVisible();
     await expect(composer.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     await expect(conversationArea(page).locator('.chat-input-status')).toHaveText(
-      'A message now steers the run.',
+      'A message sent now waits until this run finishes.',
     );
     // The header's status is a Badge now (COR-2438, criterion 18b), not a dot named for its word.
     await expect(

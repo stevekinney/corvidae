@@ -88,6 +88,7 @@
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
+  import { browserWorkspaceStorage } from '../../app/workspace-lifetime.ts';
   import {
     forkContext,
     forkRefusalReason,
@@ -175,6 +176,7 @@
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
   import { lastAssistantId, lastTurnStop, turnStateOf, withoutStopLine } from './turn-states.ts';
+  import { draftTime, forgetChatDraft, readChatDraft, writeChatDraft } from './chat-drafts.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
@@ -284,14 +286,44 @@
   );
   const session = opened.session;
 
-  /** The session's adapter; while the chat is new it also notes the box as the first message is sent. */
+  // The draft store (`chat-drafts.ts`): what the person typed in this chat and has not sent, kept in
+  // this browser. An open chat puts it back in the box, and Chat's draft-restored drawer says when it
+  // was written (COR-2284 C7). A new chat has no session to keep a draft under until it starts.
+  const draftStorage = browserWorkspaceStorage(
+    hasPrincipalStore() ? getPrincipalStore().principal?.workspace : undefined,
+    'localStorage',
+  );
+  const storedDraft = untrack(() =>
+    isNew || (draft !== undefined && draft !== '')
+      ? undefined
+      : readChatDraft(draftStorage, sessionId),
+  );
+  /** When the draft put back in the box was written, until it is sent or discarded. */
+  let restoredDraftAt = $state<number | undefined>(untrack(() => storedDraft?.savedAt));
+  /** Keeps what the box holds as this chat's draft. */
+  function rememberDraft(text: string): void {
+    if (choosing) return;
+    // Putting the stored draft back in the box is not writing it again.
+    if (restoredDraftAt !== undefined && text === storedDraft?.text) return;
+    writeChatDraft(draftStorage, sessionId, text, Date.now());
+  }
+  /** Forgets this chat's draft: it was sent, or Discard draft emptied the box. */
+  function forgetDraft(): void {
+    restoredDraftAt = undefined;
+    if (!choosing) forgetChatDraft(draftStorage, sessionId);
+  }
+
+  /**
+   * The session's adapter. A message sent from an open chat forgets its draft; while the chat is new
+   * it notes the box as the first message is sent.
+   */
   const chatAdapter = $derived.by(() => {
     const adapter = session.chatAdapter;
-    if (!choosing) return adapter;
     return {
       ...adapter,
       sendMessage: (...input: Parameters<typeof adapter.sendMessage>) => {
-        submittedDraft = chat?.getComposerValue();
+        if (choosing) submittedDraft = chat?.getComposerValue();
+        else forgetDraft();
         return adapter.sendMessage(...input);
       },
     };
@@ -628,6 +660,10 @@
       connectHref: router.href('/settings/models'),
       newChatHref: router.href('/chats/new'),
       reconnectAttempt: session.reconnectAttempt,
+      restoredDraft:
+        restoredDraftAt === undefined
+          ? undefined
+          : { when: draftTime(restoredDraftAt, clock()), discard: forgetDraft },
       queuedFollowUps: session.queuedFollowUps,
       note: appliesNote,
       working: session.streaming && !choosing,
@@ -641,7 +677,7 @@
    * state (V4), Connect a model provider with a primary Connect provider. Chat draws that one in
    * place of an empty chat, and beside a chat with messages replaces only the composer, so the
    * history stays readable and a waiting approval answerable (ChatStates rows 19f and 19h). A
-   * blocked row the page draws (unreachable, restarting, a disabled plugin) says what is wrong
+   * offline drawer or a blocked row the page draws (restarting, a disabled plugin) says what is wrong
    * first.
    */
   const availability = $derived.by<ChatAvailability | undefined>(() => {
@@ -668,7 +704,13 @@
     }
     // An archived chat's bar outranks the missing provider: nothing can be sent until it is
     // unarchived, and Unarchive is the way back.
-    if (noProvider && composerStatus?.kind !== 'blocked' && composerStatus?.kind !== 'archived') {
+    // The offline drawer, which keeps the box and its draft, outranks it as the blocked rows do.
+    if (
+      noProvider &&
+      composerStatus?.kind !== 'blocked' &&
+      composerStatus?.kind !== 'archived' &&
+      composerStatus?.kind !== 'offline'
+    ) {
       return {
         kind: 'unconfigured',
         onConnect: () => router.navigate('/settings/models'),
@@ -997,7 +1039,7 @@
       isNew && fromWorkflows
         ? CHAT_COPY.newChatWelcome.workflowPrefill
         : draft === undefined || draft === ''
-          ? undefined
+          ? storedDraft?.text
           : draft,
     ),
   );
@@ -2452,6 +2494,7 @@
               : CHAT_COPY.questionAnswerLabel
             : CHAT_COPY.composer.placeholder(agentShown)}
           {composerStatus}
+          onComposerInput={rememberDraft}
           messageTurnState={turnState}
           onRetryConnection={() => void session.reconnect()}
           {...session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}

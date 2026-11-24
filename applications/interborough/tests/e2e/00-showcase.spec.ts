@@ -246,7 +246,7 @@ async function expectOfflineBanner(page: Page, label: string) {
 }
 
 for (const width of [375, 1280] as const) {
-  test(`Shell, offline (/chats/new): the new chat keeps its typed text with Send off and the reason beside it, at ${width} pixels`, async ({
+  test(`Shell, offline: the new chat keeps its typed text with Send off under the offline drawer, at ${width} pixels`, async ({
     page,
     context,
     pageErrors,
@@ -260,18 +260,19 @@ for (const width of [375, 1280] as const) {
     await goOffline(context, pageErrors);
     await page.evaluate(() => window.dispatchEvent(new Event('offline')));
     const banner = await expectOfflineBanner(page, `new chat at ${width}px offline`);
-    // COR-2014 row 17b replaces the composer with the blocked row while the host is unreachable.
-    const blockedComposer = page.getByRole('group', { name: 'Composer unavailable' });
-    await expect(blockedComposer).toContainText('Sending is off until Interborough is reachable');
-    await expect(blockedComposer).toBeVisible();
-    const blockedBox = await blockedComposer.boundingBox();
-    expect(blockedBox).not.toBeNull();
-    expect(blockedBox!.y).toBeGreaterThanOrEqual(0);
-    expect(blockedBox!.y + blockedBox!.height).toBeLessThanOrEqual(
+    // COR-2284 C5: the offline warning drawer sits above the composer while the host is
+    // unreachable; the box keeps the typed text and Send is off.
+    const offlineDrawer = page.locator('[data-chat-composer-drawer="offline"]');
+    await expect(offlineDrawer).toContainText('Your draft is saved here');
+    await expect(offlineDrawer).toBeVisible();
+    const drawerBox = await offlineDrawer.boundingBox();
+    expect(drawerBox).not.toBeNull();
+    expect(drawerBox!.y).toBeGreaterThanOrEqual(0);
+    expect(drawerBox!.y + drawerBox!.height).toBeLessThanOrEqual(
       await page.evaluate(() => window.innerHeight),
     );
-    await expect(composer).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
+    await expect(composer).toHaveValue('What did I approve yesterday?');
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
     // The top bar and the navigation stay live, because navigation still works for loaded pages.
     await expect(page.getByRole('button', { name: 'Search everything' })).toBeEnabled();
     if (width < 700) {
@@ -293,6 +294,7 @@ for (const width of [375, 1280] as const) {
     await context.setOffline(false);
     await expect(banner, `new chat at ${width}px back online`).toHaveCount(0);
     await expect(composer).toHaveValue('What did I approve yesterday?');
+    await expect(offlineDrawer).toHaveCount(0);
     await expect(page.getByText('Off until it’s back')).toHaveCount(0);
   });
 
