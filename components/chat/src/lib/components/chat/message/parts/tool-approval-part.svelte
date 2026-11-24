@@ -102,6 +102,9 @@
    */
   // The card reads Expired the moment a pending approval's deadline passes, whether or not the
   // host has said so; the clock turns once at the deadline so this line follows it.
+  // Browsers clamp a timeout to a signed 32-bit delay. Re-arm a long-lived approval at that bound
+  // instead of overflowing it to an immediate timer, which would repeatedly wake the component.
+  const MAX_TIMEOUT_DELAY = 2_147_483_647;
   let now = $state(Date.now());
   $effect(() => {
     const expiresAt = part.action.expiresAt;
@@ -112,7 +115,7 @@
       now = Date.now();
       return;
     }
-    const timer = setTimeout(() => (now = Date.now()), remaining);
+    const timer = setTimeout(() => (now = Date.now()), Math.min(remaining, MAX_TIMEOUT_DELAY));
     return () => clearTimeout(timer);
   });
   /** Writes a moment as a message's time is: the time of day for today, the date with it otherwise. */
