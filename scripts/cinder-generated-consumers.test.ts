@@ -62,7 +62,7 @@ test('every task of a workspace that reaches Cinder waits for Cinder metadata', 
     for (const task of TASKS) {
       if (scripts[task] === undefined) continue;
       // A task with no Turbo definition is never run by Turbo; the paths that run it directly call
-      // `ensureCinderGenerated()` (`ensure-cinder-generated.test.ts` and the recovery test).
+      // `ensureCinderGenerated()` (`ensure-cinder-generated.integration.test.ts` and the recovery test).
       if (
         configuration.tasks[`${workspace.name}#${task}`] === undefined &&
         configuration.tasks[task] === undefined

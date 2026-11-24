@@ -30,11 +30,11 @@
  * @module sample-world-seed
  */
 
+import { openLocalBungalow, type RootLock } from '@lostgradient/bungalow';
 import { ANONYMOUS_LOCAL_OWNER } from '@lostgradient/bureau';
 import { createMemoryAuthority, type MemoryAuthority } from '@lostgradient/memory';
 import { createAgentSession, SESSION_OWNER_METADATA_KEY } from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
-import { mkdir, rm } from 'node:fs/promises';
 
 import { setPluginsEnabled } from '../src/host/demo-plugin-home.ts';
 import { startHost, type Host, type HostOptions } from '../src/host/host.ts';
@@ -42,6 +42,7 @@ import { createOffsetRuntime, type OffsetRuntime } from '../src/host/offset-runt
 import type { ShowcasePacing } from '../src/host/showcase-agents.ts';
 import { SHOWCASE_MODELS, showcaseHostOptions } from '../src/host/showcase.ts';
 import { writeProviderHome } from '../src/host/stub-provider.ts';
+import { resetOwnedFixture, type FixtureOwnership } from './fixture-ownership.ts';
 import { checksRecorded } from './sample-world-checks.ts';
 import {
   missedRunsLogged,
@@ -221,6 +222,7 @@ export type SampleWorldHostOptions = Omit<
 
 /** How {@link seedSampleWorld} leaves its host. */
 export interface SampleWorldOptions {
+  readonly ownership: FixtureOwnership;
   /** Options for the Nov 2 host the seed leaves running; the earlier hosts listen on a free port. */
   readonly host?: SampleWorldHostOptions;
   /**
@@ -372,6 +374,8 @@ interface Story {
   readonly director: Director;
   /** Told each step as it begins ({@link SampleWorldOptions.onStep}). */
   readonly onStep: (step: string) => void;
+  readonly acquireLock: (root: string) => RootLock;
+  readonly validateHome: () => Promise<void>;
 }
 
 /**
@@ -381,10 +385,30 @@ interface Story {
 async function startAt(story: Story, at: number, options?: SampleWorldHostOptions): Promise<Host> {
   const { home, runtime, director } = story;
   runtime.setTime(at);
+  await story.validateHome();
   return startHost({
     ...(options ?? { port: 0 }),
     environment: { ...options?.environment, INTERBOROUGH_HOME: home },
     runtime,
+    openHome: async (openOptions) => {
+      await story.validateHome();
+      const bungalow = await openLocalBungalow({
+        name: openOptions.name,
+        root: home,
+        acquireLock: story.acquireLock,
+        ...(openOptions.secretProvider === undefined
+          ? {}
+          : { secretProvider: openOptions.secretProvider }),
+        ...(openOptions.workspaceId === undefined ? {} : { workspaceId: openOptions.workspaceId }),
+      });
+      try {
+        await story.validateHome();
+      } catch (error) {
+        bungalow.close();
+        throw error;
+      }
+      return bungalow;
+    },
     ...showcaseHostOptions(samplePacing(runtime, director)),
   });
 }
@@ -411,12 +435,39 @@ async function session(
   act: (context: SessionContext) => Promise<void>,
 ): Promise<void> {
   const host = await step(story, `${name}: starting its host`, () => startAt(story, at));
+  const stop = async () => {
+    try {
+      await step(story, `${name}: stopping its host`, () => host.close());
+    } catch (error) {
+      try {
+        await host.close();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          `The sample world's session "${name}" could not stop.`,
+          { cause: cleanupError },
+        );
+      }
+      throw error;
+    }
+  };
   try {
     await step(story, name, () => act({ host, runtime: story.runtime, director: story.director }));
-  } finally {
+  } catch (error) {
     story.director.scene = {};
-    await step(story, `${name}: stopping its host`, () => host.close());
+    try {
+      await stop();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `The sample world's session "${name}" failed and could not stop.`,
+        { cause: cleanupError },
+      );
+    }
+    throw error;
   }
+  story.director.scene = {};
+  await stop();
 }
 
 /**
@@ -628,20 +679,98 @@ export const SAMPLE_WORLD_DISABLED_PLUGINS = ['demo', 'ollama', 'voyage'] as con
  */
 export async function seedSampleWorld(
   home: string,
-  options: SampleWorldOptions = {},
+  options: SampleWorldOptions,
 ): Promise<SampleWorld> {
-  await rm(home, { recursive: true, force: true });
-  await mkdir(home, { recursive: true });
-  await writeProviderHome(home, SHOWCASE_MODELS);
+  const callerHost = options.host;
+  const snapshot: SampleWorldOptions = {
+    ...options,
+    ownership: { ...options.ownership },
+    ...(callerHost === undefined
+      ? {}
+      : {
+          host: {
+            ...callerHost,
+            ...(callerHost.environment === undefined
+              ? {}
+              : { environment: { ...callerHost.environment } }),
+            ...(callerHost.databaseKinds === undefined
+              ? {}
+              : { databaseKinds: { ...callerHost.databaseKinds } }),
+            ...(callerHost.contentKinds === undefined
+              ? {}
+              : { contentKinds: { ...callerHost.contentKinds } }),
+            ...(callerHost.developmentPlugins === undefined
+              ? {}
+              : { developmentPlugins: [...callerHost.developmentPlugins] }),
+            ...(callerHost.settings === undefined
+              ? {}
+              : {
+                  settings: { ...callerHost.settings, locked: { ...callerHost.settings.locked } },
+                }),
+          },
+        }),
+  };
+  const lock = await resetOwnedFixture(home, snapshot.ownership);
+  try {
+    const world = await seedOwnedSampleWorld(home, snapshot, () => lock.validate());
+    return {
+      ...world,
+      host: {
+        ...world.host,
+        close: async () => {
+          try {
+            await world.host.close();
+            lock.release();
+          } catch (error) {
+            if (isHostTeardownError(error) && error.resourcesClosed) lock.release();
+            throw error;
+          }
+        },
+      },
+    };
+  } catch (error) {
+    if (!unsafeHostTeardown(error)) lock.release();
+    throw error;
+  }
+}
+
+function unsafeHostTeardown(error: unknown): boolean {
+  if (isHostTeardownError(error)) return !error.resourcesClosed;
+  if (error instanceof AggregateError && error.errors.some(unsafeHostTeardown)) return true;
+  return error instanceof Error && error.cause !== undefined && unsafeHostTeardown(error.cause);
+}
+
+function isHostTeardownError(
+  error: unknown,
+): error is AggregateError & { readonly resourcesClosed: boolean } {
+  return (
+    error instanceof AggregateError &&
+    'resourcesClosed' in error &&
+    typeof error.resourcesClosed === 'boolean'
+  );
+}
+
+async function seedOwnedSampleWorld(
+  home: string,
+  options: SampleWorldOptions,
+  validateHome: () => Promise<void>,
+): Promise<SampleWorld> {
+  const acquireLock = () => ({ release() {} });
+  await validateHome();
+  await writeProviderHome(home, SHOWCASE_MODELS, acquireLock);
+  await validateHome();
   await setPluginsEnabled(
     home,
     Object.fromEntries(SAMPLE_WORLD_DISABLED_PLUGINS.map((name) => [name, false])),
+    acquireLock,
   );
   const story: Story = {
     home,
     runtime: createOffsetRuntime(SAMPLE_WORLD_TIMES.toolRunnerVersion1),
     director: { scene: {} },
     onStep: options.onStep ?? (() => {}),
+    acquireLock,
+    validateHome,
   };
   const { runtime } = story;
   const times = SAMPLE_WORLD_TIMES;
@@ -703,6 +832,7 @@ export async function seedSampleWorld(
     history.dailySummaryRan - 30_000,
     october29DailySummary,
   );
+  await validateHome();
   await writeFinalWorkflowFiles(home);
 
   const host = await step(story, 'Nov 2: starting its host', () =>
@@ -715,7 +845,15 @@ export async function seedSampleWorld(
     );
     return { host, runtime, ...made };
   } catch (error) {
-    await host.close();
+    try {
+      await host.close();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'The sample world failed and its host could not stop.',
+        { cause: cleanupError },
+      );
+    }
     throw error;
   }
 }

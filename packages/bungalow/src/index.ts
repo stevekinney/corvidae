@@ -29,6 +29,7 @@ export {
   BungalowStateError,
   BungalowUnsupportedError,
 } from './errors.ts';
+export { acquireLocalRootLockDescriptor } from './lock.ts';
 export type { RootLock } from './lock.ts';
 export type { RemoteBungalowDescriptor } from './remote-configuration.ts';
 export { openRemoteBungalow } from './remote.ts';

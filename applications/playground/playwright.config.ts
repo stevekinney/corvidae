@@ -4,7 +4,7 @@ import { ensureCinderGenerated } from '../../scripts/ensure-cinder-generated.ts'
 import { browserTestEnvironment } from './scripts/environment-configuration.ts';
 
 // `bun run test:browser` bypasses Turbo, and the playground serves Cinder's generated files.
-ensureCinderGenerated();
+await ensureCinderGenerated();
 
 // Playwright forces color in its workers and web servers. Remove the conflicting inherited
 // opt-out in this test process before those children are created.

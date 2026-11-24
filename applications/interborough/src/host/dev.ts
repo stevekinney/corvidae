@@ -26,6 +26,7 @@
  */
 
 import { unwatchFile, watchFile, type Stats } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
@@ -49,6 +50,9 @@ if (pluginPaths === undefined) {
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const repositoryRoot = join(packageRoot, '..', '..');
+if (showcase && !processEnvironment()['INTERBOROUGH_SHOWCASE_ROOT']) {
+  await mkdir(join(repositoryRoot, 'tmp', 'interborough-fixtures'), { recursive: true });
+}
 
 const ENTRY_PAGE = join(packageRoot, 'index.html');
 
@@ -90,9 +94,15 @@ const hostOptions = {
   },
 } satisfies HostOptions;
 const host: Host = showcase
-  ? await seedSampleWorld(environment['INTERBOROUGH_HOME']!, { host: hostOptions }).then(
-      (world) => world.host,
-    )
+  ? await seedSampleWorld(environment['INTERBOROUGH_HOME']!, {
+      host: hostOptions,
+      ownership: {
+        root:
+          environment['INTERBOROUGH_SHOWCASE_ROOT'] ||
+          join(repositoryRoot, 'tmp', 'interborough-fixtures'),
+        owner: repositoryRoot,
+      },
+    }).then((world) => world.host)
   : await startHost(hostOptions);
 console.info(`Interborough is listening on ${host.url}`);
 console.info(`Its state lives in ${host.stateDescription}`);
