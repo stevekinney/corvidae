@@ -30,4 +30,10 @@ describe('batch approval group spacing', () => {
       /\.chat-approval-group-rows :global\(\.chat-message-wrapper \.chat-message-line\),\s*\.chat-approval-group-rows :global\(\.chat-message-wrapper \.chat-message-notes\)\s*\{\s*display: none;/,
     );
   });
+
+  test('reserves the coarse-pointer boundary before an adjacent Message details control', () => {
+    expect(source).toMatch(
+      /\.chat-tool-call-group:has\(\s*\+ :global\(\.chat-message-wrapper \.chat-message-line\[aria-label='Message details'\]\)\s*\)\s*\{\s*margin-block-end: var\(--cinder-space-1\);/s,
+    );
+  });
 });

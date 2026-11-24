@@ -3806,6 +3806,15 @@
     margin-block-start: var(--cinder-space-1);
   }
 
+  /* A transcript's Message details line is the next interactive surface after some answered-step
+   * groups. Its hit area otherwise overlaps the summary's lower coarse-pointer lane, so leave one
+   * token at this exact control-to-control boundary without changing ordinary answer spacing. */
+  .chat-tool-call-group:has(
+    + :global(.chat-message-wrapper .chat-message-line[aria-label='Message details'])
+  ) {
+    margin-block-end: var(--cinder-space-1);
+  }
+
   /* The answer under a collapsed step row stands as far from the row's text as a message's own
    * text stands from the time under it, measured between the letters (R06, owner decision of
    * 2026-11-13), at every width. Between the baseline of the message's last line and the capitals
