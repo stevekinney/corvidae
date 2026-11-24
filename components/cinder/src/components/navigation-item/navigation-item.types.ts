@@ -30,7 +30,7 @@ export type NavigationItemSharedHtmlAttributes = WithoutDataAttributes<
   >
 >;
 
-export type NavigationItemLinkExtra = Omit<
+type NavigationItemLinkExtra = Omit<
   HTMLAnchorAttributes,
   keyof HTMLAttributes<HTMLAnchorElement> | 'href'
 > & {
@@ -53,9 +53,9 @@ type NavigationItemButtonAttributes = Omit<
 // `boolean` with `onclick` still type-checks; only the literal `true` reaches the arm that lets
 // `onclick` go. TypeScript did not split a `boolean` across `true` and `false` arms of this union
 // when that was tried, so the arms do not rely on it (the type tests pin both cases).
-export type NavigationItemLinkExtraWithState = NavigationItemLinkExtra & { disabled?: boolean };
+type NavigationItemLinkExtraWithState = NavigationItemLinkExtra & { disabled?: boolean };
 /** A button-form item (no `href`) that may be activated, so it takes a click handler. */
-export type NavigationItemButtonExtra = NavigationItemButtonAttributes & {
+type NavigationItemButtonExtra = NavigationItemButtonAttributes & {
   href?: undefined;
   /** Called when the item is activated. Required unless `disabled` is `true`. */
   onclick: (event: MouseEvent) => void;
@@ -65,7 +65,7 @@ export type NavigationItemButtonExtra = NavigationItemButtonAttributes & {
  * A disabled button-form item: it is never activated, so `onclick` is optional and, if given, is
  * never called while `disabled` is true.
  */
-export type NavigationItemDisabledButtonExtra = NavigationItemButtonAttributes & {
+type NavigationItemDisabledButtonExtra = NavigationItemButtonAttributes & {
   href?: undefined;
   onclick?: (event: MouseEvent) => void;
   disabled: true;
