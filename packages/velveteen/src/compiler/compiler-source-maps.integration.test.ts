@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-test("bundled compiler reports an error stack without source map diagnostics", async () => {
+const outcome = await (async () => {
   const directory = await mkdtemp(
     join(
       process.env.CHEF_SCRATCH_DIRECTORY ?? tmpdir(),
@@ -17,17 +17,16 @@ test("bundled compiler reports an error stack without source map diagnostics", a
       outdir: directory,
       target: "bun",
     });
-    expect(build.success).toBe(true);
     const artifact = build.outputs.find(
       (output) => output.kind === "entry-point",
     );
-    expect(artifact).toBeDefined();
+    if (!build.success || !artifact) throw new Error("Compiler bundle failed");
     const child = spawnWithHangGuard(
       [
         process.execPath,
         "-e",
         `
-      import { compileComponent } from ${JSON.stringify(artifact!.path)};
+      import { compileComponent } from ${JSON.stringify(artifact.path)};
       try {
         compileComponent('<script>let = ;</script>', { filename: 'Broken.svelte' });
         process.exitCode = 1;
@@ -45,10 +44,14 @@ test("bundled compiler reports an error stack without source map diagnostics", a
       new Response(child.stderr).text(),
       child.exited,
     ]);
-    expect(stderr).toBe("");
-    expect(stdout).toContain("expected compiler error");
-    expect(exitCode).toBe(0);
+    return { stdout, stderr, exitCode };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+})();
+
+test("bundled compiler reports an error stack without source map diagnostics", () => {
+  expect(outcome.stderr).toBe("");
+  expect(outcome.stdout).toContain("expected compiler error");
+  expect(outcome.exitCode).toBe(0);
 });
