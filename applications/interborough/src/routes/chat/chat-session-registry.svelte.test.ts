@@ -41,9 +41,11 @@ const idle = () => sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOU
 function bureau(options: { readonly attach?: Promise<Response> } = {}) {
   const attaches: string[] = [];
   const posts: string[] = [];
+  const signals: AbortSignal[] = [];
   const pending: Array<PromiseWithResolvers<Response>> = [];
   const fetch: Fetcher = async (input, init) => {
     const url = urlOf(input);
+    if (init?.signal !== undefined && init.signal !== null) signals.push(init.signal);
     if (url === `${AG_UI_PATH}/threads/thread/run`) {
       attaches.push(url);
       return options.attach ?? idle();
@@ -59,7 +61,7 @@ function bureau(options: { readonly attach?: Promise<Response> } = {}) {
     }
     return new Response('', { status: 404 });
   };
-  return { fetch, attaches, posts, pending };
+  return { fetch, attaches, posts, signals, pending };
 }
 
 function host(overrides: Partial<ChatSessionHost> = {}): ChatSessionHost {
@@ -145,6 +147,55 @@ describe('the retained-route session registry (COR-2293 B2)', () => {
     expect(reader.reacquired).toBe(false);
     expect(reader.session).not.toBe(owner.session);
   });
+
+  test.each([
+    ['workspace', JSON.stringify(['workspace-b', 'actor-a'])],
+    ['actor', JSON.stringify(['workspace-a', 'actor-b'])],
+  ])(
+    'a changed %s drops a retained session before reopening the same chat',
+    async (_part, identity) => {
+      const server = bureau();
+      const sessions = registry();
+      const first = openChatSession(
+        sessions,
+        {
+          sessionId: 'thread',
+          fetch: server.fetch,
+          identity: JSON.stringify(['workspace-a', 'actor-a']),
+        },
+        host(),
+      );
+      await first.attached;
+      const opening = first.session.send('Private to the first identity').catch(() => undefined);
+      await waitUntil(() => server.posts.length === 1, {
+        message: 'the first identity started its run',
+      });
+      first.release();
+      expect(sessions.has('thread')).toBe(true);
+
+      const second = openChatSession(
+        sessions,
+        {
+          sessionId: 'thread',
+          fetch: server.fetch,
+          identity,
+        },
+        host(),
+      );
+      expect(second.reacquired).toBe(false);
+      expect(second.session).not.toBe(first.session);
+      expect(second.session.conversation.ids).toEqual([]);
+      await waitUntil(() => server.signals.some((signal) => signal.aborted), {
+        message: 'the prior identity request was aborted',
+      });
+      await second.attached;
+      expect(server.attaches).toHaveLength(2);
+
+      server.pending[0]!.resolve(sse([started, ...reply('first-identity-reply'), finished]));
+      await opening;
+      expect(second.session.conversation.ids).toEqual([]);
+    },
+  );
 
   test('a released session with no live work is disposed at once, and the next visit attaches again', async () => {
     const server = bureau();

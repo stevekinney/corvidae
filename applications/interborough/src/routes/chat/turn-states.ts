@@ -41,8 +41,18 @@ export type TurnStop = {
 
 /** Reads the last turn's stop line, excluding server-restart notices. */
 export function lastTurnStop(conversation: ConversationHistory): TurnStop | undefined {
-  if (lastAssistantId(conversation) === undefined) return undefined;
-  for (const id of conversation.ids.slice(lastTurnStart(conversation))) {
+  const currentTurn = conversation.ids.slice(lastTurnStart(conversation));
+  // A stop note may belong to the new person's message when a run ends before producing a reply.
+  // Keep it there. Replacing the previous turn's assistant would falsely mark a completed reply
+  // failed and would bind recovery controls to its run.
+  if (
+    !currentTurn.some(
+      (id) =>
+        Object.hasOwn(conversation.messages, id) && conversation.messages[id]?.role === 'assistant',
+    )
+  )
+    return undefined;
+  for (const id of currentTurn) {
     const row = Object.hasOwn(conversation.messages, id) ? conversation.messages[id] : undefined;
     if (row === undefined) continue;
     const note = (resolveMessageNotes(row) ?? []).find(

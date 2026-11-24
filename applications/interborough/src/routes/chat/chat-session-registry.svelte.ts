@@ -31,7 +31,10 @@ export type ChatSessionHost = Omit<
 export type ChatSessionKey = Pick<
   ChatSessionOptions,
   'sessionId' | 'fetch' | 'clock' | 'unopened' | 'readOnly'
->;
+> & {
+  /** The resolved workspace and actor shell that owns this session and its request callbacks. */
+  readonly identity?: string | undefined;
+};
 
 /** A page's hold on a session. */
 export type HeldChatSession = {
@@ -99,7 +102,8 @@ export class ChatSessionRegistry {
       existing !== undefined &&
       existing.key.fetch === key.fetch &&
       existing.key.clock === key.clock &&
-      existing.key.readOnly === key.readOnly;
+      existing.key.readOnly === key.readOnly &&
+      existing.key.identity === key.identity;
     if (existing !== undefined && !reusable) this.#drop(existing);
     const entry = reusable ? existing : this.#create(key, host);
     entry.unwatch?.();

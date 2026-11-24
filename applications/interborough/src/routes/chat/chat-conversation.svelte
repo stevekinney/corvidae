@@ -268,6 +268,12 @@
     chatSessions,
     {
       sessionId: untrack(() => sessionId),
+      identity: untrack(() => {
+        const identity = hasPrincipalStore() ? getPrincipalStore().principal?.workspace : undefined;
+        return identity === undefined
+          ? undefined
+          : JSON.stringify([identity.workspaceId, identity.actorId]);
+      }),
       // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
       unopened: untrack(() => isNew),
       readOnly: untrack(() => readOnly),
