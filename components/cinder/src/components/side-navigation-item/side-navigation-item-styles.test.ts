@@ -218,3 +218,22 @@ describe('side navigation item: indicators and the collapsed rail (rows 02q, 03b
     }
   });
 });
+
+describe('vertical navigation item: disabled (COR-2665)', () => {
+  const DISABLED = `${VERTICAL}[aria-disabled='true']`;
+
+  test('a disabled row differs from an enabled one by weight, not by colour alone', () => {
+    const [row] = rulesFor(navigationItemCss, VERTICAL);
+    const [disabled] = rulesFor(navigationItemCss, DISABLED);
+    expect(declaration(row, 'font-weight')).toBe('var(--cinder-font-medium)');
+    expect(declaration(disabled, 'font-weight')).toBe('var(--cinder-font-normal)');
+    expect(declaration(disabled, 'color')).toBe('var(--cinder-text-disabled)');
+  });
+
+  test("a disabled row's reason is a muted, extra-small second line that wraps", () => {
+    const [reason] = rulesFor(sideNavigationItemCss, '.cinder-side-navigation-item__reason');
+    expect(declaration(reason, 'color')).toBe('var(--cinder-text-muted)');
+    expect(declaration(reason, 'font-size')).toBe('var(--cinder-text-xs)');
+    expect(declaration(reason, 'white-space')).toBe('normal');
+  });
+});

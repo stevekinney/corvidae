@@ -14,6 +14,13 @@ const onclick = (_event: MouseEvent): void => {};
 
 // A disabled button-form row needs no handler.
 const disabledWithoutHandler: SideNavigationItemProps = { disabled: true, children };
+// The Temporal UI's row (COR-2665): disabled, named by its label, saying why, with no handler.
+const disabledWithReason: SideNavigationItemProps = {
+  disabled: true,
+  label: 'Workers',
+  disabledReason: 'Open a task queue first',
+  children,
+};
 
 // An enabled button-form row must still take one.
 // @ts-expect-error - an enabled button-form row requires onclick
@@ -31,6 +38,7 @@ const link: SideNavigationItemProps = { href: '/workers', children };
 const disabledLink: SideNavigationItemProps = { href: '/workers', disabled: true, children };
 
 void disabledWithoutHandler;
+void disabledWithReason;
 void enabledWithoutHandler;
 void explicitlyEnabledWithoutHandler;
 void booleanWithHandler;

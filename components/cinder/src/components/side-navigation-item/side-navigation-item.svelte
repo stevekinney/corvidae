@@ -27,6 +27,8 @@
       count: _count,
       countLabel: _countLabel,
       emptyLabel: _emptyLabel,
+      disabledReason: _disabledReason,
+      'aria-describedby': _describedBy,
       dot: _dot,
       collapsed: _collapsed,
       children: _children,
@@ -77,18 +79,37 @@
             ? `${props.label}, ${emptyWords}`
             : undefined,
   );
-  const accessibleName = $derived(props['aria-label'] ?? composedName);
+  // A disabled row says why on a second line under its label (COR-2665), and is described by it.
+  // The label alone stays its name, so the row names itself from `label` when nothing else does:
+  // its content now holds the reason too. An enabled row, or one with no reason, is unchanged.
+  const generatedId = $props.id();
+  const reasonId = `${generatedId}-reason`;
+  const reasonText = $derived(
+    props.disabled ? props.disabledReason?.trim() || undefined : undefined,
+  );
+  const accessibleName = $derived(
+    props['aria-label'] ?? composedName ?? (reasonText === undefined ? undefined : props.label),
+  );
+  const describedBy = $derived.by(() => {
+    const own = props['aria-describedby'];
+    const reason = reasonText !== undefined && accessibleName !== undefined ? reasonId : undefined;
+    return (
+      [own, reason].filter((value) => value !== undefined && value !== '').join(' ') || undefined
+    );
+  });
   // A collapsed row shows its label (and count) in a tooltip, since the label is not drawn; an
   // expanded row shows the same words as its name only when a count adds something to the label.
   const tooltipText = $derived(
     props.label === undefined
       ? undefined
       : collapsed
-        ? badgeWord !== undefined
-          ? `${props.label}, ${badgeWord.toLowerCase()}`
-          : (countPhrase ?? emptyWords) === undefined
-            ? props.label
-            : `${props.label}, ${countPhrase ?? emptyWords}`
+        ? reasonText !== undefined
+          ? `${props.label}, ${reasonText}`
+          : badgeWord !== undefined
+            ? `${props.label}, ${badgeWord.toLowerCase()}`
+            : (countPhrase ?? emptyWords) === undefined
+              ? props.label
+              : `${props.label}, ${countPhrase ?? emptyWords}`
         : composedName,
   );
   const hasIcon = $derived(props.icon !== undefined);
@@ -151,29 +172,51 @@
   {/if}
 {/snippet}
 
+{#snippet reason()}
+  <span id={reasonId} class="cinder-side-navigation-item__reason">{reasonText}</span>
+{/snippet}
+
 {#snippet row()}
   {#if props.icon}
     <span class="cinder-side-navigation-item__icon" aria-hidden="true">
       {@render props.icon()}
     </span>
-    <span class="cinder-side-navigation-item__label">
-      {@render props.children()}
-    </span>
+    {#if reasonText !== undefined}
+      <!-- The label and its reason stack beside the icon, so the reason starts where the label's
+           text starts. -->
+      <span class="cinder-side-navigation-item__text">
+        <span class="cinder-side-navigation-item__label">
+          {@render props.children()}
+        </span>
+        {@render reason()}
+      </span>
+    {:else}
+      <span class="cinder-side-navigation-item__label">
+        {@render props.children()}
+      </span>
+    {/if}
+    {@render indicator()}
   {:else}
     <!-- Legacy shape, kept for a row that draws its own icon inside `children`: the consumer's
          nodes stay direct children of the link, so a shell that styles the link's children (the
          Interborough rail hides every direct child except an svg or an aria-hidden node when
          collapsed) keeps finding its icon where it always did. -->
     {@render props.children()}
+    {@render indicator()}
+    {#if reasonText !== undefined}
+      <!-- Last, so it wraps onto its own line under the children, which stay direct children. -->
+      {@render reason()}
+    {/if}
   {/if}
-  {@render indicator()}
 {/snippet}
 
 <li bind:this={listItem} class={classNames('cinder-side-navigation__item', props.listItemClass)}>
   <NavigationItem
     {...navigationItemProps}
     aria-label={accessibleName}
+    aria-describedby={describedBy}
     class={classNames('cinder-side-navigation-item', props.class)}
+    data-cinder-reason={reasonText === undefined ? undefined : ''}
     data-cinder-collapsed={collapsed ? '' : undefined}
     data-cinder-has-icon={hasIcon ? '' : undefined}
     variant="vertical"
