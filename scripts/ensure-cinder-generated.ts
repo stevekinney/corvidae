@@ -10,6 +10,7 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import { OwnedProcessGroupUnverifiedError, runOwnedProcessGroup } from './owned-process-group.ts';
 import { acquireOwnedProcessLease } from './owned-process-lease.ts';
 
@@ -84,7 +85,7 @@ export function cinderGeneratedStaleness(cinder: string): string | undefined {
 export async function ensureCinderGenerated(options: EnsureOptions = {}): Promise<boolean> {
   const { generate, stdout, beforeRegistration, beforeLeasePublication } = options;
   const root = options.root ?? REPOSITORY_ROOT;
-  const environment = { ...process.env };
+  const environment = { ...rootScriptEnvironment() };
   const cinder = join(root, 'components/cinder');
   if (cinderGeneratedStaleness(cinder) === undefined) return false;
   const lease = await acquireOwnedProcessLease(

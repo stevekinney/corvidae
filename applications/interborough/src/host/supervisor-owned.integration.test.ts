@@ -10,7 +10,26 @@ import { join } from 'node:path';
 import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
 import { startHost } from './host.ts';
 import { readInstanceRecord } from './instance-record.ts';
-import { runSupervisor } from './supervisor.ts';
+import { runSupervisor, supervisorLeaseIdentity } from './supervisor.ts';
+
+test('remote supervisors do not share a local-home lease', () => {
+  const remote = {
+    INTERBOROUGH_DATABASE_URL: 'postgres://localhost/test',
+    INTERBOROUGH_BUCKET: 'test-bucket',
+    S3_ENDPOINT: 'http://localhost:9000',
+    S3_REGION: 'us-east-1',
+    S3_ACCESS_KEY_ID: 'access',
+    S3_SECRET_ACCESS_KEY: 'secret',
+  };
+  expect(
+    supervisorLeaseIdentity({ ...remote, INTERBOROUGH_PORT: '8001' }, false, '/root', 'one'),
+  ).not.toBe(
+    supervisorLeaseIdentity({ ...remote, INTERBOROUGH_PORT: '8002' }, false, '/root', 'two'),
+  );
+  expect(supervisorLeaseIdentity({ INTERBOROUGH_HOME: '/same' }, false, '/root', 'one')).toBe(
+    supervisorLeaseIdentity({ INTERBOROUGH_HOME: '/same' }, false, '/root', 'two'),
+  );
+});
 
 const root = mkdtempSync(join(tmpdir(), 'interborough-owned-supervisor-'));
 mkdirSync(join(root, 'build'));
@@ -52,6 +71,7 @@ let cleanupMilliseconds = 0;
 let serveStatus = 0;
 let serveClosed = false;
 let liveSiblingStatus = 0;
+const remoteStatuses: number[] = [];
 try {
   const homeA = join(root, 'home-a');
   await waitUntil(async () => (await readInstanceRecord(homeA)) !== undefined, {
@@ -126,6 +146,36 @@ try {
   } finally {
     if (!serveStopped) serving.kill('SIGKILL');
   }
+  const reservations = [0, 1].map(() =>
+    Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response() }),
+  );
+  const ports = reservations.map((server) => server.port);
+  if (ports.some((port) => port === undefined)) throw new Error('Could not reserve remote ports.');
+  await Promise.all(reservations.map((server) => server.stop(true)));
+  const remotes = ports.map((port) =>
+    spawnPipedWithHangGuard([
+      process.execPath,
+      join(import.meta.dir, 'supervisor-owned.test-support.ts'),
+      root,
+      'remote',
+      String(port),
+    ]),
+  );
+  for (const remote of remotes) {
+    void new Response(remote.stdout).text();
+    void new Response(remote.stderr).text();
+  }
+  try {
+    for (const port of ports) {
+      const ready = join(root, `remote-${port}`);
+      await waitUntil(() => existsSync(ready), { message: 'remote supervisor to bind' });
+      const response = await fetch(readFileSync(ready, 'utf8'));
+      remoteStatuses.push(response.status);
+    }
+  } finally {
+    for (const remote of remotes) remote.kill('SIGTERM');
+    await Promise.all(remotes.map((remote) => remote.exited));
+  }
 } finally {
   if (!stopped) owner.kill('SIGKILL');
   sibling.kill('SIGTERM');
@@ -139,6 +189,7 @@ test('retiring a killed supervisor leaves the sibling usable', () => {
   expect(beforeA).toBe(200);
   expect(listenerClosed).toBe(true);
   expect(liveSiblingStatus).toBe(200);
+  expect(remoteStatuses).toEqual([200, 200]);
   expect(serveStatus).toBe(200);
   expect(serveClosed).toBe(true);
   expect(afterB).toBe(200);

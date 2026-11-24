@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import { runOwnedProcessGroup } from './owned-process-group.ts';
 
 export function processIsAlive(pid: number): boolean {
@@ -23,7 +24,7 @@ if (import.meta.main) {
       join(root, 'after-owner-death'),
     ],
     cwd: root,
-    environment: process.env,
+    environment: rootScriptEnvironment(),
     register: async (pid) => {
       await writeFile(join(root, 'gate-pid'), String(pid));
       await new Promise(() => {});

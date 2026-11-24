@@ -28,7 +28,7 @@
  * @module supervisor
  */
 
-import { resolveBungalowRoot } from '@lostgradient/bungalow';
+import { resolveBungalowDescriptor, resolveBungalowRoot } from '@lostgradient/bungalow';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -69,6 +69,22 @@ export type SupervisorMode = 'serve' | 'dev';
 const HOST_DIRECTORY = import.meta.dir;
 
 const PACKAGE_DIRECTORY = join(HOST_DIRECTORY, '..', '..');
+
+export function supervisorLeaseIdentity(
+  environment: Readonly<Record<string, string | undefined>>,
+  showcase: boolean,
+  root: string,
+  nonce: string = crypto.randomUUID(),
+): string {
+  const homeEnvironment = showcase ? showcaseEnvironment(environment, root) : environment;
+  const options = { name: 'interborough', environment: homeEnvironment, homeDirectory: homedir() };
+  const descriptor = showcase
+    ? { kind: 'local' as const, root: resolveBungalowRoot(options) }
+    : resolveBungalowDescriptor(options);
+  return createHash('sha256')
+    .update(descriptor.kind === 'local' ? descriptor.root : nonce)
+    .digest('hex');
+}
 
 /**
  * The command that runs the host in `mode`: Bun on the mode's entry (`serve.ts` or `dev.ts`, or
@@ -171,7 +187,7 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
         const code = await runOwnedProcessGroup({
           command: options.command,
           cwd: options.cwd ?? PACKAGE_DIRECTORY,
-          environment: options.environment ?? process.env,
+          environment: options.environment ?? processEnvironment(),
           token: lease.token,
           handleSignals: false,
           register: async (pid) => lease.recordProcessGroup(pid),
@@ -341,15 +357,7 @@ export async function runSupervisor(
   const found = (worktree.read ?? readGitDirectories)(worktree.directory ?? process.cwd());
   if (found === undefined)
     return supervise({ command, environment: supervisorEnvironment, ...preparation });
-  const homeEnvironment = showcase
-    ? showcaseEnvironment(supervisorEnvironment, found.topLevel)
-    : supervisorEnvironment;
-  const home = resolveBungalowRoot({
-    name: 'interborough',
-    environment: homeEnvironment,
-    homeDirectory: homedir(),
-  });
-  const identity = createHash('sha256').update(home).digest('hex');
+  const identity = supervisorLeaseIdentity(supervisorEnvironment, showcase, found.topLevel);
   const lease = await acquireOwnedProcessLease(
     join(found.topLevel, 'tmp', `interborough-supervisor-${identity}.lock`),
     found.topLevel,

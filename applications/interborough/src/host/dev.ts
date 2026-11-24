@@ -50,7 +50,7 @@ if (pluginPaths === undefined) {
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const repositoryRoot = join(packageRoot, '..', '..');
-if (showcase && !process.env['INTERBOROUGH_SHOWCASE_ROOT']) {
+if (showcase && !processEnvironment()['INTERBOROUGH_SHOWCASE_ROOT']) {
   await mkdir(join(repositoryRoot, 'tmp', 'interborough-fixtures'), { recursive: true });
 }
 

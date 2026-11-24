@@ -1,12 +1,13 @@
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { expect, test } from 'bun:test';
-import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { openLocalBungalow } from '@lostgradient/bungalow';
 import { Database } from 'bun:sqlite';
 import { renameSync, symlinkSync } from 'node:fs';
+import { lockFixtureRoot } from './fixture-directory.ts';
 import { resetOwnedFixture } from './fixture-ownership.ts';
 import { seedSampleWorld } from './sample-world-seed.ts';
 
@@ -46,6 +47,61 @@ test('does not treat an unmarked lock-only directory as disposable', async () =>
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('does not adopt an initialized Bungalow home as a disposable root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fixture-real-home-'));
+  try {
+    const bungalow = await openLocalBungalow({ name: 'interborough', root });
+    const deployment = await readFile(join(root, 'deployment-id'), 'utf8');
+    expect(
+      await throwingRejectionOf(resetOwnedFixture(join(root, 'child'), { root, owner: root })),
+    ).toThrow('cannot also be a disposable root');
+    bungalow.close();
+    expect(
+      await throwingRejectionOf(resetOwnedFixture(join(root, 'child'), { root, owner: root })),
+    ).toThrow('cannot also be a disposable root');
+    expect(await readFile(join(root, 'deployment-id'), 'utf8')).toBe(deployment);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('does not mark a root while another opener holds its lock', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fixture-live-root-'));
+  try {
+    const live = await lockFixtureRoot(root);
+    try {
+      expect(
+        await throwingRejectionOf(resetOwnedFixture(join(root, 'child'), { root, owner: root })),
+      ).toThrow();
+      expect(
+        await lstat(join(root, '.fixture-root')).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false);
+    } finally {
+      live.release();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each(['secrets', 'logs', 'deployment-id'])(
+  'accepts a pre-existing empty child named %s',
+  async (name) => {
+    const root = await mkdtemp(join(tmpdir(), 'fixture-empty-child-'));
+    try {
+      const child = join(root, name);
+      await mkdir(child);
+      const lease = await resetOwnedFixture(child, { root, owner: root });
+      lease.release();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test('accepts a trusted root alias while rejecting links below that root', async () => {
   const container = await mkdtemp(join(tmpdir(), 'sample-world-ownership-'));

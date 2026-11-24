@@ -120,6 +120,7 @@ export async function resetOwnedFixture(
   beforePin?: () => void | Promise<void>,
   afterPending?: () => void | Promise<void>,
   afterRemove?: () => void,
+  afterRootLock?: () => void | Promise<void>,
 ): Promise<FixtureLease> {
   const rootInput = ownership.root;
   const ownerInput = ownership.owner;
@@ -139,8 +140,8 @@ export async function resetOwnedFixture(
     throw new Error('Fixture home must be a direct child of its disposable root.');
   const root = await realpath(requestedRoot);
   const target = join(root, child);
-  const rootEntries = await readdir(root);
-  if (rootEntries.includes('lock') && !rootEntries.includes('.fixture-root'))
+  const deployment = await status(join(root, 'deployment-id'));
+  if (deployment !== undefined && (!deployment.isDirectory() || deployment.isSymbolicLink()))
     throw new Error('A fixture home cannot also be a disposable root.');
   const parentMarker = join(
     dirname(root),
@@ -185,12 +186,23 @@ export async function resetOwnedFixture(
   }
 
   await inspect();
+  const rootMarker = join(root, '.fixture-root');
+  const rootIdentity = await lstat(root, { bigint: true });
   const rootLock = await lockFixtureRoot(root);
   try {
+    await afterRootLock?.();
     if ((await status(parentMarker)) !== undefined)
       throw new Error('A fixture home cannot also be a disposable root.');
     const current = await inspect(true);
-    const rootMarker = join(root, '.fixture-root');
+    const lockedDeployment = await status(join(root, 'deployment-id'));
+    if (
+      lockedDeployment !== undefined &&
+      (!lockedDeployment.isDirectory() || lockedDeployment.isSymbolicLink())
+    )
+      throw new Error('A fixture home cannot also be a disposable root.');
+    const pinnedRoot = await lstat(root, { bigint: true });
+    if (pinnedRoot.dev !== rootIdentity.dev || pinnedRoot.ino !== rootIdentity.ino)
+      throw new Error('Fixture root identity changed during initialization.');
     const rootMarkerStatus = await status(rootMarker);
     if (rootMarkerStatus === undefined)
       await writeFile(rootMarker, 'disposable fixture root\n', { flag: 'wx', mode: 0o600 });

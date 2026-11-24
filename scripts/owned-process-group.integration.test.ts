@@ -5,10 +5,16 @@ import { join } from 'node:path';
 
 import { spawnPipedWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
+import { rootScriptEnvironment } from './environment-configuration.ts';
+import { ownedCommand } from './owned-process-gate.ts';
 import { processIsAlive } from './owned-process-group.test-support.ts';
 import { runOwnedProcessGroup } from './owned-process-group.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'owned-process-group-'));
+test('requires the gate command to be an own property', () => {
+  expect(ownedCommand(Object.create({ command: ['not-owned'] }))).toBeUndefined();
+  expect(ownedCommand({ command: ['owned'] })).toEqual(['owned']);
+});
 const completed = join(root, 'completed');
 const forbidden = join(root, 'forbidden');
 let existedDuringRegistration = true;
@@ -17,7 +23,7 @@ let registeredStart = '';
 const exit = await runOwnedProcessGroup({
   command: [process.execPath, '-e', 'await Bun.write(process.argv[1], "completed")', completed],
   cwd: root,
-  environment: process.env,
+  environment: rootScriptEnvironment(),
   register: async (pid, startedAt) => {
     registeredPid = pid;
     registeredStart = startedAt;
@@ -27,7 +33,7 @@ const exit = await runOwnedProcessGroup({
 const rejected = await runOwnedProcessGroup({
   command: [process.execPath, '-e', 'await Bun.write(process.argv[1], "forbidden")', forbidden],
   cwd: root,
-  environment: process.env,
+  environment: rootScriptEnvironment(),
   register: async () => {
     throw new Error('registration failed');
   },
@@ -46,7 +52,7 @@ const mutableCommand = [
 const snapshotExit = await runOwnedProcessGroup({
   command: mutableCommand,
   cwd: root,
-  environment: process.env,
+  environment: rootScriptEnvironment(),
   register: async () => {
     mutableCommand[3] = changedTarget;
   },

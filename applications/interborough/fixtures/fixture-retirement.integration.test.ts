@@ -18,6 +18,34 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { resetOwnedFixture } from './fixture-ownership.ts';
 
 const roots: string[] = [];
+const initializingRoot = mkdtempSync(join(tmpdir(), 'fixture-root-retirement-'));
+roots.push(initializingRoot);
+mkdirSync(join(initializingRoot, 'home'));
+const initialChild = statSync(join(initializingRoot, 'home')).ino;
+const initializing = spawnPipedWithHangGuard([
+  process.execPath,
+  join(import.meta.dir, 'fixture-retirement.test-support.ts'),
+  initializingRoot,
+  'root',
+]);
+void new Response(initializing.stdout).text();
+void new Response(initializing.stderr).text();
+await waitUntil(() => existsSync(join(initializingRoot, 'phase-ready')), {
+  message: 'root lock before marker publication',
+});
+initializing.kill('SIGKILL');
+const initializingExit = await initializing.exited;
+const initialRootLock = statSync(join(initializingRoot, 'lock')).ino;
+const resumedRoot = await resetOwnedFixture(join(initializingRoot, 'home'), {
+  root: initializingRoot,
+  owner: initializingRoot,
+});
+resumedRoot.release();
+const resumedRootAgain = await resetOwnedFixture(join(initializingRoot, 'home'), {
+  root: initializingRoot,
+  owner: initializingRoot,
+});
+resumedRootAgain.release();
 async function interrupt(phase: 'pending' | 'partial') {
   const root = mkdtempSync(join(tmpdir(), 'fixture-retirement-'));
   roots.push(root);
@@ -97,6 +125,13 @@ test('a killed pending initializer resumes only its own empty inode', () => {
   expect(pending.recoveredHome).toBe(pending.homeInode);
   expect(pending.sibling).toBe('sibling intact');
   expect(pending.pendingLinkRemains).toBe(false);
+});
+
+test('a killed root initializer resumes using the same permanent lock', () => {
+  expect(initializingExit).not.toBe(0);
+  expect(statSync(join(initializingRoot, 'lock')).ino).toBe(initialRootLock);
+  expect(statSync(join(initializingRoot, 'home')).ino).toBe(initialChild);
+  expect(existsSync(join(initializingRoot, '.fixture-root'))).toBe(true);
 });
 
 test('a killed partial reset converges on replay without touching its sibling', () => {
