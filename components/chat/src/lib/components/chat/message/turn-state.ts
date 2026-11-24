@@ -198,8 +198,8 @@ function isExplanationLink(
     value !== null &&
     Object.hasOwn(value, 'href') &&
     Object.hasOwn(value, 'label') &&
-    typeof (value as Record<string, unknown>)['href'] === 'string' &&
-    typeof (value as Record<string, unknown>)['label'] === 'string'
+    typeof Reflect.get(value, 'href') === 'string' &&
+    typeof Reflect.get(value, 'label') === 'string'
   );
 }
 
