@@ -215,11 +215,11 @@ export async function buildApplication(
      * Makes sure Cinder's generated files exist before the bundler imports them. Every caller,
      * Turbo or not, goes through here; a test supplies a no-op.
      */
-    readonly ensureGenerated?: () => void;
+    readonly ensureGenerated?: () => void | Promise<void>;
   } = {},
 ): Promise<ApplicationBuild> {
   const generationStarted = performance.now();
-  const generated = (options.ensureGenerated ?? ensureCinderGenerated)();
+  const generated = await (options.ensureGenerated ?? ensureCinderGenerated)();
   if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
     console.error(
       `STARTUP ${JSON.stringify({ stage: 'cinder', milliseconds: performance.now() - generationStarted, generated })}`,

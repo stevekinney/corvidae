@@ -9,8 +9,12 @@
         "scripts/**/*.slow.test.ts",
         "scripts/**/*.bench.ts",
         "scripts/**/*.playwright.ts",
+        "scripts/affected-tests.ts",
         "scripts/chef/evaluate-outcomes.ts",
-        "scripts/cinder-release-consumer.ts"
+        "scripts/cinder-release-consumer.ts",
+        "scripts/owned-process-gate.ts",
+        "scripts/ensure-cinder-owned.test-support.ts",
+        "scripts/owned-process-lease.test-support.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -81,7 +85,8 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
-        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts"
+        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
+        "src/hooks/recipient-recovery-child.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -90,7 +95,8 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
-        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!"
+        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
+        "!src/hooks/recipient-recovery-child.ts!"
       ]
     },
     "packages/backchannel": {
@@ -191,7 +197,8 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
-        "src/host/{cli,dev,serve}.ts!"
+        "src/host/{cli,dev,serve}.ts!",
+        "src/host/supervisor-owned.test-support.ts"
       ],
       "project": [
         "src/**/*.{ts,svelte}!",

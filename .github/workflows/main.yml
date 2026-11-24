@@ -32,6 +32,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 run-name: ${{ github.event_name == 'workflow_dispatch' && inputs.verification_request != '' && format('P07 {0}', inputs.verification_request) || github.workflow }}
 

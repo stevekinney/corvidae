@@ -26,6 +26,7 @@
  */
 
 import { unwatchFile, watchFile, type Stats } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { ensureCinderGenerated } from '../../../../scripts/ensure-cinder-generated.ts';
@@ -54,6 +55,9 @@ if (pluginPaths === undefined) {
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const repositoryRoot = join(packageRoot, '..', '..');
+if (showcase && !processEnvironment()['INTERBOROUGH_SHOWCASE_ROOT']) {
+  await mkdir(join(repositoryRoot, 'tmp', 'interborough-fixtures'), { recursive: true });
+}
 
 const ENTRY_PAGE = join(packageRoot, 'index.html');
 
@@ -75,7 +79,7 @@ const buildOptions = { outdir: buildDirectory, inputsFile: BUILD_INPUTS_FILE };
 
 // Both the browser and the host's panels consume Cinder's generated files.
 const cinderStarted = performance.now();
-const cinderGenerated = ensureCinderGenerated();
+const cinderGenerated = await ensureCinderGenerated();
 if (environment['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
   console.info(
     `STARTUP ${JSON.stringify({ stage: 'cinder', milliseconds: performance.now() - cinderStarted, generated: cinderGenerated })}`,
@@ -106,9 +110,15 @@ const host: Host = await startWithBrowserBuild({
   start: (browserReady) => {
     const options = { ...hostOptions, browserReady };
     return showcase
-      ? seedSampleWorld(environment['INTERBOROUGH_HOME']!, { host: options }).then(
-          (world) => world.host,
-        )
+      ? seedSampleWorld(environment['INTERBOROUGH_HOME']!, {
+          host: options,
+          ownership: {
+            root:
+              environment['INTERBOROUGH_SHOWCASE_ROOT'] ||
+              join(repositoryRoot, 'tmp', 'interborough-fixtures'),
+            owner: repositoryRoot,
+          },
+        }).then((world) => world.host)
       : startHost(options);
   },
   stop: stopBrowserBuilds,
