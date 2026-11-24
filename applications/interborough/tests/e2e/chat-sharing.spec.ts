@@ -1,7 +1,7 @@
 /** Real two-member chat sharing: one host, one durable store, and two distinct trusted credentials. */
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 
-import { captureForDesignReview } from './design-review-capture.ts';
+import { captureForDesignReviewWithPhone } from './design-review-capture.ts';
 import { E2E_CHAT_SHARING_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -58,7 +58,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
         throw new Error('Expected an owned chat URL.');
 
       await share(owner, 'grant');
-      await captureForDesignReview(owner, {
+      await captureForDesignReviewWithPhone(owner, {
         route: '/chats/:chat',
         state: 'owner sharing controls',
         source: SOURCE,
@@ -73,7 +73,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
           .getByText('shared chat evidence', { exact: true }),
       ).toHaveCount(2);
       await expectReadOnly(reader);
-      await captureForDesignReview(reader, {
+      await captureForDesignReviewWithPhone(reader, {
         route: '/chats/:chat',
         state: 'active shared chat read-only',
         source: SOURCE,
@@ -95,7 +95,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await reader.goto(`/chats/${contextId}`);
       await expect(reader.getByRole('heading', { name: 'Chat access' })).toBeVisible();
       await expect(reader.getByRole('button', { name: 'Request access' })).toBeVisible();
-      await captureForDesignReview(reader, {
+      await captureForDesignReviewWithPhone(reader, {
         route: '/chats/:chat',
         state: 'former reader requestable',
         source: SOURCE,
@@ -109,7 +109,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await expect(owner.getByRole('region', { name: 'Chat access requests' })).toContainText(
         READER_OWNER,
       );
-      await captureForDesignReview(owner, {
+      await captureForDesignReviewWithPhone(owner, {
         route: '/reviews',
         state: 'chat access request pending',
         source: SOURCE,
@@ -123,7 +123,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
           .getByText('shared chat evidence', { exact: true }),
       ).toHaveCount(2);
       await expectReadOnly(reader);
-      await captureForDesignReview(reader, {
+      await captureForDesignReviewWithPhone(reader, {
         route: '/chats/:chat',
         state: 'restored shared chat read-only',
         source: SOURCE,

@@ -49,7 +49,8 @@ export type ChatAccessRequest =
 export async function listChatAccessRequests(
   options?: Options,
 ): Promise<readonly ChatAccessRequest[]> {
-  return (await bureauClient['bureau.contexts.share.requests.list']({}, options)).requests;
+  const result = await bureauClient['bureau.contexts.share.requests.list']({}, options);
+  return result.requests;
 }
 
 export async function resolveChatAccessRequest(

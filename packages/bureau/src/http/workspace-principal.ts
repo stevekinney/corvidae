@@ -33,8 +33,8 @@ const membershipSchema = z
     actorId: z.string().min(1),
     actorKind: z.enum(['user', 'service', 'local']),
     owner: z.string().min(1),
-  /** Optional directory-controlled label suitable for a peer-facing UI. */
-  displayName: z.string().min(1).max(200).optional(),
+    /** Optional directory-controlled label suitable for a peer-facing UI. */
+    displayName: z.string().min(1).max(200).optional(),
     membershipRevision: z.string().min(1),
     capabilities: z.array(z.enum(['workspace:use', 'workspace:manage', 'deployment:operate'])),
   })
