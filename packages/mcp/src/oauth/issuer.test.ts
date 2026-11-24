@@ -127,7 +127,7 @@ describe('hosted OAuth issuer', () => {
 
   test('consent failures and an approve/deny race never create partial grants', async () => {
     using storage = new MemoryStorage();
-    let session = { subject: 'subject', tenant: 'tenant', binding: 'session' };
+    let session = { subject: 'subject', tenant: 'tenant', binding: 'synthetic-backend-secret' };
     let allowed = true;
     const issuer = hostedOAuth({
       issuer: 'https://issuer.test',
@@ -154,7 +154,7 @@ describe('hosted OAuth issuer', () => {
       }),
     });
     const client = await registration.json();
-    const verifier = 'a'.repeat(43);
+    const verifier = 'synthetic-verifier-value'.repeat(2);
     const parameters = new URLSearchParams({
       client_id: client.client_id,
       redirect_uri: 'https://client.test/callback',
@@ -163,10 +163,22 @@ describe('hosted OAuth issuer', () => {
       code_challenge_method: 'S256',
       resource: 'https://issuer.test/mcp',
     });
-    const page = await request(`/oauth/authorize?${parameters}`);
+    const page = await request(`/oauth/authorize?${parameters}`, {
+      headers: {
+        authorization: 'Bearer synthetic-bearer-value',
+        cookie: 'session=synthetic-cookie-value',
+      },
+    });
     const html = await page.text();
     expect(html).toContain('&lt;script&gt;marker&lt;/script&gt;');
     expect(html).not.toContain('<script>marker</script>');
+    for (const secret of [
+      'synthetic-bearer-value',
+      'synthetic-cookie-value',
+      verifier,
+      'synthetic-backend-secret',
+    ])
+      expect(html).not.toContain(secret);
     const transaction = /name="transaction" value="([^"]+)"/.exec(html)![1]!;
     const csrf = /name="csrf" value="([^"]+)"/.exec(html)![1]!;
     const submit = (decision: string, submittedCsrf = csrf) =>
@@ -185,7 +197,7 @@ describe('hosted OAuth issuer', () => {
     session = { ...session, binding: 'other' };
     const bindingFailure = await submit('approve');
     expect(bindingFailure.status).toBe(400);
-    session = { ...session, binding: 'session' };
+    session = { ...session, binding: 'synthetic-backend-secret' };
     allowed = false;
     const authorityFailure = await submit('approve');
     expect(authorityFailure.status).toBe(403);

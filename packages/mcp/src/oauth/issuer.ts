@@ -406,6 +406,20 @@ export function hostedOAuth(configuration: Options) {
     const principal = await authority(grant);
     if (!principal || grant.scopes.some((scope) => !principal.delegableScopes.includes(scope)))
       return null;
+    const current = await options.store.getAccess(credential);
+    if (
+      !current ||
+      current.issuer !== grant.issuer ||
+      current.grantId !== grant.grantId ||
+      current.subject !== grant.subject ||
+      current.tenant !== grant.tenant ||
+      current.client !== grant.client ||
+      current.resource !== grant.resource ||
+      current.expiresAt !== grant.expiresAt ||
+      current.scopes.length !== grant.scopes.length ||
+      current.scopes.some((scope, index) => scope !== grant.scopes[index])
+    )
+      return null;
     return {
       issuer: options.issuer,
       audience: grant.resource,

@@ -2,6 +2,7 @@ import { PostgresStorage } from '@lostgradient/storage-postgres';
 import { createPostgresTestServer } from '@lostgradient/testing/postgres-server';
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { createProtectedHttpHandler } from './http.ts';
 import { OAuthStore } from './oauth-store.ts';
 import { hostedOAuth } from './oauth/issuer.ts';
 
@@ -162,6 +163,16 @@ test('separate live issuers enforce grant and current authority across restart',
   await using firstStorage = new PostgresStorage(configuration);
   await using secondStorage = new PostgresStorage(configuration);
   let allowed = true;
+  let authorityCalls = 0;
+  let pauseAt = 0;
+  let reached!: () => void;
+  let release!: () => void;
+  const reachedPause = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   const makeIssuer = (storage: PostgresStorage) =>
     hostedOAuth({
       issuer: 'https://issuer.test',
@@ -173,7 +184,14 @@ test('separate live issuers enforce grant and current authority across restart',
       identity: {
         session: async () => ({ subject: 'subject', tenant: 'tenant', binding: 'session' }),
         signIn: async () => new Response(null, { status: 401 }),
-        principalForGrant: async () => (allowed ? { delegableScopes: ['read'] } : null),
+        principalForGrant: async () => {
+          authorityCalls++;
+          if (authorityCalls === pauseAt) {
+            reached();
+            await resume;
+          }
+          return allowed ? { delegableScopes: ['read'] } : null;
+        },
       },
     });
   const first = makeIssuer(firstStorage);
@@ -257,13 +275,43 @@ test('separate live issuers enforce grant and current authority across restart',
   });
   expect(refresh.status).toBe(200);
   const rotated = await refresh.json();
-  expect(await peer.verifyAccessToken(rotated.access_token)).not.toBeNull();
-  const revoked = await request(peer, '/oauth/revoke', {
+  let dispatches = 0;
+  const protectedHttp = createProtectedHttpHandler({
+    origin: 'https://issuer.test',
+    resourcePath: '/mcp',
+    issuer: 'https://issuer.test',
+    scopes: ['read'],
+    verifyAccessToken: peer.verifyAccessToken,
+    resolvePrincipal: async () => ({ delegableScopes: ['read'] }),
+    dispatch: async () => {
+      dispatches++;
+      return new Response('ok');
+    },
+  });
+  const protectedRequest = () =>
+    protectedHttp(
+      new Request('https://issuer.test/mcp', {
+        headers: { authorization: `Bearer ${rotated.access_token}` },
+      }),
+    );
+  const beforeRevoke = await protectedRequest();
+  expect(beforeRevoke.status).toBe(200);
+  expect(await beforeRevoke.text()).toBe('ok');
+  expect(dispatches).toBe(1);
+  pauseAt = authorityCalls + 2;
+  const racingAccess = protectedRequest();
+  await reachedPause;
+  const revoked = await request(restarted, '/oauth/revoke', {
     method: 'POST',
     headers,
     body: new URLSearchParams({ client_id: client.client_id, token: rotated.refresh_token }),
   });
   expect(revoked.status).toBe(200);
+  expect(await new OAuthStore(restartedStorage).getAccess(rotated.access_token)).toBeNull();
+  release();
+  const afterRevoke = await racingAccess;
+  expect(afterRevoke.status).toBe(401);
+  expect(dispatches).toBe(1);
   expect(await restarted.verifyAccessToken(rotated.access_token)).toBeNull();
   expect(await restarted.verifyAccessToken(independent.access_token)).not.toBeNull();
   allowed = false;
