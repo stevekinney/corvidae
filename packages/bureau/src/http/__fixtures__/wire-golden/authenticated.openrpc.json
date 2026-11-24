@@ -27472,6 +27472,9 @@
                           "callId": {
                             "type": "string"
                           },
+                          "mayRemember": {
+                            "type": "boolean"
+                          },
                           "policyPauseTier": {
                             "enum": [
                               "capability",
@@ -28140,6 +28143,9 @@
                     "arguments": {},
                     "callId": {
                       "type": "string"
+                    },
+                    "mayRemember": {
+                      "type": "boolean"
                     },
                     "policyPauseTier": {
                       "enum": [

@@ -39,6 +39,7 @@ const bureauName = '@lostgradient/bureau';
 export function allowedPluginInternalDependency(name: string): boolean {
   return (
     name === '@lostgradient/interborough-plugin' ||
+    name === '@lostgradient/bureau-client' ||
     name === 'armorer' ||
     name === '@lostgradient/operative' ||
     name.startsWith('@lostgradient/operative-') ||

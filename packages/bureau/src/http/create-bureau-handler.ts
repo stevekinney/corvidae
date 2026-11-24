@@ -1401,6 +1401,7 @@ export function buildBureauHandlerHost(
       ? {}
       : { reviewPolicy: bureau.internals.reviewPolicy }),
     reviews: {
+      mayRemember: (review) => bureau.reviews.mayRemember(review),
       list: () => bureau.reviews.list(),
       listResolved: (filter) => bureau.reviews.listResolved(filter),
       get: (id) => bureau.reviews.get(id),

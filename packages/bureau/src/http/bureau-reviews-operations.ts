@@ -83,6 +83,7 @@ export type BureauReviewsOperationHost = {
    */
   readonly reviewContinuation: ReviewContinuation;
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve'> &
+    Partial<Pick<BureauReviews, 'mayRemember'>> &
     /**
      * COR-1579: what the list reads to add the parks of runs another process holds. A host that
      * provides neither lists this process's reviews alone.
@@ -261,6 +262,7 @@ const toolApprovalReviewSchema = z.object({
     action: toolActionSchema,
     /** Which policy tier paused the call; drives the inbox's danger badge. */
     policyPauseTier: z.enum(['capability', 'registry', 'tool']).optional(),
+    mayRemember: z.boolean().optional(),
   }),
 });
 
@@ -680,6 +682,14 @@ async function projectAuthorizedReview(
 ): Promise<z.input<typeof bureauReviewSchema>> {
   const projected = projectReview(review);
   const policy = host.reviewPolicy;
+  if (review.kind === 'tool-approval' && projected.kind === 'tool-approval') {
+    const protectedReview = policy?.matches(review) ?? false;
+    const mayRemember =
+      !protectedReview &&
+      review.status === 'pending' &&
+      (await host.reviews.mayRemember?.(review)) === true;
+    projected.approval.mayRemember = mayRemember;
+  }
   if (
     review.kind !== 'tool-approval' ||
     projected.kind !== 'tool-approval' ||

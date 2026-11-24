@@ -1,0 +1,231 @@
+import type { CatalogHost } from '@lostgradient/backchannel-svelte';
+import { SvelteMap } from 'svelte/reactivity';
+import type { ReviewsOperationTypes } from '../generated/reviews-operations.generated.ts';
+
+type Review = Extract<
+  ReviewsOperationTypes['bureau.reviews.get']['output'],
+  { kind: 'tool-approval' }
+>;
+type Choice = ReviewsOperationTypes['bureau.reviews.resolve']['input'];
+type Receipt = ReviewsOperationTypes['bureau.reviews.resolve']['output'];
+export type ApprovalOutcome =
+  | 'applied'
+  | 'superseded'
+  | 'already-resolved'
+  | 'round-changed'
+  | 'outcome-not-written'
+  | 'unknown-after-dispatch'
+  | 'failed';
+export type ApprovalHost = {
+  readonly catalog: CatalogHost;
+  readonly authorized: (review: Review) => boolean;
+  readonly decisionSurface?: 'reviews' | undefined;
+  readonly onOutcome?:
+    ((seen: { id: string; round: number }, outcome: ApprovalOutcome) => void) | undefined;
+};
+type Target = { busy: boolean; uncertain: boolean; invalid: boolean };
+const scopes = new WeakMap<CatalogHost, SvelteMap<string, Target>>();
+
+export function useApprovalDecision(host: ApprovalHost) {
+  const { catalog, authorized, decisionSurface, onOutcome } = host;
+  let targets = scopes.get(catalog);
+  if (!targets) {
+    targets = new SvelteMap();
+    scopes.set(catalog, targets);
+  }
+  const scope = targets;
+  return (review: Review) => {
+    if (review === null || typeof review !== 'object') throw new TypeError('A review is required');
+    const seen = { id: review.id, round: review.round };
+    const key = JSON.stringify([seen.id, seen.round]);
+    let target = scope.get(key);
+    if (!target) {
+      const initial = $state({ busy: false, uncertain: false, invalid: false });
+      target = initial;
+      scope.set(key, target);
+    }
+    const state = target;
+    const actionable = () =>
+      !catalog.disposed &&
+      typeof review.id === 'string' &&
+      review.id.length > 0 &&
+      Number.isSafeInteger(review.round) &&
+      review.round >= 0 &&
+      review.kind === 'tool-approval' &&
+      review.approval?.action != null &&
+      authorized(review) &&
+      review.id === seen.id &&
+      review.round === seen.round &&
+      review.status === 'pending' &&
+      !state.busy &&
+      !state.uncertain &&
+      !state.invalid &&
+      (review.approval.action.type !== 'approval' ||
+        !review.approval.action.expiresAt ||
+        Date.parse(review.approval.action.expiresAt) > Date.now());
+    const mayRemember = () =>
+      actionable() && review.effect?.kind !== 'refund' && review.approval.mayRemember === true;
+    const report = (outcome: ApprovalOutcome, captured: Review) => {
+      if (!catalog.disposed && authorized(captured)) onOutcome?.({ ...seen }, outcome);
+    };
+    const capture = () => JSON.parse(JSON.stringify(review)) as Review;
+    const invalidate = () => catalog.invalidate(['bureau.reviews.list', 'bureau.reviews.get']);
+    const read = async () =>
+      (await catalog.call('bureau.reviews.get', {
+        id: seen.id,
+      })) as ReviewsOperationTypes['bureau.reviews.get']['output'];
+    async function reconcile() {
+      if (state.busy || !state.uncertain || catalog.disposed || !authorized(review)) return;
+      const captured = capture();
+      state.busy = true;
+      try {
+        const current = await read();
+        if (catalog.disposed || !authorized(captured)) return;
+        if (
+          current.kind !== 'tool-approval' ||
+          current.id !== seen.id ||
+          current.status !== 'pending' ||
+          current.round !== seen.round
+        )
+          state.invalid = true;
+        state.uncertain = false;
+        invalidate();
+      } finally {
+        state.busy = false;
+      }
+    }
+    async function send(choice: Pick<Choice, 'decision' | 'reason' | 'remember'>) {
+      if (!actionable() || (choice.remember && !mayRemember())) return;
+      const captured = capture();
+      state.busy = true;
+      let dispatched = false;
+      try {
+        const current = await read();
+        if (catalog.disposed || !authorized(captured)) return;
+        if (
+          current.kind !== 'tool-approval' ||
+          current.id !== seen.id ||
+          current.status !== 'pending'
+        ) {
+          state.invalid = true;
+          invalidate();
+          report('already-resolved', captured);
+          return;
+        }
+        if (current.round !== seen.round) {
+          state.invalid = true;
+          invalidate();
+          report('round-changed', captured);
+          return;
+        }
+        if (!authorized(current)) return;
+        if (
+          current.approval.action.type === 'approval' &&
+          current.approval.action.expiresAt &&
+          !(Date.parse(current.approval.action.expiresAt) > Date.now())
+        )
+          return;
+        if (
+          choice.remember &&
+          (current.effect?.kind === 'refund' || current.approval.mayRemember !== true)
+        )
+          return;
+        dispatched = true;
+        const response = await catalog.call('bureau.reviews.resolve', {
+          ...seen,
+          ...choice,
+          ...(decisionSurface ? { decisionSurface } : {}),
+        });
+        if (
+          response === null ||
+          typeof response !== 'object' ||
+          !('id' in response) ||
+          response.id !== seen.id ||
+          !('kind' in response) ||
+          response.kind !== 'tool-approval' ||
+          !('decision' in response) ||
+          response.decision !== choice.decision ||
+          !('receipt' in response) ||
+          !['applied', 'superseded', 'rejected'].includes(String(response.receipt)) ||
+          ('warning' in response && response.warning !== 'APPROVAL_OUTCOME_NOT_WRITTEN')
+        )
+          throw new Error('Invalid review decision receipt');
+        const result = response as Receipt;
+        if (result.receipt === 'rejected') {
+          state.uncertain = true;
+          report('failed', captured);
+          return;
+        }
+        state.invalid = true;
+        if (catalog.disposed || !authorized(captured)) return;
+        invalidate();
+        report(
+          result.receipt === 'superseded'
+            ? 'superseded'
+            : result.warning
+              ? 'outcome-not-written'
+              : 'applied',
+          captured,
+        );
+      } catch (error) {
+        if (!dispatched) {
+          report('failed', captured);
+          return;
+        }
+        state.uncertain = true;
+        const data = error && typeof error === 'object' && 'data' in error ? error.data : undefined;
+        const reason =
+          data && typeof data === 'object' && 'reason' in data ? data.reason : undefined;
+        report(
+          reason === 'REVIEW_ROUND_CHANGED'
+            ? 'round-changed'
+            : reason === 'REVIEW_ALREADY_RESOLVED'
+              ? 'already-resolved'
+              : reason === 'APPROVAL_OUTCOME_NOT_WRITTEN'
+                ? 'outcome-not-written'
+                : 'unknown-after-dispatch',
+          captured,
+        );
+      } finally {
+        state.busy = false;
+        if (state.uncertain) {
+          try {
+            await reconcile();
+          } catch {
+            /* keep the target fenced */
+          }
+        }
+      }
+    }
+    const reason = (note: string) => note.trim();
+    return {
+      get disabled() {
+        return !actionable();
+      },
+      get canRemember() {
+        return mayRemember();
+      },
+      approve(note = '') {
+        const value = reason(note);
+        void send({ decision: 'approve', ...(value ? { reason: value } : {}) });
+      },
+      remember(note = '') {
+        const value = reason(note);
+        void send({ decision: 'approve', remember: true, ...(value ? { reason: value } : {}) });
+      },
+      deny(note = '') {
+        const value = reason(note);
+        void send(value ? { decision: 'reject', reason: value } : { decision: 'deny' });
+      },
+      reject(note: string) {
+        const value = reason(note);
+        if (value) void send({ decision: 'reject', reason: value });
+      },
+      reconcile,
+    };
+  };
+}
+export function useToolApprovalActions(host: ApprovalHost) {
+  return useApprovalDecision(host);
+}
+export type ToolApprovalActions = ReturnType<ReturnType<typeof useToolApprovalActions>>;

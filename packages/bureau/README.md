@@ -540,6 +540,8 @@ console.log(answered.receipt); // 'applied'
 
 A tool call that needs approval and a `requestHumanInput` park are both reviews. `bureau.reviews` lists the ones awaiting a decision, reads one by id (live or already resolved), and resolves one: `approve` resumes the run, `deny` records the decision and continues it, and `reject` is a denial that requires a `reason`. `pendingOf(taskId)` reads the human waits a task is still parked on from durable state, so a process that shares the durable store with the one holding the task can list and resolve its park. The `bureau.reviews.list`, `bureau.reviews.get`, and `bureau.reviews.resolve` operations of `createBureauHandler` delegate to these members.
 
+`bureau.reviews.mayRemember(review)` checks whether a remembered grant would change the current tool policy and session permission mode. It fails closed when the policy cannot be determined or the review is protected. The list and detail projections expose this as `approval.mayRemember`; clients check it again on a fresh review before sending a remembered decision.
+
 ```ts
 import type { Bureau } from '@lostgradient/bureau';
 

@@ -237,7 +237,7 @@ export type SharedAdmissionSequenceAdmitte_e74023ec = {
     | 'canceled'
     | 'failed';
 };
-export type SharedAgeMillisecondsAgentName_5abc725c = {
+export type SharedAgeMillisecondsAgentName_3e6ceabe = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly approval: {
@@ -267,6 +267,7 @@ export type SharedAgeMillisecondsAgentName_5abc725c = {
         };
     readonly arguments: unknown;
     readonly callId: string;
+    readonly mayRemember?: boolean;
     readonly policyPauseTier?: 'capability' | 'registry' | 'tool';
     readonly reason?: string;
     readonly toolName: string;
