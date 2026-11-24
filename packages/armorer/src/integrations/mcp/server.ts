@@ -142,7 +142,7 @@ export async function createMCP(
       return { tool, name: entry.name, scopes: [...entry.scopes] };
     }) ?? availableTools.map((tool) => ({ tool, name: tool.name, scopes: [] as string[] }));
   for (const { tool, name, scopes } of selected) {
-    if (toolEntries.has(name)) throw new TypeError(`Duplicate MCP tool name: ${name}`);
+    if (selection && toolEntries.has(name)) throw new TypeError(`Duplicate MCP tool name: ${name}`);
     const configuration = resolveToolConfiguration(tool, toolConfiguration);
     toolEntries.set(name, {
       tool,
