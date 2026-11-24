@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2610",
+  "branch": "steve/cor-2610-browser-consent",
+  "checkedAt": "c93ece78a0ecaf52a1e18bc4f3b6e6e1d72c74a6",
+  "briefVersion": "155c05f1a34e",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bun run --cwd packages/mcp test:browser-consent: exit 0"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bun run --cwd packages/mcp test:browser-consent: exit 0"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun run --cwd packages/mcp test:browser-consent: exit 0"
+    }
+  ]
+}
