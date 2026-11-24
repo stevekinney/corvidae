@@ -69,4 +69,43 @@ describe('SettingRow', () => {
     );
     expect(description?.querySelector('a')?.getAttribute('href')).toBe('/health');
   });
+
+  test('keeps its status after supporting content and before the error', () => {
+    const { container } = render(SettingRow, {
+      props: {
+        id: 'sync-setting',
+        label: 'Sync',
+        description: 'Updates are saved automatically.',
+        status: 'saved',
+        error: 'The last update could not be saved.',
+        control: createRawSnippet(() => ({
+          render: () => '<button id="sync-setting" type="button">Sync now</button>',
+        })),
+      },
+    });
+    const children = Array.from(container.querySelector('.cinder-form-field')!.children);
+    const descriptionIndex = children.findIndex(
+      (element) => element.id === 'sync-setting-description',
+    );
+    const statusIndex = children.findIndex((element) =>
+      element.classList.contains('cinder-setting-row__status'),
+    );
+    const errorIndex = children.findIndex((element) => element.id === 'sync-setting-error');
+    expect(descriptionIndex).toBeGreaterThan(-1);
+    expect(statusIndex).toBeGreaterThan(descriptionIndex);
+    expect(errorIndex).toBeGreaterThan(statusIndex);
+  });
+
+  test('caps only descriptions at the shared prose measure on wide setting rows', async () => {
+    const css = await Bun.file(new URL('./setting-row.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-setting-row__field \.cinder-form-field__description\s*\{[^}]*max-inline-size:\s*var\(--cinder-content-width-prose\);/,
+    );
+    expect(css).not.toMatch(
+      /\.cinder-setting-row__field \.cinder-form-field__note\s*\{[^}]*max-inline-size:/,
+    );
+    expect(css).not.toMatch(
+      /\.cinder-setting-row__field \.cinder-form-field__warning\s*\{[^}]*max-inline-size:/,
+    );
+  });
 });

@@ -225,6 +225,7 @@
     fullWidth
     descriptionClass="cinder-input-field__description"
     errorClass="cinder-input-field__error"
+    errorBeforeDescription
     descriptionId={field.ownDescriptionId}
     errorId={field.ownErrorId}
     control={inputElement}
@@ -253,6 +254,7 @@
     fullWidth
     descriptionClass="cinder-input-field__description"
     errorClass="cinder-input-field__error"
+    errorBeforeDescription
     control={inputElement}
     controlClass={hostClass}
     controlLeading={!!leading}

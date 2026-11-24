@@ -18,10 +18,14 @@ test('a narrow two-line row puts its action under the text, and several badges d
   await page.getByTestId('actions-no-leading').evaluate((element) => {
     element.removeAttribute('hidden');
   });
-  await page.getByTestId('status-inline-actions').evaluate((element) => {
+  const inlineActions = page.getByTestId('status-inline-actions');
+  await inlineActions.evaluate((element) => {
     element.removeAttribute('hidden');
   });
   await page.locator('[data-testid="actions"] .cinder-button').waitFor({ state: 'visible' });
+  // Revealing a row makes its width measurable. Wait for the resize observer to select the inline
+  // status layout before reading its boxes.
+  await expect(inlineActions.locator('.cinder-stacked-list-item--status-inline')).toHaveCount(2);
   const read = await page.evaluate(() => {
     const box = (root: Element | null, selector: string) => {
       const element = root?.querySelector(selector);

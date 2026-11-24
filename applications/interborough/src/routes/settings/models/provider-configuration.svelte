@@ -31,7 +31,11 @@
     {copy.unavailable(source.title)}
   </p>
 {:else if source !== undefined && configuration.hasFields}
-  <section class="ib-provider-configuration" data-testid="provider-configuration">
+  <section
+    class="ib-provider-configuration"
+    data-testid="provider-configuration"
+    data-has-heading={heading ? '' : undefined}
+  >
     {#if heading}
       <SectionHeading level={4} title={copy.heading} />
     {/if}
@@ -57,6 +61,12 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-width: 0;
+  }
+
+  /* The key field sits before Settings in Connect. Keep that boundary larger than the heading's
+     own gap to its first setting, at desktop and phone widths alike. */
+  .ib-provider-configuration[data-has-heading] {
+    gap: var(--cinder-space-2);
   }
 
   .ib-provider-configuration__note {

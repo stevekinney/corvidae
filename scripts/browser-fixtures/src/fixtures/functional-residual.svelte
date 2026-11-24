@@ -80,7 +80,11 @@ LIMIT 10;`;
     <p data-testid="last-drop">{lastDrop}</p>
   </section>
 
-  <section id="example-mount-delayed-highlighting" aria-label="Code block">
+  <section
+    id="example-mount-delayed-highlighting"
+    data-cinder-fixture-highlight-pending
+    aria-label="Code block"
+  >
     <CodeBlock {code} language="sql" {highlighter} />
   </section>
 </main>

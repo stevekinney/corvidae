@@ -74,7 +74,7 @@
   import { documentProblemFor, type DocumentProblem } from './workflow-issue-line.ts';
   import WorkflowBuilder from './workflow-builder.svelte';
   import { impactNotice } from './workflow-impact.ts';
-  import { locateJsonProblem } from './workflow-source.ts';
+  import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
 
   const copy = WORKFLOW_COPY;
   const editor = copy.editor;

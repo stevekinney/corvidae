@@ -192,22 +192,21 @@
  * Read-only state
  * ---------------------------------------- */
 
-  /* A read-only value can be focused and copied but not changed, so it sits on the inset surface
-     with a dashed edge, a default cursor and no caret, and keeps the full text colour for contrast. */
+  /* A read-only value can be focused and copied but not changed, so it sits quietly on the inset
+     surface without competing with editable controls' solid edge. */
   .cinder-input[readonly]:not(:disabled) {
     background: var(--cinder-surface-inset);
-    border-style: dashed;
+    border-color: transparent;
     cursor: default;
     caret-color: transparent;
   }
 
   .cinder-input-group:has(> .cinder-input[readonly]:not(:disabled)) {
     background: var(--cinder-surface-inset);
-    border-style: dashed;
+    border-color: transparent;
   }
 
-  /* A filled field is already on the inset surface, so its read-only value drops the fill and
-     keeps the dashed edge: editable and read-only values stay apart (COR-2313). */
+  /* A filled field is already on the inset surface, so its read-only value drops the duplicate fill. */
   .cinder-input[data-cinder-appearance='filled'][readonly]:not(:disabled),
   .cinder-input:where([data-density='comfortable'] *):not(
       [data-cinder-appearance='outlined']
