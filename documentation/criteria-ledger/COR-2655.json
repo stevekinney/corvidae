@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2655",
+  "branch": "steve/cor-2655-affected-selector-qualification",
+  "checkedAt": "4e3d92b9869c0d4e79741a5f1b412f8c4a2f4d0c",
+  "briefVersion": "f3210546d15e",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Eight named corpus controls and existing Cinder regression pass; corpus-typed.log and selection-after-owners.log."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "All eight selected/exhaustive broken and restored fixture controls pass with independently executed uncached Bun processes; repository-wide selected/exhaustive provider evidence is pending coordinator dispatch."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Five interleaved matched plans: 181.51 ms baseline versus 53.07 ms warm planning median, identical obligations and reasons; graph and total separately recorded. Two live worktrees cover untracked, staged add, tracked rename, and tracked deletion. See final-phase-pairs.json and worktrees-*.jsonl."
+    }
+  ]
+}
