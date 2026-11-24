@@ -448,6 +448,9 @@ export function hostedOAuth(configuration: Options) {
       audience: grant.resource,
       expiresAt: grant.expiresAt,
       subject: grant.subject,
+      grantId: grant.grantId,
+      tenant: grant.tenant,
+      clientId: grant.client,
       scopes: grant.scopes,
     };
   };

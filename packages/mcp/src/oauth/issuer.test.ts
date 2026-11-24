@@ -87,6 +87,9 @@ describe('hosted OAuth issuer', () => {
     expect(token.status).toBe(200);
     const credentials = await token.json();
     expect(credentials.scope).toBe('read');
+    expect(credentials).not.toHaveProperty('grantId');
+    expect(credentials).not.toHaveProperty('tenant');
+    expect(credentials).not.toHaveProperty('clientId');
     const verified = await issuer.verifyAccessToken(credentials.access_token);
     expect(verified).toEqual(expect.objectContaining({ subject: 'subject', scopes: ['read'] }));
     const otherIssuer = hostedOAuth({

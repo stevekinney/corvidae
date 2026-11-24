@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import {
   clearClientIdMetadataDocumentCacheForTests,
@@ -29,18 +30,20 @@ describe('safeFetchPublicHttpsUrl', () => {
     let lookupCalled = false;
     let fetchCalled = false;
 
-    await expect(
-      safeFetchPublicHttpsUrl('http://app.example.com/client.json', {
-        lookupImpl: async () => {
-          lookupCalled = true;
-          return [publicAddress];
-        },
-        fetchImpl: async () => {
-          fetchCalled = true;
-          return new Response();
-        },
-      }),
-    ).rejects.toMatchObject({ reason: 'https_required' });
+    expect(
+      await rejectionOf(
+        safeFetchPublicHttpsUrl('http://app.example.com/client.json', {
+          lookupImpl: async () => {
+            lookupCalled = true;
+            return [publicAddress];
+          },
+          fetchImpl: async () => {
+            fetchCalled = true;
+            return new Response();
+          },
+        }),
+      ),
+    ).toMatchObject({ reason: 'https_required' });
     expect(lookupCalled).toBe(false);
     expect(fetchCalled).toBe(false);
   });
@@ -49,18 +52,20 @@ describe('safeFetchPublicHttpsUrl', () => {
     let lookupCalled = false;
     let fetchCalled = false;
 
-    await expect(
-      safeFetchPublicHttpsUrl('https://127.0.0.1/client.json', {
-        lookupImpl: async () => {
-          lookupCalled = true;
-          return [publicAddress];
-        },
-        fetchImpl: async () => {
-          fetchCalled = true;
-          return new Response();
-        },
-      }),
-    ).rejects.toMatchObject({ reason: 'blocked_address' });
+    expect(
+      await rejectionOf(
+        safeFetchPublicHttpsUrl('https://127.0.0.1/client.json', {
+          lookupImpl: async () => {
+            lookupCalled = true;
+            return [publicAddress];
+          },
+          fetchImpl: async () => {
+            fetchCalled = true;
+            return new Response();
+          },
+        }),
+      ),
+    ).toMatchObject({ reason: 'blocked_address' });
     expect(lookupCalled).toBe(false);
     expect(fetchCalled).toBe(false);
   });
@@ -68,15 +73,17 @@ describe('safeFetchPublicHttpsUrl', () => {
   it('rejects when any resolved address is private', async () => {
     let fetchCalled = false;
 
-    await expect(
-      safeFetchPublicHttpsUrl(validDocumentUrl, {
-        lookupImpl: lookupResolvingTo(publicAddress, { address: '10.0.0.1', family: 4 }),
-        fetchImpl: async () => {
-          fetchCalled = true;
-          return new Response();
-        },
-      }),
-    ).rejects.toMatchObject({ reason: 'blocked_address' });
+    expect(
+      await rejectionOf(
+        safeFetchPublicHttpsUrl(validDocumentUrl, {
+          lookupImpl: lookupResolvingTo(publicAddress, { address: '10.0.0.1', family: 4 }),
+          fetchImpl: async () => {
+            fetchCalled = true;
+            return new Response();
+          },
+        }),
+      ),
+    ).toMatchObject({ reason: 'blocked_address' });
     expect(fetchCalled).toBe(false);
   });
 

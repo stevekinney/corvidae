@@ -1,13 +1,17 @@
 import { PostgresStorage } from '@lostgradient/storage-postgres';
 import { createPostgresTestServer } from '@lostgradient/testing/postgres-server';
-import { expect, test } from 'bun:test';
+import { afterAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { createProtectedHttpHandler } from './http.ts';
 import { OAuthStore } from './oauth-store.ts';
 import { hostedOAuth } from './oauth/issuer.ts';
 
+const database = await createPostgresTestServer();
+afterAll(async () => {
+  await database[Symbol.asyncDispose]();
+});
+
 test('consent, exchange, rotation and revocation survive separate PostgreSQL pools', async () => {
-  await using database = await createPostgresTestServer();
   const configuration = { url: database.url, table: 'oauth_contract' };
   const verifier = 'a'.repeat(43);
   const binding = {
@@ -236,7 +240,6 @@ test('consent, exchange, rotation and revocation survive separate PostgreSQL poo
 });
 
 test('separate live issuers enforce grant and current authority across restart', async () => {
-  await using database = await createPostgresTestServer();
   const configuration = { url: database.url, table: 'oauth_issuer_contract' };
   await using firstStorage = new PostgresStorage(configuration);
   await using secondStorage = new PostgresStorage(configuration);
@@ -342,6 +345,17 @@ test('separate live issuers enforce grant and current authority across restart',
   await using peerStorage = new PostgresStorage(configuration);
   const restarted = makeIssuer(restartedStorage);
   const peer = makeIssuer(peerStorage);
+  const originalGrant = await restarted.verifyAccessToken(tokens.access_token);
+  const independentGrant = await restarted.verifyAccessToken(independent.access_token);
+  expect(originalGrant).toEqual(
+    expect.objectContaining({ tenant: 'tenant', clientId: client.client_id, subject: 'subject' }),
+  );
+  expect(independentGrant).toEqual(
+    expect.objectContaining({ tenant: 'tenant', clientId: client.client_id, subject: 'subject' }),
+  );
+  expect(originalGrant?.grantId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(independentGrant?.grantId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(independentGrant?.grantId).not.toBe(originalGrant?.grantId);
   const refresh = await request(restarted, '/oauth/token', {
     method: 'POST',
     headers,
@@ -354,6 +368,14 @@ test('separate live issuers enforce grant and current authority across restart',
   });
   expect(refresh.status).toBe(200);
   const rotated = await refresh.json();
+  expect(await peer.verifyAccessToken(rotated.access_token)).toEqual(
+    expect.objectContaining({
+      grantId: originalGrant?.grantId,
+      tenant: 'tenant',
+      clientId: client.client_id,
+      subject: 'subject',
+    }),
+  );
   let dispatches = 0;
   const protectedHttp = createProtectedHttpHandler({
     origin: 'https://issuer.test',
