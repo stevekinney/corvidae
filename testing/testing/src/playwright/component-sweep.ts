@@ -12,6 +12,7 @@ import {
   applyInteractions,
   captureScreenshot,
   evaluateAxeGate,
+  fixtureWaitsForHighlight,
   runAxe,
   writeScreenshotMetadata,
 } from '../index.ts';
@@ -121,8 +122,11 @@ export async function runFixtureSweep(
 
   // Every fixture has a resting-state capture. Interaction fixtures
   // use a second key so their resulting state remains pixel-checked.
-  // The mounted fixture can still be rendering syntax highlighting.
-  await expect(page.locator('[data-cinder-highlight-state="pending"]')).toHaveCount(0);
+  // Most captures represent a settled render. A fixture can explicitly preserve an intentional
+  // pending state when a dedicated interaction test owns its manual resolution.
+  if (fixtureWaitsForHighlight(fixture)) {
+    await expect(page.locator('[data-cinder-highlight-state="pending"]')).toHaveCount(0);
+  }
   await captureState(
     page,
     restingKey,

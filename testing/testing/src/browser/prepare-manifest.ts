@@ -5,6 +5,7 @@ import { basename, relative, resolve, sep } from 'node:path';
 
 import { extractFixtures } from '../fixture-extraction/index.ts';
 import type { ComponentEntry } from '../helpers/manifest.ts';
+import type { ApplicationFixtureDeclaration } from '../visual-fixtures.ts';
 import { assertUniqueFixtureNames } from './manifest.ts';
 
 /**
@@ -26,7 +27,7 @@ export type ManifestLayout = {
    */
   appFixtureRoots: string[];
   /** The application fixtures to add, by component name. */
-  appFixtureDeclarations: Readonly<Record<string, readonly string[]>>;
+  appFixtureDeclarations: Readonly<Record<string, readonly ApplicationFixtureDeclaration[]>>;
   /**
    * Files that decide the manifest's content without being fixtures: patterns relative to
    * `repositoryRoot`, each of which must match at least one file.
@@ -125,7 +126,7 @@ async function addApplicationFixtures(
   entries: ComponentEntry[],
   files: Map<string, string>,
 ): Promise<void> {
-  for (const [componentName, fixtureNames] of Object.entries(layout.appFixtureDeclarations)) {
+  for (const [componentName, declarations] of Object.entries(layout.appFixtureDeclarations)) {
     const fixturePath = files.get(`${componentName}.svelte`);
     if (fixturePath === undefined) {
       throw new Error(
@@ -136,12 +137,16 @@ async function addApplicationFixtures(
       .update(await Bun.file(fixturePath).text())
       .digest('hex');
     const entry = entries.find((candidate) => candidate.slug === componentName);
-    const fixtures = fixtureNames.map((name) => ({
-      name,
-      mode: 'host' as const,
-      fixtureContentHash: contentHash,
-      category: 'visual-contract' as const,
-    }));
+    const fixtures = declarations.map((declaration) => {
+      const fixture = typeof declaration === 'string' ? { name: declaration } : declaration;
+      return {
+        name: fixture.name,
+        mode: 'host' as const,
+        fixtureContentHash: contentHash,
+        category: 'visual-contract' as const,
+        ...(fixture.highlighting === undefined ? {} : { highlighting: fixture.highlighting }),
+      };
+    });
     if (entry === undefined) {
       entries.push({
         name: componentName,
@@ -222,6 +227,7 @@ export async function prepareManifest(layout: ManifestLayout): Promise<'current'
         fixtureContentHash: contentHash,
         ...(fixture.interact !== undefined ? { interact: fixture.interact } : {}),
         ...(fixture.mask !== undefined ? { mask: fixture.mask } : {}),
+        ...(fixture.highlighting === undefined ? {} : { highlighting: fixture.highlighting }),
         category: fixture.category,
       })),
     }));

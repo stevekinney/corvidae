@@ -33,6 +33,19 @@ export const FIXTURE_CATEGORIES = [
 /** A visual fixture category. */
 export type FixtureCategory = (typeof FIXTURE_CATEGORIES)[number];
 
+/** A fixture's syntax-highlighting lifecycle at screenshot time. */
+export const FIXTURE_HIGHLIGHTING_STATES = ['intentionally-pending'] as const;
+/** A declared non-settling highlighter state for a fixture. */
+export type FixtureHighlightingState = (typeof FIXTURE_HIGHLIGHTING_STATES)[number];
+
+/** An application fixture declaration, including its optional screenshot readiness contract. */
+export type ApplicationFixtureDeclaration =
+  | string
+  | {
+      name: string;
+      highlighting?: FixtureHighlightingState;
+    };
+
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
@@ -111,6 +124,7 @@ const SharedFixtureSchema = z.object({
   interact: z.array(InteractionStepSchema).optional(),
   mask: z.array(MaskRuleSchema).optional(),
   category: z.enum(FIXTURE_CATEGORIES).optional(),
+  highlighting: z.enum(FIXTURE_HIGHLIGHTING_STATES).optional(),
 });
 
 const DirectFixtureSchema = SharedFixtureSchema.extend({
@@ -162,6 +176,11 @@ export type InteractionStep = z.infer<typeof InteractionStepSchema>;
 export type InteractionTarget = z.infer<typeof InteractionTargetSchema>;
 /** A validated screenshot mask rule. */
 export type MaskRule = z.infer<typeof MaskRuleSchema>;
+
+/** Whether a screenshot capture waits for syntax highlighting to settle. */
+export function fixtureWaitsForHighlight(fixture: Pick<VisualFixture, 'highlighting'>): boolean {
+  return fixture.highlighting !== 'intentionally-pending';
+}
 
 /** Returns whether a fixture is rendered directly or through a host component. */
 export function fixtureRenderMode(fixture: VisualFixture): 'direct' | 'host' {

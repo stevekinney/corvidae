@@ -3,6 +3,7 @@ import { relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { exitWhenOrphaned } from '../exit-when-orphaned.ts';
+import type { ApplicationFixtureDeclaration } from '../visual-fixtures.ts';
 import { buildFixtures, type FixtureBuild } from './build.ts';
 import { manifestOutputPaths, prepareManifest, type ManifestLayout } from './prepare-manifest.ts';
 import { createFixtureServer } from './server.ts';
@@ -19,7 +20,7 @@ export type PackageSuiteOptions = {
   /** Directories scanned for `*-fixtures.ts` declarations and `*.fixture.svelte` hosts. */
   fixtureRoots?: string[];
   /** The application fixtures in `fixtures/`, by component name. */
-  appFixtureDeclarations: Readonly<Record<string, readonly string[]>>;
+  appFixtureDeclarations: Readonly<Record<string, readonly ApplicationFixtureDeclaration[]>>;
   /** More files, relative to the repository root, that decide the manifest's content. */
   codeInputs?: string[];
 };
