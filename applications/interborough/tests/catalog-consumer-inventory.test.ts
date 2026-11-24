@@ -31,6 +31,25 @@ function callerOf(node: ts.Node, tree: ts.SourceFile): string {
   }
   return '<module>';
 }
+function transportExpression(node: ts.Node, tree: ts.SourceFile): string {
+  if (ts.isCallExpression(node)) return node.getText(tree).replace(/\s+/gu, ' ');
+  let variable: ts.VariableDeclaration | undefined;
+  for (let current = node.parent; current; current = current.parent) {
+    if (ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current))
+      return current.getText(tree).replace(/\s+/gu, ' ');
+    if (ts.isVariableDeclaration(current) && !variable) variable = current;
+  }
+  return (variable ?? node).getText(tree).replace(/\s+/gu, ' ');
+}
+function assertClassified(actual: readonly string[], expected: readonly string[]): void {
+  const remaining = [...expected];
+  for (const entry of actual) {
+    const index = remaining.indexOf(entry);
+    if (index < 0) throw new Error(`Unclassified call: ${entry}`);
+    remaining.splice(index, 1);
+  }
+  if (remaining.length) throw new Error(`Stale inventory: ${remaining.join(', ')}`);
+}
 const restMethods: Readonly<Record<string, string>> = {
   addTags: 'weft.workflows.tags.add',
   cancel: 'weft.workflows.cancel',
@@ -115,151 +134,160 @@ test('catalog consumers remain classified against the served catalogs', async ()
     }
     findConstants(tree);
   }
-  for (const { path, tree, source } of trees) {
-    function visit(node: ts.Node): void {
-      if (
-        ts.isImportDeclaration(node) &&
-        ts.isStringLiteral(node.moduleSpecifier) &&
-        node.importClause
-      ) {
-        const specifier = node.moduleSpecifier.text;
-        const target = specifier.startsWith('.')
-          ? relative(sourceRoot, resolve(dirname(join(sourceRoot, path)), specifier))
-          : '';
+  function scanTrees(inputs: typeof trees): void {
+    for (const { path, tree, source } of inputs) {
+      function visit(node: ts.Node): void {
         if (
-          transportSources.has(target) ||
-          /(?:bureau-api|\/lib\/client|\/client\.ts|host-(?:clean-up|panels|paths|plugins|providers|session|storage|tool-sources)|@ag-ui\/|@lostgradient\/(?:weft|backchannel\/client|bureau-client))/u.test(
-            specifier,
+          ts.isImportDeclaration(node) &&
+          ts.isStringLiteral(node.moduleSpecifier) &&
+          node.importClause
+        ) {
+          const specifier = node.moduleSpecifier.text;
+          const target = specifier.startsWith('.')
+            ? relative(sourceRoot, resolve(dirname(join(sourceRoot, path)), specifier))
+            : '';
+          if (
+            transportSources.has(target) ||
+            /(?:bureau-api|\/lib\/client|\/client\.ts|host-(?:clean-up|panels|paths|plugins|providers|session|storage|tool-sources)|@ag-ui\/|@lostgradient\/(?:weft|backchannel\/client|bureau-client))/u.test(
+              specifier,
+            )
           )
-        )
-          discoveredImports.push(
-            `${path} ${specifier} ${node.importClause.getText(tree).replace(/\s+/gu, ' ')}`,
-          );
-      }
-      if (
-        (ts.isCallExpression(node) &&
-          ts.isIdentifier(node.expression) &&
-          node.expression.text === 'fetch') ||
-        (ts.isBinaryExpression(node) &&
-          node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
-          ts.isIdentifier(node.right) &&
-          node.right.text === 'fetch') ||
-        (ts.isParameter(node) &&
-          node.initializer !== undefined &&
-          ts.isIdentifier(node.initializer) &&
-          node.initializer.text === 'fetch') ||
-        (ts.isPropertyAccessExpression(node) &&
-          node.expression.getText(tree) === 'globalThis' &&
-          node.name.text === 'fetch')
-      )
-        discoveredTransport.push(path);
-      if (/^host\/cli-(?!client|destructive).*\.ts$/u.test(path)) {
-        if (ts.isStringLiteral(node) && /^(?:bureau|weft)\.[a-z.]+$/u.test(node.text))
-          discoveredCli.push(`${path} ${callerOf(node, tree)} ${node.text}`);
-        if (ts.isTemplateExpression(node) && /^(?:bureau|weft)\./u.test(node.head.text))
-          discoveredCliTemplates.push(`${path} ${callerOf(node, tree)} ${node.getText(tree)}`);
-      }
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-        const receiver = node.expression.expression.getText(tree);
-        const method =
-          receiver === 'client.activity'
-            ? `activity.${node.expression.name.text}`
-            : node.expression.name.text;
-        if (
-          (receiver === 'client' ||
-            receiver.endsWith('.client') ||
-            receiver === 'client.activity') &&
-          Object.hasOwn(restMethods, method)
-        )
-          discoveredRest.push(`${path} ${callerOf(node, tree)} ${method}`);
-        else if (
-          (receiver === 'client' ||
-            receiver.endsWith('.client') ||
-            receiver === 'client.activity') &&
-          /(?:getClient\(|\bHttpClient\b)/u.test(source)
-        )
-          throw new Error(
-            `Unclassified Weft client call ${path}: ${node.expression.getText(tree)}`,
-          );
-      }
-      if (
-        ts.isPropertyAccessExpression(node) &&
-        node.name.text === 'operations' &&
-        (node.expression.getText(tree) === 'client' ||
-          node.expression.getText(tree).endsWith('.client')) &&
-        !ts.isElementAccessExpression(node.parent)
-      )
-        throw new Error(`Unclassified catalog accessor ${path}: ${node.getText(tree)}`);
-      if (ts.isElementAccessExpression(node)) {
-        const target = node.expression.getText(tree);
-        if (target === 'bureauClient' || target.endsWith('.operations')) {
-          const argument = node.argumentExpression;
-          const operation = ts.isStringLiteral(argument)
-            ? argument.text
-            : ts.isIdentifier(argument)
-              ? constants.get(argument.text)
-              : undefined;
-          if (!operation)
-            throw new Error(`Unclassified operation expression ${path}: ${argument.getText(tree)}`);
-          discovered.push(`${path} ${callerOf(node, tree)} ${operation}`);
-        }
-      }
-      ts.forEachChild(node, visit);
-    }
-    visit(tree);
-    if (path.endsWith('.svelte')) {
-      const fragment = parse(source, { modern: true }).fragment;
-      function visitMarkup(value: unknown): void {
-        if (Array.isArray(value)) {
-          for (const child of value) visitMarkup(child);
-          return;
-        }
-        if (!value || typeof value !== 'object') return;
-        const node = value as Record<string, unknown>;
-        if (
-          node['type'] === 'CallExpression' &&
-          typeof node['start'] === 'number' &&
-          typeof node['end'] === 'number' &&
-          /^fetch\s*\(/u.test(source.slice(node['start'], node['end']))
-        )
-          discoveredTransport.push(path);
-        if (
-          node['type'] === 'CallExpression' &&
-          typeof node['start'] === 'number' &&
-          typeof node['end'] === 'number'
-        ) {
-          const expression = source.slice(node['start'], node['end']);
-          const call = /^(?:\w+\.)?client\.(activity\.)?(\w+)\s*\(/u.exec(expression);
-          if (call) {
-            const method = `${call[1] ?? ''}${call[2]}`;
-            if (Object.hasOwn(restMethods, method))
-              discoveredRest.push(`${path} <markup> ${method}`);
-            else if (/(?:getClient\(|\bHttpClient\b)/u.test(source))
-              throw new Error(`Unclassified Weft client call ${path}: ${expression}`);
-          }
+            discoveredImports.push(
+              `${path} ${specifier} ${node.importClause.getText(tree).replace(/\s+/gu, ' ')}`,
+            );
         }
         if (
-          node['type'] === 'MemberExpression' &&
-          node['computed'] === true &&
-          typeof node['start'] === 'number' &&
-          typeof node['end'] === 'number'
-        ) {
-          const expression = source.slice(node['start'], node['end']);
-          const match = /^(?:bureauClient|\w+\.operations)\[(?:['"]([^'"]+)['"]|(\w+))\]$/u.exec(
-            expression,
+          (ts.isCallExpression(node) &&
+            ts.isIdentifier(node.expression) &&
+            node.expression.text === 'fetch') ||
+          (ts.isBinaryExpression(node) &&
+            node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+            ts.isIdentifier(node.right) &&
+            node.right.text === 'fetch') ||
+          (ts.isParameter(node) &&
+            node.initializer !== undefined &&
+            ts.isIdentifier(node.initializer) &&
+            node.initializer.text === 'fetch') ||
+          (ts.isPropertyAccessExpression(node) &&
+            node.expression.getText(tree) === 'globalThis' &&
+            node.name.text === 'fetch')
+        )
+          discoveredTransport.push(
+            `${path} ${callerOf(node, tree)} ${transportExpression(node, tree)}`,
           );
-          if (match) {
-            const operation = match[1] ?? constants.get(match[2] ?? '');
+        if (/^host\/cli-(?!client|destructive).*\.ts$/u.test(path)) {
+          if (ts.isStringLiteral(node) && /^(?:bureau|weft)\.[a-z.]+$/u.test(node.text))
+            discoveredCli.push(`${path} ${callerOf(node, tree)} ${node.text}`);
+          if (ts.isTemplateExpression(node) && /^(?:bureau|weft)\./u.test(node.head.text))
+            discoveredCliTemplates.push(`${path} ${callerOf(node, tree)} ${node.getText(tree)}`);
+        }
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+          const receiver = node.expression.expression.getText(tree);
+          const method =
+            receiver === 'client.activity'
+              ? `activity.${node.expression.name.text}`
+              : node.expression.name.text;
+          if (
+            (receiver === 'client' ||
+              receiver.endsWith('.client') ||
+              receiver === 'client.activity') &&
+            Object.hasOwn(restMethods, method)
+          )
+            discoveredRest.push(`${path} ${callerOf(node, tree)} ${method}`);
+          else if (
+            (receiver === 'client' ||
+              receiver.endsWith('.client') ||
+              receiver === 'client.activity') &&
+            /(?:getClient\(|\bHttpClient\b)/u.test(source)
+          )
+            throw new Error(
+              `Unclassified Weft client call ${path}: ${node.expression.getText(tree)}`,
+            );
+        }
+        if (
+          ts.isPropertyAccessExpression(node) &&
+          node.name.text === 'operations' &&
+          (node.expression.getText(tree) === 'client' ||
+            node.expression.getText(tree).endsWith('.client')) &&
+          !ts.isElementAccessExpression(node.parent)
+        )
+          throw new Error(`Unclassified catalog accessor ${path}: ${node.getText(tree)}`);
+        if (ts.isElementAccessExpression(node)) {
+          const target = node.expression.getText(tree);
+          if (target === 'bureauClient' || target.endsWith('.operations')) {
+            const argument = node.argumentExpression;
+            const operation = ts.isStringLiteral(argument)
+              ? argument.text
+              : ts.isIdentifier(argument)
+                ? constants.get(argument.text)
+                : undefined;
             if (!operation)
-              throw new Error(`Unclassified operation expression ${path}: ${expression}`);
-            discovered.push(`${path} <markup> ${operation}`);
+              throw new Error(
+                `Unclassified operation expression ${path}: ${argument.getText(tree)}`,
+              );
+            discovered.push(`${path} ${callerOf(node, tree)} ${operation}`);
           }
         }
-        for (const child of Object.values(node)) visitMarkup(child);
+        ts.forEachChild(node, visit);
       }
-      visitMarkup(fragment);
+      visit(tree);
+      if (path.endsWith('.svelte')) {
+        const fragment = parse(source, { modern: true }).fragment;
+        function visitMarkup(value: unknown): void {
+          if (Array.isArray(value)) {
+            for (const child of value) visitMarkup(child);
+            return;
+          }
+          if (!value || typeof value !== 'object') return;
+          const node = value as Record<string, unknown>;
+          if (
+            node['type'] === 'CallExpression' &&
+            typeof node['start'] === 'number' &&
+            typeof node['end'] === 'number' &&
+            /^fetch\s*\(/u.test(source.slice(node['start'], node['end']))
+          )
+            discoveredTransport.push(
+              `${path} <markup> ${source.slice(node['start'], node['end']).replace(/\s+/gu, ' ')}`,
+            );
+          if (
+            node['type'] === 'CallExpression' &&
+            typeof node['start'] === 'number' &&
+            typeof node['end'] === 'number'
+          ) {
+            const expression = source.slice(node['start'], node['end']);
+            const call = /^(?:\w+\.)?client\.(activity\.)?(\w+)\s*\(/u.exec(expression);
+            if (call) {
+              const method = `${call[1] ?? ''}${call[2]}`;
+              if (Object.hasOwn(restMethods, method))
+                discoveredRest.push(`${path} <markup> ${method}`);
+              else if (/(?:getClient\(|\bHttpClient\b)/u.test(source))
+                throw new Error(`Unclassified Weft client call ${path}: ${expression}`);
+            }
+          }
+          if (
+            node['type'] === 'MemberExpression' &&
+            node['computed'] === true &&
+            typeof node['start'] === 'number' &&
+            typeof node['end'] === 'number'
+          ) {
+            const expression = source.slice(node['start'], node['end']);
+            const match = /^(?:bureauClient|\w+\.operations)\[(?:['"]([^'"]+)['"]|(\w+))\]$/u.exec(
+              expression,
+            );
+            if (match) {
+              const operation = match[1] ?? constants.get(match[2] ?? '');
+              if (!operation)
+                throw new Error(`Unclassified operation expression ${path}: ${expression}`);
+              discovered.push(`${path} <markup> ${operation}`);
+            }
+          }
+          for (const child of Object.values(node)) visitMarkup(child);
+        }
+        visitMarkup(fragment);
+      }
     }
   }
+  scanTrees(trees);
   for (const entry of inventory.catalog) {
     expect(names.has(entry.operation)).toBe(true);
     expect(entry.classification).toBe('generated');
@@ -281,12 +309,13 @@ test('catalog consumers remain classified against the served catalogs', async ()
     ];
     expect(generatedNames.includes(entry.operation)).toBe(true);
   }
-  expect(discovered.sort()).toEqual(
+  assertClassified(
+    discovered,
     inventory.catalog
       .flatMap((entry) =>
         Array<string>(entry.count).fill(`${entry.path} ${entry.caller} ${entry.operation}`),
       )
-      .sort(),
+      .toSorted(),
   );
   for (const entry of inventory.eligible) {
     expect(names.has(entry.operation)).toBe(true);
@@ -296,12 +325,12 @@ test('catalog consumers remain classified against the served catalogs', async ()
     expect(entry.transport).toBe('Weft HTTP REST');
     expect(entry.issue).toMatch(/^COR-\d+$/u);
   }
-  expect(discoveredRest.sort()).toEqual(
+  expect(discoveredRest.toSorted()).toEqual(
     inventory.eligible
       .flatMap((entry) =>
         Array<string>(entry.count).fill(`${entry.path} ${entry.caller} ${entry.method}`),
       )
-      .sort(),
+      .toSorted(),
   );
   for (const entry of inventory.cli) {
     expect(names.has(entry.operation)).toBe(true);
@@ -314,22 +343,23 @@ test('catalog consumers remain classified against the served catalogs', async ()
     expect(entry.transport).toBe('Bureau JSON-RPC');
     expect(entry.issue).toMatch(/^COR-262[35]$/u);
   }
-  expect(discoveredCli.sort()).toEqual(
+  expect(discoveredCli.toSorted()).toEqual(
     inventory.cli
       .flatMap((entry) =>
         Array<string>(entry.count).fill(`${entry.path} ${entry.caller} ${entry.operation}`),
       )
-      .sort(),
+      .toSorted(),
   );
-  expect(discoveredCliTemplates.sort()).toEqual(
+  expect(discoveredCliTemplates.toSorted()).toEqual(
     inventory.cliTemplates
       .flatMap((entry) =>
         Array<string>(entry.count).fill(`${entry.path} ${entry.caller} ${entry.expression}`),
       )
-      .sort(),
+      .toSorted(),
   );
   for (const entry of inventory.cliTemplates) {
-    expect((await readFile(join(sourceRoot, entry.path), 'utf8')).includes(entry.guard)).toBe(true);
+    const source = await readFile(join(sourceRoot, entry.path), 'utf8');
+    expect(source.includes(entry.guard)).toBe(true);
     expect(entry.operations.length).toBeGreaterThan(0);
     for (const operation of entry.operations) expect(names.has(operation)).toBe(true);
     expect(entry.classification).toBe('eligible');
@@ -348,7 +378,7 @@ test('catalog consumers remain classified against the served catalogs', async ()
         );
   for (const operation of inventory.cliMetadataOnly)
     expect(cliOperations.has(operation)).toBe(false);
-  expect(inventory.dynamic.map((entry) => entry.path).sort()).toEqual([
+  expect(inventory.dynamic.map((entry) => entry.path).toSorted()).toEqual([
     'host/cli-client.ts',
     'host/composed-json-rpc.ts',
   ]);
@@ -363,10 +393,11 @@ test('catalog consumers remain classified against the served catalogs', async ()
     ])
       expect(field.length).toBeGreaterThan(0);
   }
-  expect(discoveredTransport.sort()).toEqual(
+  assertClassified(
+    discoveredTransport,
     inventory.transportBoundaries
-      .flatMap((entry) => Array<string>(entry.count).fill(entry.path))
-      .sort(),
+      .flatMap((entry) => entry.expressions.map((expression) => `${entry.path} ${expression}`))
+      .toSorted(),
   );
   for (const entry of inventory.transportBoundaries) {
     for (const field of [entry.classification, entry.transport, entry.owner, entry.reason])
@@ -400,9 +431,9 @@ test('catalog consumers remain classified against the served catalogs', async ()
     if (entry.classification === 'exceptional' && 'operation' in entry)
       expect((CLIENT_OPERATION_NAMES as readonly string[]).includes(entry.operation)).toBe(false);
   }
-  expect(discoveredImports.sort()).toEqual([...inventory.imports].sort());
-  expect([...discoveredMessages].sort()).toEqual(
-    inventory.messageBoundaries.map((entry) => entry.path).sort(),
+  expect(discoveredImports.toSorted()).toEqual([...inventory.imports].toSorted());
+  expect([...discoveredMessages].toSorted()).toEqual(
+    inventory.messageBoundaries.map((entry) => entry.path).toSorted(),
   );
   for (const entry of inventory.messageBoundaries)
     for (const field of [entry.protocol, entry.owner, entry.reason])
@@ -424,15 +455,58 @@ test('catalog consumers remain classified against the served catalogs', async ()
     ts.forEachChild(node, visitPolicy);
   }
   visitPolicy(policyTree);
-  expect(hostRoutes.sort()).toEqual(inventory.hostRoutes.map((entry) => entry.route).sort());
+  expect(hostRoutes.toSorted()).toEqual(
+    inventory.hostRoutes.map((entry) => entry.route).toSorted(),
+  );
   for (const entry of inventory.hostRoutes)
     for (const field of [entry.protocol, entry.owner, entry.reason])
       expect(field.length).toBeGreaterThan(0);
   for (const entry of inventory.delegatedBoundaries) {
-    expect((await readFile(join(sourceRoot, entry.path), 'utf8')).includes(entry.anchor)).toBe(
-      true,
-    );
+    const source = await readFile(join(sourceRoot, entry.path), 'utf8');
+    expect(source.includes(entry.anchor)).toBe(true);
     for (const field of [entry.protocol, entry.owner, entry.reason])
       expect(field.length).toBeGreaterThan(0);
   }
+  const fixturePath = 'fixtures/unlisted-consumer.ts';
+  const fixture = "function inspect() { return bureauClient['bureau.tasks.get']({}); }";
+  const catalogBefore = discovered.length;
+  scanTrees([
+    {
+      path: fixturePath,
+      source: fixture,
+      tree: ts.createSourceFile(fixturePath, fixture, ts.ScriptTarget.Latest, true),
+    },
+  ]);
+  expect(() => assertClassified(discovered.slice(catalogBefore), [])).toThrow(
+    'Unclassified call: fixtures/unlisted-consumer.ts inspect bureau.tasks.get',
+  );
+  const existingPath = 'app/engine-status.svelte.ts';
+  const previous = "function probe() { return fetch('/v1/health'); }";
+  const replacement = "function probe() { return fetch('/v1/unlisted'); }";
+  const transportBefore = discoveredTransport.length;
+  scanTrees([
+    {
+      path: existingPath,
+      source: previous,
+      tree: ts.createSourceFile(existingPath, previous, ts.ScriptTarget.Latest, true),
+    },
+  ]);
+  const expectedTransport = discoveredTransport.slice(transportBefore);
+  const replacementBefore = discoveredTransport.length;
+  scanTrees([
+    {
+      path: existingPath,
+      source: replacement,
+      tree: ts.createSourceFile(existingPath, replacement, ts.ScriptTarget.Latest, true),
+    },
+  ]);
+  expect(() =>
+    assertClassified(discoveredTransport.slice(replacementBefore), expectedTransport),
+  ).toThrow("Unclassified call: app/engine-status.svelte.ts probe fetch('/v1/unlisted')");
+  expect(() =>
+    assertClassified(
+      [...expectedTransport, ...discoveredTransport.slice(replacementBefore)],
+      expectedTransport,
+    ),
+  ).toThrow("Unclassified call: app/engine-status.svelte.ts probe fetch('/v1/unlisted')");
 });

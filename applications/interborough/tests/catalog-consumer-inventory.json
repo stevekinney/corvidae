@@ -3138,7 +3138,9 @@
       "transport": "GET /v1/health",
       "owner": "Weft health",
       "reason": "Anonymous load-balancer health endpoint has no catalog operation.",
-      "count": 1
+      "expressions": [
+        "checkHealth fetch(`${client.baseUrl}/v1/health`, { headers: client.headers })"
+      ]
     },
     {
       "path": "app/shell/shell.svelte",
@@ -3146,7 +3148,9 @@
       "transport": "GET /v1/health",
       "owner": "Weft health",
       "reason": "The shell probes the anonymous health endpoint.",
-      "count": 1
+      "expressions": [
+        "<module> fetch(`${initialClient.baseUrl}/v1/health`, { headers: initialClient.headers, cache: 'no-store', })"
+      ]
     },
     {
       "path": "host/a2a-peer-recovery-caller.ts",
@@ -3154,7 +3158,10 @@
       "transport": "A2A over HTTP",
       "owner": "Interborough A2A",
       "reason": "Remote peer recovery uses the peer's A2A protocol.",
-      "count": 2
+      "expressions": [
+        "<module> fetchWithoutCredentials = globalThis.fetch",
+        "<module> peerFetch = Object.assign( async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => { let body = typeof init?.body === 'string' ? init.body : undefined; let requestMethod: string | undefined; try { const request = new Request(input, init); requestMethod = request.method; if (body === undefined) { requestMethod = request.method; body = await request.clone().text(); } } catch { body = undefined; } let method: unknown; let requestTaskId: string | undefined; try { const parsed: unknown = body === undefined ? undefined : JSON.parse(body); method = typeof parsed === 'object' && parsed !== null && 'method' in parsed ? parsed.method : undefined; const params = typeof parsed === 'object' && parsed !== null && 'params' in parsed ? parsed.params : undefined; const id = typeof params === 'object' && params !== null && 'id' in params ? params.id : undefined; requestTaskId = typeof id === 'string' ? id : typeof id === 'object' && id !== null && 'id' in id && typeof id.id === 'string' ? id.id : undefined; } catch { method = undefined; } if (method === 'SendMessage' || method === 'SendStreamingMessage') { const countFile = Bun.file(value('SEND_FILE')); const previous = (await countFile.exists()) ? Number(await countFile.text()) : 0; await Bun.write(value('SEND_FILE'), String(previous + 1)); } const response = await fetchWithoutCredentials(input, init); if ( recoveryTaskId !== undefined && (method === 'GetTask' || method === 'SubscribeToTask' || requestMethod === 'POST') ) { await writeJsonMarker(value('AUTH_ATTACH_FILE'), { method: method ?? requestMethod, taskId: requestTaskId, status: response.status, }); } return response; }, { preconnect: globalThis.fetch.preconnect }, )"
+      ]
     },
     {
       "path": "host/cli-client-transport.ts",
@@ -3162,7 +3169,11 @@
       "transport": "HTTP REST and JSON-RPC",
       "owner": "Interborough CLI",
       "reason": "The CLI forwards its separately classified commands using an authenticated management endpoint.",
-      "count": 3
+      "expressions": [
+        "request export async function request( target: CliTarget, path: string, parsed: Parsed, dependencies: CliClientDependencies, init?: RequestInit, ): Promise<CliCommandResult> { assertManagementBoundary(target, path); // A dry run changes nothing, so a request that fails leaves no outcome unknown. const mutating = isMutation(init?.method) && parsed.options.get('dry-run') !== true; const controller = new AbortController(); dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true }); // poll-reason: timer const timer = setTimeout(() => controller.abort(), parsed.timeout); try { const headers = new Headers(target.headers); if (init?.headers !== undefined) { for (const [name, value] of new Headers(init.headers)) headers.set(name, value); } let response: Response; try { response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), { ...init, headers, redirect: 'error', signal: controller.signal, }); } catch (error) { if (mutating && error instanceof DOMException && error.name === 'AbortError') throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 }); throw markConnectionFailure(error); } const text = await response.text(); let body: unknown; try { body = text === '' ? undefined : JSON.parse(text); } catch { if (!response.ok) throw makeCliFailure( redactCredentials(target, text === '' ? `HTTP ${response.status}` : text), { status: response.status, }, ); throw makeCliFailure( 'The host returned malformed JSON.', init?.method === 'POST' && mutating ? { exitCode: 7 } : {}, ); } if (!response.ok) throw makeCliFailure( isRecord(body) && typeof body['message'] === 'string' ? redactCredentials(target, body['message']) : `HTTP ${response.status}`, { status: response.status, ...faultFields(target, isRecord(body) ? body : undefined, false), }, ); if (isRecord(body) && isRecord(body['error'])) { const rpcError = body['error']; const code = typeof rpcError['code'] === 'number' ? rpcError['code'] : undefined; const message = redactCredentials( target, typeof rpcError['message'] === 'string' ? rpcError['message'] : 'RPC error', ); const data = isRecord(rpcError['data']) ? rpcError['data'] : undefined; const httpStatus = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : undefined; throw makeCliFailure(message, { ...faultFields(target, data, true), ...(httpStatus === undefined ? {} : { status: httpStatus }), ...(httpStatus === undefined && (code === -32601 || code === -32602) ? { status: 400 } : {}), }); } return { data: body }; } catch (error) { if (mutating && error instanceof DOMException && error.name === 'AbortError') throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 }); throw error; } finally { clearTimeout(timer); } }",
+        "requestBytes export async function requestBytes( target: CliTarget, path: string, parsed: Parsed, dependencies: CliClientDependencies, ): Promise<Response> { assertManagementBoundary(target, path); const controller = new AbortController(); dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true }); // poll-reason: timer const timer = setTimeout(() => controller.abort(), parsed.timeout); try { const response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), { headers: target.headers, redirect: 'error', signal: controller.signal, }); if (!response.ok) { const body = await response.text(); let message = `HTTP ${response.status}`; try { const parsedBody: unknown = JSON.parse(body); if (isRecord(parsedBody) && typeof parsedBody['message'] === 'string') message = redactCredentials(target, parsedBody['message']); } catch { // Keep the status when a failed binary response is not JSON. } throw makeCliFailure(message, { status: response.status }); } const bytes = await response.arrayBuffer(); return new Response(bytes, { headers: response.headers, status: response.status, statusText: response.statusText, }); } catch (error) { if (error instanceof DOMException && error.name === 'AbortError') throw makeCliFailure('The asset download was interrupted.', { exitCode: 6 }); throw markConnectionFailure(error); } finally { clearTimeout(timer); } }",
+        "stream export async function stream( target: CliTarget, path: string, parsed: Parsed, dependencies: CliClientDependencies, init: RequestInit = {}, ): Promise<Response> { assertManagementBoundary(target, path); const controller = new AbortController(); dependencies.signal?.addEventListener('abort', () => controller.abort(), { once: true }); // poll-reason: timer const timer = setTimeout(() => controller.abort(), parsed.timeout); try { const headers = new Headers(target.headers); for (const [name, value] of new Headers(init.headers)) headers.set(name, value); let response: Response; try { response = await (dependencies.fetch ?? fetch)(new URL(path, `${target.url}/`), { ...init, headers, keepalive: false, redirect: 'error', signal: controller.signal, }); } catch (error) { if (init.method === 'POST' && error instanceof DOMException && error.name === 'AbortError') throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 }); throw markConnectionFailure(error); } if (!response.ok) { clearTimeout(timer); const body = await response.text(); let message = `HTTP ${response.status}`; try { const parsedBody: unknown = JSON.parse(body); if (isRecord(parsedBody) && typeof parsedBody['message'] === 'string') message = redactCredentials(target, parsedBody['message']); } catch { // Keep the status when a failed stream does not return JSON. } throw makeCliFailure(message, { status: response.status }); } if (response.body === null) { clearTimeout(timer); throw makeCliFailure('The host returned an empty event stream.'); } const source = response.body.getReader(); const body = new ReadableStream<Uint8Array>({ async pull(streamController) { try { const next = await source.read(); if (next.done) { clearTimeout(timer); streamController.close(); } else streamController.enqueue(next.value); } catch (error) { clearTimeout(timer); streamController.error(error); } }, async cancel(reason) { clearTimeout(timer); await source.cancel(reason); }, }); return new Response(body, { headers: response.headers, status: response.status, statusText: response.statusText, }); } catch (error) { clearTimeout(timer); throw error; } }"
+      ]
     },
     {
       "path": "host/engine-proxy.ts",
@@ -3170,7 +3181,7 @@
       "transport": "HTTP and WebSocket proxy",
       "owner": "Interborough host",
       "reason": "The relay forwards engine requests and socket traffic under host authorization.",
-      "count": 1
+      "expressions": ["relayRequest fetch(destination, init)"]
     },
     {
       "path": "host/instance-record.ts",
@@ -3178,7 +3189,9 @@
       "transport": "HTTP health probe",
       "owner": "Interborough supervisor",
       "reason": "The supervisor checks an existing local instance.",
-      "count": 1
+      "expressions": [
+        "probeFetch fetch(input, { signal: AbortSignal.timeout(PROBE_DEADLINE_MILLISECONDS) })"
+      ]
     },
     {
       "path": "host/openapi-inspection.ts",
@@ -3186,7 +3199,9 @@
       "transport": "HTTP OpenAPI discovery",
       "owner": "Interborough tool sources",
       "reason": "An external OpenAPI document is not the served catalog.",
-      "count": 1
+      "expressions": [
+        "inspectOpenApiAddress export async function inspectOpenApiAddress( url: string, options: { readonly fetch?: typeof fetch; readonly signal?: AbortSignal } = {}, ): Promise<OpenApiInspection | OpenApiFetchFailure> { const fetchImplementation = options.fetch ?? fetch; let response: Response; try { response = await fetchImplementation(url, { headers: { accept: 'application/json, application/yaml, text/yaml, */*' }, ...(options.signal === undefined ? {} : { signal: options.signal }), }); } catch { return { outcome: 'unreachable', status: null, message: 'Couldn’t fetch the spec. The address didn’t answer. Check it, or upload the file instead.', }; } if (!response.ok) { await response.body?.cancel(); return { outcome: 'unreachable', status: response.status, message: `Couldn’t fetch the spec. The address answered ${String(response.status)}. Check it, or upload the file instead.`, }; } const body = await response.text(); if (body.length > MAXIMUM_OPENAPI_SPEC_BYTES) { return invalid(null, null, 'The spec is larger than 4 MB.'); } return inspectOpenApiSpec(body, null); }"
+      ]
     },
     {
       "path": "host/tool-source-manager.ts",
@@ -3194,7 +3209,10 @@
       "transport": "MCP and HTTP OAuth",
       "owner": "Interborough tool sources",
       "reason": "External tool servers and OAuth providers own these protocols.",
-      "count": 2
+      "expressions": [
+        "completeAuthorization async completeAuthorization(rawId, callbackUrl, input) { assertWritable(); const id = checkedIdentifier(rawId, 'source'); const change = await serialized(() => vault.exclusive(id, async () => { const entry = await configured(id); if (!isOAuth(entry.source)) { throw new ToolSourceInputError('source', 'does not sign in with OAuth.'); } const { oauth: waiting, signIn, oauthBinding } = await vault.read(id); if ( oauthBinding === undefined || (input !== undefined && (oauthBinding.workspaceId !== input.workspaceId || oauthBinding.actorId !== input.actorId || oauthBinding.owner !== input.owner)) ) throw new HostMutationError('forbidden'); // Armorer skips the `state` check when none was recorded, so a callback with no flow in // progress is refused here before it can reach the token endpoint. if ( waiting?.state === undefined || waiting.codeVerifier === undefined || signIn === undefined ) { throw new ToolSourceInputError('callback', 'no sign-in is waiting for this source.'); } const parameters = new URL(callbackUrl).searchParams; if (parameters.getAll('state').length !== 1 || parameters.get('state') !== waiting.state) throw new ToolSourceInputError('callback', 'the sign-in state is invalid.'); const identity = await oauthAuthority.identity(oauthBinding); if (input !== undefined) await input.revalidate(); // This call holds the source's turn, so the loader's storage must not wait for it. const oauth = oauthForSource(entry.source, () => undefined, 'held', oauthBinding); const storage = oauth.tokenStorage(id); const elapsed = now() - signIn.startedAt; const refusal = signIn.revision !== revisionOf(entry.source) ? 'the source changed since the sign-in started.' : !(elapsed >= 0 && elapsed <= SIGN_IN_TIME_TO_LIVE_MILLISECONDS) ? 'the sign-in has expired.' : undefined; if (refusal !== undefined) { // A sign-in that cannot finish is dropped, so a replay finds none waiting. await storage.clear?.(['codeVerifier', 'state']); throw new ToolSourceInputError('callback', refusal); } // The exchange holds the configuration queue, so it is bounded: at the deadline the // request is cancelled and the exchange fails, instead of stalling every writer. const controller = new AbortController(); const cancel = schedule(() => controller.abort(), timeout); const baseFetch = options.fetch ?? fetch; const bounded: typeof fetch = Object.assign( (address: RequestInfo | URL, init?: RequestInit) => baseFetch(address, { ...init, signal: init?.signal === undefined || init.signal === null ? controller.signal : AbortSignal.any([init.signal, controller.signal]), }), baseFetch, ); try { await completeToolSourceAuthorization(entry.source, { oauth, callbackUrl, fetch: bounded, }); } catch { // Nothing from the failure is repeated: it may hold a URL, a code, or the server's words. throw new ToolSourceInputError('callback', 'the sign-in could not be completed.'); } finally { cancel(); } // The recorded state and verifier are good for one sign-in. Clearing them makes the next // start a new one, and a replayed callback finds none waiting. await storage.clear?.(['codeVerifier', 'state']); // The tokens the server refused at load are replaced, so the page stops asking to sign in again. const previous = booted.get(id); if (previous?.standing.tokensRejected === true) { const { tokensRejected: _replaced, ...standing } = previous.standing; booted.set(id, { ...previous, standing }); } await record('tool.source.authorized', entry.source, {}, undefined, identity); return { id, changed: true, restartRequired: true }; }), ); // A source that waited for its first sign-in has loaded nothing yet: it loads now (COR-2009). const standing = booted.get(id)?.standing.state; return standing === undefined || standing === 'needs-authorization' ? ((await loadLive(id)) ?? change) : change; }",
+        "completePendingSignIn async completePendingSignIn(rawId, callbackUrl) { const id = checkedIdentifier(rawId, 'source'); let parameters: URLSearchParams; try { parameters = new URL(callbackUrl).searchParams; } catch { return undefined; } const states = parameters.getAll('state'); if (states.length !== 1 || states[0] === undefined || states[0] === '') return undefined; const pending = pendingSignIns.byState(id, states[0]); if (pending === undefined) return undefined; const answer = (): ToolSourcePendingCallback => ({ signIn: pending.id, outcome: pending.outcome, ...(pending.reason === undefined ? {} : { reason: pending.reason }), openerOrigin: pending.openerOrigin, }); // One callback settles a sign-in: a second one, even while the first is still exchanging, // is refused and changes nothing. Taken before the first `await`, so two cannot both pass. if (pending.outcome !== 'waiting' || pending.callbackTaken) { return { signIn: pending.id, outcome: 'refused', reason: 'used', openerOrigin: pending.openerOrigin, }; } pending.callbackTaken = true; const settle = (outcome: PendingSignInOutcome, reason?: PendingSignInReason) => { pending.outcome = outcome; if (reason === undefined) delete pending.reason; else pending.reason = reason; pending.settledAt = now(); // The one-use state and verifier go with the settling, whatever it was. const { state: _state, codeVerifier: _verifier, ...kept } = pending.storage; pending.storage = kept; return answer(); }; if (!(now() - pending.startedAt <= SIGN_IN_TIME_TO_LIVE_MILLISECONDS)) { return settle('expired', 'expired'); } const error = parameters.get('error'); if (error !== null) { // The provider's own words are never repeated: only its code, read into a closed set. const { outcome, reason } = providerReason(error); return settle(outcome, reason); } try { // The administrator who started it must still manage the workspace. await oauthAuthority.identity(pending.binding); } catch { return settle('refused', 'not-allowed'); } const description = pending.source; const controller = new AbortController(); const cancel = schedule(() => controller.abort(), timeout); const baseFetch = options.fetch ?? fetch; const bounded: typeof fetch = Object.assign( (address: RequestInfo | URL, init?: RequestInit) => baseFetch(address, { ...init, signal: init?.signal === undefined || init.signal === null ? controller.signal : AbortSignal.any([init.signal, controller.signal]), }), baseFetch, ); try { await completeToolSourceAuthorization(description, { oauth: { tokenStorage: () => pendingTokenStorage(pending), redirectUrl: (sourceId) => `${options.origin()}${oauthCallbackPath(sourceId)}`, onAuthorizationRequired: () => undefined, // One authorization-code exchange, once: no refresh, no second code. beforeTokenRequest: (_sourceId, tokenRequest) => { if (pending.exchanged || tokenRequest.grantType !== 'authorization_code') { throw new HostMutationError('forbidden'); } pending.exchanged = true; }, }, callbackUrl, fetch: bounded, }); } catch { // Nothing from the failure is repeated: it may hold a URL, a code, or the server's words. return settle('refused', 'exchange-failed'); } finally { cancel(); } return settle( pending.storage.tokens === undefined ? 'refused' : 'succeeded', pending.storage.tokens === undefined ? 'exchange-failed' : undefined, ); }"
+      ]
     },
     {
       "path": "lib/bureau-client.ts",
@@ -3202,7 +3220,9 @@
       "transport": "AG-UI HTTP",
       "owner": "Bureau AG-UI",
       "reason": "Thread messages use the AG-UI protocol.",
-      "count": 1
+      "expressions": [
+        "getThreadMessages export async function getThreadMessages( threadId: string, options: { readonly signal?: AbortSignal; readonly fetch?: Fetcher; readonly shared?: boolean; } = {}, ): Promise<readonly unknown[]> { const send = options.fetch ?? fetch; const messages = options.shared === true ? 'shared-messages' : 'messages'; const response = await send( `${BUREAU_PATH}/ag-ui/threads/${encodeURIComponent(threadId)}/${messages}`, options.signal === undefined ? {} : { signal: options.signal }, ); if (!response.ok) { throw new HttpClientError(response.status, `The thread answered ${response.status}.`); } return threadMessagesSchema.parse(await response.json()).messages; }"
+      ]
     },
     {
       "path": "lib/bureau-subscriptions.ts",
@@ -3210,7 +3230,9 @@
       "transport": "Bureau SSE subscriptions",
       "owner": "Bureau catalog client",
       "reason": "This adapter supplies the guarded fetch for generated subscriptions.",
-      "count": 1
+      "expressions": [
+        "acceptedFetch export function acceptedFetch(options: { readonly fetch?: Fetcher | undefined; readonly onOpen?: (() => void) | undefined; }): CatalogFetch { return async (input, init) => { // The global is read at the call, so a replacement installed after the follower exists is used. const response = await (options.fetch ?? globalThis.fetch)(input, init); const contentType = response.headers.get('content-type'); if ( !response.ok || contentType?.split(';', 1)[0]?.trim().toLowerCase() !== 'text/event-stream' ) { return response; } options.onOpen?.(); return response; }; }"
+      ]
     },
     {
       "path": "lib/bureau-transport.ts",
@@ -3218,7 +3240,9 @@
       "transport": "POST /jsonrpc",
       "owner": "Bureau catalog client",
       "reason": "The generated client uses the guarded composed JSON-RPC transport.",
-      "count": 1
+      "expressions": [
+        "postBureauCall export async function postBureauCall( endpoint: string, method: string, params: unknown, options: CatalogCallOptions & { readonly headers?: Readonly<Record<string, string>> | undefined }, ): Promise<unknown> { refuseWrite(method); // The global is read at the call, so a test or the write guard can replace it after the client exists. const send = options.fetch ?? globalThis.fetch; const response = await send(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...options.headers }, body: JSON.stringify({ jsonrpc: '2.0', id: method, method, params }), ...(options.signal === undefined ? {} : { signal: options.signal }), }); let body: unknown; try { body = await response.json(); } catch { throw new HttpClientError(response.status, response.statusText || `HTTP ${response.status}`); } if (isRecord(body) && isRecord(body['error'])) { const fault = body['error']; const data = isRecord(fault['data']) ? fault['data'] : undefined; const status = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : response.status; // The status says what kind of fault it is, which is all the console's treatments read. throw new HttpClientError( status, // The name of the server's own part never reaches a screen, whichever one prints the message. typeof fault['message'] === 'string' ? withoutInternalNames(fault['message']) : `HTTP ${status}`, { data, ...faultAdviceOf(data) }, ); } if (!isRecord(body) || !('result' in body)) { throw new HttpClientError(response.status, 'The server answered with no result.'); } return body['result']; }"
+      ]
     },
     {
       "path": "lib/host-clean-up.ts",
@@ -3226,7 +3250,9 @@
       "transport": "HTTP /host/clean-up",
       "owner": "Interborough host",
       "reason": "Host administration has its own HTTP route.",
-      "count": 1
+      "expressions": [
+        "send function send(init: RequestInit, options: Options): Promise<Response> { const request = options.fetch ?? fetch; return request( HOST_CLEAN_UP_ROUTE, options.signal === undefined ? init : { ...init, signal: options.signal }, ); }"
+      ]
     },
     {
       "path": "lib/host-panels.ts",
@@ -3234,7 +3260,9 @@
       "transport": "HTTP /host/panels and /host/plugins/:name/apps/:app",
       "owner": "Interborough panel host",
       "reason": "Sandbox resource delivery and tool mediation are host protocols.",
-      "count": 1
+      "expressions": [
+        "send function send(path: string, init: RequestInit, options: Options): Promise<Response> { const request = options.fetch ?? fetch; return request(path, options.signal === undefined ? init : { ...init, signal: options.signal }); }"
+      ]
     },
     {
       "path": "lib/host-paths.ts",
@@ -3242,7 +3270,9 @@
       "transport": "GET /host/paths",
       "owner": "Interborough host",
       "reason": "Host path inspection is an administration route.",
-      "count": 1
+      "expressions": [
+        "getHostPaths export async function getHostPaths(options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher; }): Promise<HostPaths> { const send = options?.fetch ?? fetch; const response = await send( HOST_PATHS_ROUTE, options?.signal === undefined ? undefined : { signal: options.signal }, ); if (!response.ok) throw new Error(`The host answered ${response.status}.`); return hostPathsSchema.parse(await response.json()); }"
+      ]
     },
     {
       "path": "lib/host-plugins.ts",
@@ -3250,7 +3280,9 @@
       "transport": "HTTP /host/plugins and /host/restart",
       "owner": "Interborough host",
       "reason": "Plugin and restart administration use host routes.",
-      "count": 1
+      "expressions": [
+        "send function send(path: string, init: RequestInit, options: Options): Promise<Response> { const request = options.fetch ?? fetch; return request(path, options.signal === undefined ? init : { ...init, signal: options.signal }); }"
+      ]
     },
     {
       "path": "lib/host-providers.ts",
@@ -3258,7 +3290,9 @@
       "transport": "HTTP /host/providers",
       "owner": "Interborough host",
       "reason": "Provider administration uses host routes.",
-      "count": 1
+      "expressions": [
+        "send function send(path: string, init: RequestInit, options: Options): Promise<Response> { const request = options.fetch ?? fetch; return request(path, options.signal === undefined ? init : { ...init, signal: options.signal }); }"
+      ]
     },
     {
       "path": "lib/host-session.ts",
@@ -3266,7 +3300,9 @@
       "transport": "GET /host/session",
       "owner": "Interborough host",
       "reason": "The host establishes the current browser session.",
-      "count": 1
+      "expressions": [
+        "getHostSession export async function getHostSession(options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher; }): Promise<HostSession> { const send = options?.fetch ?? fetch; const response = await send( HOST_SESSION_ROUTE, options?.signal === undefined ? undefined : { signal: options.signal }, ); if (!response.ok) { throw Object.assign(new Error(`The host answered ${response.status}.`), { status: response.status, }); } return hostSessionSchema.parse(await response.json()); }"
+      ]
     },
     {
       "path": "lib/host-storage.ts",
@@ -3274,7 +3310,10 @@
       "transport": "HTTP /host/storage",
       "owner": "Interborough host",
       "reason": "Host storage administration uses host routes.",
-      "count": 2
+      "expressions": [
+        "getHostStorage export async function getHostStorage(options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher; }): Promise<HostStorage> { const send = options?.fetch ?? fetch; const response = await send( HOST_STORAGE_ROUTE, options?.signal === undefined ? undefined : { signal: options.signal }, ); if (!response.ok) throw new Error(`The host answered ${response.status}.`); return hostStorageSchema.parse(await response.json()); }",
+        "getHostStorageSummary export async function getHostStorageSummary( prefix: string, options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher }, ): Promise<HostStorageSummary> { const send = options?.fetch ?? fetch; const address = prefix === '' ? HOST_STORAGE_SUMMARY_ROUTE : `${HOST_STORAGE_SUMMARY_ROUTE}?prefix=${encodeURIComponent(prefix)}`; const response = await send( address, options?.signal === undefined ? undefined : { signal: options.signal }, ); if (!response.ok) throw new Error(`The host answered ${response.status}.`); return hostStorageSummarySchema.parse(await response.json()); }"
+      ]
     },
     {
       "path": "lib/host-tool-sources.ts",
@@ -3282,7 +3321,9 @@
       "transport": "HTTP /host/tool-sources and OAuth",
       "owner": "Interborough tool sources",
       "reason": "Tool source administration and sign-in are host protocols.",
-      "count": 1
+      "expressions": [
+        "send function send(path: string, init: RequestInit, options: Options): Promise<Response> { const request = options.fetch ?? fetch; return request(path, options.signal === undefined ? init : { ...init, signal: options.signal }); }"
+      ]
     },
     {
       "path": "lib/scopes.svelte.ts",
@@ -3290,7 +3331,9 @@
       "transport": "GET /api/v1/principal",
       "owner": "Interborough host",
       "reason": "The host resolves its authenticated workspace principal independently of the engine relay.",
-      "count": 1
+      "expressions": [
+        "resolveHostPrincipal export async function resolveHostPrincipal( headers: HeadersInit, fetcher: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> = fetch, ): Promise<Principal | null> { const response = await fetcher('/api/v1/principal', { headers, cache: 'no-store' }); if (response.status === 401) return null; if (!response.ok) throw new Error(`Host principal request failed: ${response.status}`); const result = hostPrincipalSchema.parse(await response.json()); return { scopes: result.method === 'unauthenticated' ? [] : result.scopes.filter(isConsoleScope), subject: result.subject, unauthenticatedAccess: result.method === 'unauthenticated' ? 'warn' : null, workspace: { ...result.workspace, memorySharing: result.workspace.memorySharing === true }, }; }"
+      ]
     },
     {
       "path": "lib/live-source/fleet-event-source.svelte.ts",
@@ -3300,7 +3343,9 @@
       "transport": "GET /v1/events/sse",
       "owner": "Weft event stream",
       "reason": "This SSE response has no generated REST binding; COR-2625 owns the related live-feed migration.",
-      "count": 1
+      "expressions": [
+        "#fetchAndDrain fetch(buildFleetEventsUrl(this.#baseUrl, this.#connectionFilter), { headers: this.#requestHeaders(), signal: controller.signal, })"
+      ]
     },
     {
       "path": "lib/live-source/workflow-tail-source.svelte.ts",
@@ -3310,7 +3355,9 @@
       "transport": "GET /v1/workflows/:id/events/sse",
       "owner": "Weft event stream",
       "reason": "This SSE response has no generated REST binding; COR-2625 owns the related live-feed migration.",
-      "count": 1
+      "expressions": [
+        "#fetchAndDrain fetch(this.#url, { headers: this.#requestHeaders(), signal: controller.signal, })"
+      ]
     },
     {
       "path": "routes/agent-editor/agent-try-session.svelte.ts",
@@ -3319,7 +3366,7 @@
       "transport": "POST /jsonrpc with keepalive fetch",
       "owner": "Bureau catalog client",
       "reason": "The page supplies a fetch override to the generated delete call.",
-      "count": 1
+      "expressions": ["outlivingFetch fetch(input, { ...init, keepalive: true })"]
     },
     {
       "path": "routes/agents/memory-changes.svelte",
@@ -3328,7 +3375,7 @@
       "transport": "POST /jsonrpc with keepalive fetch",
       "owner": "Bureau catalog client",
       "reason": "The page supplies a fetch override to the generated forget call.",
-      "count": 1
+      "expressions": ["pageHidden fetch(input, { ...init, keepalive: true })"]
     },
     {
       "path": "routes/chat/run-wiring.ts",
@@ -3336,7 +3383,9 @@
       "transport": "AG-UI HTTP and SSE",
       "owner": "Bureau AG-UI",
       "reason": "Chat runs and reconnects use the AG-UI protocol.",
-      "count": 1
+      "expressions": [
+        "createChatRunWiring export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWiring { const send = options.fetch ?? fetch; /** The interrupts the latest run ended on, read from its raw events. */ let interrupts: readonly Interrupt[] = []; /** The decisions on approvals, by interrupt, that no request the mount answered has carried. */ const decisions = new Map<string, ResumeEntry>(); /** The approvals a grant that did not loosen the tool has been told for, by interrupt. */ const toldGrants = new Set<string>(); /** The text typed to answer each question, by interrupt, with the row it was typed in. */ const answers = new Map< string, { readonly entry: ResumeEntry; readonly rowId: string | undefined } >(); /** The start the mount has not answered, so a retry of the same request is the same run. */ let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined; let attached: AsyncGenerator<unknown> | undefined; let lastAttachCursor: string | undefined; let attachGeneration = 0; let detached = false; /** The assets the turn on screen announced that no terminal frame has put on a row. */ let unstamped: Announced[] = []; /** The rows on screen when the last turn began. */ let turnStartIds: ReadonlySet<string> = new Set(); /** Recovery survives an unsuccessful turn draining its UI handoff after rollback. */ let assetRun: { readonly id: string; readonly announcements: Announced[] } | undefined; let transportGeneration = 0; /** What the last turn was refused with, until it is taken. */ let refusal: Refusal | undefined; /** Whether a resume was refused and what it carried is still held, to be sent again. */ let refusedResume = false; /** The rows of answers that are settled and not yet dropped from the conversation. */ let settledAnswerRows: string[] = []; /** * The Bureau's identifier for the run the last stream read was reading, until that stream showed * the run's end or a Stop cancelled it: a stream that dropped leaves the run going on the server, * and this is the run {@link ChatRunWiring.cancelDroppedRun} cancels. */ let unendedRunId: string | undefined; /** The questions the run waits on that no answer is held for, in the order the run asked them. */ function unansweredRequests(): HumanRequest[] { return humanRequestsOf(interrupts).filter((request) => !answers.has(request.interruptId)); } /** * Makes `next` what the run waits on. An answer held for an interrupt that is not among them is * dropped: the mount has settled it, so a resume that carried it would be refused. So is a * decision on an approval that is at another round now: it was gated again under the same id, and * the person decides the request they have not seen yet (COR-1714). */ function setInterrupts(next: readonly Interrupt[]): void { interrupts = next; const pending = new Map(next.map((interrupt) => [interrupt.id, roundOf(interrupt)])); // Deleting from a map while it is walked is safe: the walk skips what it has already left. for (const [id, entry] of decisions) { if (!pending.has(id) || pending.get(id) !== roundOf(entry)) decisions.delete(id); } for (const [id, answer] of answers) { if (pending.has(id)) continue; answers.delete(id); settleAnswerRow(answer.rowId); } if (decisions.size === 0 && answers.size === 0) refusedResume = false; options.onHumanRequests?.(unansweredRequests()); options.onApprovalDeadlines?.(approvalDeadlinesOf(next)); options.onWaitingApprovals?.( new Set( next.flatMap((interrupt) => interrupt.reason === 'tool-approval' && interrupt.toolCallId !== undefined ? [interrupt.toolCallId] : [], ), ), ); } /** Notes that the row an answer was typed in is settled, when the answer was typed in one. */ function settleAnswerRow(rowId: string | undefined): void { if (rowId !== undefined) settledAnswerRows.push(rowId); } /** * Holds `value`, the answer `ChatQuestion` drew a control for, as the answer to the question of * `interruptId`. Nothing was typed, so no row holds it. False when that question is not one the * run waits on without an answer. */ function holdValue(interruptId: string, value: unknown): boolean { if (!unansweredRequests().some((request) => request.interruptId === interruptId)) return false; answers.set(interruptId, { entry: { interruptId, status: 'resolved', payload: { decision: 'approve', answer: value }, }, rowId: undefined, }); options.onHumanRequests?.(unansweredRequests()); return true; } function releaseValue(interruptId: string): boolean { const held = answers.get(interruptId); // A typed answer has a row that holds it, and the person's next message takes its place. if (held === undefined || held.rowId !== undefined) return false; answers.delete(interruptId); if (decisions.size === 0 && answers.size === 0) refusedResume = false; options.onHumanRequests?.(unansweredRequests()); return true; } /** Holds `text`, typed in the row `rowId`, as the answer to the first question without one. */ function holdAnswer(text: string, rowId: string): boolean { const waiting = unansweredRequests()[0]; if (waiting === undefined) return false; answers.set(waiting.interruptId, { entry: { interruptId: waiting.interruptId, status: 'resolved', payload: { decision: 'approve', answer: text }, }, rowId, }); options.onHumanRequests?.(unansweredRequests()); return true; } /** * Stops the Bureau's run: a stop on this page ends this page's stream, and the run goes on * unless it is told to stop. Resolves once the run has ended, so a turn sent next finds the * thread free. */ async function cancelRun(nativeRunId: string): Promise<boolean> { const encoded = encodeURIComponent(nativeRunId); const accepted = await send(`${AG_UI_PATH}/runs/${encoded}/cancel`, { method: 'POST' }).then( (response) => response.ok, () => false, ); if (unendedRunId === nativeRunId) unendedRunId = undefined; // The run's own stream ends when the run does. const ended = readEvents(() => send(`${AG_UI_PATH}/runs/${encoded}`, { headers: { accept: 'text/event-stream' } }), ); try { // Only the end matters. await Array.fromAsync(ended); } catch { // A run that is already over answers with an error event or none. } return accepted; } /** The gate a start's fetch runs behind, for the turn `stop` can end. */ function firstEventGate(stop: AbortSignal): FirstEventGate { const fetching = new AbortController(); let waiting = true; // Leaving the page is not a Stop and has nothing to cancel, so nothing is waited for. const onStop = (): void => { if (!waiting || detached) fetching.abort(); }; stop.addEventListener('abort', onStop, { once: true }); return { signal: fetching.signal, arrived() { waiting = false; }, dispose() { stop.removeEventListener('abort', onStop); }, }; } async function* observe( events: AsyncIterable<unknown>, signal: AbortSignal, started: boolean, announced: Announced[], gate: FirstEventGate | undefined, generation: number, ): AsyncGenerator<unknown> { let nativeRunId: string | undefined; let held: ReadonlySet<string> | undefined; try { for await (const event of events) { if (generation !== transportGeneration) return; let liveChildAnnouncement: NoteAnnouncement | undefined; gate?.arrived(); options.clock?.observe(event); nativeRunId ??= nativeRunIdOf(event); if (nativeRunId !== undefined) unendedRunId = nativeRunId; // A Stop before this event is acted on here, now that the run it began has a name: the // run is cancelled below, and nothing of the turn is shown. if (signal.aborted) return; // Read at the first event, not when the turn started, and the calls this stream streams // itself arrive after, never before. A snapshot replaces the conversation, so the calls // it holds are the ones held from then on: an attach's turn starts before the thread is // back on screen, without the approvals it is parked on (`chat-session.svelte.ts`). held ??= heldCalls(options.conversation()); if (isMessagesSnapshot(event)) held = snapshotCalls(event); if (isRecord(event) && event['type'] === 'RUN_STARTED') { const identity = nativeRunId ?? (typeof event['runId'] === 'string' ? event['runId'] : undefined); if (identity !== undefined) { if (assetRun?.id !== identity) assetRun = { id: identity, announcements: [] }; announced.push(...assetRun.announcements); } if (started) options.onRunStarted?.(); // A run that has begun is waiting on nobody. options.onHumanRequests?.([]); } if ( isRecord(event) && event['type'] === 'RUN_ERROR' && (event['code'] === 'STREAM_DEADLINE' || event['code'] === 'STREAM_OVERFLOW') ) { throw new Error(String(event['message'])); } const usage = usageOfTerminal(event); if (usage !== undefined && nativeRunId !== undefined) options.onUsage?.(nativeRunId, usage); if ( isRecord(event) && (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR') ) { options.onTerminal?.(); if (unendedRunId === nativeRunId) unendedRunId = undefined; // A refusal before any run began ends no run. const at = event['timestamp']; if (nativeRunId !== undefined && typeof at === 'number' && Number.isFinite(at)) { options.onRunStopped?.(at); } } if (isRecord(event) && event['type'] === 'MESSAGES_SNAPSHOT') { // A snapshot holds the rows' assets, and not the lines a run announced: a wakeup or a // child run is not in the thread, so an unusable cursor must not drop them. forgetAssets(announced); if (assetRun !== undefined) forgetAssets(assetRun.announcements); } const announcement = announcementOf(event) ?? noteAnnouncementOf(event, options.agentName()); if (announcement !== undefined) { rememberAnnouncement(announced, announcement); if (assetRun !== undefined) rememberAnnouncement(assetRun.announcements, announcement); if (isLiveChildAnnouncement(announcement)) liveChildAnnouncement = announcement; } const delivered = inputsDeliveredOf(event); if (delivered !== undefined) options.onInputsDelivered?.(delivered); const ungranted = grantNotLoosenedOf(event); if (ungranted !== undefined && !toldGrants.has(ungranted.interruptId)) { toldGrants.add(ungranted.interruptId); options.onGrantNotLoosened?.(ungranted); } const ended = interruptsOf(event); if (ended !== undefined) setInterrupts(ended); // A run that follows an approval shows the call it was waiting on again, for a client that // did not watch it run. This conversation holds the call, and holds it only once. if (isCallEventFor(event, held)) continue; const callStart = callTimeOf(event, 'TOOL_CALL_START'); if (callStart !== undefined) options.onCallStarted?.(callStart.callId, callStart.at); const callEnd = callTimeOf(event, 'TOOL_CALL_RESULT'); if (callEnd !== undefined) options.onCallSettled?.(callEnd.callId, callEnd.at); yield event; // Apply the live note after the mapped frame for this event has been consumed. Otherwise // ChatSession's controller can immediately write its pre-snapshot conversation back over // the note through its normal frame update path. if (liveChildAnnouncement !== undefined) { const live = placeAnnouncements(options.conversation(), [liveChildAnnouncement], { owns: (id) => !turnStartIds.has(id), anchorAnywhere: true, }); options.onSnapshot?.(live.conversation); } } } finally { gate?.dispose(); // An abort is a Stop only while the page is still here: leaving it ends the signal too, and // the run goes on. if (signal.aborted && !detached && nativeRunId !== undefined) await cancelRun(nativeRunId); } } /** What a start carries: the entries of a resume, and the rows the person's answers are in. */ type Resume = { readonly entries: readonly ResumeEntry[]; /** The rows holding the answers typed to the run's questions. */ readonly answerRowIds: ReadonlySet<string>; /** Whether an interrupt the run waits on has no entry yet, so a resume would be refused. */ readonly incomplete: boolean; }; /** * What a start's resume carries. The row the person has just typed answers the first question * still without an answer; a row typed earlier is already held, and a turn the controller starts * for a decision has no new row. Every interrupt the run waits on needs an entry before one * resume can carry them all. */ function resumeFor(conversation: ConversationHistory): Resume { const last = conversation.messages[conversation.ids.at(-1) ?? '']; const held = new Set( [...answers.values()].flatMap((answer) => (answer.rowId === undefined ? [] : [answer.rowId])), ); if (last?.role === 'user' && !isFollowUp(last) && !held.has(last.id)) { if (holdAnswer(textOf(last), last.id)) held.add(last.id); } const { entries, incomplete } = entriesOwed(); return { entries, answerRowIds: held, incomplete }; } /** The entries held for the interrupts the run waits on, and whether one of them has none yet. */ function entriesOwed(): { readonly entries: readonly ResumeEntry[]; readonly incomplete: boolean; } { const answerable = interrupts.filter( (interrupt) => interrupt.reason === 'human-wait' || (interrupt.reason === 'tool-approval' && interrupt.toolCallId !== undefined), ); const entries = answerable.flatMap( (interrupt) => decisions.get(interrupt.id) ?? answers.get(interrupt.id)?.entry ?? [], ); return { entries, incomplete: entries.length > 0 && entries.length < answerable.length }; } function runInput( conversation: ConversationHistory, resume: Resume, attachments: readonly ChatAttachment[], ): RunAgentInput { const base = { tools: [], context: [], state: {}, forwardedProps: {}, threadId: conversation.id, }; if (resume.entries.length === 0) { return { ...base, runId: runIdFor(conversation.id, [], conversation.ids), messages: withAttachmentParts( agUiConversationAdapter.export(conversation), openingTurn(conversation)?.id, attachments, ), }; } // The person's answers ride in the resume. As messages too they would be second rows, next to // the ones the run appends for them. A decision on an approval continues the turn that opened // the run, which the resume carries. const opener = decisions.size > 0 ? openingTurn(conversation, resume.answerRowIds) : undefined; const messages = opener === undefined ? [] : withAttachmentParts( agUiConversationAdapter.export(onlyRow(conversation, opener)), opener.id, attachments, ); return { ...base, runId: runIdFor( conversation.id, resume.entries, messages.map((message) => message.id), ), messages, resume: [...resume.entries], }; } /** The run identifier a request goes under: the one an unanswered attempt of it already used. */ function runIdFor( threadId: string, entries: readonly ResumeEntry[], messageIds: readonly string[], ): string { const fingerprint = JSON.stringify([threadId, messageIds, entries]); if (unanswered?.fingerprint === fingerprint) return unanswered.runId; unanswered = { fingerprint, runId: `run-${crypto.randomUUID()}` }; return unanswered.runId; } /** What the mount's first event settles: the request it answered is no longer one to repeat. */ function acknowledged(sent: readonly ResumeEntry[]): void { unanswered = undefined; for (const entry of sent) { if (decisions.get(entry.interruptId) === entry) decisions.delete(entry.interruptId); const answer = answers.get(entry.interruptId); if (answer?.entry === entry) { answers.delete(entry.interruptId); settleAnswerRow(answer.rowId); } } refusedResume = false; // The questions and approvals of the run before are answered, or refused as the mount sees fit. interrupts = []; } /** * The mount refused a resume as `INVALID_INPUT` (COR-1804): an answer typed to a question does not * fit the schema the question carries. Sending the same text again is refused the same way for * ever, so the answers a refused resume carried are dropped, and the questions are asked again; * the person's next message answers the first of them, and any approval already decided stays * held. The rows that held the typed answers go with them, so the agent is not sent them as a * message of their own. */ function unfittingAnswers(sent: readonly ResumeEntry[]): void { unanswered = undefined; for (const entry of sent) { const answer = answers.get(entry.interruptId); if (answer?.entry !== entry) continue; answers.delete(entry.interruptId); settleAnswerRow(answer.rowId); } if (decisions.size === 0 && answers.size === 0) refusedResume = false; options.onHumanRequests?.(unansweredRequests()); } async function* untilAnswered( events: AsyncIterable<unknown>, sent: readonly ResumeEntry[], ): AsyncGenerator<unknown> { let answered = false; for await (const event of events) { if (!answered) { answered = true; const refused = refusalOf(event, sent.length > 0); if (refused !== undefined) refusal = refused; if (refused?.resume === true) refusedResume = true; // A refusal is the mount's answer to a start, but not to a resume: the entries it carried // are still owed, and what is still pending is read again before they are sent. if (refused === undefined || sent.length === 0) acknowledged(sent); else if (refused.resume && refused.code === 'INVALID_INPUT') unfittingAnswers(sent); } yield event; } } function startEvents( request: ChatSessionRequest, gate: FirstEventGate, ): { readonly events: AsyncGenerator<unknown>; readonly answerRowIds: ReadonlySet<string>; /** Whether nothing is sent, because an interrupt the run waits on is still unanswered. */ readonly held: boolean; } { const conversation = withoutHiddenRows(request.conversation); const resume = resumeFor(conversation); if (resume.incomplete) { return { events: (async function* () {})(), answerRowIds: resume.answerRowIds, held: true }; } const input = runInput(conversation, resume, request.attachments); const events = untilAnswered( readEvents( () => send(`${AG_UI_PATH}/agents/${encodeURIComponent(options.agentName())}/run`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify(input), signal: gate.signal, }), { onCursor: (cursor) => { if (!gate.signal.aborted) lastAttachCursor = cursor; }, onFrame: () => { if (!gate.signal.aborted) options.onFrame?.(); }, }, ), resume.entries, ); return { events, answerRowIds: resume.answerRowIds, held: false }; } /** * The turn the controller starts for a decision or an answer while another interrupt of the run * is still unanswered: a run that began and ended with the conversation as it was, and no request. * The run is not told to the page as one that began, because none did. */ function heldTurn(request: ChatSessionRequest): AsyncGenerator<ChatStreamEvent> { const threadId = request.conversation.id; const runId = `held-${crypto.randomUUID()}`; return mapAGUIEventsToChatStream( [ { type: EventType.RUN_STARTED, threadId, runId }, { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } }, ], { conversation: withoutHiddenRows(request.conversation) }, ); } const mapper = new ResumableMapper((history) => options.onSnapshot?.(history)); const transport: ChatSessionTransport = (request) => { refusal = undefined; const attachedStream = attached; attached = undefined; // Only a start has a fetch of its own for a Stop to wait on; an attach reads a stream the page // opened earlier, under a signal of its own. let gate: FirstEventGate | undefined; let opened: { events: AsyncIterable<unknown>; answerRowIds: ReadonlySet<string> }; if (attachedStream === undefined) { gate = firstEventGate(request.signal); const start = startEvents(request, gate); // Nothing was sent, so there is no fetch for a Stop to wait on and nothing to observe. if (start.held) { gate.dispose(); return heldTurn(request); } opened = start; } else { opened = { events: attachedStream, answerRowIds: new Set() }; } const generation = ++transportGeneration; const startIds = new Set(request.conversation.ids); turnStartIds = startIds; const announced: Announced[] = []; unstamped = announced; // An attach reads a thread the page may know nothing of yet: its first rows come from the // snapshot, and the row the controller appended to start the turn is not one of them. const frames = mapper.map( observe( opened.events, request.signal, attachedStream === undefined, announced, gate, generation, ), withoutHiddenRows(request.conversation), // A cursor is committed only for an event Chat's mapper accepted, and only while this is // still the current transport: an older one cannot move the cursor a newer one resumes from. // The reader's own signal and attachment checks run at this moment too. (event) => { if (generation === transportGeneration) acknowledgeEvent(event); }, ); return parkApprovals( frames, // An approval already decided here stays decided while the mount still has it pending. () => interrupts.filter((interrupt) => !decisions.has(interrupt.id)), opened.answerRowIds, announced, options.agentName, // The rows on screen when the turn began are the page's own: the terminal history leaves its // copy of them in place, so the run's notes belong on the rows the run made. (id) => !startIds.has(id), () => { if (generation === transportGeneration) assetRun = undefined; }, ); }; return { transport, async resolveToolApproval(toolCallId, resolution) { const interrupt = interrupts.find((entry) => entry.toolCallId === toolCallId); if (interrupt === undefined) throw new ApprovalNotWaitingError(toolCallId); decisions.set(interrupt.id, resumeEntryFor(interrupt, resolution)); return resultFor(toolCallId, resolution); }, async attach(threadId, signal) { const current = ++attachGeneration; const events = readEvents( () => send(`${AG_UI_PATH}/threads/${encodeURIComponent(threadId)}/run`, { headers: { accept: 'text/event-stream', ...(lastAttachCursor === undefined ? {} : { 'Last-Event-ID': lastAttachCursor }), }, ...(signal === undefined ? {} : { signal }), }), { onCursor: (cursor) => { if (!signal?.aborted && current === attachGeneration) lastAttachCursor = cursor; }, onFrame: () => { if (!signal?.aborted && current === attachGeneration) options.onFrame?.(); }, }, ); const started = await events.next(); // Even a thread with no run to attach to answers with an event the Bureau stamped. if (started.done !== true) options.clock?.observe(started.value); if ( started.done === true || !isRecord(started.value) || started.value['type'] !== 'RUN_STARTED' ) { await events.return(undefined); // The thread has nothing going or waiting, so nothing answered for it can still be sent. setInterrupts([]); return undefined; } // An attach stream opens with the thread as a snapshot, which is what restores a transcript // the page never held. const snapshot = await events.next(); const opening = [started.value, ...(snapshot.done === true ? [] : [snapshot.value])]; if (signal?.aborted || current !== attachGeneration) { await events.return(undefined); return undefined; } const opened = opening; const messages = snapshot.done !== true && isMessagesSnapshot(snapshot.value) ? snapshot.value.messages : []; // A valid live-cursor resume has no snapshot: preserve the transcript already // on screen. A snapshot is authoritative and therefore starts from an empty // history so no stale row can survive the replacement. let restored: ConversationHistory; if (snapshot.done !== true && isMessagesSnapshot(snapshot.value)) { const read = { fetch: send, ...(signal === undefined ? {} : { signal }) }; // The run the page attached to is the one whose wakeup it is parked on. // The event schema requires a `runId`, so the Bureau's own name for the run is only // preferred to it. const attachedRun = await getTask( nativeRunIdOf(started.value) ?? String(started.value['runId']), read, ).catch(() => undefined); // A thread stream can still replay RUN_STARTED after the run has settled. This is most // visible when review expiry closes an input-required run: its durable transcript still // contains the action-required receipt, but there is no live interrupt to re-park it. // Treat terminal task state as history-only so ChatSession does not strip that receipt for // a hidden attach turn that cannot produce another snapshot. if ( attachedRun !== undefined && (attachedRun.status === 'completed' || attachedRun.status === 'failed' || attachedRun.status === 'canceled') && attachedRun.openWaits.length === 0 ) { await events.return(undefined); setInterrupts([]); return undefined; } restored = await withTaskNotes( withStoredMemoryNotes( withoutImportTimes( mergeAGUIMessages(createConversationHistory({ id: threadId }), messages), messages, ), options.agentName(), ), attachedRun, read, ); if (signal?.aborted || current !== attachGeneration) { await events.return(undefined); return undefined; } } else { restored = options.conversation(); } attached = (async function* () { try { for (const event of opened) { if (signal?.aborted || current !== attachGeneration) return; yield event; } for await (const event of events) { if (signal?.aborted || current !== attachGeneration) return; yield event; } } finally { await events.return(undefined); } })(); return restored; }, async history(threadId, signal) { // An attach that resumed from the old cursor would keep this history and replay the run from // past rows it does not hold, such as a parked call's result without its call. lastAttachCursor = undefined; let messages: readonly unknown[]; try { messages = await getThreadMessages(threadId, { fetch: send, ...(options.sharedRead === true ? { shared: true } : {}), ...(signal === undefined ? {} : { signal }), }); } catch (error) { // A thread the Bureau has no record of, or that the caller may not read, has no history. if (error instanceof HttpClientError && error.status === 404) return undefined; throw error; } const snapshot = { type: 'MESSAGES_SNAPSHOT', messages }; if (!isMessagesSnapshot(snapshot)) { throw new Error('The server answered with messages this page cannot read.'); } const thread = withStoredMemoryNotes( withoutImportTimes( mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages), snapshot.messages, ), options.agentName(), ); // A shared reader receives the deliberately redacted transcript projection only. It must not // enrich that view through the owner's run or task routes, even when a separately privileged // reader could call those routes itself. if (options.sharedRead === true) return thread; // The stream said why a run stopped while it was watched and does not say it again, so the // run's own record is read. The line is a courtesy: a record that cannot be read leaves the // thread as it is rather than failing the page's read of it. const lastRun = await getLastRun(threadId, { fetch: send, ...(signal === undefined ? {} : { signal }), }).catch(() => undefined); const stoppedAt = lastRun === undefined || (lastRun.status !== 'failed' && lastRun.status !== 'canceled') ? undefined : Date.parse(lastRun.updatedAt); if (stoppedAt !== undefined && Number.isFinite(stoppedAt)) options.onRunStopped?.(stoppedAt); const noted = await withTaskNotes(thread, lastRun, { fetch: send, ...(signal === undefined ? {} : { signal }), }); return withStopReason(noted, lastRun); }, detach() { detached = true; }, async cancelDroppedRun() { const runId = unendedRunId; return runId === undefined ? undefined : cancelRun(runId); }, holdAnswer, holdValue, releaseValue, owesResume: () => refusedResume && (decisions.size > 0 || answers.size > 0), owedResumeIncomplete: () => refusedResume && entriesOwed().incomplete, holdsAnswerRow: (rowId) => [...answers.values()].some((answer) => answer.rowId === rowId), takeSettledAnswerRows() { return settledAnswerRows.splice(0); }, takeRefusal() { const taken = refusal; refusal = undefined; return taken; }, drainAssets() { return unstamped.splice(0); }, ownsRow: (id) => !turnStartIds.has(id), async discardAttach() { const dropped = attached; attached = undefined; await dropped?.return(undefined); }, }; }"
+      ]
     },
     {
       "path": "routes/schedules/schedule-queries.ts",
@@ -3346,7 +3395,9 @@
       "transport": "POST /v1/schedules/:id/skip-next and /unskip",
       "owner": "Weft schedules",
       "reason": "These handwritten REST calls have declared catalog operations.",
-      "count": 1
+      "expressions": [
+        "postOccurrence fetch( `${client.baseUrl}/v1/schedules/${encodeURIComponent(id)}/${control}`, { method: 'POST', headers: { ...client.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ occurrence }), }, )"
+      ]
     },
     {
       "path": "routes/storage/storage-client.ts",
@@ -3394,7 +3445,14 @@
       "transport": "HTTP /v1/storage byte, NDJSON and JSON routes",
       "owner": "Weft storage",
       "reason": "The generated operation client excludes these REST-only storage bindings; the storage facade retains each binding's wire encoding.",
-      "count": 6
+      "expressions": [
+        "storageBatch fetch(storageUrl(connection, '/-/batch'), { method: 'POST', headers: storageHeaders(connection, 'application/json'), body: JSON.stringify({ operations: operations.map(encodeBatchOperation) }), })",
+        "storageConditionalBatch fetch(storageUrl(connection, '/-/conditional-batch'), { method: 'POST', headers: storageHeaders(connection, 'application/json'), body: JSON.stringify({ conditions: conditions.map(encodeCondition), operations: operations.map(encodeBatchOperation), }), })",
+        "storageDelete fetch(storageUrl(connection, `/${encodeKeyForPath(key)}`), { method: 'DELETE', headers: storageHeaders(connection), })",
+        "storageGet fetch(storageUrl(connection, `/${encodeKeyForPath(key)}`), { method: 'GET', headers: storageHeaders(connection), ...(signal === undefined ? {} : { signal }), })",
+        "storagePut fetch(storageUrl(connection, `/${encodeKeyForPath(key)}`), { method: 'PUT', headers: storageHeaders(connection, 'application/octet-stream'), // `Blob` sidesteps a TypeScript-lib/Bun-lib generic mismatch on plain // `Uint8Array` bodies (`Uint8Array<ArrayBufferLike>` vs. the stricter // `Uint8Array<ArrayBuffer>` `BlobPart`/`BodyInit` expects) without a type // assertion; `.slice()` also guarantees a fresh `ArrayBuffer`-backed copy // (never `SharedArrayBuffer`) that can't mutate underneath the request. body: new Blob([value.slice()]), })",
+        "storageScan fetch(`${storageUrl(connection, '')}?${params.toString()}`, { method: 'GET', headers: storageHeaders(connection), ...(signal === undefined ? {} : { signal }), })"
+      ]
     },
     {
       "path": "routes/system/discovery-client.ts",
@@ -3402,7 +3460,10 @@
       "transport": "HTTP OpenAPI and OpenRPC documents",
       "owner": "Weft discovery",
       "reason": "Protocol discovery documents are not catalog operations.",
-      "count": 2
+      "expressions": [
+        "fetchDiscoveryDocument fetch(url, { headers: client.headers })",
+        "fetchRawMetricsText fetch(url, { headers: client.headers })"
+      ]
     }
   ],
   "dynamic": [
