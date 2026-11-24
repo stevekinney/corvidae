@@ -40,7 +40,7 @@ async function expectReadOnly(reader: Page): Promise<void> {
   await expect(reader.getByRole('button', { name: 'More actions' })).toHaveCount(0);
 }
 
-test.describe('workspace chat sharing', () => {
+test.describe('workspace chat sharing /chats/:chat /reviews', () => {
   test('an owner grants, revokes, reviews, and restores one former reader', async ({ browser }) => {
     const ownerContext = await member(browser, OWNER_KEY);
     const readerContext = await member(browser, READER_KEY);
@@ -67,7 +67,11 @@ test.describe('workspace chat sharing', () => {
       await reader.goto('/chats');
       await expect(reader.locator(`a[href="/chats/${contextId}"]`)).toBeVisible();
       await reader.goto(`/chats/${contextId}`);
-      await expect(reader.locator('article[data-message-id]').getByText('shared chat evidence', { exact: true })).toHaveCount(2);
+      await expect(
+        reader
+          .locator('article[data-message-id]')
+          .getByText('shared chat evidence', { exact: true }),
+      ).toHaveCount(2);
       await expectReadOnly(reader);
       await captureForDesignReview(reader, {
         route: '/chats/:chat',
@@ -113,7 +117,11 @@ test.describe('workspace chat sharing', () => {
       await owner.getByRole('button', { name: 'Grant access' }).click();
 
       await reader.reload();
-      await expect(reader.locator('article[data-message-id]').getByText('shared chat evidence', { exact: true })).toHaveCount(2);
+      await expect(
+        reader
+          .locator('article[data-message-id]')
+          .getByText('shared chat evidence', { exact: true }),
+      ).toHaveCount(2);
       await expectReadOnly(reader);
       await captureForDesignReview(reader, {
         route: '/chats/:chat',

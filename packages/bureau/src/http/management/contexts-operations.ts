@@ -93,15 +93,13 @@ async function isActiveSharedSummary(
     workspace === undefined || loaded === undefined
       ? undefined
       : sessionReadGrantOf(loaded.metadata, workspace.owner);
-  if (
-    !(
+  if (!(
     grant !== undefined &&
     grant.revokedAt === undefined &&
     grant.workspaceId === workspace!.workspaceId &&
     grant.actorId === workspace!.actorId &&
     grant.sessionIncarnation === loaded?.incarnation
-    )
-  )
+  ))
     return false;
   const owner = loaded === undefined ? null : sessionOwnerOf(loaded.metadata);
   const authority = host.workspaceAuthority?.(principal);
@@ -478,7 +476,9 @@ export const contextsListOperation = defineOperation<
         );
         const page = matching.slice(offset, offset + limit);
         const projected = await Promise.all(
-          page.map((summary) => projectListedContext(host, owner, summary, activity.get(summary.id))),
+          page.map((summary) =>
+            projectListedContext(host, owner, summary, activity.get(summary.id)),
+          ),
         );
         return {
           contexts: projected.filter(
