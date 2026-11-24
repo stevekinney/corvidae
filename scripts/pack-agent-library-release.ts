@@ -21,7 +21,7 @@ const { values } = parseArgs({
 const versionSchema = z
   .string()
   .refine((version) => !version.includes('+') && Bun.semver.satisfies(version, version));
-const library = z.enum(['armorer', 'conversationalist']).parse(values.package);
+const library = z.enum(['armorer', 'bungalow', 'conversationalist']).parse(values.package);
 const version = versionSchema.parse(values.version);
 const armorerVersion =
   library === 'conversationalist' ? versionSchema.parse(values['armorer-version']) : undefined;
@@ -36,10 +36,11 @@ const entries = new Map(
   Object.entries(releaseEntries[library]).map(([key, entry]) => [key, resolve(workspace, entry)]),
 );
 const workspaceManifest = libraryManifests[library];
+const packageName = workspaceManifest.name;
 const declaredDependencies = new Map(
   Object.entries({
     ...workspaceManifest.devDependencies,
-    ...workspaceManifest.dependencies,
+    ...('dependencies' in workspaceManifest ? workspaceManifest.dependencies : {}),
   }),
 );
 const externalDependencies = new Set<string>();
@@ -100,7 +101,7 @@ function rewriteModules(code: string, source: string): string {
         code.slice(0, reference.getStart(file)) +
         JSON.stringify(target) +
         code.slice(reference.end);
-    } else if (!isBuiltin(specifier)) {
+    } else if (!isBuiltin(specifier) && !(library === 'bungalow' && specifier === 'bun:test')) {
       const name = specifier
         .split('/')
         .slice(0, specifier.startsWith('@') ? 2 : 1)
@@ -176,7 +177,7 @@ try {
     join(stage, 'package.json'),
     JSON.stringify(
       {
-        name: library,
+        name: packageName,
         version,
         description: workspaceManifest.description,
         type: 'module',
@@ -187,11 +188,14 @@ try {
           url: 'git+https://github.com/stevekinney/corvidae.git',
           directory: 'packages/' + library,
         },
-        engines: { node: '>=22', bun: '>=1.4.0' },
+        engines: library === 'bungalow' ? { bun: '>=1.4.4' } : { node: '>=22', bun: '>=1.4.0' },
+        ...(library === 'bungalow' ? { os: ['darwin', 'linux'] } : {}),
         exports,
         dependencies,
         peerDependencies,
-        peerDependenciesMeta: { [optionalPeer]: { optional: true } },
+        ...(Object.hasOwn(peerDependencies, optionalPeer)
+          ? { peerDependenciesMeta: { [optionalPeer]: { optional: true } } }
+          : {}),
       },
       undefined,
       2,
@@ -204,7 +208,10 @@ try {
     readme
       .replace(
         /^## Workspace usage\n\n[^\n]+/m,
-        '## Installation\n\n```sh\nnpm install ' + library + '\n```',
+        '## Installation\n\n```sh\n' +
+          (library === 'bungalow' ? 'bun add ' : 'npm install ') +
+          packageName +
+          '\n```',
       )
       .replaceAll('(#workspace-usage)', '(#installation)'),
   );
