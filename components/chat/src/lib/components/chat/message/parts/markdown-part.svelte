@@ -88,4 +88,12 @@
     vertical-align: bottom;
     white-space: nowrap;
   }
+
+  /* Citation keeps its compact painted line and owns a 44px coarse-pointer target. Reserve the
+   * lower overhang before the message actions, so the target never falls through to Details. */
+  @media (any-pointer: coarse) {
+    .chat-markdown-claim:has(.chat-claim-marker) {
+      padding-block-end: calc((var(--cinder-touch-target-min) - 1lh) / 2);
+    }
+  }
 </style>
