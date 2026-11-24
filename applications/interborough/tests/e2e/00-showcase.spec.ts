@@ -89,12 +89,14 @@ async function readyBlockedRefundApprovalCapture(page: Page): Promise<void> {
       page.evaluate(() => {
         const transcript = document.querySelector<HTMLElement>('.chat-timeline');
         const approval = document.querySelector<HTMLElement>('[data-approval-decision]');
-        const tool = approval
-          ?.closest<HTMLElement>('.cinder-tool-call-rail__item')
-          ?.querySelector<HTMLElement>('[data-cinder-tool-call-row]');
-        const question = approval?.querySelector<HTMLElement>(
-          '.cinder-approval-card__row-question, .cinder-approval-card__decision-title',
-        );
+        const tool =
+          approval
+            ?.closest<HTMLElement>('.cinder-tool-call-rail__item')
+            ?.querySelector<HTMLElement>('[data-cinder-tool-call-row]') ?? null;
+        const question =
+          approval?.querySelector<HTMLElement>(
+            '.cinder-approval-card__row-question, .cinder-approval-card__decision-title',
+          ) ?? null;
         const actions = [...(approval?.querySelectorAll<HTMLButtonElement>('button') ?? [])].filter(
           (button) => ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
         );
@@ -110,30 +112,29 @@ async function readyBlockedRefundApprovalCapture(page: Page): Promise<void> {
           const hit = document.elementFromPoint(x, y);
           return hit !== null && element.contains(hit);
         };
-        const withinTranscript = (element: HTMLElement) => {
-          const box = element.getBoundingClientRect();
+        const withinTranscript = (box: DOMRect) => {
           const bounds = transcript.getBoundingClientRect();
           return box.top >= bounds.top && box.bottom <= bounds.bottom;
         };
         const toolBox = tool.getBoundingClientRect();
         const inset = 1;
-        const toolCorners = [
+        const toolCorners: readonly (readonly [number, number])[] = [
           [toolBox.left + inset, toolBox.top + inset],
           [toolBox.right - inset, toolBox.top + inset],
           [toolBox.left + inset, toolBox.bottom - inset],
           [toolBox.right - inset, toolBox.bottom - inset],
         ];
+        const questionBox = question.getBoundingClientRect();
+        const actionsReachable = actions.every((action) => {
+          const actionBox = action.getBoundingClientRect();
+          return (
+            withinTranscript(actionBox) &&
+            reaches(action, actionBox.x + actionBox.width / 2, actionBox.y + actionBox.height / 2)
+          );
+        });
         return (
-          withinTranscript(question) &&
-          actions.every(
-            (action) =>
-              withinTranscript(action) &&
-              reaches(
-                action,
-                action.getBoundingClientRect().x + action.getBoundingClientRect().width / 2,
-                action.getBoundingClientRect().y + action.getBoundingClientRect().height / 2,
-              ),
-          ) &&
+          withinTranscript(questionBox) &&
+          actionsReachable &&
           toolCorners.every(([x, y]) => reaches(tool, x, y))
         );
       }),
