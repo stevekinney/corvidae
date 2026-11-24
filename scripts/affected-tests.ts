@@ -587,7 +587,8 @@ async function main(): Promise<number> {
     options.changed ?? changedFiles(root, mergeBase(root, options.base ?? 'origin/main'));
   const cache = sourceAnalysisCache(
     root,
-    process.env['CORVIDAE_SOURCE_ANALYSIS_CACHE'] ?? join(root, '.cache', 'affected-tests'),
+    rootScriptEnvironment()['CORVIDAE_SOURCE_ANALYSIS_CACHE'] ??
+      join(root, '.cache', 'affected-tests'),
   );
   const selection = excludeTests(
     selectTests({ changed, tree: listTree(root), workspaces, analyze: cache.analyze }),
