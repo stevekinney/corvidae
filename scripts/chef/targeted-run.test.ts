@@ -627,6 +627,16 @@ describe('run', () => {
 });
 
 describe('the workflow and the manifest', () => {
+  test('uses Bash in containers and captures manifest preparation failures', async () => {
+    const workflow = await Bun.file(
+      new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),
+    ).text();
+    expect(workflow).toContain('defaults:\n  run:\n    shell: bash\n');
+    expect(workflow).toContain(
+      'bun scripts/chef/ci-replay.ts run -- bun scripts/browser-fixtures/scripts/prepare-manifest.ts',
+    );
+  });
+
   test('buildCommand names every input of targeted-checks.yml', async () => {
     const workflow = await Bun.file(
       new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),

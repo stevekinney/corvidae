@@ -19,6 +19,10 @@
 # `packages` job, under the `fixtures` input, which their changes reach as well.
 name: Browser suites
 
+defaults:
+  run:
+    shell: bash
+
 on:
   workflow_call:
     inputs:
@@ -176,10 +180,12 @@ jobs:
           CI_REPLAY_CREDENTIAL_BOUNDARY: producer-scrubbed
           TURBO_ENV_MODE: strict
           CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-      - run: >-
-          bunx turbo run test:browser --filter=@lostgradient/terminal --dry=json
-          | bun -e 'const run = JSON.parse(await Bun.stdin.text()); const task = run.tasks.find((entry) => entry.taskId === "@lostgradient/terminal#test:browser"); console.log("terminal test:browser cache: " + task?.cache?.status); if (task?.cache?.status !== "HIT") process.exit(1);'
-      - run: bunx turbo run test:browser --filter=@lostgradient/terminal
+      - run: bun scripts/chef/ci-replay.ts run -- bash scripts/chef/check-terminal-browser-cache.sh
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+      - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run test:browser --filter=@lostgradient/terminal
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       # A failed report upload must not fail the suite's job.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ failure() }}

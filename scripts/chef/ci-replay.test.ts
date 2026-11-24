@@ -131,6 +131,77 @@ describe('failure replay evidence', () => {
     expect(record.assertion?.matcher).toBe('toBe');
   });
 
+  test('describes portable scratch and browser JUnit setup without runner paths', () => {
+    const input = {
+      runId: 10,
+      attempt: 1,
+      job: 'unit',
+      head: 'a'.repeat(40),
+      base: 'b'.repeat(40),
+      tree: 'c'.repeat(40),
+      lock: 'd'.repeat(40),
+      bun: '1.4.4',
+      command: 'bash scripts/chef/targeted-unit.sh',
+      selection: [],
+      output: '',
+      workspace: '/workspace',
+    };
+    const unit = replayRecord(input);
+    expect(unit.replaySetup.RUNNER_TEMP).toBe('fresh writable scratch directory');
+    expect(unit.replaySetup.GITHUB_WORKSPACE).toBe('checkout root');
+    expect(unit.replaySetup.rawJUnit).toBe('$RUNNER_TEMP/ci-replay-junit-raw.xml');
+    expect(unit.replaySetup.PLAYWRIGHT_JUNIT_OUTPUT_FILE).toBeNull();
+    expect(replayRecord({ ...input, command: '' }).commandUnavailable).toBe(
+      'failure occurred outside the replay producer; command was not captured',
+    );
+    const browser = replayRecord({
+      ...input,
+      command: 'bun playwright test --reporter=line,junit',
+    });
+    expect(browser.replaySetup.PLAYWRIGHT_JUNIT_OUTPUT_FILE).toBe(
+      '$RUNNER_TEMP/ci-replay-junit-raw.xml',
+    );
+    expect(browser.replaySetup.PLAYWRIGHT_HTML_OUTPUT_DIR).toBe(
+      '$GITHUB_WORKSPACE/playwright-output/report',
+    );
+    expect(browser.replaySetup.PLAYWRIGHT_JSON_OUTPUT_FILE).toBe(
+      '$GITHUB_WORKSPACE/playwright-output/results.json',
+    );
+    const selector = replayRecord({
+      ...input,
+      command: 'bash scripts/chef/select-browser-suites.sh',
+    });
+    expect(selector.replaySetup.GITHUB_OUTPUT).toBe('$RUNNER_TEMP/github-output');
+    expect(selector.replaySetup.TURBO_SCM_BASE).toContain('unavailable if either is missing');
+    const postgres = replayRecord({
+      ...input,
+      command: 'bash scripts/chef/prepare-postgres-path.sh',
+    });
+    expect(postgres.replaySetup.GITHUB_PATH).toBe('$RUNNER_TEMP/github-path');
+  });
+
+  test('wraps replayable setup and browser-selection commands after Bun is installed', () => {
+    const workflow = readFileSync(
+      new URL('../../.github/workflows/pull-request.yml', import.meta.url),
+      'utf8',
+    );
+    for (const command of [
+      'bunx playwright install --with-deps chromium',
+      'bash scripts/chef/prepare-postgres-path.sh',
+      'bash scripts/chef/select-browser-suites.sh',
+    ])
+      expect(workflow).toContain(`bun scripts/chef/ci-replay.ts run -- ${command}`);
+    const browser = readFileSync(
+      new URL('../../.github/workflows/browser-suites.yml', import.meta.url),
+      'utf8',
+    );
+    for (const command of [
+      'bash scripts/chef/check-terminal-browser-cache.sh',
+      'bunx turbo run test:browser --filter=@lostgradient/terminal',
+    ])
+      expect(browser).toContain(`bun scripts/chef/ci-replay.ts run -- ${command}`);
+  });
+
   test('records the named unit parameters needed to replay without copying other environment', () => {
     const parameters = replayParameters({
       UNIT_WORKSPACE: 'applications/interborough',

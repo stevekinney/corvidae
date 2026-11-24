@@ -236,7 +236,34 @@ export function replayRecord(input: ReplayInput) {
     identityUnavailable,
     toolchain: { bun: input.bun, lock },
     command: safeCommand ? input.command : null,
-    commandUnavailable: safeCommand ? null : 'command contains unsafe or unsupported values',
+    commandUnavailable: safeCommand
+      ? null
+      : input.command === ''
+        ? 'failure occurred outside the replay producer; command was not captured'
+        : 'command contains unsafe or unsupported values',
+    replaySetup: {
+      RUNNER_TEMP: 'fresh writable scratch directory',
+      GITHUB_WORKSPACE: 'checkout root',
+      GITHUB_OUTPUT: input.command.includes('scripts/chef/select-browser-suites.sh')
+        ? '$RUNNER_TEMP/github-output'
+        : null,
+      TURBO_SCM_BASE: input.command.includes('scripts/chef/select-browser-suites.sh')
+        ? 'restore recorded parameter and point its local ref at the recorded base; unavailable if either is missing'
+        : null,
+      GITHUB_PATH: input.command.includes('scripts/chef/prepare-postgres-path.sh')
+        ? '$RUNNER_TEMP/github-path'
+        : null,
+      rawJUnit: '$RUNNER_TEMP/ci-replay-junit-raw.xml',
+      PLAYWRIGHT_HTML_OUTPUT_DIR: input.command.includes('junit')
+        ? '$GITHUB_WORKSPACE/playwright-output/report'
+        : null,
+      PLAYWRIGHT_JSON_OUTPUT_FILE: input.command.includes('junit')
+        ? '$GITHUB_WORKSPACE/playwright-output/results.json'
+        : null,
+      PLAYWRIGHT_JUNIT_OUTPUT_FILE: input.command.includes('junit')
+        ? '$RUNNER_TEMP/ci-replay-junit-raw.xml'
+        : null,
+    },
     selection: safeSelection ? input.selection : [],
     selectionUnavailable: safeSelection ? null : 'selection contains unsafe or unsupported values',
     assertion,

@@ -114,6 +114,12 @@ describe('the browser suites workflow', () => {
     expect(packages).toContain('path: components/*/browser/test-results/**/*-actual.png\n');
   });
 
+  test('uses Bash for reusable container jobs', () => {
+    expect(
+      readFileSync(resolve(REPOSITORY_ROOT, '.github/workflows/browser-suites.yml'), 'utf8'),
+    ).toContain('defaults:\n  run:\n    shell: bash\n');
+  });
+
   test('runs each browser producer through credential isolation and hashes the wrapper', () => {
     const configuration = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, 'turbo.json'), 'utf8'));
     const prohibited = [

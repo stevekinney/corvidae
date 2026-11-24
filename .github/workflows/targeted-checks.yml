@@ -56,6 +56,10 @@ permissions:
   contents: read
   actions: read
 
+defaults:
+  run:
+    shell: bash
+
 # A newer dispatch on a branch cancels the older one: a correction round supersedes the last.
 concurrency:
   group: targeted-checks-${{ github.ref }}
@@ -160,7 +164,9 @@ jobs:
       - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run metadata
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
-      - run: bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+      - run: bun scripts/chef/ci-replay.ts run -- bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       # Named components with no spec run the screenshot suite for those components alone.
       - run: |
           read -r -a specs <<< "$FIXTURE_SPECS"

@@ -153,7 +153,9 @@ jobs:
         with:
           name: pr-tests
       # A change that reaches the root workspace runs `test:browser-fixtures`, which needs Chromium.
-      - run: bunx playwright install --with-deps chromium
+      - run: bun scripts/chef/ci-replay.ts run -- bunx playwright install --with-deps chromium
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
       - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run metadata
@@ -161,7 +163,9 @@ jobs:
           CI_REPLAY_TOKEN: ${{ github.token }}
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH (as in `main.yml`).
-      - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
+      - run: bun scripts/chef/ci-replay.ts run -- bash scripts/chef/prepare-postgres-path.sh
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       - name: Run affected tests
         env:
           TEST_LANES: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '--fast-only' || '--isolated' }}
@@ -215,18 +219,9 @@ jobs:
         if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
       - id: select
         if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
-        run: |
-          affected="$(bunx turbo ls --affected --output=json | jq -r '.packages.items[].name')"
-          workflow=false
-          if git diff --name-only "$TURBO_SCM_BASE...HEAD" | grep -qx '.github/workflows/browser-suites.yml'; then
-            workflow=true
-          fi
-          reaches() { [ "$workflow" = true ] || grep -qx "$1" <<< "$affected"; }
-          if reaches @lostgradient/browser-fixtures; then fixtures=true; else fixtures=false; fi
-          if reaches @lostgradient/interborough; then interborough=true; else interborough=false; fi
-          echo "fixtures=$fixtures" >> "$GITHUB_OUTPUT"
-          echo "interborough=$interborough" >> "$GITHUB_OUTPUT"
-          echo "Chromium fixtures: $fixtures; Interborough end-to-end: $interborough"
+        run: bun scripts/chef/ci-replay.ts run -- bash scripts/chef/select-browser-suites.sh
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       - name: Retain first-failure replay record
         if: ${{ failure() }}
         env:
