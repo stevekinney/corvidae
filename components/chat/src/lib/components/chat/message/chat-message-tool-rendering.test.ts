@@ -1138,6 +1138,9 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).toMatch(
         /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-hit-target\s*\{[^}]*position: absolute;[^}]*pointer-events: auto;[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
       );
+      expect(source).toMatch(
+        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-list\s*\{[^}]*margin-block-start: var\(--cinder-space-4\);/s,
+      );
       // A failed step's Retry and Copy error are Cinder Buttons: compact paint, hit-area extension.
       expect(source).not.toMatch(
         /@media \(any-pointer: coarse\) \{[^}]*chat-tool-call-failure-action/,

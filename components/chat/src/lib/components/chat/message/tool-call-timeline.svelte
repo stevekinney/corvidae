@@ -913,7 +913,7 @@
      * target is considered. Keep a small dedicated lane between them: both painted lines stay
      * compact, while their 44px targets have separate ownership. */
     .chat-tool-call-list {
-      margin-block-start: calc(var(--cinder-space-2) + 2px);
+      margin-block-start: var(--cinder-space-4);
     }
   }
 
