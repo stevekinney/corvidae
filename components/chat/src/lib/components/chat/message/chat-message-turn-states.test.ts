@@ -211,7 +211,7 @@ describe('R5: failed partway', () => {
   });
 
   test('keeps an optional failure explanation link in the Callout when Retry is unavailable', () => {
-    const { container, getByRole, queryByRole } = mount({
+    const { getByRole, queryByRole } = mount({
       turnState: {
         kind: 'failed',
         cause: 'The provider dropped the connection.',
