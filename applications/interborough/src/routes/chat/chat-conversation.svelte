@@ -322,6 +322,7 @@
     if (choosing) return;
     // Putting the stored draft back in the box is not writing it again.
     if (restoredDraftAt !== undefined && text === storedDraft?.text) return;
+    restoredDraftAt = undefined;
     writeChatDraft(draftStorage, sessionId, text, Date.now());
   }
   /** Forgets this chat's draft: it was sent, or Discard draft emptied the box. */
@@ -2888,6 +2889,8 @@
               type="button"
               variant="ghost"
               size="sm"
+              disabled={answerHeld}
+              title={answerHeld ? 'Reply in chat is available after Undo expires.' : undefined}
               onclick={() => (repliedInChat = dockedRequest?.interruptId)}
               >{CHAT_COPY.replyInChat}</Button
             >
