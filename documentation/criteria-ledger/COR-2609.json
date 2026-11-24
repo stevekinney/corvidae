@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2609",
+  "branch": "steve/cor-2609-velveteen-catalog-host",
+  "checkedAt": "05b6712aa6f16c56c67ce8480b62db2302bad0cf",
+  "briefVersion": "1608f66a7761",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Implemented in the staged starter probe; installed exports, detached starter typecheck, build and authenticated SSR passed locally; Chromium pending."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Implemented in the starter Chromium probe; provider execution pending."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun run --filter @lostgradient/velveteen test:server: 53 passed, exit 0."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Regeneration and client invocation implemented in starter probe; provider execution pending."
+    }
+  ]
+}
