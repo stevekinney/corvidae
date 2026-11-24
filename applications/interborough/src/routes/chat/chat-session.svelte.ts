@@ -771,7 +771,13 @@ export class ChatSessionState {
    * could not be reached. A second call while one is in flight does nothing.
    */
   async discardTurn(runId: string): Promise<boolean> {
-    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
+    if (
+      this.#readOnly ||
+      this.#closed?.() === true ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive
+    ) {
       return false;
     }
     if (this.discarding !== undefined) return false;
@@ -807,7 +813,13 @@ export class ChatSessionState {
    * (`keepsCommandAfter`); after any other answer the next Continue is a new command.
    */
   async resumeTurn(runId: string): Promise<boolean> {
-    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive) {
+    if (
+      this.#readOnly ||
+      this.#closed?.() === true ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive
+    ) {
       return false;
     }
     if (this.resuming !== undefined || this.discarding !== undefined) return false;
@@ -833,7 +845,13 @@ export class ChatSessionState {
   }
   /** Replaces the latest ended answer through Bureau without starting an AG-UI/tool turn. */
   async regenerateAnswer(messageId: string): Promise<void> {
-    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive)
+    if (
+      this.#readOnly ||
+      this.#closed?.() === true ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive
+    )
       return;
     if (this.#regenerationPromise !== undefined) return this.#regenerationPromise;
     const previous = this.regeneration;
@@ -871,6 +889,7 @@ export class ChatSessionState {
    * none. A failure is shown on the row, which offers Retry, and in `failure`.
    */
   send(content: string): Promise<void> {
+    if (this.#readOnly) return Promise.resolve();
     return this.adapter.sendMessage({ role: 'user', content }, []);
   }
 
@@ -892,6 +911,7 @@ export class ChatSessionState {
    * not plain text, is not offered again here (`canRetryTurn`).
    */
   async retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
+    if (this.#readOnly) return;
     const id = this.#lastUserRowId();
     const row = id === undefined ? undefined : this.conversation.messages[id];
     const text = row === undefined ? undefined : retryText(row);
@@ -925,7 +945,13 @@ export class ChatSessionState {
       readonly approvalKey?: string;
     } = {},
   ): Promise<void> {
-    if (this.streaming || this.attaching || this.transportActive || this.#abort.signal.aborted) {
+    if (
+      this.#readOnly ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive ||
+      this.#abort.signal.aborted
+    ) {
       return;
     }
     const rows = this.conversation.ids

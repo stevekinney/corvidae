@@ -1147,7 +1147,7 @@
   const shown = $derived(withoutStopLine(lined, lastStop));
   const currentTurnMessageIds = $derived(new Set(shown.ids.slice(lastTurnStart(shown))));
   const failedTurnExplanation = $derived.by(() => {
-    if (lastStop?.state.kind !== 'failed') return undefined;
+    if (readOnly || lastStop?.state.kind !== 'failed') return undefined;
     const runId = stoppedRunIdOf(lastStop.noteId);
     return runId === undefined
       ? undefined
@@ -1160,7 +1160,7 @@
   // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
   // turn again.
-  const retryNoteId = $derived(failedStopNoteId(shown));
+  const retryNoteId = $derived(readOnly ? undefined : failedStopNoteId(shown));
   const lastAssistant = $derived(lastAssistantId(shown));
   let reconnectNow = $state(Date.now());
   $effect(() => {
@@ -1182,7 +1182,7 @@
   }
 
   const discardableRun = $derived(
-    lastStop?.state.kind === 'stopped' && lastAssistant !== undefined
+    !readOnly && lastStop?.state.kind === 'stopped' && lastAssistant !== undefined
       ? replyStepOf(lastAssistant)?.runId
       : undefined,
   );
@@ -2634,12 +2634,12 @@
           composerStatus={sharedComposerStatus ?? composerStatus}
           onComposerInput={rememberDraft}
           messageTurnState={turnState}
-          onRetryConnection={() => void session.reconnect()}
-          {...session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
-          {...discardableRun !== undefined && session.discarding === undefined
+          {...!readOnly ? { onRetryConnection: () => void session.reconnect() } : {}}
+          {...!readOnly && session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
+          {...!readOnly && discardableRun !== undefined && session.discarding === undefined
             ? { onDiscardTurn: () => void discardTurn() }
             : {}}
-          {...discardableRun !== undefined && session.resuming === undefined
+          {...!readOnly && discardableRun !== undefined && session.resuming === undefined
             ? { onContinueTurn: () => void resumeTurn() }
             : {}}
           questionDock={dockedRequest === undefined ? undefined : hostQuestionDock}
@@ -2725,7 +2725,7 @@
             <!-- A failed run's line says why it stopped in a few words, and leads to the Run page's
                  explanation of the failure (COR-2533), for every failed attempt on record. -->
             <!-- The link and Retry are one group a Cinder space apart, never touching. -->
-            {#if (note.kind === 'stopped' && note.failed === true) || note.id === retryNoteId}
+            {#if !readOnly && ((note.kind === 'stopped' && note.failed === true) || note.id === retryNoteId)}
               <Stack direction="row" align="center" wrap gap="var(--cinder-space-3)">
                 {#if note.kind === 'stopped' && note.failed === true}
                   {@const failedRunId = stoppedRunIdOf(note.id)}
@@ -2768,7 +2768,8 @@
                 decided={decisionContext}
                 selectedId={selectedCallId}
                 onSelect={selectCall}
-                {...session.canRetryTurn &&
+                {...!readOnly &&
+                session.canRetryTurn &&
                 group.messageIds.some((id) => currentTurnMessageIds.has(id))
                   ? { onRetryStep: (callId: string) => void retryFailedStep(group.entries, callId) }
                   : {}}
@@ -2820,11 +2821,13 @@
                           : { expiresAt: new Date(entry.approvalExpiresAt).toISOString() }}
                         context={decisionContext}
                         unreachable={connection.unreachable}
-                        onAskAgain={expired ? () => void askAgain(entry) : undefined}
+                        onAskAgain={!readOnly && expired ? () => void askAgain(entry) : undefined}
                         resolving={deciding || session.streaming
                           ? (decidingAs ?? 'approve')
                           : undefined}
-                        onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
+                        onResolve={readOnly
+                          ? undefined
+                          : (resolution) => void resolveApproval(entry.callId, resolution)}
                       />
                     {/key}
                   {/if}

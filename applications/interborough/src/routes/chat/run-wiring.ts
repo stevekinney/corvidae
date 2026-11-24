@@ -1761,6 +1761,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         ),
         options.agentName(),
       );
+      // A shared reader receives the deliberately redacted transcript projection only. It must not
+      // enrich that view through the owner's run or task routes, even when a separately privileged
+      // reader could call those routes itself.
+      if (options.sharedRead === true) return thread;
       // The stream said why a run stopped while it was watched and does not say it again, so the
       // run's own record is read. The line is a courtesy: a record that cannot be read leaves the
       // thread as it is rather than failing the page's read of it.
