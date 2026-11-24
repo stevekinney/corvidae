@@ -11,7 +11,10 @@
         "scripts/**/*.playwright.ts",
         "scripts/affected-tests.ts",
         "scripts/chef/evaluate-outcomes.ts",
-        "scripts/cinder-release-consumer.ts"
+        "scripts/cinder-release-consumer.ts",
+        "scripts/owned-process-gate.ts",
+        "scripts/ensure-cinder-owned.test-support.ts",
+        "scripts/owned-process-lease.test-support.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -194,7 +197,8 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
-        "src/host/{cli,dev,serve}.ts!"
+        "src/host/{cli,dev,serve}.ts!",
+        "src/host/supervisor-owned.test-support.ts"
       ],
       "project": [
         "src/**/*.{ts,svelte}!",

@@ -22,15 +22,27 @@
  * COR-2540; `--showcase` derives only the port, its home being its own already). It chooses them once and hands them to every host it starts, so a restart comes back on
  * the same address.
  *
- * SIGINT and SIGTERM go to the child, and the supervisor exits once it has gone. A supervisor that
- * is killed outright (SIGKILL) cannot forward anything and leaves its child running.
+ * SIGINT and SIGTERM go to the child, and the supervisor exits once it has gone. After a supervisor
+ * is killed outright, `cleanup` retires its verified process group and Cinder generation group.
  *
  * @module supervisor
  */
 
+import { resolveBungalowDescriptor, resolveBungalowRoot } from '@lostgradient/bungalow';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { constants } from 'node:os';
+import { readdir } from 'node:fs/promises';
+import { constants, homedir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
+import {
+  OwnedProcessGroupUnverifiedError,
+  runOwnedProcessGroup,
+} from '../../../../scripts/owned-process-group.ts';
+import {
+  acquireOwnedProcessLease,
+  retireOwnedProcessLease,
+} from '../../../../scripts/owned-process-lease.ts';
+import type { HeldHostLock } from '../../../../scripts/run-exclusively.ts';
 
 import { runGit, staleBuildProblem, type GitRunner } from './build-info.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
@@ -41,12 +53,13 @@ import {
   type LaunchCommand,
 } from './launch-command.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
-import { SHOWCASE_FLAG } from './showcase.ts';
+import { SHOWCASE_FLAG, showcaseEnvironment } from './showcase.ts';
 import {
   deriveInstanceEnvironment,
   derivedInstanceMessage,
   linkedWorktreeRoot,
   operatingSystemFreePort,
+  readGitDirectories,
   type GitReader,
 } from './worktree-instance.ts';
 
@@ -56,6 +69,22 @@ export type SupervisorMode = 'serve' | 'dev';
 const HOST_DIRECTORY = import.meta.dir;
 
 const PACKAGE_DIRECTORY = join(HOST_DIRECTORY, '..', '..');
+
+export function supervisorLeaseIdentity(
+  environment: Readonly<Record<string, string | undefined>>,
+  showcase: boolean,
+  root: string,
+  nonce: string = crypto.randomUUID(),
+): string {
+  const homeEnvironment = showcase ? showcaseEnvironment(environment, root) : environment;
+  const options = { name: 'interborough', environment: homeEnvironment, homeDirectory: homedir() };
+  const descriptor = showcase
+    ? { kind: 'local' as const, root: resolveBungalowRoot(options) }
+    : resolveBungalowDescriptor(options);
+  return createHash('sha256')
+    .update('root' in descriptor ? descriptor.root : nonce)
+    .digest('hex');
+}
 
 /**
  * The command that runs the host in `mode`: Bun on the mode's entry (`serve.ts` or `dev.ts`, or
@@ -113,6 +142,7 @@ export type SuperviseOptions = {
   readonly error?: (message: string) => void;
   /** Where SIGINT and SIGTERM are heard. Defaults to the process. */
   readonly signals?: SupervisorSignals;
+  readonly owned?: HeldHostLock;
 };
 
 /** The number of the signal that ended a child, or 0 when none did. */
@@ -135,9 +165,11 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
   const signals = options.signals ?? process;
   let stopping = false;
   let child: Bun.Subprocess | undefined;
+  let signalOwned: ((signal: NodeJS.Signals) => void) | undefined;
   const forward = (signal: 'SIGINT' | 'SIGTERM') => () => {
     stopping = true;
     child?.kill(signal);
+    signalOwned?.(signal);
   };
   const handlers = { SIGINT: forward('SIGINT'), SIGTERM: forward('SIGTERM') } as const;
   signals.on('SIGINT', handlers.SIGINT);
@@ -149,6 +181,27 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
       if (problem !== undefined) {
         error(problem);
         return 1;
+      }
+      if (options.owned !== undefined) {
+        const lease = options.owned;
+        const code = await runOwnedProcessGroup({
+          command: options.command,
+          cwd: options.cwd ?? PACKAGE_DIRECTORY,
+          environment: options.environment ?? processEnvironment(),
+          token: lease.token,
+          handleSignals: false,
+          register: async (pid) => lease.recordProcessGroup(pid),
+          started: (pid, forwardSignal) => {
+            signalOwned = forwardSignal;
+            log(`Started the host (process ${pid}).`);
+            return !stopping;
+          },
+        });
+        signalOwned = undefined;
+        if (stopping) return code === RESTART_EXIT_CODE || code === 125 || code >= 128 ? 0 : code;
+        if (code !== RESTART_EXIT_CODE) return code;
+        log('The host asked to restart. Starting it again.');
+        continue;
       }
       const running = Bun.spawn([...options.command], {
         cwd: options.cwd ?? PACKAGE_DIRECTORY,
@@ -201,7 +254,7 @@ export function serveProblem(
 }
 
 const USAGE =
-  'Usage: bun src/host/supervisor.ts <serve|dev> [--entry <path>] [--plugin <path>]… [--showcase] (--plugin and --showcase are for dev only)';
+  'Usage: bun src/host/supervisor.ts <serve|dev> [--entry <path>] [--plugin <path>]… [--showcase], or bun src/host/supervisor.ts cleanup (--plugin and --showcase are for dev only)';
 
 /**
  * Run the supervisor for the command line `bun src/host/supervisor.ts <serve|dev> [--entry
@@ -225,6 +278,39 @@ export async function runSupervisor(
   worktree: WorktreeProbe = {},
 ): Promise<number> {
   const [mode, ...rest] = argumentsList;
+  if (mode === 'cleanup' && rest.length === 0) {
+    const found = (worktree.read ?? readGitDirectories)(worktree.directory ?? process.cwd());
+    if (found === undefined) throw new Error('Cleanup requires a verified git worktree.');
+    const deadline = performance.now() + 60_000;
+    const directory = join(found.topLevel, 'tmp');
+    const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    const locks = new Set<string>();
+    for (const name of names) {
+      const match =
+        /^(interborough-supervisor-[0-9a-f]{64}\.lock)(?:\.pending-[0-9a-f-]{36})?$/.exec(name);
+      if (match?.[1] !== undefined) locks.add(match[1]);
+    }
+    for (const name of locks) {
+      await retireOwnedProcessLease(
+        join(directory, name),
+        found.topLevel,
+        deadline,
+        undefined,
+        true,
+      );
+    }
+    await retireOwnedProcessLease(
+      join(found.topLevel, 'components', 'cinder', '.generate-lock'),
+      found.topLevel,
+      deadline,
+      undefined,
+      true,
+    );
+    return 0;
+  }
   let entry: string | undefined;
   const pluginPaths: string[] = [];
   let showcase = false;
@@ -250,6 +336,7 @@ export async function runSupervisor(
   const command = hostCommand(mode, entry, pluginPaths, showcase);
   // Recorded once, when the supervisor starts, and handed to every host it runs (COR-2009).
   const childEnvironment = { ...environment, ...launchCommandEnvironment(launch) };
+  let supervisorEnvironment = childEnvironment;
   if (mode === 'dev') {
     // A linked git worktree runs its own host (COR-2540). The home and the port are chosen once,
     // here, and handed to every host this supervisor starts, so a restart or a `--watch` reload
@@ -262,13 +349,34 @@ export async function runSupervisor(
       { home: !showcase },
     );
     if (instance.derived !== undefined) console.info(derivedInstanceMessage(instance.derived));
-    return supervise({ command, environment: instance.environment });
+    supervisorEnvironment = instance.environment;
   }
-  return supervise({
-    command,
-    environment: childEnvironment,
-    prepare: () => serveProblem(resolveBuildDirectory(environment)),
-  });
+  const prepare =
+    mode === 'serve' ? () => serveProblem(resolveBuildDirectory(environment)) : undefined;
+  const preparation = prepare === undefined ? {} : { prepare };
+  const found = (worktree.read ?? readGitDirectories)(worktree.directory ?? process.cwd());
+  if (found === undefined)
+    return supervise({ command, environment: supervisorEnvironment, ...preparation });
+  const identity = supervisorLeaseIdentity(supervisorEnvironment, showcase, found.topLevel);
+  const lease = await acquireOwnedProcessLease(
+    join(found.topLevel, 'tmp', `interborough-supervisor-${identity}.lock`),
+    found.topLevel,
+    `Interborough ${mode} supervisor`,
+  );
+  let safeToRelease = true;
+  try {
+    return await supervise({
+      command,
+      environment: supervisorEnvironment,
+      ...preparation,
+      owned: lease,
+    });
+  } catch (error) {
+    if (error instanceof OwnedProcessGroupUnverifiedError) safeToRelease = false;
+    throw error;
+  } finally {
+    if (safeToRelease) await lease.release();
+  }
 }
 
 if (import.meta.main) {

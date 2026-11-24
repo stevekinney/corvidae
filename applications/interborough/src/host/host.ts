@@ -1994,9 +1994,21 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       close: () => (held.closing ??= teardown(held)),
     };
   } catch (error) {
-    await teardown(held).catch(() => undefined);
-    throw error;
+    return failHostStartup(held, error);
   }
+}
+
+async function failHostStartup(held: Held, error: unknown): Promise<never> {
+  try {
+    await teardown(held);
+  } catch (cleanupError) {
+    throw new AggregateError(
+      [error, cleanupError],
+      'The host failed to start and did not shut down cleanly.',
+      { cause: cleanupError },
+    );
+  }
+  throw error;
 }
 
 /** The signing secret for worker start-override previews, derived from the per-process key. */
@@ -2048,6 +2060,16 @@ type Held = {
   closing?: Promise<void>;
 };
 
+/** A teardown failure reports whether every resource that can use the home closed. */
+class HostTeardownError extends AggregateError {
+  constructor(
+    errors: unknown[],
+    readonly resourcesClosed: boolean,
+  ) {
+    super(errors, 'The Interborough host did not shut down cleanly.');
+  }
+}
+
 /** Release everything the host holds, in the reverse of the order it took it, whatever failed. */
 async function teardown(held: Held): Promise<void> {
   const failures: unknown[] = [];
@@ -2063,10 +2085,11 @@ async function teardown(held: Held): Promise<void> {
   await step(
     instanceRecord && (() => removeInstanceRecord(instanceRecord.home, instanceRecord.pid)),
   );
+  const recordFailures = failures.length;
   // No change to the providers may start once the host is going away.
-  held.providers?.close();
-  held.plugins?.close();
-  held.skills?.close();
+  await step(held.providers && (() => held.providers?.close()));
+  await step(held.plugins && (() => held.plugins?.close()));
+  await step(held.skills && (() => held.skills?.close()));
   // End the reload streams first, so no page is left reading a host that is going away.
   await step(held.devReload && (() => held.devReload?.close()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
@@ -2081,6 +2104,6 @@ async function teardown(held: Held): Promise<void> {
   await step(storage && (() => disposeHostStorage(storage)));
   await step(() => held.bungalow.close());
   if (failures.length > 0) {
-    throw new AggregateError(failures, 'The Interborough host did not shut down cleanly.');
+    throw new HostTeardownError(failures, failures.length === recordFailures);
   }
 }
