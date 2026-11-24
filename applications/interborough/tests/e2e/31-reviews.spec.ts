@@ -261,7 +261,7 @@ async function captureDecisionNotice(page: Page, state: string, title: string): 
 }
 
 test.describe('a tool approval', () => {
-  test('keeps the open approval in a bounded decision column at 1920px', async ({
+  test('/reviews keeps the open approval in a bounded decision column at 1920px', async ({
     page,
     request,
   }) => {
