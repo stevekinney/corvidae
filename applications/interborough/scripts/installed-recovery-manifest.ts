@@ -47,7 +47,7 @@ export async function recoveryManifest(
       )
         throw new Error('Saved asset record differs');
     }
-    for (const digest of [...assetDigests].sort()) {
+    for (const digest of assetDigests.toSorted()) {
       if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid asset digest');
       const row = database
         .query<{ value: Uint8Array }, [string]>('SELECT value FROM kv WHERE key = ?')
@@ -69,7 +69,7 @@ export function assertRecoveryManifest(actual: RecoveryManifest, expected: Recov
     JSON.stringify(value, (_key, entry: unknown) =>
       entry !== null && typeof entry === 'object' && !Array.isArray(entry)
         ? Object.fromEntries(
-            Object.entries(entry).sort(([left], [right]) => left.localeCompare(right)),
+            Object.entries(entry).toSorted(([left], [right]) => left.localeCompare(right)),
           )
         : entry,
     );

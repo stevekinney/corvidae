@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   assertOneRefundResult,
   assertRecoveryManifest,
@@ -37,10 +38,12 @@ test('detects schema, content and identity mismatches', async () => {
     const changed = new Database(join(home, 'database.sqlite'));
     changed.query('UPDATE kv SET value = ? WHERE key = ?').run(Buffer.from('AP8C'), key);
     changed.close();
-    await expect(recoveryManifest(home, [digest], { review: 'review-1' })).rejects.toThrow(
-      'Asset digest mismatch',
+    expect(
+      await throwingRejectionOf(recoveryManifest(home, [digest], { review: 'review-1' })),
+    ).toThrow('Asset digest mismatch');
+    expect(await throwingRejectionOf(recoveryManifest(home, ['../asset'], {}))).toThrow(
+      'Invalid asset digest',
     );
-    await expect(recoveryManifest(home, ['../asset'], {})).rejects.toThrow('Invalid asset digest');
   } finally {
     await rm(home, { recursive: true, force: true });
   }
@@ -92,14 +95,14 @@ test('requires the restored review and setting from host readback', async () => 
     await writeFile(path, JSON.stringify(manifest));
     await verifyRecovery(home, server.url.href.replace(/\/$/, ''), path);
     wakeup = true;
-    await expect(verifyRecovery(home, server.url.href.replace(/\/$/, ''), path)).rejects.toThrow(
-      'Recovery manifest mismatch',
-    );
+    expect(
+      await throwingRejectionOf(verifyRecovery(home, server.url.href.replace(/\/$/, ''), path)),
+    ).toThrow('Recovery manifest mismatch');
     wakeup = false;
     reviewId = 'different-review';
-    await expect(verifyRecovery(home, server.url.href.replace(/\/$/, ''), path)).rejects.toThrow(
-      'Saved review is not pending',
-    );
+    expect(
+      await throwingRejectionOf(verifyRecovery(home, server.url.href.replace(/\/$/, ''), path)),
+    ).toThrow('Saved review is not pending');
   } finally {
     await server.stop(true);
     await rm(home, { recursive: true, force: true });

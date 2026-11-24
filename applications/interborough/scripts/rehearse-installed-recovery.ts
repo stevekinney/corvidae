@@ -77,11 +77,15 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
       registry.url.href,
     );
     let url: string | undefined;
+    let outcome: { ok: true; value: T } | { ok: false; error: unknown };
     try {
       const listening = await waitForListening(probe);
       url = `http://127.0.0.1:${listening.port}`;
-      return await action(url);
-    } finally {
+      outcome = { ok: true, value: await action(url) };
+    } catch (error) {
+      outcome = { ok: false, error };
+    }
+    try {
       if (probe.process.exitCode === null) probe.process.kill('SIGTERM');
       const exit = await probe.process.exited;
       await Promise.all([probe.stdout, probe.stderr]);
@@ -106,7 +110,13 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
         }
         if (response !== undefined) throw new Error('Host listener remained after shutdown');
       }
+    } catch (error) {
+      if (!outcome.ok)
+        throw new AggregateError([outcome.error, error], 'Host action and shutdown failed');
+      throw error;
     }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
   }
   async function command(
     executable: string,
