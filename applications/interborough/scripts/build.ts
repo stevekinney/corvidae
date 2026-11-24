@@ -40,6 +40,7 @@ import {
   BUILD_ASSET_DIRECTORY,
   pruneUnlinkedStylesheets,
 } from './browser-build.ts';
+import { warmSvelteTransforms } from './warm-svelte-transforms.ts';
 
 /** The `@lostgradient/interborough` package root. */
 export const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
@@ -227,6 +228,10 @@ export async function buildApplication(
   }
   const bundleStarted = performance.now();
   const development = options.development ?? false;
+  const warmTransforms =
+    development && options.bundle === undefined
+      ? await warmSvelteTransforms(join(PACKAGE_DIRECTORY, '.cache', 'svelte-transforms'))
+      : undefined;
   const directory =
     options.outdir === undefined
       ? DEFAULT_BUILD_DIRECTORY
@@ -243,6 +248,7 @@ export async function buildApplication(
         entrypoints: [ENTRY_HTML_PATH],
         outdir: staging,
         development,
+        ...(warmTransforms === undefined ? {} : { sveltePlugin: warmTransforms.plugin }),
         commit: displayedCommit(source),
       }),
       minify: !development,
@@ -270,7 +276,7 @@ export async function buildApplication(
     await replaceDirectory(staging, directory);
     if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
       console.error(
-        `STARTUP ${JSON.stringify({ stage: 'ui-bundle', milliseconds: performance.now() - bundleStarted })}`,
+        `STARTUP ${JSON.stringify({ stage: 'ui-bundle', milliseconds: performance.now() - bundleStarted, transforms: warmTransforms?.statistics })}`,
       );
     }
     return { directory, files: [...files, BUILD_INFO_FILE].toSorted(), metafile };

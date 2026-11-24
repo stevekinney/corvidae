@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2654",
+  "branch": "steve/cor-2654-warm-transforms",
+  "checkedAt": "87605764ad25263d628929c60c040a6127618780",
+  "briefVersion": "66735689f949",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Instrumentation and transform hit/miss receipt implemented; full live action receipt awaits qualification."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Concurrent worktree and production Settings profiles await coordinator qualification."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Matched cold and warm first-action pairs await coordinator qualification; scratch bundles alone do not establish the target."
+    }
+  ]
+}
