@@ -1,14 +1,14 @@
 {
   "issue": "COR-2607",
   "branch": "steve/cor-2607-hosted-oauth",
-  "checkedAt": "037956fd08d40366bfc4e195f8fbbd453ee9b7dc",
+  "checkedAt": "efb0a194af0e2e1615a444696b38a192e3f103bf",
   "briefVersion": "e7b47b78083d",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "MCP suite exit 0: registration, metadata fixtures, exact redirects, S256, issuer echo, discovery, exchange, refresh and authentication methods."
+      "evidence": "MCP suite exit 0: registration, metadata fixtures, exact redirects, S256, issuer echo, discovery, exchange, refresh and authentication methods. c3: package test:slow exit 0 (4 tests, 70 assertions), including installed HTTP source, manifest, loopback discovery and real provider dependency witness; exact-base control passed and pre-correction candidate failed."
     },
     {
       "id": "AC2",
