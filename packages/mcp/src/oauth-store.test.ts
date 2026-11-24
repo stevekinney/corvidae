@@ -27,6 +27,56 @@ const binding = {
 };
 
 describe('OAuthStore consent', () => {
+  test('lists and revokes only grants owned by the member in the active workspace', async () => {
+    using storage = new MemoryStorage();
+    const first = new OAuthStore(storage);
+    const second = new OAuthStore(storage);
+    for (const [id, tenant, subject] of [
+      ['own', 'tenant', 'subject'],
+      ['other-member', 'tenant', 'other'],
+      ['other-workspace', 'other', 'subject'],
+    ] as const) {
+      await first.createConsent(id, { ...consent, tenant, subject });
+      expect(
+        await first.approveConsent(
+          id,
+          { ...binding, subject },
+          {
+            grantId: id,
+            code: `code-${id}`,
+            tenant,
+            subject,
+            resource: consent.resource,
+            scopes: consent.scopes,
+          },
+        ),
+      ).toBe(true);
+    }
+    const identity = { issuer: consent.issuer, tenant: 'tenant', subject: 'subject' };
+    expect((await second.listGrants(identity)).map((grant) => grant.grantId)).toEqual(['own']);
+    expect(await second.revokeOwnedGrant('other-member', identity)).toBe(false);
+    expect(await second.revokeOwnedGrant('missing', identity)).toBe(false);
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalGet = storage.get.bind(storage);
+    const delayed = spyOn(storage, 'get').mockImplementation(async (key) => {
+      await pending;
+      return originalGet(key);
+    });
+    const mutableIdentity = { ...identity };
+    const foreign = second.revokeOwnedGrant('other-member', mutableIdentity);
+    mutableIdentity.subject = 'other';
+    release();
+    expect(await foreign).toBe(false);
+    delayed.mockRestore();
+    expect(await second.revokeOwnedGrant('own', identity)).toBe(true);
+    expect(await second.revokeOwnedGrant('own', identity)).toBe(true);
+    expect(await first.listGrants(identity)).toEqual([]);
+    expect((await first.getGrant('other-member'))?.active).toBe(true);
+  });
+
   test('approval and denial have one winner without partial grant or code records', async () => {
     using storage = new MemoryStorage();
     const first = new OAuthStore(storage);

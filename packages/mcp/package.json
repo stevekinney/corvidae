@@ -21,12 +21,14 @@
   "dependencies": {
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/storage-postgres": "workspace:*",
+    "pg": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
+    "@types/pg": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   },

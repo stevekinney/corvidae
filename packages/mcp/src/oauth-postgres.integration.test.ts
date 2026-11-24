@@ -5,10 +5,41 @@ import { createHash } from 'node:crypto';
 import { createProtectedHttpHandler } from './http.ts';
 import { OAuthStore } from './oauth-store.ts';
 import { hostedOAuth } from './oauth/issuer.ts';
+import { createPostgresGrantRevocationChannel } from './oauth/postgres.ts';
 
 const database = await createPostgresTestServer();
 afterAll(async () => {
   await database[Symbol.asyncDispose]();
+});
+
+test('Postgres notices target the grant and issuer across independent connections', async () => {
+  await using first = await createPostgresGrantRevocationChannel({
+    url: database.url,
+    issuer: 'https://issuer.test',
+  });
+  await using second = await createPostgresGrantRevocationChannel({
+    url: database.url,
+    issuer: 'https://issuer.test',
+  });
+  await using other = await createPostgresGrantRevocationChannel({
+    url: database.url,
+    issuer: 'https://other.test',
+  });
+  let otherCalls = 0;
+  let delivered!: () => void;
+  const noticed = new Promise<void>((resolve) => {
+    delivered = resolve;
+  });
+  second.subscribe('grant', delivered);
+  second.subscribe('other-grant', () => {
+    otherCalls++;
+  });
+  other.subscribe('grant', () => {
+    otherCalls++;
+  });
+  await first.publish('grant');
+  await noticed;
+  expect(otherCalls).toBe(0);
 });
 
 test('consent, exchange, rotation and revocation survive separate PostgreSQL pools', async () => {
@@ -285,13 +316,23 @@ test('separate live issuers enforce grant and current authority across restart',
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      client_name: 'Client',
+      client_name: 'Claude',
       redirect_uris: ['https://client.test/callback'],
       token_endpoint_auth_method: 'none',
     }),
   });
   expect(registration.status).toBe(201);
   const client = await registration.json();
+  const chatRegistration = await request(first, '/oauth/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_name: 'ChatGPT',
+      redirect_uris: ['https://client.test/callback'],
+      token_endpoint_auth_method: 'none',
+    }),
+  });
+  const chatClient = await chatRegistration.json();
   const verifier = 'a'.repeat(43);
   const authorize = new URLSearchParams({
     client_id: client.client_id,
@@ -301,8 +342,10 @@ test('separate live issuers enforce grant and current authority across restart',
     code_challenge_method: 'S256',
     resource: 'https://issuer.test/mcp',
   });
-  const issueCode = async () => {
-    const page = await request(first, `/oauth/authorize?${authorize}`);
+  const issueCode = async (clientId: string = client.client_id) => {
+    const query = new URLSearchParams(authorize);
+    query.set('client_id', clientId);
+    const page = await request(first, `/oauth/authorize?${query}`);
     const html = await page.text();
     const transaction = /name="transaction" value="([^"]+)"/.exec(html)![1]!;
     const csrf = /name="csrf" value="([^"]+)"/.exec(html)![1]!;
@@ -312,20 +355,20 @@ test('separate live issuers enforce grant and current authority across restart',
       body: new URLSearchParams({
         transaction,
         csrf,
-        client_id: client.client_id,
+        client_id: clientId,
         decision: 'approve',
       }),
     });
     expect(response.status).toBe(302);
     return new URL(response.headers.get('location')!).searchParams.get('code')!;
   };
-  const exchange = (code: string) =>
+  const exchange = (code: string, clientId: string = client.client_id) =>
     request(second, '/oauth/token', {
       method: 'POST',
       headers,
       body: new URLSearchParams({
         grant_type: 'authorization_code',
-        client_id: client.client_id,
+        client_id: clientId,
         code,
         redirect_uri: 'https://client.test/callback',
         code_verifier: verifier,
@@ -334,12 +377,15 @@ test('separate live issuers enforce grant and current authority across restart',
     });
   const code = await issueCode();
   const independentCode = await issueCode();
+  const chatCode = await issueCode(chatClient.client_id);
+  const pendingCode = await issueCode();
   await firstStorage[Symbol.asyncDispose]();
   const exchanged = await exchange(code);
   expect(exchanged.status).toBe(200);
   const tokens = await exchanged.json();
   const independentResponse = await exchange(independentCode);
   const independent = await independentResponse.json();
+  const chat = await (await exchange(chatCode, chatClient.client_id)).json();
   await secondStorage[Symbol.asyncDispose]();
   await using restartedStorage = new PostgresStorage(configuration);
   await using peerStorage = new PostgresStorage(configuration);
@@ -347,6 +393,26 @@ test('separate live issuers enforce grant and current authority across restart',
   const peer = makeIssuer(peerStorage);
   const originalGrant = await restarted.verifyAccessToken(tokens.access_token);
   const independentGrant = await restarted.verifyAccessToken(independent.access_token);
+  const pendingGrant = await new OAuthStore(restartedStorage).getCode(pendingCode);
+  expect(
+    await restarted.revokeConnectedApp(
+      { subject: 'subject', tenant: 'tenant' },
+      pendingGrant!.grantId,
+    ),
+  ).toBe(true);
+  const refusedExchange = await request(restarted, '/oauth/token', {
+    method: 'POST',
+    headers,
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: client.client_id,
+      code: pendingCode,
+      redirect_uri: 'https://client.test/callback',
+      code_verifier: verifier,
+      resource: 'https://issuer.test/mcp',
+    }),
+  });
+  expect(await refusedExchange.json()).toEqual({ error: 'invalid_grant' });
   expect(originalGrant).toEqual(
     expect.objectContaining({ tenant: 'tenant', clientId: client.client_id, subject: 'subject' }),
   );
@@ -399,22 +465,75 @@ test('separate live issuers enforce grant and current authority across restart',
   expect(beforeRevoke.status).toBe(200);
   expect(await beforeRevoke.text()).toBe('ok');
   expect(dispatches).toBe(1);
+  let streamController!: ReadableStreamDefaultController<Uint8Array>;
+  const streamHandler = createProtectedHttpHandler({
+    origin: 'https://issuer.test',
+    resourcePath: '/mcp',
+    issuer: 'https://issuer.test',
+    scopes: ['read'],
+    verifyAccessToken: peer.verifyAccessToken,
+    resolvePrincipal: async () => ({ delegableScopes: ['read'] }),
+    dispatch: async (_request, context) => {
+      const decision = await context.requireScopes(['read']);
+      if (!decision.ok) return decision.response;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            streamController = controller;
+            controller.enqueue(new TextEncoder().encode('first'));
+          },
+        }),
+      );
+    },
+  });
+  const streamResponse = await streamHandler(
+    new Request('https://issuer.test/mcp', {
+      headers: { authorization: `Bearer ${rotated.access_token}` },
+    }),
+  );
+  const streamReader = streamResponse.body!.getReader();
+  expect(new TextDecoder().decode((await streamReader.read()).value)).toBe('first');
   pauseAt = authorityCalls + 2;
   const racingAccess = protectedRequest();
   await reachedPause;
-  const revoked = await request(restarted, '/oauth/revoke', {
-    method: 'POST',
-    headers,
-    body: new URLSearchParams({ client_id: client.client_id, token: rotated.refresh_token }),
-  });
-  expect(revoked.status).toBe(200);
-  expect(await new OAuthStore(restartedStorage).getAccess(rotated.access_token)).toBeNull();
+  expect(
+    await restarted.revokeConnectedApp(
+      { subject: 'subject', tenant: 'tenant' },
+      originalGrant!.grantId!,
+    ),
+  ).toBe(true);
   release();
+  streamController.enqueue(new TextEncoder().encode('private-after-revoke'));
+  expect((await streamReader.read()).done).toBe(true);
+  expect(await new OAuthStore(restartedStorage).getAccess(rotated.access_token)).toBeNull();
   const afterRevoke = await racingAccess;
   expect(afterRevoke.status).toBe(401);
   expect(dispatches).toBe(1);
   expect(await restarted.verifyAccessToken(rotated.access_token)).toBeNull();
   expect(await restarted.verifyAccessToken(independent.access_token)).not.toBeNull();
+  expect(await restarted.verifyAccessToken(chat.access_token)).not.toBeNull();
+  for (const accessToken of [independent.access_token, chat.access_token]) {
+    const response = await protectedHttp(
+      new Request('https://issuer.test/mcp', {
+        headers: { authorization: `Bearer ${accessToken}` },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('ok');
+  }
+  const revokedRefresh = await request(peer, '/oauth/token', {
+    method: 'POST',
+    headers,
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: client.client_id,
+      refresh_token: rotated.refresh_token,
+      resource: 'https://issuer.test/mcp',
+    }),
+  });
+  expect(await revokedRefresh.json()).toEqual({ error: 'invalid_grant' });
+  expect((await protectedRequest()).status).toBe(401);
+  expect((await request(peer, `/oauth/authorize?${authorize}`)).status).toBe(200);
   delegableScopes = [];
   expect(await restarted.verifyAccessToken(independent.access_token)).toBeNull();
   const deniedDelegation = await request(peer, '/oauth/token', {

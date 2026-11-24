@@ -531,6 +531,40 @@
         "typescript": "catalog:",
       },
     },
+    "packages/connected-apps": {
+      "name": "@lostgradient/connected-apps",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+        "@lostgradient/backchannel-svelte": "workspace:*",
+        "@lostgradient/mcp": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/storage-postgres": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@modelcontextprotocol/client": "catalog:",
+        "@tanstack/svelte-query": "catalog:",
+        "@types/bun": "catalog:",
+        "armorer": "workspace:*",
+        "oxlint": "catalog:",
+        "playwright": "catalog:",
+        "prettier": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "svelte": "catalog:",
+      },
+      "optionalPeers": [
+        "@lostgradient/cinder",
+      ],
+    },
     "packages/conversationalist": {
       "name": "conversationalist",
       "dependencies": {
@@ -648,13 +682,15 @@
       "version": "0.0.0",
       "dependencies": {
         "@lostgradient/storage": "workspace:*",
+        "@lostgradient/storage-postgres": "workspace:*",
+        "pg": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@lostgradient/storage-postgres": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "@types/pg": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
@@ -1593,6 +1629,8 @@
     "@lostgradient/cinder-mcp": ["@lostgradient/cinder-mcp@workspace:packages/cinder-mcp"],
 
     "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
+
+    "@lostgradient/connected-apps": ["@lostgradient/connected-apps@workspace:packages/connected-apps"],
 
     "@lostgradient/credentials": ["@lostgradient/credentials@workspace:packages/credentials"],
 

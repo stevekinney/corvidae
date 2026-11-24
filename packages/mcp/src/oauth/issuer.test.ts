@@ -72,6 +72,20 @@ describe('hosted OAuth issuer', () => {
       grants.push(JSON.parse(new TextDecoder().decode(value)));
     expect(grants).toHaveLength(1);
     expect(grants[0].grantId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await issuer.listConnectedApps({ subject: 'subject', tenant: 'tenant' })).toEqual([
+      expect.objectContaining({
+        grantId: grants[0].grantId,
+        clientName: 'Client',
+        clientId: client.client_id,
+        resource: 'https://issuer.test/mcp',
+        approvedAt: expect.any(Number),
+        permissions: [{ scope: 'read', description: 'Read', available: true }],
+      }),
+    ]);
+    expect(await issuer.listConnectedApps({ subject: 'other', tenant: 'tenant' })).toEqual([]);
+    expect(
+      await issuer.revokeConnectedApp({ subject: 'other', tenant: 'tenant' }, grants[0].grantId),
+    ).toBe(false);
     const token = await request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },

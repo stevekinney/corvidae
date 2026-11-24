@@ -27,6 +27,7 @@ type Options = {
       tenant: string;
     }): Promise<{ delegableScopes: string[] } | null>;
   };
+  notifyGrantRevoked?: (grantId: string) => Promise<void>;
 };
 const random = () => randomBytes(32).toString('base64url');
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -475,5 +476,43 @@ export function hostedOAuth(configuration: Options) {
       scopes: grant.scopes,
     };
   };
-  return { handle, verifyAccessToken };
+  const listConnectedApps = async (identity: { subject: string; tenant: string }) => {
+    identity = { ...identity };
+    const principal = await authority(identity);
+    if (!principal) throw new Error('Forbidden');
+    const grants = await options.store.listGrants({ issuer: options.issuer, ...identity });
+    return Promise.all(
+      grants.map(async (grant) => {
+        const client = await clientFor(grant.client);
+        return {
+          grantId: grant.grantId,
+          clientId: grant.client,
+          clientName: client?.name ?? 'Unknown Client',
+          resource: grant.resource,
+          approvedAt: grant.approvedAt,
+          permissions: grant.scopes.map((scope) => ({
+            scope,
+            description: Object.hasOwn(options.scopeDescriptions, scope)
+              ? options.scopeDescriptions[scope]!
+              : scope,
+            available: principal.delegableScopes.includes(scope),
+          })),
+        };
+      }),
+    );
+  };
+  const revokeConnectedApp = async (
+    identity: { subject: string; tenant: string },
+    grantId: string,
+  ) => {
+    identity = { ...identity };
+    if (!(await authority(identity))) throw new Error('Forbidden');
+    const revoked = await options.store.revokeOwnedGrant(grantId, {
+      issuer: options.issuer,
+      ...identity,
+    });
+    if (revoked && options.notifyGrantRevoked) await options.notifyGrantRevoked(grantId);
+    return revoked;
+  };
+  return { handle, verifyAccessToken, listConnectedApps, revokeConnectedApp };
 }
