@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2669",
+  "branch": "steve/composable-compiler-source-maps",
+  "checkedAt": "03f750a182490844965181ae3ed551b9d52d6617",
+  "briefVersion": "ae057174bde7",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "compiler-source-maps.integration.test.ts passed with Bun 1.4.4; base control reproduced InvalidBase64"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "compiler.test.ts passed for both plugin loaders and decoded source maps"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "after Cinder tokens:seed, dev-watch.slow.test.ts passed all three unchanged scenarios"
+    }
+  ]
+}
