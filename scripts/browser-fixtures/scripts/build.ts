@@ -18,7 +18,7 @@ const rootFixtureBuild: FixtureBuild = {
 };
 
 export async function buildFixtures(development = false): Promise<void> {
-  ensureCinderGenerated();
+  await ensureCinderGenerated();
   await buildSuiteFixtures(rootFixtureBuild, development);
 }
 

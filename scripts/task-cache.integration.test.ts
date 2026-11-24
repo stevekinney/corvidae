@@ -445,6 +445,9 @@ const scenario8 = await outcomeOf(async () => {
       ['components/cinder/src/index.ts', 'export const value = 1;\n'],
       ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 1;\n'],
       ['scripts/bun-test-junit.ts', 'export const runner = 1;\n'],
+      ['scripts/owned-process-gate.ts', 'export const gate = 1;\n'],
+      ['scripts/owned-process-group.ts', 'export const group = 1;\n'],
+      ['scripts/owned-process-lease.ts', 'export const lease = 1;\n'],
       ['scripts/tool.ts', 'export const tool = 1;\n'],
       ['AGENTS.md', '# Agents\n'],
     ] as const) {
@@ -492,6 +495,9 @@ const scenario8 = await outcomeOf(async () => {
       ['components/cinder/src/index.ts', 'export const value = 2;\n'],
       ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 2;\n'],
       ['scripts/bun-test-junit.ts', 'export const runner = 2;\n'],
+      ['scripts/owned-process-gate.ts', 'export const gate = 2;\n'],
+      ['scripts/owned-process-group.ts', 'export const group = 2;\n'],
+      ['scripts/owned-process-lease.ts', 'export const lease = 2;\n'],
     ];
     let previous = before;
     for (const [path, text] of changes) {
@@ -562,6 +568,8 @@ test('the browser-fixtures task declares every root file its commands read, and 
     inputs.some((input) => input === `$TURBO_ROOT$/${path}` || input === path);
   const required = [
     ...reached,
+    // The owned group starts its fixed gate by path rather than importing it.
+    'scripts/owned-process-gate.ts',
     // Read by `bun-test-junit.ts` through `check-test-durations.ts`.
     'scripts/test-duration-allowlist.json',
     // Bun's own configuration for a run from the repository root. `tsconfig.json` is a global
@@ -916,6 +924,11 @@ test('a package task keys on every root script it runs and every root script tho
     }
   }
   expect(missing.toSorted()).toEqual([]);
+
+  // The metadata helper spawns this fixed entrypoint through the owned process gate.
+  expect(tasks['@lostgradient/interborough#build']?.inputs).toContain(
+    '$TURBO_ROOT$/scripts/owned-process-gate.ts',
+  );
 
   // The other direction: a root script listed as an input that no workspace running the task can
   // reach widens the cache key, so a change to it re-runs work it cannot affect.

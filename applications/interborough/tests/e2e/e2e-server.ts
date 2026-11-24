@@ -382,7 +382,8 @@ let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // is its own. Two more again (`question-agents.ts`) ask the person more than one thing.
 const barrier = createBarrier();
 const showcaseStartup = trackStartupPromise(
-  seedSampleWorld(join(scratch, 'showcase-home', '.interborough'), {
+  seedSampleWorld(join(scratch, 'showcase-home'), {
+    ownership: { root: scratch, owner: join(import.meta.dir, '../../../..') },
     host: { port: E2E_SHOWCASE_PORT, buildDirectory },
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
     // Each step of the story is a phase of its own, so a seed that never settles leaves the step

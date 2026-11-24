@@ -1,11 +1,14 @@
 import { openBungalow } from '@lostgradient/bungalow';
 import { definePlugin, type PluginSetupContext } from '@lostgradient/interborough-plugin';
 import { createAgent, createDefaultRuntimeServices, stopWhen } from '@lostgradient/operative';
+import { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { resetOwnedFixture } from '../../fixtures/fixture-ownership.ts';
 import { startHost, type Host } from './host.ts';
 
 const homes: string[] = [];
@@ -37,9 +40,13 @@ describe('workspace runtime identity', () => {
   });
 
   test('keeps two homes isolated when names overlap, and closing B leaves A usable', async () => {
-    const homeA = await mkdtemp(join(tmpdir(), 'interborough-workspace-a-'));
-    const homeB = await mkdtemp(join(tmpdir(), 'interborough-workspace-b-'));
-    homes.push(homeA, homeB);
+    const root = await mkdtemp(join(tmpdir(), 'interborough-workspaces-'));
+    homes.push(root);
+    const homeA = join(root, 'a');
+    const homeB = join(root, 'b');
+    const ownership = { root, owner: root };
+    const lease = await resetOwnedFixture(homeA, ownership);
+    lease.release();
     const contexts = new Map<string, PluginSetupContext>();
     async function start(home: string, sentinel: string) {
       const environment = { INTERBOROUGH_HOME: home };
@@ -119,6 +126,10 @@ describe('workspace runtime identity', () => {
     }
     const encoder = new TextEncoder();
     const principal = { id: 'anonymous:local' };
+    await Promise.all([
+      contexts.get(homeA)!.storage.put('shared-key', encoder.encode('Home A evidence')),
+      contexts.get(homeB)!.storage.put('shared-key', encoder.encode('Home B evidence')),
+    ]);
     for (const [home, host, sentinel] of [
       [homeA, hostA, 'Home A evidence'],
       [homeB, hostB, 'Home B evidence'],
@@ -186,12 +197,42 @@ describe('workspace runtime identity', () => {
     }
     await verify(hostA, homeA, 'Home A evidence', 'Home B evidence');
     await verify(hostB, homeB, 'Home B evidence', 'Home A evidence');
+    const schemaVersion = (home: string) => {
+      const database = new Database(join(home, 'database.sqlite'), { readonly: true });
+      try {
+        return database.query('PRAGMA schema_version').get();
+      } finally {
+        database.close();
+      }
+    };
+    const beforeSchemaA = schemaVersion(homeA);
+    const beforeSchemaB = schemaVersion(homeB);
+    const contentDigest = async () =>
+      createHash('sha256')
+        .update(await Bun.file(join(homeB, 'workflows', 'shared-workflow.json')).bytes())
+        .digest('hex');
+    const beforeDigestB = await contentDigest();
+
+    await hostA.close();
+    hosts.splice(hosts.indexOf(hostA), 1);
+    const reset = await resetOwnedFixture(homeA, ownership);
+    reset.release();
+    await verify(hostB, homeB, 'Home B evidence', 'Home A evidence');
+    expect(await chat(hostB, 'after-reset-a')).toContain('Home B evidence');
+    const restartedA = await start(homeA, 'Home A evidence');
+    hosts.push(restartedA);
+    await contexts.get(homeA)!.storage.put('shared-key', encoder.encode('Home A evidence'));
+    expect(new TextDecoder().decode((await contexts.get(homeA)!.storage.get('shared-key'))!)).toBe(
+      'Home A evidence',
+    );
+    expect(schemaVersion(homeA)).toEqual(beforeSchemaA);
+    expect(schemaVersion(homeB)).toEqual(beforeSchemaB);
+    expect(await contentDigest()).toBe(beforeDigestB);
 
     await hostB.close();
     hosts.splice(hosts.indexOf(hostB), 1);
-    expect(hostA.bureau.lifecycle).toBe('ready');
-    expect(hostA.bureau.id).toBe(hostA.workspaceId);
-    await verify(hostA, homeA, 'Home A evidence', 'Home B evidence');
-    expect(await chat(hostA, 'after-closing-b')).toContain('Home A evidence');
+    expect(restartedA.bureau.lifecycle).toBe('ready');
+    expect(restartedA.bureau.id).toBe(restartedA.workspaceId);
+    expect(await chat(restartedA, 'after-closing-b')).toContain('Home A evidence');
   });
 });
