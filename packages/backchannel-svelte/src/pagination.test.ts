@@ -1,7 +1,69 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { QueryClient } from '@tanstack/svelte-query';
 import { expect, it } from 'bun:test';
 import { createCatalogHost } from './index.ts';
 import { createPagination } from './pagination.ts';
+
+it('ignores inherited cursors and item identity fields', async () => {
+  const cache = new QueryClient();
+  let calls = 0;
+  const host = createCatalogHost({
+    scope: 'a',
+    cache,
+    transport: async () => {
+      calls++;
+      return { items: [{ id: 'inherited' }], next: null, total: 2 };
+    },
+  });
+  const input = () => ({});
+  const fields = {
+    items: 'items',
+    cursorInput: 'cursor',
+    nextCursor: 'next',
+    total: 'total',
+    itemKey: ['id'],
+  };
+  const pages = createPagination(host, 'list', input, fields);
+  cache.setQueryData(
+    host.key('list', input()),
+    Object.assign(Object.create({ next: 'inherited' }), { items: [] }),
+  );
+  await pages.loadMore();
+  expect(calls).toBe(0);
+  const inheritedItem = Object.create({ id: 'inherited' });
+  cache.setQueryData(host.key('list', input()), { items: [inheritedItem], next: 'next' });
+  await pages.loadMore();
+  expect(calls).toBe(1);
+  const result = cache.getQueryData<{ items: unknown[] }>(host.key('list', input()));
+  expect(result?.items).toHaveLength(2);
+});
+
+it('rejects inherited page items and totals', async () => {
+  for (const inherited of ['current-items', 'next-items', 'next-total']) {
+    const cache = new QueryClient();
+    const next =
+      inherited === 'next-items'
+        ? Object.assign(Object.create({ items: [] }), { next: null, total: 1 })
+        : inherited === 'next-total'
+          ? Object.assign(Object.create({ total: 1 }), { items: [], next: null })
+          : { items: [], next: null, total: 1 };
+    const host = createCatalogHost({ scope: 'a', cache, transport: async () => next });
+    const input = () => ({});
+    const current =
+      inherited === 'current-items'
+        ? Object.assign(Object.create({ items: [] }), { next: 'cursor' })
+        : { items: [], next: 'cursor' };
+    cache.setQueryData(host.key('list', input()), current);
+    const pages = createPagination(host, 'list', input, {
+      items: 'items',
+      cursorInput: 'cursor',
+      nextCursor: 'next',
+      total: 'total',
+      itemKey: ['id'],
+    });
+    expect(await throwingRejectionOf(pages.loadMore())).toThrow('Invalid page');
+  }
+});
 
 it('deduplicates pages by composite identity and respects the declared total', async () => {
   const cache = new QueryClient();

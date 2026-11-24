@@ -27,7 +27,10 @@ export function createPagination(
       const key = host.key(operation, currentInput);
       const keyHash = hashKey(key);
       const current = host.cache.getQueryData<Record<string, unknown>>(key);
-      const cursor = current?.[descriptor.nextCursor];
+      const cursor =
+        current !== undefined && Object.hasOwn(current, descriptor.nextCursor)
+          ? current[descriptor.nextCursor]
+          : undefined;
       if (cursor == null) return Promise.resolve();
       pending = (async () => {
         const next = (await host.call(operation, {
@@ -40,9 +43,12 @@ export function createPagination(
           host.cache.getQueryData(key) !== current
         )
           return;
-        const before = current?.[descriptor.items];
-        const after = next[descriptor.items];
-        const total = next[descriptor.total];
+        const before =
+          current !== undefined && Object.hasOwn(current, descriptor.items)
+            ? current[descriptor.items]
+            : undefined;
+        const after = Object.hasOwn(next, descriptor.items) ? next[descriptor.items] : undefined;
+        const total = Object.hasOwn(next, descriptor.total) ? next[descriptor.total] : undefined;
         if (
           !Array.isArray(before) ||
           !Array.isArray(after) ||
@@ -53,7 +59,11 @@ export function createPagination(
         const seen = new Set<string>();
         const items = [...before, ...after]
           .filter((item: Record<string, unknown>) => {
-            const identity = JSON.stringify(descriptor.itemKey.map((field) => item[field]));
+            const identity = JSON.stringify(
+              descriptor.itemKey.map((field) =>
+                Object.hasOwn(item, field) ? item[field] : undefined,
+              ),
+            );
             if (seen.has(identity)) return false;
             seen.add(identity);
             return true;
