@@ -155,7 +155,10 @@ test('browser login resumes consent and connector authority stays separate', asy
   const resource = `${issuerOrigin}/mcp`;
   const principal = async () => (active ? { delegableScopes: [...scopes] } : null);
   const store = new OAuthStore(storage);
-  let issuer!: ReturnType<typeof hostedOAuth>;
+  function createIssuer() {
+    return hostedOAuth(issuerOptions);
+  }
+  let issuer!: ReturnType<typeof createIssuer>;
   let protectedHandler!: ReturnType<typeof createProtectedHttpHandler>;
   const app = Bun.serve({
     hostname: '127.0.0.1',
@@ -222,7 +225,7 @@ test('browser login resumes consent and connector authority stays separate', asy
   for await (const entry of distinctStorage.scan(''))
     throw new Error(`Unexpected record ${entry[0]}`);
   for await (const entry of storage.scan('')) throw new Error(`Unexpected record ${entry[0]}`);
-  issuer = hostedOAuth(issuerOptions);
+  issuer = createIssuer();
   protectedHandler = createProtectedHttpHandler({
     origin: issuerOrigin,
     resourcePath: '/mcp',
