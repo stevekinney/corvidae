@@ -148,14 +148,16 @@ function rowDate(
 function currentRunLine(runs: WorkflowRunCounts): LinePart | null {
   const current = runs.current;
   if (current === null) return null;
+  // The engine leaves an await-signal run `running` while it is parked, so the named durable wait
+  // is more specific than that transport state. A suspended run without a named signal is the
+  // separate human-input state below.
+  if (current.waitingForSignal !== null) {
+    return { text: WORKFLOW_COPY.list.waiting, status: 'Waiting' };
+  }
   if (current.status === 'suspended') {
-    const status = current.waitingForSignal === null ? 'Waiting on you' : 'Waiting';
     return {
-      text:
-        current.waitingForSignal === null
-          ? WORKFLOW_COPY.list.waitingOnYou
-          : WORKFLOW_COPY.list.waiting,
-      status,
+      text: WORKFLOW_COPY.list.waitingOnYou,
+      status: 'Waiting on you',
     };
   }
   if (current.status === 'pending') {

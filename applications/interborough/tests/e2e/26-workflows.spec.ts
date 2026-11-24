@@ -324,21 +324,43 @@ test.describe('the list', () => {
           }
           await route.fulfill({ response, json });
         });
+        // This is the connected-provider first-use state: Ask an agent is an enabled secondary
+        // action, not an absent action or the disabled no-provider state.
+        await page.route('**/host/providers', async (route) => {
+          const response = await route.fetch();
+          const json = (await response.json()) as {
+            providers: Array<Record<string, unknown>>;
+          };
+          await route.fulfill({
+            response,
+            json: {
+              ...json,
+              providers: json.providers.map((provider) => ({
+                ...provider,
+                configured: true,
+                hasKey: true,
+                connected: true,
+              })),
+            },
+          });
+        });
         await page.goto('/workflows');
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
         await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
-        // The header carries the internal-workflows affordance; first use has only its two actions.
+        // The header carries the internal-workflows affordance; first use has the two semantic
+        // ListPageEmpty link actions, New workflow and the connected Ask action.
         await expect(
           page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
         ).toBeVisible();
+        await expect(empty.getByRole('link', { name: WORKFLOW_COPY.newAction })).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
-        ).toHaveCount(0);
+        ).toHaveAttribute('href', '/chats/new?from=workflows');
         await expect(area(page).getByTestId('internal-workflows-action')).toBeVisible();
         const directory = await workflowDirectory(request);
         await expect(empty).not.toContainText(directory);
-        await expect(empty.locator('.cinder-empty-state-action > a')).toHaveCount(2);
+        await expect(empty.getByRole('link')).toHaveCount(2);
         await expect(empty.getByTestId('workflows-file-hint')).toHaveText(
           WORKFLOW_COPY.list.empty.fileHint,
         );

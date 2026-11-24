@@ -330,7 +330,7 @@ describe('a row of the list', () => {
     expect(textsOf(model.line)).toEqual(['1 step', '1 run']);
   });
 
-  test('says a suspended run is waiting without changing the workflow status', () => {
+  test('says a run with a named signal is waiting even while the engine reports it running', () => {
     const model = workflowListRow(
       fileRow(
         readyFile('release-notes', {
@@ -340,7 +340,7 @@ describe('a row of the list', () => {
             active: 1,
             current: {
               startedAt: '2026-11-02T10:00:00-06:00',
-              status: 'suspended',
+              status: 'running',
               step: 2,
               totalSteps: 4,
               waitingForSignal: 'approve',
