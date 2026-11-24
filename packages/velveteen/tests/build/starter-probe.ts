@@ -113,17 +113,23 @@ try {
   for (const [name, entry, forbidden] of [
     ["velveteen", "@lostgradient/velveteen/server", /backchannel|armorer/i],
     ["backchannel", "@lostgradient/backchannel", /velveteen|armorer/i],
+    ["headless", "@lostgradient/backchannel-mcp", /velveteen|armorer/i],
     ["armorer", "armorer/mcp/http", /velveteen|backchannel/i],
   ] as const) {
     for (const production of [false, true]) {
       const consumer = join(directory, `${name}-${production ? "production" : "development"}`);
       await mkdir(consumer);
-      const dependencies = name === "velveteen"
+      const dependencies: Record<string, string> = name === "velveteen"
         ? { "@lostgradient/velveteen": `file:${join(application, ".velveteen/velveteen.tgz")}`, svelte: "5.57.1" }
-        : { [name === "armorer" ? "armorer" : "@lostgradient/backchannel"]: `file:${archives[name === "armorer" ? "armorer" : "@lostgradient/backchannel"]}` };
+        : { [name === "armorer" ? "armorer" : "@lostgradient/backchannel"]: `file:${archives[name === "armorer" ? "armorer" : "@lostgradient/backchannel"]}`, zod: "^4.6.6" };
+      if (name === "headless") dependencies["@lostgradient/backchannel-mcp"] = `file:${archives["@lostgradient/backchannel-mcp"]}`;
+      if (name === "headless" || name === "armorer") dependencies["@modelcontextprotocol/client"] = "2.4.0";
       await writeFile(join(consumer, "package.json"), JSON.stringify({ name: `independent-${name}`, private: true, type: "module", dependencies }));
       assertSuccess(`${name} isolated installation`, run([process.execPath, "install", "--ignore-scripts", ...(production ? ["--production"] : [])], consumer));
       assertSuccess(`${name} isolated public import`, run([process.execPath, "-e", `await import(${JSON.stringify(entry)})`], consumer));
+      const fixture = name === "headless" ? "backchannel" : name;
+      await writeFile(join(consumer, "probe.ts"), catalogConsumerFiles[`probe/standalone-${fixture}.ts`]!);
+      assertSuccess(`${name} isolated behavior`, run([process.execPath, "probe.ts", ...(name === "headless" ? ["mcp"] : [])], consumer));
       for await (const path of new Bun.Glob("**/package.json").scan({ cwd: join(consumer, "node_modules"), onlyFiles: true })) {
         const installed = JSON.parse(await readFile(join(consumer, "node_modules", path), "utf8")) as { name?: string };
         if (installed.name && forbidden.test(installed.name)) throw new Error(`${name} acquired provider dependency ${installed.name}`);
@@ -224,7 +230,7 @@ try {
     `import { createOperationHandler, principalFromApiKey } from '@lostgradient/backchannel';\nimport { createOperationMcpMount } from '@lostgradient/backchannel-mcp';\nimport { createMCP, createToolbox } from 'armorer';\nimport { operations, state } from './catalog.ts';\nimport { equipment, lookup, operations as equipmentOperations } from './equipment.ts';\n` +
       serverText.replace(
         "createApplication({ generation })",
-        `createApplication({ generation, mounts: { '/native': async () => { const native = await createMCP(createToolbox([lookup])); return { fetch: (request) => request.headers.get('cookie')?.includes('actor=1') ? native.fetch(request) : new Response(null, { status: 401 }), close: native.close }; }, '/service': () => { const handler = createOperationHandler({ operations: [...operations, ...equipmentOperations], mounts: [createOperationMcpMount({ serverInfo: { name: 'equipment', version: '1' } })], host: {}, authenticate: async (request) => request.headers.get('cookie')?.includes('actor=1') ? { method: 'api-key', principal: principalFromApiKey({ subject: 'actor', scopes: ['equipment:read', 'equipment:write'] }) } : new Response('denied', { status: 401 }) }); return (request) => { const url = new URL(request.url); if (url.pathname === '/control') { if (url.searchParams.has('release')) state.release.resolve(); return new Response(JSON.stringify({ reads: state.reads, inspections: state.inspections, commands: state.commands, aborted: state.aborted, settledA: state.settledA, equipment })); } return handler(request); }; } } })`,
+        `createApplication({ generation, mounts: { '/native': async () => { const native = await createMCP(createToolbox([lookup])); return { fetch: (request) => request.headers.get('cookie')?.includes('actor=1') ? native.fetch(request) : new Response(null, { status: 401 }), close: native.close }; }, '/service': () => { const handler = createOperationHandler({ operations: [...operations, ...equipmentOperations], mounts: [createOperationMcpMount({ serverInfo: { name: 'equipment', version: '1' } })], host: {}, authenticate: async (request) => request.headers.get('cookie')?.includes('actor=1') ? { method: 'api-key', principal: principalFromApiKey({ subject: 'actor', scopes: ['equipment:read', 'equipment:write'] }) } : new Response('denied', { status: 401 }) }); return async (request) => { const url = new URL(request.url); if (url.pathname === '/control') { if (url.searchParams.has('release')) state.release.resolve(); return new Response(JSON.stringify({ reads: state.reads, inspections: state.inspections, commands: state.commands, admittedLookups: state.admittedLookups, aborted: state.aborted, settledA: state.settledA, equipment })); } if (url.pathname === '/jsonrpc' && request.headers.get('cookie')?.includes('actor=1')) { const body = await request.clone().json() as { method?: string }; if (body.method === 'equipment.lookup') state.admittedLookups++; } return handler(request); }; } } })`,
       ),
   );
   const unchangedPaths = [serverSource, join(application, "src/transport.ts")];
@@ -420,6 +426,7 @@ try {
       reads: string[];
       inspections: number;
       commands: number;
+      admittedLookups: number;
       aborted: boolean;
       settledA: boolean;
       equipment: { reads: number; writes: number; name: string };
@@ -474,16 +481,21 @@ try {
     final: finalCatalog,
     regeneration: "transport and router unchanged",
   };
-  const beforeEquipment = (await control()).equipment;
+  const beforeEquipment = await control();
+  let browserLookups = 0;
+  catalogPage.on("request", (request) => {
+    if (request.postData()?.includes('"method":"equipment.lookup"')) browserLookups++;
+  });
   const equipmentResponse = await catalogPage.goto(
     new URL("/equipment", dev.value.url).href,
     { waitUntil: "networkidle" },
   );
   if (!(await equipmentResponse!.text()).includes("Camera"))
     throw new Error("equipment SSR did not render the initial name");
-  const loadedEquipment = (await control()).equipment;
-  if (loadedEquipment.reads !== beforeEquipment.reads + 1)
-    throw new Error("equipment SSR lookup invoked an unexpected number of times");
+  const loadedControl = await control();
+  const loadedEquipment = loadedControl.equipment;
+  if (loadedControl.admittedLookups === beforeEquipment.admittedLookups || loadedEquipment.reads - beforeEquipment.equipment.reads !== loadedControl.admittedLookups - beforeEquipment.admittedLookups)
+    throw new Error(`equipment lookup counts disagree: before=${JSON.stringify(beforeEquipment)}, after=${JSON.stringify(loadedControl)}, browser requests=${browserLookups}`);
   await catalogPage.locator("#equipment-rename").click();
   await catalogPage.waitForFunction(
     () => document.querySelector("#equipment-name")?.textContent === "Studio camera",

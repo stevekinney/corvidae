@@ -1,5 +1,64 @@
 /** Source installed into the detached starter after its package archives are installed. */
 export const catalogConsumerFiles: Record<string, string> = {
+  "probe/standalone-velveteen.ts": `import { createApplication } from '@lostgradient/velveteen/server';
+const node = { id: '/', directory: '', parentId: null, params: [], page: { component: 'page.svelte' } };
+const route = (id: string) => ({ id, pattern: '^' + id + '$', params: [], node: 0, leaf: 0, ancestors: [0], layouts: [], errors: [null] });
+const routing = { version: 1, nodes: [node], routes: [route('/'), route('/equipment')] };
+const app = await createApplication({ generation: { directory: '.', manifest: { version: 1, basePath: '', routing, client: { file: '', url: '', stylesheets: [], nodes: {} }, server: { file: '', nodes: {} }, routes: {}, assets: [], outputs: [] } } as never, registry: { manifest: routing, nodes: [{ page: async () => ({ default: {} }) }], Root: {}, render: () => ({ body: 'equipment page', head: '' }) } as never });
+try { for (const path of ['/', '/equipment']) { const response = await app.fetch(new Request('http://consumer.test' + path)); if (response.status !== 200 || !(await response.text()).includes('equipment page')) throw new Error('standalone page failed ' + path); } } finally { await app.dispose(); }
+console.log('standalone Velveteen passed');
+`,
+  "probe/standalone-armorer.ts": `import { createTool, createToolbox } from 'armorer';
+import { createToolboxMcpHandler } from 'armorer/mcp/http';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { z } from 'zod';
+let calls = 0;
+const lookup = createTool({ name: 'lookup', version: '1', description: 'Lookup', input: z.object({}), execute: async () => { calls++; return { name: 'Camera' }; } });
+const handler = await createToolboxMcpHandler(createToolbox([lookup]), { tools: [{ id: lookup.id, name: 'equipment.lookup', scopes: ['read'] }], resources: (server) => server.registerResource('equipment', 'equipment://current', { title: 'Equipment' }, async () => ({ contents: [{ uri: 'equipment://current', text: 'Camera' }] })), authorization: { origin: 'https://consumer.test', resourcePath: '/mcp', issuer: 'https://issuer.test', scopes: ['read'], async verifyAccessToken() { return { issuer: 'https://issuer.test', audience: 'https://consumer.test/mcp', expiresAt: Date.now() + 60000, subject: 'consumer', grantId: 'grant', clientId: 'client', tenant: 'tenant', scopes: ['read'] }; }, async resolvePrincipal() { return { delegableScopes: ['read'] }; } }, requestContext: () => ({ authority: { principalId: 'consumer', tenantId: 'tenant', ownerId: 'consumer', capabilities: [], authorizationRevision: '1' } }) });
+try {
+  const denied = await handler.fetch(new Request('https://consumer.test/mcp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'equipment.lookup', arguments: {} } }) }));
+  if (denied.status !== 401 || calls !== 0) throw new Error('standalone native denial invoked callback');
+  const client = new Client({ name: 'standalone', version: '1' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(new URL('https://consumer.test/mcp'), { fetch: (url, init) => { const headers = new Headers(init?.headers); headers.set('authorization', 'Bearer valid'); return handler.fetch(new Request(url, { ...init, headers })); } }));
+    if (!(await client.listTools()).tools.some((tool) => tool.name === 'equipment.lookup')) throw new Error('standalone native tool missing');
+    const result = await client.callTool({ name: 'equipment.lookup', arguments: {} });
+    if (result.isError || calls !== 1 || !JSON.stringify(result).includes('Camera')) throw new Error('standalone native lookup failed');
+    if (!JSON.stringify(await client.readResource({ uri: 'equipment://current' })).includes('Camera')) throw new Error('standalone native resource failed');
+  } finally { await client.close(); }
+} finally { await handler.close(); }
+console.log('standalone Armorer passed');
+`,
+  "probe/standalone-backchannel.ts": `import { createOperationHandler, defineOperation, principalFromApiKey } from '@lostgradient/backchannel';
+import { z } from 'zod';
+let name = 'Camera', reads = 0, writes = 0;
+const common = { inputSchema: z.object({}), outputSchema: z.object({ name: z.string() }), mcpExposable: true, transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false }, unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' } } as const;
+const operations = [
+  defineOperation({ ...common, name: 'equipment.lookup', summary: 'Lookup', destructive: false, access: { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['read'] } }, invoke: async () => { reads++; return { name }; } }),
+  defineOperation({ ...common, name: 'equipment.rename', summary: 'Rename', destructive: true, access: { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['write'] } }, invoke: async () => { writes++; name = 'Studio camera'; return { name }; } }),
+];
+const mcp = process.argv[2] === 'mcp';
+const mounts = mcp ? [(await import('@lostgradient/backchannel-mcp')).createOperationMcpMount({ serverInfo: { name: 'equipment', version: '1' } })] : [];
+const handler = createOperationHandler({ operations, mounts, host: {}, authenticate: async (request) => ({ method: 'api-key', principal: principalFromApiKey({ subject: 'consumer', scopes: request.headers.get('x-role') === 'writer' ? ['read', 'write'] : ['read'] }) }) });
+const call = async (method: string, role: string) => (await handler(new Request('http://consumer.test/jsonrpc', { method: 'POST', headers: { 'content-type': 'application/json', 'x-role': role }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} }) }))).json();
+if ((await call('equipment.lookup', 'reader')).result?.name !== 'Camera' || reads !== 1) throw new Error('standalone lookup failed');
+if (!(await call('equipment.rename', 'reader')).error || writes !== 0) throw new Error('standalone denial invoked callback');
+if ((await call('equipment.rename', 'writer')).result?.name !== 'Studio camera' || writes !== 1) throw new Error('standalone rename failed');
+if (mcp) {
+  const { Client, StreamableHTTPClientTransport } = await import('@modelcontextprotocol/client');
+  const client = new Client({ name: 'standalone', version: '1' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(new URL('http://consumer.test/mcp'), { fetch: (url, init) => handler(new Request(url, init)) }));
+    if (!(await client.listTools()).tools.some((tool) => tool.name === 'equipment.lookup')) throw new Error('headless tool missing');
+    const before = reads;
+    const result = await client.callTool({ name: 'equipment.lookup', arguments: {} });
+    if (result.isError || reads !== before + 1) throw new Error('headless lookup failed');
+    const rejected = await client.callTool({ name: 'equipment.rename', arguments: {} });
+    if (!rejected.isError || writes !== 1) throw new Error('headless denial invoked callback');
+  } finally { await client.close(); }
+}
+console.log('standalone Backchannel passed');
+`,
   "probe/mounted.ts": `import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 const base = process.argv[2]!;
 for (const [path, name] of [['/service/mcp', 'equipment.lookup'], ['/native', 'lookup']] as const) {
@@ -78,6 +137,10 @@ try {
     const result = await createToolbox(loaded.tools).execute({ name: loaded.tools[0]!.id, arguments: { assetId: 'CAM-7' } });
     if (result.outcome !== 'success' || equipment.reads !== before + 1 || !JSON.stringify(result).includes('Camera')) throw new Error('remote lookup failed');
   } finally { await loaded.close(); }
+  const beforeClosedCall = equipment.reads;
+  let closedCallFailed = false;
+  try { await loaded.tools[0]!.execute({ assetId: 'CAM-7' }); } catch { closedCallFailed = true; }
+  if (!closedCallFailed || equipment.reads !== beforeClosedCall) throw new Error('remote source remained usable after close');
 } finally { server.stop(true); await endpoint.close(); }
 console.log('installed OAuth tool source passed');
 `,
@@ -163,7 +226,7 @@ export const operations = operationsFromToolbox(toolbox, [
 import { z } from 'zod';
 const transports = { http: true, jsonRpcHttp: true, jsonRpcStdio: true, jsonRpcWebSocket: true } as const;
 const common = { tags: ['Equipment'], mcpExposable: false, transports, unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' } } as const;
-export const state = { reads: [] as string[], inspections: 0, commands: 0, aborted: false, settledA: false, release: Promise.withResolvers<void>() };
+export const state = { reads: [] as string[], inspections: 0, commands: 0, admittedLookups: 0, aborted: false, settledA: false, release: Promise.withResolvers<void>() };
 export const read = defineOperation({ ...common, name: 'equipment.items.get', summary: 'Read equipment', destructive: false, inputSchema: z.object({ id: z.string() }), outputSchema: z.object({ id: z.string() }), access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['equipment:read'] } }, behavior: { kind: 'read', key: ['id'] }, invoke: async ({ input, signal }) => { state.reads.push(input.id); if (input.id === 'A') { signal?.addEventListener('abort', () => { state.aborted = true; }, { once: true }); await state.release.promise; state.settledA = true; } return input; } });
 export const command = defineOperation({ ...common, name: 'equipment.items.reserve', summary: 'Reserve equipment', destructive: true, inputSchema: z.object({ id: z.string() }), outputSchema: z.object({ id: z.string() }), access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['equipment:read'] } }, behavior: { kind: 'command', responseDisposition: 'one-time' }, invoke: async ({ input }) => { state.commands++; return input; } });
 export const extra = defineOperation({ ...common, name: 'equipment.items.inspect', summary: 'Inspect equipment', destructive: false, inputSchema: z.object({ id: z.string() }), outputSchema: z.object({ id: z.string() }), access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['equipment:read'] } }, behavior: { kind: 'read', key: ['id'] }, invoke: async ({ input }) => { state.inspections++; return input; } });
