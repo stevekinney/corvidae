@@ -1,5 +1,6 @@
 {
   "extends": "@lostgradient/typescript/library.json",
   "include": ["src", "scripts"],
-  "exclude": ["node_modules", "coverage", "**/*.test-d.ts", "src/__fixtures__/**"]
+  "exclude": ["node_modules", "coverage", "**/*.test-d.ts", "src/__fixtures__/**"],
+  "references": [{ "path": "../credentials/tsconfig.source.json" }]
 }
