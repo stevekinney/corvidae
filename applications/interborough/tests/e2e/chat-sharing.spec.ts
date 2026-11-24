@@ -43,6 +43,19 @@ async function expectReadOnly(reader: Page): Promise<void> {
   );
 }
 
+async function expectSharedTranscript(page: Page): Promise<void> {
+  const rows = page.locator('article[data-message-id]').filter({ hasText: 'shared chat evidence' });
+  await expect(rows).toHaveCount(2);
+  const assistantRow = rows.filter({
+    has: page.getByRole('link', { name: 'source' }),
+  });
+  await expect(assistantRow).toHaveCount(1);
+  await expect(assistantRow.getByRole('link', { name: 'source' })).toHaveAttribute(
+    'href',
+    'https://example.com/evidence',
+  );
+}
+
 test.describe('workspace chat sharing /chats/:chat /reviews', () => {
   test('an owner grants, revokes, reviews, and restores one former reader', async ({ browser }) => {
     const ownerContext = await member(browser, OWNER_KEY);
@@ -56,7 +69,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
         .getByRole('textbox', { name: 'Message' })
         .fill('shared chat evidence [source](https://example.com/evidence)');
       await owner.locator('button[data-chat-send]').click();
-      await expect(owner.getByText('shared chat evidence', { exact: true })).toHaveCount(2);
+      await expectSharedTranscript(owner);
       await expect
         .poll(
           () =>
@@ -77,14 +90,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await reader.goto('/chats');
       await expect(reader.locator(`a[href="/chats/${contextId}"]`)).toBeVisible();
       await reader.goto(`/chats/${contextId}`);
-      await expect(
-        reader
-          .locator('article[data-message-id]')
-          .getByText('shared chat evidence', { exact: false }),
-      ).toHaveCount(2);
-      await expect(
-        reader.locator('article[data-message-id] a[href="https://example.com/evidence"]'),
-      ).toHaveCount(2);
+      await expectSharedTranscript(reader);
       await expectReadOnly(reader);
       await captureForDesignReviewWithPhone(reader, {
         route: '/chats/:chat',
@@ -138,13 +144,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await owner.getByRole('button', { name: 'Grant access' }).click();
 
       await reader.reload();
-      await expect(
-        reader
-          .locator('article[data-message-id]')
-          .getByText('shared chat evidence [source](https://example.com/evidence)', {
-            exact: true,
-          }),
-      ).toHaveCount(2);
+      await expectSharedTranscript(reader);
       await expectReadOnly(reader);
       await captureForDesignReviewWithPhone(reader, {
         route: '/chats/:chat',

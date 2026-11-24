@@ -351,6 +351,58 @@
         ],
         "type": "object"
       },
+      "BureauContextsShareInput": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId"
+        ],
+        "type": "object"
+      },
+      "BureauContextsShareOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "contextId": {
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId",
+          "changed"
+        ],
+        "type": "object"
+      },
+      "BureauContextsShareRequestInput": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "type": "object"
+      },
       "BureauDeploymentsGetOutput": {
         "additionalProperties": false,
         "properties": {
