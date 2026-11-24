@@ -72,6 +72,7 @@
 <button
   onclick={() => {
     delayNext = true;
+    delivered = false;
   }}>Delay response</button
 >
 <button

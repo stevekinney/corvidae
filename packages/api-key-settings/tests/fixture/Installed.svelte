@@ -4,9 +4,27 @@
   import { httpJsonRpcTransport } from '@lostgradient/backchannel/client';
   import { dehydrate, QueryClient } from '@tanstack/svelte-query';
   const cache = new QueryClient();
+  let loseNextResponse = false;
+  (window as typeof window & { loseNextSettingsResponse: () => void }).loseNextSettingsResponse =
+    () => {
+      loseNextResponse = true;
+    };
   const transport = httpJsonRpcTransport({
     baseUrl: '/key-admin',
     headers: { 'x-csrf-token': 'valid' },
+    fetch: async (input, init) => {
+      const method =
+        typeof init?.body === 'string'
+          ? (JSON.parse(init.body) as { method?: string }).method
+          : undefined;
+      const response = await fetch(input, init);
+      if (loseNextResponse && method === 'api.keys.issue') {
+        loseNextResponse = false;
+        await response.body?.cancel();
+        throw new Error('Response lost after commit');
+      }
+      return response;
+    },
   });
   let scope = $state(document.cookie.includes('workspace=B') ? 'B' : 'A');
   (window as typeof window & { inspectSettings: () => string }).inspectSettings = () =>

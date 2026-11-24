@@ -18,7 +18,6 @@ it('installs the public entries and exercises the page against durable credentia
   let clock = 10;
   let writes = 0;
   let reads = 0;
-  let loseNext = false;
   const diagnostics: string[] = [];
   const keys = createApiKeys({
     storage,
@@ -89,19 +88,7 @@ it('installs the public entries and exercises the page against durable credentia
         const body = (await request.clone().json()) as { method: string };
         if (body.method === 'api.keys.list') reads++;
         else writes++;
-        const response = await handler(request);
-        if (loseNext && body.method === 'api.keys.issue') {
-          loseNext = false;
-          await response.body?.cancel();
-          return new Response(
-            new ReadableStream({
-              start(controller) {
-                controller.error(new Error('Response lost'));
-              },
-            }),
-          );
-        }
-        return response;
+        return handler(request);
       }
       if (url.pathname === '/read') {
         const identity = await keys.verify(request.headers.get('x-api-key') ?? '');
@@ -261,6 +248,16 @@ it('installs the public entries and exercises the page against durable credentia
       .filter({ hasText: replacementId })
       .getByRole('button', { name: 'Revoke' });
     await revokeButton.click();
+    await page
+      .getByRole('dialog', { name: 'Revoke sync' })
+      .getByRole('button', { name: 'Cancel' })
+      .click();
+    expect(await read(second)).toBe(200);
+    await revokeButton.click();
+    await page
+      .getByRole('dialog', { name: 'Revoke sync' })
+      .getByRole('button', { name: 'Revoke key' })
+      .click();
     await revokeButton.waitFor({ state: 'detached' });
     expect(await read(second)).toBe(401);
     const finalResponse = await call('api.keys.list', {});
@@ -270,7 +267,11 @@ it('installs the public entries and exercises the page against durable credentia
     const beforeWrites = writes;
     const beforeReads = reads;
     const beforeRows = await page.getByRole('listitem').count();
-    loseNext = true;
+    await page.evaluate(() =>
+      (
+        window as typeof window & { loseNextSettingsResponse: () => void }
+      ).loseNextSettingsResponse(),
+    );
     await issue();
     await page
       .getByText('The outcome is uncertain. Check the refreshed list before trying again.')
