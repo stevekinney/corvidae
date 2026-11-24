@@ -2,9 +2,9 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 
 import { captureForDesignReviewWithPhone } from './design-review-capture.ts';
-import { readBoxes } from './read-boxes.ts';
 import { E2E_CHAT_SHARING_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const SOURCE = 'chat-sharing.spec.ts';
 const OWNER_KEY = 'chat-owner-browser-key';
@@ -154,7 +154,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
         copy: requestCopy,
         grant: grantAccess,
       });
-      expect(grantBox!.x - (copyBox!.x + copyBox!.width)).toBeLessThanOrEqual(96);
+      expect(grantBox.x - (copyBox.x + copyBox.width)).toBeLessThanOrEqual(96);
       await captureForDesignReviewWithPhone(owner, {
         route: '/reviews',
         state: 'chat access request pending',

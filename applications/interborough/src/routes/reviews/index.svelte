@@ -332,7 +332,8 @@
               data-changes
               size="sm"
               variant="primary"
-              loading={resolvingChatRequest === chatRequestKey(request.contextId, request.granteeOwnerId)}
+              loading={resolvingChatRequest ===
+                chatRequestKey(request.contextId, request.granteeOwnerId)}
               onclick={() => void resolveChatRequest(request, 'grant')}>Grant access</Button
             >
           </div>
