@@ -327,7 +327,7 @@ async function expectOfflineBanner(page: Page, label: string) {
 }
 
 for (const width of [320, 375, 1280] as const) {
-  test(`Shell, offline: the new chat keeps its typed text with Send off under the offline drawer, at ${width} pixels`, async ({
+  test(`Shell, offline (/chats/new): the new chat keeps its typed text with Send off under the offline drawer, at ${width} pixels`, async ({
     page,
     context,
     pageErrors,

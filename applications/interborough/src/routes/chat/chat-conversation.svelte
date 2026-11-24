@@ -1167,6 +1167,8 @@
   $effect(() => {
     if (session.reconnectSchedule === undefined) return;
     reconnectNow = Date.now();
+    // The reconnect countdown is a local display that advances once per second.
+    // poll-reason: clock
     const timer = setInterval(() => (reconnectNow = Date.now()), 1000);
     return () => clearInterval(timer);
   });
