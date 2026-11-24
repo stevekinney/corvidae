@@ -92,6 +92,7 @@
   import Link from '../link/link.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import ApprovalCardSettled from './approval-card-settled.svelte';
   import ApprovalCardFactsLine from './approval-card-facts-line.svelte';
   import { fitNoteLabel } from './approval-card-note-fit.ts';
@@ -254,22 +255,14 @@
     </ApprovalCardSettled>
     {#if hasReceiptDetails}
       <div class="cinder-approval-card__input">
-        <button
-          type="button"
+        <DisclosureTrigger
           class="cinder-approval-card__input-toggle"
-          aria-expanded={detailsOpen}
-          aria-controls={detailsId}
+          open={detailsOpen}
+          controls={detailsId}
           onclick={() => (detailsOpen = !detailsOpen)}
         >
-          <ChevronRight
-            class="cinder-approval-card__input-chevron"
-            size={12}
-            strokeWidth={2}
-            aria-hidden="true"
-            data-cinder-open={detailsOpen || undefined}
-          />
           <span class="cinder-approval-card__input-word">Details</span>
-        </button>
+        </DisclosureTrigger>
         <div id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
           {#if hasNote}
             <p class="cinder-approval-card__decision-note">

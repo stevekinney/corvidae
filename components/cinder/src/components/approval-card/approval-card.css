@@ -1059,6 +1059,33 @@
     text-align: start;
   }
 
+  /* A settled receipt is one scan line once the card has room: status, the action, and who made
+   * it stay together; the host-owned time remains the single timestamp beneath the card. */
+  @media (min-width: 30rem) {
+    .cinder-approval-card__settled-row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      column-gap: var(--cinder-space-2);
+    }
+
+    .cinder-approval-card__settled-title {
+      grid-column: 2;
+      grid-row: 1;
+      font-size: var(--cinder-text-sm);
+      line-height: var(--cinder-leading-normal);
+    }
+
+    .cinder-approval-card__settled-note {
+      grid-column: 1;
+      grid-row: 1;
+      white-space: nowrap;
+    }
+
+    .cinder-approval-card__settled-actions {
+      grid-column: 3;
+      grid-row: 1;
+    }
+  }
+
   /* An approval or a denial's line starts with a quiet dot in its tone and the word for what was
    * decided: green for an approval, neutral for a denial. The dot is the line's only mark. */
   .cinder-approval-card__settled-dot {
