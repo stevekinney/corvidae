@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./environment-configuration": "./src/environment-configuration.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src && bun ../../scripts/check-inherited-key-reads.ts",

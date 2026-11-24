@@ -2,6 +2,7 @@ import { principalFromApiKey } from '@lostgradient/backchannel';
 import { operationsFromToolbox } from '@lostgradient/backchannel-armorer';
 import { mountCatalog } from '@lostgradient/backchannel-mcp/velveteen';
 import { createFixture } from '@lostgradient/equipment-fixture';
+import { readEquipmentEnvironment } from '@lostgradient/equipment-fixture/environment-configuration';
 import { buildProduction } from '@lostgradient/velveteen/build';
 import { readProductionGeneration } from '@lostgradient/velveteen/build/publication';
 import { createApplication } from '@lostgradient/velveteen/server';
@@ -18,7 +19,8 @@ if (process.argv.includes('--build')) {
     mode: 'production',
   });
 } else {
-  const fixture = createFixture('/api/mcp');
+  const configuration = readEquipmentEnvironment();
+  const fixture = createFixture('/api/mcp', configuration);
   const output = z.object({ assetId: z.literal('CAM-7'), name: z.string() });
   const operations = operationsFromToolbox(
     fixture.toolbox,
@@ -79,7 +81,7 @@ if (process.argv.includes('--build')) {
   const application = await createApplication({ generation, mounts });
   const server = Bun.serve({
     hostname: '0.0.0.0',
-    port: Number(process.env['PORT'] ?? '3000'),
+    port: configuration.port,
     fetch: (request) =>
       new URL(request.url).pathname.startsWith('/auth/')
         ? fixture.browser.fetch(request)

@@ -1,7 +1,9 @@
 import { createFixture } from '@lostgradient/equipment-fixture';
+import { readEquipmentEnvironment } from '@lostgradient/equipment-fixture/environment-configuration';
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
 
-const fixture = createFixture('/mcp');
+const configuration = readEquipmentEnvironment();
+const fixture = createFixture('/mcp', configuration);
 const handler = await createToolboxMcpHandler(fixture.toolbox, {
   tools: [
     { id: fixture.lookup.id, name: 'equipment.lookup', scopes: ['equipment:read'] },
@@ -19,7 +21,7 @@ const handler = await createToolboxMcpHandler(fixture.toolbox, {
 });
 const server = Bun.serve({
   hostname: '0.0.0.0',
-  port: Number(process.env['PORT'] ?? '3000'),
+  port: configuration.port,
   fetch(request) {
     const path = new URL(request.url).pathname;
     if (path.startsWith('/auth/')) return fixture.browser.fetch(request);

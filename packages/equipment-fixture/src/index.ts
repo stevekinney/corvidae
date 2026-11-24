@@ -3,12 +3,7 @@ import { hostedOAuth, OAuthStore } from '@lostgradient/mcp/oauth';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
-
-function required(name: string) {
-  const value = Object.hasOwn(process.env, name) ? process.env[name] : undefined;
-  if (!value) throw new Error(`Missing ${name}`);
-  return value;
-}
+import type { EquipmentEnvironment } from './environment-configuration.ts';
 
 export function fixtureScopes(subject: string, reader: string, editor: string) {
   if (!reader || !editor || reader === editor)
@@ -20,13 +15,10 @@ export function fixtureScopes(subject: string, reader: string, editor: string) {
       : null;
 }
 
-export function createFixture(resourcePath: string) {
-  const origin = required('PUBLIC_ORIGIN');
-  const issuer = required('OIDC_ISSUER');
-  const reader = required('READER_SUBJECT');
-  const editor = required('EDITOR_SUBJECT');
+export function createFixture(resourcePath: string, configuration: EquipmentEnvironment) {
+  const { origin, issuer, reader, editor, clientId, clientSecret, sqlitePath } = configuration;
   fixtureScopes('', reader, editor);
-  const storage = new BunSQLiteStorage(required('SQLITE_PATH'));
+  const storage = new BunSQLiteStorage(sqlitePath);
   const role = (subject: string) => fixtureScopes(subject, reader, editor);
   const principalForGrant = async ({ subject, tenant }: { subject: string; tenant: string }) => {
     const scopes = tenant === 'equipment' ? role(subject) : null;
@@ -39,8 +31,8 @@ export function createFixture(resourcePath: string) {
     cookieName: 'equipment_session',
     provider: oidc({
       issuer,
-      clientId: required('OIDC_CLIENT_ID'),
-      clientSecret: required('OIDC_CLIENT_SECRET'),
+      clientId,
+      clientSecret,
     }),
     resolveAccount: async (identity) =>
       identity.issuer === issuer && role(identity.subject) ? identity.subject : null,
