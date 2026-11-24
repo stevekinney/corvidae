@@ -4,6 +4,7 @@
   import type { QueryClient } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
   import ReviewsScope from './ReviewsScope.svelte';
+  import { validatedReviewsTransport } from './validation.ts';
   import type { ApprovalHost } from './tool-approval-actions.svelte.ts';
 
   let {
@@ -24,6 +25,6 @@
   } & Omit<ApprovalHost, 'catalog'> = $props();
 </script>
 
-<Provider {scope} {cache} {transport} {subscription}>
+<Provider {scope} {cache} transport={validatedReviewsTransport(transport)} {subscription}>
   <ReviewsScope {authorized} {decisionSurface} {onOutcome}>{@render children()}</ReviewsScope>
 </Provider>

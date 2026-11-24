@@ -204,6 +204,7 @@
     "@shikijs/langs": "catalog:",
     "@shikijs/themes": "catalog:",
     "@types/bun": "catalog:",
+    "@types/node": "catalog:",
     "@types/pngjs": "catalog:",
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
