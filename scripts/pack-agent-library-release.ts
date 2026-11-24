@@ -55,6 +55,7 @@ const privateEntries = new Map([
     : []),
   ['@lostgradient/cryptography', join(repository, 'packages/cryptography/src/index.ts')],
   ['@lostgradient/lifecycle', join(repository, 'packages/lifecycle/src/index.ts')],
+  ['@lostgradient/mcp/http', join(repository, 'packages/mcp/src/http.ts')],
 ]);
 
 const privateOwners = new Set(

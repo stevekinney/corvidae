@@ -2,6 +2,56 @@ import { describe, expect, test } from 'bun:test';
 import { createProtectedHttpHandler } from './http';
 
 describe('protected HTTP listener', () => {
+  test('binds supplied grant, client and tenant identities across an awaited dispatch', async () => {
+    for (const changed of ['none', 'grantId', 'clientId', 'tenant'] as const) {
+      let binding = { grantId: 'grant', clientId: 'client', tenant: 'tenant' };
+      let release!: () => void;
+      let started!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      let calls = 0;
+      const handler = createProtectedHttpHandler({
+        origin: 'https://equipment.example.com',
+        resourcePath: '/api/mcp',
+        issuer: 'https://login.example.com',
+        scopes: ['write'],
+        async verifyAccessToken() {
+          return {
+            issuer: 'https://login.example.com',
+            audience: 'https://equipment.example.com/api/mcp',
+            expiresAt: Date.now() + 60000,
+            subject: 'user',
+            scopes: ['write'],
+            ...binding,
+          };
+        },
+        async resolvePrincipal() {
+          return { delegableScopes: ['write'] };
+        },
+        async dispatch(_request, context) {
+          started();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          const decision = await context.requireScopes(['write']);
+          if (!decision.ok) return decision.response;
+          calls++;
+          return new Response(null, { status: 204 });
+        },
+      });
+      const pending = handler(
+        new Request('https://equipment.example.com/api/mcp', {
+          headers: { authorization: 'Bearer valid' },
+        }),
+      );
+      await waiting;
+      if (changed !== 'none') binding = { ...binding, [changed]: 'different' };
+      release();
+      expect((await pending).status).toBe(changed === 'none' ? 204 : 401);
+      expect(calls).toBe(changed === 'none' ? 1 : 0);
+    }
+  });
   test('hands off the freshly resolved principal and refuses cancellation during the decision', async () => {
     for (const cancel of [false, true]) {
       let checks = 0;

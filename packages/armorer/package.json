@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./protocol": "./src/protocol/index.ts",
+    "./mcp/http": "./src/integrations/mcp/http.ts",
     "./open-ai/agents": "./src/adapters/open-ai/agents/index.ts",
     "./coding": "./src/coding/index.ts",
     "./tool-sources": "./src/integrations/tool-sources/index.ts"
@@ -31,6 +32,7 @@
   "dependencies": {
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/mcp": "workspace:*",
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/core": "catalog:",
     "@modelcontextprotocol/ext-apps": "catalog:",

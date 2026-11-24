@@ -14,6 +14,13 @@ import { propagation, ROOT_CONTEXT, type Context } from '@opentelemetry/api';
 
 import type { Tool } from '../../is-tool';
 
+/** The verified, nonsecret owner of a protected continuation. */
+export function continuationOwner(context: ServerContext): string {
+  const auth = context.http?.authInfo;
+  const binding = auth?.extra?.['armorerBinding'];
+  return typeof binding === 'string' ? binding : (auth?.clientId ?? '');
+}
+
 /** The two MCP protocol eras the SDK serves: 2025-11-25 and earlier, and 2026-07-28. */
 export type MCPProtocolEra = 'legacy' | 'modern';
 

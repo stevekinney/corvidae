@@ -345,6 +345,7 @@
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/mcp": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@modelcontextprotocol/core": "catalog:",
         "@modelcontextprotocol/ext-apps": "catalog:",

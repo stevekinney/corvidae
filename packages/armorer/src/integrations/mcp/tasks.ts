@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { ExecutionAbortSource } from '../../execution-lifecycle';
 import type { SuspendableExecution } from './input-required';
 import { deliverInputResponse, MCP_ELICITATION_INPUT_KEY } from './input-required';
+import { continuationOwner } from './request-context';
 
 /**
  * Server side of the MCP Tasks extension (`io.modelcontextprotocol/tasks`,
@@ -375,7 +376,7 @@ export function createMcpTaskRuntime(options: {
     return failure;
   };
 
-  const clientIdOf = (context: ServerContext): string => context.http?.authInfo?.clientId ?? '';
+  const clientIdOf = continuationOwner;
 
   /** Surfaces a record-version failure as the JSON-RPC internal error it is. */
   const guarded = async <T>(work: () => Promise<T>): Promise<T> => {
@@ -528,20 +529,24 @@ export function createMcpTaskRuntime(options: {
       };
     },
     /** Registers `tasks/get`, `tasks/update`, and `tasks/cancel` on a 2026-07-28 server. */
-    registerHandlers(server: McpServer) {
+    registerHandlers(server: McpServer, authorize?: (name: string) => Promise<unknown>) {
       interceptCreationFailures(server, creationFailures);
+      const readAuthorized = async (taskId: string, context: ServerContext) => {
+        const record = await read(taskId, clientIdOf(context));
+        if (authorize) await authorize(record.toolName);
+        return record;
+      };
       server.server.setRequestHandler(
         'tasks/get',
         { params: taskParameters, result: wireResult },
-        ({ taskId }, context) =>
-          guarded(async () => toWire(await read(taskId, clientIdOf(context)))),
+        ({ taskId }, context) => guarded(async () => toWire(await readAuthorized(taskId, context))),
       );
       server.server.setRequestHandler(
         'tasks/cancel',
         { params: taskParameters, result: wireResult },
         ({ taskId }, context) =>
           guarded(async () => {
-            const record = await read(taskId, clientIdOf(context));
+            const record = await readAuthorized(taskId, context);
             const entry = live.get(taskId);
             if (isTerminal(record.status) || !entry) return {};
             await mutate(taskId, finish('cancelled'));
@@ -557,7 +562,7 @@ export function createMcpTaskRuntime(options: {
         },
         ({ taskId }, context) =>
           guarded(async () => {
-            const record = await read(taskId, clientIdOf(context));
+            const record = await readAuthorized(taskId, context);
             const entry = live.get(taskId);
             if (record.status !== 'input_required' || !entry) return {};
             // The SDK lifts `inputResponses` out of the params onto the request context.
@@ -574,7 +579,15 @@ export function createMcpTaskRuntime(options: {
               const { inputRequests: _inputRequests, ...rest } = current;
               return { ...rest, status: 'working' };
             });
-            if (resumed) deliverInputResponse(entry.execution, inputResponses, outstanding);
+            if (resumed) {
+              try {
+                if (authorize) await authorize(record.toolName);
+              } catch (error) {
+                entry.abort(error);
+                throw error;
+              }
+              deliverInputResponse(entry.execution, inputResponses, outstanding);
+            }
             return {};
           }),
       );
