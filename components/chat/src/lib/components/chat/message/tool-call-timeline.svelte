@@ -15,7 +15,6 @@
   import {
     Brain,
     Check,
-    ChevronRight,
     CircleAlert,
     CircleDot,
     Globe,
@@ -24,6 +23,7 @@
     Terminal,
     X,
     CopyButton,
+    DisclosureTrigger,
     formatDuration,
     Spinner,
     Tooltip,
@@ -493,18 +493,16 @@
 >
   <span class="cinder-sr-only" aria-live="polite" aria-atomic="true">{announcerText}</span>
   <h3 id={headingId} class="chat-tool-call-heading">
-    <button
-      type="button"
+    <DisclosureTrigger
       class="chat-tool-call-toggle"
-      aria-expanded={groupOpen}
-      aria-controls={listId}
+      open={groupOpen}
+      controls={listId}
       onclick={toggleGroup}
     >
       <!-- The compact summary keeps its text-height box. This child owns the larger coarse-pointer
            hit area: generated content outside a button's border is not consistently hit-tested by
            browsers, while an overflowing descendant is. -->
       <span class="chat-tool-call-hit-target" aria-hidden="true"></span>
-      <ChevronRight class="chat-tool-call-chevron" aria-hidden="true" />
       <span class="chat-tool-call-summary">
         {#if runningRow?.presentation}
           <!-- The step under way (R1): a spinner, its present-tense title ending in an ellipsis,
@@ -557,7 +555,7 @@
           {/if}
         {/if}
       </span>
-    </button>
+    </DisclosureTrigger>
   </h3>
   <ol id={listId} class="chat-tool-call-list" aria-label={callsLabel} hidden={!groupOpen}>
     {#each listEntries as entry (entryKey(entry))}
