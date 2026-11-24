@@ -230,6 +230,7 @@
         "TZ"
       ],
       "inputs": [
+        "$TURBO_ROOT$/scripts/chef/ci-replay.ts",
         "$TURBO_ROOT$/scripts/browser-fixtures/**",
         "!$TURBO_ROOT$/scripts/browser-fixtures/**/{node_modules,.playwright,.turbo,.svelte-kit,coverage,playwright-report,test-output,test-results,tmp}/**",
         "!$TURBO_ROOT$/scripts/browser-fixtures/**/{.DS_Store,*.log,*.lcov,*.pem,.env,.env.*,local.env}",
@@ -321,6 +322,7 @@
         "TMPDIR"
       ],
       "inputs": [
+        "$TURBO_ROOT$/scripts/chef/ci-replay.ts",
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
@@ -343,6 +345,7 @@
         "TMPDIR"
       ],
       "inputs": [
+        "$TURBO_ROOT$/scripts/chef/ci-replay.ts",
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
@@ -365,6 +368,7 @@
         "TMPDIR"
       ],
       "inputs": [
+        "$TURBO_ROOT$/scripts/chef/ci-replay.ts",
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",

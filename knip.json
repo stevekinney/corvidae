@@ -9,6 +9,7 @@
         "scripts/**/*.slow.test.ts",
         "scripts/**/*.bench.ts",
         "scripts/**/*.playwright.ts",
+        "scripts/affected-tests.ts",
         "scripts/chef/evaluate-outcomes.ts",
         "scripts/cinder-release-consumer.ts"
       ],

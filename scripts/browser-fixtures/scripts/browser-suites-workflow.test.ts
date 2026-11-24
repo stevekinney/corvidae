@@ -46,6 +46,19 @@ describe('the browser suites workflow', () => {
     expect(jobText('interborough')).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
   });
 
+  test('records the image that actually runs each browser replay', () => {
+    const { playwrightVersion } = readRepositoryPins();
+    const targeted = readFileSync(
+      resolve(REPOSITORY_ROOT, '.github/workflows/targeted-checks.yml'),
+      'utf8',
+    );
+    for (const source of [workflow, targeted]) {
+      const images = [...source.matchAll(/^\s*CI_REPLAY_IMAGE: (.+)$/gm)].map((match) => match[1]);
+      expect(images.length).toBeGreaterThan(0);
+      expect(images.every((image) => image === playwrightBaseImage(playwrightVersion))).toBe(true);
+    }
+  });
+
   test('queues every still-valid trusted consumer of the bound Interborough shard-one candidate', () => {
     const interborough = jobText('interborough');
     expect(interborough).toContain('concurrency:\n');
@@ -93,7 +106,59 @@ describe('the browser suites workflow', () => {
     expect(packages).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
     expect(packages).toContain('runs-on: ubuntu-24.04-arm\n');
     expect(packages).toContain('if: ${{ inputs.fixtures }}\n');
-    expect(packages).toContain('- run: bun run validate:batch\n');
+    expect(packages).toContain(
+      '- run: bun scripts/chef/ci-replay.ts run -- bun run validate:batch\n',
+    );
+    expect(packages).toContain('CI_REPLAY_CREDENTIAL_BOUNDARY: producer-scrubbed\n');
+    expect(packages).toContain('TURBO_ENV_MODE: strict\n');
+    expect(packages).toContain('path: components/*/browser/test-results/**/*-actual.png\n');
+  });
+
+  test('runs each browser producer through credential isolation and hashes the wrapper', () => {
+    const configuration = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, 'turbo.json'), 'utf8'));
+    const prohibited = [
+      'TURBO_TOKEN',
+      'TURBO_TEAM',
+      'GITHUB_TOKEN',
+      'GH_TOKEN',
+      'CI_REPLAY_TOKEN',
+      'ACTIONS_RUNTIME_TOKEN',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+    ];
+    const names = [
+      '//#ci:browser-fixtures',
+      '@lostgradient/chat#test:browser',
+      '@lostgradient/editor#test:browser',
+      '@lostgradient/terminal#test:browser',
+    ];
+    for (const name of names) {
+      const task = configuration.tasks[name];
+      expect(task.inputs).toContain('$TURBO_ROOT$/scripts/chef/ci-replay.ts');
+      const declared = [
+        ...(configuration.globalEnv ?? []),
+        ...(configuration.globalPassThroughEnv ?? []),
+        ...(task.env ?? []),
+        ...(task.passThroughEnv ?? []),
+      ];
+      for (const key of prohibited) expect(declared).not.toContain(key);
+      expect(declared.every((entry: string) => !entry.includes('*'))).toBe(true);
+    }
+    for (const job of ['fixtures', 'packages']) {
+      expect(jobText(job)).toContain('CI_REPLAY_CREDENTIAL_BOUNDARY: producer-scrubbed\n');
+      expect(jobText(job)).toContain('TURBO_ENV_MODE: strict\n');
+      expect(jobText(job)).not.toContain("CI_REPLAY_NO_CREDENTIALS: 'true'\n");
+    }
+    for (const path of [
+      'package.json',
+      'components/chat/package.json',
+      'components/editor/package.json',
+      'components/terminal/package.json',
+    ]) {
+      const manifest = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, path), 'utf8'));
+      const command =
+        manifest.scripts[path === 'package.json' ? 'ci:browser-fixtures' : 'test:browser'];
+      expect(command).toContain('scripts/chef/ci-replay.ts isolated -- bun');
+    }
   });
 
   // Both suites gate (COR-2412). Job level only: a report upload step may fail without failing the job.
@@ -104,9 +169,11 @@ describe('the browser suites workflow', () => {
   test('keeps a real Interborough Turborepo invocation and failed-run artifact for every consumer', () => {
     const interborough = jobText('interborough');
     expect(interborough).toContain(
-      '- run: bunx turbo run //#ci:browser-interborough --log-order=stream\n',
+      '- run: bun scripts/chef/ci-replay.ts run -- bunx turbo run //#ci:browser-interborough --log-order=stream\n',
     );
     expect(interborough).toContain('name: playwright-interborough-${{ matrix.shard }}\n');
     expect(interborough).toContain('if: ${{ failure() }}\n');
+    expect(interborough).toContain('path: ${{ runner.temp }}/ci-replay-record.json\n');
+    expect(interborough).not.toContain('applications/interborough/test-results/\n');
   });
 });

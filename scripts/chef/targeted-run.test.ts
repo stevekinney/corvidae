@@ -652,7 +652,12 @@ describe('the workflow and the manifest', () => {
     const job = workflow.slice(workflow.indexOf('\n  unit:\n'));
     expect(job).toContain('lane: ${{ fromJSON(inputs.unit_lanes) }}');
     expect(job).toContain('fail-fast: false');
-    expect(job).toContain('bun scripts/bun-test.ts $UNIT_PATHS');
+    expect(job).toContain(
+      'bun scripts/chef/ci-replay.ts run -- bash scripts/chef/targeted-unit.sh',
+    );
+    const script = await Bun.file(new URL('./targeted-unit.sh', import.meta.url)).text();
+    expect(script).toContain('reporter=(--reporter=junit');
+    expect(script).toContain('bun scripts/bun-test.ts "${reporter[@]}" "${paths[@]}"');
     for (const retired of ['unit_workspace', 'unit_paths', 'unit_config'])
       expect(workflow).not.toContain(`      ${retired}:`);
   });
