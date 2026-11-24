@@ -717,10 +717,11 @@
     "title": "A source with a long title and excerpt opens Citation's panel with the title and excerpt on separate rows.",
     "provenance": "issue-named",
     "source": "COR-2263: case 27 at desktop and 320 px shows the strong title and excerpt as adjacent lines with no designed gap.",
-    "rows": ["M4"],
+    "rows": ["M4", "X6"],
     "scenario": "citations",
     "params": {
-      "sourceSet": "contract"
+      "sourceSet": "contract",
+      "inlineClaim": true
     },
     "steps": [
       {
@@ -990,10 +991,11 @@
     "title": "A message's Sources open as a list with each excerpt and link; at 768 dark the Sources count reads as distinct from the chat surface.",
     "provenance": "derived",
     "source": "Derived from design row M4, T2; the original definition of this number was lost.",
-    "rows": ["M4", "T2"],
+    "rows": ["M4", "T2", "X6"],
     "scenario": "citations",
     "params": {
-      "sourceSet": "contract"
+      "sourceSet": "contract",
+      "inlineClaim": true
     },
     "steps": [
       {

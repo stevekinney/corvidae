@@ -16,6 +16,7 @@ import {
   updateStreamingMessage,
   type ChatApprovalDetails,
   type ChatCapabilities,
+  type ChatCitationClaim,
   type ChatTurnLabels,
   type ChatTurnState,
   type ConversationHistory,
@@ -76,6 +77,8 @@ export interface StressSetup {
   reasoning: Record<number, ReasoningInfo>;
   /** Sources by the assistant turn's position, from zero. */
   sources: Record<number, CitationSource[]>;
+  /** Claim-level sources by the assistant turn's position, from zero. */
+  claimSources: Record<number, ChatCitationClaim[]>;
   /** Shows Regenerate, Copy and Quote under replies. */
   regenerate: boolean;
   /** A draft the host puts back in the composer when the page loads. */
@@ -106,6 +109,7 @@ function baseSetup(conversation: ConversationHistory): StressSetup {
     approvalDetails: {},
     reasoning: {},
     sources: {},
+    claimSources: {},
     regenerate: true,
     secondChat: false,
     emptyPrompts: [],
@@ -935,6 +939,11 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       param<'contract' | undefined>(stressCase, 'sourceSet', undefined) === 'contract'
         ? SOURCE_LIST_CONTRACT_SOURCES
         : SAMPLE_SOURCES;
+    if (param(stressCase, 'inlineClaim', false)) {
+      const markdown = 'The policy permits this refund because the charge was duplicated.';
+      setup.conversation = appendAssistantMessage(setup.conversation, markdown);
+      setup.claimSources[1] = [{ id: 'duplicate-charge', markdown, sources: [SAMPLE_SOURCES[0]!] }];
+    }
     setup.withdrawable = param(stressCase, 'withdrawable', false);
     return setup;
   },

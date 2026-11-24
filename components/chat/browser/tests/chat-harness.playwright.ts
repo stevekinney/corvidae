@@ -2324,6 +2324,40 @@ test.describe('chat harness — tool calls', () => {
     }
   });
 
+  test('keeps an expanded aggregate summary reachable beyond its painted line on a coarse pointer', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 390, height: 640 },
+    });
+    try {
+      await setHarnessCustomMessageSnippets(page, false);
+      await harness.locator('[data-testid="clear"]').click();
+      await appendToolScenario(page, 'repeated');
+      const aggregate = harness.locator('.chat-tool-call-toggle');
+      await aggregate.click();
+      await expect(aggregate).toHaveAttribute('aria-expanded', 'true');
+      const box = await renderedBox(aggregate, 'expanded aggregate summary');
+      expect(box.height).toBeLessThan(44);
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      for (const dy of [-21, 21] as const) {
+        const owner = await page.evaluate(
+          ([x, y]) =>
+            document
+              .elementFromPoint(x, y)
+              ?.closest('.chat-tool-call-toggle')
+              ?.getAttribute('aria-expanded') ?? null,
+          [centre.x, centre.y + dy] as const,
+        );
+        expect(owner, `point ${dy}px from the expanded aggregate centre`).toBe('true');
+      }
+    } finally {
+      await dispose();
+    }
+  });
+
   test('keeps standalone tool activity IDs unique and preserves one keyboard stop per row', async ({
     browser,
   }) => {

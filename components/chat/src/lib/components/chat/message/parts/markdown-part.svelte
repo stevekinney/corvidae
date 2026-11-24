@@ -41,13 +41,17 @@
     <div class="chat-markdown-claim" data-chat-cited-claim={claim.id}>
       <MessageContent content={claim.markdown} class="chat-markdown-claim-content" {markdownNode} />
       {#if claim.sources.length > 0}
+        {@const markerSource = claim.sources[0]!}
         <Citation
           sources={claim.sources}
           label={copy.sources}
+          markerLabel={markerSource.label}
           labels={{ noLink: copy.internalDocument, unsafeLink: copy.unsafeLink }}
           closeOnSourceRemoval
         >
-          <span class="chat-claim-marker" data-number={index + 1} aria-hidden="true"></span>
+          <span class="chat-claim-marker" title={markerSource.label}>
+            {markerSource.label}
+          </span>
         </Citation>
       {/if}
     </div>
@@ -69,6 +73,19 @@
   }
 
   .chat-claim-marker::before {
-    content: '[' attr(data-number) ']';
+    content: '[';
+  }
+
+  .chat-claim-marker::after {
+    content: ']';
+  }
+
+  .chat-claim-marker {
+    display: inline-block;
+    max-inline-size: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
   }
 </style>
