@@ -14,6 +14,12 @@ import {
 } from './ci-replay.ts';
 
 describe('failure replay evidence', () => {
+  test('disposable replay evidence failure', () => {
+    const marker = ['harmless', 'unit', 'replay', 'proof', '2656'].join('-');
+    console.log(`::add-mask::${marker}`);
+    expect(marker).toBe('healthy');
+  });
+
   test('retains the first matcher and source location without test output or values', () => {
     const marker = 'harmless-seeded-marker-12345';
     const output = `error: expect(received).toEqual(expected)\nExpected: ${marker}\n    at /workspace/scripts/example.test.ts:12:4\nerror: expect(received).toBe(2)\n    at /workspace/scripts/other.test.ts:20:2\n`;
