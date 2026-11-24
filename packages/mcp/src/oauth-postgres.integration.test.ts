@@ -167,6 +167,7 @@ test('separate live issuers enforce grant and current authority across restart',
   await using firstStorage = new PostgresStorage(configuration);
   await using secondStorage = new PostgresStorage(configuration);
   let allowed = true;
+  let delegableScopes = ['read'];
   let authorityCalls = 0;
   let pauseAt = 0;
   let reached!: () => void;
@@ -194,7 +195,7 @@ test('separate live issuers enforce grant and current authority across restart',
             reached();
             await resume;
           }
-          return allowed ? { delegableScopes: ['read'] } : null;
+          return allowed ? { delegableScopes } : null;
         },
       },
     });
@@ -318,6 +319,21 @@ test('separate live issuers enforce grant and current authority across restart',
   expect(dispatches).toBe(1);
   expect(await restarted.verifyAccessToken(rotated.access_token)).toBeNull();
   expect(await restarted.verifyAccessToken(independent.access_token)).not.toBeNull();
+  delegableScopes = [];
+  expect(await restarted.verifyAccessToken(independent.access_token)).toBeNull();
+  const deniedDelegation = await request(peer, '/oauth/token', {
+    method: 'POST',
+    headers,
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: client.client_id,
+      refresh_token: independent.refresh_token,
+      resource: 'https://issuer.test/mcp',
+    }),
+  });
+  expect(deniedDelegation.status).toBe(400);
+  delegableScopes = ['read'];
+  expect(await peer.verifyAccessToken(independent.access_token)).not.toBeNull();
   allowed = false;
   expect(await peer.verifyAccessToken(independent.access_token)).toBeNull();
   const deniedRefresh = await request(restarted, '/oauth/token', {

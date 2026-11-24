@@ -214,7 +214,15 @@ describe('OAuthStore consent', () => {
     expect(await store.getAccess('access')).toBeNull();
     expect(await store.rotate({ ...rotation, client: 'other' })).toBe('invalid');
     expect(await store.rotate({ ...rotation, resource: 'https://other.test' })).toBe('invalid');
-    expect(await store.getAccess('new-access')).not.toBeNull();
+    expect(await store.getAccess('new-access')).toEqual(
+      expect.objectContaining({
+        subject: 'subject',
+        tenant: 'tenant',
+        client: 'client',
+        resource: 'https://resource.test',
+        scopes: ['read'],
+      }),
+    );
     expect(await store.rotate(rotation)).toBe('replay_revoked');
     expect(await store.getAccess('new-access')).toBeNull();
   });
