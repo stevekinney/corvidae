@@ -298,6 +298,14 @@ describe('hosted OAuth issuer', () => {
     expect(publicResult.status).toBe(400);
     expect(confidentialResult.status).toBe(400);
     expect(wrongSecretResult.status).toBe(401);
+    expect(confidential.client_secret_expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    const clock = spyOn(Date, 'now').mockReturnValue(confidential.client_secret_expires_at * 1000);
+    try {
+      const expiredSecret = await token(confidential.client_id, confidential.client_secret);
+      expect(expiredSecret.status).toBe(401);
+    } finally {
+      clock.mockRestore();
+    }
     const verifier = 'a'.repeat(43);
     const query = new URLSearchParams({
       client_id: publicClient.client_id,
@@ -381,5 +389,121 @@ describe('hosted OAuth issuer', () => {
     let count = 0;
     for await (const _ of storage.scan('oauth:consent:')) count++;
     expect(count).toBe(0);
+  });
+
+  test('snapshots identity callbacks before an authorization request awaits', async () => {
+    using storage = new MemoryStorage();
+    let started!: () => void;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const resumed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const identity = {
+      scopes: ['read'],
+      session: async () => {
+        started();
+        await resumed;
+        return { subject: 'subject', tenant: 'tenant', binding: 'session' };
+      },
+      signIn: async () => new Response(null, { status: 401 }),
+      async principalForGrant() {
+        return { delegableScopes: this.scopes };
+      },
+    };
+    const issuer = hostedOAuth({
+      issuer: 'https://issuer.test',
+      resource: 'https://issuer.test/mcp',
+      scopes: ['read', 'write'],
+      startingScopes: ['read'],
+      scopeDescriptions: { read: 'Read', write: 'Write' },
+      store: new OAuthStore(storage),
+      identity,
+    });
+    const registration = await issuer.handle(
+      new Request('https://issuer.test/oauth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['https://client.test/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    );
+    const client = await registration.json();
+    const query = new URLSearchParams({
+      client_id: client.client_id,
+      redirect_uri: 'https://client.test/callback',
+      response_type: 'code',
+      code_challenge: createHash('sha256').update('a'.repeat(43)).digest('base64url'),
+      code_challenge_method: 'S256',
+      resource: 'https://issuer.test/mcp',
+      scope: 'write',
+    });
+    const response = issuer.handle(new Request(`https://issuer.test/oauth/authorize?${query}`));
+    await waiting;
+    identity.principalForGrant = async () => ({ delegableScopes: ['write'] });
+    release();
+    const result = await response;
+    expect(result.status).toBe(400);
+  });
+
+  test('captures the session identity before awaiting current authority', async () => {
+    using storage = new MemoryStorage();
+    let started!: () => void;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const resumed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const session = { subject: 'original-subject', tenant: 'tenant', binding: 'session' };
+    const issuer = hostedOAuth({
+      issuer: 'https://issuer.test',
+      resource: 'https://issuer.test/mcp',
+      scopes: ['read'],
+      startingScopes: ['read'],
+      scopeDescriptions: { read: 'Read' },
+      store: new OAuthStore(storage),
+      identity: {
+        session: async () => session,
+        signIn: async () => new Response(null, { status: 401 }),
+        principalForGrant: async () => {
+          started();
+          await resumed;
+          return { delegableScopes: ['read'] };
+        },
+      },
+    });
+    const registration = await issuer.handle(
+      new Request('https://issuer.test/oauth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['https://client.test/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    );
+    const client = await registration.json();
+    const query = new URLSearchParams({
+      client_id: client.client_id,
+      redirect_uri: 'https://client.test/callback',
+      response_type: 'code',
+      code_challenge: createHash('sha256').update('a'.repeat(43)).digest('base64url'),
+      code_challenge_method: 'S256',
+      resource: 'https://issuer.test/mcp',
+    });
+    const response = issuer.handle(new Request(`https://issuer.test/oauth/authorize?${query}`));
+    await waiting;
+    session.subject = 'changed-subject';
+    release();
+    const result = await response;
+    const html = await result.text();
+    expect(html).toContain('original-subject');
+    expect(html).not.toContain('changed-subject');
   });
 });

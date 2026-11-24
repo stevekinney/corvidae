@@ -90,6 +90,80 @@ test('consent, exchange, rotation and revocation survive separate PostgreSQL poo
         scopes: ['read'],
       }),
     ).toBe('rotated');
+    expect(await first.createConsent('consent-race', consent)).toBe(true);
+    const consentResults = await Promise.all([
+      first.approveConsent('consent-race', binding, {
+        ...approval,
+        grantId: 'consent-race-grant',
+        code: 'consent-race-code',
+      }),
+      second.denyConsent('consent-race', binding),
+    ]);
+    expect(consentResults.filter(Boolean)).toHaveLength(1);
+    expect(await second.getGrant('consent-race-grant')).toEqual(
+      consentResults[0] ? expect.objectContaining({ subject: 'subject' }) : null,
+    );
+    expect(await second.getCode('consent-race-code')).toEqual(
+      consentResults[0] ? expect.objectContaining({ grantId: 'consent-race-grant' }) : null,
+    );
+    expect(await first.createConsent('replay', consent)).toBe(true);
+    expect(
+      await first.approveConsent('replay', binding, {
+        ...approval,
+        grantId: 'replay-grant',
+        code: 'replay-code',
+      }),
+    ).toBe(true);
+    expect(
+      await second.exchange({
+        ...exchange,
+        code: 'replay-code',
+        access: 'replay-access',
+        refresh: 'replay-refresh',
+      }),
+    ).toBe(true);
+    const rotation = {
+      issuer: 'https://issuer.test',
+      client: 'client',
+      resource: approval.resource,
+      refresh: 'replay-refresh',
+      access: 'replay-next-access',
+      nextRefresh: 'replay-next-refresh',
+      accessExpiresAt: expiresAt,
+      refreshExpiresAt: expiresAt,
+      scopes: ['read'],
+    };
+    expect(await first.rotate(rotation)).toBe('rotated');
+    expect(await second.rotate({ ...rotation, client: 'other' })).toBe('invalid');
+    expect(await second.rotate({ ...rotation, resource: 'https://other.test' })).toBe('invalid');
+    expect(await second.getAccess('replay-next-access')).not.toBeNull();
+    expect(await second.rotate(rotation)).toBe('replay_revoked');
+    expect(await first.getAccess('replay-next-access')).toBeNull();
+    expect(await first.getAccess('rotated')).not.toBeNull();
+    expect(await first.createConsent('collision', consent)).toBe(true);
+    expect(
+      await first.approveConsent('collision', binding, {
+        ...approval,
+        grantId: 'collision-grant',
+        code: 'collision-code',
+      }),
+    ).toBe(true);
+    expect(
+      await second.exchange({
+        ...exchange,
+        code: 'collision-code',
+        access: 'rotated',
+        refresh: 'collision-refresh',
+      }),
+    ).toBe(false);
+    expect(
+      await first.exchange({
+        ...exchange,
+        code: 'collision-code',
+        access: 'collision-access',
+        refresh: 'collision-refresh',
+      }),
+    ).toBe(true);
     expect(await first.createConsent('race', consent)).toBe(true);
     expect(
       await first.approveConsent('race', binding, {

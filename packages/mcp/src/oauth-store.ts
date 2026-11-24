@@ -70,6 +70,7 @@ export type OAuthClient = {
   grantTypes: string[];
   authentication: 'none' | 'client_secret_post';
   secretHash: string | null;
+  secretExpiresAt: number | null;
 };
 
 const encoder = new TextEncoder();

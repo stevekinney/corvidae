@@ -77,6 +77,11 @@ export function hostedOAuth(configuration: Options) {
     scopes: [...configuration.scopes],
     startingScopes: [...configuration.startingScopes],
     scopeDescriptions: { ...configuration.scopeDescriptions },
+    identity: {
+      session: configuration.identity.session.bind(configuration.identity),
+      signIn: configuration.identity.signIn.bind(configuration.identity),
+      principalForGrant: configuration.identity.principalForGrant.bind(configuration.identity),
+    },
   };
   const issuer = new URL(options.issuer);
   const resource = new URL(options.resource);
@@ -109,6 +114,7 @@ export function hostedOAuth(configuration: Options) {
           grantTypes: document.grantTypes,
           authentication: 'none',
           secretHash: null,
+          secretExpiresAt: null,
         }
       : null;
   };
@@ -117,13 +123,18 @@ export function hostedOAuth(configuration: Options) {
     if (!client) return null;
     const secret = form.get('client_secret');
     if (client.authentication === 'none') return secret === null ? client : null;
-    if (!secret || !client.secretHash) return null;
+    if (
+      !secret ||
+      !client.secretHash ||
+      (client.secretExpiresAt !== null && client.secretExpiresAt <= Date.now())
+    )
+      return null;
     const actual = Buffer.from(digest(secret), 'hex');
     const expected = Buffer.from(client.secretHash, 'hex');
     return actual.length === expected.length && timingSafeEqual(actual, expected) ? client : null;
   };
   const authority = (identity: { subject: string; tenant: string }) =>
-    options.identity.principalForGrant(identity);
+    options.identity.principalForGrant({ subject: identity.subject, tenant: identity.tenant });
   const register = async (request: Request) => {
     const text = await body(request, 'application/json');
     if (text === null) return error('invalid_request');
@@ -143,6 +154,9 @@ export function hostedOAuth(configuration: Options) {
     const data = parsed.data;
     const clientId = randomUUID();
     const secret = data.token_endpoint_auth_method === 'client_secret_post' ? random() : null;
+    const secretExpiresAt = secret
+      ? Math.floor((Date.now() + 180 * 86_400_000) / 1000) * 1000
+      : null;
     const registered = await options.store.registerClient({
       issuer: options.issuer,
       clientId,
@@ -151,13 +165,16 @@ export function hostedOAuth(configuration: Options) {
       grantTypes: data.grant_types,
       authentication: data.token_endpoint_auth_method,
       secretHash: secret ? digest(secret) : null,
+      secretExpiresAt,
     });
     if (!registered) return error('server_error', 500);
     return json(
       {
         ...data,
         client_id: clientId,
-        ...(secret ? { client_secret: secret, client_secret_expires_at: 0 } : {}),
+        ...(secret && secretExpiresAt
+          ? { client_secret: secret, client_secret_expires_at: secretExpiresAt / 1000 }
+          : {}),
         client_id_issued_at: Math.floor(Date.now() / 1000),
       },
       201,
@@ -179,8 +196,9 @@ export function hostedOAuth(configuration: Options) {
       form.get('resource') !== options.resource
     )
       return error('invalid_request');
-    const identity = await options.identity.session(request);
-    if (!identity) return options.identity.signIn(request);
+    const session = await options.identity.session(request);
+    if (!session) return options.identity.signIn(request);
+    const identity = { ...session };
     const principal = await authority(identity);
     if (!principal) return error('access_denied', 403);
     const requested = form.get('scope');
@@ -237,8 +255,9 @@ export function hostedOAuth(configuration: Options) {
   const consent = async (request: Request) => {
     const text = await body(request, 'application/x-www-form-urlencoded');
     const form = text === null ? null : parameters(text);
-    const identity = await options.identity.session(request);
-    if (!form || !identity) return error('invalid_request');
+    const session = await options.identity.session(request);
+    if (!form || !session) return error('invalid_request');
+    const identity = { ...session };
     const transaction = form.get('transaction') ?? '';
     const binding = {
       issuer: options.issuer,

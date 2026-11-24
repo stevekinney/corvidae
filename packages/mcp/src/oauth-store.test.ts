@@ -174,6 +174,46 @@ describe('OAuthStore consent', () => {
     expect(await first.exchange(input)).toBe(false);
   });
 
+  test('an issuance collision leaves the code reusable without partial credentials', async () => {
+    using storage = new MemoryStorage();
+    const store = new OAuthStore(storage);
+    const expiry = Date.now() + 60_000;
+    for (const name of ['first', 'second']) {
+      await store.createConsent(name, consent);
+      await store.approveConsent(name, binding, {
+        grantId: name,
+        code: `code-${name}`,
+        tenant: 'tenant',
+        subject: 'subject',
+        resource: 'https://resource.test',
+        scopes: ['read'],
+      });
+    }
+    const input = {
+      issuer: 'https://issuer.test',
+      client: 'client',
+      redirect: consent.redirect,
+      resource: 'https://resource.test',
+      verifier,
+      access: 'access',
+      refresh: 'refresh',
+      accessExpiresAt: expiry,
+      refreshExpiresAt: expiry,
+    };
+    expect(await store.exchange({ ...input, code: 'code-first' })).toBe(true);
+    expect(await store.exchange({ ...input, code: 'code-second', refresh: 'other-refresh' })).toBe(
+      false,
+    );
+    expect(
+      await store.exchange({
+        ...input,
+        code: 'code-second',
+        access: 'other-access',
+        refresh: 'other-refresh',
+      }),
+    ).toBe(true);
+  });
+
   test('authenticated refresh replay revokes the grant, but a wrong binding cannot', async () => {
     using storage = new MemoryStorage();
     const store = new OAuthStore(storage);
