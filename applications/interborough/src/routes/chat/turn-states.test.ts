@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { createConversation, type Message } from '@lostgradient/chat';
+import { createConversation, type ConversationHistory, type Message } from '@lostgradient/chat';
 
 import { lastAssistantId, turnStateOf } from './turn-states.ts';
 
@@ -12,11 +12,19 @@ const assistant = {
 } as Message;
 
 test('only the dropped stream’s last assistant turn reconnects', () => {
-  const conversation = {
+  const conversation: ConversationHistory = {
     ...createConversation({ id: 'reconnecting-turn' }),
     ids: ['person', 'assistant'],
     messages: {
-      person: { id: 'person', role: 'user', content: 'Question', metadata: {} },
+      person: {
+        id: 'person',
+        role: 'user',
+        content: 'Question',
+        metadata: {},
+        position: 0,
+        createdAt: '2026-11-24T00:00:00.000Z',
+        hidden: false,
+      },
       assistant,
     },
   };
