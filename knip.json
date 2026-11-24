@@ -9,6 +9,7 @@
         "scripts/**/*.slow.test.ts",
         "scripts/**/*.bench.ts",
         "scripts/**/*.playwright.ts",
+        "scripts/affected-tests.ts",
         "scripts/chef/evaluate-outcomes.ts",
         "scripts/cinder-release-consumer.ts"
       ],
@@ -81,7 +82,8 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
-        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts"
+        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
+        "src/hooks/recipient-recovery-child.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -90,7 +92,8 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
-        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!"
+        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
+        "!src/hooks/recipient-recovery-child.ts!"
       ]
     },
     "packages/backchannel": {

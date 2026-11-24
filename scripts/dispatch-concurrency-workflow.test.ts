@@ -6,6 +6,13 @@ function workflow(name: string): string {
   return readFileSync(resolve(import.meta.dir, '..', '.github/workflows', name), 'utf8');
 }
 
+function unitScript(): string {
+  expect(workflow('targeted-checks.yml')).toContain(
+    'bun scripts/chef/ci-replay.ts run -- bash scripts/chef/targeted-unit.sh',
+  );
+  return readFileSync(resolve(import.meta.dir, 'chef/targeted-unit.sh'), 'utf8');
+}
+
 /** The top-level `concurrency:` block of a workflow, two-space indented lines after its key. */
 function concurrencyBlock(text: string): string {
   const match = /^concurrency:\n((?: {2}.*\n)+)/mu.exec(text);
@@ -32,7 +39,7 @@ describe('workflow_dispatch concurrency', () => {
   // `server.test.ts` reads the generated manifest, and the root `test:browser-fixtures` verifies the
   // curated build after the tests: the targeted lane for that workspace does both.
   test('targeted-checks.yml runs the browser-fixtures lane as test:browser-fixtures does', () => {
-    const text = workflow('targeted-checks.yml');
+    const text = unitScript();
     const start = text.indexOf('"$UNIT_WORKSPACE" = scripts/browser-fixtures');
     expect(start).toBeGreaterThan(-1);
     const lane = text.slice(start, text.indexOf('exit', start));
@@ -63,8 +70,7 @@ describe('workflow_dispatch concurrency', () => {
 
   // A dispatch without unit_config ran Interborough UI tests DOM-less (run 44371426895).
   test('an Interborough unit run outside src/host defaults to bunfig.ui.toml', () => {
-    const text = workflow('targeted-checks.yml');
-    const job = text.slice(text.indexOf('\n  unit:\n'));
+    const job = unitScript();
     expect(job).toContain('[ "$UNIT_WORKSPACE" = applications/interborough ]');
     expect(job).toContain('src/host|src/host/*|fixtures|fixtures/*) host=1');
     expect(job).toContain('UNIT_CONFIG=./bunfig.ui.toml');
@@ -73,13 +79,12 @@ describe('workflow_dispatch concurrency', () => {
   // COR-2643: run 45023128727's host lane passed `--conditions browser`, under which Prettier
   // resolves to its standalone build and `bureau-client-generation.test.ts` could not load.
   test('an Interborough host lane runs with no export conditions, as its test script does', () => {
-    const text = workflow('targeted-checks.yml');
-    const job = text.slice(text.indexOf('\n  unit:\n'));
+    const job = unitScript();
     const hostLane =
-      'if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then\n            conditions=""';
-    expect(job).toContain('conditions="--conditions browser --conditions svelte"');
+      'if [ -z "$UNIT_CONFIG" ] && [ "$UNIT_WORKSPACE" = applications/interborough ]; then\n  conditions=()';
+    expect(job).toContain('conditions=(--conditions browser --conditions svelte)');
     expect(job).toContain(hostLane);
-    expect(job).toContain('bun test $config $conditions $UNIT_PATHS');
+    expect(job).toContain('"${config[@]}" "${conditions[@]}" "${paths[@]}"');
     // The host lane's conditions are decided after the config default, which leaves UNIT_CONFIG
     // empty only for a host path.
     expect(job.indexOf(hostLane)).toBeGreaterThan(job.indexOf('UNIT_CONFIG=./bunfig.ui.toml'));
@@ -88,19 +93,20 @@ describe('workflow_dispatch concurrency', () => {
   // COR-2649: run 45220808853 ran the startup-failure and readiness files in one module registry,
   // so the failed starts left readiness false and `/ready` answered 503.
   test('a playground unit run isolates each test file and other workspaces keep one process', () => {
-    const text = workflow('targeted-checks.yml');
-    const job = text.slice(text.indexOf('\n  unit:\n'));
+    const job = unitScript();
     const playgroundLane =
-      'if [ "$UNIT_WORKSPACE" = applications/playground ]; then\n            bun test --isolate $config $conditions $UNIT_PATHS\n            exit\n          fi\n          bun test $config $conditions $UNIT_PATHS\n';
+      'if [ "$UNIT_WORKSPACE" = applications/playground ]; then\n  bun test "${reporter[@]}" --isolate "${config[@]}" "${conditions[@]}" "${paths[@]}"\n  exit\nfi\nbun test "${reporter[@]}" "${config[@]}" "${conditions[@]}" "${paths[@]}"\n';
     expect(job).toContain(playgroundLane);
-    expect(job.match(/bun test --isolate /gu)).toHaveLength(1);
-    expect(job.match(/^ {10}bun test \$config \$conditions \$UNIT_PATHS$/gmu)).toHaveLength(1);
+    expect(job.match(/bun test .* --isolate /gu)).toHaveLength(1);
+    expect(
+      job.match(/^bun test .* "\$\{config\[@\]\}" "\$\{conditions\[@\]\}" "\$\{paths\[@\]\}"$/gmu),
+    ).toHaveLength(1);
     // The playground keeps the conditions and optional configuration decided before it.
     expect(job.indexOf(playgroundLane)).toBeGreaterThan(
-      job.indexOf('conditions="--conditions browser --conditions svelte"'),
+      job.indexOf('conditions=(--conditions browser --conditions svelte)'),
     );
     expect(job.indexOf(playgroundLane)).toBeGreaterThan(
-      job.indexOf('if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi'),
+      job.indexOf('if [ -n "$UNIT_CONFIG" ]; then config=("--config=$UNIT_CONFIG"); fi'),
     );
   });
 });
