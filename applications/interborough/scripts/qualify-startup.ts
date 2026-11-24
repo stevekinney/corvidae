@@ -6,7 +6,42 @@ import { resolve } from 'node:path';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { processEnvironment } from '../src/host/environment-configuration.ts';
 
-if (process.argv[2] === '--supervise') {
+function isSettingsRequest(
+  url: string,
+  origin: string,
+  verb: string,
+  body: string | null,
+): boolean {
+  const parsed = new URL(url);
+  if (parsed.origin !== origin || parsed.pathname !== '/jsonrpc' || verb !== 'POST') return false;
+  try {
+    return JSON.parse(body ?? '{}').method === 'bureau.settings.get';
+  } catch {
+    return false;
+  }
+}
+
+if (process.argv[2] === '--matcher-control') {
+  const origin = 'http://127.0.0.1:1234';
+  const body = JSON.stringify({ method: 'bureau.settings.get' });
+  const cases = [
+    isSettingsRequest(`${origin}/jsonrpc`, origin, 'POST', body),
+    isSettingsRequest(`${origin}/bureau/jsonrpc`, origin, 'POST', body),
+    isSettingsRequest('http://127.0.0.1:1235/jsonrpc', origin, 'POST', body),
+    isSettingsRequest(`${origin}/jsonrpc`, origin, 'GET', body),
+    isSettingsRequest(
+      `${origin}/jsonrpc`,
+      origin,
+      'POST',
+      JSON.stringify({ method: 'bureau.settings.schema' }),
+    ),
+    isSettingsRequest(`${origin}/jsonrpc`, origin, 'POST', '{'),
+  ];
+  if (JSON.stringify(cases) !== JSON.stringify([true, false, false, false, false, false])) {
+    throw new Error('Settings response matcher control failed');
+  }
+  console.log(JSON.stringify({ matcherControl: 'passed', cases }));
+} else if (process.argv[2] === '--supervise') {
   const [, , , checkout, mode] = process.argv;
   if (!checkout || !mode) throw new Error('Missing supervised checkout or mode');
   process.exitCode = await runInProcessGroup(
@@ -143,21 +178,72 @@ if (process.argv[2] === '--supervise') {
     const browser = await chromium.launch({ headless: true });
     try {
       const page = await browser.newPage();
-      const errors: string[] = [];
-      page.on('pageerror', (error) => errors.push(error.message));
+      const errors: Array<{ name: string; messageLength: number }> = [];
+      const consoleMessages: Array<{ type: string; length: number }> = [];
+      const responses: Array<{
+        milliseconds: number;
+        kind: string;
+        method: string;
+        settingsGet: boolean;
+        status: number;
+      }> = [];
+      const failedRequests: Array<{ milliseconds: number; kind: string }> = [];
+      const requestKind = (url: string): string => {
+        const path = new URL(url).pathname;
+        if (path === '/jsonrpc') return 'jsonrpc';
+        if (path === '/settings/data-and-retention') return 'settings-navigation';
+        return path.startsWith('/assets/') ? 'asset' : 'other';
+      };
+      receipt.browser = { errors, consoleMessages, responses, failedRequests };
+      page.on('pageerror', (error) =>
+        errors.push({ name: error.name, messageLength: error.message.length }),
+      );
+      page.on('console', (message) =>
+        consoleMessages.push({ type: message.type(), length: message.text().length }),
+      );
+      page.on('response', (response) => {
+        const request = response.request();
+        if (responses.length < 50)
+          responses.push({
+            milliseconds: performance.now() - started,
+            kind: requestKind(response.url()),
+            method: request.method(),
+            settingsGet: isSettingsRequest(
+              request.url(),
+              new URL(url).origin,
+              request.method(),
+              request.postData(),
+            ),
+            status: response.status(),
+          });
+      });
+      page.on('requestfailed', (request) => {
+        if (failedRequests.length < 50)
+          failedRequests.push({
+            milliseconds: performance.now() - started,
+            kind: requestKind(request.url()),
+          });
+      });
       const settingsResponse = page.waitForResponse((response) => {
         const request = response.request();
-        if (!request.url().endsWith('/bureau/jsonrpc') || request.method() !== 'POST') return false;
-        try {
-          return (
-            JSON.parse(request.postData() ?? '{}').method === 'bureau.settings.get' && response.ok()
-          );
-        } catch {
-          return false;
-        }
+        return (
+          response.ok() &&
+          isSettingsRequest(
+            request.url(),
+            new URL(url).origin,
+            request.method(),
+            request.postData(),
+          )
+        );
       });
       const [navigation, response] = await Promise.all([
-        page.goto(new URL('/settings/data-and-retention', url).href),
+        page.goto(new URL('/settings/data-and-retention', url).href).then((result) => {
+          receipt.navigation = {
+            status: result?.status() ?? null,
+            milliseconds: performance.now() - started,
+          };
+          return result;
+        }),
         settingsResponse,
       ]);
       const settingsBody: unknown = await response.json();
@@ -179,7 +265,12 @@ if (process.argv[2] === '--supervise') {
       await page.reload();
       await expect(days).toHaveValue(next);
       const persisted = await days.inputValue();
-      if (navigation?.status() !== 200 || persisted !== next || errors.length > 0) {
+      if (
+        navigation?.status() !== 200 ||
+        persisted !== next ||
+        errors.length > 0 ||
+        consoleMessages.some((entry) => entry.type === 'error')
+      ) {
         throw new Error(
           JSON.stringify({ status: navigation?.status(), persisted, expected: next, errors }),
         );
