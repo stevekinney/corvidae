@@ -143,6 +143,7 @@
   import ChatApproval from './chat-approval.svelte';
   import { branchPointIds } from './branch-points.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
+  import { inboxKey } from '../reviews/review-items.ts';
   import { setChatArchived } from './chat-archive.ts';
   import ChatAssets from './chat-assets.svelte';
   import {
@@ -2571,6 +2572,14 @@
                           : undefined}
                         requestedAt={asked?.requestedAt}
                         alwaysAsks={asked?.alwaysAsks}
+                        irreversible={asked?.action?.irreversible}
+                        consequence={asked?.action?.consequence}
+                        why={asked?.action?.why}
+                        decidedInHref={entry.reviewId === undefined
+                          ? undefined
+                          : router.href(
+                              `/reviews?tab=done&review=${encodeURIComponent(inboxKey({ source: 'bureau', id: entry.reviewId }))}`,
+                            )}
                         {...asked?.action?.expiresAt === undefined
                           ? {}
                           : { expiresAt: asked.action.expiresAt }}

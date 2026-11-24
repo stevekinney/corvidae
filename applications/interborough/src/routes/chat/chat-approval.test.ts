@@ -2,7 +2,7 @@
  * One approval under its call (COR-2016): Cinder's approval row, with the risk its tool's tier
  * implies, so a read-only call is not drawn as a risky one.
  */
-import { cleanup, fireEvent, render, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import ChatApproval from './chat-approval.svelte';
@@ -88,63 +88,42 @@ describe('a waiting approval', () => {
     expect(onResolve.mock.calls[0]?.[0]).toMatchObject({ decision: 'approve' });
   });
 
-  for (const [choice, confirmation, decision] of [
-    ['Approve', 'Confirm approval', 'approve'],
-    ['Deny', 'Confirm denial', 'deny'],
-  ] as const) {
-    test(`submits the same ${decision} resolution through the DecisionDeck`, async () => {
-      const onResolve = mock((_resolution: unknown) => undefined);
-      const view = mount('dangerous', onResolve);
-      await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-      await fireEvent.input(view.getByRole('textbox', { name: /^Note\b/ }), {
-        target: { value: 'The order number matches.' },
-      });
-      await fireEvent.click(view.getByRole('checkbox', { name: /for the rest of this chat/ }));
-      await fireEvent.click(view.getByRole('button', { name: 'Review in deck' }));
-      const deck = within(await view.findByRole('dialog', { name: 'Review tool approval' }));
-      expect(deck.getByText('lookup-order')).not.toBeNull();
-      expect(deck.getByText('4471')).not.toBeNull();
-      await fireEvent.click(deck.getByRole('button', { name: choice }));
-      expect(onResolve).toHaveBeenCalledTimes(0);
-      expect(deck.getByRole('region', { name: 'Confirm your decision' }).textContent).toContain(
-        'lookup-order',
-      );
-      expect(deck.getByRole('region', { name: 'Confirm your decision' }).textContent).toContain(
-        '4471',
-      );
-      await fireEvent.click(deck.getByRole('button', { name: 'Undo' }));
-      expect(onResolve).toHaveBeenCalledTimes(0);
-      await fireEvent.click(deck.getByRole('button', { name: choice }));
-      await fireEvent.click(deck.getByRole('button', { name: confirmation }));
-      expect(onResolve.mock.calls.map(([resolution]) => resolution)).toEqual([
-        { decision, remember: true, reason: 'The order number matches.' },
-      ]);
-    });
-  }
+  test('uses the explicit decision surface instead of nesting a review deck', () => {
+    const { container, queryByRole } = mount('dangerous');
+    expect(container.querySelector('[data-cinder-layout]')?.getAttribute('data-cinder-layout')).toBe(
+      'decision',
+    );
+    expect(queryByRole('button', { name: 'Review in deck' })).toBeNull();
+  });
 
-  test('keeps a nested operation argument visible while its deck choice waits for confirmation', async () => {
+  test('links a receipt decided in Reviews to that review', () => {
     const view = render(ChatApproval, {
       props: {
-        id: 'approval-nested',
-        entry: { ...entry('dangerous'), arguments: { order: { id: '4471', item: 'replacement' } } },
-        question: 'Replace order 4471?',
+        id: 'approval-elsewhere',
+        entry: {
+          ...entry('dangerous'),
+          state: 'done',
+          decision: {
+            outcome: 'approved',
+            decidedBy: 'priya',
+            decidedAt: Date.parse('2026-11-05T10:46:00Z'),
+            decisionSurface: 'reviews',
+          },
+        },
+        question: '',
         source: 'Tool runner',
-        context: {},
+        context: { owner: 'steve' },
         unreachable: false,
+        decidedInHref: '#/reviews?tab=done&review=bureau%3Aapproval%3Arun-1%3Acall-1',
         onResolve: () => {},
       },
     } as never);
 
-    await fireEvent.click(view.getByRole('button', { name: 'Review in deck' }));
-    const deck = within(await view.findByRole('dialog', { name: 'Review tool approval' }));
-    expect(deck.getByText('replacement')).not.toBeNull();
-    await fireEvent.click(deck.getByRole('button', { name: 'Approve' }));
-    expect(deck.getByRole('region', { name: 'Confirm your decision' }).textContent).toContain(
-      'replacement',
+    const link = view.container.querySelector<HTMLAnchorElement>('.cinder-approval-card a[href]');
+    expect(link?.getAttribute('href')).toBe(
+      '#/reviews?tab=done&review=bureau%3Aapproval%3Arun-1%3Acall-1',
     );
-    await fireEvent.click(deck.getByRole('button', { name: 'Back to approval controls' }));
-    expect(view.queryByRole('dialog', { name: 'Review tool approval' })).toBeNull();
-    expect(view.getByRole('button', { name: 'Add note' })).not.toBeNull();
+    expect(link?.textContent?.trim()).toBe('Reviews');
   });
 
   test('becomes the decided row when it is decided while the page is open', async () => {

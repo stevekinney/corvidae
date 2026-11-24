@@ -155,11 +155,11 @@ describe('an approval decided on another page', () => {
     );
 
     await until(() => expect(container.querySelector('[data-approval-decision]')).toBeNull());
-    const row = container.querySelector('.cinder-approval-card--row');
-    expect(row?.querySelector('h4')?.textContent).toBe('Refund order 4471 for $42.00?');
+    const row = container.querySelector('.cinder-approval-card--decision');
+    expect(row?.querySelector('h4')?.textContent).toContain('Refund order 4471 for $42.00?');
     expect(
-      row?.querySelector('.cinder-approval-card__outcome')?.textContent?.replace(/\s+/g, ' '),
-    ).toMatch(/^\s*Approved by you in Reviews\s*\d{1,2}:\d{2} [AP]M\s*$/);
+      row?.querySelector('.cinder-approval-card__settled-note')?.textContent?.replace(/\s+/g, ' '),
+    ).toMatch(/^\s*Approved by you in Reviews\s*$/);
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     // The rail row speaks for the same decision in its own words.
@@ -188,7 +188,7 @@ describe('an approval decided on another page', () => {
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe(
       'Denied in Reviews. Refund order 4471 for $42.00.',
     );
-    const row = container.querySelector('.cinder-approval-card--row');
+    const row = container.querySelector('.cinder-approval-card--decision');
     expect(row?.textContent).toContain('Denied by you in Reviews');
     expect(row?.querySelector('.cinder-approval-card__decision-note')?.textContent).toContain(
       'Check the carrier’s claim first.',
@@ -204,7 +204,7 @@ describe('an approval decided on another page', () => {
 
     await until(() => expect(container.querySelector('[data-approval-decision]')).toBeNull());
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe('');
-    expect(container.querySelector('.cinder-approval-card--row')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card--decision')).toBeNull();
   });
 });
 
@@ -300,7 +300,7 @@ describe('the run a decision on another page continues the chat with (design row
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe(
       'Approved in Reviews. Refund order 4471 for $42.00.',
     );
-    expect(container.querySelector('.cinder-approval-card__outcome')?.textContent).toContain(
+    expect(container.querySelector('.cinder-approval-card__settled-note')?.textContent).toContain(
       'Approved by you in Reviews',
     );
     // While the continuation goes, the rail row reads as that run (18i).
