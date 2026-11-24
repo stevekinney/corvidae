@@ -154,18 +154,43 @@ export function createSessionResume<D extends AgentDefinitions>(
         taskAdmissionFence: continuationAdmissionFenceKey,
         authorizeTaskAdmission: async (continuationRunId) => {
           if (runtime.kv === undefined) return;
+          const key = continuationAdmissionFenceKey(continuationRunId);
+          const authorizedReceipt = continuationReceiptValue('authorized', continuationRunId);
           const authorized = await runtime.kv.conditionalBatch(
-            [{ key: continuationAdmissionFenceKey(continuationRunId), expectedValue: null }],
-            [
-              {
-                type: 'set',
-                key: continuationAdmissionFenceKey(continuationRunId),
-                value: JSON.stringify({ state: 'authorized', runId: continuationRunId }),
-              },
-            ],
+            [{ key, expectedValue: null }],
+            [{ type: 'set', key, value: authorizedReceipt }],
           );
           if (!authorized)
             throw new Error(`Continuation admission for "${continuationRunId}" was retired.`);
+        },
+        confirmTaskAdmission: async (continuationRunId) => {
+          if (runtime.kv === undefined) return;
+          const key = continuationAdmissionFenceKey(continuationRunId);
+          const authorizedReceipt = continuationReceiptValue('authorized', continuationRunId);
+          const launchedReceipt = continuationReceiptValue('launched', continuationRunId);
+          if (
+            !(await runtime.kv.conditionalBatch(
+              [{ key, expectedValue: authorizedReceipt }],
+              [{ type: 'set', key, value: launchedReceipt }],
+            )) &&
+            continuationReceipt(await runtime.kv.get(key), continuationRunId) !== 'launched'
+          ) {
+            throw new Error(`Continuation admission for "${continuationRunId}" was retired.`);
+          }
+        },
+        rejectTaskAdmission: async (continuationRunId) => {
+          if (runtime.kv === undefined) return true;
+          const key = continuationAdmissionFenceKey(continuationRunId);
+          const authorizedReceipt = continuationReceiptValue('authorized', continuationRunId);
+          const rejectedReceipt = continuationReceiptValue('rejected', continuationRunId);
+          if (
+            await runtime.kv.conditionalBatch(
+              [{ key, expectedValue: authorizedReceipt }],
+              [{ type: 'set', key, value: rejectedReceipt }],
+            )
+          )
+            return true;
+          return continuationReceipt(await runtime.kv.get(key), continuationRunId) !== 'launched';
         },
         assertTaskAdmissionLive: async (continuationRunId) => {
           if (
@@ -260,21 +285,40 @@ export function createSessionResume<D extends AgentDefinitions>(
     const fenceKey = continuationAdmissionFenceKey(continuationRunId);
     const taskKey = `${TASK_RECORD_KEY_PREFIX}${continuationRunId}`;
     const observedTask = await runtime.kv.get(taskKey);
-    const fence = JSON.stringify({
-      sessionId: session.id,
-      incarnation: session.incarnation,
-      resumedRunId,
-      runId: continuationRunId,
-    });
+    const observedReceipt = await runtime.kv.get(fenceKey);
+    const state = continuationReceipt(observedReceipt, continuationRunId);
+    if (state === 'authorized') {
+      const task = await core.tasks.record(continuationRunId);
+      if (task?.settled?.finishReason !== TASK_OWNER_LOST_FINISH_REASON) return false;
+      const acknowledged = await runtime.kv.conditionalBatch(
+        [
+          { key: processLeaseKey(processId), expectedValue: lease.raw },
+          { key: taskKey, expectedValue: observedTask },
+          { key: fenceKey, expectedValue: observedReceipt },
+        ],
+        [
+          {
+            type: 'set',
+            key: fenceKey,
+            value: continuationReceiptValue('launched', continuationRunId),
+          },
+        ],
+      );
+      return (
+        acknowledged ||
+        continuationReceipt(await runtime.kv.get(fenceKey), continuationRunId) === 'launched'
+      );
+    }
+    const replacementReceipt = continuationReceiptValue('retired', continuationRunId);
     const reserved = await runtime.kv.conditionalBatch(
       [
         { key: processLeaseKey(processId), expectedValue: lease.raw },
         { key: taskKey, expectedValue: observedTask },
-        { key: fenceKey, expectedValue: null },
+        { key: fenceKey, expectedValue: observedReceipt },
       ],
-      [{ type: 'set', key: fenceKey, value: fence }],
+      [{ type: 'set', key: fenceKey, value: replacementReceipt }],
     );
-    if (!reserved && (await runtime.kv.get(fenceKey)) !== fence) return false;
+    if (!reserved) return false;
     // The fence makes a late prepared holder abandon before any lifecycle work. Its task record
     // is now a pre-launch admission only, so remove it before the replacement continuation starts.
     if (observedTask !== null) await core.tasks.remove(continuationRunId);
@@ -316,10 +360,10 @@ export function createSessionResume<D extends AgentDefinitions>(
       if (core.store.getRun(continuationRunId) !== undefined) return;
       if (
         runtime.kv !== undefined &&
-        isAuthorizedContinuationReceipt(
+        continuationReceipt(
           await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId)),
           continuationRunId,
-        )
+        ) === 'launched'
       )
         return;
       return refuse('turn-running', 'The continuation is still being prepared.');
@@ -330,7 +374,7 @@ export function createSessionResume<D extends AgentDefinitions>(
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
     const receipt = await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId));
-    if (isAuthorizedContinuationReceipt(receipt, continuationRunId)) return;
+    if (continuationReceipt(receipt, continuationRunId) === 'authorized') return;
     // A task and a prepared engine shell both precede authorization. Neither proves that this
     // continuation can launch: its owner may have died after prepare, and recovery may retire the
     // exact unclaimed admission. The scoped receipt is the only durable start fact.
@@ -341,22 +385,35 @@ export function createSessionResume<D extends AgentDefinitions>(
     return refuse('turn-running', 'The continuation start is in doubt.');
   }
 
-  function isAuthorizedContinuationReceipt(
+  function continuationReceipt(
     value: string | null | undefined,
     continuationRunId: string,
-  ): boolean {
-    if (value === null || value === undefined) return false;
+  ): 'authorized' | 'launched' | 'rejected' | 'retired' | undefined {
+    if (value === null || value === undefined) return undefined;
     try {
       const parsed: unknown = JSON.parse(value);
-      return (
+      const state =
         parsed !== null &&
         typeof parsed === 'object' &&
-        (parsed as Record<string, unknown>)['state'] === 'authorized' &&
         (parsed as Record<string, unknown>)['runId'] === continuationRunId
-      );
+          ? (parsed as Record<string, unknown>)['state']
+          : undefined;
+      return state === 'authorized' ||
+        state === 'launched' ||
+        state === 'rejected' ||
+        state === 'retired'
+        ? state
+        : undefined;
     } catch {
-      return false;
+      return undefined;
     }
+  }
+
+  function continuationReceiptValue(
+    state: 'authorized' | 'launched' | 'rejected' | 'retired',
+    runId: string,
+  ): string {
+    return JSON.stringify({ state, runId });
   }
 
   /**

@@ -138,6 +138,10 @@ export type SessionTaskFields = {
   readonly taskAdmissionFence?: ((runId: string) => string) | undefined;
   /** Internal continuation-only authorization immediately after durable prepare. */
   readonly authorizeTaskAdmission?: ((runId: string) => Promise<void>) | undefined;
+  /** Records that a locally registered continuation may answer duplicate commands. */
+  readonly confirmTaskAdmission?: ((runId: string) => Promise<void>) | undefined;
+  /** Rejects a claimed local continuation before its rollback removes its marker. */
+  readonly rejectTaskAdmission?: ((runId: string) => Promise<boolean>) | undefined;
   /** Internal continuation-only check after task admission, before constructing a run. */
   readonly assertTaskAdmissionLive?: ((runId: string) => Promise<void>) | undefined;
   /**

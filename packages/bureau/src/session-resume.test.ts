@@ -542,6 +542,9 @@ describe('a resumed turn', () => {
       runId: continuationRunId,
       resumedRunId: run.id,
     });
+    expect(
+      await textValueStore(fixture.storage).get(continuationAdmissionFenceKey(continuationRunId)),
+    ).toBe(JSON.stringify({ state: 'launched', runId: continuationRunId }));
     expect((await second.internals.taskRegistry.record(continuationRunId))?.settled).toMatchObject({
       finishReason: TASK_OWNER_LOST_FINISH_REASON,
     });

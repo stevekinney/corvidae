@@ -820,6 +820,9 @@ export function createRunCreation<D extends AgentDefinitions>(
       // errors retain their usual conversation save.
       let admissionRejectedBeforeLaunch = false;
       const authorizeTaskAdmission = request.authorizeTaskAdmission;
+      const confirmTaskAdmission = request.confirmTaskAdmission;
+      const rejectTaskAdmission = request.rejectTaskAdmission;
+      let preserveRejectedContinuation = false;
       // COR-1707 — with no session store, nothing saves the context's rows or claims what they
       // reference, so the task holds its own rows, its input included, under its run for the
       // task's life, as a catalog run does; its end releases them (the terminal listeners below).
@@ -923,7 +926,14 @@ export function createRunCreation<D extends AgentDefinitions>(
           // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
           // synchronous fence immediately before local creation, so a shutdown or deletion that
           // started while the receipt was claimed cannot miss this run.
-          assertRunCreationStillOpen(sessionId);
+          try {
+            assertRunCreationStillOpen(sessionId);
+          } catch (error) {
+            // Do not erase an owner-lost acknowledgement which won between the final guard and
+            // this process's rollback. Its terminal task remains the continuation's receipt.
+            preserveRejectedContinuation = (await rejectTaskAdmission?.(runId)) === false;
+            throw error;
+          }
         }
         activeRun = createActiveRun(
           startedRunOptions,
@@ -977,7 +987,7 @@ export function createRunCreation<D extends AgentDefinitions>(
           { owner },
         );
       } catch (error) {
-        await core.tasks.discard(runId).catch(() => undefined);
+        if (!preserveRejectedContinuation) await core.tasks.discard(runId).catch(() => undefined);
         // Promoted but never started, so no terminal listener will ever log
         // its end: log it here, or every process would count this run as
         // starting and keep a pause bound to it accepted.
@@ -1268,6 +1278,9 @@ export function createRunCreation<D extends AgentDefinitions>(
       );
 
       store.register(activeRun, runId);
+      if (runtime.durable === undefined && confirmTaskAdmission !== undefined) {
+        await confirmTaskAdmission(runId);
+      }
       registeredForRecovery = true;
       runSessionIdentifiers.set(activeRun, sessionId);
 
