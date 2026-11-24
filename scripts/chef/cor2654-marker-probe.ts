@@ -81,7 +81,13 @@ try {
       await expect(input).toHaveValue(next);
       let markerObserved = false;
       if (mode === 'token') {
-        markerObserved = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cinder-space-1').trim() === '0.3125rem');
+        const computed = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cinder-space-1').trim());
+        const generatedCss = await readFile(join(checkout, 'components/cinder/src/styles/tokens-base.css'), 'utf8');
+        const declaration = /--cinder-space-1\s*:\s*([^;]+);/.exec(generatedCss);
+        receipt['computedTokenValue'] = computed;
+        receipt['generatedTokenDeclaration'] = declaration?.[0] ?? null;
+        const expected = /^0?\.3125rem$/;
+        markerObserved = expected.test(computed) && declaration !== null && expected.test(declaration[1]!.trim());
       } else {
         const response = await fetch(new URL('/host/plugins/inspectors/apps/run-inspector', url));
         const body: unknown = await response.json();

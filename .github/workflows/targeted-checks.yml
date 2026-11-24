@@ -1,4 +1,4 @@
-name: COR-2654 startup profiles diagnostic
+name: COR-2654 changed token marker
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  profiles:
+  marker:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -25,157 +25,31 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      - name: Verify subject and process ownership
+      - name: Read prior and changed token on the normal dev path
         run: |
-          grep -Fxq 'VERSION_ID="26.04"' /etc/os-release
-          test "$(git rev-parse "$SUBJECT^{tree}")" = "$SUBJECT_TREE"
-          bun applications/interborough/scripts/startup-process-control.ts "$RUNNER_TEMP/cor2654-control"
-          bun applications/interborough/scripts/qualify-startup.ts --matcher-control
-          bun applications/interborough/scripts/qualify-startup.ts --profile-control
-      - name: Run isolated development and production profiles
-        run: |
-          output="$RUNNER_TEMP/cor2654-profiles"
+          output="$RUNNER_TEMP/cor2654-token-proof"
+          worktree="$RUNNER_TEMP/cor2654-token-worktree"
+          home="$RUNNER_TEMP/cor2654-token-home"
           mkdir "$output"
-          {
-            printf 'image=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
-            uname -a
-            nproc
-            sed -n '1,3p' /proc/meminfo
-          } > "$output/runner.txt"
-          bun --version > "$output/bun.txt"
-          cgroup_path="$(awk -F: '$1 == "0" { print $3; exit }' /proc/self/cgroup)"
-          memory_events="/sys/fs/cgroup${cgroup_path%/}/memory.events"
-          record_memory_events() { if [[ -r "$memory_events" ]]; then cat "$memory_events"; else printf 'unavailable\n'; fi; }
-          final=0
-          for arm in first second production; do
-            checkout="$RUNNER_TEMP/cor2654-$arm"
-            git worktree add --detach "$checkout" "$SUBJECT"
-            test "$(git -C "$checkout" rev-parse HEAD 'HEAD^{tree}' | tr '\n' ' ')" = "$SUBJECT $SUBJECT_TREE "
-            test ! -e "$checkout/node_modules"
-            test ! -e "$checkout/applications/interborough/build"
-            test ! -e "$checkout/components/cinder/.metadata"
-            test ! -e "$checkout/components/cinder/src/tokens/registry.generated.json"
-            (cd "$checkout" && bun -e 'import { CINDER_GENERATED_OUTPUTS } from "./scripts/ensure-cinder-generated.ts"; for (const path of CINDER_GENERATED_OUTPUTS) if (await Bun.file("components/cinder/" + path).exists()) throw new Error("Generated output exists: " + path)')
-            sha256sum "$checkout/bun.lock" | awk '{print $1}' > "$output/$arm-lock.sha256"
-            start="$(date +%s%3N)"
-            code=0
-            (cd "$checkout" && bun install --frozen-lockfile) > "$output/$arm-install.log" 2>&1 || code=$?
-            jq -n --argjson start "$start" --argjson end "$(date +%s%3N)" --argjson exit "$code" '{milliseconds:($end-$start),exit:$exit}' > "$output/$arm-install.json"
-            if [[ "$code" != 0 ]]; then final=1; fi
-            if [[ "$code" == 0 ]]; then
-              (cd "$checkout" && bun -e 'import { CINDER_GENERATED_OUTPUTS } from "./scripts/ensure-cinder-generated.ts"; for (const path of CINDER_GENERATED_OUTPUTS) if (await Bun.file("components/cinder/" + path).exists()) throw new Error("Generated output exists after install: " + path)')
-            fi
-          done
-          cmp "$output/first-lock.sha256" "$output/second-lock.sha256" || final=1
-          cmp "$output/first-lock.sha256" "$output/production-lock.sha256" || final=1
-          if [[ "$final" == 0 ]]; then
-            for phase in cold warm; do
-              if [[ "$phase" == warm ]]; then
-                for arm in first second; do
-                  checkout="$RUNNER_TEMP/cor2654-$arm"
-                  printf 'cor2654-install-marker-%s\n' "$arm" > "$checkout/node_modules/.cor2654-install-marker"
-                  code=0
-                  (cd "$checkout" && bun install --frozen-lockfile) > "$output/$arm-repeat-install.log" 2>&1 || code=$?
-                  printf '%s\n' "$code" > "$output/$arm-repeat-install.exit"
-                  if [[ "$code" != 0 ]] || ! cmp -s "$checkout/node_modules/.cor2654-install-marker" <(printf 'cor2654-install-marker-%s\n' "$arm"); then final=1; fi
-                done
-                if [[ "$final" != 0 ]]; then break; fi
-              fi
-              record_memory_events > "$output/$phase-memory-before.txt"
-              declare -A pids
-              for arm in first second; do
-                checkout="$RUNNER_TEMP/cor2654-$arm"
-                jq -n --arg phase "$phase" --argjson build "$([[ -d "$checkout/applications/interborough/build" ]] && echo true || echo false)" --argjson metadata "$([[ -d "$checkout/components/cinder/.metadata" ]] && echo true || echo false)" --argjson home "$([[ -d "$RUNNER_TEMP/cor2654-home-$arm" ]] && echo true || echo false)" '{phase:$phase,buildExists:$build,metadataExists:$metadata,homeExists:$home}' > "$output/$phase-$arm-cache-state.json"
-                date +%s%3N > "$output/$phase-$arm-launch.txt"
-                bun applications/interborough/scripts/qualify-startup.ts "$RUNNER_TEMP/cor2654-$arm" "$RUNNER_TEMP/cor2654-home-$arm" "$output/$phase-$arm.json" dev > "$output/$phase-$arm.log" 2>&1 &
-                pids[$arm]=$!
-              done
-              (
-                while [[ ! -e "$output/$phase-sampling-done" ]]; do
-                  stamp="$(date +%s%3N)"
-                  ps -eo pid=,ppid=,rss=,pcpu= | awk -v first="${pids[first]}" -v second="${pids[second]}" -v time="$stamp" '
-                    { pid[NR]=$1; parent[NR]=$2; rss[NR]=$3; cpu[NR]=$4 }
-                    END {
-                      owner[first]="first"; owner[second]="second"
-                      for (pass=0; pass<20; pass++) for (i=1; i<=NR; i++) if (owner[parent[i]] != "") owner[pid[i]]=owner[parent[i]]
-                      for (i=1; i<=NR; i++) if (owner[pid[i]] != "") print time, owner[pid[i]], pid[i], parent[i], rss[i], cpu[i]
-                    }' >> "$output/$phase-process-samples.txt"
-                  sleep 1
-                done
-              ) &
-              sampler=$!
-              for arm in first second; do
-                code=0
-                wait "${pids[$arm]}" || code=$?
-                printf '%s\n' "$code" > "$output/$phase-$arm.exit"
-                if [[ "$code" != 0 ]]; then final=1; fi
-              done
-              touch "$output/$phase-sampling-done"
-              wait "$sampler"
-              record_memory_events > "$output/$phase-memory-after.txt"
-              for arm in first second; do
-                if [[ -s "$output/$phase-$arm.json" ]]; then
-                  jq '[.lines[].text | select(contains("STARTUP {")) | sub("^.*STARTUP "; "") | fromjson] as $events | {cinder:[$events[] | select(.stage=="cinder")],uiBundles:[$events[] | select(.stage=="ui-bundle")],panels:[$events[] | select(.stage=="panel")],qualification:.qualification,actionMilliseconds:.actionMilliseconds}' "$output/$phase-$arm.json" > "$output/$phase-$arm-phases.json" || final=1
-                else
-                  final=1
-                fi
-              done
-              if [[ "$final" != 0 ]]; then break; fi
-              jq -en --slurpfile a "$output/$phase-first.json" --slurpfile b "$output/$phase-second.json" '
-                ($a[0].home != $b[0].home) and ($a[0].url != $b[0].url) and
-                (($a[0].startedAt[0:19] + "Z" | fromdateiso8601) < (($b[0].startedAt[0:19] + "Z" | fromdateiso8601) + ($b[0].actionMilliseconds / 1000))) and
-                (($b[0].startedAt[0:19] + "Z" | fromdateiso8601) < (($a[0].startedAt[0:19] + "Z" | fromdateiso8601) + ($a[0].actionMilliseconds / 1000)))
-              ' > "$output/$phase-separated.json" || final=1
-            done
-            for arm in first second; do
-              if [[ -s "$output/warm-$arm.json" ]]; then
-                jq -en --slurpfile cold "$output/cold-$arm.json" --slurpfile warm "$output/warm-$arm.json" '
-                  ($cold[0].home == $warm[0].home) and ($cold[0].settings.persisted == $warm[0].settings.previous)
-                ' > "$output/$arm-reopened-state.json" || final=1
-              fi
-            done
-          fi
-          if [[ "$final" == 0 ]]; then
-            for mode in token panel; do
-              code=0
-              bun scripts/chef/cor2654-marker-probe.ts "$RUNNER_TEMP/cor2654-first" "$RUNNER_TEMP/cor2654-home-first" applications/interborough/scripts/qualify-startup.ts "$output/marker-$mode.json" "$mode" > "$output/marker-$mode.log" 2>&1 || code=$?
-              printf '%s\n' "$code" > "$output/marker-$mode.exit"
-              if [[ "$code" != 0 ]]; then final=1; fi
-            done
-          fi
-          if [[ -s "$output/production-install.json" ]] && jq -e '.exit == 0' "$output/production-install.json" >/dev/null; then
-            record_memory_events > "$output/production-memory-before.txt"
-            code=0
-            bun applications/interborough/scripts/qualify-startup.ts "$RUNNER_TEMP/cor2654-production" "$RUNNER_TEMP/cor2654-home-production" "$output/production.json" production > "$output/production.log" 2>&1 &
-            production=$!
-            (
-              while [[ ! -e "$output/production-sampling-done" ]]; do
-                stamp="$(date +%s%3N)"
-                ps -eo pid=,ppid=,rss=,pcpu= | awk -v root="$production" -v time="$stamp" '
-                  { pid[NR]=$1; parent[NR]=$2; rss[NR]=$3; cpu[NR]=$4 }
-                  END {
-                    owned[root]=1
-                    for (pass=0; pass<20; pass++) for (i=1; i<=NR; i++) if (owned[parent[i]]) owned[pid[i]]=1
-                    for (i=1; i<=NR; i++) if (owned[pid[i]]) print time, pid[i], parent[i], rss[i], cpu[i]
-                  }' >> "$output/production-process-samples.txt"
-                sleep 1
-              done
-            ) &
-            sampler=$!
-            wait "$production" || code=$?
-            touch "$output/production-sampling-done"
-            wait "$sampler"
-            record_memory_events > "$output/production-memory-after.txt"
-            printf '%s\n' "$code" > "$output/production.exit"
-            if [[ "$code" != 0 ]]; then final=1; fi
-          fi
-          exit "$final"
+          grep -Fxq 'VERSION_ID="26.04"' /etc/os-release
+          git worktree add --detach "$worktree" "$SUBJECT"
+          test "$(git -C "$worktree" rev-parse 'HEAD^{tree}')" = "$SUBJECT_TREE"
+          test ! -e "$worktree/components/cinder/src/styles/tokens-base.css"
+          (cd "$worktree" && bun install --frozen-lockfile) > "$output/install.log" 2>&1
+          sha256sum "$worktree/bun.lock" > "$output/lock.sha256"
+          baseline=0
+          bun applications/interborough/scripts/qualify-startup.ts "$worktree" "$home" "$output/baseline.json" dev > "$output/baseline.log" 2>&1 || baseline=$?
+          printf '%s\n' "$baseline" > "$output/baseline.exit"
+          test "$baseline" = 0
+          rg -m 1 -- '--cinder-space-1:[[:space:]]*0?\.25rem;' "$worktree/components/cinder/src/styles/tokens-base.css" > "$output/baseline-declaration.txt"
+          changed=0
+          bun scripts/chef/cor2654-marker-probe.ts "$worktree" "$home" applications/interborough/scripts/qualify-startup.ts "$output/changed.json" token > "$output/changed.log" 2>&1 || changed=$?
+          printf '%s\n' "$changed" > "$output/changed.exit"
+          exit "$changed"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: ${{ !cancelled() }}
         with:
-          name: cor2654-startup-profiles
-          path: |
-            ${{ runner.temp }}/cor2654-control/process-control.json
-            ${{ runner.temp }}/cor2654-profiles/
+          name: cor2654-token-marker
+          path: ${{ runner.temp }}/cor2654-token-proof/
           if-no-files-found: error
           retention-days: 14
