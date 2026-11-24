@@ -282,6 +282,18 @@ test.describe('a tool approval', () => {
       expect(child.x + child.width).toBeLessThanOrEqual(boxes.card.x + boxes.card.width);
     }
     expect(boxes.actions.y).toBeGreaterThanOrEqual(boxes.note.y + boxes.note.height);
+    await pane.evaluate((element) => {
+      element.style.inlineSize = '600px';
+    });
+    const constrained = await readBoxes(page, { pane, card });
+    expect(constrained.pane.width).toBe(600);
+    expect(constrained.card.width).toBeLessThanOrEqual(768);
+    expect(
+      constrained.pane.x + constrained.pane.width - (constrained.card.x + constrained.card.width),
+    ).toBeGreaterThanOrEqual(16);
+    await pane.evaluate((element) => {
+      element.style.removeProperty('inline-size');
+    });
     await captureForDesignReview(page, {
       route: '/reviews',
       state: 'approval bounded decision column',
@@ -925,6 +937,23 @@ test.describe('/reviews: a question a run asks', () => {
         expect(boxes.answer.x + boxes.answer.width).toBeLessThanOrEqual(
           boxes.detail.x + boxes.detail.width,
         );
+        await pane.evaluate((element) => {
+          element.style.inlineSize = '600px';
+        });
+        const constrained = await readBoxes(page, { pane, detail, answer });
+        expect(constrained.pane.width).toBe(600);
+        expect(constrained.detail.width).toBeLessThanOrEqual(768);
+        expect(
+          constrained.pane.x +
+            constrained.pane.width -
+            (constrained.detail.x + constrained.detail.width),
+        ).toBeGreaterThanOrEqual(16);
+        expect(constrained.answer.x + constrained.answer.width).toBeLessThanOrEqual(
+          constrained.detail.x + constrained.detail.width,
+        );
+        await pane.evaluate((element) => {
+          element.style.removeProperty('inline-size');
+        });
       }
       await captureForDesignReview(page, {
         route: '/reviews',
