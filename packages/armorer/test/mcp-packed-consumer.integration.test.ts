@@ -11,7 +11,7 @@ async function exercisePackedConsumer() {
     const result = await runWithHangGuard(command, { cwd });
     if (!result.success)
       throw new Error(
-        `${command.join(' ')} failed (${result.exitCode}): ${result.stderr}\n${result.stdout}`,
+        `${command.join(' ')} failed (${result.exitCode}): ${result.stderr.toString()}\n${result.stdout.toString()}`,
       );
     return result.stdout.toString();
   };

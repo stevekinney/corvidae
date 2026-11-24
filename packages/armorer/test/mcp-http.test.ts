@@ -160,12 +160,10 @@ describe('protected native MCP listener', () => {
       );
       expect(allowed.error).toBeUndefined();
       await waitUntil(() => deliveries === 1);
-      await waitUntil(
-        async () =>
-          (await rpc(adapter as never, 'tasks/get', { taskId }, capabilities)).result?.[
-            'status'
-          ] === 'completed',
-      );
+      await waitUntil(async () => {
+        const result = await rpc(adapter as never, 'tasks/get', { taskId }, capabilities);
+        return result.result?.['status'] === 'completed';
+      });
       revision = '2';
       const hidden = await rpc(adapter as never, 'tasks/get', { taskId }, capabilities);
       expect(hidden.error).toBeDefined();
