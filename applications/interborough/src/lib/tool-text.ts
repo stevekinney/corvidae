@@ -48,7 +48,7 @@ export function argumentLine(args: unknown): string {
  * tool "is denied by approval policy". It says why a person is asked, never what the call does.
  */
 const POLICY_REASON =
-  /^Tool "[^"]+" \([\w-]+ tier\) (?:requires approval|is denied by approval policy) \(mode: [\w-]+\)[.?]?$/;
+  /^Tool "[^"]+" \([\w-]+ tier\) (?:requires approval|is denied by approval policy) \(mode: [\w-]+\)[.?]?(?: \[host policy: [\s\S]*\])?$/;
 
 /** Whether `text` is an approval policy's reason sentence rather than words a tool wrote. */
 function isPolicyReason(text: string | undefined): boolean {
@@ -114,6 +114,18 @@ export function resultSummary(content: unknown, toolName?: string): string {
   if (typeof content === 'string') return shorten(content);
   if (isRecord(content)) {
     if (parkedHumanWait({ toolName, result: content }) !== undefined) return 'Question asked';
+    if (
+      toolName === 'issue-refund' &&
+      content['status'] === 'provider-pending' &&
+      content['currency'] === 'USD' &&
+      typeof content['cents'] === 'number' &&
+      Number.isSafeInteger(content['cents'])
+    ) {
+      const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+        content['cents'] / 100,
+      );
+      return `${amount} refund pending`;
+    }
     // The built-in showcase refund tool declares its amount in US cents.
     const refundedCents = content['refundedCents'];
     if (

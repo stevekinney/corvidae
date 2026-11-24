@@ -17,8 +17,11 @@ describeTransportConformance('In-process', ({ operations, host }) => {
   };
 });
 
-it('keeps Zod as the only production dependency', () => {
-  expect(Object.keys(manifest.dependencies)).toEqual(['zod']);
+it('limits production dependencies to credentials and Zod', () => {
+  expect(Object.keys(manifest.dependencies).toSorted()).toEqual([
+    '@lostgradient/credentials',
+    'zod',
+  ]);
 });
 
 it('ends an outstanding read when abort closes a feed that rejects its reader', async () => {

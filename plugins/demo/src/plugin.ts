@@ -1,10 +1,13 @@
 import { definePlugin, type PluginDescriptor } from '@lostgradient/interborough-plugin';
+import { scopedStorage } from '@lostgradient/storage';
 import { z } from 'zod';
 
 import { createDemoAgents, type DemoAgentName } from './agents.ts';
 import { createAuditInterceptor } from './audit.ts';
+import { createRefundLedger } from './refund-ledger.ts';
+import { createFakeProcessor, recoverRefund } from './refund-processor.ts';
 import { seedDemo } from './seed.ts';
-import { createIssueRefundTool, createLookupOrderTool } from './tools.ts';
+import { createAdmittedRefundTool, createLookupOrderTool } from './tools.ts';
 import { createDemoValidators } from './validators.ts';
 import { createDemoWorkflows } from './workflows.ts';
 
@@ -63,11 +66,44 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
       // Read once: a toolbox takes its approval secret at construction. A plugin composes once, so
       // a secret saved after the start applies on the next one.
       const approvalSecret = (await secrets.get(DEMO_APPROVAL_SECRET)) || undefined;
+      const ledger = createRefundLedger(scopedStorage(storage, 'refund-ledger'));
+      const processor = createFakeProcessor(scopedStorage(storage, 'refund-processor'));
+      const issueRefund = createAdmittedRefundTool(
+        ledger,
+        processor,
+        () => Date.now() + 86_400_000,
+        approvals,
+      );
       return {
-        agents: createDemoAgents(approvalSecret, approvals).filter(
+        agents: createDemoAgents(approvalSecret, approvals, ledger, issueRefund).filter(
           ({ name }) => provided === undefined || provided.has(name),
         ),
-        tools: [createLookupOrderTool(), createIssueRefundTool()],
+        tools: [createLookupOrderTool(), issueRefund],
+        releases: [
+          {
+            name: 'refund',
+            agent: 'tool-runner',
+            tool: 'issue-refund',
+            toolRevision: issueRefund.id,
+            identifier(arguments_) {
+              const parsed = z
+                .object({ refundId: z.string().uuid() })
+                .passthrough()
+                .parse(arguments_);
+              return parsed.refundId;
+            },
+            async release(input) {
+              const intent = await ledger.get(input.identifier);
+              if (
+                !intent ||
+                intent.existingRunId !== input.runId ||
+                input.toolRevision !== issueRefund.id
+              )
+                throw new Error('Terminal review does not match the refund');
+              await ledger.cancel(intent.id);
+            },
+          },
+        ],
         validators: createDemoValidators(),
         interceptors: [createAuditInterceptor(storage)],
         workflows: createDemoWorkflows(),
@@ -79,11 +115,11 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
             payload: z.object({ greetingId: z.string().meta({ identifier: true }) }),
           },
         ],
-        ...(seedOnStart
-          ? {
-              start: (host, started) => seedDemo(host, started.storage),
-            }
-          : {}),
+        async start(host, started) {
+          for (const intent of await ledger.recoverable())
+            await recoverRefund(ledger, processor, intent.id, Date.now());
+          if (seedOnStart) await seedDemo(host, started.storage);
+        },
       };
     },
   });
