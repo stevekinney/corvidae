@@ -251,6 +251,9 @@ describe('dependencyClosure', () => {
       'packages/cryptography',
       'packages/lifecycle',
       'packages/markdown',
+      'packages/mcp',
+      'packages/storage',
+      'packages/storage-postgres',
       'testing/testing',
     ]);
   });

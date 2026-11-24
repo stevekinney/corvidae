@@ -69,6 +69,7 @@ describe('public API contract', () => {
     expect(pkg.exports).toEqual({
       '.': './src/index.ts',
       './protocol': './src/protocol/index.ts',
+      './mcp/http': './src/integrations/mcp/http.ts',
       './open-ai/agents': './src/adapters/open-ai/agents/index.ts',
       './coding': './src/coding/index.ts',
       './tool-sources': './src/integrations/tool-sources/index.ts',

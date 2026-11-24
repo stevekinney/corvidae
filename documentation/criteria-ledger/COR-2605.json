@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2605",
+  "branch": "steve/cor-2605-catalog-mcp",
+  "checkedAt": "ded63c3838",
+  "briefVersion": "20d031e29537",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/backchannel-mcp/src/operation-tools.test.ts exit 0; cancellation.log"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/backchannel-mcp/src/operation-tools.test.ts exit 0; both eras SDK and importer"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/backchannel-mcp/src/operation-tools.test.ts packages/backchannel/src/operation-catalog-authorization.test.ts exit 0; regression-final.log and cancellation.log"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-main",
+      "evidence": "bun test packages/armorer/test/mcp-conformance.test.ts packages/armorer/test/protocol exit 0; native.log"
+    }
+  ]
+}

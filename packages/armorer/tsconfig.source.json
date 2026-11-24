@@ -16,6 +16,9 @@
     },
     {
       "path": "../lifecycle/tsconfig.source.json"
+    },
+    {
+      "path": "../mcp/tsconfig.source.json"
     }
   ]
 }
