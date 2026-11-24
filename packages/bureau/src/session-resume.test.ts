@@ -241,10 +241,9 @@ describe('a resumed turn', () => {
       environment,
     );
     conversation.appendMessages(
-      { id: 'person', role: 'user', content: 'go' },
-      { id: `${stoppedRun}:step:0`, role: 'assistant', content: 'partial' },
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'partial' },
       {
-        id: `${stoppedRun}:continuation`,
         role: 'user',
         content: 'Continue the answer from where it stopped.',
         hidden: true,

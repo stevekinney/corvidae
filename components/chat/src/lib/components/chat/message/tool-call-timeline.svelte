@@ -200,6 +200,10 @@
     listEntries.flatMap((entry) => (entry.kind === 'step' ? [entry.step] : [])),
   );
   const hasRepeatedSummary = $derived(steps.some((step) => step.kind === 'repeated'));
+  const whollyRepeatedSummary = $derived(steps.length === 1 && steps[0]?.kind === 'repeated');
+  const repeatedSummaryDuration = $derived(
+    formatRepeatedToolCallDuration(totalToolCallDuration(rows.map((row) => row.duration)) ?? 0),
+  );
   function stepKey(step: ToolCallStep<TimelineRow>): string {
     return step.kind === 'single' ? step.row.key : `repeated:${step.rows[0].key}`;
   }
@@ -552,7 +556,9 @@
             <span class="chat-tool-call-summary-tools">{summary.tools}</span>
           {/if}
           {#if summary.duration}
-            <span class="chat-tool-call-summary-duration">{summary.duration}</span>
+            <span class="chat-tool-call-summary-duration"
+              >{whollyRepeatedSummary ? repeatedSummaryDuration : summary.duration}</span
+            >
           {/if}
         {/if}
       </span>
@@ -710,7 +716,7 @@
   .chat-tool-call-row {
     display: flex;
     align-items: flex-start;
-    gap: var(--cinder-space-3);
+    gap: var(--cinder-space-2);
     inline-size: 100%;
     min-inline-size: 0;
     /* The glyph and words stay compact, but the control itself is a real list-row target. */
@@ -1124,7 +1130,7 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-3);
   }
 
   .chat-tool-call-failure-actions :global(.chat-tool-call-failure-action) {

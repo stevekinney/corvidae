@@ -236,7 +236,8 @@ export function totalToolCallDuration(
  */
 export function formatRepeatedToolCallDuration(milliseconds: number): string {
   if (milliseconds < 1_000 || milliseconds % 1_000 === 0) return formatDuration(milliseconds);
-  return `${(milliseconds / 1_000).toFixed(1)}s`;
+  if (milliseconds >= 60_000) return formatDuration(milliseconds);
+  return `${(milliseconds / 1_000).toFixed(1)} s`;
 }
 
 /** What the group's header says after its step count, one phrase to a field. */

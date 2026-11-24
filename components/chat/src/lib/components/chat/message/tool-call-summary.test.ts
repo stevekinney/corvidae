@@ -198,9 +198,10 @@ describe('totalToolCallDuration', () => {
 
 describe('formatRepeatedToolCallDuration', () => {
   test('keeps a tenth of a second for accumulated repeated work without changing normal durations', () => {
-    expect(formatRepeatedToolCallDuration(20 * 305)).toBe('6.1s');
+    expect(formatRepeatedToolCallDuration(20 * 305)).toBe('6.1 s');
     expect(formatRepeatedToolCallDuration(305)).toBe('305ms');
     expect(formatRepeatedToolCallDuration(6_000)).toBe('6s');
+    expect(formatRepeatedToolCallDuration(65_500)).toBe('1m 5s');
   });
 });
 

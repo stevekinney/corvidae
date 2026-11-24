@@ -1201,7 +1201,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const rows = callRows(container);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Compared recent orders… lookup_order ×20 6s',
+        'Compared recent orders… lookup_order ×20 6.1 s',
       );
       expect(
         container
