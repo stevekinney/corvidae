@@ -37,7 +37,9 @@ export type OperationMcpMountOptions = {
   readonly scopeChallenge?: (
     operation: OperationHandlerMountOperation,
     context: OperationHandlerMountContext,
-  ) => Promise<{ challenge?: string } | undefined>;
+    input: unknown,
+    signal: AbortSignal,
+  ) => Promise<{ challenge?: string; fault?: OperationFault } | undefined>;
   /** Declare that this mount accepts OAuth credentials for its catalog policies. */
   readonly oauth?: boolean;
   /** The path the mount owns on the operation handler. Defaults to `/mcp`. */
@@ -327,14 +329,21 @@ function buildServer(
         ...toolMetadata(metaOf(operation.name)._meta, operation, oauth),
       },
       async (input, handlerContext) => {
-        const refusal = await scopeChallenge?.(operation, context);
+        const refusal = await scopeChallenge?.(
+          operation,
+          context,
+          input,
+          handlerContext.mcpReq.signal,
+        );
         if (refusal !== undefined) {
           return {
-            ...faultResult({
-              code: 'Forbidden',
-              message: 'Insufficient scope',
-              data: { reason: 'insufficient scope' },
-            }),
+            ...faultResult(
+              refusal.fault ?? {
+                code: 'Forbidden',
+                message: 'Insufficient scope',
+                data: { reason: 'insufficient scope' },
+              },
+            ),
             ...(refusal.challenge === undefined
               ? {}
               : { _meta: { 'mcp/www_authenticate': [refusal.challenge] } }),

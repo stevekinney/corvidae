@@ -109,6 +109,19 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
       },
     ],
   };
+  let starts = 0;
+  let stops = 0;
+  const catalog = mountCatalog({
+    basePath: '/api',
+    publicOrigin: 'https://equipment.example',
+    operations: [read, write],
+    host: {},
+    authenticateApi: async (request) =>
+      request.headers.get('x-session') === 'active'
+        ? { method: 'api-key', principal }
+        : new Response(null, { status: 401 }),
+    mcp: { serverInfo: { name: 'equipment', version: '1' }, authorization },
+  })['/api'];
   const app = await createApplication({
     generation: {
       directory: '.',
@@ -145,17 +158,20 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
           : resolve(),
     },
     mounts: {
-      ...mountCatalog({
-        basePath: '/api',
-        publicOrigin: 'https://equipment.example',
-        operations: [read, write],
-        host: {},
-        authenticateApi: async (request) =>
-          request.headers.get('x-session') === 'active'
-            ? { method: 'api-key', principal }
-            : new Response(null, { status: 401 }),
-        mcp: { serverInfo: { name: 'equipment', version: '1' }, authorization },
-      }),
+      '/api': {
+        rootPaths: catalog.rootPaths,
+        start(base) {
+          starts++;
+          const service = catalog.start(base);
+          return {
+            fetch: service.fetch,
+            close() {
+              stops++;
+              service.close();
+            },
+          };
+        },
+      },
       '/other-service': {
         rootPaths: () => ['/.well-known/unrelated'],
         start: () => () => new Response('other'),
@@ -165,6 +181,7 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
   const request = (path: string, init?: RequestInit) =>
     app.fetch(new Request(`https://equipment.example${path}`, init));
   try {
+    expect(starts).toBe(1);
     const metadata = await request('/.well-known/oauth-protected-resource/app/api/mcp').then(
       (result) => result.json(),
     );
@@ -417,6 +434,7 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
     ).toBe(200);
   } finally {
     await app.dispose();
+    expect(stops).toBe(1);
   }
 });
 

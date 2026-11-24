@@ -5,47 +5,54 @@ import { expect, test } from 'bun:test';
 import { z } from 'zod';
 import { mountCatalog } from './velveteen.ts';
 
-test('advertises a catalog resource through the shared mount', async () => {
-  const read = defineOperation({
-    name: 'equipment.lookup',
-    summary: 'Lookup',
-    destructive: false,
-    mcpExposable: true,
-    inputSchema: z.object({}),
-    outputSchema: z.object({ name: z.string() }),
-    access: { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['equipment:read'] } },
-    transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
-    unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
-    invoke: async () => ({ name: 'Camera' }),
-  });
-  const principal = principalFromApiKey({ subject: 'user', scopes: ['equipment:read'] });
-  const mounts = mountCatalog({
-    basePath: '/api',
-    publicOrigin: 'https://equipment.example',
-    operations: [read],
-    host: {},
-    authenticateApi: async () => ({ method: 'api-key', principal }),
-    mcp: {
-      serverInfo: { name: 'equipment', version: '1' },
-      authorization: externalOAuth({
-        issuer: 'https://login.example',
-        verifyAccessToken: async () => null,
-        resolvePrincipal: async () => ({ principal, delegableScopes: ['equipment:read'] }),
-      }),
-    },
-  });
-  const group = mounts['/api']!;
-  expect(group.rootPaths('/app')).toEqual(['/.well-known/oauth-protected-resource/app/api/mcp']);
-  const service = group.start('/app');
-  const response = await service(
-    new Request('https://equipment.example/.well-known/oauth-protected-resource/app/api/mcp'),
-  );
-  expect(await response.json()).toEqual({
-    resource: 'https://equipment.example/app/api/mcp',
-    authorization_servers: ['https://login.example'],
-    scopes_supported: ['equipment:read'],
-  });
-});
+test.each(['/café space', '/caf%C3%A9%20space'])(
+  'advertises canonical catalog paths for %s',
+  async (basePath) => {
+    const read = defineOperation({
+      name: 'equipment.lookup',
+      summary: 'Lookup',
+      destructive: false,
+      mcpExposable: true,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ name: z.string() }),
+      access: { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['equipment:read'] } },
+      transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+      invoke: async () => ({ name: 'Camera' }),
+    });
+    const principal = principalFromApiKey({ subject: 'user', scopes: ['equipment:read'] });
+    const mounts = mountCatalog({
+      basePath,
+      publicOrigin: 'https://equipment.example',
+      operations: [read],
+      host: {},
+      authenticateApi: async () => ({ method: 'api-key', principal }),
+      mcp: {
+        serverInfo: { name: 'equipment', version: '1' },
+        authorization: externalOAuth({
+          issuer: 'https://login.example',
+          verifyAccessToken: async () => null,
+          resolvePrincipal: async () => ({ principal, delegableScopes: ['equipment:read'] }),
+        }),
+      },
+    });
+    const group = mounts['/caf%C3%A9%20space']!;
+    expect(group.rootPaths('/app space')).toEqual([
+      '/.well-known/oauth-protected-resource/app%20space/caf%C3%A9%20space/mcp',
+    ]);
+    const service = group.start('/app space').fetch;
+    const response = await service(
+      new Request(
+        'https://equipment.example/.well-known/oauth-protected-resource/app%20space/caf%C3%A9%20space/mcp',
+      ),
+    );
+    expect(await response.json()).toEqual({
+      resource: 'https://equipment.example/app%20space/caf%C3%A9%20space/mcp',
+      authorization_servers: ['https://login.example'],
+      scopes_supported: ['equipment:read'],
+    });
+  },
+);
 
 test.each(['modern', 'legacy'] as const)(
   'dispatches catalog tools with current authority (%s)',
@@ -74,6 +81,10 @@ test.each(['modern', 'legacy'] as const)(
       access: { kind: 'scoped', scopes: { kind: 'allOf', scopes: ['equipment:write'] } },
       transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+      authorize: async ({ input }) =>
+        input.name === 'Restricted'
+          ? { allowed: false, reason: 'Asset is restricted' }
+          : { allowed: true },
       invoke: async ({ input }) => {
         renames++;
         name = input.name;
@@ -107,7 +118,7 @@ test.each(['modern', 'legacy'] as const)(
       authenticateApi: async () => ({ method: 'api-key', principal }),
       mcp: { serverInfo: { name: 'equipment', version: '1' }, authorization },
     })['/api']!;
-    const service = group.start('/app');
+    const service = group.start('/app').fetch;
     const clients: Client[] = [];
     async function connect(token: string) {
       const transport = new StreamableHTTPClientTransport(
@@ -160,6 +171,17 @@ test.each(['modern', 'legacy'] as const)(
       expect(denied.isError).toBe(true);
       expect(denied._meta?.['mcp/www_authenticate']).toBeUndefined();
       const upgrade = await connect('upgrade');
+      const domainDenial = await upgrade.callTool({
+        name: 'equipment.rename',
+        arguments: { name: 'Restricted' },
+      });
+      expect(domainDenial.isError).toBe(true);
+      expect(domainDenial._meta?.['mcp/www_authenticate']).toBeUndefined();
+      expect(domainDenial.structuredContent).toMatchObject({
+        code: 'Forbidden',
+        data: { reason: 'Asset is restricted' },
+      });
+      expect(renames).toBe(0);
       const insufficient = await upgrade.callTool({
         name: 'equipment.rename',
         arguments: { name: 'Tripod' },
@@ -190,7 +212,7 @@ test.each(['modern', 'legacy'] as const)(
           authorization,
           requiredScopes: ['equipment:write'],
         },
-      })['/api']!.start('/app');
+      })['/api']!.start('/app').fetch;
       const admission = await restricted(
         new Request('https://equipment.example/mcp', {
           headers: { authorization: 'Bearer upgrade' },

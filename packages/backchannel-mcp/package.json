@@ -28,7 +28,6 @@
     "@lostgradient/velveteen": "workspace:*",
     "@modelcontextprotocol/client": "catalog:",
     "@types/bun": "catalog:",
-    "@types/node": "catalog:velveteen",
     "oxlint": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"

@@ -1,6 +1,8 @@
 import {
   createOperationHandler,
+  createOperationRegistry,
   type AuthenticatedPrincipal,
+  type OperationFault,
   type OperationHandlerMountOperation,
   type OperationHandlerOptions,
 } from '@lostgradient/backchannel';
@@ -63,6 +65,21 @@ function alternatives(
   );
 }
 
+function canonicalPath(path: string): string {
+  if (path !== '' && !/^\/(?:[^/?#\\]+)(?:\/[^/?#\\]+)*$/.test(path))
+    throw new TypeError('Invalid catalog mount path');
+  return path
+    .split('/')
+    .map((segment) => {
+      if (!segment) return '';
+      const decoded = decodeURIComponent(segment);
+      if (!decoded || decoded === '.' || decoded === '..' || /[\\/]/.test(decoded))
+        throw new TypeError('Invalid catalog mount path');
+      return encodeURIComponent(decoded);
+    })
+    .join('/');
+}
+
 /** Register one catalog service and its protected discovery routes with Velveteen. */
 export function mountCatalog<Host>(options: CatalogOptions<Host>) {
   const suppliedProfile = options.mcp.authorization;
@@ -79,6 +96,7 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
         };
   options = {
     ...options,
+    basePath: canonicalPath(options.basePath),
     operations: options.operations.map((operation) => ({
       ...operation,
       access: structuredClone(operation.access),
@@ -109,6 +127,14 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
     },
   };
   const profile = options.mcp.authorization;
+  const allowedProbe: OperationFault = {
+    code: 'Forbidden',
+    message: 'policy probe',
+    data: { reason: 'policy probe' },
+  };
+  const probeRegistry = createOperationRegistry(options.operations, {
+    interceptors: [async () => ({ ok: false, fault: allowedProbe })],
+  });
   const scopes = [
     ...new Set(
       options.operations.flatMap((operation) =>
@@ -127,7 +153,7 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
   return {
     [options.basePath]: {
       rootPaths(base: string) {
-        const resourcePath = `${base}${options.basePath}/mcp`;
+        const resourcePath = `${canonicalPath(base)}${options.basePath}/mcp`;
         return [
           `/.well-known/oauth-protected-resource${resourcePath}`,
           ...('configure' in profile || profile.handle
@@ -141,7 +167,7 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
         ];
       },
       start(base: string) {
-        const resourcePath = `${base}${options.basePath}/mcp`;
+        const resourcePath = `${canonicalPath(base)}${options.basePath}/mcp`;
         const authorization =
           'configure' in profile
             ? profile.configure({ origin: options.publicOrigin, resourcePath, scopes })
@@ -185,7 +211,7 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
                 createOperationMcpMount({
                   oauth: true,
                   serverInfo: options.mcp.serverInfo,
-                  async scopeChallenge(operation) {
+                  async scopeChallenge(operation, _context, input, signal) {
                     const latest = await context.requireScopes([]);
                     if (!latest.ok) return {};
                     const currentPrincipal = latest.principal.principal;
@@ -201,6 +227,30 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
                       grantable.find((candidate) =>
                         candidate.every((scope) => context.grant.scopes.includes(scope)),
                       ) ?? grantable[0];
+                    if (choice && choice.some((scope) => !context.grant.scopes.includes(scope))) {
+                      const authorizedScopes = new Set(
+                        latest.principal.delegableScopes.filter((scope) =>
+                          currentPrincipal.scopes.has(scope),
+                        ),
+                      );
+                      const policyPrincipal = {
+                        ...currentPrincipal,
+                        scopes: authorizedScopes,
+                        hasScope: (scope: string) => authorizedScopes.has(scope),
+                      };
+                      const probe = await probeRegistry.get(operation.name)!.dispatch(input, {
+                        principal: policyPrincipal,
+                        host: options.host,
+                        transport: 'mcp',
+                        registry: probeRegistry,
+                        signal,
+                      });
+                      if (probe.ok)
+                        return {
+                          fault: { code: 'EngineFailure', message: 'internal error', data: {} },
+                        };
+                      if (probe.fault !== allowedProbe) return { fault: probe.fault };
+                    }
                     const result = await context.requireScopes(choice ?? []);
                     if (result.ok) {
                       const fresh = result.principal.principal;
@@ -239,7 +289,9 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
             );
           },
         });
-        return async (request: Request) => {
+        let closed = false;
+        const fetch = async (request: Request) => {
+          if (closed) return new Response('Catalog disposed', { status: 503 });
           const url = new URL(request.url);
           if (url.pathname === metadataPath) return protectedHttp(request);
           if (url.pathname === '/mcp') {
@@ -253,6 +305,12 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
           )
             return authorization.handle(request);
           return api(request);
+        };
+        return {
+          fetch,
+          close: () => {
+            closed = true;
+          },
         };
       },
     },
