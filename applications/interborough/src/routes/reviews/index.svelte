@@ -382,21 +382,23 @@
       onSubmit={submitDecision}
     />
   {:else}
-    <ReviewsPanel
-      mode="waiting"
-      items={waiting}
-      phase={phaseOf(waitingQuery)}
-      hasSupplementalWaiting={(chatRequests.data?.length ?? 0) > 0}
-      {resolving}
-      submitting={decisionMutation.isPending}
-      {submitGate}
-      {outcome}
-      {viewer}
-      {refusedKey}
-      onResolve={resolve}
-      onAnswer={answer}
-      onSubmit={submitDecision}
-    />
+    {#if (chatRequests.data?.length ?? 0) === 0 || waiting.length > 0 || waitingQuery.isPending || waitingQuery.isError}
+      <ReviewsPanel
+        mode="waiting"
+        items={waiting}
+        phase={phaseOf(waitingQuery)}
+        hasSupplementalWaiting={(chatRequests.data?.length ?? 0) > 0}
+        {resolving}
+        submitting={decisionMutation.isPending}
+        {submitGate}
+        {outcome}
+        {viewer}
+        {refusedKey}
+        onResolve={resolve}
+        onAnswer={answer}
+        onSubmit={submitDecision}
+      />
+    {/if}
   {/if}
 </section>
 

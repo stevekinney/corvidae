@@ -254,3 +254,9 @@
        nothing to send to), and the list beside it stays live. -->
   <ChatUnavailable {sessionId} {availability} {agent} onDraft={(text) => (draft = text)} />
 {/if}
+
+<style>
+  .weft-chat-route-access {
+    padding-inline: var(--cinder-space-4);
+  }
+</style>
