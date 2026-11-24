@@ -1071,7 +1071,7 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       'Denied by you, 10:40 AM',
     );
     await expect(
-      denied.loc('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
+      denied.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
     ).toHaveCount(0);
     await denied.getByRole('button', { name: 'Details' }).click();
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
