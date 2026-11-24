@@ -3806,13 +3806,18 @@
     margin-block-start: var(--cinder-space-1);
   }
 
-  /* A transcript's Message details line is the next interactive surface after some answered-step
-   * groups. Its hit area otherwise overlaps the summary's lower coarse-pointer lane, so leave one
-   * token at this exact control-to-control boundary without changing ordinary answer spacing. */
-  .chat-tool-call-group:has(
-    + :global(.chat-message-wrapper .chat-message-line[aria-label='Message details'])
-  ) {
-    margin-block-end: var(--cinder-space-1);
+  /* A bodyless transcript's Message details line is the next interactive surface after some
+   * answered-step groups. Reserve this only on a coarse pointer and only when no answer text
+   * follows: ordinary answer rhythm keeps its measured text-to-step spacing. */
+  @media (any-pointer: coarse) {
+    .chat-tool-call-group:has(
+        + :global(
+            .chat-message-wrapper:has(.chat-message-body[data-empty])
+              .chat-message-line[aria-label='Message details']
+          )
+      ) {
+      margin-block-end: var(--cinder-space-1);
+    }
   }
 
   /* The answer under a collapsed step row stands as far from the row's text as a message's own
