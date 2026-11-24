@@ -154,19 +154,19 @@
      * (content-box) track keeps a full pill end on each side. */
     border-start-start-radius: calc(
         var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-start)
-      ) /
+      )
       calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
     border-end-start-radius: calc(
         var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-start)
-      ) /
+      )
       calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
     border-start-end-radius: calc(
         var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-end)
-      ) /
+      )
       calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
     border-end-end-radius: calc(
         var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline-end)
-      ) /
+      )
       calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
     cursor: pointer;
     vertical-align: middle;
