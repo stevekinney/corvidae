@@ -527,7 +527,7 @@ describe('what a run is waiting on', () => {
     const view = open(waitingOn('tool-approval', approval.id), { reviews: [approval] });
     stub?.on('bureau.reviews.resolve', () => {
       throw new StubFault('Conflict', 409, 'The review moved on.', {
-        reason: 'REVIEW_ROUND_CHANGED: now at round 2',
+        reason: 'REVIEW_ROUND_CHANGED',
       });
     });
     const reads = stub?.callsTo('bureau.reviews.get').length ?? 0;

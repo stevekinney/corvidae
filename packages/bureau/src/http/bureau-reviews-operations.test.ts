@@ -1,4 +1,8 @@
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { callJsonRpc } from '@lostgradient/backchannel/client';
+import { resolve } from 'node:path';
+import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import { WEFT_SCOPE_VOCABULARY, Engine, workflow } from '@lostgradient/weft';
 import {
   createOperationHandler,
@@ -49,7 +53,6 @@ import {
 const silent = () => undefined;
 const witnesses = workspaceConformanceLedger('bureau-reviews-operations.test.ts');
 const API_KEY = 'reviews-test-key';
-const credentials = { 'X-API-Key': API_KEY };
 /** One caller, `tester`, who owns what the stubbed reviews' run belongs to. */
 const authentication = {
   resolveApiKeyPrincipal: async (key: string) =>
@@ -61,11 +64,12 @@ async function call(
   handler: (request: Request) => Promise<Response>,
   method: string,
   params: unknown,
+  key = API_KEY,
 ) {
   const response = await handler(
     new Request('http://localhost/jsonrpc', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...credentials },
+      headers: { 'content-type': 'application/json', 'X-API-Key': key },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     }),
   );
@@ -719,7 +723,13 @@ describe('bureau.reviews.resolve', () => {
       );
 
     const unwritten = await call(
-      failing(new ApprovalOutcomeNotWrittenError('resolved, but not written')),
+      failing(
+        new ApprovalOutcomeNotWrittenError('resolved, but not written', {
+          id: input.id,
+          kind: 'tool-approval',
+          decision: 'approve',
+        }),
+      ),
       'bureau.reviews.resolve',
       input,
     );
@@ -729,11 +739,15 @@ describe('bureau.reviews.resolve', () => {
       input,
     );
 
-    expect(unwritten.error?.data?.httpStatus).toBe(409);
-    // The token is the start of the reason, and nothing else on the wire carries it.
+    expect(unwritten.result).toMatchObject({
+      id: input.id,
+      decision: 'approve',
+      receipt: 'applied',
+      warning: 'APPROVAL_OUTCOME_NOT_WRITTEN',
+    });
     const reasonOf = (reply: typeof unwritten) =>
       (reply.error?.data as { reason?: string } | undefined)?.reason;
-    expect(reasonOf(unwritten)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN: ')).toBe(true);
+    expect(unwritten.error).toBeUndefined();
     expect(reasonOf(lost)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN')).toBe(false);
     // COR-2426: a review already resolved with another decision carries its own token.
     const alreadyResolved = await call(
@@ -742,10 +756,9 @@ describe('bureau.reviews.resolve', () => {
       input,
     );
     expect(alreadyResolved.error?.data?.httpStatus).toBe(409);
-    expect(reasonOf(alreadyResolved)?.startsWith('REVIEW_ALREADY_RESOLVED: ')).toBe(true);
+    expect(reasonOf(alreadyResolved)).toBe('REVIEW_ALREADY_RESOLVED');
     expect(reasonOf(lost)?.startsWith('REVIEW_ALREADY_RESOLVED')).toBe(false);
     expect(JSON.stringify(lost.error)).not.toContain('APPROVAL_OUTCOME_NOT_WRITTEN');
-    expect(JSON.stringify(unwritten.error)).not.toContain('"code":"APPROVAL');
   });
 
   it('forwards the round the caller read to the Bureau, and omits it when none was named (COR-1659)', async () => {
@@ -804,7 +817,7 @@ describe('bureau.reviews.resolve', () => {
     );
 
     expect(moved.error?.data?.httpStatus).toBe(409);
-    expect(reasonOf(moved)?.startsWith('REVIEW_ROUND_CHANGED: ')).toBe(true);
+    expect(reasonOf(moved)).toBe('REVIEW_ROUND_CHANGED');
     expect(reasonOf(lost)?.startsWith('REVIEW_ROUND_CHANGED')).toBe(false);
     expect(JSON.stringify(lost.error)).not.toContain('REVIEW_ROUND_CHANGED');
   });
@@ -988,11 +1001,9 @@ describe('the reviews operations against a real Bureau', () => {
         reason: 'Too late',
       });
       expect(other.error?.data?.httpStatus).toBe(409);
-      expect(
-        String((other.error?.data as { reason?: string } | undefined)?.reason).startsWith(
-          'REVIEW_ALREADY_RESOLVED: ',
-        ),
-      ).toBe(true);
+      expect((other.error?.data as { reason?: string } | undefined)?.reason).toBe(
+        'REVIEW_ALREADY_RESOLVED',
+      );
       const resolvedReview = await call(handler, 'bureau.reviews.get', { id });
       expect(resolvedReview.result).toMatchObject({ id, status: 'approved' });
     } finally {
@@ -1179,107 +1190,354 @@ describe('the reviews operations against a real Bureau', () => {
     }
   });
 
-  it('refuses a decision on a round the review has moved past, through the handler (COR-1659)', async () => {
-    const charges: number[] = [];
-    let generations = 0;
-    let evaluations = 0;
-    // A policy that gates the resumed call again, so an approval supersedes itself: round 0 to 1.
-    const toolbox = createToolbox(
-      [
-        createTool({
-          name: 'charge-card',
-          version: '1.0.0',
-          description: 'Charge a payment card',
-          input: z.object({ cents: z.number() }),
-          async execute({ cents }) {
-            charges.push(cents);
-            return { charged: cents };
+  it.each(['jsonrpc', 'mcp'] as const)(
+    'refuses a decision on a round the review has moved past, through %s (COR-1659)',
+    async (firstTransport) => {
+      const refundStorage = createSqliteStorageFixture();
+      const { createRefundLedger } = await import(
+        resolve(import.meta.dir, '../../../../plugins/demo/src/refund-ledger.ts')
+      );
+      const ledger = createRefundLedger(refundStorage.storage);
+      await ledger.addCharge({
+        merchant: 'merchant',
+        order: 'order',
+        amount: 10000,
+        currency: 'USD',
+        paymentReference: 'private-payment',
+        providerAccount: 'private-provider',
+      });
+      const refund = await ledger.admit({
+        merchant: 'merchant',
+        commandId: 'command',
+        order: 'order',
+        amount: 500,
+        toolRevision: '1.1.0',
+        owner: 'api-key:tester',
+      });
+      const charges: number[] = [];
+      let generations = 0;
+      let evaluations = 0;
+      // A policy that gates the resumed call again, so an approval supersedes itself: round 0 to 1.
+      const toolbox = createToolbox(
+        [
+          createTool({
+            name: 'charge-card',
+            version: '1.0.0',
+            description: 'Charge a payment card',
+            input: z.object({ cents: z.number() }),
+            async execute({ cents }) {
+              charges.push(cents);
+              return { charged: cents };
+            },
+          }),
+        ],
+        {
+          approvalSecret: 'handler-approval-secret',
+          policy: {
+            // The reason changes with each evaluation, so the approval it binds does not carry over.
+            beforeExecute: () => {
+              evaluations += 1;
+              return {
+                allow: false,
+                status: 'needs_approval',
+                reason: `Operator approval required (evaluation ${evaluations})`,
+                action: { message: 'Approve charge' },
+              };
+            },
           },
-        }),
-      ],
-      {
-        approvalSecret: 'handler-approval-secret',
-        policy: {
-          // The reason changes with each evaluation, so the approval it binds does not carry over.
-          beforeExecute: () => {
-            evaluations += 1;
+        },
+      ) as unknown as Toolbox;
+      const bureau = await createBureau<AgentDefinitions>({
+        assets: { storage: createMemoryAssetStorage() },
+        id: 'reviews-round-fence-bureau',
+        reviewPolicy: {
+          matches: (review) =>
+            review.kind === 'tool-approval' && review.approval.toolName === 'charge-card',
+          mayRead: (_review, principal) =>
+            principal.method === 'api-key' &&
+            ['tester', 'operator'].includes(principal.subject ?? ''),
+          mayDecide: (_review, principal) =>
+            principal.method === 'api-key' &&
+            ['tester', 'operator'].includes(principal.subject ?? ''),
+          effect: async () => {
+            const current = await ledger.get(refund.id);
+            if (!current) return undefined;
+            if (current.currency !== 'USD') throw new Error('Unsupported refund currency');
             return {
-              allow: false,
-              status: 'needs_approval',
-              reason: `Operator approval required (evaluation ${evaluations})`,
-              action: { message: 'Approve charge' },
+              kind: 'refund',
+              refundId: current.id,
+              orderId: current.order,
+              cents: current.amount,
+              currency: current.currency,
+              status: current.status,
             };
           },
         },
-      },
-    ) as unknown as Toolbox;
-    const bureau = await createBureau<AgentDefinitions>({
-      assets: { storage: createMemoryAssetStorage() },
-      id: 'reviews-round-fence-bureau',
-      agents: {
-        default: createAgent({
-          generate: async () => {
-            generations++;
-            return generations === 1
-              ? {
-                  content: '',
-                  toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
-                }
-              : { content: 'Charged.', toolCalls: [] };
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              generations++;
+              return generations === 1
+                ? {
+                    content: '',
+                    toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+                  }
+                : { content: 'Charged.', toolCalls: [] };
+            },
+            toolbox,
+            stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+          }),
+        },
+        storage: new MemoryStorage(),
+        durable: true,
+      });
+      try {
+        const run = await bureau.tasks.start('default', 'Charge it', {
+          principal: 'api-key:tester',
+        });
+        await waitForCondition(
+          () => bureau.reviews.list().some((review) => review.runId === run.id),
+          'expected the tool call to surface a pending approval',
+        );
+        const handler = createBureauHandler(bureau, {
+          mcp: {},
+          authentication: {
+            ...authentication,
+            resolveApiKeyPrincipal: async (key) =>
+              key === 'agent-key' || key === 'operator-key'
+                ? principalFromApiKey({
+                    subject: key === 'agent-key' ? 'agent' : 'operator',
+                    scopes: ['bureau.reviews:read', 'bureau.reviews:resolve'],
+                  })
+                : authentication.resolveApiKeyPrincipal(key),
           },
-          toolbox,
-          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-        }),
-      },
-      storage: new MemoryStorage(),
-      durable: true,
-    });
-    try {
-      const run = await bureau.tasks.start('default', 'Charge it', { principal: 'api-key:tester' });
-      await waitForCondition(
-        () => bureau.reviews.list().some((review) => review.runId === run.id),
-        'expected the tool call to surface a pending approval',
-      );
-      const handler = createBureauHandler(bureau, { authentication });
-      const listed = await call(handler, 'bureau.reviews.list', {});
-      const [review] = (listed.result?.['reviews'] ?? []) as Array<{ id: string; round: number }>;
-      expect(review?.round).toBe(0);
-      const reasonOf = (reply: Awaited<ReturnType<typeof call>>) =>
-        (reply.error?.data as { reason?: string } | undefined)?.reason;
+        });
+        const listed = await call(handler, 'bureau.reviews.list', {});
+        const [review] = (listed.result?.['reviews'] ?? []) as Array<{ id: string; round: number }>;
+        expect(review?.round).toBe(0);
+        const detail = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(detail.result?.['effect']).toEqual({
+          kind: 'refund',
+          refundId: refund.id,
+          orderId: 'order',
+          cents: 500,
+          currency: 'USD',
+          status: 'admitted',
+        });
+        expect(JSON.stringify(detail.result)).not.toContain('private-provider');
+        expect(
+          bureauReviewSchema.safeParse({
+            ...detail.result,
+            effect: {
+              kind: 'refund',
+              refundId: refund.id,
+              orderId: 'order',
+              cents: 500,
+              currency: 'EUR',
+              status: 'admitted',
+            },
+          }).success,
+        ).toBe(false);
+        const operatorDetail = await call(
+          handler,
+          'bureau.reviews.get',
+          { id: review?.id },
+          'operator-key',
+        );
+        expect(operatorDetail.result).toMatchObject({ id: review?.id, round: 0 });
+        const reasonOf = (reply: Awaited<ReturnType<typeof call>>) =>
+          (reply.error?.data as { reason?: string } | undefined)?.reason;
 
-      // The first resolver supersedes round 0, so the review is now at round 1.
-      const first = await call(handler, 'bureau.reviews.resolve', {
-        id: review?.id,
-        decision: 'approve',
-        round: 0,
-      });
-      expect(first.result).toMatchObject({ receipt: 'superseded' });
-      const reread = await call(handler, 'bureau.reviews.get', { id: review?.id });
-      expect(reread.result).toMatchObject({ status: 'pending', round: 1 });
+        const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+          fetch: (url, init) => {
+            const request = new Request(url, init);
+            request.headers.set('X-API-Key', API_KEY);
+            return handler(request);
+          },
+        });
+        const client = new Client({ name: 'reviews-contract-test', version: '1.0.0' });
+        await client.connect(transport);
+        try {
+          const detail = await client.callTool({
+            name: 'bureau.reviews.get',
+            arguments: { id: review!.id },
+          });
+          expect(detail.structuredContent).toMatchObject({ id: review!.id, round: 0 });
+          const missing = await client.callTool({
+            name: 'bureau.reviews.resolve',
+            arguments: { id: review!.id, decision: 'approve' },
+          });
+          expect(missing.isError).toBe(true);
+        } finally {
+          await client.close();
+        }
 
-      // A second resolver that still shows round 0 is refused, and nothing changes.
-      const stale = await call(handler, 'bureau.reviews.resolve', {
-        id: review?.id,
-        decision: 'deny',
-        round: 0,
-      });
-      expect(stale.error?.data?.httpStatus).toBe(409);
-      expect(reasonOf(stale)?.startsWith('REVIEW_ROUND_CHANGED: ')).toBe(true);
-      const unchanged = await call(handler, 'bureau.reviews.get', { id: review?.id });
-      expect(unchanged.result).toMatchObject({ status: 'pending', round: 1 });
+        const missingRound = await call(handler, 'bureau.reviews.resolve', {
+          id: review?.id,
+          decision: 'approve',
+        });
+        expect(missingRound.error).toBeDefined();
+        expect(charges).toEqual([]);
+        const initiallyPending = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(initiallyPending.result).toMatchObject({ status: 'pending', round: 0 });
+        const forged = await call(
+          handler,
+          'bureau.reviews.resolve',
+          { id: review?.id, decision: 'approve', round: 0, decisionSurface: 'reviews' },
+          'agent-key',
+        );
+        expect(forged.error).toBeDefined();
+        const agentDetail = await call(
+          handler,
+          'bureau.reviews.get',
+          { id: review?.id },
+          'agent-key',
+        );
+        expect(agentDetail.error?.data?.httpStatus).toBe(404);
+        const agentList = await call(handler, 'bureau.reviews.list', {}, 'agent-key');
+        expect(agentList.result?.['reviews']).toEqual([]);
+        const remembered = await call(handler, 'bureau.reviews.resolve', {
+          id: review?.id,
+          decision: 'approve',
+          round: 0,
+          remember: true,
+        });
+        expect(remembered.error).toBeDefined();
+        expect(charges).toEqual([]);
+        expect(
+          await rejectionOf(
+            bureau.reviews.resolve({
+              id: review!.id,
+              decision: 'approve',
+              principal: 'api-key:tester',
+              round: 0,
+            }),
+          ),
+        ).toBeInstanceOf(Error);
+        expect(charges).toEqual([]);
 
-      // The round it reads next decides.
-      const current = await call(handler, 'bureau.reviews.resolve', {
-        id: review?.id,
-        decision: 'deny',
-        round: 1,
-      });
-      expect(current.result).toMatchObject({ decision: 'deny', receipt: 'applied' });
-      expect(charges).toEqual([]);
-    } finally {
-      await bureau.dispose();
-    }
-  });
+        // The first resolver supersedes round 0, so the review is now at round 1.
+        let first: unknown;
+        if (firstTransport === 'mcp') {
+          const next = new Client({ name: 'review-supersession-test', version: '1.0.0' });
+          await next.connect(
+            new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+              fetch: (url, init) => {
+                const request = new Request(url, init);
+                request.headers.set('X-API-Key', API_KEY);
+                return handler(request);
+              },
+            }),
+          );
+          try {
+            const reply = await next.callTool({
+              name: 'bureau.reviews.resolve',
+              arguments: { id: review!.id, decision: 'approve', round: 0 },
+            });
+            first = reply.structuredContent;
+          } finally {
+            await next.close();
+          }
+        } else {
+          const reply = await call(handler, 'bureau.reviews.resolve', {
+            id: review?.id,
+            decision: 'approve',
+            round: 0,
+          });
+          first = reply.result;
+        }
+        expect(first).toMatchObject({ receipt: 'superseded' });
+        const reread = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(reread.result).toMatchObject({ status: 'pending', round: 1 });
+
+        // A second resolver that still shows round 0 is refused, and nothing changes.
+        const stale = await call(handler, 'bureau.reviews.resolve', {
+          id: review?.id,
+          decision: 'deny',
+          round: 0,
+        });
+        expect(stale.error?.data?.httpStatus).toBe(409);
+        expect(reasonOf(stale)).toBe('REVIEW_ROUND_CHANGED');
+        for (const [key, round] of [
+          [API_KEY, 0],
+          ['agent-key', 1],
+        ] as const) {
+          const peer = new Client({ name: 'review-conflict-test', version: '1.0.0' });
+          await peer.connect(
+            new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+              fetch: (url, init) => {
+                const request = new Request(url, init);
+                request.headers.set('X-API-Key', key);
+                return handler(request);
+              },
+            }),
+          );
+          try {
+            const refusal = await peer.callTool({
+              name: 'bureau.reviews.resolve',
+              arguments: { id: review!.id, decision: 'deny', round, decisionSurface: 'reviews' },
+            });
+            expect(refusal.isError).toBe(true);
+            if (key === API_KEY)
+              expect(JSON.stringify(refusal.structuredContent)).toContain('REVIEW_ROUND_CHANGED');
+            else expect(JSON.stringify(refusal.structuredContent)).toContain('NotFound');
+          } finally {
+            await peer.close();
+          }
+        }
+        const unchanged = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(unchanged.result).toMatchObject({ status: 'pending', round: 1 });
+
+        // The round it reads next decides.
+        const request = {
+          endpoint: 'http://localhost/jsonrpc',
+          method: 'bureau.reviews.resolve',
+          id: 'decision',
+          headers: { 'X-API-Key': API_KEY },
+        };
+        const refused = await callJsonRpc({
+          ...request,
+          params: { id: review!.id, decision: 'deny', round: 0 },
+          fetch: (url, init) => handler(new Request(url, init)),
+        });
+        expect(refused.ok).toBe(false);
+        const beforeLostReply = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(beforeLostReply.result).toMatchObject({ status: 'pending', round: 1 });
+        const lostReply = await rejectionOf(
+          callJsonRpc({
+            ...request,
+            params: {
+              id: review!.id,
+              decision: 'deny',
+              round: 1,
+              ...(firstTransport === 'jsonrpc' ? { decisionSurface: 'reviews' } : {}),
+            },
+            fetch: async (url, init) => {
+              await handler(new Request(url, init));
+              throw new Error('response lost after dispatch');
+            },
+          }),
+        );
+        expect(String(lostReply)).toContain('response lost after dispatch');
+        const decidedReply = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        const decided = decidedReply.result;
+        expect(decided).toMatchObject({
+          status: 'denied',
+          round: 1,
+          resolvedBy: 'api-key:tester',
+          resolvedAt: expect.any(Number),
+          resolution: { decidedBy: 'api-key:tester' },
+        });
+        if (firstTransport === 'jsonrpc')
+          expect(decided?.['resolution']).toMatchObject({ decisionSurface: 'reviews' });
+        else expect(decided?.['resolution']).not.toHaveProperty('decisionSurface');
+        expect(charges).toEqual([]);
+      } finally {
+        await bureau.dispose();
+        await refundStorage.dispose();
+      }
+    },
+  );
 
   it('answers NotFound for an id that matches nothing', async () => {
     const { bureau } = await parkedBureau();

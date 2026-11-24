@@ -237,7 +237,7 @@ export type SharedAdmissionSequenceAdmitte_e74023ec = {
     | 'canceled'
     | 'failed';
 };
-export type SharedAgeMillisecondsAgentName_987c1d9b = {
+export type SharedAgeMillisecondsAgentName_0d27117d = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly approval: {
@@ -268,10 +268,26 @@ export type SharedAgeMillisecondsAgentName_987c1d9b = {
     readonly reason?: string;
     readonly toolName: string;
   };
+  readonly effect?: {
+    readonly cents: number;
+    readonly currency: 'USD';
+    readonly kind: 'refund';
+    readonly orderId: string;
+    readonly refundId: string;
+    readonly status:
+      | 'admitted'
+      | 'submitting'
+      | 'provider-pending'
+      | 'succeeded'
+      | 'failed'
+      | 'needs-reconciliation';
+  };
   readonly id: string;
   readonly kind: 'tool-approval';
   readonly requestedAt: number;
   readonly resolution?: SharedAnswerDigestDecidedAtDec_655ece59;
+  readonly resolvedAt?: number;
+  readonly resolvedBy?: string;
   readonly round: number;
   readonly runId: string;
   readonly sessionId: string;
@@ -286,7 +302,7 @@ export type SharedAgeMillisecondsAgentName_987c1d9b = {
     | 'canceled'
     | 'superseded';
 };
-export type SharedAgeMillisecondsAgentName_f1ceaa2d = {
+export type SharedAgeMillisecondsAgentName_7cfdfed5 = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly id: string;
@@ -295,6 +311,8 @@ export type SharedAgeMillisecondsAgentName_f1ceaa2d = {
   readonly prompt?: string;
   readonly requestedAt: number;
   readonly resolution?: SharedAnswerDigestDecidedAtDec_655ece59;
+  readonly resolvedAt?: number;
+  readonly resolvedBy?: string;
   readonly runId: string;
   readonly said?: string;
   readonly sessionId?: string;

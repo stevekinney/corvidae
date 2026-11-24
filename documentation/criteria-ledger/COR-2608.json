@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2608",
+  "branch": "steve/cor-2608-reviews-wire",
+  "checkedAt": "d08dfd7490fc5cc92c31ad68166bab813e53da1c",
+  "briefVersion": "18fc470fdc79",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Bureau catalog snapshot and Backchannel behavior-validation tests passed; generator parity 4/4."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Mounted Reviews JSON-RPC/MCP and AG-UI policy tests passed; real demo remembered-grant test passed with no second processor submission."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Reviews operation tests 43/43, real-demo plugin tests 27/27; public effect allowlist, deny/reject/supersession, round and reviewer provenance exercised."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Mounted JSON-RPC/MCP post-commit warning tests 2/2; mounted lost-reply and stale-refusal tests 2/2 with fresh reread."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Mounted paired transport tests and durable two-instance authorized race passed; combined hosted and visual gates remain coordinator-owned."
+    }
+  ]
+}
