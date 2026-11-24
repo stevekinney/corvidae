@@ -52,7 +52,12 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await owner.getByRole('textbox', { name: 'Message' }).fill('shared chat evidence');
       await owner.locator('button[data-chat-send]').click();
       await expect(owner.getByText('shared chat evidence', { exact: true })).toHaveCount(2);
-      await expect.poll(() => new URL(owner.url()).pathname.startsWith('/chats/')).toBe(true);
+      await expect
+        .poll(
+          () =>
+            /^\/chats\/[^/]+$/.test(new URL(owner.url()).pathname) && !owner.url().endsWith('/new'),
+        )
+        .toBe(true);
       const contextId = new URL(owner.url()).pathname.split('/').at(-1);
       if (contextId === undefined || contextId === 'new')
         throw new Error('Expected an owned chat URL.');
@@ -84,7 +89,12 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await owner.goto('/chats/new?agent=echo-text');
       await owner.getByRole('textbox', { name: 'Message' }).fill('unrelated private chat');
       await owner.locator('button[data-chat-send]').click();
-      await expect.poll(() => new URL(owner.url()).pathname.startsWith('/chats/')).toBe(true);
+      await expect
+        .poll(
+          () =>
+            /^\/chats\/[^/]+$/.test(new URL(owner.url()).pathname) && !owner.url().endsWith('/new'),
+        )
+        .toBe(true);
       const unrelatedId = new URL(owner.url()).pathname.split('/').at(-1);
       if (unrelatedId === undefined || unrelatedId === 'new')
         throw new Error('Expected an unrelated private chat URL.');

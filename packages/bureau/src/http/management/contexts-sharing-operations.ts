@@ -1,11 +1,9 @@
 /** Explicit, owner-controlled, read-only context sharing. */
 
 import {
-  sessionHasReadGrant,
   sessionReadGrantOf,
   sessionOwnerOf,
   sessionReadRequestsOf,
-  sessionWasReadGrantedTo,
   summarizeSession,
   withSessionReadGrant,
   withSessionReadGrantAttempt,
@@ -13,6 +11,7 @@ import {
   withSessionReadRequestResolution,
   withSessionReadRevocation,
 } from '@lostgradient/operative';
+import type { SessionReadGrant, SessionReadRequest } from '@lostgradient/operative';
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
@@ -90,6 +89,46 @@ async function currentWorkspacePeer(
   return authority === undefined ? false : authority(owner);
 }
 
+function sameGrant(left: SessionReadGrant | undefined, right: SessionReadGrant | undefined) {
+  return (
+    left?.owner === right?.owner &&
+    left?.workspaceId === right?.workspaceId &&
+    left?.actorId === right?.actorId &&
+    left?.sessionIncarnation === right?.sessionIncarnation &&
+    left?.grantedBy === right?.grantedBy &&
+    left?.grantedAt === right?.grantedAt &&
+    left?.revokedAt === right?.revokedAt &&
+    left?.revokedBy === right?.revokedBy
+  );
+}
+
+function sameRequest(left: SessionReadRequest | undefined, right: SessionReadRequest | undefined) {
+  return (
+    left?.owner === right?.owner &&
+    left?.workspaceId === right?.workspaceId &&
+    left?.actorId === right?.actorId &&
+    left?.requestedAt === right?.requestedAt &&
+    left?.resolvedAt === right?.resolvedAt &&
+    left?.resolvedBy === right?.resolvedBy &&
+    left?.decision === right?.decision
+  );
+}
+
+function isActiveGrant(
+  grant: SessionReadGrant | undefined,
+  workspaceId: string,
+  actorId: string,
+  incarnation: string,
+) {
+  return (
+    grant !== undefined &&
+    grant.revokedAt === undefined &&
+    grant.workspaceId === workspaceId &&
+    grant.actorId === actorId &&
+    grant.sessionIncarnation === incarnation
+  );
+}
+
 async function change(
   host: BureauContextsSharingOperationHost,
   principal: Principal,
@@ -112,60 +151,80 @@ async function change(
   const target = await host.resolveWorkspaceOwner?.(input.granteeOwnerId);
   if (target === undefined || target.workspaceId !== workspace!.workspaceId)
     throw missing(input.contextId);
-  const originallyGranted = sessionHasReadGrant(
-    loaded.metadata,
-    input.granteeOwnerId,
-    loaded.incarnation,
-  );
+  const originalGrant = sessionReadGrantOf(loaded.metadata, input.granteeOwnerId);
   let committed = false;
   await store.update(
     input.contextId,
     (current) => {
       if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
-      const currentlyGranted = sessionHasReadGrant(
-        current.metadata,
-        input.granteeOwnerId,
+      const currentGrant = sessionReadGrantOf(current.metadata, input.granteeOwnerId);
+      const currentlyGranted = isActiveGrant(
+        currentGrant,
+        workspace!.workspaceId,
+        target.actorId,
         current.incarnation,
       );
+      // A revoke is bound to the exact active grant the owner saw. It cannot revoke a
+      // replacement grant restored while the owner command was awaiting the directory.
+      if (kind === 'revoke' && !sameGrant(currentGrant, originalGrant)) return undefined;
       if ((kind === 'grant' && currentlyGranted) || (kind === 'revoke' && !currentlyGranted)) {
-        const record = sessionReadGrantOf(current.metadata, input.granteeOwnerId);
-        return record === undefined
-          ? undefined
-          : {
-              ...current,
-              metadata: withSessionReadGrantAttempt(
-                current.metadata,
-                input.granteeOwnerId,
-                kind === 'grant' ? 'granted' : 'revoked',
-                grantedBy,
-                new Date().toISOString(),
-              ),
-            };
+        if (currentGrant === undefined) return undefined;
+        const pending = sessionReadRequestsOf(current.metadata).some(
+          (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
+        );
+        committed ||= kind === 'grant' && pending;
+        const at = new Date().toISOString();
+        const attempted = withSessionReadGrantAttempt(
+          current.metadata,
+          input.granteeOwnerId,
+          kind === 'grant' ? 'granted' : 'revoked',
+          grantedBy,
+          at,
+        );
+        return {
+          ...current,
+          metadata:
+            kind === 'grant' && pending
+              ? withSessionReadRequestResolution(
+                  attempted,
+                  input.granteeOwnerId,
+                  'granted',
+                  grantedBy,
+                  at,
+                )
+              : attempted,
+        };
       }
       committed = true;
       const at = new Date().toISOString();
+      const next =
+        kind === 'grant'
+          ? withSessionReadGrant(current.metadata, {
+              owner: input.granteeOwnerId,
+              workspaceId: workspace!.workspaceId,
+              actorId: target.actorId,
+              sessionIncarnation: current.incarnation,
+              grantedBy,
+              grantedAt: at,
+            })
+          : withSessionReadRevocation(current.metadata, input.granteeOwnerId, grantedBy, at);
+      const pending = sessionReadRequestsOf(next).some(
+        (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
+      );
       return {
         ...current,
         metadata:
-          kind === 'grant'
-            ? withSessionReadGrant(current.metadata, {
-                owner: input.granteeOwnerId,
-                workspaceId: workspace!.workspaceId,
-                actorId: target.actorId,
-                sessionIncarnation: current.incarnation,
-                grantedBy,
-                grantedAt: at,
-              })
-            : withSessionReadRevocation(current.metadata, input.granteeOwnerId, grantedBy, at),
+          kind === 'grant' && pending
+            ? withSessionReadRequestResolution(next, input.granteeOwnerId, 'granted', grantedBy, at)
+            : next,
       };
     },
     { refreshActivity: false },
   );
-  const intended = kind === 'grant';
   return {
     contextId: input.contextId,
     granteeOwnerId: input.granteeOwnerId,
-    changed: committed || originallyGranted !== intended,
+    changed: committed,
   };
 }
 
@@ -241,12 +300,20 @@ export const contextsRequestShareOperation = defineOperation<
     const workspace = 'workspace' in principal ? principal.workspace : undefined;
     const loaded = await host.contexts.get(input.contextId);
     const owner = loaded === undefined ? null : sessionOwnerOf(loaded.metadata);
+    const formerGrant =
+      loaded === undefined || workspace === undefined
+        ? undefined
+        : sessionReadGrantOf(loaded.metadata, workspace.owner);
     if (
       loaded === undefined ||
       owner === null ||
       workspace === undefined ||
       !(await currentWorkspacePeer(host, principal, owner)) ||
-      !sessionWasReadGrantedTo(loaded.metadata, workspace.owner, loaded.incarnation)
+      formerGrant === undefined ||
+      formerGrant.revokedAt === undefined ||
+      formerGrant.workspaceId !== workspace.workspaceId ||
+      formerGrant.actorId !== workspace.actorId ||
+      formerGrant.sessionIncarnation !== loaded.incarnation
     )
       throw missing(input.contextId);
     let changed = false;
@@ -254,6 +321,8 @@ export const contextsRequestShareOperation = defineOperation<
       input.contextId,
       (current) => {
         if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
+        const currentGrant = sessionReadGrantOf(current.metadata, workspace.owner);
+        if (!sameGrant(currentGrant, formerGrant)) return undefined;
         const before = sessionReadRequestsOf(current.metadata).some(
           (request) => request.owner === workspace.owner && request.resolvedAt === undefined,
         );
@@ -300,23 +369,38 @@ export const contextsResolveShareRequestOperation = defineOperation<
     const workspace = 'workspace' in principal ? principal.workspace : undefined;
     const loaded = await host.contexts.get(input.contextId);
     const owner = loaded === undefined ? null : sessionOwnerOf(loaded.metadata);
+    const target = await host.resolveWorkspaceOwner?.(input.granteeOwnerId);
+    const pending =
+      loaded === undefined
+        ? undefined
+        : sessionReadRequestsOf(loaded.metadata).find(
+            (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
+          );
     if (
       loaded === undefined ||
       owner === null ||
       !isOwnerOfResource(principal, owner) ||
       workspace === undefined ||
-      !(await currentWorkspacePeer(host, principal, input.granteeOwnerId))
+      !(await currentWorkspacePeer(host, principal, input.granteeOwnerId)) ||
+      target === undefined ||
+      target.workspaceId !== workspace.workspaceId
     )
       throw missing(input.contextId);
+    if (
+      pending === undefined ||
+      pending.workspaceId !== target.workspaceId ||
+      pending.actorId !== target.actorId
+    )
+      return { contextId: input.contextId, granteeOwnerId: input.granteeOwnerId, changed: false };
     let changed = false;
     await store.update(
       input.contextId,
       (current) => {
         if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
-        const pending = sessionReadRequestsOf(current.metadata).find(
+        const currentPending = sessionReadRequestsOf(current.metadata).find(
           (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
         );
-        if (pending === undefined) return undefined;
+        if (!sameRequest(currentPending, pending)) return undefined;
         changed = true;
         const at = new Date().toISOString();
         const settled = withSessionReadRequestResolution(
@@ -436,7 +520,13 @@ export const contextsShareStatusOperation = defineOperation<
         grantor: grantor?.displayName ?? null,
       };
     }
-    if (!sessionWasReadGrantedTo(loaded.metadata, workspace.owner, loaded.incarnation))
+    if (
+      grant === undefined ||
+      grant.revokedAt === undefined ||
+      grant.workspaceId !== workspace.workspaceId ||
+      grant.actorId !== workspace.actorId ||
+      grant.sessionIncarnation !== loaded.incarnation
+    )
       throw missing(input.contextId);
     return {
       status: sessionReadRequestsOf(loaded.metadata).some(

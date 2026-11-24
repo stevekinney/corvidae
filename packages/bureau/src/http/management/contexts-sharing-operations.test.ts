@@ -1,6 +1,14 @@
 /* oxlint-disable unicorn/no-await-expression-member -- transport assertions intentionally inspect receipts inline. */
 import { describe, expect, test } from 'bun:test';
-import { sessionReadGrantHistoryOf } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  sessionReadGrantHistoryOf,
+  sessionReadGrantOf,
+  sessionReadRequestsOf,
+  withSessionReadGrant,
+  withSessionReadRevocation,
+} from '@lostgradient/operative';
+import { createConversationHistory } from 'conversationalist';
 
 import { startTaskFrom } from '../../test/task-start-request.ts';
 import {
@@ -8,6 +16,10 @@ import {
   workspacePrivacyCall,
   WORKSPACE_PRIVACY_ACTORS,
 } from '../workspace-privacy-fixtures.test-support.ts';
+import {
+  contextsRequestShareOperation,
+  contextsRevokeShareOperation,
+} from './contexts-sharing-operations.ts';
 
 async function chat(opened: Awaited<ReturnType<typeof openWorkspacePrivacyBureau>>) {
   const run = await startTaskFrom(opened.bureau, {
@@ -18,7 +30,166 @@ async function chat(opened: Awaited<ReturnType<typeof openWorkspacePrivacyBureau
   return run.contextId;
 }
 
+function sharedSession(metadata: Record<string, import('@lostgradient/operative').JSONValue>) {
+  return {
+    ...createAgentSession({
+      id: 'shared-context',
+      agentName: 'default',
+      conversationHistory: createConversationHistory(),
+      metadata: { sessionOwner: WORKSPACE_PRIVACY_ACTORS.owner.owner, ...metadata },
+      runs: [],
+    }),
+    incarnation: 'shared-incarnation',
+  };
+}
+
+function sharingHost(
+  initial: ReturnType<typeof sharedSession>,
+  replaceBeforeUpdate: (
+    session: ReturnType<typeof sharedSession>,
+  ) => ReturnType<typeof sharedSession>,
+) {
+  let current = initial;
+  return {
+    host: {
+      ownership: {
+        mayAccess: ({ resourceOwner }: { resourceOwner?: string }) =>
+          resourceOwner === WORKSPACE_PRIVACY_ACTORS.owner.owner,
+        runOwner: async () => undefined,
+      },
+      workspaceAuthority: () => async () => true,
+      resolveWorkspaceOwner: async (owner: string) =>
+        owner === WORKSPACE_PRIVACY_ACTORS.peer.owner
+          ? {
+              version: 1 as const,
+              workspaceId: 'workspace-a',
+              actorId: 'bob',
+              actorKind: 'user' as const,
+              owner,
+              membershipRevision: 'one',
+              capabilities: ['workspace:use' as const],
+            }
+          : undefined,
+      contexts: {
+        get: async () => current,
+        list: async () => [],
+        internals: {
+          sessionStore: {
+            update: async (_id: string, mutation: (session: typeof current) => typeof current) => {
+              current = replaceBeforeUpdate(current);
+              const next = mutation(current);
+              if (next !== undefined) current = next;
+              return current;
+            },
+          },
+        },
+      },
+    },
+    current: () => current,
+  };
+}
+
+const workspacePrincipal = (actor: 'owner' | 'peer') => ({
+  method: 'api-key',
+  subject: WORKSPACE_PRIVACY_ACTORS[actor].subject,
+  scopes: new Set<string>(),
+  workspace: {
+    workspaceId: 'workspace-a',
+    actorId: actor === 'owner' ? 'alice' : 'bob',
+    actorKind: 'user' as const,
+    owner: WORKSPACE_PRIVACY_ACTORS[actor].owner,
+    membershipRevision: 'one',
+    capabilities: ['workspace:use' as const],
+  },
+});
+
 describe('chat sharing access requests', () => {
+  test('does not append a request after an owner restores the former grant in the update fence', async () => {
+    const initial = sharedSession(
+      withSessionReadRevocation(
+        withSessionReadGrant(
+          {},
+          {
+            owner: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+            workspaceId: 'workspace-a',
+            actorId: 'bob',
+            sessionIncarnation: 'shared-incarnation',
+            grantedBy: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+            grantedAt: '2026-11-23T00:00:00.000Z',
+          },
+        ),
+        WORKSPACE_PRIVACY_ACTORS.peer.owner,
+        WORKSPACE_PRIVACY_ACTORS.owner.owner,
+        '2026-11-23T00:01:00.000Z',
+      ),
+    );
+    const { host, current } = sharingHost(initial, (session) => ({
+      ...session,
+      metadata: withSessionReadGrant(session.metadata, {
+        owner: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+        workspaceId: 'workspace-a',
+        actorId: 'bob',
+        sessionIncarnation: session.incarnation,
+        grantedBy: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+        grantedAt: '2026-11-23T00:02:00.000Z',
+      }),
+    }));
+
+    const receipt = await contextsRequestShareOperation.invoke({
+      input: { contextId: initial.id },
+      host,
+      principal: workspacePrincipal('peer'),
+    } as never);
+
+    expect(receipt).toMatchObject({ changed: false });
+    expect(sessionReadRequestsOf(current().metadata)).toEqual([]);
+    expect(
+      sessionReadGrantOf(current().metadata, WORKSPACE_PRIVACY_ACTORS.peer.owner),
+    ).toMatchObject({
+      grantedAt: '2026-11-23T00:02:00.000Z',
+    });
+  });
+
+  test('does not revoke a replacement grant restored in the update fence', async () => {
+    const initial = sharedSession(
+      withSessionReadGrant(
+        {},
+        {
+          owner: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+          workspaceId: 'workspace-a',
+          actorId: 'bob',
+          sessionIncarnation: 'shared-incarnation',
+          grantedBy: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+          grantedAt: '2026-11-23T00:00:00.000Z',
+        },
+      ),
+    );
+    const { host, current } = sharingHost(initial, (session) => ({
+      ...session,
+      metadata: withSessionReadGrant(session.metadata, {
+        owner: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+        workspaceId: 'workspace-a',
+        actorId: 'bob',
+        sessionIncarnation: session.incarnation,
+        grantedBy: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+        grantedAt: '2026-11-23T00:02:00.000Z',
+      }),
+    }));
+
+    const receipt = await contextsRevokeShareOperation.invoke({
+      input: { contextId: initial.id, granteeOwnerId: WORKSPACE_PRIVACY_ACTORS.peer.owner },
+      host,
+      principal: workspacePrincipal('owner'),
+    } as never);
+
+    expect(receipt).toMatchObject({ changed: false });
+    expect(
+      sessionReadGrantOf(current().metadata, WORKSPACE_PRIVACY_ACTORS.peer.owner),
+    ).toMatchObject({
+      grantedAt: '2026-11-23T00:02:00.000Z',
+    });
+  });
+
   test('a former workspace reader creates one receipt and only its owner can resolve it', async () => {
     const opened = await openWorkspacePrivacyBureau();
     try {
