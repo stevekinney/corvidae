@@ -19,7 +19,10 @@ const colorScheme = designReviewColorScheme();
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['e2e/**/*.spec.ts', 'panels/**/*.spec.ts'],
+  testMatch:
+    process.env['COR_2653_QUALIFICATION'] === '1'
+      ? ['e2e/**/*.spec.ts', 'e2e/**/*.qualification.ts', 'panels/**/*.spec.ts']
+      : ['e2e/**/*.spec.ts', 'panels/**/*.spec.ts'],
   // The one deadline every blocking test shares (`scripts/test-deadlines.ts`): the hang guard for a
   // wait and twice that for a test, never a performance bound a busy host can overrun. A spec that
   // names a shorter one fails `scripts/check-load-sensitive-deadlines.ts`.

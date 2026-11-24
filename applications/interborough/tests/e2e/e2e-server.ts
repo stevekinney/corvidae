@@ -88,6 +88,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 let startupComplete = false;
+process.on('uncaughtExceptionMonitor', (error) => {
+  if (!startupComplete && 'code' in error && error.code === 'EADDRINUSE') {
+    process.stderr.write('INTERBOROUGH_E2E_STARTUP_BIND_COLLISION\n');
+  }
+});
 let startupCleanupPromise: Promise<void> | undefined;
 const startupCleanup: Array<() => Promise<void>> = [];
 const startupInFlight = new Set<Promise<unknown>>();
@@ -657,19 +662,39 @@ const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost, pluginP
     if (result.status === 'rejected') throw result.reason;
     return result.value;
   }) as [Host, Host, Host, ConnectHost, Host, Host];
-startupComplete = true;
-process.off('SIGINT', handleStartupSignal);
-process.off('SIGTERM', handleStartupSignal);
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
 // host holds its runs on a barrier of its own, under `/journey`.
 let cancellationRequests = 0;
+let qualificationReleased = false;
+let qualificationStarted = false;
 let maintenanceStatus: { readonly done: boolean; readonly error?: string } = { done: true };
 const barrierControl = Bun.serve({
   hostname: '127.0.0.1',
   port: E2E_BARRIER_PORT,
   routes: {
+    '/identity': {
+      GET: async () =>
+        Response.json({
+          run: process.env['INTERBOROUGH_E2E_RUN_ID'] ?? '',
+          build: await Bun.file(join(buildDirectory, 'build-info.json')).json(),
+          port: E2E_PORT,
+        }),
+    },
+    '/qualification': {
+      GET: () => Response.json({ released: qualificationReleased, started: qualificationStarted }),
+      POST: () => {
+        qualificationReleased = true;
+        return Response.json({ released: true });
+      },
+    },
+    '/qualification/ready': {
+      POST: () => {
+        qualificationStarted = true;
+        return Response.json({ started: true });
+      },
+    },
     '/waiting': { GET: () => Response.json({ waiting: barrier.waiting() }) },
     '/release': {
       POST: () => {
@@ -734,6 +759,9 @@ const barrierControl = Bun.serve({
     },
   },
 });
+startupComplete = true;
+process.off('SIGINT', handleStartupSignal);
+process.off('SIGTERM', handleStartupSignal);
 
 process.stdout.write(
   [
@@ -771,5 +799,9 @@ async function shutDown(): Promise<void> {
   process.exit(0);
 }
 
-process.on('SIGINT', () => void shutDown());
-process.on('SIGTERM', () => void shutDown());
+let shutdownPromise: Promise<void> | undefined;
+const requestShutdown = (): void => {
+  shutdownPromise ??= shutDown();
+};
+process.on('SIGINT', requestShutdown);
+process.on('SIGTERM', requestShutdown);

@@ -115,7 +115,7 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       },
       stdin: 'ignore',
       stdout: 'pipe',
-      stderr: 'inherit',
+      stderr: 'pipe',
     });
     let stopped = false;
     const stop = async (): Promise<void> => {
@@ -130,9 +130,26 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       throw new Error("The connect host's supervisor did not expose stdout.");
     }
     const { listening } = watchOutput(startedSupervisor.stdout);
+    let bindCollision = false;
+    const stderr = (async () => {
+      const decoder = new TextDecoder();
+      let tail = '';
+      for await (const chunk of startedSupervisor.stderr) {
+        const text = decoder.decode(chunk, { stream: true });
+        process.stderr.write(text);
+        tail = (tail + text).slice(-512);
+        bindCollision ||= tail.includes('EADDRINUSE');
+      }
+    })();
     await Promise.race([
       listening,
-      startedSupervisor.exited.then((code) => {
+      startedSupervisor.exited.then(async (code) => {
+        await stderr;
+        if (bindCollision)
+          throw Object.assign(
+            new Error(`The connect host's port ${String(options.port)} is occupied.`),
+            { code: 'EADDRINUSE' },
+          );
         throw new Error(
           `The connect host's supervisor exited with ${String(code)} before it listened.`,
         );

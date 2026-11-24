@@ -20,6 +20,7 @@ function fakeEnvironment(options: {
   readonly isFree?: (port: number) => boolean;
   readonly requestedPort?: number;
   readonly exitCode?: number;
+  readonly collisions?: number;
 }): {
   readonly environment: GatedRunEnvironment;
   readonly errors: string[];
@@ -36,7 +37,8 @@ function fakeEnvironment(options: {
       requestedPort: options.requestedPort,
       run: async (command, variables) => {
         runs.push({ command, variables });
-        return options.exitCode ?? 0;
+        const bindCollision = runs.length <= (options.collisions ?? 0);
+        return bindCollision ? 73 : (options.exitCode ?? 0);
       },
     },
   };
@@ -78,18 +80,19 @@ describe('findFreePortBlock', () => {
 });
 
 describe('runGatedBrowserSuite', () => {
+  test('the package browser command enters the gated launcher', async () => {
+    const manifest = await Bun.file(new URL('../package.json', import.meta.url)).json();
+    expect(manifest.scripts['test:browser']).toContain('scripts/run-gated-browser-suite.ts');
+  });
+
   test('runs the chromium project on a free block with server reuse refused', async () => {
     const { environment, runs } = fakeEnvironment({});
     expect(await runGatedBrowserSuite(['--grep', 'chat'], environment)).toBe(0);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.command).toEqual([
       'bun',
-      '--bun',
-      'playwright',
-      'test',
-      '--config',
-      'playwright.config.ts',
-      '--project=chromium',
+      'scripts/run-gated-browser-suite.ts',
+      '--playwright-child',
       '--grep',
       'chat',
     ]);
@@ -100,6 +103,15 @@ describe('runGatedBrowserSuite', () => {
   test('passes a failing exit code through', async () => {
     const { environment } = fakeEnvironment({ exitCode: 1 });
     expect(await runGatedBrowserSuite([], environment)).toBe(1);
+  });
+
+  test('retries a startup bind collision only for an unconfigured port', async () => {
+    const automatic = fakeEnvironment({ collisions: 1 });
+    expect(await runGatedBrowserSuite([], automatic.environment)).toBe(0);
+    expect(automatic.runs).toHaveLength(2);
+    const override = fakeEnvironment({ requestedPort: 31000, collisions: 1 });
+    expect(await runGatedBrowserSuite([], override.environment)).toBe(73);
+    expect(override.runs).toHaveLength(1);
   });
 
   test('exits 2 without running when no block is free', async () => {

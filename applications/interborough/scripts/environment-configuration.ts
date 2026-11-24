@@ -43,8 +43,11 @@ export function endToEndPortOverride(): number | undefined {
   const raw = process.env['INTERBOROUGH_E2E_PORT'];
   if (raw === undefined || raw === '') return undefined;
   const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65530) {
-    throw new Error(`INTERBOROUGH_E2E_PORT must be a port number below 65531, not "${raw}".`);
+  const maximumStartPort = 65535 - END_TO_END_PORT_COUNT + 1;
+  if (!Number.isInteger(port) || port < 1 || port > maximumStartPort) {
+    throw new Error(
+      `INTERBOROUGH_E2E_PORT must be a port number below ${String(maximumStartPort + 1)}, not "${raw}".`,
+    );
   }
   return port;
 }

@@ -44,11 +44,11 @@ describe('the end-to-end port', () => {
     expect(endToEndPort()).toBe(7721);
   });
 
-  test('leaves room for the five ports the suite holds after it, so the highest is 65530', () => {
-    process.env['INTERBOROUGH_E2E_PORT'] = '65530';
-    expect(endToEndPort()).toBe(65530);
-    process.env['INTERBOROUGH_E2E_PORT'] = '65531';
-    expect(() => endToEndPort()).toThrow('below 65531');
+  test('leaves room for the seven ports the suite holds after it', () => {
+    process.env['INTERBOROUGH_E2E_PORT'] = '65528';
+    expect(endToEndPort()).toBe(65528);
+    process.env['INTERBOROUGH_E2E_PORT'] = '65529';
+    expect(() => endToEndPort()).toThrow('below 65529');
   });
 
   test('refuses a value that is not a port', () => {

@@ -91,6 +91,7 @@ export const hostEnvironment: GatedRunEnvironment = {
 export async function runGatedBrowserSuite(
   argv: readonly string[] = process.argv.slice(2),
   environment: GatedRunEnvironment = hostEnvironment,
+  attempt = 0,
 ): Promise<number> {
   let first = environment.requestedPort;
   if (first === undefined) {
@@ -107,7 +108,29 @@ export async function runGatedBrowserSuite(
     );
     return 2;
   }
-  return environment.run(
+  environment.standardError(
+    `gated browser suite: starting on ports ${String(first)}-${String(first + END_TO_END_PORT_COUNT - 1)}.\n`,
+  );
+  const result = await environment.run(
+    ['bun', 'scripts/run-gated-browser-suite.ts', '--playwright-child', ...argv],
+    { INTERBOROUGH_E2E_PORT: String(first), INTERBOROUGH_E2E_FRESH_SERVER: '1' },
+  );
+  if (result === 73 && environment.requestedPort === undefined && attempt + 1 < SEARCH_ATTEMPTS) {
+    environment.standardError(
+      'gated browser suite: a port was occupied during startup; retrying with a fresh block.\n',
+    );
+    return runGatedBrowserSuite(argv, environment, attempt + 1);
+  }
+  if (result === 73) {
+    environment.standardError(
+      'gated browser suite: a port was occupied during startup; release the occupied port or choose another INTERBOROUGH_E2E_PORT.\n',
+    );
+  }
+  return result;
+}
+
+async function runPlaywrightChild(argv: readonly string[]): Promise<number> {
+  const child = Bun.spawn(
     [
       'bun',
       '--bun',
@@ -118,17 +141,37 @@ export async function runGatedBrowserSuite(
       '--project=chromium',
       ...argv,
     ],
-    { INTERBOROUGH_E2E_PORT: String(first), INTERBOROUGH_E2E_FRESH_SERVER: '1' },
+    { cwd: applicationDirectory, stdio: ['ignore', 'pipe', 'pipe'] },
   );
+  let collision = false;
+  const forward = async (stream: ReadableStream<Uint8Array>, target: NodeJS.WriteStream) => {
+    const decoder = new TextDecoder();
+    let tail = '';
+    for await (const chunk of stream) {
+      const text = decoder.decode(chunk, { stream: true });
+      tail = (tail + text).slice(-512);
+      collision ||= tail.includes('INTERBOROUGH_E2E_STARTUP_BIND_COLLISION');
+      target.write(text);
+    }
+  };
+  const [code] = await Promise.all([
+    child.exited,
+    forward(child.stdout, process.stdout),
+    forward(child.stderr, process.stderr),
+  ]);
+  return code !== 0 && collision ? 73 : code;
 }
 
 // The suite runs one Playwright worker (`playwright.config.ts`), so one browser at a time: one host
 // slot, taken whether this script runs under the host lock (`test:browser:interborough`) or
 // directly, as an agent runs one end-to-end spec, after the host is checked for memory.
 if (import.meta.main) {
-  process.exitCode = await withMemoryAdmission(() =>
-    withHostSlots(1, (slots) =>
-      runGatedBrowserSuite(process.argv.slice(2), underHostSlots(hostEnvironment, slots)),
-    ),
-  );
+  process.exitCode =
+    process.argv[2] === '--playwright-child'
+      ? await runPlaywrightChild(process.argv.slice(3))
+      : await withMemoryAdmission(() =>
+          withHostSlots(1, (slots) =>
+            runGatedBrowserSuite(process.argv.slice(2), underHostSlots(hostEnvironment, slots)),
+          ),
+        );
 }
