@@ -2296,7 +2296,9 @@ async function waitForSettledCodeHighlights(page: Page): Promise<void> {
  */
 export async function waitForFinalCaptureReadiness(page: Page): Promise<void> {
   await waitForCaptureLayout(page);
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await page.evaluate(
+    () => new Promise<void>((complete) => requestAnimationFrame(() => complete())),
+  );
   await waitForSettledCodeHighlights(page);
 }
 

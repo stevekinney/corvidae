@@ -6,9 +6,31 @@ import {
   VIEWPORTS,
 } from '@lostgradient/testing';
 
-import { test } from '@lostgradient/testing/playwright/component-page-fixture';
+import {
+  test,
+  type ComponentPageFixture,
+} from '@lostgradient/testing/playwright/component-page-fixture';
 import { runFixtureSweep } from '@lostgradient/testing/playwright/component-sweep';
 import { environmentConfiguration } from '../environment-configuration.ts';
+
+/** The root chat fixtures render a wall-clock receipt; freeze only their browser captures. */
+const CHAT_FIXTURE_TIME = new Date('2026-11-24T15:30:00.000Z');
+
+function capturePageFor(componentPage: ComponentPageFixture['componentPage'], slug: string) {
+  if (slug !== 'chat' && slug !== 'chat-sub-session') return componentPage;
+  return {
+    open: async (args: Parameters<typeof componentPage.open>[0]) => {
+      const onPage = args.onPage;
+      return componentPage.open({
+        ...args,
+        onPage: async (page) => {
+          await page.clock.setFixedTime(CHAT_FIXTURE_TIME);
+          await onPage?.(page);
+        },
+      });
+    },
+  };
+}
 
 // The sweep mounts every fixture of every component in every theme and viewport: about half of the
 // fixtures suite's cases. It lives apart from `components.playwright.ts` and runs in parallel mode
@@ -46,7 +68,13 @@ for (const entry of entries) {
       for (const viewport of VIEWPORTS) {
         for (const fixture of fixtures) {
           test(`${theme}-${viewport.name}-${fixture.name}`, async ({ componentPage }) => {
-            await runFixtureSweep(componentPage, entry, theme, viewport, fixture);
+            await runFixtureSweep(
+              capturePageFor(componentPage, entry.slug),
+              entry,
+              theme,
+              viewport,
+              fixture,
+            );
           });
         }
       }

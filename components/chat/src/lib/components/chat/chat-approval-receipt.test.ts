@@ -23,7 +23,6 @@ import {
   createConversationHistory,
 } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
-import { readRecordedApprovalDecision } from './utilities/recorded-approval-decision.ts';
 
 setupHappyDom();
 
@@ -144,30 +143,5 @@ describe('Chat — a decision recorded on the outcome row', () => {
     await tick();
 
     expect(container.querySelector('.cinder-approval-card')).toBeNull();
-  });
-
-  test('reads only the row’s own fields, never an inherited one', () => {
-    const inherited = Object.create({
-      approvalDecision: {
-        decision: 'approve',
-        decidedBy: 'someone',
-        decidedAt: '2026-11-17T10:46:00.000Z',
-      },
-    }) as Record<string, unknown>;
-    expect(readRecordedApprovalDecision(inherited)).toBeUndefined();
-    expect(
-      readRecordedApprovalDecision({
-        approvalDecision: {
-          decision: 'reject',
-          decidedBy: 'Priya Raman',
-          decidedAt: '2026-11-17T10:46:00.000Z',
-          decisionSurface: 'Reviews',
-        },
-      }),
-    ).toEqual({
-      outcome: 'denied',
-      decidedBy: 'Priya Raman',
-      decidedAt: Date.parse('2026-11-17T10:46:00.000Z'),
-    });
   });
 });

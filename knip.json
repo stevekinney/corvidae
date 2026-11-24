@@ -50,7 +50,8 @@
         "!src/**/*.test.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
-        "!src/**/*.bench.ts!"
+        "!src/**/*.bench.ts!",
+        "!src/lib/components/chat/host-question-dock-harness.test.svelte!"
       ]
     },
     "components/cinder": {
@@ -220,7 +221,8 @@
         "!src/**/*.test.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
-        "!src/**/*.bench.ts!"
+        "!src/**/*.bench.ts!",
+        "!src/routes/chat/chat-session-registry.test-support.svelte.ts!"
       ]
     },
     "applications/playground": {

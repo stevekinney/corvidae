@@ -35,7 +35,7 @@ import {
 
 describe('chat stress visual measurement', () => {
   describe('final capture readiness', () => {
-    test('waits for a code block that enters pending after the layout frame', async () => {
+    it('waits for a code block that enters pending after the layout frame', async () => {
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage();
@@ -54,10 +54,9 @@ describe('chat stress visual measurement', () => {
 
         await waitForFinalCaptureReadiness(page);
 
-        await expect(page.locator('.cinder-code-block')).toHaveAttribute(
-          'data-cinder-highlight-state',
-          'highlighted',
-        );
+        expect(
+          await page.locator('.cinder-code-block').getAttribute('data-cinder-highlight-state'),
+        ).toBe('highlighted');
       } finally {
         await browser.close();
       }

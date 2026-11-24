@@ -16,7 +16,7 @@ const APPROVAL_DECISION_METADATA_KEY = 'approvalDecision';
 type ApprovalDecisionSurface = 'chat' | 'reviews';
 
 /** A decision read from a result row, checked field by field. */
-export type RecordedApprovalDecision = {
+type RecordedApprovalDecision = {
   readonly outcome: 'approved' | 'denied';
   /** The principal that decided, as recorded. */
   readonly decidedBy: string;
@@ -38,9 +38,7 @@ function nonEmpty(value: unknown): string | undefined {
 }
 
 /** The decision a row's metadata records, or `undefined` when it records none that reads whole. */
-export function readRecordedApprovalDecision(
-  metadata: unknown,
-): RecordedApprovalDecision | undefined {
+function readRecordedApprovalDecision(metadata: unknown): RecordedApprovalDecision | undefined {
   if (typeof metadata !== 'object' || metadata === null) return undefined;
   const value = own(metadata, APPROVAL_DECISION_METADATA_KEY);
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;

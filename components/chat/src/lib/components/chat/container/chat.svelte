@@ -100,7 +100,6 @@
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
-  import { resolveTurnLabels } from '../message/turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import {
     ApprovalGroup,

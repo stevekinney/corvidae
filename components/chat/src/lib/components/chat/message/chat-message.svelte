@@ -252,7 +252,6 @@
     CircleAlert,
     Collapsible,
     CopyButton,
-    Info,
     Pencil,
     Popover,
     Quote,
