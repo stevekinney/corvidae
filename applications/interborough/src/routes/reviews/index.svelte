@@ -312,23 +312,25 @@
     <section aria-label="Chat access requests">
       <h2>Chat access requests</h2>
       {#each chatRequests.data ?? [] as request (`${request.contextId}:${request.granteeOwnerId}`)}
-        <article>
-          <p>
+        <article class="ib-chat-access-request">
+          <p class="ib-chat-access-request__copy">
             <strong>{request.granteeLabel ?? 'A workspace member'}</strong> requested access to chat {request.contextTitle ??
               'an untitled chat'}.
           </p>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={resolvingChatRequest !== undefined}
-            onclick={() => void resolveChatRequest(request, 'deny')}>Deny</Button
-          >
-          <Button
-            size="sm"
-            variant="primary"
-            loading={resolvingChatRequest === `${request.contextId}:${request.granteeOwnerId}`}
-            onclick={() => void resolveChatRequest(request, 'grant')}>Grant access</Button
-          >
+          <div class="ib-chat-access-request__actions">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={resolvingChatRequest !== undefined}
+              onclick={() => void resolveChatRequest(request, 'deny')}>Deny</Button
+            >
+            <Button
+              size="sm"
+              variant="primary"
+              loading={resolvingChatRequest === `${request.contextId}:${request.granteeOwnerId}`}
+              onclick={() => void resolveChatRequest(request, 'grant')}>Grant access</Button
+            >
+          </div>
         </article>
       {/each}
     </section>
@@ -397,3 +399,28 @@
     />
   {/if}
 </section>
+
+<style>
+  .ib-chat-access-request {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+  }
+  .ib-chat-access-request__copy {
+    margin: 0;
+  }
+  .ib-chat-access-request__actions {
+    display: flex;
+    gap: var(--cinder-space-2);
+    margin-inline-start: auto;
+  }
+  @media (max-width: 600px) {
+    .ib-chat-access-request {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .ib-chat-access-request__actions {
+      margin-inline-start: 0;
+    }
+  }
+</style>
