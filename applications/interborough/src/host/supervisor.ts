@@ -82,7 +82,7 @@ export function supervisorLeaseIdentity(
     ? { kind: 'local' as const, root: resolveBungalowRoot(options) }
     : resolveBungalowDescriptor(options);
   return createHash('sha256')
-    .update(descriptor.kind === 'local' ? descriptor.root : nonce)
+    .update('root' in descriptor ? descriptor.root : nonce)
     .digest('hex');
 }
 
