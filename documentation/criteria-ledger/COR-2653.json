@@ -1,24 +1,24 @@
 {
   "issue": "COR-2653",
   "branch": "steve/cor-2653-browser-port-isolation",
-  "checkedAt": "d09fb513e9bf8cb8d691deb4aa0f68ae79066f13",
+  "checkedAt": "627bf25947aa1de6a1cb035eb2e2307dad055db4",
   "briefVersion": "f416fc07b354",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Hosted run 45312674485 recorded baseline red, gated control green, occupied override and post-allocation +1/+6 bind races."
+      "evidence": "Exact-head hosted run 45362948086: baseline package exit 1 and gated control exit 0; occupied override exit 2; allocation races +1 and +6 exit 0. Candidate connect 4/4 passed; base failed the intended EADDRINUSE assertion."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Hosted run 45312674485 recorded A/B identities, listener ownership, sentinel controls, double stop and B exit 0."
+      "evidence": "Run 45362948086 recorded distinct A/B identities and 16 listener entries, isolation and workflow actions, A retired with exit 143 and B completed with exit 0 after A cleanup."
     },
     {
       "id": "AC3",
-      "status": "not-met",
-      "evidence": "Corrected competition replay passed; full matrix run 45351503820 failed connect supervisor reaping. Diagnostic run 45359311834 found same-incarnation orphan zombies. Fixture correction passed local four-case control; final hosted matrix remains required."
+      "status": "met-on-branch",
+      "evidence": "Run 45362948086 recorded all eight correct and incorrect order/concurrency pairs with expected exits and passing competitor actions bracketing assertions. Artifact 14906963959 SHA-256 fef0bfbd2181e6394c8263d4dba239997619625f5d313ac18095da48c79e8b90 preserves evidence and previous failures remain retained."
     }
   ]
 }
