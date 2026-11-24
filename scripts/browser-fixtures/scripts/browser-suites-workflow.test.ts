@@ -178,8 +178,8 @@ describe('the browser suites workflow', () => {
       '- run: bun scripts/chef/ci-replay.ts run -- bunx turbo run //#ci:browser-interborough --log-order=stream\n',
     );
     expect(interborough).toContain('name: playwright-interborough-${{ matrix.shard }}\n');
-    expect(interborough).toContain('if: ${{ failure() }}\n');
-    expect(interborough).toContain('path: ${{ runner.temp }}/ci-replay-artifact\n');
+    expect(interborough).toContain('prior_status: ${{ job.status }}\n');
+    expect(interborough).toContain('replay_name: playwright-interborough-${{ matrix.shard }}\n');
     expect(interborough).not.toContain('applications/interborough/test-results/\n');
   });
 });

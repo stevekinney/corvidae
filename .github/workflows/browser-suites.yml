@@ -140,8 +140,6 @@ jobs:
           path: scripts/browser-fixtures/test-results/**/*-actual.png
           retention-days: 14
           if-no-files-found: ignore
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -162,6 +160,15 @@ jobs:
           name: replay-browser-fixtures-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-browser-fixtures-${{ matrix.shard }}-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
+        env:
+          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
+          CI_REPLAY_SELECTION: shard=${{ matrix.shard }}
 
   # The packages' own browser suites (COR-2080): the cached `test:browser` task of every package
   # `turbo.json` gives one (chat, editor and terminal, moved out of the fixture suite above), which
@@ -216,8 +223,6 @@ jobs:
           path: components/*/browser/test-results/**/*-actual.png
           retention-days: 14
           if-no-files-found: ignore
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -237,6 +242,14 @@ jobs:
           name: replay-browser-packages-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-browser-packages-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
+        env:
+          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
 
   interborough:
     name: Interborough end-to-end (${{ matrix.shard }}/4)
@@ -292,8 +305,6 @@ jobs:
           CI_REPLAY_TOKEN: ${{ github.token }}
           CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
           CI_REPLAY_SELECTION: shard=${{ matrix.shard }}
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -314,3 +325,12 @@ jobs:
           name: playwright-interborough-${{ matrix.shard }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: playwright-interborough-${{ matrix.shard }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
+        env:
+          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
+          CI_REPLAY_SELECTION: shard=${{ matrix.shard }}

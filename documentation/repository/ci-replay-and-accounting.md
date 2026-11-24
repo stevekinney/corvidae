@@ -1,6 +1,6 @@
 # CI replay and accounting
 
-For the browser-selection and PostgreSQL setup commands, create the fresh writable `GITHUB_OUTPUT` or `GITHUB_PATH` file named by `replaySetup` inside the scratch directory. Browser selection also needs the recorded `TURBO_SCM_BASE`: in the disposable checkout, fetch the recorded base commit and point that local remote-tracking ref at it before running the command. If the base commit or its ref name is unavailable, the selection cannot be reproduced exactly.
+For the browser-selection and PostgreSQL setup commands, create the fresh writable `GITHUB_OUTPUT` or `GITHUB_PATH` file named by `replaySetup` inside the scratch directory. Commands using `TURBO_SCM_BASE` also need the recorded `selectionBase`: in the disposable checkout, fetch that commit and point the recorded local remote-tracking ref at it before running the command. `selectionBase` is distinct from the pull request event's `base`. If the selection commit or its ref name is unavailable, the selection cannot be reproduced exactly.
 
 A failing targeted or pull request job retains a small structured replay record independently of the aggregate receipt. The record names the run, attempt, job, head, base, checked tree and toolchain, together with the command, bounded selection and the first recognized assertion's matcher and source location. Assertion values and raw diagnostics are omitted. If an identity, assertion, JUnit report or trace is unavailable, the record says why rather than substituting a success.
 

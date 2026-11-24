@@ -10,10 +10,25 @@ import {
   replayEnvironment,
   replayParameters,
   replayRecord,
+  resolveSelectionBase,
   sanitizeJUnit,
 } from './ci-replay.ts';
 
 describe('failure replay evidence', () => {
+  test('records the resolved selection base independently of the pull request event base', () => {
+    const eventBase = 'a'.repeat(40);
+    const selectedBase = 'b'.repeat(40);
+    const resolved = resolveSelectionBase({ TURBO_SCM_BASE: 'origin/main' }, (ref) => {
+      expect(ref).toBe('origin/main');
+      return selectedBase;
+    });
+    expect(resolved).toEqual({ selectionBase: selectedBase, selectionBaseUnavailable: null });
+    expect(resolved.selectionBase).not.toBe(eventBase);
+    expect(resolveSelectionBase({}, () => eventBase).selectionBase).toBeNull();
+    expect(
+      resolveSelectionBase({ TURBO_SCM_BASE: 'origin/main' }, () => '').selectionBaseUnavailable,
+    ).toBe('selection base ref could not be resolved to a commit');
+  });
   test('retains the first matcher and source location without test output or values', () => {
     const marker = 'harmless-seeded-marker-12345';
     const output = `error: expect(received).toEqual(expected)\nExpected: ${marker}\n    at /workspace/scripts/example.test.ts:12:4\nerror: expect(received).toBe(2)\n    at /workspace/scripts/other.test.ts:20:2\n`;
@@ -341,29 +356,73 @@ describe('failure replay evidence', () => {
 
   test('declares a fallback and replay artifact for each covered job', () => {
     const root = resolve(import.meta.dir, '../..');
-    for (const [name, jobs] of [
+    const expectedNames: Record<string, string> = {
+      'targeted-checks.yml:checks': 'replay-checks-${{ github.run_attempt }}',
+      'targeted-checks.yml:fixtures': 'replay-fixtures-${{ github.run_attempt }}',
+      'targeted-checks.yml:interborough': 'playwright-interborough-targeted',
+      'targeted-checks.yml:unit': 'replay-unit-${{ strategy.job-index }}-${{ github.run_attempt }}',
+      'pull-request.yml:static': 'replay-static-${{ github.run_attempt }}',
+      'pull-request.yml:workspaces': 'replay-workspaces-${{ github.run_attempt }}',
+      'pull-request.yml:tests': 'replay-tests-${{ github.run_attempt }}',
+      'browser-suites.yml:fixtures':
+        'replay-browser-fixtures-${{ matrix.shard }}-${{ github.run_attempt }}',
+      'browser-suites.yml:packages': 'replay-browser-packages-${{ github.run_attempt }}',
+      'browser-suites.yml:interborough': 'playwright-interborough-${{ matrix.shard }}',
+    };
+    for (const [workflow, jobs] of [
       ['targeted-checks.yml', ['checks', 'fixtures', 'interborough', 'unit']],
       ['pull-request.yml', ['static', 'workspaces', 'tests', 'browser-selection', 'evidence']],
       ['browser-suites.yml', ['fixtures', 'packages', 'interborough']],
     ] as const) {
       const yaml = Bun.YAML.parse(
-        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
+        readFileSync(resolve(root, '.github/workflows', workflow), 'utf8'),
       ) as {
         env: Record<string, unknown>;
         jobs: Record<
           string,
-          { steps: { name?: string; run?: string; if?: string; with?: { path?: string } }[] }
+          {
+            steps: {
+              name?: string;
+              uses?: string;
+              run?: string;
+              if?: string;
+              with?: Record<string, string>;
+              env?: Record<string, string>;
+            }[];
+          }
         >;
       };
       expect(typeof yaml.env['CI_REPLAY_FALLBACK']).toBe('string');
       expect(typeof yaml.env['CI_REPLAY_STAGE']).toBe('string');
       for (const name of jobs) {
         const steps = yaml.jobs[name]!.steps;
+        const save = steps.find((step) => step.uses === './.github/actions/turbo-cache/save');
+        if (save) {
+          expect(save.with?.['replay_name']).toBe(expectedNames[`${workflow}:${name}`]);
+          expect(save.with?.['prior_status']).toBe('${{ job.status }}');
+          expect(save.with?.['replay_token']).toBe('${{ github.token }}');
+          expect(save.env?.['CI_REPLAY_TOKEN']).toBeUndefined();
+          if (workflow === 'targeted-checks.yml' && name === 'unit')
+            expect(save.env?.['CI_REPLAY_SELECTION']).toContain('matrix.lane.paths');
+          const finalizer = steps.find(
+            (step) => step.name === 'Retain first-failure replay record',
+          );
+          expect(finalizer?.run).toContain('bash -c "$CI_REPLAY_FALLBACK"');
+          expect(finalizer?.run).toContain('bash -c "$CI_REPLAY_STAGE"');
+          const upload = steps.find(
+            (step) => step.with?.['name'] === expectedNames[`${workflow}:${name}`],
+          );
+          expect(upload?.with?.['path']).toBe('${{ runner.temp }}/ci-replay-artifact');
+          expect(upload?.if).toContain("steps.replay.outcome == 'success'");
+          expect(steps.indexOf(finalizer!)).toBeLessThan(steps.indexOf(save));
+          expect(steps.indexOf(upload!)).toBeLessThan(steps.indexOf(save));
+          continue;
+        }
         const finalizer = steps.find((step) => step.name === 'Retain first-failure replay record');
         expect(finalizer?.run).toContain('bash -c "$CI_REPLAY_FALLBACK"');
         expect(finalizer?.run).toContain('bash -c "$CI_REPLAY_STAGE"');
         const upload = steps.find(
-          (step) => step.with?.path === '${{ runner.temp }}/ci-replay-artifact',
+          (step) => step.with?.['path'] === '${{ runner.temp }}/ci-replay-artifact',
         );
         expect(upload?.if).toContain("steps.replay.outcome == 'success'");
       }

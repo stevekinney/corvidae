@@ -87,8 +87,6 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -107,6 +105,12 @@ jobs:
           name: replay-static-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-static-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
 
   workspaces:
     name: Affected workspaces lint and type-check
@@ -133,8 +137,6 @@ jobs:
       - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run lint typecheck --affected --continue --concurrency=4
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -153,6 +155,12 @@ jobs:
           name: replay-workspaces-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-workspaces-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
 
   tests:
     name: Affected fast-lane tests
@@ -194,8 +202,6 @@ jobs:
           TEST_LANES: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '--fast-only' || '--isolated' }}
           CI_REPLAY_TOKEN: ${{ github.token }}
         run: bun scripts/chef/ci-replay.ts run -- bun scripts/affected-tests.ts run "$TEST_LANES" --base "$TURBO_SCM_BASE"
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -214,6 +220,12 @@ jobs:
           name: replay-tests-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-tests-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
 
   # The browser suites run only when the change reaches them, by the selection the `workspaces` job
   # uses: Turborepo's affected packages, which include a workspace's dependents. Their own workflow

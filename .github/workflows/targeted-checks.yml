@@ -130,8 +130,6 @@ jobs:
       - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run lint typecheck --affected --continue --concurrency=4
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -150,6 +148,12 @@ jobs:
           name: replay-checks-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-checks-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
 
   fixtures:
     name: Chromium fixtures (targeted)
@@ -210,8 +214,6 @@ jobs:
           path: scripts/browser-fixtures/test-results/**/*-actual.png
           retention-days: 14
           if-no-files-found: ignore
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -232,6 +234,15 @@ jobs:
           name: replay-fixtures-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-fixtures-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
+        env:
+          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
+          CI_REPLAY_SELECTION: ${{ inputs.fixture_specs }} ${{ inputs.fixture_components }}
 
   interborough:
     name: Interborough end-to-end (targeted)
@@ -274,8 +285,6 @@ jobs:
           CI_REPLAY_TOKEN: ${{ github.token }}
           CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
           CI_REPLAY_SELECTION: ${{ inputs.e2e_specs }}
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -296,6 +305,15 @@ jobs:
           name: playwright-interborough-targeted
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: playwright-interborough-targeted
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
+        env:
+          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
+          CI_REPLAY_SELECTION: ${{ inputs.e2e_specs }}
 
   unit:
     name: Unit test files (${{ matrix.lane.workspace }})
@@ -336,8 +354,6 @@ jobs:
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
           CI_REPLAY_SELECTION: ${{ matrix.lane.workspace }} ${{ join(matrix.lane.paths, ' ') }} ${{ matrix.lane.config }}
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
         id: replay
         if: ${{ failure() }}
@@ -357,3 +373,11 @@ jobs:
           name: replay-unit-${{ strategy.job-index }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - uses: ./.github/actions/turbo-cache/save
+        if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-unit-${{ strategy.job-index }}-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
+        env:
+          CI_REPLAY_SELECTION: ${{ matrix.lane.workspace }} ${{ join(matrix.lane.paths, ' ') }} ${{ matrix.lane.config }}

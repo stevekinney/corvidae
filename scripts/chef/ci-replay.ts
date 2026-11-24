@@ -250,7 +250,7 @@ export function replayRecord(input: ReplayInput) {
         ? '$RUNNER_TEMP/github-output'
         : null,
       TURBO_SCM_BASE: input.command.includes('scripts/chef/select-browser-suites.sh')
-        ? 'restore recorded parameter and point its local ref at the recorded base; unavailable if either is missing'
+        ? 'restore recorded parameter and point its local ref at selectionBase; unavailable if either is missing'
         : null,
       GITHUB_PATH: input.command.includes('scripts/chef/prepare-postgres-path.sh')
         ? '$RUNNER_TEMP/github-path'
@@ -315,6 +315,24 @@ function git(...args: string[]): string {
   } catch {
     return '';
   }
+}
+
+export function resolveSelectionBase(
+  environment: Readonly<Record<string, string | undefined>>,
+  resolve: (ref: string) => string,
+): { selectionBase: string | null; selectionBaseUnavailable: string | null } {
+  const ref = environment['TURBO_SCM_BASE'];
+  if (!ref)
+    return { selectionBase: null, selectionBaseUnavailable: 'selection base ref not provided' };
+  if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.startsWith('-') || hasTraversal(ref))
+    return { selectionBase: null, selectionBaseUnavailable: 'selection base ref is unsafe' };
+  const sha = resolve(ref);
+  return /^[a-f0-9]{40}$/.test(sha)
+    ? { selectionBase: sha, selectionBaseUnavailable: null }
+    : {
+        selectionBase: null,
+        selectionBaseUnavailable: 'selection base ref could not be resolved to a commit',
+      };
 }
 
 export async function findRunningJob(
@@ -389,8 +407,15 @@ async function jobId(
   }
 }
 
-async function saveRecord(command: string, output: string): Promise<void> {
-  const environment = { ...rootScriptEnvironment() };
+async function saveRecord(
+  command: string,
+  output: string,
+  captured?: {
+    environment: Record<string, string | undefined>;
+    selectionBase: ReturnType<typeof resolveSelectionBase>;
+  },
+): Promise<void> {
+  const environment = captured?.environment ?? { ...rootScriptEnvironment() };
   const temporary = environment['RUNNER_TEMP'];
   const workspace = environment['GITHUB_WORKSPACE'];
   if (!temporary || !workspace) throw new Error('replay runner context unavailable');
@@ -437,6 +462,8 @@ async function saveRecord(command: string, output: string): Promise<void> {
   }
   const result = {
     ...record,
+    ...(captured?.selectionBase ??
+      resolveSelectionBase(environment, (ref) => git('rev-parse', '--verify', `${ref}^{commit}`))),
     parameters,
     toolchain: {
       ...record.toolchain,
@@ -460,10 +487,11 @@ async function saveRecord(command: string, output: string): Promise<void> {
 async function runCommand(args: string[]): Promise<number> {
   if (args.length === 0) throw new Error('replay command missing');
   const command = args.join(' ');
-  const environment = replayEnvironment(
-    rootScriptEnvironment(),
-    rootScriptEnvironment()['CI_REPLAY_NO_CREDENTIALS'] === 'true',
+  const source = { ...rootScriptEnvironment() };
+  const selectionBase = resolveSelectionBase(source, (ref) =>
+    git('rev-parse', '--verify', `${ref}^{commit}`),
   );
+  const environment = replayEnvironment(source, source['CI_REPLAY_NO_CREDENTIALS'] === 'true');
   const child = Bun.spawn(['bash', '-c', 'exec "$@" 2>&1', 'ci-replay', ...args], {
     stdout: 'pipe',
     stderr: 'inherit',
@@ -481,7 +509,7 @@ async function runCommand(args: string[]): Promise<number> {
     } else if (capture.length < 327680) capture += text.slice(0, 327680 - capture.length);
   }
   const code = await child.exited;
-  if (code !== 0) await saveRecord(command, capture);
+  if (code !== 0) await saveRecord(command, capture, { environment: source, selectionBase });
   return code;
 }
 

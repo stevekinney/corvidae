@@ -105,4 +105,66 @@ for (const workflow of ['targeted-checks.yml', 'pull-request.yml', 'browser-suit
     },
   );
 }
+scenarios.scenario(
+  'captures the fetched selection commit separately from the event base',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ci-replay-selection-'));
+    const environment = {
+      ...rootScriptEnvironment(),
+      GIT_AUTHOR_NAME: 'Replay Test',
+      GIT_AUTHOR_EMAIL: 'replay@example.test',
+      GIT_COMMITTER_NAME: 'Replay Test',
+      GIT_COMMITTER_EMAIL: 'replay@example.test',
+    };
+    const git = async (...args: string[]) => {
+      const result = await runWithHangGuard(['git', ...args], { cwd: directory, env: environment });
+      expect(result.exitCode).toBe(0);
+      return result.stdout.toString().trim();
+    };
+    try {
+      await git('init', '--quiet');
+      writeFileSync(join(directory, 'bun.lock'), 'fixture');
+      await git('add', 'bun.lock');
+      await git('commit', '--quiet', '-m', 'event base');
+      const eventBase = await git('rev-parse', 'HEAD');
+      writeFileSync(join(directory, 'bun.lock'), 'advanced');
+      await git('add', 'bun.lock');
+      await git('commit', '--quiet', '-m', 'selection base');
+      const selectionBase = await git('rev-parse', 'HEAD');
+      await git('update-ref', 'refs/remotes/origin/main', selectionBase);
+      const temporary = join(directory, 'scratch');
+      mkdirSync(temporary);
+      writeFileSync(
+        join(directory, 'mutate-ref.sh'),
+        'git update-ref refs/remotes/origin/main "$CI_REPLAY_BASE"\nexit 1\n',
+      );
+      const result = await runWithHangGuard(
+        ['bun', resolve(import.meta.dir, 'ci-replay.ts'), 'run', '--', 'bash', 'mutate-ref.sh'],
+        {
+          cwd: directory,
+          env: {
+            ...environment,
+            RUNNER_TEMP: temporary,
+            GITHUB_WORKSPACE: directory,
+            GITHUB_RUN_ID: '1',
+            GITHUB_RUN_ATTEMPT: '1',
+            GITHUB_JOB: 'tests',
+            GITHUB_SHA: selectionBase,
+            CI_REPLAY_HEAD: selectionBase,
+            CI_REPLAY_BASE: eventBase,
+            TURBO_SCM_BASE: 'origin/main',
+          },
+        },
+      );
+      expect(result.exitCode).toBe(1);
+      const record = JSON.parse(readFileSync(join(temporary, 'ci-replay-record.json'), 'utf8'));
+      expect(record.base).toBe(eventBase);
+      expect(record.selectionBase).toBe(selectionBase);
+      expect(record.selectionBaseUnavailable).toBeNull();
+      expect(await git('rev-parse', 'origin/main')).toBe(eventBase);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 await scenarios.settled();
