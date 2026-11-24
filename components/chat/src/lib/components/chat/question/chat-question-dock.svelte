@@ -392,10 +392,8 @@
     gap: var(--cinder-space-3);
     inline-size: 100%;
     min-inline-size: 0;
-    padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised, var(--cinder-surface));
+    /* The dock is part of the transcript, not a raised panel. Its choices retain their own
+     * coarse 52px rows, while the surrounding question stays visually flat. */
     max-block-size: min(100%, 80dvh);
   }
 

@@ -616,6 +616,15 @@ export function railCall(
         ...named,
         status: 'failed',
         ...(entry.summary === '' ? {} : { result: entry.summary }),
+        ...(entry.failure === undefined
+          ? {}
+          : {
+              failure: entry.failure.message,
+              diagnostic:
+                entry.failure.code === undefined
+                  ? entry.failure.message
+                  : `${entry.failure.code}: ${entry.failure.message}`,
+            }),
       };
     case 'done':
       // A call whose answer is a page keeps its answer on the row, as a link, so a person's

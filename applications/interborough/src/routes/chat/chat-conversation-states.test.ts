@@ -15,7 +15,6 @@ import {
   billingThreadWithPartialReply,
   ENDED_PARTIAL_REPLY,
   endedOnToolCallMessages,
-  FAILED_PARTWAY_CAUSE,
   failedPartwayMessages,
   HELD_BY_PLUGIN_REASON,
   heldByPluginMessages,
@@ -299,10 +298,8 @@ describe('a reply that failed partway (19p)', () => {
     const { container, findByText, findByRole } = mount();
 
     expect(await findByText(/I can refund the full amount to the$/)).not.toBeNull();
-    const line = await findByText(
-      `The reply stopped partway: ${FAILED_PARTWAY_CAUSE.replace(/\.$/, '').replace(/^T/, 't')}.`,
-    );
-    expect(line.closest('.chat-note')?.hasAttribute('data-failed')).toBe(true);
+    const line = await findByText('This answer is incomplete.');
+    expect(line.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     expect(await findByRole('button', { name: 'Retry' })).not.toBeNull();
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
@@ -331,18 +328,14 @@ describe('a reply the person stopped (COR-2437)', () => {
     nextPageToken: null,
   });
 
-  test('is Stopped on the turn with Discard and no Continue, and no status line under it', async () => {
+  test('is Stopped on the turn with Discard and Continue, and no duplicate status line under it', async () => {
     serve(billingThreadWithPartialReply(BILLING), { answers: { 'bureau.tasks.list': canceled } });
     const { container, findByText, findByRole } = mount();
 
     expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
     const discard = await findByRole('button', { name: 'Discard' });
     expect(discard.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('stopped');
-    // No kind of stop can be resumed yet (`bureau.contexts.resumeturn` refuses each), so the turn
-    // offers no Continue.
-    expect(container.querySelector('.chat-turn-outcome button[class*="primary"]') === null).toBe(
-      true,
-    );
+    expect(await findByRole('button', { name: 'Continue' })).not.toBeNull();
     expect(container.textContent).not.toContain('The run was stopped.');
   });
 

@@ -326,7 +326,7 @@ describe('R7: a failed step', () => {
     const tooltip = actions?.querySelector('[role="tooltip"]');
     expect(tooltip?.textContent).toBe('Copy error');
     expect(tooltip?.hasAttribute('data-cinder-visible')).toBe(false);
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('s3');
   });
 

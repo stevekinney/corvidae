@@ -23,6 +23,7 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { planFold, summarizeFoldedNames } from '../../utilities/fold-middle.ts';
   import Badge from '../badge/badge.svelte';
+  import CopyButton from '../copy-button/copy-button.svelte';
   import Spinner from '../spinner/spinner.svelte';
   import Timeline from '../timeline/timeline.svelte';
   import type { TimelineEntry } from '../timeline/timeline.types.ts';
@@ -71,6 +72,9 @@
     details: labels?.details ?? 'Details',
     retry: labels?.retry ?? 'Ask the agent to retry',
     copyInput: labels?.copyInput ?? 'Copy input',
+    step: labels?.step ?? ((position: number, total: number) => `Step ${position} of ${total}`),
+    copyError: labels?.copyError ?? 'Copy error',
+    errorCopied: labels?.errorCopied ?? 'Copied',
   });
 
   /** One or two calls are plain rows: no summary, no rail and no fold. */
@@ -125,6 +129,8 @@
     rows.flatMap((row) => (row.kind === 'call' && row.id === id ? [row.call] : []));
   const groupsFor = (id: string): (readonly ToolCallRailCall[])[] =>
     rows.flatMap((row) => (row.kind === 'group' && row.id === id ? [row.items] : []));
+  const positionOf = (call: ToolCallRailCall): number =>
+    calls.findIndex((candidate) => candidate.id === call.id) + 1;
   // A rail has nothing dated to say, so the entries carry only their identity and a name.
   const entries = $derived(
     rows.map((row): TimelineEntry => ({
@@ -328,6 +334,13 @@
           <CircleX class="cinder-tool-call-rail__failure-glyph" aria-hidden="true" />
           <span>{call.failure}</span>
         </span>
+        <span class="cinder-tool-call-rail__failure-step"
+          >{words.step(positionOf(call), calls.length)}</span
+        >
+        {#if call.diagnostic !== undefined && call.diagnostic !== ''}
+          <code class="cinder-tool-call-rail__failure-diagnostic" dir="auto">{call.diagnostic}</code
+          >
+        {/if}
         <span class="cinder-tool-call-rail__links">
           {#if onSelect}
             <button
@@ -339,9 +352,13 @@
             </button>
           {/if}
           {#if onRetry}
+            <span id={`${listId}-retry-${call.id}`} class="cinder-sr-only"
+              >Starts a new request for this step.</span
+            >
             <button
               type="button"
               class="cinder-tool-call-rail__link"
+              aria-describedby={`${listId}-retry-${call.id}`}
               onclick={() => onRetry(call.id)}
             >
               {words.retry}
@@ -355,6 +372,14 @@
             >
               {words.copyInput}
             </button>
+          {/if}
+          {#if call.diagnostic !== undefined && call.diagnostic !== ''}
+            <CopyButton
+              value={call.diagnostic}
+              label={words.copyError}
+              copiedLabel={words.errorCopied}
+              class="cinder-tool-call-rail__link cinder-tool-call-rail__copy-error"
+            />
           {/if}
         </span>
       </div>

@@ -104,7 +104,7 @@ describe('R4: stopped', () => {
     expect(row?.getAttribute('data-kind')).toBe('stopped');
     const card = row?.querySelector('.chat-turn-stopped-card');
     expect(card?.getAttribute('role')).toBe('note');
-    expect(card?.textContent).toContain('Stopped. The answer above is partial.');
+    expect(card?.textContent).toContain('Stopped by you, partial answer');
 
     const buttons = Array.from(row?.querySelectorAll('button') ?? [], (button) =>
       button.textContent?.trim(),
@@ -238,7 +238,7 @@ describe('R6: empty answer', () => {
     expect(container.querySelector('.chat-message-line time')).toBeNull();
     expect(container.querySelectorAll('time')).toHaveLength(1);
 
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Try again' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
   });
 
@@ -251,12 +251,12 @@ describe('R6: empty answer', () => {
     expect(container.querySelectorAll('time')).toHaveLength(1);
   });
 
-  test('the empty outcome is one compact neutral card without a dashed placeholder edge', () => {
+  test('the empty outcome is a dashed transcript row, not a callout', () => {
     const { container } = mount({ turnState: { kind: 'empty' } });
-    const card = container.querySelector('.chat-turn-empty-card');
-    expect(card?.classList.contains('cinder-callout')).toBe(true);
-    expect(card?.getAttribute('data-cinder-variant')).toBe('neutral');
-    expect(card?.querySelector('.cinder-callout__icon')).not.toBeNull();
+    const row = container.querySelector('.chat-turn-empty-row');
+    expect(row).not.toBeNull();
+    expect(row?.classList.contains('cinder-callout')).toBe(false);
+    expect(container.querySelector('.chat-turn-empty-card')).toBeNull();
   });
 });
 
@@ -308,7 +308,7 @@ describe('a turn that said only what it was doing', () => {
 
   test('a stopped one with an answer keeps the partial-answer words', () => {
     const { container } = mount({ turnState: { kind: 'stopped' } });
-    expect(outcome(container)?.textContent).toContain('Stopped. The answer above is partial.');
+    expect(outcome(container)?.textContent).toContain('Stopped by you, partial answer');
   });
 
   test('a failed one says it failed before an answer, and a host can say both its own way', () => {

@@ -193,6 +193,7 @@
   import { replyStepOf } from './reply-details.ts';
   import {
     formatCallDuration,
+    lastTurnStart,
     railCall,
     toolGroups,
     approvalLapsed,
@@ -1097,6 +1098,7 @@
   // last settled turn. Earlier failures keep their recorded note in the transcript.
   const lastStop = $derived(session.streaming ? undefined : lastTurnStop(lined));
   const shown = $derived(withoutStopLine(lined, lastStop));
+  const currentTurnMessageIds = $derived(new Set(shown.ids.slice(lastTurnStart(shown))));
 
   // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
@@ -1209,6 +1211,75 @@
       noted('toolCall', SETTINGS.permission, onChanges?.label ?? 'On changes asks');
     }
     await session.retryTurn({ tools: toolInfo });
+  }
+
+  /**
+   * Sends a new, ordinary chat request for one failed call in the final tool turn. This is not a
+   * resume: the selected call is fenced to the current final turn before its human-readable
+   * ordinal and tool name are sent as a normal request under its current permission and approval
+   * rules.
+   */
+  async function retryFailedStep(entries: readonly ToolCallEntry[], callId: string): Promise<void> {
+    const finalGroup = [...activity.groups.values()]
+      .filter((group) => group.messageIds.some((id) => currentTurnMessageIds.has(id)))
+      .at(-1);
+    if (finalGroup?.entries !== entries) return;
+    const position = entries.findIndex((entry) => entry.callId === callId);
+    const entry = entries[position];
+    if (entry === undefined || entry.state !== 'failed') return;
+
+    const details = toolInfo.get(entry.name);
+    // A failed changing call may already have made a partial change. Reset Allow all before the
+    // ordinary request is submitted, exactly as a whole-turn retry does, so the next call asks.
+    if (context.data?.permissionMode === 'allow-all' && details?.tier !== 'read-only') {
+      const data = context.data;
+      const result = await changeSetting({
+        commands: retryCommands,
+        scope: sessionId,
+        content: 'on-changes',
+        send: (commandId) =>
+          steerContext({
+            contextId: sessionId,
+            commandId,
+            expectedRevision: data.configVersion,
+            permissionMode: 'on-changes',
+          }),
+        reload: reloadContext,
+        notices: SETTINGS.permissionNotices,
+      });
+      if (!result.applied) {
+        showToast(result.notice ?? SETTINGS.permissionNotices.notChanged, {
+          variant: 'warning',
+          duration: 0,
+        });
+        return;
+      }
+      const onChanges = SETTINGS.permissionOptions.find((option) => option.value === 'on-changes');
+      noted('toolCall', SETTINGS.permission, onChanges?.label ?? 'On changes asks');
+    }
+
+    // Permission changes await a durable command. Do not let a formerly current row submit after
+    // a newer tool turn replaces it while that command is in flight.
+    const currentGroup = [...activity.groups.values()]
+      .filter((group) => group.messageIds.some((id) => currentTurnMessageIds.has(id)))
+      .at(-1);
+    const currentEntry = currentGroup?.entries.find((candidate) => candidate.callId === callId);
+    if (
+      currentGroup?.entries !== entries ||
+      currentEntry !== entry ||
+      currentEntry.state !== 'failed'
+    ) {
+      return;
+    }
+
+    // Sending through the session adds a normal user turn without replacing the unsent composer
+    // draft. Recheck the ordinary-send authority at this final fence: another turn may have begun
+    // while a changing tool's permission reset was pending.
+    if (!session.canRetryTurn || session.streaming) return;
+    const name = toolDisplayName(entry.name, details?.title);
+    await session.send(
+      `Retry only failed step ${String(position + 1)} of ${String(entries.length)}: ${name}. Keep completed work and follow the current approval rules.`,
+    );
   }
 
   let branching = $state(false);
@@ -1693,7 +1764,10 @@
     if (endedByRestart) return CHAT_COPY.status.ended;
     if (approvalWaits || shownRequests.length > 0) return CHAT_COPY.status.waiting;
     if (runGoing && !parkedOnLapsed) return CHAT_COPY.status.running;
-    if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
+    // `shown` intentionally removes the canonical stopped/failed line once its richer outcome
+    // row owns it. Keep the title state attached to that durable stop, not that filtered view.
+    if (lastStop?.state.kind === 'failed' || retryNoteId !== undefined)
+      return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
   /** The Badge tone of each status word beside the title. */
@@ -2630,7 +2704,10 @@
                 decided={decisionContext}
                 selectedId={selectedCallId}
                 onSelect={selectCall}
-                onRetryStep={session.canRetryTurn ? () => void retryTurn() : undefined}
+                {...session.canRetryTurn &&
+                group.messageIds.some((id) => currentTurnMessageIds.has(id))
+                  ? { onRetryStep: (callId: string) => void retryFailedStep(group.entries, callId) }
+                  : {}}
                 opensPanel={(entry) =>
                   chatToolPanelFor(entry) !== undefined &&
                   structuredResultText(entry) !== undefined}

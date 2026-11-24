@@ -103,19 +103,19 @@ export type ResumeTurnResult = {
 };
 
 /** The metadata key of a continuation row that names the stopped run it continues. */
-export const CONTINUATION_OF_METADATA_KEY = 'bureau:continuationOf';
+const CONTINUATION_OF_METADATA_KEY = 'bureau:continuationOf';
 
 /** The metadata key of a continuation row that names the command that started it. */
-export const CONTINUATION_COMMAND_METADATA_KEY = 'bureau:continuationCommand';
+const CONTINUATION_COMMAND_METADATA_KEY = 'bureau:continuationCommand';
 
 /** The metadata key of a continuation row that names the owner whose command started it. */
-export const CONTINUATION_OWNER_METADATA_KEY = 'bureau:continuationOwner';
+const CONTINUATION_OWNER_METADATA_KEY = 'bureau:continuationOwner';
 
 /** The continuation run allocated in the same session update that stores its command marker. */
-export const CONTINUATION_RUN_METADATA_KEY = 'bureau:continuationRun';
+const CONTINUATION_RUN_METADATA_KEY = 'bureau:continuationRun';
 
 /** The id of the continuation row of the stopped run `runId`: one per stopped run. */
-export function continuationRowId(runId: string): string {
+function continuationRowId(runId: string): string {
   return `${runId}:continuation`;
 }
 

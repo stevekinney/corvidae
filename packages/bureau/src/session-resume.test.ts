@@ -25,11 +25,6 @@ import type { AgentDefinitions } from './agent-catalog';
 import { BureauShuttingDownError, ContextArchivedError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import {
-  continuationRowId,
-  CONTINUATION_OF_METADATA_KEY,
-  CONTINUATION_COMMAND_METADATA_KEY,
-  CONTINUATION_OWNER_METADATA_KEY,
-  CONTINUATION_RUN_METADATA_KEY,
   judgeResumableTurn,
   SessionResumeRefusedError,
   startedContinuation,
@@ -174,10 +169,10 @@ describe('a resumed turn', () => {
     // run's own rows. Nothing of the stopped run was rewritten, and no row is the person's.
     const kept = before.conversationHistory.ids;
     expect(after.conversationHistory.ids.slice(0, kept.length)).toEqual([...kept]);
-    expect(after.conversationHistory.ids[kept.length]).toBe(continuationRowId(run.id));
-    const marker = after.conversationHistory.messages[continuationRowId(run.id)];
+    expect(after.conversationHistory.ids[kept.length]).toBe(`${run.id}:continuation`);
+    const marker = after.conversationHistory.messages[`${run.id}:continuation`];
     expect(marker?.hidden).toBe(true);
-    expect(marker?.metadata?.[CONTINUATION_OF_METADATA_KEY]).toBe(run.id);
+    expect(marker?.metadata?.['bureau:continuationOf']).toBe(run.id);
     const added = after.conversationHistory.ids.slice(kept.length + 1);
     expect(added.length).toBeGreaterThan(0);
     expect(added.every((id) => id.startsWith(`${result.runId}:step:`))).toBe(true);
@@ -233,15 +228,15 @@ describe('a resumed turn', () => {
       { id: 'person', role: 'user', content: 'go' },
       { id: `${stoppedRun}:step:0`, role: 'assistant', content: 'partial' },
       {
-        id: continuationRowId(stoppedRun),
+        id: `${stoppedRun}:continuation`,
         role: 'user',
         content: 'Continue the answer from where it stopped.',
         hidden: true,
         metadata: {
-          [CONTINUATION_OF_METADATA_KEY]: stoppedRun,
-          [CONTINUATION_COMMAND_METADATA_KEY]: 'resume-1',
-          [CONTINUATION_OWNER_METADATA_KEY]: ALICE,
-          [CONTINUATION_RUN_METADATA_KEY]: continuationRun,
+          'bureau:continuationOf': stoppedRun,
+          'bureau:continuationCommand': 'resume-1',
+          'bureau:continuationOwner': ALICE,
+          'bureau:continuationRun': continuationRun,
         },
       },
       { id: 'later-person', role: 'user', content: 'a later normal turn' },
@@ -296,7 +291,7 @@ describe('a resume racing', () => {
       [resumed.status, discarded.status].filter((status) => status === 'fulfilled'),
     ).toHaveLength(1);
     const session = (await bureau.contexts.get(run.contextId))!;
-    const hasMarker = session.conversationHistory.ids.includes(continuationRowId(run.id));
+    const hasMarker = session.conversationHistory.ids.includes(`${run.id}:continuation`);
     expect(hasMarker).toBe(resumed.status === 'fulfilled');
   });
 
@@ -314,7 +309,7 @@ describe('a resume racing', () => {
 
     expect(await refusalOf(resume(bureau, run.contextId, run.id))).toBe('not-latest-turn');
     const session = (await bureau.contexts.get(run.contextId))!;
-    expect(session.conversationHistory.ids).not.toContain(continuationRowId(run.id));
+    expect(session.conversationHistory.ids).not.toContain(`${run.id}:continuation`);
     await bureau.tasks.cancel(message.id);
   });
 });
@@ -488,7 +483,7 @@ describe('which turn may go on', () => {
       ),
     ).toBe('follow-up-delivered');
     expect(
-      reasonOf(sessionOf([...turn, { id: continuationRowId(R), role: 'user', metadata: {} }])),
+      reasonOf(sessionOf([...turn, { id: `${R}:continuation`, role: 'user', metadata: {} }])),
     ).toBe('not-latest-turn');
     expect(reasonOf(sessionOf(turn.slice(0, 1)))).toBe('nothing-to-resume');
     expect(reasonOf(sessionOf(turn, 'completed'))).toBe('turn-finished');

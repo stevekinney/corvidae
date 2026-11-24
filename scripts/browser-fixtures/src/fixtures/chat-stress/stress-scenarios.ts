@@ -706,6 +706,9 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'The audit service returned 503 after three tries, so the source could not be read.',
       );
       conversation = appendAssistantMessage(conversation, 'Two of three sources were readable.');
+      setup.turnLabels = {
+        stepsDone: (worked, total) => `Checked ${worked} of ${total} sources`,
+      };
     }
     setup.conversation = conversation;
     if (shape === 'approval') {

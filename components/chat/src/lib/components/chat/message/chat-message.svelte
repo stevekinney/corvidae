@@ -247,6 +247,7 @@
   } from '../utilities/utilities.ts';
   import {
     Button,
+    Badge,
     Callout,
     CircleAlert,
     Collapsible,
@@ -1050,17 +1051,10 @@
 {#snippet turnOutcome()}
   {#if turn.kind === 'stopped'}
     <div class="chat-turn-outcome" data-kind="stopped">
-      <Callout
-        variant="neutral"
-        semantic="note"
-        class="chat-turn-callout chat-turn-stopped-card"
-        {...onDiscardTurn || onContinueTurn ? { action: stoppedTurnActions } : {}}
-      >
-        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
-        <p class="chat-turn-text" dir="auto">
-          {withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}
-        </p>
-      </Callout>
+      <div class="chat-turn-stopped-row">
+        <Badge variant="neutral">{withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}</Badge>
+        {@render stoppedTurnActions()}
+      </div>
     </div>
   {:else if turn.kind === 'failed'}
     <div class="chat-turn-outcome" data-kind="failed">
@@ -1080,20 +1074,17 @@
     </div>
   {:else if turn.kind === 'empty'}
     <div class="chat-turn-outcome chat-turn-empty" data-kind="empty">
-      <Callout
-        variant="neutral"
-        semantic="note"
-        class="chat-turn-callout chat-turn-empty-card"
-        {...onRetryTurn ? { action: retryTurnAction } : {}}
-      >
-        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
-        <p class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</p>
+      <div class="chat-turn-empty-row" role="status">
+        <p class="chat-turn-text" dir="auto">{turnWords.empty}</p>
         {#if timeInNotice}
           <time class="chat-turn-time" datetime={createdAtValue}
             ><bdi>{formattedCreatedAt}</bdi></time
           >
         {/if}
-      </Callout>
+        {#if onRetryTurn}
+          {@render retryTurnAction()}
+        {/if}
+      </div>
     </div>
   {/if}
 {/snippet}
@@ -2570,6 +2561,13 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
   }
 
+  .chat-turn-stopped-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
   .chat-turn-text {
     display: block;
     min-inline-size: 0;
@@ -2605,6 +2603,24 @@
     display: block;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+  }
+
+  /* A turn that produced no answer is a transcript row, not a warning surface. Its time and one
+   * recovery action stay on the same dashed line so it owns the otherwise missing reply. */
+  .chat-turn-empty-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+    min-block-size: var(--cinder-control-height-xs);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border: 1px dashed var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-turn-empty-row .chat-turn-text {
+    flex: 1 1 12rem;
   }
 
   .chat-turn-failure-body {

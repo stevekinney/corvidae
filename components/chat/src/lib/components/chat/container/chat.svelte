@@ -3945,11 +3945,7 @@
     inline-size: 100%;
     min-inline-size: 0;
     max-block-size: min(100%, 80dvh);
-    padding: var(--cinder-space-3);
     overflow-y: auto;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised, var(--cinder-surface));
   }
 
   .chat-composer-drawers {

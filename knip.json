@@ -53,6 +53,27 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "components/cinder": {
+      "entry": [
+        "src/index.ts",
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "src/{components,lib/components}/*/*-fixtures.ts",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/*": {
       "entry": [
         "**/*.test.ts",

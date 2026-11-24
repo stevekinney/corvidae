@@ -120,6 +120,7 @@
     {duration}
     {endLabel}
     label={CHAT_COPY.tools.railLabel}
+    labels={{ retry: 'Retry this step' }}
     {selectedId}
     onSelect={onSelect ?? toggleDetails}
     onRetry={onRetryStep}

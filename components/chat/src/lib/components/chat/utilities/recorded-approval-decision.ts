@@ -10,10 +10,10 @@ import type { Message } from '../conversation-model.ts';
 import type { ToolApprovalAction, ToolApprovalReceiptRecord } from './types.ts';
 
 /** Where a `tool-result` row keeps how its approval was decided. */
-export const APPROVAL_DECISION_METADATA_KEY = 'approvalDecision';
+const APPROVAL_DECISION_METADATA_KEY = 'approvalDecision';
 
 /** The places a decision can be recorded as made. */
-export type ApprovalDecisionSurface = 'chat' | 'reviews';
+type ApprovalDecisionSurface = 'chat' | 'reviews';
 
 /** A decision read from a result row, checked field by field. */
 export type RecordedApprovalDecision = {

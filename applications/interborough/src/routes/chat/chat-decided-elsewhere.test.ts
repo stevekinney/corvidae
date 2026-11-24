@@ -161,7 +161,7 @@ describe('an approval decided on another page', () => {
     expect(row?.querySelector('h4')?.textContent).toContain('Refund order 4471 for $42.00?');
     expect(
       row?.querySelector('.cinder-approval-card__settled-note')?.textContent?.replace(/\s+/g, ' '),
-    ).toMatch(/^\s*Approved by you in Reviews\s*$/);
+    ).toMatch(/^\s*Approved by you in Reviews, 4:46 PM\s*$/);
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     // The rail row speaks for the same decision in its own words.
@@ -219,7 +219,7 @@ describe('an approval decided on another page', () => {
         ?.querySelector('.cinder-approval-card__settled-note')
         ?.textContent?.replace(/\s+/g, ' ')
         .trim(),
-    ).toBe('Approved by you in Reviews');
+    ).toBe('Approved by you in Reviews, 4:46 PM');
     expect(card?.querySelector('a[href]')?.getAttribute('href')).toContain(
       `/reviews?tab=done&review=${encodeURIComponent('bureau:approval:native-1:call-refund')}`,
     );

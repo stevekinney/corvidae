@@ -41,7 +41,7 @@ import {
 } from './command-ledger';
 
 /** The key prefix of the discard command ledger, apart from every other ledger's. */
-export const DISCARD_LEDGER_KEY_PREFIX = 'command-ledger:discard-turn:v1';
+const DISCARD_LEDGER_KEY_PREFIX = 'command-ledger:discard-turn:v1';
 
 /** The version of the discard command contract the ledger keys on. */
 export const DISCARD_OPERATION_VERSION = 'bureau.contexts.discardturn.v1';

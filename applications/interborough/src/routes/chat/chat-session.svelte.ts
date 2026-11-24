@@ -168,7 +168,7 @@ function approvalRound(
 export const MAX_RECONNECT_ATTEMPTS = 8;
 
 /** How many retry attempts follow the read that failed first. */
-export const RECONNECT_TRIES = MAX_RECONNECT_ATTEMPTS - 1;
+const RECONNECT_TRIES = MAX_RECONNECT_ATTEMPTS - 1;
 
 /** The retry currently scheduled for a dropped Chat stream. */
 export interface ChatReconnect {
@@ -193,7 +193,7 @@ export type ChatRegenerationState = {
  * answer of `command-in-doubt`, which the same command would get for as long as it is sent, and
  * after a failure that brought no answer, the next try is a new command.
  */
-export function keepsCommandAfter(error: unknown): boolean {
+function keepsCommandAfter(error: unknown): boolean {
   const code = wireCodeOf(error);
   return code !== undefined && forkRefusalReason(error) !== 'command-in-doubt';
 }

@@ -20,9 +20,11 @@ import type { Page } from '@playwright/test';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { routes } from '../../src/app/routes.ts';
+import { connectProviderWithModels } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, goOffline, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { listEngineReviews } from './review-support.ts';
 import {
   SHOWCASE_ROUTES_WITHOUT_CONTENT,
@@ -93,6 +95,9 @@ for (const name of NAMES) {
   test(`${name} holds believable content at ${WIDTHS.join(', ')} pixels`, async ({ page }) => {
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: HEIGHT });
+      // A pending question docks only when the conversation can continue. The sample showcase
+      // otherwise intentionally has no provider configured, which is a different blocked state.
+      if (name === '/chats/:chat (question waiting)') await connectProviderWithModels(page);
       await page.goto(`${E2E_SHOWCASE_URL}${addresses[name]}`);
       const outlet = page.locator('main.weft-shell-outlet');
       await expect(outlet).toBeVisible();
@@ -113,7 +118,10 @@ for (const name of NAMES) {
 
       // COR-2014 row 17s is a transient state: hold a choice, capture its inline Undo affordance,
       // then undo before the answer reaches the fixture host so the shared sample world is unchanged.
-      if (name === '/chats/:chat (question waiting)' && (width === 375 || width === 1280)) {
+      if (
+        name === '/chats/:chat (question waiting)' &&
+        (width === 320 || width === 375 || width === 1280)
+      ) {
         const toolRow = page.locator('[data-cinder-tool-call-row]').filter({
           hasText: 'Request human input',
         });
@@ -121,6 +129,9 @@ for (const name of NAMES) {
         await expect(toolRow).not.toContainText('Signal name');
         const staging = page.getByRole('radio', { name: /^Staging\b/, exact: false });
         await expect(staging).toBeVisible();
+        // The configured-provider fixture makes a pending host question replace the composer
+        // instead of falling back to the blocked-provider inline presentation.
+        await expect(page.locator('[data-chat-question-dock="host"]')).toBeVisible();
         // The text before the question is the agent talking to the person (owner decision of
         // 14 November): it keeps its time, and is drawn in message ink, not as bare narration.
         const preface = page
@@ -144,6 +155,11 @@ for (const name of NAMES) {
         await expect(page.locator('.chat-question-status[data-state="sent"]')).toHaveCount(0);
         await expect(staging).toBeVisible();
         await expect(staging).toHaveAttribute('aria-checked', 'false');
+        if (width === 375) {
+          await page.setViewportSize({ width: 320, height: 640 });
+          await expect(page.locator('[data-chat-question-dock="host"]')).toBeVisible();
+          await expect(staging).toBeVisible();
+        }
       }
     }
   });
@@ -245,7 +261,7 @@ async function expectOfflineBanner(page: Page, label: string) {
   return banner;
 }
 
-for (const width of [375, 1280] as const) {
+for (const width of [320, 375, 1280] as const) {
   test(`Shell, offline: the new chat keeps its typed text with Send off under the offline drawer, at ${width} pixels`, async ({
     page,
     context,
@@ -272,7 +288,20 @@ for (const width of [375, 1280] as const) {
       await page.evaluate(() => window.innerHeight),
     );
     await expect(composer).toHaveValue('What did I approve yesterday?');
-    await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    const send = page.getByRole('button', { name: 'Send message' });
+    await expect(send).toBeDisabled();
+    if (width === 320) {
+      // A phone's fixed tabs are a sibling of the shrinking outlet. Both the composer and Send
+      // must finish above them while the offline drawer remains intact, not merely scroll into
+      // view after the frame has already painted beneath the tabs.
+      const tabBar = page.getByRole('navigation', { name: 'Main tabs', exact: true });
+      const boxes = await readBoxes(page, { composer, send, offlineDrawer, tabBar });
+      expect(boxes.composer.y + boxes.composer.height).toBeLessThanOrEqual(boxes.tabBar.y);
+      expect(boxes.send.y + boxes.send.height).toBeLessThanOrEqual(boxes.tabBar.y);
+      expect(boxes.offlineDrawer.y + boxes.offlineDrawer.height).toBeLessThanOrEqual(
+        boxes.composer.y,
+      );
+    }
     // The top bar and the navigation stay live, because navigation still works for loaded pages.
     await expect(page.getByRole('button', { name: 'Search everything' })).toBeEnabled();
     if (width < 700) {

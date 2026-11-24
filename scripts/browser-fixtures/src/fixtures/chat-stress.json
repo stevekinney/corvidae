@@ -107,7 +107,7 @@
       {
         "action": "expect",
         "role": "button",
-        "name": "Retry"
+        "name": "Try again"
       },
       {
         "action": "expect",
@@ -490,7 +490,7 @@
         "name": "stopped-to-failed",
         "steps": [
           { "action": "click", "role": "button", "name": "Stop generating" },
-          { "action": "expect-text", "text": "Stopped. The answer above is partial." },
+          { "action": "expect-text", "text": "Stopped by you, partial answer" },
           { "action": "measure-composer-top", "name": "before" },
           { "action": "click", "role": "button", "name": "Continue" },
           {
@@ -1319,6 +1319,10 @@
       {
         "action": "expect-text",
         "text": "1 failed"
+      },
+      {
+        "action": "expect-text",
+        "text": "Checked 2 of 3 sources"
       }
     ],
     "variants": [
@@ -2611,7 +2615,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Retry"
+        "name": "Retry now"
       },
       {
         "action": "expect",
@@ -2677,7 +2681,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Retry"
+        "name": "Try again"
       },
       {
         "action": "expect",
@@ -2705,9 +2709,13 @@
         "text": "1 failed"
       },
       {
+        "action": "expect-text",
+        "text": "Checked 2 of 3 sources"
+      },
+      {
         "action": "expect",
         "role": "button",
-        "name": "Retry"
+        "name": "Retry this step"
       },
       {
         "action": "expect",

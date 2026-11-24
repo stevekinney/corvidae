@@ -237,7 +237,7 @@ describe('a docked question', () => {
     );
   });
 
-  test('frames the dock once and leaves the nested radio rows unframed', async () => {
+  test('keeps the dock flat while its nested radio rows retain their own touch size', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
@@ -246,9 +246,11 @@ describe('a docked question', () => {
     expect(source).toContain('max-block-size: min(100%, 80dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
-    expect(source).toMatch(
-      /\.chat-question-dock\s*\{[^}]*border: 1px solid var\(--cinder-border-muted\);/,
-    );
+    const dock = /\.chat-question-dock\s*\{([^}]*)\}/u.exec(source)?.[1] ?? '';
+    expect(dock).not.toContain('border:');
+    expect(dock).not.toContain('border-radius:');
+    expect(dock).not.toContain('background:');
+    expect(dock).not.toContain('padding:');
     expect(source).toMatch(
       /\.chat-question-dock-body :global\(\.cinder-choice-grid-item\[data-cinder-variant='row'\]\)\s*\{[^}]*--_cinder-choice-card-min-block-size: 3.25rem;/,
     );
@@ -989,6 +991,18 @@ describe('a host-owned docked question (COR-2437 AC6)', () => {
     expect(
       container.querySelector('[data-chat-question-dock="host"] [data-host-question]'),
     ).not.toBeNull();
+  });
+
+  test('keeps the host wrapper flat while preserving its bounded scroll region', async () => {
+    const source = await Bun.file(new URL('./container/chat.svelte', import.meta.url)).text();
+    const dock = /\.chat-host-question-dock\s*\{([^}]*)\}/u.exec(source)?.[1] ?? '';
+
+    expect(dock).toContain('max-block-size: min(100%, 80dvh);');
+    expect(dock).toContain('overflow-y: auto;');
+    expect(dock).not.toContain('border:');
+    expect(dock).not.toContain('border-radius:');
+    expect(dock).not.toContain('background:');
+    expect(dock).not.toContain('padding:');
   });
 
   test('reports false when a blocked composer keeps the host question inline', async () => {

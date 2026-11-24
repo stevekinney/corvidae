@@ -54,10 +54,10 @@ type Entry = {
 };
 
 /** The default number of released sessions kept for a route return. */
-export const RETAINED_CHAT_SESSIONS = 4;
+const RETAINED_CHAT_SESSIONS = 4;
 
 /** Whether a session has work a route return should find going. */
-export function hasLiveWork(session: ChatSessionState): boolean {
+function hasLiveWork(session: ChatSessionState): boolean {
   if (session.failure !== undefined) return false;
   return (
     session.streaming ||
