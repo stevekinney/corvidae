@@ -131,20 +131,6 @@ export type ReviewDecision = 'approve' | 'deny' | 'reject';
 export type ReviewResolution = BureauOutput<'bureau.reviews.resolve'>;
 
 /**
- * The token a `Conflict`'s reason begins with when a decision took effect (the tool ran or was
- * refused) and only its write into the session's conversation failed. It is not a resolver that
- * lost (`bureau.reviews.resolve`'s description).
- */
-export const APPROVAL_OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
-
-/** Whether a fault says the decision took effect and only its outcome was not written. */
-export function isApprovalOutcomeNotWritten(error: unknown): boolean {
-  if (!(error instanceof HttpClientError)) return false;
-  const reason: unknown = error.data?.['reason'];
-  return typeof reason === 'string' && reason.startsWith(`${APPROVAL_OUTCOME_NOT_WRITTEN}:`);
-}
-
-/**
  * The token a `Conflict`'s reason begins with when the review had moved to another round than the
  * one sent: a re-gated approval keeps its id, so the decision was made on a request that is no longer
  * the one pending, and nothing was decided (`bureau.reviews.resolve`'s description).
@@ -155,7 +141,7 @@ export const REVIEW_ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
 export function isReviewRoundChanged(error: unknown): boolean {
   if (!(error instanceof HttpClientError)) return false;
   const reason: unknown = error.data?.['reason'];
-  return typeof reason === 'string' && reason.startsWith(`${REVIEW_ROUND_CHANGED}:`);
+  return reason === REVIEW_ROUND_CHANGED;
 }
 
 /**
@@ -173,7 +159,7 @@ export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED';
 export function isReviewNoLongerWaiting(error: unknown): boolean {
   if (!(error instanceof HttpClientError)) return false;
   const reason: unknown = error.data?.['reason'];
-  return typeof reason === 'string' && reason.startsWith(`${REVIEW_ALREADY_RESOLVED}:`);
+  return reason === REVIEW_ALREADY_RESOLVED;
 }
 
 /**

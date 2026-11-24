@@ -401,6 +401,7 @@ export type BureauHandlerSource = Pick<
   readonly internals: Pick<
     BureauInternals,
     | 'hasExplicitId'
+    | 'reviewPolicy'
     | 'taskRetention'
     | 'kv'
     | 'eventFeed'
@@ -1363,6 +1364,9 @@ export function buildBureauHandlerHost(
     runFeeds: bureau.internals.runEventFeeds,
     // COR-2016: a decision through `bureau.reviews.resolve` continues the chat as its resume does.
     reviewContinuation: createReviewContinuation(bureau),
+    ...(bureau.internals.reviewPolicy === undefined
+      ? {}
+      : { reviewPolicy: bureau.internals.reviewPolicy }),
     reviews: {
       list: () => bureau.reviews.list(),
       listResolved: (filter) => bureau.reviews.listResolved(filter),

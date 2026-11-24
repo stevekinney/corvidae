@@ -71,6 +71,23 @@ function fixture(prefix: string) {
 }
 
 describe('declared operation behavior', () => {
+  it('requires pagination keys in every union item variant', () => {
+    const [read] = fixture('sample');
+    const operation = (items: z.ZodType) => ({
+      ...read,
+      outputSchema: read.outputSchema.extend({ items: z.array(items) }),
+    });
+    const first = z.object({ kind: z.literal('first'), id: z.string(), category: z.string() });
+    const second = z.object({ kind: z.literal('second'), id: z.string(), category: z.string() });
+    expect(() =>
+      createOperationRegistry([operation(z.discriminatedUnion('kind', [first, second]))]),
+    ).not.toThrow();
+    expect(() =>
+      createOperationRegistry([
+        operation(z.discriminatedUnion('kind', [first, second.omit({ category: true })])),
+      ]),
+    ).toThrow('missing field "category"');
+  });
   it('checks cursor compatibility from output to input', () => {
     const [read] = fixture('sample');
     const catalog = (input: z.ZodType, output: z.ZodType) => ({
@@ -81,9 +98,14 @@ describe('declared operation behavior', () => {
     const narrow = catalog(z.string().optional(), z.string().min(1).nullable());
     const reverse = catalog(z.string().min(1).optional(), z.string().nullable());
     const subset = catalog(z.enum(['a', 'b']).optional(), z.enum(['a']).nullable());
+    const described = catalog(
+      z.string().min(1).describe('cursor').optional(),
+      z.string().min(1).nullable(),
+    );
     const mismatch = catalog(z.enum(['a']).optional(), z.enum(['a', 'b']).nullable());
     expect(() => createOperationRegistry([narrow])).not.toThrow();
     expect(() => createOperationRegistry([subset])).not.toThrow();
+    expect(() => createOperationRegistry([described])).not.toThrow();
     expect(() => createOperationRegistry([reverse])).toThrow('pagination cursors are incompatible');
     expect(() => createOperationRegistry([mismatch])).toThrow(
       'pagination cursors are incompatible',

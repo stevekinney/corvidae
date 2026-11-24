@@ -1054,6 +1054,17 @@ export function createReviewResolution<D extends AgentDefinitions>(
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
+        const policy = core.options.reviewPolicy;
+        if (policy?.matches(cleanup.review)) {
+          if (
+            input.round === undefined ||
+            input.remember === true ||
+            input.reviewer === undefined ||
+            !(await policy.mayDecide(cleanup.review, input.reviewer))
+          ) {
+            throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
+          }
+        }
         assertExpectedReviewRound(input, cleanup.review);
         if (cleanup.decision !== input.decision) {
           throw new ReviewAlreadyResolvedError(`Review with id "${input.id}" is already resolved`);
@@ -1147,8 +1158,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
               decisionSurface: cleanup.decisionSurface,
             },
           );
-          if (cleanupOutcomeNotWritten !== undefined) throw cleanupOutcomeNotWritten;
-          return {
+          const cleanupResolution: ResolveReviewResult = {
             id: input.id,
             kind: cleanup.kind,
             decision: cleanup.decision,
@@ -1161,6 +1171,12 @@ export function createReviewResolution<D extends AgentDefinitions>(
               cleanup.review,
             )),
           };
+          if (cleanupOutcomeNotWritten !== undefined)
+            throw new ApprovalOutcomeNotWrittenError(
+              cleanupOutcomeNotWritten.message,
+              cleanupResolution,
+            );
+          return cleanupResolution;
         } finally {
           resolvingReviewIds.delete(input.id);
         }
@@ -1169,6 +1185,17 @@ export function createReviewResolution<D extends AgentDefinitions>(
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
+    const policy = core.options.reviewPolicy;
+    const protectedReview = policy?.matches(review) === true;
+    if (
+      protectedReview &&
+      (input.round === undefined || input.remember === true || input.reviewer === undefined)
+    ) {
+      throw new BureauError(
+        'Review decision requires reviewer authority and the displayed round',
+        'BAD_REQUEST',
+      );
+    }
     // COR-1920: nothing unsealed is digested or claimed.
     peers.refuseUnsealedSecrets(review, humanWaitDecisionPayload(input), input.decision);
     if (resolvingReviewIds.has(review.id)) {
@@ -1264,6 +1291,9 @@ export function createReviewResolution<D extends AgentDefinitions>(
     }
     if (claim.outcome === 'same' && review.kind === 'tool-approval') {
       try {
+        if (protectedReview && !(await policy!.mayDecide(review, input.reviewer!))) {
+          throw new BureauError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
+        }
         return await answerSameApprovalDecision(review, input);
       } finally {
         resolvingReviewIds.delete(review.id);
@@ -1285,6 +1315,9 @@ export function createReviewResolution<D extends AgentDefinitions>(
     let keepPending = false;
     try {
       await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined, input.round);
+      if (protectedReview && !(await policy!.mayDecide(review, input.reviewer!))) {
+        throw new BureauError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
+      }
       if (review.kind === 'tool-approval') {
         // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
         // one) still has its approval here until this is read; the engine's status says it was
@@ -1635,9 +1668,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     });
     await peers.recordApprovedCall(approvedCallAudit);
 
-    if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
-
-    return {
+    const resolution: ResolveReviewResult = {
       id: review.id,
       kind: review.kind,
       decision: input.decision,
@@ -1649,6 +1680,9 @@ export function createReviewResolution<D extends AgentDefinitions>(
       // COR-1828: stored with the decision's commit; a superseded call ran nothing, so none was.
       ...(await peers.grantFieldsOf(rememberTool, !keepPending && auditAlreadyAppended, review)),
     };
+    if (outcomeNotWritten !== undefined)
+      throw new ApprovalOutcomeNotWrittenError(outcomeNotWritten.message, resolution);
+    return resolution;
   }
 
   return {

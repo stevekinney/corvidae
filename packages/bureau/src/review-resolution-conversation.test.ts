@@ -34,6 +34,9 @@ import { APPROVAL_DECISION_METADATA_KEY } from './approval-decision-metadata';
 import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { createMemoryAssetStorage } from './assets/storage';
+import { createBureauHandler } from './http/create-bureau-handler.ts';
 
 const APPROVAL_SECRET = 'review-resolution-secret';
 
@@ -95,6 +98,8 @@ async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
   let generations = 0;
   const seenByGenerate: Array<ReadonlyArray<Message>> = [];
   const bureau = await createBureau<AgentDefinitions>({
+    id: 'review-outcome-fixture',
+    assets: { storage: createMemoryAssetStorage() },
     agents: {
       default: createAgent({
         generate: async (context) => {
@@ -468,6 +473,61 @@ describe('when the outcome cannot be written into the session', () => {
     );
   }
 
+  it.each(['jsonrpc', 'mcp'] as const)(
+    'returns an applied warning through mounted %s after the effect',
+    async (transportName) => {
+      const charges: number[] = [];
+      const { bureau, review } = await parkedBureau(approvalToolbox(charges));
+      const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow', mcp: {} });
+      const failing = failConversationWrites(bureau);
+      try {
+        let result: unknown;
+        if (transportName === 'jsonrpc') {
+          const response = await handler(
+            new Request('http://localhost/jsonrpc', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'bureau.reviews.resolve',
+                params: { id: review.id, decision: 'approve', round: 0 },
+              }),
+            }),
+          );
+          result = ((await response.json()) as { result: unknown }).result;
+        } else {
+          const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+            fetch: (url, init) => handler(new Request(url, init)),
+          });
+          const client = new Client({ name: 'review-warning-test', version: '1.0.0' });
+          await client.connect(transport);
+          try {
+            result = (
+              await client.callTool({
+                name: 'bureau.reviews.resolve',
+                arguments: { id: review.id, decision: 'approve', round: 0 },
+              })
+            ).structuredContent;
+          } finally {
+            await client.close();
+          }
+        }
+        expect(result).toMatchObject({
+          id: review.id,
+          decision: 'approve',
+          receipt: 'applied',
+          warning: 'APPROVAL_OUTCOME_NOT_WRITTEN',
+        });
+        expect(charges).toEqual([500]);
+        expect((await bureau.reviews.get(review.id))?.status).toBe('approved');
+      } finally {
+        failing.mockRestore();
+        await bureau.dispose();
+      }
+    },
+  );
+
   it('does not report success: the resolution rejects, naming what is left undone', async () => {
     const charges: number[] = [];
     const diagnostics: string[] = [];
@@ -546,6 +606,11 @@ describe('an approval resolved while its run is still going', () => {
       await waitForTaskState(bureau, run.id);
 
       expect(outcome).toBeInstanceOf(ApprovalOutcomeNotWrittenError);
+      expect((outcome as ApprovalOutcomeNotWrittenError).resolution).toMatchObject({
+        id: review!.id,
+        kind: 'tool-approval',
+        decision: 'approve',
+      });
       expect(charges).toEqual([500]);
     } finally {
       generate.release('next-step');

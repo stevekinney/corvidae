@@ -668,14 +668,17 @@ describe('the approval’s details', () => {
 });
 
 describe('a decision that took effect', () => {
-  const NOT_WRITTEN =
-    'APPROVAL_OUTCOME_NOT_WRITTEN: The decision was recorded, but its outcome could not be written into the conversation.';
-
   /** Answers as the Bureau does: the decision is committed, so the review leaves the pending list, and then the write fails. */
   function writeFails(world: BureauWorld, decidedId: string): void {
     stub?.on('bureau.reviews.resolve', () => {
       world.reviews = world.reviews.filter((review) => review.id !== decidedId);
-      throw new StubFault('Conflict', 409, 'The decision was recorded.', { reason: NOT_WRITTEN });
+      return {
+        id: decidedId,
+        kind: 'tool-approval',
+        decision: 'approve',
+        receipt: 'applied',
+        warning: 'APPROVAL_OUTCOME_NOT_WRITTEN',
+      };
     });
   }
 
@@ -827,7 +830,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
     await openRow(container, 0);
     stub?.on('bureau.reviews.resolve', () => {
       throw new StubFault('Conflict', 409, 'The review moved on.', {
-        reason: 'REVIEW_ROUND_CHANGED: now at round 1',
+        reason: 'REVIEW_ROUND_CHANGED',
       });
     });
     const reads = stub?.callsTo('bureau.reviews.list').length ?? 0;
@@ -935,7 +938,7 @@ describe('answering a Bureau question', () => {
     await openRow(container, 0);
     stub?.on('bureau.tasks.respond', () => {
       throw new StubFault('Conflict', 409, 'The task has no open wait for signal "environment"', {
-        reason: 'REVIEW_ALREADY_RESOLVED: The task has no open wait for signal "environment"',
+        reason: 'REVIEW_ALREADY_RESOLVED',
       });
     });
 

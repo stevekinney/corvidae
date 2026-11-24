@@ -126,7 +126,7 @@ describe('a review that left while it was open', () => {
     stub?.on('bureau.reviews.resolve', () => {
       world.reviews = world.reviews.filter((review) => review.id !== APPROVAL.id);
       throw new StubFault('Conflict', 409, 'Review is already resolved', {
-        reason: `REVIEW_ALREADY_RESOLVED: Review with id "${APPROVAL.id}" is already resolved`,
+        reason: 'REVIEW_ALREADY_RESOLVED',
       });
     });
 
