@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2670",
+  "branch": "steve/composable-review-validation",
+  "checkedAt": "e921916c70",
+  "briefVersion": "f3be209f7543",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Generated schema-derived validators cover list, get and resolve on portable client, provider and direct actions. Regression fixtures cover valid round zero and malformed outputs; generation twice left the diff unchanged and browser portability passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "parseReviewsOpeningSnapshot validates uncorrelated opening lists, returns actionable false, preserves absent rounds, rejects private and mistyped fields, and copies the validated data."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Direct-host paired regression proves typed Forbidden reports failed without reconciliation, while lost response reports unknown and remains fenced until reread; malformed get makes zero writes and malformed receipt remains fenced."
+    }
+  ]
+}
